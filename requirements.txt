@@ -4,3 +4,5 @@ pyyaml
 numpy 
 requests
 duckduckgo-search
+tabulate
+matplotlib
