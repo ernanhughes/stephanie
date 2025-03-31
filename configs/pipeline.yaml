@@ -1,0 +1,26 @@
+# configs/pipeline.yaml
+pipeline:
+  goal: "Evaluate Q4 2024 income statement for trading signal"
+  use_grafting: true
+  run_id: "q4_income_2024"
+
+modules:
+  memory:
+    type: VectorMemory
+    database: aico
+    user: postgres
+    password: postgres
+    host: localhost
+
+  agents:
+    generation:
+      enabled: true
+    reflection:
+      enabled: true
+    ranking:
+      enabled: true
+    evolution:
+      enabled: true
+      use_grafting: true
+    meta_review:
+      enabled: true

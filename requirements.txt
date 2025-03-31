@@ -1,0 +1,6 @@
+dspy 
+psycopg2-binary 
+pyyaml 
+numpy 
+requests
+duckduckgo-search
