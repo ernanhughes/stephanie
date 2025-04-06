@@ -1,2 +1,3 @@
-# stephanie
-Local database for your open AI chat history
+# Stephanie
+
+Stephanie is a local memory engine for AI-assisted thinking.
