@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+psycopg2-binary
+hydra-core
+ollama
+python-multipart
+dataclasses-json
+# -- DEV ONLY --
+black
+isort
+pytest
+httpx

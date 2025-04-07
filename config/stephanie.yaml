@@ -1,0 +1,18 @@
+ui:
+  default_search_mode: hybrid
+
+query:
+  top_k: 5
+  hybrid_weights:
+    vector: 0.6
+    text: 0.4
+
+db:
+  host: localhost
+  port: 5432
+  name: stephanie
+  user: stephanie
+  password: stephanie
+
+embedding:
+  model: mxbai-embed-large

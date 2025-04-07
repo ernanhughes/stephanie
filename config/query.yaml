@@ -1,5 +1,0 @@
-query:
-  top_k: 5
-  hybrid_weights:
-    vector: 0.6
-    text: 0.4

@@ -1,22 +1,28 @@
 [project]
 name = "stephanie"
-version = "0.1.0"
-description = "Stephanie: A local memory engine for AI-assisted thinking"
-authors = [{name = "Ernan Hughes", email = "ernanhughes@gmail.com"}]
-license = {text = "MIT"}
+version = "0.2.0"
+description = "Stephanie: A local memory engine and searchable AI archive."
+authors = [{ name = "Ernan Hughes", email = "ernanhughes@gmail.com" }]
+license = "MIT"
 readme = "README.md"
 requires-python = ">=3.8"
+
 dependencies = [
-  "PySide6",
+  "fastapi",
+  "uvicorn[standard]",
   "psycopg2-binary",
   "hydra-core",
-  "numpy",
-  "ollama"
+  "ollama",
+  "python-multipart",    # for future form uploads
+  "dataclasses-json",    # if you want JSON serialization with @dataclass
 ]
 
 [project.scripts]
-stephanie = "stephanie.main_window:main"
+stephanie = "app.main:app"
+
+[tool.setuptools.packages.find]
+where = ["app"]
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
