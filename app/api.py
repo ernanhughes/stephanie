@@ -1,46 +1,97 @@
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
-from dataclasses import asdict
-from typing import List
-
-from app.models import MemoryEntry
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional, List
 from app.search import run_search
-from app.db import fetch_memory_by_id, update_memory_fields
+from app.db import connect_db
+from psycopg2.extras import RealDictCursor
+import json
+from datetime import datetime
+import logging
+
+# Setup logger
+logger = logging.getLogger("stephanie.api")
+logging.basicConfig(level=logging.INFO)
 
 router = APIRouter()
 
+# -------------------------------
+# Models
+# -------------------------------
+class SearchRequest(BaseModel):
+    query: str
+    mode: Optional[str] = "hybrid"
+
+class UpdateRequest(BaseModel):
+    summary: Optional[str]
+    tags: Optional[List[str]]
+
+# -------------------------------
+# Routes
+# -------------------------------
+
 @router.post("/search")
-async def search_memory(request: Request):
-    data = await request.json()
-    query = data.get("query")
-    mode = data.get("mode", "hybrid")
+def search_memory(payload: SearchRequest):
+    logger.info(f"🔍 /search called with query='{payload.query}', mode='{payload.mode}'")
+    results = run_search(payload.query, payload.mode)
+    logger.info(f"🔍 /search returning {len(results)} results")
+    return [r.__dict__ for r in results]
 
-    if not query:
-        raise HTTPException(status_code=400, detail="Missing query")
+@router.get("/memory/{id}")
+def get_memory(id: int):
+    logger.info(f"📥 /memory/{id} requested")
+    conn = connect_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT * FROM memory WHERE id = %s", (id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
 
-    results: List[MemoryEntry] = run_search(query, mode)
-    return JSONResponse([asdict(r) for r in results])
-
-@router.get("/memory/{memory_id}")
-async def get_memory(memory_id: int):
-    memory = fetch_memory_by_id(memory_id)
-    if memory:
-        return JSONResponse(asdict(memory))
-    raise HTTPException(status_code=404, detail="Memory not found")
-
-@router.patch("/memory/{memory_id}")
-async def update_memory(memory_id: int, request: Request):
-    data = await request.json()
-    updated = update_memory_fields(memory_id, data)
-    if updated:
-        return {"status": "success"}
-    raise HTTPException(status_code=404, detail="Memory not found")
-
-@router.get("/export/{memory_id}")
-async def export_memory(memory_id: int):
-    memory = fetch_memory_by_id(memory_id)
-    if not memory:
+    if not row:
+        logger.warning(f"⚠️ /memory/{id} not found")
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    md = f"# {memory.title}\n\n**Tags:** {', '.join(memory.tags)}\n\n---\n\nUSER:\n{memory.user_text}\n\nASSISTANT:\n{memory.ai_text}"
-    return JSONResponse({"markdown": md, "json": asdict(memory)})
+    return row
+
+@router.patch("/memory/{id}")
+def update_memory(id: int, payload: UpdateRequest):
+    logger.info(f"✏️ /memory/{id} update request: summary='{payload.summary}', tags={payload.tags}")
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE memory SET
+            summary = %s,
+            tags = %s
+        WHERE id = %s
+    """, (payload.summary, payload.tags, id))
+    conn.commit()
+    cur.close()
+    conn.close()
+    logger.info(f"✅ /memory/{id} successfully updated")
+    return {"status": "updated"}
+
+@router.get("/export/{id}")
+def export_memory(id: int):
+    logger.info(f"📤 /export/{id} requested")
+    conn = connect_db()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT * FROM memory WHERE id = %s", (id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        logger.warning(f"⚠️ /export/{id} not found")
+        raise HTTPException(status_code=404, detail="Memory not found")
+
+    md = f"# {row['title']}\n\n"
+    md += f"**Timestamp:** {row['timestamp']}\n\n"
+    md += f"**Tags:** {', '.join(row.get('tags', []))}\n\n"
+    md += f"**Summary:**\n{row.get('summary', '')}\n\n---\n\n"
+    md += f"**User:**\n{row.get('user_text', '')}\n\n"
+    md += f"**Assistant:**\n{row.get('ai_text', '')}\n"
+
+    logger.info(f"📦 /export/{id} successful")
+    return {
+        "markdown": md,
+        "json": row
+    }
