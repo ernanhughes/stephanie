@@ -4,13 +4,32 @@ from typing import Optional, List
 from app.search import run_search
 from app.db import connect_db
 from psycopg2.extras import RealDictCursor
-import json
+import html
 from datetime import datetime
 import logging
 
 # Setup logger
 logger = logging.getLogger("stephanie.api")
 logging.basicConfig(level=logging.INFO)
+
+import html
+import re
+
+def clean_text(text: str) -> str:
+    """Clean badly encoded strings, spaced tokens, and escaped sequences."""
+    if not text:
+        return ""
+    # Fix spaced-out characters
+    if re.match(r"^(?:[A-Za-z0-9]\s+){5,}", text):
+        text = re.sub(r"\s+", "", text)
+    # Decode unicode-escaped sequences
+    text = text.encode("utf-8").decode("unicode_escape", errors="ignore")
+    # Unescape HTML entities
+    text = html.unescape(text)
+    # Clean up extra quotes
+    return text.replace('\\"', '"').strip()
+
+
 
 router = APIRouter()
 
@@ -83,15 +102,22 @@ def export_memory(id: int):
         logger.warning(f"⚠️ /export/{id} not found")
         raise HTTPException(status_code=404, detail="Memory not found")
 
-    md = f"# {row['title']}\n\n"
+    # Clean everything
+    title = clean_text(row["title"])
+    summary = clean_text(row.get("summary", ""))
+    user_text = clean_text(row.get("user_text", ""))
+    ai_text = clean_text(row.get("ai_text", ""))
+
+    # Build markdown
+    md = f"# {title}\n\n"
     md += f"**Timestamp:** {row['timestamp']}\n\n"
     md += f"**Tags:** {', '.join(row.get('tags', []))}\n\n"
-    md += f"**Summary:**\n{row.get('summary', '')}\n\n---\n\n"
-    md += f"**User:**\n{row.get('user_text', '')}\n\n"
-    md += f"**Assistant:**\n{row.get('ai_text', '')}\n"
+    md += f"**Summary:**\n{summary}\n\n---\n\n"
+    md += f"**User:**\n{user_text}\n\n"
+    md += f"**Assistant:**\n{ai_text}\n"
 
-    logger.info(f"📦 /export/{id} successful")
     return {
         "markdown": md,
         "json": row
     }
+
