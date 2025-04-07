@@ -5,6 +5,7 @@ hydra-core
 ollama
 python-multipart
 dataclasses-json
+beautifulsoup4
 # -- DEV ONLY --
 black
 isort

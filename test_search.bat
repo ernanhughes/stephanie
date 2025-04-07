@@ -1,7 +1,7 @@
 @echo off
 REM Batch file to test Stephanie's /api/search endpoint
 
-set QUERY=freestyle cognition
+set QUERY=freestyle
 set MODE=hybrid
 
 echo Sending search request...

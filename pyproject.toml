@@ -15,6 +15,7 @@ dependencies = [
   "ollama",
   "python-multipart",    # for future form uploads
   "dataclasses-json",    # if you want JSON serialization with @dataclass
+  "beautifulsoup4",
 ]
 
 [project.scripts]

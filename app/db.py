@@ -1,7 +1,7 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from hydra import initialize, compose
-from app.models import MemoryEntry
+from models import MemoryEntry
 
 import logging
 logger = logging.getLogger(__name__)
