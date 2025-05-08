@@ -19,8 +19,8 @@ class ReflectHypothesis(Module):
         return self.reviewer(hypothesis=hypothesis).review
 
 class ReflectionAgent(BaseAgent):
-    def __init__(self, memory):
-        super().__init__(memory)
+    def __init__(self, memory, logger):
+        super().__init__(memory, logger)
         self.reflector = ReflectHypothesis()
 
     async def run(self, input_data: dict) -> dict:

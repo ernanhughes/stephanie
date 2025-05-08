@@ -19,8 +19,8 @@ class MetaReviewModule(Module):
         return self.summarizer(evolved_hypotheses=combined).summary
 
 class MetaReviewAgent(BaseAgent):
-    def __init__(self, memory):
-        super().__init__(memory)
+    def __init__(self, memory, logger):
+        super().__init__(memory, logger)
         self.reviewer = MetaReviewModule()
 
     async def run(self, input_data: dict) -> dict:

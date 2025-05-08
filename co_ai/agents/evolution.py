@@ -36,8 +36,8 @@ class GraftHypotheses(Module):
         return self.grafter(hypothesis_a=a, hypothesis_b=b).grafted_hypothesis
 
 class EvolutionAgent(BaseAgent):
-    def __init__(self, memory):
-        super().__init__(memory)
+    def __init__(self, memory, logger):
+        super().__init__(memory, logger)
         self.evolver = EvolveHypotheses()
         self.grafter = GraftHypotheses()
 

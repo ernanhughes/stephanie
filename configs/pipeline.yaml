@@ -1,8 +1,13 @@
 # configs/pipeline.yaml
 pipeline:
-  goal: "Evaluate Q4 2024 income statement for trading signal"
+  goal: "Will a decrease in U.S. interest rates in Q4 2024 lead to higher retail earnings?"
   use_grafting: true
-  run_id: "q4_income_2024"
+  run_id: "interest_retail_2024"
+
+model:
+  name: "ollama_chat/qwen3"
+  api_base: "http://localhost:11434"
+  api_key: ""
 
 modules:
   memory:
