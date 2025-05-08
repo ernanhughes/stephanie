@@ -2,7 +2,7 @@
 import asyncio
 from agents.base import BaseAgent
 from memory.hypothesis_model import Hypothesis
-from tools.web_search import WebSearchTool
+from co_ai.tools.web_search import WebSearchTool
 from dspy import Signature, Module, Predict, InputField, OutputField
 
 class GenerateSignature(Signature):

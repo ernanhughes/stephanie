@@ -1,6 +1,6 @@
 # ai_co_scientist/run_pipeline.py
 import yaml
-from supervisor import Supervisor
+from co_ai.supervisor import Supervisor
 import dspy
 
 class PipelineRunner:

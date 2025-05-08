@@ -2,7 +2,7 @@
 from agents.base import BaseAgent
 from memory.hypothesis_model import Hypothesis
 from dspy import Signature, Module, Predict, InputField, OutputField
-from tools.embedding_tool import get_embedding
+from co_ai.memory.embedding_tool import get_embedding
 import itertools
 import numpy as np
 

@@ -1,0 +1,26 @@
+[project]
+name = "co-ai"
+version = "0.1.0"
+description = "A modular DSPy-based pipeline for LLM-powered scientific hypothesis generation and ranking."
+authors = [{ name = "Your Name", email = "your@email.com" }]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "dspy",
+    "psycopg2-binary",
+    "pydantic",
+    "pyyaml",
+    "numpy",
+    "requests",
+    "duckduckgo-search",
+    "matplotlib",
+    "tabulate"
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/co-ai"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

@@ -1,7 +1,7 @@
 # ai_co_scientist/memory/vector_store.py
 from memory.base_memory import BaseMemory
 from memory.hypothesis_model import Hypothesis
-from tools.embedding_tool import get_embedding
+from co_ai.memory.embedding_tool import get_embedding
 import psycopg2
 import json
 
