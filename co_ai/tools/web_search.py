@@ -1,6 +1,7 @@
-# ai_co_scientist/tools/web_search.py
+# co_ai/tools/web_search.py
 
 from duckduckgo_search import DDGS
+
 
 class WebSearchTool:
     async def search(self, query: str, max_results: int = 5) -> list[str]:

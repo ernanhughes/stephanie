@@ -1,9 +1,12 @@
-# ai_co_scientist/agents/ranking.py
-from agents.base import BaseAgent
-from memory.hypothesis_model import Hypothesis
-from dspy import Predict, Signature, InputField, OutputField, Module
-from logs.ranking_log import EloRankingLog
+# co_ai/agents/ranking.py
 import random
+
+from dspy import InputField, Module, OutputField, Predict, Signature
+
+from co_ai.agents.base import BaseAgent
+from co_ai.logs.ranking_log import EloRankingLog
+from co_ai.memory.hypothesis_model import Hypothesis
+
 
 class JudgeSignature(Signature):
     hypothesis_a = InputField()

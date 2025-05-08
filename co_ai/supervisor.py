@@ -1,13 +1,16 @@
-# ai_co_scientist/supervisor.py
+# co_ai/supervisor.py
 import asyncio
-from agents.generation import GenerationAgent
-from agents.reflection import ReflectionAgent
-from agents.ranking import RankingAgent
-from agents.evolution import EvolutionAgent
-from agents.meta_review import MetaReviewAgent
-from memory.vector_store import VectorMemory
-from interface.cli import get_user_goal
+
 import dspy
+
+from co_ai.agents.evolution import EvolutionAgent
+from co_ai.agents.generation import GenerationAgent
+from co_ai.agents.meta_review import MetaReviewAgent
+from co_ai.agents.ranking import RankingAgent
+from co_ai.agents.reflection import ReflectionAgent
+from co_ai.interface.cli import get_user_goal
+from co_ai.memory.vector_store import VectorMemory
+
 
 class Supervisor:
     def __init__(self):

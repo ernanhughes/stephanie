@@ -6,8 +6,8 @@ Agents responsible for core reasoning steps:
 - evolution
 - meta review
 """
-from .generation import GenerationAgent
-from .reflection import ReflectionAgent
-from .ranking import RankingAgent
 from .evolution import EvolutionAgent
+from .generation import GenerationAgent
 from .meta_review import MetaReviewAgent
+from .ranking import RankingAgent
+from .reflection import ReflectionAgent

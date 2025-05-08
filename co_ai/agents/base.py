@@ -1,5 +1,6 @@
-# ai_co_scientist/agents/base.py
+# co_ai/agents/base.py
 from abc import ABC, abstractmethod
+
 
 class BaseAgent(ABC):
     def __init__(self, memory=None, tools=None):

@@ -1,7 +1,9 @@
-# ai_co_scientist/agents/reflection.py
-from agents.base import BaseAgent
-from memory.hypothesis_model import Hypothesis
-from dspy import Signature, Module, Predict, InputField, OutputField
+# co_ai/agents/reflection.py
+from dspy import InputField, Module, OutputField, Predict, Signature
+
+from co_ai.agents.base import BaseAgent
+from co_ai.memory.hypothesis_model import Hypothesis
+
 
 class ReflectSignature(Signature):
     """Critique a hypothesis for clarity, novelty, and testability."""

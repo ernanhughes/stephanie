@@ -1,7 +1,9 @@
-# ai_co_scientist/run_pipeline.py
-import yaml
-from co_ai.supervisor import Supervisor
+# co_ai/run_pipeline.py
 import dspy
+import yaml
+
+from co_ai.supervisor import Supervisor
+
 
 class PipelineRunner:
     def __init__(self, config_path="configs/pipeline.yaml"):

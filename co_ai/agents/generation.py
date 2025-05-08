@@ -1,9 +1,10 @@
-# ai_co_scientist/agents/generation.py
-import asyncio
-from agents.base import BaseAgent
-from memory.hypothesis_model import Hypothesis
+# co_ai/agents/generation.py
+from dspy import InputField, Module, OutputField, Predict, Signature
+
+from co_ai.agents.base import BaseAgent
+from co_ai.memory.hypothesis_model import Hypothesis
 from co_ai.tools.web_search import WebSearchTool
-from dspy import Signature, Module, Predict, InputField, OutputField
+
 
 class GenerateSignature(Signature):
     """Generate three novel, testable hypotheses based on a research goal and its context."""

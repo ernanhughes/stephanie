@@ -7,9 +7,9 @@ pipeline:
 modules:
   memory:
     type: VectorMemory
-    database: aico
-    user: postgres
-    password: postgres
+    database: co
+    user: co
+    password: co
     host: localhost
 
   agents:

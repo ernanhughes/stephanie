@@ -1,10 +1,13 @@
-# ai_co_scientist/agents/evolution.py
-from agents.base import BaseAgent
-from memory.hypothesis_model import Hypothesis
-from dspy import Signature, Module, Predict, InputField, OutputField
-from co_ai.memory.embedding_tool import get_embedding
+# co_ai/agents/evolution.py
 import itertools
+
 import numpy as np
+from dspy import InputField, Module, OutputField, Predict, Signature
+
+from co_ai.agents.base import BaseAgent
+from co_ai.memory.embedding_tool import get_embedding
+from co_ai.memory.hypothesis_model import Hypothesis
+
 
 class EvolveSignature(Signature):
     top_hypotheses = InputField()

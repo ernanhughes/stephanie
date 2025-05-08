@@ -1,7 +1,8 @@
-# ai_co_scientist/memory/hypothesis_model.py
-from dataclasses import dataclass, asdict
+# co_ai/memory/hypothesis_model.py
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import List, Optional
+
 
 @dataclass
 class Hypothesis:

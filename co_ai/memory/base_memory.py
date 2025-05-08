@@ -1,5 +1,6 @@
-# ai_co_scientist/memory/base_memory.py
+# co_ai/memory/base_memory.py
 from abc import ABC, abstractmethod
+
 
 class BaseMemory(ABC):
     @abstractmethod

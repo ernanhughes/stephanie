@@ -1,6 +1,7 @@
-# ai_co_scientist/logs/ranking_log.py
-from dataclasses import dataclass, asdict
+# co_ai/logs/ranking_log.py
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+
 
 @dataclass
 class EloRankingLog:

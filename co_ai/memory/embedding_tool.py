@@ -1,6 +1,6 @@
-# ai_co_scientist/memory/embedding_tool.py
-import requests
+# co_ai/memory/embedding_tool.py
 import numpy as np
+import requests
 
 # Uses Ollama locally to generate embeddings via an embedding model like "nomic-embed-text"
 OLLAMA_EMBED_MODEL = "mxbai-embed-large"

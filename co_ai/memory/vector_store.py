@@ -1,9 +1,12 @@
-# ai_co_scientist/memory/vector_store.py
-from memory.base_memory import BaseMemory
-from memory.hypothesis_model import Hypothesis
-from co_ai.memory.embedding_tool import get_embedding
-import psycopg2
+# co_ai/memory/vector_store.py
 import json
+
+import psycopg2
+
+from co_ai.memory.base_memory import BaseMemory
+from co_ai.memory.embedding_tool import get_embedding
+from co_ai.memory.hypothesis_model import Hypothesis
+
 
 class VectorMemory(BaseMemory):
     def __init__(self):

@@ -1,8 +1,9 @@
 # tools/view_ranking_trace.py
+from collections import defaultdict
+
+import matplotlib.pyplot as plt
 import psycopg2
 from tabulate import tabulate
-import matplotlib.pyplot as plt
-from collections import defaultdict
 
 DB_CONFIG = dict(
     dbname="co",

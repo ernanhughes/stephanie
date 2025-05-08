@@ -1,6 +1,8 @@
-# ai_co_scientist/agents/meta_review.py
-from agents.base import BaseAgent
-from dspy import Signature, Module, Predict, InputField, OutputField
+# co_ai/agents/meta_review.py
+from dspy import InputField, Module, OutputField, Predict, Signature
+
+from co_ai.agents.base import BaseAgent
+
 
 class MetaReviewSignature(Signature):
     """Summarize and synthesize the evolved hypotheses into a cohesive research direction."""
