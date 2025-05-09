@@ -9,41 +9,31 @@ from co_ai.memory.vector_store import VectorMemory
 
 
 class Supervisor:
-    def __init__(self):
-        self.memory = VectorMemory()
-        self.logger = JSONLogger()
+    def __init__(self, cfg, memory=VectorMemory(), logger=JSONLogger()):
+        self.cfg = cfg
+        self.memory = memory
+        self.logger = logger
 
-    async def run_pipeline_config(self, goal, run_id="default_run", use_grafting=False):
-        self.logger.log({"event": "supervisor_start", "goal": goal, "run_id": run_id})
+    async def run_pipeline_config(self, goal: str, run_id: str = "default", use_grafting: bool = False):
+        gen_agent = GenerationAgent(self.cfg, self.memory, self.logger)
+        reflect_agent = ReflectionAgent(self.cfg, self.memory, self.logger)
+        rank_agent = RankingAgent(self.cfg, self.memory, self.logger)
+        evolve_agent = EvolutionAgent(self.cfg, self.memory, self.logger)
+        review_agent = MetaReviewAgent(self.cfg, self.memory, self.logger)
 
-        gen_agent = GenerationAgent(self.memory, self.logger)
-        reflect_agent = ReflectionAgent(self.memory, self.logger)
-        rank_agent = RankingAgent(self.memory, self.logger)
-        evolve_agent = EvolutionAgent(self.memory, self.logger)
-        review_agent = MetaReviewAgent(self.memory, self.logger)
-
+        print(f"[Pipeline] {run_id} Generating hypotheses for: {goal}")
         generated = await gen_agent.run({"goal": goal})
-        if not isinstance(generated, dict):
-            self.logger.log({"event": "generation_error", "message": "Expected dict but got", "type": str(type(generated))})
-            return
 
-        self.logger.log({
-            "event": "generation_complete",
-            "count": len(generated.get("hypotheses", []))
-        })
+        print("[Pipeline] {run_id} Reflecting on hypotheses...")
+        reflected = await reflect_agent.run({"hypotheses": generated["hypotheses"]})
 
-        reflected = await reflect_agent.run({"hypotheses": generated.get("hypotheses", [])})
-        self.logger.log({"event": "reflection_complete", "count": len(reflected.get("reviewed", []))})
+        print("[Pipeline] {run_id}  Ranking hypotheses...")
+        ranked = await rank_agent.run({"reviewed": reflected["reviewed"]})
 
-        ranked = await rank_agent.run({"reviewed": reflected})
-        self.logger.log({"event": "ranking_complete", "ranked": ranked.get("ranked", [])[:3]})
+        print("[Pipeline] {run_id} Evolving hypotheses...")
+        evolved = await evolve_agent.run({"ranked": ranked["ranked"], "use_grafting": use_grafting})
 
-        evolved = await evolve_agent.run({"ranked": ranked.get("ranked", []), "use_grafting": use_grafting})
-        self.logger.log({"event": "evolution_complete", "count": len(evolved.get("evolved", []))})
+        print("[Pipeline] Summarizing results...")
+        summary = await review_agent.run({"evolved": evolved["evolved"]})
 
-        summary = await review_agent.run({"evolved": evolved.get("evolved", [])})
-        self.logger.log({"event": "meta_review_complete", "summary": summary.get("summary")})
-
-        self.logger.log({"event": "supervisor_complete", "run_id": run_id})
-
-        return summary.get("summary")
+        return summary

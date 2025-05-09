@@ -10,7 +10,9 @@ class JSONLogger:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, record):
-        timestamp = datetime.utcnow().isoformat()
-        log_entry = {"timestamp": timestamp, **record}
-        with self.log_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
+        try:
+            log_entry = {"timestamp": datetime.utcnow().isoformat(), **record}
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry, default=str) + "\n")
+        except TypeError as e:
+            print(f"[Logger] Skipping non-serializable log: {e}")

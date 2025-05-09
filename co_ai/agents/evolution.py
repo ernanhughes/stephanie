@@ -1,62 +1,40 @@
 # co_ai/agents/evolution.py
 import itertools
+
 import numpy as np
 
-from dspy import Predict, Signature, InputField, OutputField
-from dspy import LM
-
 from co_ai.agents.base import BaseAgent
-from co_ai.memory.hypothesis_model import Hypothesis
 from co_ai.memory.embedding_tool import get_embedding
-from typing import List
+from co_ai.memory.hypothesis_model import Hypothesis
 
-class EvolveSignature(Signature):
-    top_hypotheses = InputField()  # joined string of bullet points
-    improved_hypotheses = OutputField()  # joined string of bullet points
-
-class GraftSignature(Signature):
-    hypothesis_a = InputField()
-    hypothesis_b = InputField()
-    grafted_hypothesis = OutputField()
 
 class EvolutionAgent(BaseAgent):
-    def __init__(self, memory=None, logger=None, model_config=None):
-        super().__init__(memory=memory, logger=logger)
-        self.model_config = model_config or {
-            "name": "ollama_chat/qwen3",
-            "api_base": "http://localhost:11434",
-            "api_key": None,
-        }
-        lm = LM(
-            self.model_config["name"],
-            api_base=self.model_config["api_base"],
-            api_key=self.model_config.get("api_key")
-        )
-        self.evolver = Predict(EvolveSignature, lm=lm)
-        self.grafter = Predict(GraftSignature, lm=lm)
+    def __init__(self, cfg, memory=None, logger=None):
+        super().__init__(cfg, memory, logger)
 
     async def run(self, input_data: dict) -> dict:
         ranked = input_data.get("ranked", [])
         use_grafting = input_data.get("use_grafting", True)
-        top_texts = [item["hypothesis"] for item in ranked[:3]]
+        top_texts = [hyp for hyp, score in ranked[:3]]
 
         if use_grafting:
             self.log("Grafting similar hypotheses before evolution...")
             top_texts = await self.graft_similar(top_texts)
 
-        self.log("Evolving hypotheses via DSPy...")
-        result = self.evolver(top_hypotheses="\n".join(f"- {h}" for h in top_texts))
+        self.log("Evolving hypotheses via LLM...")
+        prompt = "Improve the following hypotheses:\n" + "\n".join(f"- {t}" for t in top_texts)
+        raw_output = self.call_llm(prompt)
+        evolved_lines = self.extract_list_items(raw_output)
 
-        evolved = result.improved_hypotheses.split("\n")
-        evolved_hypotheses = [
+        evolved = [
             Hypothesis(goal="Evolved from top-ranked", text=h.strip())
-            for h in evolved if h.strip()
+            for h in evolved_lines if h.strip()
         ]
 
-        for h in evolved_hypotheses:
+        for h in evolved:
             self.memory.store_hypothesis(h)
 
-        return {"evolved": evolved_hypotheses}
+        return {"evolved": evolved}
 
     async def graft_similar(self, hypotheses: list[str], threshold: float = 0.90) -> list[str]:
         embeddings = [get_embedding(h) for h in hypotheses]
@@ -69,7 +47,11 @@ class EvolutionAgent(BaseAgent):
             sim = self.cosine_similarity(embeddings[i], embeddings[j])
             if sim >= threshold:
                 self.log(f"Grafting pair with similarity {sim:.2f}")
-                graft = self.grafter(hypothesis_a=h1, hypothesis_b=h2).grafted_hypothesis
+                prompt = (
+                    f"Combine the following hypotheses into a clearer, unified statement:\n\n"
+                    f"A: {h1}\nB: {h2}"
+                )
+                graft = self.call_llm(prompt).strip()
                 grafted.append(graft)
                 used.update([i, j])
 

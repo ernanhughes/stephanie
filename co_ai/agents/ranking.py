@@ -1,48 +1,75 @@
 # co_ai/agents/ranking.py
+import itertools
+import random
+
 from co_ai.agents.base import BaseAgent
-import math
-from collections import defaultdict
+
 
 class RankingAgent(BaseAgent):
-    def __init__(self, memory=None, logger=None):
-        super().__init__(memory=memory, logger=logger)
-        self.default_score = 1000
+    def __init__(self, cfg, memory=None, logger=None):
+        super().__init__(cfg, memory, logger)
+        self.elo_scores = {}
 
     async def run(self, input_data: dict) -> dict:
-        reviews = input_data.get("reviews", [])
-        self.log(f"Ranking {len(reviews)} structured reviews...")
+        reviewed = input_data.get("reviewed", [])
+        structured = [
+            {
+                "hypothesis": item["hypothesis"],
+                "review": item["review"],
+                "persona": item.get("persona", "Neutral")
+            }
+            for item in reviewed
+        ]
 
-        grouped = defaultdict(list)
-        for item in reviews:
-            grouped[item["hypothesis"]].append(item["review"])
+        if len(structured) < 2:
+            # Not enough for ELO, return baseline
+            return {"ranked": [(item["hypothesis"], 1000) for item in structured]}
 
-        elo_scores = {hyp: self.default_score for hyp in grouped}
+        self._initialize_scores(structured)
+        self._rank_pairwise(structured)
 
-        # Pairwise comparisons
-        hypotheses = list(grouped.keys())
-        for i in range(len(hypotheses)):
-            for j in range(i + 1, len(hypotheses)):
-                a, b = hypotheses[i], hypotheses[j]
-                a_score = self.heuristic_score(grouped[a])
-                b_score = self.heuristic_score(grouped[b])
+        ranked = sorted(self.elo_scores.items(), key=lambda x: x[1], reverse=True)
+        return {"ranked": ranked}
 
-                if a_score > b_score:
-                    self._update_scores(elo_scores, a, b)
-                else:
-                    self._update_scores(elo_scores, b, a)
+    def _initialize_scores(self, reviewed):
+        for item in reviewed:
+            hyp = item["hypothesis"]
+            self.elo_scores[hyp] = 1000
 
-        ranked = sorted(elo_scores.items(), key=lambda x: x[1], reverse=True)
-        self.log("Ranking complete.")
-        return {
-            "ranked": [{"hypothesis": hyp, "elo": elo_scores[hyp]} for hyp, _ in ranked]
-        }
+    def _rank_pairwise(self, reviewed):
+        pairs = list(itertools.combinations(reviewed, 2))
+        if not pairs:
+            return
 
-    def heuristic_score(self, reviews):
-        return sum(len(r) for r in reviews)
+        comparisons = random.sample(pairs, k=min(6, len(pairs)))
 
-    def _update_scores(self, scores, winner, loser, k=32):
-        rating_winner = scores[winner]
-        rating_loser = scores[loser]
-        expected_win = 1 / (1 + 10 ** ((rating_loser - rating_winner) / 400))
-        scores[winner] += int(k * (1 - expected_win))
-        scores[loser] -= int(k * expected_win)
+        for item1, item2 in comparisons:
+            prompt = (
+                f"You are a critical analyst. Two hypotheses were reviewed as follows:\n\n"
+                f"Hypothesis A:\n{item1['hypothesis']}\nReview: {item1['review']}\n\n"
+                f"Hypothesis B:\n{item2['hypothesis']}\nReview: {item2['review']}\n\n"
+                f"Which hypothesis is stronger overall and why? Just reply with 'A' or 'B'."
+            )
+            winner = self.call_llm(prompt).strip().upper()
+
+            if winner not in {"A", "B"}:
+                continue
+
+            self._update_elo(item1["hypothesis"], item2["hypothesis"], winner)
+
+    def _update_elo(self, hyp1, hyp2, winner):
+        K = 32
+        R1 = 10 ** (self.elo_scores[hyp1] / 400)
+        R2 = 10 ** (self.elo_scores[hyp2] / 400)
+        E1 = R1 / (R1 + R2)
+        E2 = R2 / (R1 + R2)
+
+        S1 = 1 if winner == "A" else 0
+        S2 = 1 - S1
+
+        self.elo_scores[hyp1] += K * (S1 - E1)
+        self.elo_scores[hyp2] += K * (S2 - E2)
+        self.memory.store_ranking(hyp1, self.elo_scores[hyp1])
+        self.memory.store_ranking(hyp2, self.elo_scores[hyp2])  
+        self.log(f"Updated ELO scores: {self.elo_scores}", structured=False)
+        self.log(f"Ranked hypotheses: {self.elo_scores}", structured=False) 

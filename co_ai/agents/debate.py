@@ -1,65 +1,80 @@
 # co_ai/agents/debate.py
-from dspy import Predict, Signature, InputField, OutputField
-from dspy import LM
 from co_ai.agents.base import BaseAgent
-from typing import List
 
-class DebateSignature(Signature):
-    hypothesis = InputField()
-    review = OutputField()
 
-class OptimistDebaterAgent(BaseAgent):
-    def __init__(self, memory=None, logger=None, model_config=None):
-        super().__init__(memory=memory, logger=logger)
-        self.model_config = model_config or {
-            "name": "ollama_chat/mistral",
-            "api_base": "http://localhost:11434",
-            "api_key": None,
-        }
-        lm = LM(
-            self.model_config["name"],
-            api_base=self.model_config["api_base"],
-            api_key=self.model_config.get("api_key")
-        )
-        self.predictor = Predict(DebateSignature, lm=lm)
+class OptimistDebater(BaseAgent):
+    def __init__(self, cfg, memory=None, logger=None):
+        super().__init__(cfg, memory, logger)
 
     async def run(self, input_data: dict) -> dict:
         hypotheses = input_data.get("hypotheses", [])
-        self.log(f"Running OptimistDebater on {len(hypotheses)} hypotheses...")
-        results = []
-        for h in hypotheses:
-            response = self.predictor(hypothesis=h)
-            results.append({
-                "hypothesis": h,
-                "review": response.review,
-                "persona": "Optimist"
-            })
-        return {"reviews": results}
+        reviews = []
 
-class SkepticDebaterAgent(BaseAgent):
-    def __init__(self, memory=None, logger=None, model_config=None):
-        super().__init__(memory=memory, logger=logger)
-        self.model_config = model_config or {
-            "name": "ollama_chat/qwen3",
-            "api_base": "http://localhost:11434",
-            "api_key": None,
-        }
-        lm = LM(
-            self.model_config["name"],
-            api_base=self.model_config["api_base"],
-            api_key=self.model_config.get("api_key")
-        )
-        self.predictor = Predict(DebateSignature, lm=lm)
+        for h in hypotheses:
+            prompt = (
+                f"As an optimistic analyst, critique the following hypothesis:\n\n"
+                f"{h}\n\n"
+                f"Focus on strengths, positive implications, and reasons it might be valid."
+            )
+            review = self.call_llm(prompt).strip()
+            reviews.append({"hypothesis": h, "review": review, "persona": "Optimist"})
+
+        return {"reviews": reviews}
+
+class SkepticDebater(BaseAgent):
+    def __init__(self, cfg, memory=None, logger=None):
+        super().__init__(cfg, memory, logger)
 
     async def run(self, input_data: dict) -> dict:
         hypotheses = input_data.get("hypotheses", [])
-        self.log(f"Running SkepticDebater on {len(hypotheses)} hypotheses...")
-        results = []
+        reviews = []
+
         for h in hypotheses:
-            response = self.predictor(hypothesis=h)
-            results.append({
-                "hypothesis": h,
-                "review": response.review,
-                "persona": "Skeptic"
-            })
-        return {"reviews": results}
+            prompt = (
+                f"As a skeptical analyst, critique the following hypothesis:\n\n"
+                f"{h}\n\n"
+                f"Focus on weaknesses, uncertainties, or reasons it might be flawed."
+            )
+            review = self.call_llm(prompt).strip()
+            reviews.append({"hypothesis": h, "review": review, "persona": "Skeptic"})
+
+        return {"reviews": reviews}
+
+class BalancedDebater(BaseAgent):
+    def __init__(self, cfg, memory=None, logger=None):
+        super().__init__(cfg, memory, logger)
+
+    async def run(self, input_data: dict) -> dict:
+        hypotheses = input_data.get("hypotheses", [])
+        reviews = []
+
+        for h in hypotheses:
+            prompt = (
+                f"As a balanced analyst, critique the following hypothesis:\n\n"
+                f"{h}\n\n"
+                f"Provide both positive and negative aspects."
+            )
+            review = self.call_llm(prompt).strip()
+            reviews.append({"hypothesis": h, "review": review, "persona": "Balanced"})
+
+        return {"reviews": reviews}
+    
+class DebateAgent(BaseAgent):
+    def __init__(self, cfg, memory=None, logger=None):
+        super().__init__(cfg, memory, logger)
+        self.optimist = OptimistDebater(cfg, memory, logger)
+        self.skeptic = SkepticDebater(cfg, memory, logger)
+        self.balanced = BalancedDebater(cfg, memory, logger)
+
+    async def run(self, input_data: dict) -> dict:
+        hypotheses = input_data.get("hypotheses", [])
+        optimist_reviews = await self.optimist.run({"hypotheses": hypotheses})
+        skeptic_reviews = await self.skeptic.run({"hypotheses": hypotheses})
+        balanced_reviews = await self.balanced.run({"hypotheses": hypotheses})
+
+        return {
+            "optimist_reviews": optimist_reviews,
+            "skeptic_reviews": skeptic_reviews,
+            "balanced_reviews": balanced_reviews
+        }
+    

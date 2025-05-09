@@ -4,6 +4,33 @@ pipeline:
   use_grafting: true
   run_id: "interest_retail_2024"
 
+models:
+  GenerationAgent:
+    name: ollama_chat/qwen2.5
+    api_base: http://localhost:11434
+    api_key: ""
+
+  ReflectionAgent:
+    name: ollama_chat/gemma
+    api_base: http://localhost:11434
+    api_key: ""
+
+  RankingAgent:
+    name: ollama_chat/gemma
+    api_base: http://localhost:11434
+    api_key: "" 
+
+  EvolutionAgent:
+    name: ollama_chat/gemma
+    api_base: http://localhost:11434
+    api_key: ""
+
+  MetaReviewAgent:
+    name: ollama_chat/gemma
+    api_base: http://localhost:11434
+    api_key: ""
+
+
 model:
   name: "ollama_chat/gemma"
   api_base: "http://localhost:11434"
