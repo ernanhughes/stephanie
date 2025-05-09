@@ -5,7 +5,7 @@ pipeline:
   run_id: "interest_retail_2024"
 
 model:
-  name: "ollama_chat/qwen3"
+  name: "ollama_chat/gemma"
   api_base: "http://localhost:11434"
   api_key: ""
 

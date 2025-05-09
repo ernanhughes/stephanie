@@ -2,7 +2,7 @@
 name = "co-ai"
 version = "0.1.0"
 description = "A modular DSPy-based pipeline for LLM-powered scientific hypothesis generation and ranking."
-authors = [{ name = "Your Name", email = "your@email.com" }]
+authors = [{ name = "Ernan Hughes", email = "ernanhughes@gmail.com" }]
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -15,11 +15,12 @@ dependencies = [
     "requests",
     "duckduckgo-search",
     "matplotlib",
+    "hydra-core", 
     "tabulate"
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/co-ai"
+Homepage = "https://github.com/ernanhughes/co-ai"
 
 [build-system]
 requires = ["setuptools", "wheel"]

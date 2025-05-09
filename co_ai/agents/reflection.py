@@ -1,37 +1,36 @@
 # co_ai/agents/reflection.py
-from dspy import InputField, Module, OutputField, Predict, Signature
-
+from dspy import Predict, Signature, InputField, OutputField
+from dspy import LM
 from co_ai.agents.base import BaseAgent
-from co_ai.memory.hypothesis_model import Hypothesis
 
-
-class ReflectSignature(Signature):
-    """Critique a hypothesis for clarity, novelty, and testability."""
+class ReflectionSignature(Signature):
     hypothesis = InputField()
     review = OutputField()
 
-class ReflectHypothesis(Module):
-    def __init__(self):
-        super().__init__()
-        self.reviewer = Predict(ReflectSignature)
-
-    def forward(self, hypothesis: str) -> str:
-        return self.reviewer(hypothesis=hypothesis).review
-
 class ReflectionAgent(BaseAgent):
-    def __init__(self, memory, logger):
-        super().__init__(memory, logger)
-        self.reflector = ReflectHypothesis()
+    def __init__(self, memory=None, logger=None, model_config=None):
+        super().__init__(memory=memory, logger=logger)
+        self.model_config = model_config or {
+            "name": "ollama_chat/qwen3",
+            "api_base": "http://localhost:11434",
+            "api_key": None,
+        }
+        lm = LM(
+            self.model_config["name"],
+            api_base=self.model_config["api_base"],
+            api_key=self.model_config.get("api_key")
+        )
+        self.reflector = Predict(ReflectionSignature, lm=lm)
 
     async def run(self, input_data: dict) -> dict:
         hypotheses = input_data.get("hypotheses", [])
-        self.log("Reviewing hypotheses via DSPy...")
-
-        reviewed = []
-        for hyp in hypotheses:
-            text = hyp.text if isinstance(hyp, Hypothesis) else hyp
-            review = self.reflector.forward(text)
-            reviewed.append({"hypothesis": text, "review": review})
-            self.memory.store_review(text, review)
-
-        return {"reviewed": reviewed}
+        self.log(f"Reflecting on {len(hypotheses)} hypotheses...")
+        reviews = []
+        for h in hypotheses:
+            result = self.reflector(hypothesis=h)
+            reviews.append({
+                "hypothesis": h,
+                "review": result.review,
+                "persona": "Reflection"
+            })
+        return {"reviews": reviews}

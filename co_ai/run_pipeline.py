@@ -21,7 +21,7 @@ class BaseRunner:
 
     def configure_lm(self):
         model_config = self.config.get("model", {})
-        model_name = model_config.get("name", "ollama_chat/qwen2.5")
+        model_name = model_config.get("name", "ollama_chat/qwen3")
         model_base = model_config.get("api_base", "http://localhost:11434")
         api_key = model_config.get("api_key", "")
 

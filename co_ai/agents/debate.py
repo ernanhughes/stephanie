@@ -1,20 +1,65 @@
-from haystack import component
+# co_ai/agents/debate.py
+from dspy import Predict, Signature, InputField, OutputField
 from dspy import LM
+from co_ai.agents.base import BaseAgent
+from typing import List
 
-@component
-class OptimistDebater:
-    def __init__(self):
-        self.lm = LM("ollama_chat/mistral", api_base="http://localhost:11434")
+class DebateSignature(Signature):
+    hypothesis = InputField()
+    review = OutputField()
 
-    def run(self, hypotheses: list[str]) -> dict:
-        print("[OptimistDebater] Critiquing with optimism...")
-        return {"optimist_reviews": [f"Optimistically analyzing: {h}" for h in hypotheses]}
+class OptimistDebaterAgent(BaseAgent):
+    def __init__(self, memory=None, logger=None, model_config=None):
+        super().__init__(memory=memory, logger=logger)
+        self.model_config = model_config or {
+            "name": "ollama_chat/mistral",
+            "api_base": "http://localhost:11434",
+            "api_key": None,
+        }
+        lm = LM(
+            self.model_config["name"],
+            api_base=self.model_config["api_base"],
+            api_key=self.model_config.get("api_key")
+        )
+        self.predictor = Predict(DebateSignature, lm=lm)
 
-@component
-class SkepticDebater:
-    def __init__(self):
-        self.lm = LM("openai/gpt-4", api_base="https://api.openai.com/v1")
+    async def run(self, input_data: dict) -> dict:
+        hypotheses = input_data.get("hypotheses", [])
+        self.log(f"Running OptimistDebater on {len(hypotheses)} hypotheses...")
+        results = []
+        for h in hypotheses:
+            response = self.predictor(hypothesis=h)
+            results.append({
+                "hypothesis": h,
+                "review": response.review,
+                "persona": "Optimist"
+            })
+        return {"reviews": results}
 
-    def run(self, hypotheses: list[str]) -> dict:
-        print("[SkepticDebater] Critiquing with skepticism...")
-        return {"skeptic_reviews": [f"Skeptically analyzing: {h}" for h in hypotheses]}
+class SkepticDebaterAgent(BaseAgent):
+    def __init__(self, memory=None, logger=None, model_config=None):
+        super().__init__(memory=memory, logger=logger)
+        self.model_config = model_config or {
+            "name": "ollama_chat/qwen3",
+            "api_base": "http://localhost:11434",
+            "api_key": None,
+        }
+        lm = LM(
+            self.model_config["name"],
+            api_base=self.model_config["api_base"],
+            api_key=self.model_config.get("api_key")
+        )
+        self.predictor = Predict(DebateSignature, lm=lm)
+
+    async def run(self, input_data: dict) -> dict:
+        hypotheses = input_data.get("hypotheses", [])
+        self.log(f"Running SkepticDebater on {len(hypotheses)} hypotheses...")
+        results = []
+        for h in hypotheses:
+            response = self.predictor(hypothesis=h)
+            results.append({
+                "hypothesis": h,
+                "review": response.review,
+                "persona": "Skeptic"
+            })
+        return {"reviews": results}
