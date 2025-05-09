@@ -1,8 +1,0 @@
-# config/agents/generation.yaml
-defaults:
-  - prompt_refiner: default
-
-agent:
-  name: generation
-  temperature: 0.7
-  max_tokens: 512

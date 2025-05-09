@@ -9,4 +9,3 @@ defaults:
   - agents/meta_review
   - agents/proximity
   - agents/supervisor
-  - prompt_refiner/default

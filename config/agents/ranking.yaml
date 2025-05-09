@@ -1,0 +1,21 @@
+# config/agents/ranking.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+ranking:
+  name: ranking
+  enabled: true
+  tournament_type: elo
+  max_matches_per_round: 10
+  model:
+    name: ollama_chat/qwen2.5
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_template: |
+    You are a critical analyst. Compare the following two hypotheses:
+    A: {hypothesis_a}
+    Review: {review_a}
+    B: {hypothesis_b}
+    Review: {review_b}
+    Which one is stronger? Respond with 'A' or 'B'.
+  prompt_mode: static

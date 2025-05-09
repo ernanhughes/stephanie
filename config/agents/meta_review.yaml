@@ -1,0 +1,16 @@
+# config/agents/meta_review.yaml
+defaults:
+  - /prompt_refiner/default
+
+meta_review:
+  name: meta_review
+  summary_length: long  # Options: short, medium, long
+  enabled: true
+  model:
+    name: ollama_chat/qwen2.5
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_template: |
+    Summarize the following evolved hypotheses into a cohesive strategic direction:
+    {evolved_hypotheses}
+  prompt_mode: static

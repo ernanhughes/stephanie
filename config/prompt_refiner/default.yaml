@@ -7,4 +7,3 @@ prompt_refiner:
     api_key: null
   max_bootstrapped_demos: 3
   max_labeled_demos: 5
-

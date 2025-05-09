@@ -16,10 +16,11 @@ class BaseAgent(ABC):
         self.memory = memory
         self.logger = logger or JSONLogger()
         agent_key = self.__class__.__name__.replace("Agent", "").lower()
-
-        self.model_config = cfg.agents.get(agent_key, {}).get("model", {})
-        self.prompt_mode = cfg.agents.get(agent_key, {}).get("prompt_mode", "static")
-        self.prompt_template = cfg.agents.get(agent_key, {}).get("prompt_template", "")        
+        print(f"Initializing {agent_key} agent with config: {cfg}")
+        self.model_config = cfg.get("model", {})
+        self.prompt_mode = cfg.get("prompt_mode", "static")
+        self.prompt_template = cfg.get("prompt_template", "")
+        self.prompt_match_re = cfg.get("prompt_match_re", "")
         self.llm = self.init_llm()
 
     def log(self, message, structured=True):

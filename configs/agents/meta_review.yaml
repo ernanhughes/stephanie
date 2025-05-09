@@ -1,7 +1,0 @@
-# config/agents/meta_review.yaml
-defaults:
-  - prompt_refiner: disabled
-
-agent:
-  name: meta_review
-  summary_length: long  # Options: short, medium, long

@@ -1,0 +1,16 @@
+# config/agents/reflection.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+reflection:
+  name: reflection
+  enabled: true
+  review_type: full  # Options: initial, full, observation, deep_verification
+  model:
+    name: ollama_chat/qwen2.5
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_template: |
+    Critique the following hypothesis for clarity, novelty, and testability:
+    {hypothesis}
+  prompt_mode: static

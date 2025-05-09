@@ -1,7 +1,0 @@
-# config/agents/reflection.yaml
-defaults:
-  - prompt_refiner: disabled
-
-agent:
-  name: reflection
-  review_type: full  # Options: initial, full, observation, deep_verification
