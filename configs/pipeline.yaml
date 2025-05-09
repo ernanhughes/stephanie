@@ -3,12 +3,16 @@ pipeline:
   run_id: "q4_income_2024"
   use_grafting: true
 
+defaults:
+  - prompt_refiner: default
+
 db:
   database: co
   user: co
   password: co
   host: localhost
   port: 5432
+
 
 agents:
   generation:

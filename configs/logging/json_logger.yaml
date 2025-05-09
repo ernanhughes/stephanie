@@ -1,0 +1,4 @@
+# config/logging/json_logger.yaml
+logger:
+  type: JSONLogger
+  log_path: logs/pipeline_log.jsonl

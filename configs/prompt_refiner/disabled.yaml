@@ -1,0 +1,3 @@
+# config/prompt_refiner/disabled.yaml
+prompt_refiner:
+  enabled: false

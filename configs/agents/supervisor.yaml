@@ -1,0 +1,6 @@
+# config/agents/supervisor.yaml
+agent:
+  name: supervisor
+  iterations: 3
+  max_parallel_agents: 3
+  use_async: true

@@ -1,0 +1,5 @@
+# config/agents/proximity.yaml
+agent:
+  name: proximity
+  similarity_threshold: 0.85
+  clustering_enabled: true

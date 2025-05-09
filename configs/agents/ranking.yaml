@@ -1,0 +1,8 @@
+# config/agents/ranking.yaml
+defaults:
+  - prompt_refiner: disabled
+
+agent:
+  name: ranking
+  tournament_type: elo
+  max_matches_per_round: 10

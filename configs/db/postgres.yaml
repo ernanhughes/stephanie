@@ -1,0 +1,7 @@
+# config/db/postgres.yaml
+db:
+  name: co
+  user: co
+  password: co
+  host: localhost
+  port: 5432

@@ -1,0 +1,12 @@
+# config/config.yaml
+defaults:
+  - db: postgres
+  - logging/json_logger
+  - agents/generation
+  - agents/reflection
+  - agents/ranking
+  - agents/evolution
+  - agents/meta_review
+  - agents/proximity
+  - agents/supervisor
+  - prompt_refiner/default
