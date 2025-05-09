@@ -21,7 +21,7 @@ def run(cfg: DictConfig):
 
         result = await supervisor.run_pipeline_config(goal, run_id, use_grafting)
         print("\n--- Final Summary ---")
-        print(result["summary"])
+        print(result)
 
     asyncio.run(main())
 

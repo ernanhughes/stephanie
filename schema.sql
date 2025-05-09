@@ -4,6 +4,7 @@ CREATE TABLE hypotheses (
     id SERIAL PRIMARY KEY,
     goal TEXT,
     text TEXT,
+    source TEXT,
     confidence FLOAT,
     review TEXT,
     embedding VECTOR(1536),

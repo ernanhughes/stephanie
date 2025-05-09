@@ -8,6 +8,7 @@ from typing import List, Optional
 class Hypothesis:
     goal: str
     text: str
+    source: str
     confidence: Optional[float] = None
     review: Optional[str] = None
     embedding: Optional[List[float]] = None
