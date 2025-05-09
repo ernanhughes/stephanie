@@ -9,11 +9,12 @@ from co_ai.memory.hypothesis_model import Hypothesis
 
 
 class VectorMemory(BaseMemory):
-    def __init__(self):
+    def __init__(self, logger=None):
         self.conn = psycopg2.connect(
             dbname="co", user="co", password="co", host="localhost"
         )
         self.conn.autocommit = True
+        self.logger = logger
 
     def store_hypothesis(self, hypothesis: Hypothesis):
         embedding = get_embedding(hypothesis.text)
@@ -59,6 +60,31 @@ class VectorMemory(BaseMemory):
                 """,
                 (review, hypothesis_text)
             )
+
+    def store_ranking(self, hypothesis: str, score: float):
+        """
+        Store or update the ELO ranking score for a hypothesis.
+        Assumes there is a 'rankings' table or collection in the backing store.
+
+        Args:
+            hypothesis (str): The hypothesis text.
+            score (float): ELO score for the hypothesis.
+        """
+        print(f"[VectorMemory] Storing ranking: '{hypothesis[:60]}...' with score {score}")
+        # Example: Store in PostgreSQL, SQLite, or in-memory dict
+        if hasattr(self, "db"):
+            self.db.execute(
+                "INSERT INTO rankings (hypothesis, score) VALUES (%s, %s) "
+                "ON CONFLICT (hypothesis) DO UPDATE SET score = EXCLUDED.score;",
+                (hypothesis, score)
+            )
+            self.db.commit()
+        else:
+            # fallback if db isn't configured
+            if not hasattr(self, "_rankings"):
+                self._rankings = {}
+            self._rankings[hypothesis] = score
+
 
     def log_summary(self, summary: str):
         with self.conn.cursor() as cur:

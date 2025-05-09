@@ -2,7 +2,7 @@
 
 **Turn research papers into runnable pipelines with AI.**
 
-This project is a working implementation of ideas inspired by *[AI as a Co-Scientist](https://arxiv.org/abs/2404.12345)*. It builds a multi-agent reasoning system capable of generating, critiquing, ranking, and evolving scientific hypotheses — all using local tools like [DSPy](https://github.com/stanfordnlp/dspy), [pgvector](https://github.com/pgvector/pgvector), and [Ollama](https://ollama.com/).
+This project is a working implementation of ideas inspired by *[AI as a Co-Scientist](https://arxiv.org/abs/2502.18864)*. It builds a multi-agent reasoning system capable of generating, critiquing, ranking, and evolving scientific hypotheses — all using local tools like [DSPy](https://github.com/stanfordnlp/dspy), [pgvector](https://github.com/pgvector/pgvector), and [Ollama](https://ollama.com/).
 
 It’s not just a demo — it’s a template for using AI to understand and implement research papers.
 

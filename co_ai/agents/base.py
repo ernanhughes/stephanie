@@ -1,19 +1,37 @@
 # co_ai/agents/base.py
 import re
+import yaml
 from abc import ABC, abstractmethod
-
 import litellm
+from co_ai.logs.json_logger import JSONLogger
 
-from co_ai.logs import JSONLogger
 
+def camel_to_snake(name):
+    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
 
 class BaseAgent(ABC):
     def __init__(self, cfg, memory=None, logger=None):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger or JSONLogger()
-        self.model_config = cfg.models.get(self.__class__.__name__, {})
+        agent_key = self.__class__.__name__.replace("Agent", "").lower()
+
+        self.model_config = cfg.agents.get(agent_key, {}).get("model", {})
+        self.prompt_mode = cfg.agents.get(agent_key, {}).get("prompt_mode", "static")
+        self.prompt_template = cfg.agents.get(agent_key, {}).get("prompt_template", "")        
         self.llm = self.init_llm()
+
+    def log(self, message, structured=True):
+        if structured:
+            self.logger.log(self.__class__.__name__,{
+                "agent": self.__class__.__name__,
+                "event": message if isinstance(message, str) else "log",
+                "details": message if isinstance(message, dict) else None
+            })
+        else:
+            print(f"[{self.__class__.__name__}] {message}")
+
 
     def init_llm(self):
         if self.model_config:
@@ -39,18 +57,6 @@ class BaseAgent(ABC):
             match.strip()
             for match in re.findall(r"(?:^|\n)[\-\*\d]+\.\s*(.+)", text)
         ]
-
-    def log(self, message, structured=True):
-        if structured:
-            self.logger.log({
-                "agent": self.__class__.__name__,
-                "event": message if isinstance(message, str) else "log",
-                "details": message if isinstance(message, dict) else None
-            })
-        else:
-            print(f"[{self.__class__.__name__}] {message}")
-
-
 
     @abstractmethod
     async def run(self, input_data: dict) -> dict:

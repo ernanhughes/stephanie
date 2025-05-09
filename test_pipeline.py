@@ -32,7 +32,7 @@ async def run_test_pipeline():
     run_id = config["pipeline"].get("run_id", "test_run")
     use_grafting = config["pipeline"].get("use_grafting", False)
 
-    supervisor = Supervisor()
+    supervisor = Supervisor(config)
     logger = JSONLogger()
 
     print(f"Running pipeline test: goal='{goal}', run_id='{run_id}'")
