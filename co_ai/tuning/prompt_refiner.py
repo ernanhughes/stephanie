@@ -3,7 +3,7 @@
 from dspy.teleprompt import BootstrapFewShot
 from dspy import Predict, Signature, InputField, OutputField
 from dspy import configure, LM
-Well I'm missing something missing I can take this off now for a while i'm going to hate this sunlight
+
 
 class GenerateSignature(Signature):
     goal = InputField()

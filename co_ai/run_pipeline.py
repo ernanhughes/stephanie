@@ -14,11 +14,14 @@ from co_ai.supervisor import Supervisor
 def run(cfg: DictConfig):
     async def main():
 
-        supervisor = Supervisor(cfg, memory=VectorMemory(), logger=JSONLogger())
-        goal = "What are the key financial risks for Tesla in Q4 2024?"
-        run_id = "tesla_q4_test"
-        use_grafting = True
+        logger=JSONLogger()
+        supervisor = Supervisor(cfg, memory=VectorMemory(cfg, logger), logger=logger)
 
+        pipeline_cfg = cfg.pipeline
+        print(f"Pipeline Configuration: {pipeline_cfg}")
+        goal = pipeline_cfg.goal
+        run_id = pipeline_cfg.run_id
+        use_grafting = pipeline_cfg.use_grafting
         result = await supervisor.run_pipeline_config(goal, run_id, use_grafting)
         print("\n--- Final Summary ---")
         print(result)

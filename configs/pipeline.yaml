@@ -3,14 +3,12 @@ pipeline:
   run_id: "q4_income_2024"
   use_grafting: true
 
-modules:
-  memory:
-    type: VectorMemory
-    database: co
-    user: co
-    password: co
-    host: localhost
-    port: 5432
+db:
+  database: co
+  user: co
+  password: co
+  host: localhost
+  port: 5432
 
 agents:
   generation:

@@ -7,12 +7,25 @@ from co_ai.memory.hypothesis_model import Hypothesis
 
 
 class VectorMemory(BaseMemory):
-    def __init__(self, logger=None):
+    def __init__(self, cfg, logger=None):
+        """
+        Initialize PostgreSQL connection using Hydra config.
+        
+        Args:
+            cfg: Hydra config object with database settings under cfg.db
+            logger: JSONLogger instance for structured logging
+        """
+        db_config = cfg.db  # Load DB config from Hydra
         self.conn = psycopg2.connect(
-            dbname="co", user="co", password="co", host="localhost"
+            dbname=db_config.database,
+            user=db_config.user,
+            password=db_config.password,
+            host=db_config.host,
+            port=db_config.port,
         )
         self.conn.autocommit = True
         self.logger = logger
+        self.cfg = cfg  # Store cfg if needed later
 
     def store_hypothesis(self, hypothesis: Hypothesis):
         try:
