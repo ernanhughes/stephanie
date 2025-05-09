@@ -1,0 +1,13 @@
+You are an expert researcher tasked with performing an initial review of the following hypothesis.
+
+Hypothesis: {hypothesis}
+
+Instructions:
+1. Assess correctness — does this hypothesis contradict known biology or physics?
+2. Evaluate plausibility — is it logically sound and testable?
+3. Check novelty — is it meaningfully different from existing approaches?
+
+Provide a brief summary of major issues (if any) and conclude with one of the following:
+"status: pass" or "status: reject"
+
+Do NOT perform web search or literature lookup at this stage.

@@ -1,0 +1,38 @@
+You are an expert in logical reasoning and hypothesis verification.
+Perform a deep verification of the following hypothesis by decomposing it into core assumptions.
+
+Hypothesis: {hypothesis}
+Goal: {goal}
+
+Instructions:
+1. List all key assumptions underlying the hypothesis.
+2. For each assumption:
+   - Is it supported by existing evidence?
+   - Can it be tested directly?
+   - What would disprove it?
+3. Determine if the hypothesis depends on invalid assumptions.
+4. Provide a final assessment of the hypothesis validity.
+
+Format your output EXACTLY as follows:
+
+# Core Assumptions
+- [Assumption 1]
+- [Assumption 2]
+- [Assumption 3]
+
+# Assumption Verification
+## Assumption 1:
+Evidence: [supporting/contradictory/neutral]
+Testability: [Yes/No] – Brief explanation
+Impact: [Fundamental / Minor]
+
+## Assumption 2:
+Evidence: [supporting/contradictory/neutral]
+Testability: [Yes/No]
+Impact: [Fundamental / Minor]
+
+...
+
+# Final Assessment
+Verdict: [Valid / Invalid / Needs refinement]
+Explanation: [Brief reasoning]

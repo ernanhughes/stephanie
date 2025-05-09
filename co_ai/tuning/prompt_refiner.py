@@ -1,8 +1,7 @@
 # co_ai/tuning/prompt_refiner.py
 
+from dspy import LM, InputField, OutputField, Predict, Signature, configure
 from dspy.teleprompt import BootstrapFewShot
-from dspy import Predict, Signature, InputField, OutputField
-from dspy import configure, LM
 
 
 class GenerateSignature(Signature):

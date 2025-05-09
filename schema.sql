@@ -35,4 +35,3 @@ CREATE TABLE ranking_trace (
     explanation TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
-

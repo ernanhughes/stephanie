@@ -1,12 +1,13 @@
 # main.py
-import hydra
-from omegaconf import OmegaConf
-from omegaconf import DictConfig
-from co_ai.supervisor import Supervisor
-from co_ai.memory.vector_store import VectorMemory
-from co_ai.logs.json_logger import JSONLogger
 import asyncio
 import logging
+
+import hydra
+from omegaconf import DictConfig, OmegaConf
+
+from co_ai.logs.json_logger import JSONLogger
+from co_ai.memory.vector_store import VectorMemory
+from co_ai.supervisor import Supervisor
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="config")
@@ -20,7 +21,7 @@ def run(cfg: DictConfig):
         supervisor = Supervisor(cfg=cfg, memory=memory, logger=logger)
 
         result = await supervisor.run_pipeline_config(
-            goal="Describe how the earth may be flat"
+            goal="Working from home leads to more efficient employees"
         )
 
         print("Pipeline Result:", result)

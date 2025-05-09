@@ -6,17 +6,47 @@ from pathlib import Path
 
 class JSONLogger:
     EVENT_ICONS = {
-        "PipelineStart": "🔬",
-        "PipelineSuccess": "✅",
-        "PipelineError": "❌",
-        "IterationStart": "🔄",
+        "PipelineStart": "🔬",             # Start of pipeline execution
+        "PipelineSuccess": "✅",           # Pipeline completed successfully
+        "PipelineError": "❌",             # Pipeline encountered an error
+        "PipelineStageStart": "🚀",        # A specific stage in the pipeline is starting
+        "PipelineStageEnd": "🏁",          # A specific stage has completed
+        "PipelineStageSkipped": "⏭️",      # A stage was skipped (e.g., disabled)
+        "PipelineIterationStart": "🔄",    # Start of a loop iteration
+        "PipelineIterationEnd": "🔚",      # End of a loop iteration
+        "IterationStart": "🔄",            # Alias for per-agent iteration
         "IterationEnd": "🔚",
-        "GeneratedHypotheses": "🧪",
-        "ReflectedHypotheses": "🔎",
-        "RankedHypotheses": "🏅",
-        "EvolvedHypotheses": "🧬",
-        "MetaReviewSummary": "📝",
-        "debug": "💬"
+
+        # Generation phase
+        "GenerationAgent": "🧪",           # The generation agent runs
+        "GeneratedHypotheses": "💡",       # Output of generation (different from the agent)
+
+        # Prompt handling
+        "PromptLogged": "🧾",              # Log/save a prompt (📜 also works well)
+        
+        # Review phase
+        "ReviewStored": "💬",              # Review feedback stored (better match than 📥)
+        "ReflectedHypotheses": "🔎",       # After reflection logic
+
+        # Ranking
+        "RankedHypotheses": "🏅",          # After ranking
+
+        # Evolution phase
+        "EvolutionAgent": "🧬",
+        "EvolvingTopHypotheses": "🔄",
+        "EvolvedHypotheses": "🌱",         # Represents new/modified hypotheses
+        "GraftingPair": "🌿",              # Represents a grafting pair
+
+        # Meta review
+        "MetaReviewAgent": "🧠",
+        "MetaReviewSummary": "📘",         # Summary output
+        "SummaryLogged": "📝",
+
+        # Hypothesis storage
+        "HypothesisStored": "📥",          # Store raw hypothesis
+
+        # Other
+        "debug": "🐞"
     }
      
     def __init__(self, log_path="logs/pipeline_log.jsonl"):

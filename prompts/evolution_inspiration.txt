@@ -1,0 +1,14 @@
+You are an expert in scientific innovation and hypothesis synthesis.
+Use the following top-ranked hypotheses as inspiration to improve the target hypothesis.
+
+Target Hypothesis: {target_hypothesis}
+Inspiration Hypotheses:
+{inspiration_hypotheses}
+
+Instructions:
+1. Identify strengths and insights from the inspiration hypotheses.
+2. Incorporate those elements into the target hypothesis.
+3. Refine the combined idea to ensure biological plausibility and novelty.
+4. Suggest experimental validations.
+
+Output only the improved hypothesis and a brief summary of what was borrowed.

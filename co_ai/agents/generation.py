@@ -1,6 +1,8 @@
 # co_ai/agents/generation.py
-from co_ai.agents.base import BaseAgent
 import re
+
+from co_ai.agents.base import BaseAgent
+
 
 class GenerationAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -11,14 +13,15 @@ class GenerationAgent(BaseAgent):
         self.log(f"Generating hypotheses for: {goal}")
 
         # Use values from config
-        prompt = self._build_prompt(goal)
+        prompt = self.build_prompt(goal)
+        self.memory.store_prompt(self.__class__.__name__, prompt, goal)
         response = self.call_llm(prompt)
         hypotheses = self.extract_list_items(response)
 
         self.log(f"Parsed {len(hypotheses)} hypotheses.")
         return {"hypotheses": hypotheses}
 
-    def _build_prompt(self, goal):
+    def build_prompt(self, goal):
         return self.prompt_template.format(goal=goal)
 
     def extract_list_items(self, text: str) -> list[str]:

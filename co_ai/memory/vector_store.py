@@ -1,4 +1,5 @@
 import json
+
 import psycopg2
 
 from co_ai.memory.base_memory import BaseMemory
@@ -175,3 +176,27 @@ class VectorMemory(BaseMemory):
                 })
             else:
                 print(f"[VectorMemory] Failed to log summary: {e}")
+
+    def store_prompt(self, agent_name: str, prompt_text: str, goal: str = None):
+        """Insert a prompt into the prompts table."""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO prompts (agent_name, prompt_text, goal)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (agent_name, prompt_text, goal)
+                )
+            if self.logger:
+                self.logger.log("PromptLogged", {
+                    "prompt_snippet": prompt_text[:100]
+                })
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PromptLogFailed", {
+                    "error": str(e),
+                    "prompt_snippet": prompt_text[:100]
+                })
+            else:
+                print(f"[VectorMemory] Failed to log Prompt: {e}")

@@ -1,8 +1,9 @@
 # co_ai/agents/evolution.py
 import itertools
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 
-from typing import List, Dict, Any, Optional
 from co_ai.agents.base import BaseAgent
 from co_ai.memory.embedding_tool import get_embedding
 from co_ai.memory.hypothesis_model import Hypothesis
@@ -24,6 +25,10 @@ class EvolutionAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
+        print(f"Initializing Evolution Agent: {cfg}")
+        self.strategy = cfg.get("strategy", "grafting")
+        self.use_grafting = cfg.get("use_grafting", False)
+        self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
 
     async def run(self, input_data: dict) -> dict:
         """
@@ -148,3 +153,48 @@ class EvolutionAgent(BaseAgent):
                 if content:
                     items.append(content)
         return items
+    
+    async def _fallback_rank_hypotheses(self, hypotheses, goal):
+        """
+        Use the Evolution LLM to compare pairs of hypotheses and return a ranked list.
+        Simulates a basic tournament when real ranking isn't available.
+        """
+        if len(hypotheses) < 2:
+            # Not enough to rank
+            return [(h, 5) for h in hypotheses]
+
+        ranked = []
+        scores = [0] * len(hypotheses)
+
+        for i, h1 in enumerate(hypotheses):
+            for j, h2 in enumerate(hypotheses):
+                if i == j:
+                    continue
+
+                prompt = self._build_rank_prompt(goal, h1, h2)
+                response = self.call_llm(prompt)
+                match = re.search(r"better hypothesis:<(\d+)>", response)
+
+                if match:
+                    winner_idx = int(match.group(1)) - 1
+                    winner = h1 if winner_idx == 1 else h2
+                    scores[i if winner == h1 else j] += 1
+                else:
+                    self.logger.log("FallbackRankingFailedToParse", {
+                        "prompt": prompt[:200],
+                        "response": response[:300]
+                    })
+
+        # Pair each hypothesis with its score
+        scored_pairs = sorted(zip(hypotheses, scores), key=lambda x: x[1], reverse=True)
+        return scored_pairs
+
+    def _build_rank_prompt(self, goal, h1, h2):
+        with open("prompts/evolution_ranking_fallback.txt", "r") as f:
+            prompt_template = f.read()
+        return prompt_template.format(
+            goal=goal,
+            preferences=", ".join(self.preferences),
+            hypothesis_1=h1,
+            hypothesis_2=h2
+        )

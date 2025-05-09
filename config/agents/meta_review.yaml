@@ -10,7 +10,5 @@ meta_review:
     name: ollama_chat/qwen2.5
     api_base: http://localhost:11434
     api_key: null
-  prompt_template: |
-    Summarize the following evolved hypotheses into a cohesive strategic direction:
-    {evolved_hypotheses}
-  prompt_mode: static
+  prompt_mode: file
+  prompt_path: meta_review_synthesis.txt

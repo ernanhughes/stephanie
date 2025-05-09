@@ -1,0 +1,12 @@
+You are an expert researcher tasked with simplifying the following hypothesis for clarity and testability.
+
+Goal: {goal}
+Hypothesis: {hypothesis}
+
+Instructions:
+1. Identify overly complex or ambiguous parts of the hypothesis.
+2. Rewrite it in simpler terms while retaining its scientific merit.
+3. Suggest how this simplified version can be experimentally validated.
+4. Avoid introducing new concepts — focus on making it more accessible.
+
+Output only the simplified hypothesis followed by a brief explanation of the simplification process.

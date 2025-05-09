@@ -9,3 +9,24 @@ defaults:
   - agents/meta_review
   - agents/proximity
   - agents/supervisor
+
+
+pipeline:
+  name: default_pipeline
+  description: "Default hypothesis generation and refinement pipeline"
+  stages:
+    - name: generation
+      enabled: true
+      iterations: 1
+    - name: reflection
+      enabled: true
+      iterations: 1
+    - name: ranking
+      enabled: true
+      iterations: 1
+    - name: evolution
+      enabled: true
+      iterations: 2
+    - name: meta_review
+      enabled: true
+      iterations: 1

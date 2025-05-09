@@ -1,0 +1,41 @@
+You are an expert in scientific communication.
+Generate a concise, scientist-facing summary of the current state of hypothesis development for:
+
+Goal: {goal}
+
+Include the following:
+
+- The top-ranked hypotheses
+- Their strengths and weaknesses
+- Key experimental validations proposed
+- Areas needing further exploration
+
+Format your output EXACTLY as follows:
+
+# Expert Summary: Scientific Hypothesis Review
+
+## Research Goal
+{goal}
+
+## Top Hypotheses
+1. [Hypothesis 1]
+2. [Hypothesis 2]
+3. [Hypothesis 3]
+
+## Strengths
+- [Strength 1]
+- [Strength 2]
+- [Strength 3]
+
+## Weaknesses
+- [Weakness 1]
+- [Weakness 2]
+- [Weakness 3]
+
+## Validation Approaches
+For each hypothesis, summarize the proposed validation strategy.
+
+## Outstanding Questions
+List unresolved questions or missing components that require expert input.
+
+This summary will be reviewed by domain experts. Keep it professional and evidence-based.

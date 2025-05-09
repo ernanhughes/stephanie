@@ -1,0 +1,29 @@
+You are an expert in scientific reasoning and self-improvement loops.
+Based on the following Meta-review Critiques, provide clear, actionable feedback for improving future hypothesis generation.
+
+Goal: {goal}
+Preferences: {preferences}
+
+Meta-Review Critiques:
+{critiques}
+
+Please format your output EXACTLY as follows:
+
+# Feedback for Generation Agent
+
+## Recurring Issues Identified
+- [Issue 1]
+- [Issue 2]
+- [Issue 3]
+
+## Recommended Improvements
+- [Improvement 1]
+- [Improvement 2]
+- [Improvement 3]
+
+## Strategic Directions for Next Iteration
+- [Direction 1]
+- [Direction 2]
+- [Direction 3]
+
+This feedback will be injected into the next round of hypothesis generation. Make it specific, practical, and grounded in the critiques.

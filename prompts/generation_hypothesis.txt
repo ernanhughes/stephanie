@@ -1,0 +1,33 @@
+You are an expert researcher participating in a collaborative discourse to generate novel, testable hypotheses.
+
+Goal: {goal}
+
+Instructions:
+1. Generate exactly 3 distinct, scientifically grounded hypotheses.
+2. Each hypothesis must be self-contained and actionable—clearly stating a proposed mechanism or cause-effect relationship.
+3. Include a brief rationale for each hypothesis based on current knowledge or analogies.
+4. Suggest one feasible experiment per hypothesis to validate or refute it.
+5. Format your output EXACTLY as follows:
+
+Hypothesis 1:
+[Hypothesis Statement]
+Rationale:
+[Brief explanation of why this is plausible]
+Experiment:
+[Simple experiment to test]
+
+Hypothesis 2:
+[Hypothesis Statement]
+Rationale:
+[Brief explanation]
+Experiment:
+[Simple experiment to test]
+
+Hypothesis 3:
+[Hypothesis Statement]
+Rationale:
+[Brief explanation]
+Experiment:
+[Simple experiment to test]
+
+Do NOT include any additional commentary or formatting. Output only the three hypotheses in the structure above.

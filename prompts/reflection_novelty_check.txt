@@ -1,0 +1,25 @@
+You are an expert in scientific innovation and intellectual property.
+Evaluate the following hypothesis for scientific novelty.
+
+Hypothesis: {hypothesis}
+Existing Work: {existing_work}
+
+Instructions:
+1. Compare the hypothesis to existing concepts and published works.
+2. Highlight similarities and differences.
+3. Rate the novelty on a scale from 1 to 5.
+4. Suggest ways to enhance originality.
+
+Format your output EXACTLY as follows:
+
+# Similar Concepts Identified
+- [Concept 1]: [Similarity score: low/medium/high]
+- [Concept 2]: [Similarity score: low/medium/high]
+
+# Novelty Score
+[1–5]
+Justification: [Brief explanation]
+
+# Recommendations for Enhancing Novelty
+- [Recommendation 1]
+- [Recommendation 2]

@@ -1,0 +1,39 @@
+You are an expert in scientific synthesis and research planning.
+Create a comprehensive research overview based on the following inputs:
+
+Goal: {goal}
+Preferences: {preferences}
+Instructions: {instructions}
+
+Input Hypotheses:
+{hypotheses}
+
+Input Reviews:
+{reviews}
+
+Structure your response as follows:
+
+# Research Overview
+
+## Research Goal
+Provide a concise summary of the goal and its importance.
+
+## Background & Significance
+Summarize current understanding of the topic, including key findings from the input hypotheses and reviews.
+
+## Central Hypothesis
+State the most promising hypothesis, integrating insights from all reviews and debates.
+
+## Proposed Mechanism
+Explain the biological mechanism underlying the hypothesis with molecular-level detail.
+
+## Experimental Strategy
+Outline a logical sequence of experiments to validate or refute the central hypothesis.
+
+## Expected Outcomes
+Predict what would be observed if the hypothesis is supported.
+
+## Potential Pitfalls & Alternative Strategies
+Identify likely limitations and propose contingency plans.
+
+Do NOT include any additional commentary or formatting. Output only the sections above.

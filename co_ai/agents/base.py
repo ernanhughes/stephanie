@@ -1,9 +1,12 @@
 # co_ai/agents/base.py
 import re
-import yaml
 from abc import ABC, abstractmethod
+
 import litellm
-from co_ai.logs.json_logger import JSONLogger
+import yaml
+
+from co_ai.logs import JSONLogger
+from co_ai.utils import load_prompt_from_file
 
 
 def camel_to_snake(name):
@@ -19,8 +22,15 @@ class BaseAgent(ABC):
         print(f"Initializing {agent_key} agent with config: {cfg}")
         self.model_config = cfg.get("model", {})
         self.prompt_mode = cfg.get("prompt_mode", "static")
-        self.prompt_template = cfg.get("prompt_template", "")
+
+        # Load prompt
+        if cfg.get("prompt_path"):
+            self.prompt_template = load_prompt_from_file(cfg["prompt_path"])
+        else:
+            self.prompt_template = cfg.get("prompt_template", "")
+
         self.prompt_match_re = cfg.get("prompt_match_re", "")
+        self.use_prompt_refiner = cfg.get("use_prompt_refiner", False)
         self.llm = self.init_llm()
 
     def log(self, message, structured=True):

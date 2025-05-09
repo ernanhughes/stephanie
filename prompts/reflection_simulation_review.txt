@@ -1,0 +1,34 @@
+You are an expert in mechanistic simulation and predictive modeling.
+Simulate the biological mechanism implied by the following hypothesis.
+
+Hypothesis: {hypothesis}
+Goal: {goal}
+
+Instructions:
+1. Break the hypothesis into sequential steps of biological events.
+2. Simulate each step and identify potential failure points.
+3. Describe expected experimental outcomes if the hypothesis were true.
+4. Identify possible confounding factors or alternative explanations.
+
+Format your output EXACTLY as follows:
+
+# Mechanism Simulation
+## Step-by-step breakdown:
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+
+## Potential Failure Points
+- [Failure Point 1]
+- [Failure Point 2]
+
+## Expected Experimental Outcomes
+- [Outcome 1]
+- [Outcome 2]
+
+## Confounding Factors
+- [Factor 1]
+- [Factor 2]
+
+# Conclusion
+[Hypothesis viability: Strongly supported / Supported with caveats / Likely incorrect]
