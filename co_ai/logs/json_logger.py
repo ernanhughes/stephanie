@@ -1,4 +1,5 @@
 # co_ai/logs/json_logger.py
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -6,68 +7,78 @@ from pathlib import Path
 
 class JSONLogger:
     EVENT_ICONS = {
-        "PipelineStart": "🔬",             # Start of pipeline execution
-        "PipelineSuccess": "✅",           # Pipeline completed successfully
-        "PipelineError": "❌",             # Pipeline encountered an error
-        "PipelineStageStart": "🚀",        # A specific stage in the pipeline is starting
-        "PipelineStageEnd": "🏁",          # A specific stage has completed
-        "PipelineStageSkipped": "⏭️",      # A stage was skipped (e.g., disabled)
-        "PipelineIterationStart": "🔄",    # Start of a loop iteration
-        "PipelineIterationEnd": "🔚",      # End of a loop iteration
-        "IterationStart": "🔄",            # Alias for per-agent iteration
+        # Pipeline-level
+        "PipelineStart": "🔬",
+        "PipelineSuccess": "✅",
+        "PipelineError": "❌",
+        "PipelineStageStart": "🚀",
+        "PipelineStageEnd": "🏁",
+        "PipelineStageSkipped": "⏭️",
+        "PipelineIterationStart": "🔄",
+        "PipelineIterationEnd": "🔚",
+        "IterationStart": "🔄",
         "IterationEnd": "🔚",
 
         # Generation phase
-        "GenerationAgent": "🧪",           # The generation agent runs
-        "GeneratedHypotheses": "💡",       # Output of generation (different from the agent)
+        "GenerationAgent": "🧪",
+        "GeneratedHypotheses": "💡",
 
         # Prompt handling
-        "PromptLogged": "🧾",              # Log/save a prompt (📜 also works well)
-        
-        # Review phase
-        "ReflectionAgent": "🪞",           # The reflection agent runs
-        "ReviewStored": "💬",              # Review feedback stored (better match than 📥)
-        "ReflectedHypotheses": "🔎",       # After reflection logic
+        "PromptLogged": "🧾",
 
-        # Ranking
-        "RankingAgent": "🏆",              # The ranking agent run s
-        "RankedHypotheses": "🏅",          # After ranking
+        # Reflection phase
+        "ReflectionAgent": "🪞",
+        "ReviewStored": "💬",
+        "ReflectedHypotheses": "🔎",
+
+        # Ranking phase
+        "RankingAgent": "🏆",
+        "RankedHypotheses": "🏅",
 
         # Evolution phase
         "EvolutionAgent": "🧬",
         "EvolvingTopHypotheses": "🔄",
-        "EvolvedHypotheses": "🌱",         # Represents new/modified hypotheses
-        "GraftingPair": "🌿",              # Represents a grafting pair
+        "EvolvedHypotheses": "🌱",
+        "GraftingPair": "🌿",
+        "EvolutionCompleted": "🦾",
+        "EvolutionError": "⚠️",
 
-        # Meta review
+        # Meta-review phase
         "MetaReviewAgent": "🧠",
-        "MetaReviewSummary": "📘",         # Summary output
+        "MetaReviewSummary": "📘",
         "SummaryLogged": "📝",
+        "RawMetaReviewOutput": "📜",
 
         # Hypothesis storage
-        "HypothesisStored": "📥",          # Store raw hypothesis
+        "HypothesisStored": "📥",
 
-        # Other
-        "Prompt": "📜",                  # General prompt
+        # Reporting
+        "ReportGenerated": "📊",
+
+        # General
+        "Prompt": "📜",
+        "ContextAfterStage": "🗃️",
         "debug": "🐞"
     }
-     
+
     def __init__(self, log_path="logs/pipeline_log.jsonl"):
         self.log_path = Path(log_path)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, event_type: str, data: dict):
-        icon = self.EVENT_ICONS.get(event_type, "📦")  # Default icon
-        print(f"{icon} Logging event: {event_type} with data: {str(data)[:100]}")
-        try:
-            log_entry = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "event_type": event_type,
-                "data": data
-            }
-            with open(self.log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(log_entry, default=str) + "\n")
-        except TypeError as e:
-            print(f"[Logger] Skipping non-serializable log: {e}")
-            print(f"[Logger] Problematic record: {log_entry}")
+        icon = self.EVENT_ICONS.get(event_type, "📦")  # Default icon for unknown types
+        print(f"{icon} Logging event: {event_type} | {str(data)[:100]}")
 
+        log_entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event_type": event_type,
+            "data": data
+        }
+
+        try:
+            with self.log_path.open("a", encoding="utf-8") as f:
+                json.dump(log_entry, f, default=str)
+                f.write("\n")
+        except (TypeError, ValueError) as e:
+            print(f"[Logger] ❌ Failed to serialize log entry: {e}")
+            print(f"[Logger] 🚨 Problematic log data: {data}")

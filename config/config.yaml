@@ -15,6 +15,10 @@ report:
   generate_report: true
   path: reports/
   
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
 
 pipeline:
   name: default_pipeline

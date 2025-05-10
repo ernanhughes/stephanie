@@ -19,7 +19,8 @@ class BaseAgent(ABC):
         self.memory = memory
         self.logger = logger or JSONLogger()
         agent_key = self.__class__.__name__.replace("Agent", "").lower()
-        print(f"📡 Initializing {agent_key} agent with config: \n{cfg}")
+        self.log(f"📡 Initializing {agent_key} agent with config:\n{cfg}", structured=False)
+
         self.model_config = cfg.get("model", {})
         # Load prompt
         self.prompt_template = self.get_prompt_template(cfg)
@@ -39,31 +40,37 @@ class BaseAgent(ABC):
 
 
     def init_llm(self):
-        if self.model_config:
-            return {
-                "model": self.model_config["name"],
-                "api_base": self.model_config["api_base"],
-                "api_key": self.model_config.get("api_key")
-            }
-        return None
+        required_keys = ["name", "api_base"]
+        for key in required_keys:
+            if key not in self.model_config:
+                raise ValueError(f"Missing required LLM config key: {key}")
+        return {
+            "model": self.model_config["name"],
+            "api_base": self.model_config["api_base"],
+            "api_key": self.model_config.get("api_key")
+        }
 
     def call_llm(self, prompt: str) -> str:
         messages = [{"role": "user", "content": prompt}]
-        response = litellm.completion(
-            model=self.llm["model"],
-            messages=messages,
-            api_base=self.llm["api_base"],
-            api_key=self.llm.get("api_key")
-        )
-        response = response['choices'][0]['message']['content']
-        if self.cfg.get("save_prompt", False):
-            self.memory.store_prompt(self.__class__.__name__, prompt, response)
-        return response
+        try:
+            response = litellm.completion(
+                model=self.llm["model"],
+                messages=messages,
+                api_base=self.llm["api_base"],
+                api_key=self.llm.get("api_key")
+            )
+            output = response['choices'][0]['message']['content']
+            if self.cfg.get("save_prompt", False) and self.memory:
+                self.memory.store_prompt(self.__class__.__name__, prompt, output)
+            return output
+        except Exception as e:
+            self.log(f"LLM call failed: {e}", structured=False)
+            raise
 
     def extract_list_items(self, text: str) -> list[str]:
         return [
             match.strip()
-            for match in re.findall(r"(?:^|\n)[\-\*\d]+\.\s*(.+)", text)
+            for match in re.findall(r"(?m)^\s*[\-\*\d]+\.\s+(.*)", text)
         ]
 
     def get_prompt_template(self, input_data: dict) -> str:
@@ -71,10 +78,13 @@ class BaseAgent(ABC):
         if prompt_mode == "static":
             prompt = input_data.get("prompt_template")
             if not prompt:
-                raise ValueError("Prompt is required in static mode.")
+                raise ValueError("Missing 'prompt_template' in static mode.")
             return prompt
         elif prompt_mode == "file":
-            return load_prompt_from_file(input_data["prompt_path"])
+            prompt_path = input_data.get("prompt_path")
+            if not prompt_path:
+                raise ValueError("Missing 'prompt_path' in file mode.")
+            return load_prompt_from_file(prompt_path)
         else:
             raise ValueError(f"Unknown prompt mode: {prompt_mode}")
         

@@ -1,29 +1,27 @@
-You are an expert in scientific reasoning and self-improvement loops.
-Based on the following Meta-review Critiques, provide clear, actionable feedback for improving future hypothesis generation.
+Based on the meta-analysis, provide actionable suggestions for improving future hypothesis generation.
 
 Goal: {goal}
+Current reviews: {reviews}
 Preferences: {preferences}
+Feedback from prior generations: {feedback}
 
-Meta-Review Critiques:
-{critiques}
+Instructions:
+1. Identify recurring issues in previous hypotheses
+2. Suggest ways to avoid repeating those mistakes
+3. Recommend new angles or domains to explore
+4. Keep your output actionable and focused
 
-Please format your output EXACTLY as follows:
-
-# Feedback for Generation Agent
-
-## Recurring Issues Identified
+# Recurring Issues Identified
 - [Issue 1]
 - [Issue 2]
 - [Issue 3]
 
-## Recommended Improvements
+# Recommended Improvements
 - [Improvement 1]
 - [Improvement 2]
 - [Improvement 3]
 
-## Strategic Directions for Next Iteration
+# Strategic Research Directions
 - [Direction 1]
 - [Direction 2]
 - [Direction 3]
-
-This feedback will be injected into the next round of hypothesis generation. Make it specific, practical, and grounded in the critiques.

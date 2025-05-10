@@ -6,6 +6,7 @@ meta_review:
   name: meta_review
   summary_length: long  # Options: short, medium, long
   enabled: true
+  strategy: synthesis
   save_prompt: true
   model:
     name: ollama_chat/qwen2.5
@@ -13,3 +14,9 @@ meta_review:
     api_key: null
   prompt_mode: file
   prompt_path: meta_review_synthesis.txt
+  preferences:
+    - goal_consistency
+    - biological_plausibility
+    - experimental_validity
+    - novelty
+    - simplicity

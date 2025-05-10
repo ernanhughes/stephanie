@@ -30,7 +30,7 @@ class VectorMemory(BaseMemory):
 
     def store_hypothesis(self, hypothesis: Hypothesis):
         try:
-            embedding = get_embedding(hypothesis.text)
+            embedding = get_embedding(hypothesis.text, self.cfg)
             hypothesis.embedding = embedding
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -67,7 +67,7 @@ class VectorMemory(BaseMemory):
 
     def search_related(self, query: str, top_k: int = 5):
         try:
-            embedding = get_embedding(query)
+            embedding = get_embedding(query, self.cfg)
             with self.conn.cursor() as cur:
                 cur.execute(
                     """

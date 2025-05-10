@@ -1,109 +1,145 @@
 # co_ai/agents/meta_review.py
+from typing import Any, Dict, List
+
 from co_ai.agents.base import BaseAgent
+from co_ai.utils import load_prompt_from_file
 
 
 class MetaReviewAgent(BaseAgent):
+    PROMPT_MAP = {
+        "synthesis": "meta_review_synthesis.txt",
+        "research_overview": "meta_review_research_overview.txt",
+        "expert_summary": "meta_review_expert_summary.txt",
+        "safety_check": "meta_review_safety_check.txt",
+        "feedback_to_generation": "meta_review_feedback_to_generation.txt"
+    }
+
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
+        self.strategy = cfg.get("strategy", "synthesis")
+        # Load preferences from config or default list
+        self.preferences = cfg.get(
+            "preferences", ["goal_consistency", "plausibility"]
+        )
+        # Load prompt based on strategy
+        prompt_file = self.PROMPT_MAP.get(self.strategy, "meta_review_synthesis.txt")
+        self.prompt_template = load_prompt_from_file(prompt_file)
 
     async def run(self, context: dict) -> dict:
         """
-        Takes evolved hypotheses + reviews and generates:
-        - A structured meta-review
-        - Feedback for future hypothesis generation and review
-        """
-        evolved_hypotheses = context.get("evolved", [])
-        reviews = context.get("reviews", [])
+        Synthesize insights from reviews and evolved hypotheses.
 
-        # Extract text from objects if needed
+        Takes:
+        - Evolved hypotheses
+        - Reviews (from ReflectionAgent)
+        - Rankings (from RankingAgent)
+        - Strategic directions (from ProximityAgent)
+
+        Returns enriched context with:
+        - meta_review summary
+        - extracted feedback for future generations
+        """
+
+        # Get inputs from context
+        goal = context.get("goal", "")
+        evolved_hypotheses = context.get("evolved", [])
+        reflections = context.get("reflections", [])
+        ranked_hypotheses = context.get("ranked", [])
+        strategic_directions = context.get("strategic_directions", [])
+
+        # Extract text if needed
         hypothesis_texts = [
             h.text if hasattr(h, "text") else h for h in evolved_hypotheses
         ]
-        review_texts = [
-            r.review if hasattr(r, "review") else r for r in reviews
+        reflection_texts = [
+            r.review if hasattr(r, "review") else r for r in reflections
         ]
 
-        self.log("Generating comprehensive meta-review from evolved hypotheses and reviews...")
+        # Log inputs for traceability
+        self.logger.log(
+            "MetaReviewInput",
+            {
+                "hypothesis_count": len(hypothesis_texts),
+                "review_count": len(reflection_texts),
+                "ranked_count": len(ranked_hypotheses),
+                "strategic_directions": strategic_directions,
+            },
+        )
 
-        # Build the meta-review prompt
-        prompt = self._build_meta_review_prompt(hypothesis_texts, review_texts)
-        raw_response = self.call_llm(prompt)
+        # Build and call prompt template
+        prompt = self._build_meta_review_prompt(
+            goal, hypothesis_texts, reflection_texts, strategic_directions
+        )
 
-        # Log the full response for traceability
-        self.logger.log("RawMetaReviewOutput", {
-            "raw_output": raw_response[:500] + "...",
-            "hypothesis_count": len(hypothesis_texts),
-            "review_count": len(review_texts)
-        })
+        raw_response = self.call_llm(prompt).strip()
 
-        # Store final summary
-        self.memory.log_summary(raw_response.strip())
+        # Store full response for debugging
+        self.logger.log(
+            "RawMetaReviewOutput", {"raw_output": raw_response[:500] + "..."}
+        )
 
-        # Optional: extract key insights or feedback from the response for use in next iteration
-        feedback = self._extract_feedback_from_meta_review(raw_response)
-
+        # Add to context
         context["meta_review"] = raw_response
+
+        # Extract structured feedback
+        feedback = self._extract_feedback_from_meta_review(raw_response)
         context["feedback"] = feedback
+
         return context
 
-    def _build_meta_review_prompt(self, hypotheses, reviews):
-        evolved_hypotheses = ''.join(f'- {h}\n' for h in hypotheses)
-        full_reviews = ''.join(f'- {r}\n' for r in reviews)
-        return f"""
-You are an expert in scientific research and meta-analysis.
-Your task is to synthesize a comprehensive meta-review of the following information:
+    def _build_meta_review_prompt(
+        self, goal, hypotheses: List[str], reviews: List[str], directions: List[str]
+    ) -> str:
+        """Build prompt using goal, preferences, and input data."""
+        preferences = ", ".join(self.preferences)
 
-**Goal**: {self.cfg.get('goal', 'Unknown research goal')}
-
-**Preferences**: {self.cfg.get('preferences', 'No preferences provided')}
-
-**Instructions**:
-1. Generate a structured meta-analysis report of the provided inputs.
-2. Focus on identifying recurring critique points and common issues raised across reviews.
-3. The generated meta-analysis should provide actionable insights for researchers developing future proposals.
-4. Highlight strengths and weaknesses observed in multiple hypotheses.
-5. Suggest refinements and future directions.
-
-**Evolved Hypotheses**:
-{evolved_hypotheses}
-
-**Reviews of Hypotheses**:
-{full_reviews}
-
-Respond in the following format:
-# Meta-Analysis Summary
-[Summary of overall findings and trends]
-
-# Recurring Critique Points
-- Point 1
-- Point 2
-
-# Strengths Observed
-- Strength 1
-- Strength 2
-
-# Recommended Improvements
-- Improvement 1
-- Improvement 2
-
-# Strategic Research Directions
-- Direction 1
-- Direction 2
-"""
+        evolved_hypotheses = "\n".join(f"- {h}" for h in hypotheses)
+        full_reviews = "\n".join(f"- {r}" for r in reviews)
+        strategic_directions = "\n".join(f"- {d}" for d in directions)
+        return self.prompt_template.format(
+            goal=goal,
+            preferences=preferences,
+            hypotheses=hypotheses,
+            evolved_hypotheses=evolved_hypotheses,
+            reviews=full_reviews,
+            instructions=strategic_directions or "No additional instructions"
+        )
 
     def _extract_feedback_from_meta_review(self, meta_review_text):
-        """
-        Parse meta-review to extract feedback that can be used in future iterations.
-        This could be injected into prompts for GenerationAgent and ReflectionAgent.
-        """
         try:
-            sections = meta_review_text.split('# ')[1:]
-            feedback = {
-                "recurring_critiques": sections[1].split('\n')[1:-1],
-                "recommended_improvements": sections[3].split('\n')[1:-1],
-                "strategic_directions": sections[4].split('\n')[1:-1]
+            sections = {}
+            current_section = None
+
+            for line in meta_review_text.split('\n'):
+                line = line.strip()
+                if line.startswith("# Meta-Analysis Summary"):
+                    current_section = "summary"
+                    sections[current_section] = []
+                elif line.startswith("# Recurring Critique Points"):
+                    current_section = "recurrent_critiques"
+                    sections[current_section] = []
+                elif line.startswith("# Strengths Observed"):
+                    current_section = "strengths"
+                    sections[current_section] = []
+                elif line.startswith("# Recommended Improvements"):
+                    current_section = "improvements"
+                    sections[current_section] = []
+                elif line.startswith("# Strategic Research Directions"):
+                    current_section = "strategic_directions"
+                    sections[current_section] = []
+                elif line.startswith('- '):
+                    if current_section not in sections:
+                        sections[current_section] = []
+                    sections[current_section].append(line[2:].strip())
+
+            return {
+                "summary": "\n".join(sections.get("summary", [])),
+                "recurring_critiques": sections.get("recurrent_critiques", []),
+                "strengths_observed": sections.get("strengths", []),
+                "recommended_improvements": sections.get("improvements", []),
+                "strategic_directions": sections.get("strategic_directions", [])
             }
-            return feedback
+
         except Exception as e:
             self.logger.log("FeedbackExtractionFailed", {"error": str(e)})
             return {}

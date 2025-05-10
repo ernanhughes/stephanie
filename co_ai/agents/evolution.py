@@ -130,7 +130,7 @@ class EvolutionAgent(BaseAgent):
         """
         Graft pairs of highly similar hypotheses into unified versions.
         """
-        embeddings = [get_embedding(h) for h in hypotheses]
+        embeddings = [get_embedding(h, self.cfg) for h in hypotheses]
         used = set()
         grafted = []
 

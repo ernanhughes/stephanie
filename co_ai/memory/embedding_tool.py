@@ -2,14 +2,22 @@
 import numpy as np
 import requests
 
-# Uses Ollama locally to generate embeddings via an embedding model like "nomic-embed-text"
-OLLAMA_EMBED_MODEL = "mxbai-embed-large"
+def get_embedding(text: str, cfg):
+    """
+    Get an embedding from Ollama using the configured model.
 
+    Args:
+        text (str): The input text to embed.
+        cfg (dict or omegaconf.DictConfig): Configuration containing 'model' and optionally 'endpoint'.
 
-def get_embedding(text: str):
+    Returns:
+        list[float]: The embedding vector.
+    """
+    model = cfg.get("embeddings.model", "mxbai-embed-large")
+    endpoint = cfg.get("embeddings.endpoint", "http://localhost:11434/v1/embeddings")
     response = requests.post(
-        "http://localhost:11434/api/embeddings",
-        json={"model": OLLAMA_EMBED_MODEL, "prompt": text},
+        endpoint,
+        json={"model": model, "prompt": text},
     )
     response.raise_for_status()
     return response.json().get("embedding")
