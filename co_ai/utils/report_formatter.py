@@ -1,20 +1,25 @@
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+import re
+from datetime import datetime
 
 class ReportFormatter:
     def __init__(self, output_dir="reports"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def format_report(self, run_id, context):
-        timestamp = datetime.now(timezone.utc).isoformat()
-        file_path = self.output_dir / f"{run_id}_report.md"
+    def format_report(self, context):
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        goal = context.get("goal", "Error No Goal")
+        safe_goal = sanitize_goal_for_filename(goal)
+        file_name = f'{safe_goal}_{timestamp}_report.md'
+        file_path = self.output_dir / file_name
 
         content = f"""# 🧪 AI Co-Research Summary Report
 
-**🗂️ Run ID:** `{run_id}`  
-**🎯 Goal:** *{context.get("goal", "")}*  
+**🗂️ Run ID:** `{context.get("run_id", "Error No Run_id")}`  
+**🎯 Goal:** *{goal}*  
 **📅 Timestamp:** {timestamp}
 
 ---
@@ -34,8 +39,13 @@ class ReportFormatter:
 
 ---
 
-### 📘 Meta-Review Summary:I
-> {context.get("summary", "")}
+### 📘 Meta-Review Summary:
+> {context.get("meta_review", "")}
+
+
+### 📘 Feedback:
+{context.get("feedback", "")}
+
 
 ---
 """
@@ -55,3 +65,16 @@ class ReportFormatter:
             review = r.get("review", "")
             formatted.append(f"**{persona}:**\n> {review}")
         return "\n\n".join(formatted)
+
+
+def sanitize_goal_for_filename(goal: str) -> str:
+    """
+    Converts a goal string into a safe filename:
+    - Replaces non-alphanumeric characters with underscores
+    - Truncates to 100 characters
+    - Appends a UTC timestamp
+    """
+    safe = re.sub(r'[^a-zA-Z0-9]', '_', goal)  # Replace non-alphanumeric
+    safe = safe[:100]                          # Limit to 100 characters
+    timestamp = datetime.utcnow().isoformat().replace(":", "-")
+    return f"{safe}_{timestamp}_report.md"

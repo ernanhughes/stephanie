@@ -6,14 +6,14 @@ class MetaReviewAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
 
-    async def run(self, input_data: dict) -> dict:
+    async def run(self, context: dict) -> dict:
         """
         Takes evolved hypotheses + reviews and generates:
         - A structured meta-review
         - Feedback for future hypothesis generation and review
         """
-        evolved_hypotheses = input_data.get("evolved", [])
-        reviews = input_data.get("reviews", [])
+        evolved_hypotheses = context.get("evolved", [])
+        reviews = context.get("reviews", [])
 
         # Extract text from objects if needed
         hypothesis_texts = [
@@ -42,10 +42,9 @@ class MetaReviewAgent(BaseAgent):
         # Optional: extract key insights or feedback from the response for use in next iteration
         feedback = self._extract_feedback_from_meta_review(raw_response)
 
-        return {
-            "meta_review": raw_response,
-            "feedback": feedback
-        }
+        context["meta_review"] = raw_response
+        context["feedback"] = feedback
+        return context
 
     def _build_meta_review_prompt(self, hypotheses, reviews):
         evolved_hypotheses = ''.join(f'- {h}\n' for h in hypotheses)

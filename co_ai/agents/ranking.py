@@ -13,8 +13,8 @@ class RankingAgent(BaseAgent):
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
         self.win_history = {}
 
-    async def run(self, input_data: dict) -> dict:
-        reviewed = input_data.get("reviewed", [])
+    async def run(self, context: dict) -> dict:
+        reviewed = context.get("reviewed", [])
         structured = [
             {
                 "hypothesis": item["hypothesis"],
@@ -26,7 +26,9 @@ class RankingAgent(BaseAgent):
 
         if len(structured) < 2:
             # Not enough for ELO, return baseline
-            return {"ranked": [(item["hypothesis"], 1000) for item in structured]}
+            context["ranked"] = [(item["hypothesis"], 1000) for item in structured]
+            self.log("RankSipped not enough ranked items to work with")
+            return context
 
         self._initialize_scores(structured)
         self._rank_pairwise(structured)
@@ -37,7 +39,12 @@ class RankingAgent(BaseAgent):
             "win_loss_patterns": self._extract_win_loss_feedback()
         })
 
-        return {"ranked": ranked}
+        context["ranked"] = ranked
+        self.logger.log("RankedHypotheses", {
+            "ranked_hypotheses": ranked,
+            "preferences": self.preferences
+        })
+        return context
 
     def _extract_win_loss_feedback(self):
         """Return summary of which hypotheses won most often"""

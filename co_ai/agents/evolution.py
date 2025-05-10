@@ -42,19 +42,19 @@ class EvolutionAgent(BaseAgent):
         print(f"Evolution Preferences: {self.preferences}")
         self.cfg = cfg
 
-    async def run(self, input_data: dict) -> dict:
+    async def run(self, context: dict) -> dict:
         """
         Evolve top-ranked hypotheses individually.
         
         Args:
-            input_data: Dictionary with keys:
+            context: Dictionary with keys:
                 - ranked: list of (hypothesis, score) tuples
                 - hypotheses: list of unranked hypotheses (fallback)
                 - preferences: override criteria for refinement
         """
-        ranked = input_data.get("ranked", [])
-        fallback_hypotheses = input_data.get("hypotheses", [])
-        preferences = input_data.get("preferences", self.preferences)
+        ranked = context.get("ranked", [])
+        fallback_hypotheses = context.get("hypotheses", [])
+        preferences = context.get("preferences", self.preferences)
 
         # Decide which hypotheses to evolve
         if ranked:
@@ -95,7 +95,12 @@ class EvolutionAgent(BaseAgent):
                     "hypothesis": h[:100]
                 })
 
-        return {"evolved": evolved} 
+        context["evolved"] = evolved
+        self.logger.log("EvolutionCompleted", {
+            "evolved_count": len(evolved),
+            "preferences": preferences
+        })
+        return context
    
     def get_prompt_template(self, input_data: dict) -> str:
         """

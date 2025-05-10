@@ -8,8 +8,8 @@ class GenerationAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
 
-    async def run(self, input_data: dict) -> dict:
-        goal = input_data.get("goal", "")
+    async def run(self, context: dict) -> dict:
+        goal = context.get("goal", "")
         self.log(f"Generating hypotheses for: {goal}")
 
         # Use values from config
@@ -18,7 +18,12 @@ class GenerationAgent(BaseAgent):
         hypotheses = self.extract_list_items(response)
 
         self.log(f"Parsed {len(hypotheses)} hypotheses.")
-        return {"hypotheses": hypotheses}
+        context["hypotheses"] = hypotheses
+        self.logger.log("GeneratedHypotheses", {
+            "goal": goal,
+            "hypotheses": hypotheses
+        })
+        return context
 
     def build_prompt(self, goal):
         return self.prompt_template.format(goal=goal)

@@ -7,10 +7,10 @@ class ReflectionAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.cfg = cfg
 
-    async def run(self, input_data: dict) -> dict:
-        goal = input_data.get("goal", "")
+    async def run(self, context: dict) -> dict:
+        goal = context.get("goal", "")
 
-        hypotheses = input_data.get("hypotheses", [])
+        hypotheses = context.get("hypotheses", [])
         reviews = []
 
         for h in hypotheses:
@@ -20,8 +20,13 @@ class ReflectionAgent(BaseAgent):
             self.memory.store_review(h, review)
             reviews.append({"hypothesis": h, "review": review})
 
-        return {"reviewed": reviews}
-    
+        context["reviews"] = reviews
+        self.logger.log("GeneratedReviews", {
+            "goal": goal,
+            "reviews": reviews
+        })
+        return context
+
     def build_prompt(self, goal: str, hypothesis: str) -> str:
         """
         Build a prompt for the LLM to review a hypothesis.

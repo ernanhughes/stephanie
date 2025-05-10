@@ -66,7 +66,9 @@ class Supervisor:
     async def run_pipeline_config(self, goal: str, run_id: str = "default") -> Dict[str, Any]:
         """Run the pipeline based on config-defined stages."""
         self.logger.log("PipelineStart", {"run_id": run_id, "goal": goal})
-        context = {"goal": goal}
+        
+        # Start with empty context
+        context = {"goal": goal, "run_id": run_id}
 
         try:
             for stage in self.pipeline_stages:
@@ -93,14 +95,21 @@ class Supervisor:
                         "iteration": i + 1
                     })
 
+                    # Pass context and expect it back modified
                     context = await agent.run(context)
 
                     self.logger.log("PipelineIterationEnd", {
                         "stage": stage.name,
-                        "iteration": i + 1
+                        "iteration": i + 1,
+                        "context_snapshot": {k: v[:3] if isinstance(v, list) else v for k, v in context.items()}
                     })
 
+
                 self.logger.log("PipelineStageEnd", {"stage": stage.name})
+                self.logger.log("ContextAfterStage", {
+                    "stage": stage.name,
+                    "context_keys": list(context.keys())
+            })
 
             self.logger.log("PipelineSuccess", {"run_id": run_id})
             return context
@@ -109,14 +118,11 @@ class Supervisor:
             self.logger.log("PipelineError", {"error": str(e)})
             raise
 
-    def get_stage_agent(self, name: str):
-        return self.agent_map[name]()
-    
     def generate_report(self, context: Dict[str, Any], run_id: str) -> str:
         """Generate a report based on the pipeline context."""
         formatter = ReportFormatter(self.cfg.report.path)
-        report = formatter.format_report(run_id, context)
-        self.memory.store_report(run_id, context.get("goal", "No Goal Detected"), report, self.cfg.report.path)
+        report = formatter.format_report(context)
+        self.memory.store_report(context.get("run_id", ""), context.get("goal", ""), report, self.cfg.report.path)
         self.logger.log("ReportGenerated", {
             "run_id": run_id,
             "report_snippet": report[:100]

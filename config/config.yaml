@@ -1,5 +1,6 @@
 # config/config.yaml
 defaults:
+  - _self_
   - db: postgres
   - logging/json_logger
   - agents/generation
