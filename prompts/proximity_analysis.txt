@@ -1,0 +1,26 @@
+You are an expert in scientific synthesis and hypothesis mapping.
+Analyze the following hypothesis relationships and extract patterns.
+
+Goal: {goal}
+
+Most similar hypothesis pairs:
+{most_similar}
+
+Instructions:
+1. Identify common themes across similar hypotheses
+2. Highlight opportunities for hypothesis grafting
+3. Suggest new directions based on recurring patterns
+4. Output only the following sections:
+
+# Common Themes Identified
+- [Theme 1]
+- [Theme 2]
+
+# Grafting Opportunities
+- Hypotheses A + B → [suggestion]
+- Hypotheses C + D → [suggestion]
+
+# Strategic Directions
+- Direction 1
+- Direction 2
+

@@ -1,6 +1,7 @@
 import json
 
 import psycopg2
+from typing import List, Dict, Any
 
 from co_ai.memory.base_memory import BaseMemory
 from co_ai.memory.embedding_tool import get_embedding
@@ -222,3 +223,29 @@ class VectorMemory(BaseMemory):
                 })
             else:
                 print(f"[VectorMemory] Failed to log Report: {e}")
+
+    def get_similar_hypotheses(self, goal: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """
+        Retrieve most similar hypotheses based on current goal or hypothesis.
+        
+        Uses embeddings to compute cosine similarity.
+        """
+        try:
+            with self.conn.cursor() as cur:
+                # Get embedding for current goal
+                goal_embedding = get_embedding(goal, self.cfg)
+
+                # Query DB for closest hypotheses
+                cur.execute("""
+                    SELECT text, embedding <-> %s AS distance 
+                    FROM hypotheses 
+                    WHERE source != 'evolution' OR source IS NULL
+                    ORDER BY distance ASC
+                    LIMIT %s
+                """, (str(goal_embedding), top_k))
+
+                return [{"text": row[0], "similarity": float(row[1])} for row in cur.fetchall()]
+
+        except Exception as e:
+            print(f"[VectorMemory] Failed to fetch similar hypotheses: {e}")
+            return []
