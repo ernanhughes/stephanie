@@ -2,12 +2,15 @@ You are an expert in scientific research and technological feasibility analysis.
 Refine the following conceptual idea to enhance its practical implementability by leveraging contemporary technological capabilities.
 
 Goal: {goal}
-Hypothesis: {hypothesis}
+Evaluation Criteria: {preferences}
 
 Instructions:
-1. Evaluate current technical limitations or assumptions.
-2. Suggest refinements that increase experimental testability.
-3. Ensure the revised concept retains its novelty and logical coherence.
-4. Propose specific assays, tools, or methods for validation.
+1. Evaluate current technical limitations or assumptions
+2. Suggest refinements that increase experimental testability
+3. Propose specific assays, tools, or methods for validation
+4. Ensure the revised concept retains its novelty and logical coherence
 
-Output only the refined hypothesis followed by one paragraph of justification for the changes.
+# Original Hypothesis
+{hypothesis}
+
+# Refined Hypothesis

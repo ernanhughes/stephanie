@@ -6,16 +6,17 @@ ranking:
   name: ranking
   enabled: true
   tournament_type: elo
-  max_matches_per_round: 10
+  max_comparisons: 6
+  save_prompt: true
+  preferences:
+    - goal_consistency
+    - biological_plausibility
+    - experimental_validity
+    - novelty
+    - simplicity
   model:
     name: ollama_chat/qwen2.5
     api_base: http://localhost:11434
     api_key: null
-  prompt_template: |
-    You are a critical analyst. Compare the following two hypotheses:
-    A: {hypothesis_a}
-    Review: {review_a}
-    B: {hypothesis_b}
-    Review: {review_b}
-    Which one is stronger? Respond with 'A' or 'B'.
-  prompt_mode: static
+  prompt_mode: file
+  prompt_path: ranking_debate.txt

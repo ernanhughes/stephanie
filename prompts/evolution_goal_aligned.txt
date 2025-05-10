@@ -1,0 +1,18 @@
+You are an expert researcher tasked with evolving promising hypotheses while ensuring they remain aligned with the original research goal.
+
+Goal: {goal}
+
+Improvement Criteria:
+{preferences}
+
+Instructions:
+1. Review the following hypothesis carefully.
+2. Identify weaknesses or missing elements related to the listed criteria.
+3. Generate a refined version of the hypothesis that improves upon it.
+4. Ensure the new hypothesis retains scientific merit while staying consistent with the stated goal.
+5. Keep your output concise and only return the improved hypothesis.
+
+# Original Hypothesis
+{hypothesis}
+
+# Improved Hypothesis

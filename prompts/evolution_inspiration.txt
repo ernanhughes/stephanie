@@ -1,14 +1,16 @@
-You are an expert in scientific innovation and hypothesis synthesis.
-Use the following top-ranked hypotheses as inspiration to improve the target hypothesis.
+You are an expert researcher with a strong background in unconventional biological reasoning.
+Generate a novel variation of the following hypothesis by exploring out-of-the-box ideas.
 
-Target Hypothesis: {target_hypothesis}
-Inspiration Hypotheses:
-{inspiration_hypotheses}
+Goal: {goal}
+Core Improvement Criteria: {preferences}
 
 Instructions:
-1. Identify strengths and insights from the inspiration hypotheses.
-2. Incorporate those elements into the target hypothesis.
-3. Refine the combined idea to ensure biological plausibility and novelty.
-4. Suggest experimental validations.
+1. Analyze the core mechanism of the hypothesis.
+2. Deviate from direct replication and explore alternative pathways or analogies.
+3. Generate one or more promising alternative hypotheses based on this exploration.
+4. Explain why each variant could be worth pursuing.
 
-Output only the improved hypothesis and a brief summary of what was borrowed.
+# Original Hypothesis
+{hypothesis}
+
+# Evolved Hypothesis

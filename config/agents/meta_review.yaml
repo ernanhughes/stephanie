@@ -6,6 +6,7 @@ meta_review:
   name: meta_review
   summary_length: long  # Options: short, medium, long
   enabled: true
+  save_prompt: true
   model:
     name: ollama_chat/qwen2.5
     api_base: http://localhost:11434

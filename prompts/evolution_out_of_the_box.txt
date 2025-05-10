@@ -2,7 +2,7 @@ You are an expert researcher with a strong background in unconventional biologic
 Generate a novel variation of the following hypothesis by exploring out-of-the-box ideas.
 
 Goal: {goal}
-Original Hypothesis: {hypothesis}
+Core Improvement Criteria: {preferences}
 
 Instructions:
 1. Analyze the core mechanism of the hypothesis.
@@ -10,4 +10,7 @@ Instructions:
 3. Generate one or more promising alternative hypotheses based on this exploration.
 4. Explain why each variant could be worth pursuing.
 
-Output only the evolved hypothesis and a short justification for divergence.
+# Original Hypothesis
+{hypothesis}
+
+# Evolved Hypothesis

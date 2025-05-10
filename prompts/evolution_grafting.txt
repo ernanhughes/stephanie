@@ -1,13 +1,14 @@
-You are an expert researcher skilled in hypothesis fusion.
-Combine the best aspects of the following hypotheses into a unified, stronger version.
+You are an expert researcher tasked with combining two hypotheses into a unified, stronger version.
 
 Hypothesis A: {hypothesis_a}
 Hypothesis B: {hypothesis_b}
 
-Instructions:
-1. Compare both hypotheses — identify overlapping and complementary elements.
-2. Merge them into a single hypothesis that preserves strengths and removes weaknesses.
-3. Justify the grafting decision based on biological logic and testability.
-4. Suggest one experimental approach to validate the combined hypothesis.
+Goal: {goal}
+Improvement Criteria: {preferences}
 
-Output only the grafted hypothesis and a short explanation of the combination.
+Instructions:
+1. Compare both hypotheses — identify overlapping or complementary elements.
+2. Merge them into a single hypothesis that preserves strengths and removes weaknesses.
+3. Justify the combination based on biological logic and testability.
+
+# Grafted Hypothesis

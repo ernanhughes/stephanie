@@ -5,6 +5,7 @@ defaults:
 reflection:
   name: reflection
   enabled: true
+  save_prompt: true
   review_type: full  # Options: initial, full, observation, deep_verification
   model:
     name: ollama_chat/qwen2.5

@@ -35,3 +35,21 @@ CREATE TABLE ranking_trace (
     explanation TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS reports (
+    id SERIAL PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    goal TEXT,
+    summary TEXT,
+    path TEXT NOT NULL,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS prompts
+(
+    id SERIAL PRIMARY KEY,
+    agent_name text NOT NULL,
+    prompt_text text NOT NULL,,
+    response_text text,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
