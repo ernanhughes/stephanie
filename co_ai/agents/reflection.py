@@ -16,7 +16,6 @@ class ReflectionAgent(BaseAgent):
         for h in hypotheses:
             self.log(f"Generating review for: {h}")
             prompt = self.build_prompt(goal, h)
-            self.memory.store_prompt(self.__class__.__name__, prompt, goal)
             review = self.call_llm(prompt).strip()
             self.memory.store_review(h, review)
             reviews.append({"hypothesis": h, "review": review})

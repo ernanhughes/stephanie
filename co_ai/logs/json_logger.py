@@ -25,10 +25,12 @@ class JSONLogger:
         "PromptLogged": "🧾",              # Log/save a prompt (📜 also works well)
         
         # Review phase
+        "ReflectionAgent": "🪞",           # The reflection agent runs
         "ReviewStored": "💬",              # Review feedback stored (better match than 📥)
         "ReflectedHypotheses": "🔎",       # After reflection logic
 
         # Ranking
+        "RankingAgent": "🏆",              # The ranking agent run s
         "RankedHypotheses": "🏅",          # After ranking
 
         # Evolution phase
@@ -46,6 +48,7 @@ class JSONLogger:
         "HypothesisStored": "📥",          # Store raw hypothesis
 
         # Other
+        "Prompt": "📜",                  # General prompt
         "debug": "🐞"
     }
      

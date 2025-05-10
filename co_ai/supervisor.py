@@ -10,7 +10,7 @@ from co_ai.agents.ranking import RankingAgent
 from co_ai.agents.reflection import ReflectionAgent
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory.vector_store import VectorMemory
-
+from co_ai.utils.report_formatter import ReportFormatter
 
 class PipelineStage:
     def __init__(self, name: str, config: Dict[str, Any]):
@@ -111,3 +111,14 @@ class Supervisor:
 
     def get_stage_agent(self, name: str):
         return self.agent_map[name]()
+    
+    def generate_report(self, context: Dict[str, Any], run_id: str) -> str:
+        """Generate a report based on the pipeline context."""
+        formatter = ReportFormatter(self.cfg.report.path)
+        report = formatter.format_report(run_id, context)
+        self.memory.store_report(run_id, context.get("goal", "No Goal Detected"), report, self.cfg.report.path)
+        self.logger.log("ReportGenerated", {
+            "run_id": run_id,
+            "report_snippet": report[:100]
+        })
+        return report

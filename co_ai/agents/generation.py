@@ -14,7 +14,6 @@ class GenerationAgent(BaseAgent):
 
         # Use values from config
         prompt = self.build_prompt(goal)
-        self.memory.store_prompt(self.__class__.__name__, prompt, goal)
         response = self.call_llm(prompt)
         hypotheses = self.extract_list_items(response)
 

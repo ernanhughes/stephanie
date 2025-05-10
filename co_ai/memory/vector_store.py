@@ -177,20 +177,22 @@ class VectorMemory(BaseMemory):
             else:
                 print(f"[VectorMemory] Failed to log summary: {e}")
 
-    def store_prompt(self, agent_name: str, prompt_text: str, goal: str = None):
+    def store_prompt(self, agent_name: str, prompt_text: str, response: str = None):  
         """Insert a prompt into the prompts table."""
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO prompts (agent_name, prompt_text, goal)
+                    INSERT INTO prompts (agent_name, prompt_text, response_text)
                     VALUES (%s, %s, %s)
                     """,
-                    (agent_name, prompt_text, goal)
+                    (agent_name, prompt_text, response)
                 )
             if self.logger:
-                self.logger.log("PromptLogged", {
-                    "prompt_snippet": prompt_text[:100]
+                self.logger.log("Prompt", {
+                    "agent_name": agent_name,
+                    "prompt": prompt_text,
+                    "response": response
                 })
         except Exception as e:
             if self.logger:
@@ -200,3 +202,23 @@ class VectorMemory(BaseMemory):
                 })
             else:
                 print(f"[VectorMemory] Failed to log Prompt: {e}")
+
+    def store_report(self, run_id: str, goal: str, summary: str, path: str):
+        """Insert a report into the reports table."""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO reports (run_id, goal, summary, path)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (run_id, goal, summary, path)
+                )
+        except Exception as e:
+            if self.logger:
+                self.logger.log("ReportLogFailed", {
+                    "error": str(e),
+                    "summary_snippet": summary[:100]
+                })
+            else:
+                print(f"[VectorMemory] Failed to log Report: {e}")

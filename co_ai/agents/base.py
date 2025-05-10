@@ -19,16 +19,10 @@ class BaseAgent(ABC):
         self.memory = memory
         self.logger = logger or JSONLogger()
         agent_key = self.__class__.__name__.replace("Agent", "").lower()
-        print(f"Initializing {agent_key} agent with config: {cfg}")
+        print(f"📡 Initializing {agent_key} agent with config: \n{cfg}")
         self.model_config = cfg.get("model", {})
-        self.prompt_mode = cfg.get("prompt_mode", "static")
-
         # Load prompt
-        if cfg.get("prompt_path"):
-            self.prompt_template = load_prompt_from_file(cfg["prompt_path"])
-        else:
-            self.prompt_template = cfg.get("prompt_template", "")
-
+        self.prompt_template = self.get_prompt_template(cfg)
         self.prompt_match_re = cfg.get("prompt_match_re", "")
         self.use_prompt_refiner = cfg.get("use_prompt_refiner", False)
         self.llm = self.init_llm()
@@ -61,13 +55,29 @@ class BaseAgent(ABC):
             api_base=self.llm["api_base"],
             api_key=self.llm.get("api_key")
         )
-        return response['choices'][0]['message']['content']
+        response = response['choices'][0]['message']['content']
+        if self.cfg.get("save_prompt", False):
+            self.memory.store_prompt(self.__class__.__name__, prompt, response)
+        return response
 
     def extract_list_items(self, text: str) -> list[str]:
         return [
             match.strip()
             for match in re.findall(r"(?:^|\n)[\-\*\d]+\.\s*(.+)", text)
         ]
+
+    def get_prompt_template(self, input_data: dict) -> str:
+        prompt_mode = input_data.get("prompt_mode", "static")
+        if prompt_mode == "static":
+            prompt = input_data.get("prompt_template")
+            if not prompt:
+                raise ValueError("Prompt is required in static mode.")
+            return prompt
+        elif prompt_mode == "file":
+            return load_prompt_from_file(input_data["prompt_path"])
+        else:
+            raise ValueError(f"Unknown prompt mode: {prompt_mode}")
+        
 
     @abstractmethod
     async def run(self, input_data: dict) -> dict:

@@ -1,6 +1,7 @@
 # main.py
 import asyncio
 import logging
+import uuid
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -20,11 +21,14 @@ def run(cfg: DictConfig):
 
         supervisor = Supervisor(cfg=cfg, memory=memory, logger=logger)
 
+        run_id = str(uuid.uuid4())
         result = await supervisor.run_pipeline_config(
-            goal="Working from home leads to more efficient employees"
+            goal="Working from home leads to more efficient employees", run_id=run_id
         )
 
         print("Pipeline Result:", result)
+        if (cfg.report.generate_report):
+            supervisor.generate_report(result, run_id=run_id)
     asyncio.run(main())
 
 
