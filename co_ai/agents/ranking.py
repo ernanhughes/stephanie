@@ -10,7 +10,7 @@ class RankingAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.elo_scores = {}
-        self.win_history = {}
+        self.win_history = []
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
 
 
@@ -38,9 +38,8 @@ class RankingAgent(BaseAgent):
             prompt = self._build_ranking_prompt(context["goal"], hyp1, hyp2, review_map.get(hyp1), review_map.get(hyp2))
             response = self.call_llm(prompt).strip()
 
-            match = re.search(r"better hypothesis:<([AB])>", response, re.IGNORECASE)
-            if match:
-                winner = match.group(1).upper()
+            winner = parse_winner_from_response(response)
+            if winner:
                 self._update_elo(hyp1, hyp2, winner)
             else:
                 self.logger.log("ComparisonParseFailed", {
@@ -73,9 +72,8 @@ class RankingAgent(BaseAgent):
         for i in range(turns):
             prompt = self._build_ranking_prompt(goal, hyp1, hyp2)
             response = self.call_llm(prompt).strip()
-            match = re.search(r"better hypothesis:<([AB])>", response, re.IGNORECASE)
-            if match:
-                winner = match.group(1).upper()
+            winner = parse_winner_from_response(response)
+            if winner:
                 self._update_elo(hyp1, hyp2, winner)
             else:
                 break
@@ -138,10 +136,9 @@ class RankingAgent(BaseAgent):
 
             try:
                 response = self.call_llm(prompt).strip()
-                match = re.search(r"better hypothesis:<([AB])>", response, re.IGNORECASE)
+                winner = parse_winner_from_response(response)
 
-                if match:
-                    winner = match.group(1).upper()
+                if winner:
                     self._update_elo(hyp1, hyp2, winner)
                 else:
                     self.logger.log("ComparisonParseFailed", {
@@ -155,7 +152,7 @@ class RankingAgent(BaseAgent):
                 })
 
     def _update_elo(self, hyp1, hyp2, winner):
-        K = self.cfg.agent.get("elo_k", 32)
+        K = self.cfg.get("elo_k", 32)
         R1 = 10 ** (self.elo_scores[hyp1] / 400)
         R2 = 10 ** (self.elo_scores[hyp2] / 400)
         E1 = R1 / (R1 + R2)
@@ -178,3 +175,26 @@ class RankingAgent(BaseAgent):
             "elo_a": self.elo_scores[hyp1],
             "elo_b": self.elo_scores[hyp2]
         })  
+
+def parse_winner_from_response(response: str):
+    # Try matching structured formats first
+    structured_match = re.search(r"better[\s_]?hypothesis[^\w]*([AB12])", response, re.IGNORECASE)
+    if structured_match:
+        winner_key = structured_match.group(1).upper()
+        return "A" if winner_key in ("A", "1") else "B"
+
+    # Try matching natural language statements
+    lang_match = re.search(r"(?:prefer|choose|recommend|select)(\s+idea|\s+hypothesis)?[:\s]+([AB12])", response, re.IGNORECASE)
+    if lang_match:
+        winner_key = lang_match.group(2).upper()
+        return "A" if winner_key in ("A", "1") else "B"
+
+    # Try matching conclusion phrases
+    conclusion_match = re.search(r"conclude[d]?\s+with\s+better[\s_]idea:\s*(\d)", response, re.IGNORECASE)
+    if conclusion_match:
+        winner_key = conclusion_match.group(1)
+        return "A" if winner_key == "1" else "B"
+
+    # Default fallback logic
+    print("[⚠️] Could not extract winner from response.")
+    return None
