@@ -1,3 +1,4 @@
+/no_think
 You are an expert researcher summarizing key findings from a research article.
 
 Title: {title}I 

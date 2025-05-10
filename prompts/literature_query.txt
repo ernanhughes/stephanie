@@ -1,11 +1,15 @@
-You are an expert researcher who understands how to translate high-level biological goals into effective search queries.
+/no_think
+You are a researcher helping to generate hypotheses based on current knowledge.
 
 Goal: {goal}
 
 Instructions:
-1. Generate a search query that will yield the most relevant recent research.
-2. Focus on peer-reviewed papers and authoritative sources.
-3. Ensure the query is specific enough to find actionable information.
+1. Reformulate the goal into a focused search query that will return the most relevant, up-to-date scientific findings.
+2. Focus on terms likely to appear in peer-reviewed literature, preprints (bioRxiv, arXiv), or review articles.
+3. Use phrasing that surfaces open questions, conflicting results, or recent discoveries — these are useful for hypothesis generation.
+4. Dont use 'site:scholar.google.com'
+
+Your output should be a single search query that can be used with a web search engine to retrieve promising material for hypothesis generation.
 
 Output format:
-search query:<your generated query>
+search query: <your generated query>

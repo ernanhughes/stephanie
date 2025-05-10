@@ -50,8 +50,10 @@ class LiteratureAgent(BaseAgent):
             self.logger.log("LiteratureQueryFailed", {"goal": goal})
             return context
 
+        self.log("SearchingWeb", {"query": search_query, "goal": goal})
         # Step 2: Perform web search
-        results = await self.web_search_tool.search(search_query, max_results=self.max_results)
+        results = self.web_search_tool.search(search_query, max_results=self.max_results)
+        self.log("SearchResult", {"results": results})
         if not results:
             self.logger.log("NoResultsFromWebSearch", {
                 "goal_snippet": goal[:60],
@@ -62,11 +64,11 @@ class LiteratureAgent(BaseAgent):
         # Step 3: Parse each result with LLM
         parsed_results = []
         for result in results:
-            summary = self._summarize_result(result["title"], result["link"], result["snippet"])
+            summary = self._summarize_result(result["title"], result["href"], result["body"])
             if summary.strip():
                 parsed_results.append({
                     "title": result["title"],
-                    "link": result["link"],
+                    "href": result["href"],
                     "summary": summary
                 })
 
@@ -85,17 +87,44 @@ class LiteratureAgent(BaseAgent):
         """Use LLM to turn natural language goal into a precise search query."""
         try:
             response = self.call_llm(self.query_prompt.format(goal=goal))
+
+            # Try matching structured format first
             match = re.search(r"search query:<([^>]+)>", response, re.IGNORECASE)
-            return match.group(1).strip() if match else f"\"{goal}\" site:scholar.google.com"
+            if match:
+                return match.group(1).strip()
+
+            # Fallback: use keyword-based parsing
+            match = re.search(r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+
+            # Final fallback: use goal as-is
+            self.logger.log("FallingBackToGoalAsQuery", {"goal": goal})
+            return f"{goal} productivity study"
+
         except Exception as e:
             self.logger.log("LiteratureQueryGenerationFailed", {"error": str(e)})
-            return f"{goal} review site:scholar.google.com"
+            return f"{goal} remote work meta-analysis"
 
     def _summarize_result(self, title: str, link: str, snippet: str) -> str:
         """Ask LLM to extract key insights from article metadata."""
         try:
             prompt = self.parse_prompt.format(title=title, link=link, snippet=snippet)
-            return self.call_llm(prompt).strip()
+            raw_summary = self.call_llm(prompt).strip()
+
+            # Extract summary section if present
+            summary_match = re.search(r"# Summary\n(.+?)(?=\n#|\Z)", raw_summary, re.DOTALL)
+            if summary_match:
+                return summary_match.group(1).strip()
+
+            # Fallback: extract any paragraph
+            lines = raw_summary.splitlines()
+            for line in lines:
+                if len(line.strip()) > 50:
+                    return line.strip()
+
+            return ""
+
         except Exception as e:
             self.logger.log("FailedToParseLiterature", {"error": str(e), "title": title})
             return ""
