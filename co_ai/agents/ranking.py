@@ -2,53 +2,70 @@
 import itertools
 import random
 import re
+from typing import Optional
 
 from co_ai.agents.base import BaseAgent
 from co_ai.utils.prompt_loader import load_prompt_from_file
 
 class RankingAgent(BaseAgent):
+    """
+    The Ranking agent simulates scientific debate between hypotheses using a tournament-style approach.
+    
+    From the paper:
+    > 'The Ranking agent employs an Elo-based tournament to assess and prioritize generated hypotheses'
+    """
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.elo_scores = {}
+        self.strategy = cfg.get("strategy", "debate")
+        self.max_comparisons = cfg.get("max_comparisons", 6)
         self.win_history = []
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
 
 
     async def run(self, context: dict) -> dict:
+        """
+        Rank hypotheses using pairwise comparisons and Elo updates.
+        
+        Args:
+            context: Dictionary with keys:
+                - hypotheses: list of hypothesis strings
+                - goal: research objective
+                - preferences: override criteria
+        """
         hypotheses = context.get("hypotheses", [])
-        reflections = context.get("reflections", [])
+        goal = context.get("goal", "Unknown goal")
 
         if len(hypotheses) < 2:
             self.logger.log("NotEnoughHypothesesForRanking", {
                 "count": len(hypotheses),
-                "reason": "fewer than 2 hypotheses"
+                "reason": "less than 2 hypotheses"
             })
             context["ranked"] = [(h, 1000) for h in hypotheses]
             return context
 
-        self._initialize_scores(hypotheses)
+        self._initialize_elo(hypotheses)
 
-        # Build review map if available
-        review_map = {r["hypothesis"]: r["review"] for r in reflections if "hypothesis" in r and "review" in r}
+        pairs = list(itertools.combinations(hypotheses, 2))
+        comparisons = random.sample(pairs, k=min(self.max_comparisons, len(pairs)))
 
-        for item1, item2 in self._generate_pairwise_comparisons(hypotheses):
-            hyp1 = item1["hypothesis"] if isinstance(item1, dict) else item1
-            hyp2 = item2["hypothesis"] if isinstance(item2, dict) else item2
-
-            prompt = self._build_ranking_prompt(context["goal"], hyp1, hyp2, review_map.get(hyp1), review_map.get(hyp2))
+        for hyp1, hyp2 in comparisons:
+            prompt = self._build_ranking_prompt(goal, hyp1, hyp2)
             response = self.call_llm(prompt).strip()
+            winner = self._parse_response(response)
 
-            winner = parse_winner_from_response(response)
             if winner:
                 self._update_elo(hyp1, hyp2, winner)
             else:
                 self.logger.log("ComparisonParseFailed", {
                     "prompt_snippet": prompt[:200],
-                    "response_snippet": response[:300]
+                    "response_snippet": response[:300],
+                    "agent": self.__class__.__name__
                 })
 
         ranked = sorted(self.elo_scores.items(), key=lambda x: x[1], reverse=True)
         context["ranked"] = ranked
+        context["preferences_used"] = self.preferences
         self.logger.log("TournamentCompleted", {
             "total_hypotheses": len(ranked),
             "win_loss_patterns": self._extract_win_loss_feedback(),
@@ -56,15 +73,18 @@ class RankingAgent(BaseAgent):
         })
         return context
 
-    def _build_ranking_prompt(self, goal, hyp1, hyp2, review1=None, review2=None):
+    def _initialize_elo(self, hypotheses):
+        for h in hypotheses:
+            if h not in self.elo_scores:
+                self.elo_scores[h] = 1000
+
+    def _build_ranking_prompt(self, goal, hyp1, hyp2):
         """Build prompt dynamically with or without reviews."""
         return self.prompt_template.format(
             goal=goal,
             preferences=", ".join(self.preferences),
             hypothesis_a=hyp1,
-            hypothesis_b=hyp2,
-            review_a=review1 or "No prior review",
-            review_b=review2 or "No prior review"
+            hypothesis_b=hyp2
         )
 
     def _conduct_multi_turn_debate(self, goal, hyp1, hyp2, turns=3):
@@ -72,7 +92,7 @@ class RankingAgent(BaseAgent):
         for i in range(turns):
             prompt = self._build_ranking_prompt(goal, hyp1, hyp2)
             response = self.call_llm(prompt).strip()
-            winner = parse_winner_from_response(response)
+            winner = self._parse_response(response)
             if winner:
                 self._update_elo(hyp1, hyp2, winner)
             else:
@@ -108,11 +128,6 @@ class RankingAgent(BaseAgent):
             "preferences_used": self.preferences
         }
 
-    def _initialize_scores(self, hypotheses):
-        for h in hypotheses:
-            if h not in self.elo_scores:
-                self.elo_scores[h] = 1000
-                
     def _rank_pairwise(self, reviewed):
         pairs = list(itertools.combinations(reviewed, 2))
         if not pairs:
@@ -136,7 +151,7 @@ class RankingAgent(BaseAgent):
 
             try:
                 response = self.call_llm(prompt).strip()
-                winner = parse_winner_from_response(response)
+                winner = self._parse_response(response)
 
                 if winner:
                     self._update_elo(hyp1, hyp2, winner)
@@ -176,25 +191,35 @@ class RankingAgent(BaseAgent):
             "elo_b": self.elo_scores[hyp2]
         })  
 
-def parse_winner_from_response(response: str):
-    # Try matching structured formats first
-    structured_match = re.search(r"better[\s_]?hypothesis[^\w]*([AB12])", response, re.IGNORECASE)
-    if structured_match:
-        winner_key = structured_match.group(1).upper()
-        return "A" if winner_key in ("A", "1") else "B"
+    def _parse_response(self, response: str) -> Optional[str]:
+        """
+        Try multiple methods to extract winner from LLM output
+        
+        Returns:
+            'A' or 'B' based on comparison
+        """
+        # Try matching structured formats first
+        structured_match = re.search(r"better[\s_]?hypothesis[^\w]*([AB12])", response, re.IGNORECASE)
+        if structured_match:
+            winner_key = structured_match.group(1).upper()
+            return "A" if winner_key in ("A", "1") else "B"
 
-    # Try matching natural language statements
-    lang_match = re.search(r"(?:prefer|choose|recommend|select)(\s+idea|\s+hypothesis)?[:\s]+([AB12])", response, re.IGNORECASE)
-    if lang_match:
-        winner_key = lang_match.group(2).upper()
-        return "A" if winner_key in ("A", "1") else "B"
+        # Try matching natural language statements
+        lang_match = re.search(r"(?:prefer|choose|recommend|select)(\s+idea|\s+hypothesis)?[:\s]+([AB12])", response, re.IGNORECASE)
+        if lang_match:
+            winner_key = lang_match.group(2).upper()
+            return "A" if winner_key in ("A", "1") else "B"
 
-    # Try matching conclusion phrases
-    conclusion_match = re.search(r"conclude[d]?\s+with\s+better[\s_]idea:\s*(\d)", response, re.IGNORECASE)
-    if conclusion_match:
-        winner_key = conclusion_match.group(1)
-        return "A" if winner_key == "1" else "B"
+        # Try matching conclusion phrases
+        conclusion_match = re.search(r"conclude[d]?\s+with\s+better[\s_]idea:\s*(\d)", response, re.IGNORECASE)
+        if conclusion_match:
+            winner_key = conclusion_match.group(1)
+            return "A" if winner_key == "1" else "B"
 
-    # Default fallback logic
-    print("[⚠️] Could not extract winner from response.")
-    return None
+        # Default fallback logic
+        print("[⚠️] Could not extract winner from response.")
+        self.logger.log("ParseError", {
+                    "error": "Could not extract winner from response",
+                    "response": response
+                })
+        return None

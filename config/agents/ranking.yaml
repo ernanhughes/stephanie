@@ -5,6 +5,7 @@ defaults:
 ranking:
   name: ranking
   enabled: true
+  strategy: debate
   tournament_type: elo
   max_comparisons: 6
   save_prompt: true
