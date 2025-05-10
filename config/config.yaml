@@ -9,6 +9,7 @@ defaults:
   - agents/evolution
   - agents/meta_review
   - agents/proximity
+  - agents/literature
   - agents/supervisor
 
 report:
@@ -24,6 +25,9 @@ pipeline:
   name: default_pipeline
   description: "Default hypothesis generation and refinement pipeline"
   stages:
+    - name: literature
+      enabled: true
+      iterations: 1
     - name: generation
       enabled: true
       iterations: 1
@@ -33,6 +37,9 @@ pipeline:
     - name: ranking
       enabled: true
       iterations: 1
+    - name: proximity
+      enabled: true
+      iterations: 1 
     - name: evolution
       enabled: true
       iterations: 2

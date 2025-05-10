@@ -46,6 +46,13 @@ class MetaReviewAgent(BaseAgent):
         reflections = context.get("reflections", [])
         ranked_hypotheses = context.get("ranked", [])
         strategic_directions = context.get("strategic_directions", [])
+        db_matches = context.get("proximity", {}).get("database_matches", [])
+
+        # Extract key themes from DB hypotheses
+        db_themes = "\n".join(
+            f"- {h['text'][:100]}" for h in db_matches
+        )
+
 
         # Extract text if needed
         hypothesis_texts = [
@@ -68,7 +75,7 @@ class MetaReviewAgent(BaseAgent):
 
         # Build and call prompt template
         prompt = self._build_meta_review_prompt(
-            goal, hypothesis_texts, reflection_texts, strategic_directions
+            goal, hypothesis_texts, reflection_texts, strategic_directions,  db_themes=db_themes,
         )
 
         raw_response = self.call_llm(prompt).strip()
@@ -88,7 +95,7 @@ class MetaReviewAgent(BaseAgent):
         return context
 
     def _build_meta_review_prompt(
-        self, goal, hypotheses: List[str], reviews: List[str], directions: List[str]
+        self, goal, hypotheses: List[str], reviews: List[str], directions: List[str], db_themes: List[str]
     ) -> str:
         """Build prompt using goal, preferences, and input data."""
         preferences = ", ".join(self.preferences)
@@ -102,6 +109,7 @@ class MetaReviewAgent(BaseAgent):
             hypotheses=hypotheses,
             evolved_hypotheses=evolved_hypotheses,
             reviews=full_reviews,
+            db_themes=db_themes,
             instructions=strategic_directions or "No additional instructions"
         )
 

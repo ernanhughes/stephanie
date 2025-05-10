@@ -46,6 +46,9 @@ class ReportFormatter:
 ### 📘 Feedback:
 {context.get("feedback", "")}
 
+### 📘 DB Matches:
+{context.get("proximity", {}).get("database_matches", [])}
+
 
 ---
 """

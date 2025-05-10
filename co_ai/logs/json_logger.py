@@ -22,7 +22,10 @@ class JSONLogger:
         # Generation phase
         "GenerationAgent": "🧪",
         "GeneratedHypotheses": "💡",
-
+        "RankingStored": "🗃️",
+        "RankingUpdated": "🔁",
+        "GeneratedReviews": "🧾",
+        "TournamentCompleted": "🏆",
         # Prompt handling
         "PromptLogged": "🧾",
 

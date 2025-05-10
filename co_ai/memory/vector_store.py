@@ -231,21 +231,27 @@ class VectorMemory(BaseMemory):
         Uses embeddings to compute cosine similarity.
         """
         try:
+            # Get embedding for current goal
+            goal_embedding = get_embedding(goal, self.cfg)
             with self.conn.cursor() as cur:
-                # Get embedding for current goal
-                goal_embedding = get_embedding(goal, self.cfg)
-
-                # Query DB for closest hypotheses
                 cur.execute("""
-                    SELECT text, embedding <-> %s AS distance 
-                    FROM hypotheses 
-                    WHERE source != 'evolution' OR source IS NULL
+                    SELECT text, embedding <-> %s AS distance, source, elo_rating
+                    FROM hypotheses
+                    WHERE enabled IS NOT FALSE
                     ORDER BY distance ASC
                     LIMIT %s
                 """, (str(goal_embedding), top_k))
 
-                return [{"text": row[0], "similarity": float(row[1])} for row in cur.fetchall()]
-
+                results = []
+                for row in cur.fetchall():
+                    results.append({
+                        "text": row[0],
+                        "similarity": 1 - float(row[1]),  # Convert distance → similarity
+                        "source": row[2],
+                        "elo_rating": row[3] or 1000
+                    })
+                return results
+        
         except Exception as e:
             print(f"[VectorMemory] Failed to fetch similar hypotheses: {e}")
             return []

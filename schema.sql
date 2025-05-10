@@ -7,7 +7,7 @@ CREATE TABLE hypotheses (
     source TEXT,
     confidence FLOAT,
     review TEXT,
-    embedding VECTOR(1536),
+    embedding VECTOR(1024),
     features JSONB,
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -51,5 +51,15 @@ CREATE TABLE IF NOT EXISTS prompts
     agent_name text NOT NULL,
     prompt_text text NOT NULL,,
     response_text text,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    icon VARCHAR(4) DEFAULT '📦',
+    data TEXT NOT NULL,
+    embedding VECTOR(1024),
+    hidden BOOLEAN DEFAULT FALSE,
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );

@@ -13,8 +13,11 @@ def get_embedding(text: str, cfg):
     Returns:
         list[float]: The embedding vector.
     """
-    model = cfg.get("embeddings.model", "mxbai-embed-large")
-    endpoint = cfg.get("embeddings.endpoint", "http://localhost:11434/v1/embeddings")
+    
+    model = cfg.get("embeddings", {}).get("model", "mxbai-embed-large")
+    endpoint = cfg.get("embeddings", {}).get("endpoint", "FIX http://localhost:11434/api/embeddings")
+    print(f"cfg: {cfg}")
+    print(f"Using model: {model} at endpoint: {endpoint}")
     response = requests.post(
         endpoint,
         json={"model": model, "prompt": text},

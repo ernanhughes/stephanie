@@ -1,4 +1,9 @@
 # config/logging/json_logger.yaml
 logger:
   type: JSONLogger
+  use_event_table: true
   log_path: logs/pipeline_log.jsonl
+  embeddings:
+    model: "mxbai-embed-large"
+    dimension: 1024
+    endpoint: "http://localhost:11434/api/embeddings"

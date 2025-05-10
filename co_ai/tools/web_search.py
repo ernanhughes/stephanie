@@ -3,7 +3,7 @@
 from duckduckgo_search import DDGS
 
 
-class WebSearchTool:
+class WebSearchTool: 
     async def search(self, query: str, max_results: int = 5) -> list[str]:
         results = []
         with DDGS() as ddgs:

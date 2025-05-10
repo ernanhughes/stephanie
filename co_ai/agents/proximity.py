@@ -18,8 +18,8 @@ class ProximityAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
 
-        self.similarity_threshold = cfg.agent.get("similarity_threshold", 0.75)
-        self.max_graft_candidates = cfg.agent.get("max_graft_candidates", 3)
+        self.similarity_threshold = cfg.get("similarity_threshold", 0.75)
+        self.max_graft_candidates = cfg.get("max_graft_candidates", 3)
 
     async def run(self, context: dict) -> dict:
         """
@@ -37,20 +37,32 @@ class ProximityAgent(BaseAgent):
                 - graft_candidates: list of high-similarity pairs
                 - proximity_graph: list of (h1, h2, similarity)
         """
-        hypotheses = context.get("hypotheses", [])
-        ranked = context.get("ranked", [])
+        current_goal = context.get("goal")
+        current_hypotheses = context.get("hypotheses", [])
 
-        if not hypotheses:
+        # Fetch historical hypotheses from DB
+        db_hypotheses = self.memory.get_similar_hypotheses(current_goal, top_k=10)
+        db_texts = [h["text"] for h in db_hypotheses]
+
+        self.logger.log("DatabaseHypothesesMatched", {
+            "goal": current_goal[:60],
+            "matches": [
+                {"text": h["text"][:100], "similarity": h["similarity"], "source": h.get("source")}
+                for h in db_hypotheses
+            ]
+        })
+
+        # Combine current and past hypotheses
+        all_hypotheses = list(set(current_hypotheses + db_texts))
+
+        if not all_hypotheses.__len__():
             self.logger.log("NoHypothesesForProximity", {
                 "reason": "empty_input"
             })
             return context
 
-        # If ranked hypotheses exist, prioritize them
-        top_hypotheses = [h for h, _ in ranked] or hypotheses
-
-        # Compute pairwise similarities
-        similarities = self._compute_similarity_matrix(top_hypotheses)
+        # Compute pairwise similarity between all hypotheses
+        similarities = self._compute_similarity_matrix(all_hypotheses)
 
         # Log proximity graph
         self.logger.log("ProximityGraphComputed", {
@@ -62,16 +74,16 @@ class ProximityAgent(BaseAgent):
             ]
         })
 
-        # Find grafting candidates
+        # Identify grafting candidates
         graft_candidates = [(h1, h2) for h1, h2, sim in similarities if sim >= self.similarity_threshold]
-
         # Cluster similar hypotheses
         clusters = self._cluster_hypotheses(graft_candidates)
 
-        # Update context
+        # Store results in context
         context["proximity"] = {
             "clusters": clusters,
             "graft_candidates": graft_candidates,
+            "database_matches": db_hypotheses,
             "proximity_graph": similarities
         }
 
@@ -112,7 +124,7 @@ class ProximityAgent(BaseAgent):
         """Build clusters of similar hypotheses"""
         clusters = []
 
-        for h1, h2, _ in graft_candidates:
+        for h1, h2 in graft_candidates:
             found = False
             for cluster in clusters:
                 if h1 in cluster or h2 in cluster:

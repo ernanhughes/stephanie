@@ -1,5 +1,28 @@
-# config/agents/proximity.yaml
+# configs/agents/proximity.yaml
+defaults:
+  - /prompt_refiner/disabled
+
 proximity:
   name: proximity
-  similarity_threshold: 0.85
-  clustering_enabled: true
+  enabled: true
+  save_prompt: true
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  embeddings:
+    model: "mxbai-embed-large"
+    dimension: 1024
+    endpoint: "http://localhost:11434/api/embeddings"
+  prompt_mode: file
+  prompt_path: proximity_analysis.txt
+  preferences:
+    - goal_consistency
+    - biological_plausibility
+    - experimental_validity
+    - novelty
+    - simplicity
+  similarity_threshold: 0.75  # Only show pairs with at least 75% similarity
+  max_graft_candidates: 3   # Max number of pairs to suggest for grafting
+  use_database_search: true # Whether to pull past hypotheses from DB
+  top_k_database_matches: 10  # How many prior hypotheses to retrieve

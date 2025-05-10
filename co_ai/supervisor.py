@@ -2,12 +2,15 @@
 
 from typing import Any, Dict, List
 
-from co_ai.agents.base import BaseAgent
-from co_ai.agents.evolution import EvolutionAgent
-from co_ai.agents.generation import GenerationAgent
-from co_ai.agents.meta_review import MetaReviewAgent
-from co_ai.agents.ranking import RankingAgent
-from co_ai.agents.reflection import ReflectionAgent
+from co_ai.agents import BaseAgent
+from co_ai.agents import LiteratureAgent
+from co_ai.agents import EvolutionAgent
+from co_ai.agents import GenerationAgent
+from co_ai.agents import MetaReviewAgent
+from co_ai.agents import RankingAgent
+from co_ai.agents import ReflectionAgent
+from co_ai.agents import ProximityAgent
+from co_ai.agents import DebateAgent
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory.vector_store import VectorMemory
 from co_ai.utils.report_formatter import ReportFormatter
@@ -26,32 +29,16 @@ class Supervisor:
         self.logger.log("SupervisorInit", {"cfg": cfg})
 
         self.agent_map = {
+            "literature": LiteratureAgent(cfg.agents.literature, self.memory, self.logger),
             "generation": GenerationAgent(cfg.agents.generation, self.memory, self.logger),
             "reflection": ReflectionAgent(cfg.agents.reflection, self.memory, self.logger),
             "ranking": RankingAgent(cfg.agents.ranking, self.memory, self.logger),
+            "proximity": ProximityAgent(cfg.agents.proximity, self.memory, self.logger),
             "evolution": EvolutionAgent(cfg.agents.evolution, self.memory, self.logger),
             "meta_review": MetaReviewAgent(cfg.agents.meta_review, self.memory, self.logger),
         }
         # Parse pipeline stages from config
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
-
-
-    def _load_agent(self, name: str) -> BaseAgent:
-        """Load agent based on name from config."""
-        agent_class = {
-            "generation": GenerationAgent(cfg=self.cfg.agents.generation, memory=self.memory, logger=self.logger),
-            "reflection": ReflectionAgent(cfg=self.cfg.agents.reflection, memory=self.memory, logger=self.logger),
-            "ranking": RankingAgent(cfg=self.cfg.agents.ranking, memory=self.memory, logger=self.logger),
-            "evolution": EvolutionAgent(cfg=self.cfg.agents.evolution, memory=self.memory, logger=self.logger),
-            "meta_review": MetaReviewAgent(cfg=self.cfg.agents.meta_review, memory=self.memory, logger=self.logger),
-            # "debate": "co_ai.agents.debate.DebateAgent",  # Optional
-        }[name]
-
-        # Example using dynamic imports (you could also use hydra.utils.instantiate())
-        module_name, class_name = agent_class.rsplit(".", 1)
-        module = __import__(module_name, fromlist=[class_name])
-        cls = getattr(module, class_name)
-        return cls(self.cfg.agent[name], self.memory, self.logger)
 
     def _parse_pipeline_stages(self, stage_configs: List[Dict[str, Any]]) -> List[PipelineStage]:
             """Parse and validate pipeline stages from config."""

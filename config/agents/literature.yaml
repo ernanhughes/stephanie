@@ -1,0 +1,20 @@
+# configs/agents/proximity.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+literature:
+  name: literature
+  enabled: true
+  strategy: query_and_summarize
+  max_results: 5
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_mode: file
+  prompt_path: literature_query.txt
+  preferences:
+    - goal_consistency
+    - biological_plausibility
+    - novelty
+    - simplicity
