@@ -14,7 +14,7 @@ from co_ai.supervisor import Supervisor
 @hydra.main(version_base=None, config_path="../config", config_name="config")
 def run(cfg: DictConfig):
     async def main():
-        print(OmegaConf.to_yaml(cfg))
+        print(f"Initial Config:\n{OmegaConf.to_yaml(cfg)}")
 
         logger = JSONLogger(log_path=cfg.logging.logger.log_path)
         memory = VectorMemory(cfg=cfg.db, logger=logger)
@@ -23,7 +23,7 @@ def run(cfg: DictConfig):
 
         run_id = str(uuid.uuid4())
         result = await supervisor.run_pipeline_config(
-            goal="Working from home leads to more efficient employees", run_id=run_id
+            {"goal":"Working from home leads to more efficient employees", "run_id":run_id}
         )
 
         print("Pipeline Result:", result)

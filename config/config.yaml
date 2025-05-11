@@ -26,23 +26,30 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
     - name: literature
+      cls: co_ai.agents.literature.LiteratureAgent
       enabled: true
       iterations: 1
     - name: generation
+      cls: co_ai.agents.generation.GenerationAgent
       enabled: true
       iterations: 1
     - name: reflection
+      cls: co_ai.agents.reflection.ReflectionAgent
       enabled: true
       iterations: 1
     - name: ranking
+      cls: co_ai.agents.ranking.RankingAgent
       enabled: true
       iterations: 1
     - name: proximity
+      cls: co_ai.agents.proximity.ProximityAgent
       enabled: true
       iterations: 1 
     - name: evolution
+      cls: co_ai.agents.evolution.EvolutionAgent
       enabled: true
       iterations: 2
     - name: meta_review
+      cls: co_ai.agents.meta_review.MetaReviewAgent
       enabled: true
       iterations: 1

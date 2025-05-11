@@ -1,6 +1,10 @@
 # co_ai/supervisor.py
-
+import os
 from typing import Any, Dict, List
+import hydra
+from omegaconf import DictConfig, OmegaConf
+from hydra.core.global_hydra import GlobalHydra
+from pathlib import Path
 
 from co_ai.agents import BaseAgent
 from co_ai.agents import LiteratureAgent
@@ -15,11 +19,15 @@ from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory.vector_store import VectorMemory
 from co_ai.utils.report_formatter import ReportFormatter
 
+
 class PipelineStage:
-    def __init__(self, name: str, config: Dict[str, Any]):
+    def __init__(self, name: str, config: dict, stage_dict: dict):
         self.name = name
+        self.cls = config.get("cls", "") 
         self.enabled = config.get("enabled", True)
         self.iterations = config.get("iterations", 1)
+        self.stage_dict = stage_dict
+
 
 class Supervisor:
     def __init__(self, cfg, memory=None, logger=None):
@@ -44,18 +52,24 @@ class Supervisor:
             """Parse and validate pipeline stages from config."""
             stages = []
             for stage_config in stage_configs:
-                name = stage_config.get("name")
-                if name not in self.agent_map:
-                    raise ValueError(f"Unknown agent '{name}' in pipeline config.")
-                stages.append(PipelineStage(name, stage_config))
+                name = stage_config.name
+                if not stage_config.enabled:
+                    print(f"Skipping disabled stage: {name}")
+                    continue
+                stage_dict = self.cfg.agents[name]
+                print(f"Stage Dict: {stage_dict}")
+                stages.append(PipelineStage(name, stage_config, stage_dict))
             return stages
 
-    async def run_pipeline_config(self, goal: str, run_id: str = "default") -> Dict[str, Any]:
-        """Run the pipeline based on config-defined stages."""
-        self.logger.log("PipelineStart", {"run_id": run_id, "goal": goal})
+    async def run_pipeline_config(self, input_data: dict) -> dict:
+        """
+        Run all stages defined in config.
+        Each stage loads its class dynamically via hydra.utils.get_class()
+        """
+        self.logger.log("PipelineStart", input_data)
         
         # Start with empty context
-        context = {"goal": goal, "run_id": run_id}
+        context = input_data.copy()
 
         try:
             for stage in self.pipeline_stages:
@@ -65,10 +79,10 @@ class Supervisor:
                         "reason": "disabled_in_config"
                     })
                     continue
-
-                agent = self.agent_map[stage.name]
+                cls = hydra.utils.get_class(stage.cls)
+                agent = cls(cfg=stage.stage_dict, memory=self.memory, logger=self.logger)
                 if not agent:
-                    self.logger.log("PipelineStageSkipped", {
+                    self.logger.log("PipelineStageError", {
                         "stage": stage.name,
                         "reason": "agent_not_found"
                     })
@@ -98,7 +112,7 @@ class Supervisor:
                     "context_keys": list(context.keys())
             })
 
-            self.logger.log("PipelineSuccess", {"run_id": run_id})
+            self.logger.log("PipelineSuccess", context)
             return context
 
         except Exception as e:
