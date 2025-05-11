@@ -10,10 +10,11 @@ defaults:
   - agents/meta_review
   - agents/proximity
   - agents/literature
+  - agents/literature_ranking
   - agents/supervisor
 
 report:
-  generate_report: true
+  generate_report: false
   path: reports/
   
 embeddings:
@@ -29,27 +30,31 @@ pipeline:
       cls: co_ai.agents.literature.LiteratureAgent
       enabled: true
       iterations: 1
+    - name: literature_ranking
+      cls: co_ai.agents.generic.GenericAgent
+      enabled: true
+      iterations: 1
     - name: generation
       cls: co_ai.agents.generation.GenerationAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: reflection
       cls: co_ai.agents.reflection.ReflectionAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: ranking
       cls: co_ai.agents.ranking.RankingAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: proximity
       cls: co_ai.agents.proximity.ProximityAgent
-      enabled: true
+      enabled: false
       iterations: 1 
     - name: evolution
       cls: co_ai.agents.evolution.EvolutionAgent
-      enabled: true
+      enabled: false
       iterations: 2
     - name: meta_review
       cls: co_ai.agents.meta_review.MetaReviewAgent
-      enabled: true
+      enabled: false
       iterations: 1

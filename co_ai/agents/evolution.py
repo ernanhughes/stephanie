@@ -102,11 +102,11 @@ class EvolutionAgent(BaseAgent):
         })
         return context
    
-    def get_prompt_template(self, input_data: dict) -> str:
+    def get_prompt_template(self) -> str:
         """
         Load the prompt template based on the strategy.
         """
-        strategy = input_data.get("strategy", "grafting") # called by base
+        strategy = self.cfg.get("strategy", "grafting") # called by base
         prompt_file = self.PROMPT_MAP.get(strategy)
         if not prompt_file:
             raise ValueError(f"Unknown strategy: {self.strategy}")
@@ -178,61 +178,3 @@ class EvolutionAgent(BaseAgent):
                 if content:
                     items.append(content)
         return items
-
-    async def _fallback_rank_hypotheses(self, hypotheses: List[str], goal: str) -> list:
-        """
-        Use the Evolution model to simulate ranking when no real ranking exists.
-        """
-        if not self.use_fallback_ranking:
-            self.logger.log("FallbackRankingDisabled", {"reason": "user_config"})
-            return []
-
-        if len(hypotheses) < 2:
-            self.logger.log("FallbackRankingUsedOnSingle", {"count": len(hypotheses)})
-            return [(h, 5) for h in hypotheses]
-
-        # Load ranking fallback prompt once
-        try:
-            rank_prompt = load_prompt_from_file("evolution_ranking_fallback.txt")
-        except Exception as e:
-            self.logger.log("FallbackPromptLoadFailed", {"error": str(e)})
-            return [(h, 0) for h in hypotheses]
-
-        scores = [0] * len(hypotheses)
-
-        for i, h1 in enumerate(hypotheses):
-            for j, h2 in enumerate(hypotheses):
-                if i == j:
-                    continue
-
-                prompt = rank_prompt.format(
-                    goal=goal,
-                    preferences=", ".join(self.preferences),
-                    hypothesis_1=h1,
-                    hypothesis_2=h2
-                )
-
-                response = self.call_llm(prompt)
-                match = re.search(r"better hypothesis:<(\d+)>", response)
-
-                if match:
-                    winner_idx = int(match.group(1)) - 1
-                    scores[i if winner_idx == 1 else j] += 1
-                else:
-                    self.logger.log("FallbackRankingFailedToParse", {
-                        "prompt": prompt[:200],
-                        "response": response[:300]
-                    })
-
-        scored_pairs = sorted(zip(hypotheses, scores), key=lambda x: x[1], reverse=True)
-        return scored_pairs
-
-    def _build_rank_prompt(self, goal, h1, h2):
-        with open("prompts/evolution_ranking_fallback.txt", "r") as f:
-            prompt_template = f.read()
-        return prompt_template.format(
-            goal=goal,
-            preferences=", ".join(self.preferences),
-            hypothesis_1=h1,
-            hypothesis_2=h2
-        )

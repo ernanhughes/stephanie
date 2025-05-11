@@ -1,0 +1,18 @@
+# configs/agents/proximity.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+generic:
+  name: generic
+  enabled: true
+  save_prompt: true
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal"]   # add nodes
+  output_key: "generic"  # change
+  prompt_mode: file
+  prompt_path: query_and_summarize.txt
+  extraction_regex: "search query:<([^>]+)>\n(.*)"
+  strategy: query_and_summarize

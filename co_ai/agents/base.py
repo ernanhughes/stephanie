@@ -23,7 +23,7 @@ class BaseAgent(ABC):
 
         self.model_config = cfg.get("model", {})
         # Load prompt
-        self.prompt_template = self.get_prompt_template(cfg)
+        self.prompt_template = self.get_prompt_template()
         self.prompt_match_re = cfg.get("prompt_match_re", "")
         self.use_prompt_refiner = cfg.get("use_prompt_refiner", False)
         self.llm = self.init_llm()
@@ -73,17 +73,17 @@ class BaseAgent(ABC):
             for match in re.findall(r"(?m)^\s*[\-\*\d]+\.\s+(.*)", text)
         ]
 
-    def get_prompt_template(self, input_data: dict) -> str:
-        prompt_mode = input_data.get("prompt_mode", "static")
+    def get_prompt_template(self) -> str:
+        prompt_mode = self.cfg.get("prompt_mode", "static")
         if prompt_mode == "static":
-            prompt = input_data.get("prompt_template")
+            prompt = self.cfg.get("prompt_template")
             if not prompt:
-                raise ValueError("Missing 'prompt_template' in static mode.")
+                raise ValueError(f"Missing 'prompt_template' in static mode, config: {self.cfg}.")
             return prompt
         elif prompt_mode == "file":
-            prompt_path = input_data.get("prompt_path")
+            prompt_path = self.cfg.get("prompt_path")
             if not prompt_path:
-                raise ValueError("Missing 'prompt_path' in file mode.")
+                raise ValueError(f"Missing 'prompt_path' in file mode, config: {self.cfg}.")
             return load_prompt_from_file(prompt_path)
         else:
             raise ValueError(f"Unknown prompt mode: {prompt_mode}")

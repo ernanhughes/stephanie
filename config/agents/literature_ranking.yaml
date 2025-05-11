@@ -1,0 +1,19 @@
+# configs/agents/proximity.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+literature_ranking:
+  name: literature_ranking
+  enabled: true
+  save_prompt: true
+  strategy: literature_ranking
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_mode: file
+  prompt_path: literature_ranking.txt
+  extraction_regex: "article_rankings:\n(.+?)(?=\n\n|$)"
+  input_keys: ["goal", "literature"]
+  output_key: "ranked_literature"
+

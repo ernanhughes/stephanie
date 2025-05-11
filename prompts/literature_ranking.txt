@@ -1,0 +1,21 @@
+You are an expert researcher analyzing scientific literature.
+Given the following research goal and article summaries, rank them by how useful they are toward addressing the goal.
+
+Goal: {{ goal }}
+
+{% if literature %}
+Literature Summaries:
+{{ literature }}
+{% endif %}
+
+Preferences:
+{{ preferences | join(', ') }}
+
+Instructions:
+1. Evaluate each article based on its relevance to the goal
+2. Score them from 1–5 (5 = most relevant)
+3. Return only the ranked list like this:
+article_rankings:
+1. [Title] → [Relevance score]
+2. [Title] → [Relevance score]
+It's a combination of the two right

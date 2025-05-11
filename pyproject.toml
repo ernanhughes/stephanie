@@ -16,6 +16,7 @@ dependencies = [
     "duckduckgo-search",
     "matplotlib",
     "hydra-core", 
+    "jinja2",
     "tabulate"
 ]
 

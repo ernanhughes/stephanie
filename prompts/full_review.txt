@@ -1,0 +1,17 @@
+You are an expert researcher reviewing scientific hypotheses.
+Use the following information to evaluate correctness and novelty.
+
+Goal: {goal}
+Hypothesis: {hypothesis}
+
+Instructions:
+1. Evaluate the hypothesis for biological plausibility
+2. Assess whether it could be tested in the lab
+3. Identify gaps or areas needing refinement
+4. Return structured review like:
+review:<valid>
+mechanism:<supported>
+score:<1–5>
+justification:<reason>
+
+Do NOT add extra commentary beyond the specified output.
