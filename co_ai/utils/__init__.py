@@ -4,4 +4,5 @@ Utility classes
 - report_formatter
 """
 from .prompt_loader import PromptLoader
-from .report_formatter import ReportFormatter
+from ..reports.formatter import ReportFormatter
+from .file_utils import get_text_from_file, camel_to_snake

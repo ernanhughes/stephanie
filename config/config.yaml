@@ -17,7 +17,7 @@ paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
 report:
-  generate_report: false
+  generate_report: true
   path: ${hydra:runtime.cwd}/reports
   
 embeddings:
@@ -39,25 +39,25 @@ pipeline:
       iterations: 1
     - name: generation
       cls: co_ai.agents.generation.GenerationAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: reflection
       cls: co_ai.agents.reflection.ReflectionAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: ranking
       cls: co_ai.agents.ranking.RankingAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: proximity
       cls: co_ai.agents.proximity.ProximityAgent
-      enabled: true
+      enabled: false
       iterations: 1 
     - name: evolution
       cls: co_ai.agents.evolution.EvolutionAgent
-      enabled: true
+      enabled: false
       iterations: 2
     - name: meta_review
       cls: co_ai.agents.meta_review.MetaReviewAgent
-      enabled: true
+      enabled: false
       iterations: 1

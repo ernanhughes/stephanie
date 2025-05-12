@@ -3,7 +3,10 @@ import re
 from typing import Dict, Any, List
 
 from co_ai.agents.base import BaseAgent
+from co_ai.logs import JSONLogger
+from co_ai.memory import VectorMemory
 from co_ai.tools import WebSearchTool
+from co_ai.utils import get_text_from_file
 
 
 class LiteratureAgent(BaseAgent):
@@ -15,7 +18,7 @@ class LiteratureAgent(BaseAgent):
     > 'The Generation agent iteratively searches the web, retrieves and reads relevant research articles'
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory:VectorMemory=None, logger:JSONLogger=None):
         super().__init__(cfg, memory, logger)
         self.strategy = cfg.get("strategy", "query_and_summarize")
         self.preferences = cfg.get("preferences", ["goal_consistency", "novelty"])
@@ -47,20 +50,22 @@ class LiteratureAgent(BaseAgent):
             return context
 
         self.log("SearchingWeb", {"query": search_query, "goal": goal})
+
         # Step 2: Perform web search
         results = self.web_search_tool.search(search_query, max_results=self.max_results)
-        self.log("SearchResult", {"results": results})
         if not results:
             self.logger.log("NoResultsFromWebSearch", {
                 "goal_snippet": goal[:60],
                 "search_query": search_query
             })
             return context
+        self.log("SearchResult", {"results": results})
 
         # Step 3: Parse each result with LLM
         parsed_results = []
         for result in results:
-            summary = self._summarize_result(result["title"], result["href"], result["body"])
+            summary_context = {**{"title": result["title"], "link":result["href"], "snippet":result["body"]}, **context}
+            summary = self._summarize_result(summary_context)
             if summary.strip():
                 parsed_results.append({
                     "title": result["title"],
@@ -77,12 +82,15 @@ class LiteratureAgent(BaseAgent):
 
         # Store in context
         context["literature"] = parsed_results
+
+        self._save_context(context)
         return context
 
     def _generate_search_query(self, context: dict) -> str:
         """Use LLM to turn natural language goal into a precise search query."""
         try:
-            response = self.call_llm(self.prompt_loader.load_prompt(self.cfg, context)).strip()
+            prompt = self.prompt_loader.load_prompt(self.cfg, context)
+            response = self.call_llm(prompt)
 
             # Try matching structured format first
             match = re.search(r"search query:<([^>]+)>", response, re.IGNORECASE)
@@ -92,7 +100,9 @@ class LiteratureAgent(BaseAgent):
             # Fallback: use keyword-based parsing
             match = re.search(r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                query = match.group(1).strip()
+                print(f"Search Query: {query}")
+                return query
 
             # Final fallback: use goal as-is
             goal =context.get("goal", "")
@@ -103,14 +113,18 @@ class LiteratureAgent(BaseAgent):
             self.logger.log("LiteratureQueryGenerationFailed", {"error": str(e)})
             return f'{context.get("goal", "")} remote work meta-analysis'
 
-    def _summarize_result(self, title: str, link: str, snippet: str) -> str:
+    def _summarize_result(self, context:dict) -> str:
         """Ask LLM to extract key insights from article metadata."""
         try:
-            prompt = self.parse_prompt.format(title=title, link=link, snippet=snippet)
+            prompt = self.prompt_loader.from_file(self.cfg.parse_prompt, self.cfg, context)
             raw_summary = self.call_llm(prompt).strip()
 
             # Extract summary section if present
-            summary_match = re.search(r"# Summary\n(.+?)(?=\n#|\Z)", raw_summary, re.DOTALL)
+            summary_match = re.search(
+                r"Summary\s*\n(?:.*\n)*?\s*(.+?)(?=\n#|\Z)",
+                raw_summary,
+                re.DOTALL | re.IGNORECASE
+            )
             if summary_match:
                 return summary_match.group(1).strip()
 
@@ -123,5 +137,5 @@ class LiteratureAgent(BaseAgent):
             return ""
 
         except Exception as e:
-            self.logger.log("FailedToParseLiterature", {"error": str(e), "title": title})
+            self.logger.log("FailedToParseLiterature", {"error": str(e)})
             return ""

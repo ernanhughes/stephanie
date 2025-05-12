@@ -6,18 +6,9 @@ from omegaconf import DictConfig, OmegaConf
 from hydra.core.global_hydra import GlobalHydra
 from pathlib import Path
 
-from co_ai.agents import BaseAgent
-from co_ai.agents import LiteratureAgent
-from co_ai.agents import EvolutionAgent
-from co_ai.agents import GenerationAgent
-from co_ai.agents import MetaReviewAgent
-from co_ai.agents import RankingAgent
-from co_ai.agents import ReflectionAgent
-from co_ai.agents import ProximityAgent
-from co_ai.agents import DebateAgent
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory.vector_store import VectorMemory
-from co_ai.utils.report_formatter import ReportFormatter
+from co_ai.reports import ReportFormatter
 
 
 class PipelineStage:

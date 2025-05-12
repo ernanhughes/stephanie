@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 from co_ai.memory.base_memory import BaseMemory
 from co_ai.memory.embedding_tool import get_embedding
 from co_ai.memory.hypothesis_model import Hypothesis
-
+from omegaconf import OmegaConf
 
 class VectorMemory(BaseMemory):
     def __init__(self, cfg, logger=None):
@@ -313,3 +313,92 @@ class VectorMemory(BaseMemory):
             return []
         finally:
             cur.close()
+
+    def save_context(self, run_id: str, stage: str, context: dict, preferences: dict = None, metadata: dict = None):
+        """
+        Save the current context state to the database.
+
+        Args:
+            run_id: Unique identifier for this pipeline run
+            stage: Name of the current agent/stage
+            context: The full context dict
+            preferences: The full preferences dict
+            metadata: The full metadata dict
+        """
+        try:
+            # Deactivate previous version
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE context_states SET is_current = FALSE
+                    WHERE run_id = %s AND stage_name = %s
+                """, (run_id, stage))
+
+                cfg_dict = OmegaConf.to_container(preferences, resolve=True)
+                # Insert new context state
+                cur.execute("""
+                    INSERT INTO context_states (run_id, stage_name, context, preferences, metadata)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (run_id, stage, json.dumps(context), json.dumps(cfg_dict or {}), json.dumps(metadata or {})))
+
+                self.conn.commit()
+        except Exception as e:
+            self.logger.log("ContextSaveFailed", {
+                "run_id": run_id,
+                "stage": stage,
+                "error": str(e),
+                "context_keys": list(context.keys())
+            })
+
+    def has_completed(self, run_id: str, stage_name: str) -> bool:
+        """Check if this stage has already been run"""
+        if not run_id or not stage_name:
+            return False
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*) FROM context_states
+                WHERE run_id = %s AND stage_name = %s
+            """, (run_id, stage_name))
+            return cur.fetchone()[0] > 0
+
+    def load_context(self, run_id: str, stage: str = None) -> dict:
+        """
+        Load the latest saved context for a given run and optional stage.
+
+        Args:
+            run_id: Unique ID for the pipeline run
+            stage: Optional stage name to resume from
+
+        Returns:
+            dict: The deserialized context
+        """
+        try:
+            cur = self.conn.cursor()
+
+            if stage:
+                cur.execute("""
+                    SELECT context FROM context_states
+                    WHERE run_id = %s AND stage_name = %s
+                    ORDER BY timestamp DESC LIMIT 1
+                """, (run_id, stage))
+            else:
+                cur.execute("""
+                    SELECT context FROM context_states
+                    WHERE run_id = %s
+                    ORDER BY timestamp ASC
+                """, (run_id,))
+
+            rows = cur.fetchall()
+            if not rows:
+                return {}
+
+            # Reconstruct context by merging all stages up to this point
+            result = {}
+            for row in rows:
+                partial_context = json.loads(row[0])
+                result.update(partial_context)
+
+            return result
+
+        except Exception as e:
+            self.logger.log("ContextLoadFailed", {"error": str(e)})
+            return {}

@@ -5,6 +5,7 @@ defaults:
 literature:
   name: literature
   enabled: true
+  save_context: true
   strategy: query_and_summarize
   max_results: 5
   model:
@@ -12,7 +13,8 @@ literature:
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_path: literature_query.txt
+  prompt_path: query.txt
+  parse_prompt: parse.txt
   preferences:
     - goal_consistency
     - biological_plausibility

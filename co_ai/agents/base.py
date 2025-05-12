@@ -9,11 +9,6 @@ from co_ai.logs import JSONLogger
 from co_ai.utils import PromptLoader
 
 
-def camel_to_snake(name):
-    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
-
-
 class BaseAgent(ABC):
     def __init__(self, cfg, memory=None, logger=None):
         self.cfg = cfg
@@ -29,6 +24,7 @@ class BaseAgent(ABC):
 
         self.prompt_match_re = cfg.get("prompt_match_re", "")
         self.llm = self.init_llm()
+        self.save_context = cfg.get("save_context", False)
 
     def log(self, message, structured=True):
         if structured:
@@ -82,5 +78,16 @@ class BaseAgent(ABC):
         ]
 
     @abstractmethod
-    async def run(self, input_data: dict) -> dict:
+    async def run(self, context: dict) -> dict:
         pass
+
+    def _save_context(self, context: dict):
+        if self.memory and self.cfg.get("save_context", False):
+            run_id = context.get("run_id")
+            self.memory.save_context(run_id, self.__class__.__name__, context, self.cfg)
+
+    def _get_completed(self, context: dict) -> dict | None :
+        run_id = context.get("run_id")
+        if self.memory.has_completed(run_id, self.__class__.__name__):
+           return self.memory.load_context(self.__class__.__name__, run_id)
+        return None

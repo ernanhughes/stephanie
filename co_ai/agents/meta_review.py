@@ -22,7 +22,7 @@ class MetaReviewAgent(BaseAgent):
         )
         # Load prompt based on strategy
         prompt_file = self.PROMPT_MAP.get(self.strategy, "meta_review_synthesis.txt")
-        self.prompt_template = self.prompt_loader.prompt_from_file(prompt_file)
+        self.prompt_template = self.prompt_loader.from_file(prompt_file)
 
     async def run(self, context: dict) -> dict:
         """

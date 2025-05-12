@@ -2,13 +2,16 @@
 import os
 from pathlib import Path
 
-from typing import Dict, Any
 from jinja2 import Template
-from co_ai.memory.vector_store import VectorMemory
+
+def get_text_from_file(file_path: str) -> str:
+    """Get text from a file"""
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read().strip()
 
 class PromptLoader:
     def __init__(self, memory=None, logger=None):
-        self.memory = memory or VectorMemory()
+        self.memory = memory
         self.logger = logger
 
     def load_prompt(self, config: dict, context: dict) -> str:
@@ -57,24 +60,19 @@ class PromptLoader:
 
     def from_file(self, file_name: str, config: dict, context: dict) -> str:
         """Load prompt from a specific file"""
-        path = self.get_file_name(file_name, config)
-        prompt = self.get_text(path)
+        path = self.get_file_name(file_name, config, context)
+        prompt = get_text_from_file(path)
         merged = {**context, **config}
-        return Template(prompt).render(**merged)
-
-    def get_file_name(self, file_name: str, config: dict):
-        prompts_dir = config.get("prompts_dir", "prompts")
-        if file_name.endswith(".txt"):
-            path = os.path.join(prompts_dir, f"{config['name']}/{file_name}")
-        else:
-            path = os.path.join(prompts_dir, f"{config['name']}/{file_name}.txt")
-        return path
+        return prompt.format(**merged)
 
     @staticmethod
-    def get_text(file_path: str) -> str:
-        """Get text from a file"""
-        with open(file_path, "r", encoding="utf-8") as f:
-            return f.read().strip()
+    def get_file_name(file_name: str, cfg: dict, context: dict):
+        prompts_dir = context.get("prompts_dir", "prompts")
+        if file_name.endswith(".txt"):
+            path = os.path.join(prompts_dir, f"{cfg['name']}/{file_name}")
+        else:
+            path = os.path.join(prompts_dir, f"{cfg['name']}/{file_name}.txt")
+        return path
 
     def get_template_path(self, prompts_dir: str, config: dict) -> str:
         """Get the path to the template file"""
@@ -88,8 +86,10 @@ class PromptLoader:
         
         path = os.path.join(prompt_dir, f"{config['name']}/{strategy}.txt")
         print(f"Path: {path}")
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read().strip()
+        prompt = get_text_from_file(path)
+        prompt_result = prompt.format(config)
+        print(f"Prompt From file {prompt_result}")
+        return prompt_result
 
     def _load_best_version(self, agent_name: str, goal: str, config: dict) -> str:
         """Load most effective prompt version from history"""
