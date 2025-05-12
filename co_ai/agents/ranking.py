@@ -5,7 +5,6 @@ import re
 from typing import Optional
 
 from co_ai.agents.base import BaseAgent
-from co_ai.utils.prompt_loader import load_prompt_from_file
 
 class RankingAgent(BaseAgent):
     """
@@ -50,7 +49,7 @@ class RankingAgent(BaseAgent):
         comparisons = random.sample(pairs, k=min(self.max_comparisons, len(pairs)))
 
         for hyp1, hyp2 in comparisons:
-            prompt = self._build_ranking_prompt(goal, hyp1, hyp2)
+            prompt = self._build_ranking_prompt(hyp1, hyp2, context)
             response = self.call_llm(prompt).strip()
             winner = self._parse_response(response)
 
@@ -78,14 +77,9 @@ class RankingAgent(BaseAgent):
             if h not in self.elo_scores:
                 self.elo_scores[h] = 1000
 
-    def _build_ranking_prompt(self, goal, hyp1, hyp2):
+    def _build_ranking_prompt(self, hyp1, hyp2, context):
         """Build prompt dynamically with or without reviews."""
-        return self.prompt_template.format(
-            goal=goal,
-            preferences=", ".join(self.preferences),
-            hypothesis_a=hyp1,
-            hypothesis_b=hyp2
-        )
+        return self.prompt_loader.load_prompt({**self.cfg, **{"hypothesis_a":hyp1, "hypothesis_b":hyp2}}, context)
 
     def _conduct_multi_turn_debate(self, goal, hyp1, hyp2, turns=3):
         """Simulate multi-turn scientific debate between hypotheses"""
@@ -128,7 +122,7 @@ class RankingAgent(BaseAgent):
             "preferences_used": self.preferences
         }
 
-    def _rank_pairwise(self, reviewed):
+    def _rank_pairwise(self, reviewed, context):
         pairs = list(itertools.combinations(reviewed, 2))
         if not pairs:
             return
@@ -140,12 +134,10 @@ class RankingAgent(BaseAgent):
             hyp1 = item1["hypothesis"]
             hyp2 = item2["hypothesis"]
 
-            prompt = self.prompt_template.format(
-                goal=self.cfg.get("goal", "Unknown"),
-                preferences=", ".join(self.preferences),
-                hypothesis_a=hyp1,
-                hypothesis_b=hyp2
-            )
+            merged = {**self.cfg, **{"hypothesis_a": hyp1, "hypothesis_b": hyp2}}
+
+
+            prompt = self.prompt_loader.load_prompt(merged, context=context)
 
             self.log(f"Comparing:\n{hyp1[:60]}...\nvs\n{hyp2[:60]}...")
 

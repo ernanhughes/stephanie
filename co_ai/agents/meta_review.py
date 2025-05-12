@@ -2,7 +2,6 @@
 from typing import Any, Dict, List
 
 from co_ai.agents.base import BaseAgent
-from co_ai.utils import load_prompt_from_file
 
 
 class MetaReviewAgent(BaseAgent):
@@ -23,7 +22,7 @@ class MetaReviewAgent(BaseAgent):
         )
         # Load prompt based on strategy
         prompt_file = self.PROMPT_MAP.get(self.strategy, "meta_review_synthesis.txt")
-        self.prompt_template = load_prompt_from_file(prompt_file)
+        self.prompt_template = self.prompt_loader.prompt_from_file(prompt_file)
 
     async def run(self, context: dict) -> dict:
         """

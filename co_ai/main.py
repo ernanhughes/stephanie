@@ -23,7 +23,7 @@ def run(cfg: DictConfig):
 
         run_id = str(uuid.uuid4())
         result = await supervisor.run_pipeline_config(
-            {"goal":"Working from home leads to more efficient employees", "run_id":run_id}
+            {"goal":"The USA is on the verge of defaulting on its debt", "run_id":run_id}
         )
 
         print("Pipeline Result:", result)

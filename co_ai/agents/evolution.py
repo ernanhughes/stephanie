@@ -8,7 +8,6 @@ import re
 from co_ai.agents.base import BaseAgent
 from co_ai.memory.embedding_tool import get_embedding
 from co_ai.memory.hypothesis_model import Hypothesis
-from co_ai.utils import load_prompt_from_file
 
 class EvolutionAgent(BaseAgent):
     """
@@ -70,7 +69,7 @@ class EvolutionAgent(BaseAgent):
         evolved = []
         for h in top_texts:
             try:
-                prompt = self._build_evolution_prompt(h, preferences)
+                prompt = self.prompt_loader.load_prompt({**self.cfg, **{"hypothesis":h}}, context)
                 raw_output = self.call_llm(prompt).strip()
                 refined_list = self.extract_list_items(raw_output)
 
@@ -102,30 +101,6 @@ class EvolutionAgent(BaseAgent):
         })
         return context
    
-    def get_prompt_template(self) -> str:
-        """
-        Load the prompt template based on the strategy.
-        """
-        strategy = self.cfg.get("strategy", "grafting") # called by base
-        prompt_file = self.PROMPT_MAP.get(strategy)
-        if not prompt_file:
-            raise ValueError(f"Unknown strategy: {self.strategy}")
-        try:
-            return load_prompt_from_file(prompt_file)
-        except Exception as e:
-            self.logger.log("PromptLoadFailed", {"error": str(e)})
-            raise
-
-    def _build_evolution_prompt(self, goal: str, hypotheses: str, preferences: str = "") -> str:
-        """
-        Build prompt by injecting goal and preferences into the loaded template.
-        """
-        print(f"Prompt template: {self.prompt_template} goal:{goal} ")
-        return self.prompt_template.format(
-            goal=goal,
-            preferences=", ".join(preferences or self.preferences),
-            hypotheses=hypotheses)
-
     async def graft_similar(self, hypotheses: list[str], threshold: float = 0.90) -> list[str]:
         """
         Graft pairs of highly similar hypotheses into unified versions.

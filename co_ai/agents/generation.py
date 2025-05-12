@@ -13,7 +13,7 @@ class GenerationAgent(BaseAgent):
         self.log(f"Generating hypotheses for: {goal}")
 
         # Use values from config
-        prompt = self.build_prompt(goal)
+        prompt = self.prompt_loader.load_prompt(self.cfg, context=context)
         response = self.call_llm(prompt)
         hypotheses = self.extract_list_items(response)
 
@@ -24,9 +24,6 @@ class GenerationAgent(BaseAgent):
             "hypotheses": hypotheses
         })
         return context
-
-    def build_prompt(self, goal):
-        return self.prompt_template.format(goal=goal)
 
     def extract_list_items(self, text: str) -> list[str]:
         matches = re.findall(self.prompt_match_re, text, flags=re.DOTALL)

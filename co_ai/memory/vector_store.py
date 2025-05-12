@@ -178,17 +178,27 @@ class VectorMemory(BaseMemory):
             else:
                 print(f"[VectorMemory] Failed to log summary: {e}")
 
-    def store_prompt(self, agent_name: str, prompt_text: str, response: str = None):  
-        """Insert a prompt into the prompts table."""
+    def store_prompt(self, agent_name: str, prompt_key: str, prompt_text: str, 
+                    response: str = None, source: str = "manual", version: int = 1, 
+                    is_current: bool = True, strategy: str = "default", metadata: dict = None):
+        """Store prompt with version control"""
         try:
             with self.conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO prompts (agent_name, prompt_text, response_text)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (agent_name, prompt_text, response)
-                )
+                cur.execute("""
+                    INSERT INTO prompts (
+                        agent_name, prompt_key, prompt_text, response_text,
+                        source, version, is_current, strategy, metadata
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    agent_name, prompt_key, prompt_text, response,
+                    source, version, is_current, strategy, json.dumps(metadata or {})
+                ))
+                # Deactivate previous versions
+                if is_current:
+                    cur.execute("""
+                        UPDATE prompts SET is_current = FALSE
+                        WHERE agent_name = %s AND prompt_key = %s AND is_current IS TRUE
+                    """, (agent_name, prompt_key))
             if self.logger:
                 self.logger.log("Prompt", {
                     "agent_name": agent_name,
@@ -255,3 +265,51 @@ class VectorMemory(BaseMemory):
         except Exception as e:
             print(f"[VectorMemory] Failed to fetch similar hypotheses: {e}")
             return []
+        
+    def get_ranked_hypotheses(self, goal: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Get top-ranked hypotheses for the given goal.
+        
+        Args:
+            goal: Research objective used to generate hypotheses
+            limit: Number of hypotheses to retrieve
+            
+        Returns:
+            List of dicts containing hypothesis + review + score
+        """
+        cur = self.conn.cursor()
+        try:
+            # Fetch top hypotheses sorted by Elo rating
+            cur.execute("""
+                 Oh sorry karmic i'm i'm just in the middle of something what are you sayingSELECT 
+                    hypothesis, 
+                    reflection, 
+                    elo_rating,
+                    metadata
+                FROM hypothesis
+                WHERE goal = %s
+                ORDER BY elo_rating DESC
+                LIMIT %s
+            """, (goal[:200], limit))
+
+            rows = cur.fetchall()
+            result = []
+
+            for hyp, reflection, score, meta in rows:
+                reflection_dict = json.loads(reflection) if isinstance(reflection, str) else reflection or {}
+                
+                result.append({
+                    "goal": goal,
+                    "hypothesis": hyp,
+                    "review": reflection_dict.get("full_review", ""),
+                    "score": score,
+                    "elo_rating": score,
+                    "metadata": meta
+                })
+
+            return result
+        except Exception as e:
+            print(f"[Memory] Failed to load ranked hypotheses: {e}")
+            return []
+        finally:
+            cur.close()

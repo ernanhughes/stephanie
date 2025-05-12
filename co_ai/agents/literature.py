@@ -4,7 +4,6 @@ from typing import Dict, Any, List
 
 from co_ai.agents.base import BaseAgent
 from co_ai.tools import WebSearchTool
-from co_ai.utils import load_prompt_from_file
 
 
 class LiteratureAgent(BaseAgent):
@@ -22,9 +21,6 @@ class LiteratureAgent(BaseAgent):
         self.preferences = cfg.get("preferences", ["goal_consistency", "novelty"])
         self.max_results = cfg.get("max_results", 5)
 
-        # Load prompts
-        self.query_prompt = load_prompt_from_file("literature_query.txt")
-        self.parse_prompt = load_prompt_from_file("literature_parse.txt")
         self.web_search_tool = WebSearchTool()
         self.logger.log("LiteratureAgentInit", {
             "strategy": self.strategy,
@@ -41,11 +37,11 @@ class LiteratureAgent(BaseAgent):
                 - goal: Research objective
                 - preferences: Optional override of evaluation criteria
         """
-        goal = context.get("goal", "Unknown goal")
-        self.log(f"Searching literature for: {goal}")
+        self.log(f"Searching literature for: {context}")
 
         # Step 1: Generate search query using LLM
-        search_query = self._generate_search_query(goal)
+        search_query = self._generate_search_query(context)
+        goal = context.get("goal", "")
         if not search_query:
             self.logger.log("LiteratureQueryFailed", {"goal": goal})
             return context
@@ -83,10 +79,10 @@ class LiteratureAgent(BaseAgent):
         context["literature"] = parsed_results
         return context
 
-    def _generate_search_query(self, goal: str) -> str:
+    def _generate_search_query(self, context: dict) -> str:
         """Use LLM to turn natural language goal into a precise search query."""
         try:
-            response = self.call_llm(self.query_prompt.format(goal=goal))
+            response = self.call_llm(self.prompt_loader.load_prompt(self.cfg, context)).strip()
 
             # Try matching structured format first
             match = re.search(r"search query:<([^>]+)>", response, re.IGNORECASE)
@@ -99,12 +95,13 @@ class LiteratureAgent(BaseAgent):
                 return match.group(1).strip()
 
             # Final fallback: use goal as-is
+            goal =context.get("goal", "")
             self.logger.log("FallingBackToGoalAsQuery", {"goal": goal})
             return f"{goal} productivity study"
 
         except Exception as e:
             self.logger.log("LiteratureQueryGenerationFailed", {"error": str(e)})
-            return f"{goal} remote work meta-analysis"
+            return f'{context.get("goal", "")} remote work meta-analysis'
 
     def _summarize_result(self, title: str, link: str, snippet: str) -> str:
         """Ask LLM to extract key insights from article metadata."""

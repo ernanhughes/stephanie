@@ -4,6 +4,7 @@ CREATE TABLE hypotheses (
     id SERIAL PRIMARY KEY,
     goal TEXT,
     text TEXT,
+    prompt_strategy TEXT,
     source TEXT,
     confidence FLOAT,
     review TEXT,
@@ -16,6 +17,8 @@ CREATE TABLE elo_ranking_log (
     id SERIAL PRIMARY KEY,
     run_id TEXT,
     hypothesis TEXT,
+    prompt_version INT,
+    prompt_strategy TEXT,
     score INTEGER,
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -30,6 +33,8 @@ CREATE TABLE summaries (
 CREATE TABLE ranking_trace (
     id SERIAL PRIMARY KEY,
     run_id TEXT,
+    prompt_version INT,
+    prompt_strategy TEXT,
     winner TEXT,
     loser TEXT,
     explanation TEXT,
@@ -45,12 +50,17 @@ CREATE TABLE IF NOT EXISTS reports (
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS prompts
-(
+CREATE TABLE IF NOT EXISTS prompts (
     id SERIAL PRIMARY KEY,
-    agent_name text NOT NULL,
-    prompt_text text NOT NULL,,
-    response_text text,
+    agent_name TEXT NOT NULL,
+    prompt_key TEXT NOT NULL,         -- e.g., generation_goal_aligned.txt
+    prompt_text TEXT NOT NULL,
+    response_text TEXT,
+    source TEXT,                      -- e.g., manual, dsp_refinement, feedback_injection
+    version INT DEFAULT 1,
+    is_current BOOLEAN DEFAULT FALSE,
+    strategy TEXT,                    -- e.g., goal_aligned, out_of_the_box
+    metadata JSONB DEFAULT '{}'::JSONB,
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -63,3 +73,56 @@ CREATE TABLE IF NOT EXISTS events (
     hidden BOOLEAN DEFAULT FALSE,
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Table to track prompt evolution across agents
+CREATE TABLE IF NOT EXISTS prompt_history (
+    id SERIAL PRIMARY KEY,
+    agent_name TEXT NOT NULL,         -- e.g., "generation", "reflection"
+    strategy TEXT NOT NULL,          -- e.g., "goal_aligned", "out_of_the_box"
+    prompt_key TEXT NOT NULL,        -- e.g., "generation_goal_aligned.txt"
+    prompt_text TEXT NOT NULL,       -- The actual prompt template
+    output_key TEXT,                -- Which context key this affects (e.g., "hypotheses")
+    input_keys JSONB,                -- Context fields used (e.g., ["goal", "literature"])
+    extraction_regex TEXT,          -- Regex used to extract response
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    version INT DEFAULT 1,
+    source TEXT,                    -- e.g., "manual", "feedback_injection", "dsp_refinement"
+    is_current BOOLEAN DEFAULT FALSE,
+    metadata JSONB DEFAULT '{}'::JSONB
+);
+
+
+CREATE TABLE IF NOT EXISTS prompt_versions (
+    id SERIAL PRIMARY KEY,
+    agent_name TEXT NOT NULL,
+    prompt_key TEXT NOT NULL,         -- e.g., "generation_goal_aligned.txt"
+    prompt_text TEXT NOT NULL,
+    previous_prompt_id INT REFERENCES prompts(id),
+    strategy TEXT,
+    version INT NOT NULL,
+    source TEXT,                     -- manual, feedback_injection, dsp_refinement
+    score_improvement FLOAT,         -- How much better is this prompt than last?
+    metadata JSONB DEFAULT '{}'::JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Stores full pipeline context after each stage
+CREATE TABLE IF NOT EXISTS context_states (
+    id SERIAL PRIMARY KEY,
+    run_id TEXT NOT NULL,             -- Unique ID per experiment
+    stage_name TEXT NOT NULL,         -- Agent name (generation, reflection)
+    version INT DEFAULT 1,           -- Iteration number for this stage
+    context JSONB NOT NULL,          -- Full context dict after stage
+    preferences JSONB,              -- Preferences used (novelty, feasibility)
+    feedback JSONB,                 -- Feedback from previous stages
+    metadata JSONB DEFAULT '{}'::JSONB, -- Strategy, prompt_version, etc.
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    is_current BOOLEAN DEFAULT TRUE  -- Only one active version per run/stage
+);
+
+-- -- Indexes
+-- CREATE INDEX idx_context_run ON context_states(run_id);
+-- CREATE INDEX idx_context_stage ON context_states(stage_name);
+-- CREATE INDEX idx_context_run_stage ON context_states(run_id, stage_name);
+-- CREATE INDEX idx_context_preferences ON context_states USING GIN (preferences);

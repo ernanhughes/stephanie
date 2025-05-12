@@ -15,7 +15,7 @@ class ReflectionAgent(BaseAgent):
 
         for h in hypotheses:
             self.log(f"Generating review for: {h}")
-            prompt = self.build_prompt(goal, h)
+            prompt = self.prompt_loader.load_prompt({**self.cfg, **{"hypothesis":h}}, context)
             review = self.call_llm(prompt).strip()
             self.memory.store_review(h, review)
             reviews.append({"hypothesis": h, "review": review})
@@ -26,19 +26,3 @@ class ReflectionAgent(BaseAgent):
             "reviews": reviews
         })
         return context
-
-    def build_prompt(self, goal: str, hypothesis: str) -> str:
-        """
-        Build a prompt for the LLM to review a hypothesis.
-        
-        Args:
-            goal: The research goal.
-            hypothesis: The hypothesis to be reviewed.
-        
-        Returns:
-            A string prompt for the LLM.
-        """
-        return self.prompt_template.format(
-            goal=goal,
-            hypothesis=hypothesis
-        )

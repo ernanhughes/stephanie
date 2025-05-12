@@ -6,6 +6,7 @@ generation:
   name: generation
   enabled: true
   save_prompt: true
+  strategy : hypothesis
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434

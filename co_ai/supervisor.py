@@ -36,15 +36,6 @@ class Supervisor:
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
         self.logger.log("SupervisorInit", {"cfg": cfg})
 
-        self.agent_map = {
-            "literature": LiteratureAgent(cfg.agents.literature, self.memory, self.logger),
-            "generation": GenerationAgent(cfg.agents.generation, self.memory, self.logger),
-            "reflection": ReflectionAgent(cfg.agents.reflection, self.memory, self.logger),
-            "ranking": RankingAgent(cfg.agents.ranking, self.memory, self.logger),
-            "proximity": ProximityAgent(cfg.agents.proximity, self.memory, self.logger),
-            "evolution": EvolutionAgent(cfg.agents.evolution, self.memory, self.logger),
-            "meta_review": MetaReviewAgent(cfg.agents.meta_review, self.memory, self.logger),
-        }
         # Parse pipeline stages from config
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
 
@@ -70,6 +61,7 @@ class Supervisor:
         
         # Start with empty context
         context = input_data.copy()
+        context["prompts_dir"] = self.cfg.paths.prompts
 
         try:
             for stage in self.pipeline_stages:

@@ -2,7 +2,6 @@
 from typing import Dict, Any, List
 import re
 from co_ai.agents.base import BaseAgent
-from co_ai.utils import PromptRenderer
 
 
 class GenericAgent(BaseAgent):
@@ -13,9 +12,6 @@ class GenericAgent(BaseAgent):
         self.memory = memory
         self.logger = logger
 
-        # Load prompt renderer
-        self.prompt_renderer = PromptRenderer(cfg=cfg, memory=memory, logger=logger)
-        
         # Input/output mapping
         self.input_keys = cfg.get("input_keys", [])
         self.output_key = cfg.get("output_key", "result")
@@ -40,7 +36,7 @@ class GenericAgent(BaseAgent):
                 return context
 
             # Build prompt from template and context
-            prompt = self.prompt_renderer.render(context)
+            prompt = self.prompt_loader.load_prompt(self.cfg, context)
 
             # Call LLM
             response = self.call_llm(prompt).strip()
