@@ -11,6 +11,16 @@ generation:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
+  embeddings:
+    model: "mxbai-embed-large"
+    dimension: 1024
+    endpoint: "http://localhost:11434/api/embeddings"
   prompt_mode: file
-  prompt_path: generation_hypothesis.txt  
+  prompt_path: out_of_the_box.txt
+  output_keys: hypothesis
   prompt_match_re: Hypothesis\s+\d+:\s+(.*?)(?=\nHypothesis\s+\d+:|\Z)
+  preferences:
+    - goal_consistency
+    - factual
+    - reliable_source
+    - simplicity

@@ -25,6 +25,7 @@ class BaseAgent(ABC):
         self.prompt_match_re = cfg.get("prompt_match_re", "")
         self.llm = self.init_llm()
         self.save_context = cfg.get("save_context", False)
+        self.output_keys = cfg.get("output_keys", cfg.name)
 
     def log(self, message, structured=True):
         if structured:
@@ -63,14 +64,13 @@ class BaseAgent(ABC):
             if self.cfg.get("save_prompt", False) and self.memory:
                 self.memory.store_prompt(
                     agent_name=self.__class__.__name__,
+                    prompt_key=self.cfg.get("prompt_path", ""),
                     prompt_text=prompt,
-                    response_text=response,
+                    response=output,
                     source=self.cfg.get("prompt_type", "file"),
                     strategy=self.cfg.get("strategy",  ""),
                     version=self.cfg.get("version", 1),
-                    metadata={
-                        "preferences": self.cfg
-                    }
+                    metadata={}
                 )
             return output
         except Exception as e:

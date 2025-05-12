@@ -3,12 +3,10 @@ import json
 import psycopg2
 from typing import List, Dict, Any
 
-from co_ai.memory.base_memory import BaseMemory
 from co_ai.memory.embedding_tool import get_embedding
-from co_ai.memory.hypothesis_model import Hypothesis
 from omegaconf import OmegaConf
 
-class VectorMemory(BaseMemory):
+class VectorMemory():
     def __init__(self, cfg, logger=None):
         """
         Initialize PostgreSQL connection using Hydra config.
@@ -29,39 +27,36 @@ class VectorMemory(BaseMemory):
         self.logger = logger
         self.cfg = cfg  # Store cfg if needed later
 
-    def store_hypothesis(self, hypothesis: Hypothesis):
+    def store_hypothesis(self, goal, text, confidence, review, features):
         try:
-            embedding = get_embedding(hypothesis.text, self.cfg)
-            hypothesis.embedding = embedding
+            embedding = get_embedding(text, self.cfg)
             with self.conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO hypotheses (goal, text, confidence, review, embedding, features, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO hypotheses (goal, text, confidence, review, features, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
                     (
-                        hypothesis.goal,
-                        hypothesis.text,
-                        hypothesis.confidence,
-                        hypothesis.review,
-                        embedding,
-                        json.dumps(hypothesis.features or []),
-                        hypothesis.created_at,
+                        goal,
+                        text,
+                        confidence,
+                        review,
+                        features,
+                        embedding
                     )
                 )
             # Log the operation
             if self.logger:
                 self.logger.log("HypothesisStored", {
-                    "goal": hypothesis.goal,
-                    "hypothesis_text": hypothesis.text[:200],
-                    "confidence": hypothesis.confidence,
-                    "created_at": hypothesis.created_at
+                    "goal": goal,
+                    "hypothesis_text": text[:200],
+                    "confidence": confidence
                 })
         except Exception as e:
             if self.logger:
                 self.logger.log("HypothesisStoreFailed", {
                     "error": str(e),
-                    "hypothesis_text": hypothesis.text[:200]
+                    "hypothesis_text": text[:200]
                 })
             else:
                 print(f"[VectorMemory] Failed to store hypothesis: {e}")
@@ -281,7 +276,7 @@ class VectorMemory(BaseMemory):
         try:
             # Fetch top hypotheses sorted by Elo rating
             cur.execute("""
-                 Oh sorry karmic i'm i'm just in the middle of something what are you sayingSELECT 
+                 SELECT 
                     hypothesis, 
                     reflection, 
                     elo_rating,
@@ -416,8 +411,54 @@ class VectorMemory(BaseMemory):
                 partial_context =  row[0]
                 result.update(partial_context)
 
-I had a long time gotta check this in             return result
-
+            return result
         except Exception as e:
             self.logger.log("ContextLoadFailed", {"error": str(e)})
             return {}
+        
+    def get_top_ranked_hypotheses(self, goal: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Retrieve top-ranked hypotheses based on Elo rating or review scores.
+        
+        Args:
+            goal: Research objective used to filter hypotheses
+            limit: Number of hypotheses to return
+            
+        Returns:
+            List of dicts containing hypothesis + metadata
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    SELECT 
+                        h.text AS hypothesis,
+                        h.review,
+                        h.elo_rating,
+                        h.source
+                    FROM hypotheses h
+                    WHERE h.goal = %s
+                    AND h.enabled IS NOT FALSE
+                    ORDER BY h.elo_rating DESC
+                    LIMIT %s
+                """, (goal[:200], limit))
+
+                rows = cur.fetchall()
+                result = []
+
+                for hyp, review, score, source, prompt_key, strategy in rows:
+                    result.append({
+                        "goal": goal,
+                        "hypothesis": hyp,
+                        "review": review or "",
+                        "score": score or 1000,
+                        "elo_rating": score or 1000,
+                        "prompt_key": prompt_key,
+                        "strategy_used": strategy,
+                        "source": source
+                    })
+
+                return result
+
+        except Exception as e:
+            print(f"[VectorMemory] Failed to load ranked hypotheses: {e}")
+            return []

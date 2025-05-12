@@ -1,5 +1,6 @@
 # co_ai/agents/generation.py
 import re
+from typing import Dict, Any
 
 from co_ai.agents.base import BaseAgent
 
@@ -12,19 +13,50 @@ class GenerationAgent(BaseAgent):
         goal = context.get("goal", "")
         self.log(f"Generating hypotheses for: {goal}")
 
-        # Use values from config
-        prompt = self.prompt_loader.load_prompt(self.cfg, context=context)
-        response = self.call_llm(prompt)
-        hypotheses = self.extract_list_items(response)
+        # Load literature if available
+        literature = context.get("literature", {})
+
+        # Build context for prompt
+        render_context = {
+            "literature": literature,
+            "feedback": context.get("feedback", {}),
+            "hypotheses": context.get("hypotheses", [])
+        }
+
+        # Load prompt based on strategy
+        prompt = self.prompt_loader.load_prompt(self.cfg,
+            context={**render_context, **context}
+        )
+
+        # Call LLM
+        response = self.call_llm(prompt).strip()
+
+        # Extract hypotheses
+        hypotheses = self.extract_hypothesis(response)
+
+        for h in hypotheses:
+            self.memory.store_hypothesis(goal, h, 0.0, None, None)
 
         self.log(f"Parsed {len(hypotheses)} hypotheses.")
-        context["hypotheses"] = hypotheses
+        
+        # Update context with new hypotheses
+        context[self.output_keys] = hypotheses
+
+        # Log event
         self.logger.log("GeneratedHypotheses", {
             "goal": goal,
-            "hypotheses": hypotheses
+            "hypotheses": hypotheses,
+            "prompt_snippet": prompt[:300],
+            "response_snippet": response[:500]
         })
+
         return context
 
-    def extract_list_items(self, text: str) -> list[str]:
-        matches = re.findall(self.prompt_match_re, text, flags=re.DOTALL)
-        return [match.strip() for match in matches]
+    import re
+
+    def extract_hypothesis(self,  text: str) -> list[str]:
+        pattern = re.compile(
+            r"(Hypothesis\s+\d+:\s*[\s\S]*?)(?=Hypothesis\s+\d+:|\Z)",  # grab from "Hypothesis X:" to next or end
+            re.IGNORECASE
+        )
+        return [match.strip() for match in pattern.findall(text)]

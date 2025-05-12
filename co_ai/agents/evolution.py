@@ -7,7 +7,6 @@ import re
 
 from co_ai.agents.base import BaseAgent
 from co_ai.memory.embedding_tool import get_embedding
-from co_ai.memory.hypothesis_model import Hypothesis
 
 class EvolutionAgent(BaseAgent):
     """

@@ -39,7 +39,7 @@ pipeline:
       iterations: 1
     - name: generation
       cls: co_ai.agents.generation.GenerationAgent
-      enabled: false
+      enabled: true
       iterations: 1
     - name: reflection
       cls: co_ai.agents.reflection.ReflectionAgent

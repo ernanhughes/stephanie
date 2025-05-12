@@ -33,7 +33,6 @@ class RankingAgent(BaseAgent):
                 - preferences: override criteria
         """
         hypotheses = context.get("hypotheses", [])
-        goal = context.get("goal", "Unknown goal")
 
         if len(hypotheses) < 2:
             self.logger.log("NotEnoughHypothesesForRanking", {
