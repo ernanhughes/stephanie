@@ -8,10 +8,8 @@ evolution:
   strategy: goal_aligned  # Options: goal_aligned, simplification, inspiration, out_of_the_box
   use_grafting: true
   save_prompt: true
-  preferences: 
-    - goal_consistency
-    - testability
-    - simplicity
+  save_context: true
+  skip_if_completed: true
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
@@ -22,3 +20,8 @@ evolution:
     endpoint: "http://localhost:11434/api/embeddings"
   prompt_mode: file
   prompt_path: evolution_simplification.txt
+  output_keys: evolution
+  preferences: 
+    - goal_consistency
+    - testability
+    - simplicity

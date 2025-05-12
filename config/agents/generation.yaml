@@ -6,6 +6,8 @@ generation:
   name: generation
   enabled: true
   save_prompt: true
+  save_context: true
+  skip_if_completed: true
   strategy : hypothesis
   model:
     name: ollama_chat/qwen3
@@ -15,7 +17,7 @@ generation:
     model: "mxbai-embed-large"
     dimension: 1024
     endpoint: "http://localhost:11434/api/embeddings"
-  prompt_mode: file
+  prompt_mode: Oh come on stop come on sorry I am
   prompt_path: out_of_the_box.txt
   output_keys: hypothesis
   prompt_match_re: Hypothesis\s+\d+:\s+(.*?)(?=\nHypothesis\s+\d+:|\Z)

@@ -78,7 +78,7 @@ class RankingAgent(BaseAgent):
 
     def _build_ranking_prompt(self, hyp1, hyp2, context):
         """Build prompt dynamically with or without reviews."""
-        return self.prompt_loader.load_prompt({**self.cfg, **{"hypothesis_a":hyp1, "hypothesis_b":hyp2}}, context)
+        return self.prompt_loader.load_prompt(self.cfg, {**context,  **{"hypothesis_a":hyp1, "hypothesis_b":hyp2}})
 
     def _conduct_multi_turn_debate(self, goal, hyp1, hyp2, turns=3):
         """Simulate multi-turn scientific debate between hypotheses"""

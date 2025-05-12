@@ -9,6 +9,8 @@ ranking:
   tournament_type: elo
   max_comparisons: 6
   save_prompt: true
+  save_context: true
+  skip_if_completed: true
   preferences:
     - goal_consistency
     - biological_plausibility

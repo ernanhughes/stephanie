@@ -6,6 +6,8 @@ literature_ranking:
   name: literature_ranking
   enabled: true
   save_prompt: true
+  save_context: true
+  skip_if_completed: true
   strategy: literature_ranking
   model:
     name: ollama/qwen3

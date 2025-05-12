@@ -89,9 +89,10 @@ class LiteratureAgent(BaseAgent):
 
         # Store in context
         context["literature"] = parsed_results
-        # context["literature_data"] = results
+        context["literature_data"] = results
 
-        self._save_context(context)
+        if self.cfg.get("save_context", False):
+            self._save_context(context)
         return context
 
     def _generate_search_query(self, context: dict) -> str:

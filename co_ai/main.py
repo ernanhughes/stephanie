@@ -21,7 +21,7 @@ def run(cfg: DictConfig):
 
         supervisor = Supervisor(cfg=cfg, memory=memory, logger=logger)
 
-        run_id = str(uuid.uuid4())
+        # run_id = str(uuid.uuid4())
         run_id = "Test Run"
         result = await supervisor.run_pipeline_config(
             {"goal":"The USA is on the verge of defaulting on its debt", "run_id":run_id}

@@ -9,6 +9,11 @@ class ReflectionAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", "")
+        if self.cfg.get("skip_if_completed", False):
+            results  = self._get_completed(context)
+            if results:
+                self.logger.log("ReflectionAgent", {"goal": goal})
+                return results
 
         hypotheses = context.get("hypothesis", [])
         reviews = []
@@ -25,4 +30,7 @@ class ReflectionAgent(BaseAgent):
             "goal": goal,
             "reviews": reviews
         })
+
+        if self.cfg.get("save_context", False):
+            self._save_context(context)
         return context

@@ -7,7 +7,7 @@ review:
   enabled: true
   save_prompt: true
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
   strategy: full_review  # Options: initial, full, observation, deep_verification
   model:
     name: ollama_chat/qwen3

@@ -3,11 +3,12 @@ import re
 from abc import ABC, abstractmethod
 
 import litellm
-import yaml
 
 from co_ai.logs import JSONLogger
 from co_ai.utils import PromptLoader
 
+def remove_think_blocks(text: str) -> str:
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 class BaseAgent(ABC):
     def __init__(self, cfg, memory=None, logger=None):
@@ -72,7 +73,7 @@ class BaseAgent(ABC):
                     version=self.cfg.get("version", 1),
                     metadata={}
                 )
-            return output
+            return remove_think_blocks(output)
         except Exception as e:
             self.log(f"LLM call failed: {e}", structured=False)
             raise

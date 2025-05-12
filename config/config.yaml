@@ -48,7 +48,7 @@ pipeline:
       iterations: 1
     - name: ranking
       cls: co_ai.agents.ranking.RankingAgent
-      enabled: false
+      enabled: true
       iterations: 1
     - name: proximity
       cls: co_ai.agents.proximity.ProximityAgent

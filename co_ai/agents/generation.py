@@ -11,6 +11,12 @@ class GenerationAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", "")
+        if self.cfg.get("skip_if_completed", False):
+            results  = self._get_completed(context)
+            if results:
+                self.logger.log("GenerationAgent", {"goal": goal})
+                return results
+
         self.log(f"Generating hypotheses for: {goal}")
 
         # Load literature if available
@@ -50,6 +56,8 @@ class GenerationAgent(BaseAgent):
             "response_snippet": response[:500]
         })
 
+        if self.cfg.get("save_context", False):
+            self._save_context(context)
         return context
 
     @staticmethod
