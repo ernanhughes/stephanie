@@ -41,7 +41,14 @@ class ProximityAgent(BaseAgent):
         current_hypotheses = context.get("hypotheses", [])
 
         # Fetch historical hypotheses from DB
-        db_hypotheses = self.memory.get_similar_hypotheses(current_goal, top_k=10)
+        db_hypotheses = self.memory.get_similar_hypotheses(current_goal, top_k=20)
+
+        # test change
+        context["hypotheses"] = [h["text"] for h in db_hypotheses]
+
+        db_hypotheses = self.memory.get_similar_hypotheses(current_goal, top_k=50)
+
+
         db_texts = [h["text"] for h in db_hypotheses]
 
         self.logger.log("DatabaseHypothesesMatched", {

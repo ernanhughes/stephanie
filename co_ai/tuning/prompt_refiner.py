@@ -51,7 +51,7 @@ class PromptRefiner:
     def refine_prompt(
         self,
         seed_prompts: List[str],
-        : List[Dict[str, Any]],
+        few_shot_data: List[Dict[str, Any]],
         agent_name: str,
         prompt_key: str,
         current_version: int = 1
@@ -63,7 +63,7 @@ class PromptRefiner:
         
         Args:
             seed_prompts: list of original prompts
-            few_shot_data: list of {"goal", "hypothesis", "review", "score"}
+            few_shot_data: list of {"goal", "hypotheses", "review", "score"}
             agent_name: name of agent using this prompt (e.g., generation, reflection)
             prompt_key: identifier like 'generation_goal_aligned.txt'
             current_version: current version number
@@ -76,7 +76,7 @@ class PromptRefiner:
         for item in few_shot_data:
             training_set.append({
                 "goal": item["goal"],
-                "hypothesis": item["hypothesis"],
+                "hypotheses": item["hypotheses"],
                 "review": item.get("review", ""),
                 "score": item.get("elo_rating", 1000)
             })

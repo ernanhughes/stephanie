@@ -34,10 +34,10 @@ pipeline:
       cls: co_ai.agents.literature.LiteratureAgent
       enabled: true
       iterations: 1
-    - name: literature_ranking
-      cls: co_ai.agents.generic.GenericAgent
-      enabled: false
-      iterations: 1
+#    - name: literature_ranking
+#      cls: co_ai.agents.generic.GenericAgent
+#      enabled: false
+#      iterations: 1
     - name: generation
       cls: co_ai.agents.generation.GenerationAgent
       enabled: true
@@ -46,19 +46,19 @@ pipeline:
       cls: co_ai.agents.review.ReviewAgent
       enabled: true
       iterations: 1
+    - name: proximity
+      cls: co_ai.agents.proximity.ProximityAgent
+      enabled: true
+      iterations: 1
     - name: ranking
       cls: co_ai.agents.ranking.RankingAgent
       enabled: true
       iterations: 1
-    - name: proximity
-      cls: co_ai.agents.proximity.ProximityAgent
-      enabled: false
-      iterations: 1 
     - name: evolution
       cls: co_ai.agents.evolution.EvolutionAgent
-      enabled: false
+      enabled: true
       iterations: 2
     - name: meta_review
       cls: co_ai.agents.meta_review.MetaReviewAgent
-      enabled: false
+      enabled: true
       iterations: 1

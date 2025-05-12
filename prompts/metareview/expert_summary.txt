@@ -1,0 +1,95 @@
+You are an expert researcher tasked with creating a concise, scientist-facing summary of the current state of hypothesis development.
+
+Goal: {goal}
+Preferences: {preferences}
+Additional instructions: {instructions}
+
+Input Hypotheses:
+{hypotheses}
+
+Input Reviews:
+{reviews}
+
+Instructions:
+1. Provide a short, evidence-based summary of the research goal and its importance.
+2. List the top-ranked hypotheses.
+3. Summarize the most compelling arguments from the reviews.
+4. Identify unresolved questions or missing components.
+
+Output in the following format:
+
+# Expert Summary: Scientific Hypothesis Review
+## Research Goal
+{goal}
+
+## Top Hypotheses
+1. [Hypothesis 1]
+2. [Hypothesis 2]
+3. [Hypothesis 3]
+
+## Strengths
+- [Strength 1]
+- [Strength 2]
+- [Strength 3]
+
+## Weaknesses
+- [Weakness 1]
+- [Weakness 2]
+- [Weakness 3]
+
+## Outstanding Questions
+- [Question 1]
+- [Question 2]
+- [Question 3]
+
+## Strategic Directions for Next Iteration
+- [Direction 1]
+- [Direction 2]
+- [Direction 3]You are an expert researcher tasked with creating a concise, scientist-facing summary of the current state of hypothesis development.
+
+Goal: {goal}
+Preferences: {preferences}
+Additional instructions: {instructions}
+
+Input Hypotheses:
+{hypotheses}
+
+Input Reviews:
+{reviews}
+
+Instructions:
+1. Provide a short, evidence-based summary of the research goal and its importance.
+2. List the top-ranked hypotheses.
+3. Summarize the most compelling arguments from the reviews.
+4. Identify unresolved questions or missing components.
+
+Output in the following format:
+
+# Expert Summary: Scientific Hypothesis Review
+## Research Goal
+{goal}
+
+## Top Hypotheses
+1. [Hypothesis 1]
+2. [Hypothesis 2]
+3. [Hypothesis 3]
+
+## Strengths
+- [Strength 1]
+- [Strength 2]
+- [Strength 3]
+
+## Weaknesses
+- [Weakness 1]
+- [Weakness 2]
+- [Weakness 3]
+
+## Outstanding Questions
+- [Question 1]
+- [Question 2]
+- [Question 3]
+
+## Strategic Directions for Next Iteration
+- [Direction 1]
+- [Direction 2]
+- [Direction 3]

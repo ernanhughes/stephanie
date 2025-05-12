@@ -55,7 +55,7 @@ def display_top_ranked(run_id=None):
         latest_scores[hypo] = score
     sorted_scores = sorted(latest_scores.items(), key=lambda x: x[1], reverse=True)
     print("\nTop-Ranked Hypotheses:\n")
-    print(tabulate(sorted_scores, headers=["Hypothesis", "ELO Score"], tablefmt="grid"))
+    print(tabulate(sorted_scores, headers=["hypotheses", "ELO Score"], tablefmt="grid"))
 
 def plot_elo_evolution(run_id=None):
     scores = fetch_elo_scores(run_id)

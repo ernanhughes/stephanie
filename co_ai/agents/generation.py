@@ -72,7 +72,7 @@ class GenerationAgent(BaseAgent):
         if matches:
             return [match.group(1).strip() for match in matches]
 
-        # Fallback: Split on the word "Hypothesis" and rebuild sections
+        # Fallback: Split on the word "hypotheses" and rebuild sections
         split_parts = re.split(r"\bHypothesis\s+\d+\b", text, flags=re.IGNORECASE)
 
         if len(split_parts) <= 1:

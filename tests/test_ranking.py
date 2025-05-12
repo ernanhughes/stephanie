@@ -7,8 +7,8 @@ async def test_ranking_agent_returns_sorted():
 
     input_data = {
         "hypotheses": [
-            {"hypothesis": "Hypo A", "review": "A review", "persona": "Optimist"},
-            {"hypothesis": "Hypo B", "review": "Another review", "persona": "Skeptic"},
+            {"hypotheses": "Hypo A", "review": "A review", "persona": "Optimist"},
+            {"hypotheses": "Hypo B", "review": "Another review", "persona": "Skeptic"},
         ]
     }
     result = await agent.run(input_data)

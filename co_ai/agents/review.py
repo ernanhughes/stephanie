@@ -16,15 +16,15 @@ class ReviewAgent(BaseAgent):
                 return results
 
 
-        hypotheses = context.get("hypothesis", [])
+        hypotheses = context.get("hypotheses", [])
         reviews = []
 
         for h in hypotheses:
             self.log(f"Generating review for: {h}")
-            prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{"hypothesis":h}})
+            prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{"hypotheses":h}})
             review = self.call_llm(prompt).strip()
             self.memory.store_review(h, review)
-            reviews.append({"hypothesis": h, "review": review})
+            reviews.append({"hypotheses": h, "review": review})
 
         context["reviews"] = reviews
         self.logger.log("GeneratedReviews", {

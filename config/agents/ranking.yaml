@@ -18,7 +18,7 @@ ranking:
     - novelty
     - simplicity
   model:
-    name: ollama_chat/qwen2.5
+    name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file

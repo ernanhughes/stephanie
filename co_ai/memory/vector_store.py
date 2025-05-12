@@ -137,14 +137,14 @@ class VectorMemory():
 
             if self.logger:
                 self.logger.log("RankingStored", {
-                    "hypothesis": hypothesis[:200],
+                    "hypotheses": hypothesis[:200],
                     "score": score
                 })
         except Exception as e:
             if self.logger:
                 self.logger.log("RankingStoreFailed", {
                     "error": str(e),
-                    "hypothesis": hypothesis[:200]
+                    "hypotheses": hypothesis[:200]
                 })
             else:
                 print(f"[VectorMemory] Failed to store ranking: {e}")
@@ -295,7 +295,7 @@ class VectorMemory():
                 
                 result.append({
                     "goal": goal,
-                    "hypothesis": hyp,
+                    "hypotheses": hyp,
                     "review": reflection_dict.get("full_review", ""),
                     "score": score,
                     "elo_rating": score,
@@ -448,7 +448,7 @@ class VectorMemory():
                 for hyp, review, score, source, prompt_key, strategy in rows:
                     result.append({
                         "goal": goal,
-                        "hypothesis": hyp,
+                        "hypotheses": hyp,
                         "review": review or "",
                         "score": score or 1000,
                         "elo_rating": score or 1000,

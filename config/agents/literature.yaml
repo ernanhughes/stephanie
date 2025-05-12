@@ -6,7 +6,7 @@ literature:
   name: literature
   enabled: true
   save_context: true
-  skip_if_completed: false
+  skip_if_completed: true
   strategy: query_and_summarize
   max_results: 15
   model:

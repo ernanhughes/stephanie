@@ -1,0 +1,34 @@
+You are an expert in biomedical ethics and safety evaluation.
+Review the following hypotheses and identify potential safety concerns or ethical implications.
+
+Goal: {goal}
+Preferences: {preferences}
+Additional instructions: {instructions}
+
+Hypotheses:
+{hypotheses}
+
+Reviews:
+{reviews}
+
+Instructions:
+1. Analyze each hypothesis for known safety risks.
+2. Flag mechanisms or drugs with toxicities or off-target effects.
+3. Suggest mitigation strategies where applicable.
+
+Output in the following format:
+
+# Safety Evaluation Summary
+[Brief summary of overall safety profile]
+
+# Flags for Further Review
+- [Hypothesis]: [Reason]
+- [Hypothesis]: [Reason]
+
+# Mitigation Suggestions
+- [Suggestion 1]
+- [Suggestion 2]
+- [Suggestion 3]
+
+# Final Recommendation
+[safe / requires expert review / unsafe]

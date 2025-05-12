@@ -114,7 +114,7 @@ class RankingAgent(BaseAgent):
 
         return {
             "top_performers": [
-                {"hypothesis": h, "wins": w}
+                {"hypotheses": h, "wins": w}
                 for h, w in sorted(win_counts.items(), key=lambda x: x[1], reverse=True)
             ],
             "total_matches": len(self.win_history),
@@ -130,8 +130,8 @@ class RankingAgent(BaseAgent):
         comparisons = random.sample(pairs, k=min(self.cfg.get("max_comparisons", 6), len(pairs)))
 
         for item1, item2 in comparisons:
-            hyp1 = item1["hypothesis"]
-            hyp2 = item2["hypothesis"]
+            hyp1 = item1["hypotheses"]
+            hyp2 = item2["hypotheses"]
 
             merged = {**self.cfg, **{"hypothesis_a": hyp1, "hypothesis_b": hyp2}}
 

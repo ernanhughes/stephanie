@@ -30,7 +30,7 @@ class PromptTuner:
         Attempt to improve the prompt using real-world data.
         
         Args:
-            few_shot_data: list of {"goal", "hypothesis", "review", "score"}
+            few_shot_data: list of {"goal", "hypotheses", "review", "score"}
             model_config: dict with LLM settings
         
         Returns:

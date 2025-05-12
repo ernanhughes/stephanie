@@ -22,15 +22,6 @@ class EvolutionAgent(BaseAgent):
     "The Evolution agent continuously refines and improves existing hypotheses..."
     """
 
-    PROMPT_MAP = {
-        "goal_aligned": "evolution_goal_aligned.txt",
-        "inspiration": "evolution_inspiration.txt",
-        "feasibility": "evolution_feasibility.txt",
-        "simplification": "evolution_simplification.txt",
-        "out_of_the_box": "evolution_out_of_the_box.txt",
-        # "grafting": "evolution_grafting.txt" causes too much trouble
-    }
-
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         print(f"Initializing Evolution Agent: {cfg}")
@@ -46,7 +37,7 @@ class EvolutionAgent(BaseAgent):
         
         Args:
             context: Dictionary with keys:
-                - ranked: list of (hypothesis, score) tuples
+                - ranked: list of (hypotheses, score) tuples
                 - hypotheses: list of unranked hypotheses (fallback)
                 - preferences: override criteria for refinement
         """
@@ -63,24 +54,22 @@ class EvolutionAgent(BaseAgent):
             self.logger.log("NoHypothesesToEvolve", {
                 "reason": "no_ranked_or_unranked_input"
             })
-            return {"evolved": []}
+            context["evolved"] = []
+            return context
 
         evolved = []
         for h in top_texts:
             try:
-                prompt = self.prompt_loader.load_prompt({**self.cfg, **{"hypothesis":h}}, context)
+                prompt = self.prompt_loader.load_prompt({**self.cfg, **{"hypotheses":h}}, context)
                 raw_output = self.call_llm(prompt).strip()
                 refined_list = self.extract_list_items(raw_output)
 
                 if refined_list:
                     for r in refined_list:
-                        hypothesis = Hypothesis(
-                            goal="Evolved from top-ranked",
-                            text=r.strip(),
-                            source="evolution"
-                        )
-                        self.memory.store_hypothesis(hypothesis)
-                        evolved.append(hypothesis)
+                        goal = context.get("goal", "")
+                        evol_goal= f"Evolved from top-ranked {goal}"
+                        self.memory.store_hypothesis(evol_goal, h, None, None, None)
+                        evolved.append(r)
                 else:
                     self.logger.log("EvolutionFailed", {
                         "original": h[:100],
@@ -90,7 +79,7 @@ class EvolutionAgent(BaseAgent):
             except Exception as e:
                 self.logger.log("EvolutionError", {
                     "error": str(e),
-                    "hypothesis": h[:100]
+                    "hypotheses": h[:100]
                 })
 
         context["evolved"] = evolved
@@ -140,15 +129,27 @@ class EvolutionAgent(BaseAgent):
         return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
 
     def extract_list_items(self, text: str) -> list[str]:
-        """
-        Extract items from a numbered list in the LLM response.
-        """
-        lines = text.strip().splitlines()
-        items = []
+        # First attempt: Try precise regex-based extraction
+        pattern = re.compile(
+            r"(# Hypothesis\s+\d+\s*\n(?:.*?\n)*?)(?=(# Hypothesis\s+\d+|\Z))",
+            re.IGNORECASE
+        )
+        matches = list(pattern.finditer(text))
 
-        for line in lines:
-            if line.lstrip().startswith(tuple(str(i) + "." for i in range(1, 10))):
-                content = line.lstrip()[2:].strip()
-                if content:
-                    items.append(content)
-        return items
+        if matches:
+            return [match.group(1).strip() for match in matches]
+
+        # Fallback: Split on the word "hypotheses" and rebuild sections
+        split_parts = re.split(r"\bHypothesis\s+\d+\b", text, flags=re.IGNORECASE)
+
+        if len(split_parts) <= 1:
+            return []  # No valid hypotheses found at all
+
+        # Reconstruct each hypothesis section
+        hypotheses = []
+        for i, part in enumerate(split_parts[1:], start=1):  # Skip preamble
+            cleaned = part.strip()
+            if cleaned:
+                hypotheses.append(f"Hypothesis {i} {cleaned}")
+
+        return hypotheses
