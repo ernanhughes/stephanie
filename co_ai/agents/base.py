@@ -62,10 +62,15 @@ class BaseAgent(ABC):
             output = response["choices"][0]["message"]["content"]
             if self.cfg.get("save_prompt", False) and self.memory:
                 self.memory.store_prompt(
-                    self.__class__.__name__,
-                    self.cfg.get("prompt_path", self.cfg.get("prompt_", "default")),
-                    prompt,
-                    output,
+                    agent_name=self.__class__.__name__,
+                    prompt_text=prompt,
+                    response_text=response,
+                    source=self.cfg.get("prompt_type", "file"),
+                    strategy=self.cfg.get("strategy",  ""),
+                    version=self.cfg.get("version", 1),
+                    metadata={
+                        "preferences": self.cfg
+                    }
                 )
             return output
         except Exception as e:
@@ -84,10 +89,12 @@ class BaseAgent(ABC):
     def _save_context(self, context: dict):
         if self.memory and self.cfg.get("save_context", False):
             run_id = context.get("run_id")
-            self.memory.save_context(run_id, self.__class__.__name__, context, self.cfg)
+            name = self.cfg.get("name", self.__class__.__name__)
+            self.memory.save_context(run_id, name, context, self.cfg)
 
     def _get_completed(self, context: dict) -> dict | None :
         run_id = context.get("run_id")
-        if self.memory.has_completed(run_id, self.__class__.__name__):
-           return self.memory.load_context(self.__class__.__name__, run_id)
+        name = self.cfg.get("name", self.__class__.__name__)
+        if self.memory.has_completed(run_id, name):
+           return self.memory.load_context(run_id, name)
         return None

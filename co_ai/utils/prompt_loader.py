@@ -1,7 +1,7 @@
 # co_ai/utils/prompt_loader.py
+
 import os
 from pathlib import Path
-
 from jinja2 import Template
 
 def get_text_from_file(file_path: str) -> str:
@@ -16,23 +16,24 @@ class PromptLoader:
 
     def load_prompt(self, config: dict, context: dict) -> str:
         """
-        Load prompt based on configured strategy: file, template, tuning, or static
-        
+        Load prompt based on configured strategy: file, template, tuning, or static.
+
         Args:
             config: Agent config with prompt_type, prompt_text, etc.
             context: Shared pipeline context
-            
+
         Returns:
             str: The loaded prompt text
         """
         prompt_type = config.get("prompt_type", "file")
-
         prompts_dir = context.get("prompts_dir", "prompts")
+
         if not os.path.isdir(prompts_dir):
             raise FileNotFoundError(f"Prompts Directory not found: {prompts_dir}")
-    
+
         try:
-            merged = {**context, **config}
+            merged = self._merge_context(config, context)
+
             if prompt_type == "static":
                 return config.get("prompt_text", "")
 
@@ -48,25 +49,27 @@ class PromptLoader:
                 return self._load_best_version(agent_name, context.get("goal", ""), merged)
 
             else:
-                return self._fallback_prompt()
+                return self._fallback_prompt(context.get("goal", ""))
 
         except Exception as e:
-            self.logger.log(f"PromptLoadFailed", {
-                "agent": config.get("name", "default"),
-                "error": str(e),
-                "config_used": config
-            })
-            return self._fallback_prompt()
+            if self.logger:
+                self.logger.log("PromptLoadFailed", {
+                    "agent": config.get("name", "default"),
+                    "error": str(e),
+                    "config_used": config
+                })
+            return self._fallback_prompt(context.get("goal", ""))
 
     def from_file(self, file_name: str, config: dict, context: dict) -> str:
         """Load prompt from a specific file"""
         path = self.get_file_name(file_name, config, context)
         prompt = get_text_from_file(path)
-        merged = {**context, **config}
+        merged = self._merge_context(config, context)
         return prompt.format(**merged)
 
     @staticmethod
-    def get_file_name(file_name: str, cfg: dict, context: dict):
+    def get_file_name(file_name: str, cfg: dict, context: dict) -> str:
+        """Constructs a file path for a prompt file"""
         prompts_dir = context.get("prompts_dir", "prompts")
         if file_name.endswith(".txt"):
             path = os.path.join(prompts_dir, f"{cfg['name']}/{file_name}")
@@ -81,18 +84,24 @@ class PromptLoader:
 
     def _load_from_file(self, config: dict) -> str:
         """Load prompt from disk"""
-        prompt_dir = config.get("prompts_dir", f"prompts/")
-        strategy = config.get("strategy", "default.txt")
-        
+        prompt_dir = config.get("prompts_dir", "prompts/")
+        strategy = config.get("strategy", "default")
         path = os.path.join(prompt_dir, f"{config['name']}/{strategy}.txt")
-        print(f"Path: {path}")
+
         prompt = get_text_from_file(path)
-        prompt_result = prompt.format(config)
-        print(f"Prompt From file {prompt_result}")
-        return prompt_result
+        merged = self._merge_context(config, {})
+        try:
+            return prompt.format(**merged)
+        except KeyError as ke:
+            if self.logger:
+                self.logger.log("PromptFormattingError", {
+                    "missing_key": str(ke),
+                    "path": path
+                })
+            return prompt  # Return unformatted version as fallback
 
     def _load_best_version(self, agent_name: str, goal: str, config: dict) -> str:
-        """Load most effective prompt version from history"""
+        """Load the most effective prompt version from memory"""
         best_prompt = self.memory.get_best_prompt_for_agent(
             agent_name=agent_name,
             strategy=config.get("strategy", "default"),
@@ -102,9 +111,15 @@ class PromptLoader:
         if best_prompt:
             return best_prompt["prompt_text"]
         else:
-            self.log("UsingFallbackPrompt", {"reason": "no_tuned_prompt_found"})
+            if self.logger:
+                self.logger.log("UsingFallbackPrompt", {"reason": "no_tuned_prompt_found"})
             return self._load_from_file(config)
 
-    def _fallback_prompt(self) -> str:
+    def _fallback_prompt(self, goal: str = "") -> str:
         """Hardcoded fallback if everything else fails"""
-        return "Generate hypothesis for goal: {goal}"
+        return f"Generate hypothesis for goal: {goal or '[unspecified goal]'}"
+
+    @staticmethod
+    def _merge_context(config: dict, context: dict) -> dict:
+        """Merge context and config dictionaries"""
+        return {**context, **config}

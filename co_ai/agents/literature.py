@@ -1,12 +1,10 @@
 # co_ai/agents/literature.py
 import re
-from typing import Dict, Any, List
 
 from co_ai.agents.base import BaseAgent
 from co_ai.logs import JSONLogger
 from co_ai.memory import VectorMemory
 from co_ai.tools import WebSearchTool
-from co_ai.utils import get_text_from_file
 
 
 class LiteratureAgent(BaseAgent):
@@ -25,6 +23,7 @@ class LiteratureAgent(BaseAgent):
         self.max_results = cfg.get("max_results", 5)
 
         self.web_search_tool = WebSearchTool()
+
         self.logger.log("LiteratureAgentInit", {
             "strategy": self.strategy,
             "preferences": self.preferences,
@@ -40,6 +39,14 @@ class LiteratureAgent(BaseAgent):
                 - goal: Research objective
                 - preferences: Optional override of evaluation criteria
         """
+        if self.cfg.get("skip_if_completed", False):
+            results  = self._get_completed(context)
+            if results:
+                self.logger.log("LiteratureSearchSkipped", {
+                    "goal": context.get("goal", "")
+                })
+                return results
+
         self.log(f"Searching literature for: {context}")
 
         # Step 1: Generate search query using LLM
@@ -67,11 +74,11 @@ class LiteratureAgent(BaseAgent):
             summary_context = {**{"title": result["title"], "link":result["href"], "snippet":result["body"]}, **context}
             summary = self._summarize_result(summary_context)
             if summary.strip():
-                parsed_results.append({
-                    "title": result["title"],
-                    "href": result["href"],
-                    "summary": summary
-                })
+                parsed_results.append(f"""
+                    [Title: {result["title"]}]({result["href"]})\n
+                    Summary: {summary}
+                    """
+                )
 
         # Log full search results
         self.logger.log("LiteratureSearchCompleted", {
@@ -82,6 +89,7 @@ class LiteratureAgent(BaseAgent):
 
         # Store in context
         context["literature"] = parsed_results
+        # context["literature_data"] = results
 
         self._save_context(context)
         return context
@@ -101,7 +109,7 @@ class LiteratureAgent(BaseAgent):
             match = re.search(r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE)
             if match:
                 query = match.group(1).strip()
-                print(f"Search Query: {query}")
+                self.logger.log("SearchQuery",{"Search Query": query})
                 return query
 
             # Final fallback: use goal as-is

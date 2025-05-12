@@ -6,6 +6,7 @@ literature:
   name: literature
   enabled: true
   save_context: true
+  skip_if_completed: true
   strategy: query_and_summarize
   max_results: 5
   model:
@@ -17,6 +18,6 @@ literature:
   parse_prompt: parse.txt
   preferences:
     - goal_consistency
-    - biological_plausibility
-    - novelty
+    - factual
+    - reliable_source
     - simplicity

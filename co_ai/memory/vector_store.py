@@ -314,6 +314,21 @@ class VectorMemory(BaseMemory):
         finally:
             cur.close()
 
+    def get_latest_context_version(self, run_id: str, stage: str) -> int:
+        """Get the latest version of this context stage"""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    SELECT MAX(version) FROM context_states
+                    WHERE run_id = %s AND stage_name = %s
+                """, (run_id, stage))
+
+                result = cur.fetchone()[0]
+                return result if result else 0
+        except Exception as e:
+            print(f"[VectorMemory] Failed to load version: {e}")
+            return 0
+
     def save_context(self, run_id: str, stage: str, context: dict, preferences: dict = None, metadata: dict = None):
         """
         Save the current context state to the database.
@@ -333,12 +348,16 @@ class VectorMemory(BaseMemory):
                     WHERE run_id = %s AND stage_name = %s
                 """, (run_id, stage))
 
+                # Get next version number
+                latest_version = self.get_latest_context_version(run_id, stage)
+                new_version = latest_version + 1
+
                 cfg_dict = OmegaConf.to_container(preferences, resolve=True)
                 # Insert new context state
                 cur.execute("""
-                    INSERT INTO context_states (run_id, stage_name, context, preferences, metadata)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (run_id, stage, json.dumps(context), json.dumps(cfg_dict or {}), json.dumps(metadata or {})))
+                    INSERT INTO context_states (run_id, stage_name, version, context, preferences, metadata)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (run_id, stage, new_version, json.dumps(context), json.dumps(cfg_dict  or {}), json.dumps(metadata or {})))
 
                 self.conn.commit()
         except Exception as e:
@@ -394,10 +413,10 @@ class VectorMemory(BaseMemory):
             # Reconstruct context by merging all stages up to this point
             result = {}
             for row in rows:
-                partial_context = json.loads(row[0])
+                partial_context =  row[0]
                 result.update(partial_context)
 
-            return result
+I had a long time gotta check this in             return result
 
         except Exception as e:
             self.logger.log("ContextLoadFailed", {"error": str(e)})
