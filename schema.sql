@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     goal TEXT NOT NULL,                -- Research objective
     text TEXT NOT NULL,               -- Hypothesis statement
     confidence FLOAT DEFAULT 0.0,     -- Confidence score (0–1 scale)
-    review JSONB,                     -- Structured review data
+    review TEXT,                     -- Structured review data
     elo_rating FLOAT DEFAULT 1000.0,  -- Tournament ranking score
     embedding VECTOR(1024),           -- Vector representation of hypothesis
     features JSONB,                   -- Mechanism, rationale, experiment plan

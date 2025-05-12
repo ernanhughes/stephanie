@@ -94,7 +94,7 @@ class VectorMemory():
                 print(f"[VectorMemory] Search failed: {e}")
             return []
 
-    def store_review(self, hypothesis_text: str, review: str):
+    def store_review(self, hypothesis_text: str, review: dict):
         try:
             with self.conn.cursor() as cur:
                 cur.execute(

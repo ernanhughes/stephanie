@@ -10,12 +10,12 @@ class ReflectionAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", "")
 
-        hypotheses = context.get("hypotheses", [])
+        hypotheses = context.get("hypothesis", [])
         reviews = []
 
         for h in hypotheses:
             self.log(f"Generating review for: {h}")
-            prompt = self.prompt_loader.load_prompt({**self.cfg, **{"hypothesis":h}}, context)
+            prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{"hypothesis":h}})
             review = self.call_llm(prompt).strip()
             self.memory.store_review(h, review)
             reviews.append({"hypothesis": h, "review": review})

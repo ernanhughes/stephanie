@@ -32,7 +32,7 @@ class GenerationAgent(BaseAgent):
         response = self.call_llm(prompt).strip()
 
         # Extract hypotheses
-        hypotheses = self.extract_hypothesis(response)
+        hypotheses = self.extract_hypotheses(response)
 
         for h in hypotheses:
             self.memory.store_hypothesis(goal, h, 0.0, None, None)
@@ -52,11 +52,29 @@ class GenerationAgent(BaseAgent):
 
         return context
 
-    import re
-
-    def extract_hypothesis(self,  text: str) -> list[str]:
+    @staticmethod
+    def extract_hypotheses(text: str):
+        # First attempt: Try precise regex-based extraction
         pattern = re.compile(
-            r"(Hypothesis\s+\d+:\s*[\s\S]*?)(?=Hypothesis\s+\d+:|\Z)",  # grab from "Hypothesis X:" to next or end
+            r"(# Hypothesis\s+\d+\s*\n(?:.*?\n)*?)(?=(# Hypothesis\s+\d+|\Z))",
             re.IGNORECASE
         )
-        return [match.strip() for match in pattern.findall(text)]
+        matches = list(pattern.finditer(text))
+
+        if matches:
+            return [match.group(1).strip() for match in matches]
+
+        # Fallback: Split on the word "Hypothesis" and rebuild sections
+        split_parts = re.split(r"\bHypothesis\s+\d+\b", text, flags=re.IGNORECASE)
+
+        if len(split_parts) <= 1:
+            return []  # No valid hypotheses found at all
+
+        # Reconstruct each hypothesis section
+        hypotheses = []
+        for i, part in enumerate(split_parts[1:], start=1):  # Skip preamble
+            cleaned = part.strip()
+            if cleaned:
+                hypotheses.append(f"Hypothesis {i} {cleaned}")
+
+        return hypotheses

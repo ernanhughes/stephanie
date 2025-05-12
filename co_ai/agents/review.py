@@ -2,7 +2,7 @@
 from co_ai.agents.base import BaseAgent
 
 
-class ReflectionAgent(BaseAgent):
+class ReviewAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.cfg = cfg

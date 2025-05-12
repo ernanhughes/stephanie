@@ -4,6 +4,7 @@ defaults:
   - db: postgres
   - logging/json_logger
   - agents/generation
+  - agents/review
   - agents/reflection
   - agents/ranking
   - agents/evolution
@@ -41,9 +42,9 @@ pipeline:
       cls: co_ai.agents.generation.GenerationAgent
       enabled: true
       iterations: 1
-    - name: reflection
-      cls: co_ai.agents.reflection.ReflectionAgent
-      enabled: false
+    - name: review
+      cls: co_ai.agents.review.ReviewAgent
+      enabled: true
       iterations: 1
     - name: ranking
       cls: co_ai.agents.ranking.RankingAgent
