@@ -85,7 +85,7 @@ class Supervisor:
                     self.logger.log("PipelineIterationEnd", {
                         "stage": stage.name,
                         "iteration": i + 1,
-                        "context_snapshot": {k: v[:3] if isinstance(v, list) else v for k, v in context.items()}
+                        # "context_snapshot": {k: v[:3] if isinstance(v, list) else v for k, v in context.items()}
                     })
 
 

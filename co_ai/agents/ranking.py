@@ -208,7 +208,7 @@ class RankingAgent(BaseAgent):
             return "A" if winner_key == "1" else "B"
 
         # Default fallback logic
-        print("[⚠️] Could not extract winner from response.")
+        self.logger.log("[⚠️] Could not extract winner from response.")
         self.logger.log("ParseError", {
                     "error": "Could not extract winner from response",
                     "response": response

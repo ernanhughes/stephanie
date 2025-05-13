@@ -23,11 +23,11 @@ class EvolutionAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        print(f"Initializing Evolution Agent: {cfg}")
+        self.logger.log(f"Initializing Evolution Agent: {cfg}")
         self.strategy = cfg.get("strategy", "grafting")
         self.use_grafting = cfg.get("use_grafting", False)
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
-        print(f"Evolution Preferences: {self.preferences}")
+        self.logger.log(f"Evolution Preferences: {self.preferences}")
         self.cfg = cfg
 
     async def run(self, context: dict) -> dict:
