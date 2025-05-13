@@ -2,7 +2,9 @@
 
 import os
 from pathlib import Path
+
 from jinja2 import Template
+
 
 def get_text_from_file(file_path: str) -> str:
     """Get text from a file"""
@@ -102,7 +104,7 @@ class PromptLoader:
 
     def _load_best_version(self, agent_name: str, goal: str, config: dict) -> str:
         """Load the most effective prompt version from memory"""
-        best_prompt = self.memory.get_best_prompt_for_agent(
+        best_prompt = self.memory.prompt.get_best_prompt_for_agent(
             agent_name=agent_name,
             strategy=config.get("strategy", "default"),
             goal=goal

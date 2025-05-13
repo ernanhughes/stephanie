@@ -40,7 +40,7 @@ class GenerationAgent(BaseAgent):
         hypotheses = self.extract_hypotheses(response)
 
         for h in hypotheses:
-            self.memory.store_hypothesis(goal, h, 0.0, None, None)
+            self.memory.hypotheses.store(goal, h, 0.0, None, None)
 
         self.log(f"Parsed {len(hypotheses)} hypotheses.")
         

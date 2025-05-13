@@ -1,11 +1,15 @@
-import psycopg2
-from co_ai.memory import ContextStore, EmbeddingStore, HypothesisStore, PromptLogger, ReportLogger
-from co_ai.memory.base_store import BaseStore
 from typing import Optional
+
+import psycopg2
+
+from co_ai.memory import (ContextStore, EmbeddingStore, HypothesesStore,
+                          PromptLogger, ReportLogger)
+from co_ai.memory import BaseStore
+
 
 class MemoryTool:
     def __init__(self, cfg, logger=None):
-
+        self._stores = {}
         db_config = cfg.db  # Load DB config from Hydra
         self.conn = psycopg2.connect(
             dbname=db_config.database,
@@ -19,29 +23,24 @@ class MemoryTool:
         self.cfg = cfg  # Store cfg if needed later
         self.db = self.conn.cursor()
 
-
         self.logger = logger
-        self.embeddings = EmbeddingStore(self.db, cfg.embeddings, logger)
-        self.hypotheses = HypothesisStore(self.db, self.embeddings, logger)
-        self.context = ContextStore(self.db, logger)
-        self.prompts = PromptLogger(self.db, logger)
-        self.reports = ReportLogger(self.db, logger)
 
         self.register_store(EmbeddingStore(self.db, cfg.embeddings, logger))
-        self.register_store(HypothesisStore(self.db, self.get("embedding"), logger))
+        self.register_store(HypothesesStore(self.db, self.get("embedding"), logger))
         self.register_store(ContextStore(self.db, logger))
         self.register_store(PromptLogger(self.db, logger))
         self.register_store(ReportLogger(self.db, logger))
 
         # Register extra pluggable stores
-        if cfg.extra_stores:
-            for store in cfg.extra_stores:
+        if cfg.get("extra_stores"):
+            for store in cfg.get("extra_stores"):
                 self.register_store(store)
 
     def register_store(self, store: BaseStore):
         if store.name in self._stores:
             raise ValueError(f"A store with name '{store.name}' is already registered.")
         self._stores[store.name] = store
+        print(f"Added {store.name} :=> {store}")
         if self.logger:
             self.logger.log("StoreRegistered", {"store": store.name})
 

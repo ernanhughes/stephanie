@@ -1,6 +1,7 @@
 # co_ai/memory/base_store.py
 from abc import ABC, abstractmethod
 
+
 class BaseStore(ABC):
     @property
     @abstractmethod

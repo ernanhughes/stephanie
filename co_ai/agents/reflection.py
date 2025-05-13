@@ -22,7 +22,7 @@ class ReflectionAgent(BaseAgent):
             self.log(f"Generating review for: {h}")
             prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{"hypotheses":h}})
             review = self.call_llm(prompt).strip()
-            self.memory.store_review(h, review)
+            self.memory.hypotheses.store_review(h, review)
             reviews.append({"hypotheses": h, "review": review})
 
         context["reviews"] = reviews

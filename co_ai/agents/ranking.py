@@ -6,6 +6,7 @@ from typing import Optional
 
 from co_ai.agents.base import BaseAgent
 
+
 class RankingAgent(BaseAgent):
     """
     The Ranking agent simulates scientific debate between hypotheses using a tournament-style approach.
@@ -170,8 +171,8 @@ class RankingAgent(BaseAgent):
         self.elo_scores[hyp1] = max(100, min(2800, self.elo_scores[hyp1] + K * (S1 - E1)))
         self.elo_scores[hyp2] = max(100, min(2800, self.elo_scores[hyp2] + K * (S2 - E2)))
 
-        self.memory.store_ranking(hyp1, self.elo_scores[hyp1])
-        self.memory.store_ranking(hyp2, self.elo_scores[hyp2])
+        self.memory.hypotheses.store_ranking(hyp1, self.elo_scores[hyp1])
+        self.memory.hypotheses.store_ranking(hyp2, self.elo_scores[hyp2])
 
         self.win_history.append((hyp1, hyp2, winner))
         self.logger.log("RankingUpdated", {

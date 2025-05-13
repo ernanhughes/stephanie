@@ -7,6 +7,7 @@ import litellm
 from co_ai.logs import JSONLogger
 from co_ai.utils import PromptLoader
 
+
 def remove_think_blocks(text: str) -> str:
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
@@ -63,12 +64,12 @@ class BaseAgent(ABC):
             )
             output = response["choices"][0]["message"]["content"]
             if self.cfg.get("save_prompt", False) and self.memory:
-                self.memory.store_prompt(
+                self.memory.prompt.log(
                     agent_name=self.__class__.__name__,
                     prompt_key=self.cfg.get("prompt_path", ""),
                     prompt_text=prompt,
                     response=output,
-                    source=self.cfg.get("prompt_type", "file"),
+                    # source=self.cfg.get("prompt_type", "file"),
                     strategy=self.cfg.get("strategy",  ""),
                     version=self.cfg.get("version", 1),
                     metadata={}
@@ -91,11 +92,12 @@ class BaseAgent(ABC):
         if self.memory and self.cfg.get("save_context", False):
             run_id = context.get("run_id")
             name = self.cfg.get("name", self.__class__.__name__)
-            self.memory.save_context(run_id, name, context, self.cfg)
+            self.memory.context.save_context(run_id, name, context, self.cfg)
 
     def _get_completed(self, context: dict) -> dict | None :
         run_id = context.get("run_id")
         name = self.cfg.get("name", self.__class__.__name__)
-        if self.memory.has_completed(run_id, name):
-           return self.memory.load_context(run_id, name)
+        if self.memory.context.has_completed(run_id, name):
+           return self.memory.context.load_context(run_id, name)
         return None
+

@@ -10,7 +10,7 @@ ranking:
   max_comparisons: 6
   save_prompt: true
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
   preferences:
     - goal_consistency
     - biological_plausibility

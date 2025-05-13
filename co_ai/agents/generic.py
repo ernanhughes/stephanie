@@ -1,5 +1,6 @@
 # co_ai/agents/generic_agent.py
 import re
+
 from co_ai.agents.base import BaseAgent
 
 

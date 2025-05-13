@@ -22,3 +22,8 @@ literature:
     - factual
     - reliable_source
     - simplicity
+  web_search:
+    engine: "searxng"
+    instance_url: "http://localhost:8080"
+    max_results: 20
+  

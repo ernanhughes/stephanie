@@ -22,7 +22,7 @@ class LiteratureAgent(BaseAgent):
         self.preferences = cfg.get("preferences", ["goal_consistency", "novelty"])
         self.max_results = cfg.get("max_results", 5)
 
-        self.web_search_tool = WebSearchTool()
+        self.web_search_tool = WebSearchTool(cfg.get("web_search", {}))
 
         self.logger.log("LiteratureAgentInit", {
             "strategy": self.strategy,
@@ -59,7 +59,7 @@ class LiteratureAgent(BaseAgent):
         self.log("SearchingWeb", {"query": search_query, "goal": goal})
 
         # Step 2: Perform web search
-        results = self.web_search_tool.search(search_query, max_results=self.max_results)
+        results = await self.web_search_tool.search(search_query, max_results=self.max_results)
         if not results:
             self.logger.log("NoResultsFromWebSearch", {
                 "goal_snippet": goal[:60],

@@ -1,9 +1,14 @@
-from co_ai.memory.base_store import BaseStore
+from co_ai.memory import BaseStore
+
 
 class ReportLogger(BaseStore):
     def __init__(self, db, logger=None):
         self.db = db
         self.logger = logger
+        self.name = "report"
+
+    def name(self) -> str:
+        return "report"
 
     def log(self, run_id, goal, summary, path):
         try:

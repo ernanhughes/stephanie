@@ -1,7 +1,8 @@
 # co_ai/tuning/prompt_refiner.py
 
-from dspy import InputField, OutputField, Predict, Signature, configure, LM, BootstrapFewShot
 import requests
+from dspy import (LM, BootstrapFewShot, InputField, OutputField, Predict,
+                  Signature, configure)
 
 
 class HypothesisRefinementSignature(Signature):
@@ -105,7 +106,7 @@ class PromptRefiner:
                 "new_score": new_score
             })
 
-            self.memory.store_prompt_version(
+            self.memory.hypotheses.store_prompt_version(
                 agent_name=agent_name,
                 prompt_key=prompt_key,
                 prompt_text=refined_prompt,
@@ -156,4 +157,4 @@ class PromptRefiner:
 
     def _get_few_shot_data(self, goal: str) -> list[dict[str, any]]:
         """Pull ranked hypotheses and reviews from memory"""
-        return self.memory.get_ranked_hypotheses(goal)
+        return self.memory.get_ranked(goal)

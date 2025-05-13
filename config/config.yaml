@@ -14,13 +14,23 @@ defaults:
   - agents/literature_ranking
   - agents/supervisor
 
+# The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
+# This is a placeholder and should be replaced with the actual goal.
+goal: ""
+
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
 report:
   generate_report: true
   path: ${hydra:runtime.cwd}/reports
-  
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+  max_results: 20
+
+
 embeddings:
   model: "mxbai-embed-large"
   dimension: 1024

@@ -4,7 +4,8 @@ import psycopg2
 
 from co_ai.tools.embedding_tool import get_embedding
 
-class VectorMemory():
+
+class VectorMemory:
     def __init__(self, cfg, logger=None):
         """
         Initialize PostgreSQL connection using Hydra config.
@@ -227,7 +228,7 @@ class VectorMemory():
             else:
                 print(f"[VectorMemory] Failed to log Report: {e}")
 
-    def get_similar_hypotheses(self, goal: str, top_k: int = 5) -> list[dict[str, any]]:
+    def get_similar(self, goal: str, top_k: int = 5) -> list[dict[str, any]]:
         """
         Retrieve most similar hypotheses based on current goal or hypothesis.
         
@@ -259,7 +260,7 @@ class VectorMemory():
             print(f"[VectorMemory] Failed to fetch similar hypotheses: {e}")
             return []
         
-    def get_ranked_hypotheses(self, goal: str, limit: int = 5) -> list[dict[str, any]]:
+    def get_ranked(self, goal: str, limit: int = 5) -> list[dict[str, any]]:
         """
         Get top-ranked hypotheses for the given goal.
         

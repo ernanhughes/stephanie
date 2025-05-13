@@ -1,24 +1,28 @@
-from co_ai.tuning.prompt_refiner import refine_prompt
-from co_ai.memory.vector_store import VectorMemory
-from co_ai.utils.file_utils import read_file, write_file
+import re
+
+from co_ai.memory import MemoryTool
+from co_ai.tuning import PromptRefiner
+from co_ai.utils import get_text_from_file, write_text_to_file
 
 
 class PromptTuner:
     def __init__(self, agent_name, signature_class=None):
         self.agent_name = agent_name
         self.signature = signature_class
-        self.memory = VectorMemory()
+        self.memory = MemoryTool()
         self.base_prompt_path = f"prompts/{agent_name}/base_prompt.txt"
         self.current_prompt_path = f"prompts/{agent_name}/current_prompt.txt"
 
         # Load base prompt as fallback
-        self.base_prompt = read_file(self.base_prompt_path)
+        self.base_prompt = get_text_from_file(self.base_prompt_path)
         self.current_prompt = self._load_current_prompt()
+        self.prompt_refiner = PromptRefiner(None, None, None)
+
 
     def _load_current_prompt(self):
         """Load latest prompt — base if no tuned version exists"""
         try:
-            return read_file(self.current_prompt_path)
+            return get_text_from_file(self.current_prompt_path)
         except FileNotFoundError:
             return self.base_prompt
 
@@ -51,7 +55,7 @@ class PromptTuner:
 
             if improvement_score > 0.8:
                 print("[PromptTuner] New prompt validated. Updating.")
-                write_file(self.current_prompt_path, refined_prompt)
+                write_text_to_file(self.current_prompt_path, refined_prompt)
                 self.current_prompt = refined_prompt
 
                 # Store in memory for traceability
@@ -73,7 +77,7 @@ class PromptTuner:
     def revert_to_base(self):
         """Revert to original base prompt"""
         self.current_prompt = self.base_prompt
-        write_file(self.current_prompt_path, self.base_prompt)
+        write_text_to_file(self.current_prompt_path, self.base_prompt)
 
     def evaluate_improvement(self, new_prompt, few_shot_data):
         """

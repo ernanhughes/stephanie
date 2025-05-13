@@ -1,11 +1,12 @@
 # co_ai/agents/evolution.py
 import itertools
+import re
 
 import numpy as np
-import re
 
 from co_ai.agents.base import BaseAgent
 from co_ai.tools.embedding_tool import get_embedding
+
 
 class EvolutionAgent(BaseAgent):
     """
@@ -67,7 +68,7 @@ class EvolutionAgent(BaseAgent):
                     for r in refined_list:
                         goal = context.get("goal", "")
                         evol_goal= f"Evolved from top-ranked {goal}"
-                        self.memory.store_hypothesis(evol_goal, h, None, None, None)
+                        self.memory.hypotheses.store(evol_goal, h, None, None, None)
                         evolved.append(r)
                 else:
                     self.logger.log("EvolutionFailed", {

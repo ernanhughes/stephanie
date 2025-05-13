@@ -1,12 +1,10 @@
 # co_ai/supervisor.py
-import os
+
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from hydra.core.global_hydra import GlobalHydra
-from pathlib import Path
 
 from co_ai.logs.json_logger import JSONLogger
-from co_ai.memory.vector_store import VectorMemory
+from co_ai.memory import MemoryTool
 from co_ai.reports import ReportFormatter
 
 
@@ -22,7 +20,7 @@ class PipelineStage:
 class Supervisor:
     def __init__(self, cfg, memory=None, logger=None):
         self.cfg = cfg
-        self.memory = memory or VectorMemory(cfg=cfg.db, logger=logger)
+        self.memory = memory or MemoryTool(cfg=cfg.db, logger=logger)
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
         self.logger.log("SupervisorInit", {"cfg": cfg})
 

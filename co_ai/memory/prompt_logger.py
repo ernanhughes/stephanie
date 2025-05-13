@@ -1,14 +1,21 @@
 import json
-from co_ai.memory.base_store import BaseStore
+
+from co_ai.memory import BaseStore
+
 
 class PromptLogger(BaseStore):
     def __init__(self, db, logger=None):
         self.db = db
         self.logger = logger
+        self.name = "prompt"
+
+
+    def name(self) -> str:
+        return "prompt"
 
     def log(self, agent_name, prompt_key, prompt_text, response=None, strategy="default", version=1):
         try:
-            with self.db.cursor() as cur:
+            with self.db as cur:
                 cur.execute(
                     """
                     INSERT INTO prompts (
