@@ -141,3 +141,11 @@ CREATE TABLE IF NOT EXISTS context_states (
 -- CREATE INDEX idx_context_stage ON context_states(stage_name);
 -- CREATE INDEX idx_context_run_stage ON context_states(run_id, stage_name);
 -- CREATE INDEX idx_context_preferences ON context_states USING GIN (preferences);
+
+CREATE TABLE IF NOT EXISTS embeddings (
+    id SERIAL PRIMARY KEY,
+    text TEXT UNIQUE,
+    embedding VECTOR(1536),  -- adjust dimension if needed
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+

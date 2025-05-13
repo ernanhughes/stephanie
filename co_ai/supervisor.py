@@ -1,6 +1,5 @@
 # co_ai/supervisor.py
 import os
-from typing import Any, Dict, List
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from hydra.core.global_hydra import GlobalHydra
@@ -30,7 +29,7 @@ class Supervisor:
         # Parse pipeline stages from config
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
 
-    def _parse_pipeline_stages(self, stage_configs: List[Dict[str, Any]]) -> List[PipelineStage]:
+    def _parse_pipeline_stages(self, stage_configs: list[dict[str, any]]) -> list[PipelineStage]:
             """Parse and validate pipeline stages from config."""
             stages = []
             for stage_config in stage_configs:
@@ -39,7 +38,7 @@ class Supervisor:
                     print(f"Skipping disabled stage: {name}")
                     continue
                 stage_dict = self.cfg.agents[name]
-                print(f"Stage Dict: {stage_dict}")
+                print(f"Stage dict: {stage_dict}")
                 stages.append(PipelineStage(name, stage_config, stage_dict))
             return stages
 
@@ -63,7 +62,8 @@ class Supervisor:
                     })
                     continue
                 cls = hydra.utils.get_class(stage.cls)
-                agent = cls(cfg=stage.stage_dict, memory=self.memory, logger=self.logger)
+                stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
+                agent = cls(cfg=stage_dict, memory=self.memory, logger=self.logger)
                 if not agent:
                     self.logger.log("PipelineStageError", {
                         "stage": stage.name,
@@ -102,7 +102,7 @@ class Supervisor:
             self.logger.log("PipelineError", {"error": str(e)})
             raise
 
-    def generate_report(self, context: Dict[str, Any], run_id: str) -> str:
+    def generate_report(self, context: dict[str, any], run_id: str) -> str:
         """Generate a report based on the pipeline context."""
         formatter = ReportFormatter(self.cfg.report.path)
         report = formatter.format_report(context)

@@ -59,6 +59,14 @@ class JSONLogger:
         "ReportGenerated": "📊",
 
         # General
+        "SupervisorInit": "🧑‍🏫",
+        "LiteratureAgentInit": "📚",
+        "LiteratureSearchSkipped": "⏭️",
+        "LiteratureQueryFailed": "❓",
+        "NoResultsFromWebSearch": "🚫",
+        "DatabaseHypothesesMatched": "🔍",
+        "ProximityGraphComputed": "🗺️",
+        
         "Prompt": "📜",
         "ContextAfterStage": "🗃️",
         "debug": "🐞"

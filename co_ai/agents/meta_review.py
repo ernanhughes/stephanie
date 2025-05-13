@@ -1,5 +1,4 @@
 # co_ai/agents/meta_review.py
-from typing import Any, Dict, List
 
 from co_ai.agents.base import BaseAgent
 
@@ -86,10 +85,10 @@ class MetaReviewAgent(BaseAgent):
     def _build_meta_review_prompt(
         self,
         goal,
-        hypotheses: List[str],
-        reviews: List[str],
-        directions: List[str],
-        db_themes: List[str],
+        hypotheses: list[str],
+        reviews: list[str],
+        directions: list[str],
+        db_themes: list[str],
     ) -> str:
         """Build prompt using goal, preferences, and input data."""
         preferences = ", ".join(self.preferences)

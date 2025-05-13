@@ -1,5 +1,4 @@
-# co_ai/memory/embedding_tool.py
-import numpy as np
+# co_ai/tools/embedding_tool.py
 import requests
 from collections import OrderedDict
 
@@ -24,13 +23,15 @@ class EmbeddingCache:
 
 embedding_cache = EmbeddingCache(max_size=10000)
 
+
+
 def get_embedding(text: str, cfg):
     """
     Get an embedding from Ollama using the configured model.
 
     Args:
         text (str): The input text to embed.
-        cfg (dict or omegaconf.DictConfig): Configuration containing 'model' and optionally 'endpoint'.
+        cfg (dict)): Configuration containing 'model' and optionally 'endpoint'.
 
     Returns:
         list[float]: The embedding vector.
@@ -42,8 +43,6 @@ def get_embedding(text: str, cfg):
 
     model = cfg.get("embeddings", {}).get("model", "mxbai-embed-large")
     endpoint = cfg.get("embeddings", {}).get("endpoint", "http://localhost:11434/api/embeddings")
-    print(f"⚙️ Requesting embedding for: {text[:50]}...")
-    print(f"Using model: {model} at endpoint: {endpoint}")
     response = requests.post(
         endpoint,
         json={"model": model, "prompt": text},

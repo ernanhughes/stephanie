@@ -9,13 +9,13 @@ meta_review:
   strategy: synthesis
   save_prompt: true
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
   model:
-    name: ollama_chat/qwen2.5
+    name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_path: meta_review_synthesis.txt
+  prompt_path: synthesis.txt
   preferences:
     - goal_consistency
     - biological_plausibility

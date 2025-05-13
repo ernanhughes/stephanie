@@ -1,10 +1,8 @@
 import json
 
 import psycopg2
-from typing import List, Dict, Any
 
-from co_ai.memory.embedding_tool import get_embedding
-from omegaconf import OmegaConf
+from co_ai.tools.embedding_tool import get_embedding
 
 class VectorMemory():
     def __init__(self, cfg, logger=None):
@@ -229,7 +227,7 @@ class VectorMemory():
             else:
                 print(f"[VectorMemory] Failed to log Report: {e}")
 
-    def get_similar_hypotheses(self, goal: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def get_similar_hypotheses(self, goal: str, top_k: int = 5) -> list[dict[str, any]]:
         """
         Retrieve most similar hypotheses based on current goal or hypothesis.
         
@@ -261,7 +259,7 @@ class VectorMemory():
             print(f"[VectorMemory] Failed to fetch similar hypotheses: {e}")
             return []
         
-    def get_ranked_hypotheses(self, goal: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_ranked_hypotheses(self, goal: str, limit: int = 5) -> list[dict[str, any]]:
         """
         Get top-ranked hypotheses for the given goal.
         
@@ -347,12 +345,11 @@ class VectorMemory():
                 latest_version = self.get_latest_context_version(run_id, stage)
                 new_version = latest_version + 1
 
-                cfg_dict = OmegaConf.to_container(preferences, resolve=True)
                 # Insert new context state
                 cur.execute("""
                     INSERT INTO context_states (run_id, stage_name, version, context, preferences, metadata)
                     VALUES (%s, %s, %s, %s, %s, %s)
-                """, (run_id, stage, new_version, json.dumps(context), json.dumps(cfg_dict  or {}), json.dumps(metadata or {})))
+                """, (run_id, stage, new_version, json.dumps(context), json.dumps(preferences  or {}), json.dumps(metadata or {})))
 
                 self.conn.commit()
         except Exception as e:
@@ -416,7 +413,7 @@ class VectorMemory():
             self.logger.log("ContextLoadFailed", {"error": str(e)})
             return {}
         
-    def get_top_ranked_hypotheses(self, goal: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_top_ranked_hypotheses(self, goal: str, limit: int = 5) -> list[dict[str, any]]:
         """
         Retrieve top-ranked hypotheses based on Elo rating or review scores.
         
@@ -462,3 +459,45 @@ class VectorMemory():
         except Exception as e:
             print(f"[VectorMemory] Failed to load ranked hypotheses: {e}")
             return []
+
+
+    def get_embedding(self, text: str) -> list[float]|None:
+        """
+        Get the embedding for a given text.
+        
+        Args:
+            text: The input text to embed
+            
+        Returns:
+            List of floats representing the embedding
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT embedding FROM embeddings WHERE text = %s", (text,))
+                row = cur.fetchone()
+                if row:
+                    print("🔁 Loaded from DB cache")
+                    return row[0]
+                return None
+        except Exception as e:
+            print(f"[VectorMemory] Failed to fetch embedding: {e}")
+            return None
+
+
+    def set_embedding(self, text: str, embedding):
+        """
+        Get the embedding for a given text.
+        
+        Args:
+            text: The input text to embed
+            
+        Returns:
+            List of floats representing the embedding
+        """
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("INSERT INTO embeddings (text, embedding) VALUES (%s, %s) ON CONFLICT (text) DO NOTHING",
+                        (text, embedding))
+        except Exception as e:
+            print(f"[VectorMemory] Failed to fetch embedding: {e}")
+            return None

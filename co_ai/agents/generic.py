@@ -1,5 +1,4 @@
 # co_ai/agents/generic_agent.py
-from typing import Dict, Any, List
 import re
 from co_ai.agents.base import BaseAgent
 

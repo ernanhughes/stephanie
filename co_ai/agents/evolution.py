@@ -1,12 +1,11 @@
 # co_ai/agents/evolution.py
 import itertools
-from typing import Any, Dict, List, Optional
 
 import numpy as np
 import re
 
 from co_ai.agents.base import BaseAgent
-from co_ai.memory.embedding_tool import get_embedding
+from co_ai.tools.embedding_tool import get_embedding
 
 class EvolutionAgent(BaseAgent):
     """

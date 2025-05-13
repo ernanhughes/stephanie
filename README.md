@@ -16,19 +16,20 @@ Goal → Generation → Reflection → Ranking → Evolution → Meta-Review →
 
 Each step is handled by a specialized DSPy agent.
 
-| Agent        | Description                                       |
-| ------------ | ------------------------------------------------- |
-| `Generation` | Generates hypotheses from the research goal       |
-| `Reflection` | Reviews each hypothesis for novelty and clarity   |
-| `Ranking`    | Uses Elo-style comparisons to rank top ideas      |
-| `Evolution`  | Evolves or grafts high-quality hypotheses         |
-| `MetaReview` | Synthesizes the top-ranked outputs into a summary |
+| Agent        | Description                                         |
+| ------------ | --------------------------------------------------- |
+| `Literature` | Generates information from a web search of the goal |
+| `Generation` | Generates hypotheses from the research goal         |
+| `Reflection` | Reviews each hypothesis for novelty and clarity     |
+| `Ranking`    | Uses Elo-style comparisons to rank top ideas        |
+| `Evolution`  | Evolves or grafts high-quality hypotheses           |
+| `MetaReview` | Synthesizes the top-ranked outputs into a summary   |
 
 ---
 
 ## 🧠 Features
 
-* 🧩 Modular agent system (DSPy)
+* 🧩 Modular agent system 
 * 🧪 Hypothesis generation, critique, ranking, and evolution
 * 🌱 **New: Grafting mechanism** for merging hypotheses
 * 🧠 **New: DSPy agent chaining with signature-based modules**

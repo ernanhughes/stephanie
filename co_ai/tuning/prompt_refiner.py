@@ -2,7 +2,6 @@
 
 from dspy import InputField, OutputField, Predict, Signature, configure, LM, BootstrapFewShot
 import requests
-from typing import List, Dict, Any
 
 
 class HypothesisRefinementSignature(Signature):
@@ -50,8 +49,8 @@ class PromptRefiner:
 
     def refine_prompt(
         self,
-        seed_prompts: List[str],
-        few_shot_data: List[Dict[str, Any]],
+        seed_prompts: list[str],
+        few_shot_data: list[dict[str, any]],
         agent_name: str,
         prompt_key: str,
         current_version: int = 1
@@ -136,7 +135,7 @@ class PromptRefiner:
         """Simple metric to evaluate exact match between hypothesis and prediction"""
         return example.refined_hypothesis.lower() == pred.refined_hypothesis.lower()
 
-    def _evaluate_prompt(self, prompt: str, test_data: List[Dict[str, Any]]) -> float:
+    def _evaluate_prompt(self, prompt: str, test_data: list[dict[str, any]]) -> float:
         """Evaluate prompt quality by running it on test data and scoring results"""
         total_score = 0
         for item in test_data:
@@ -155,6 +154,6 @@ class PromptRefiner:
         return total_score / len(test_data) if test_data else 0
 
 
-    def _get_few_shot_data(self, goal: str) -> List[Dict[str, Any]]:
+    def _get_few_shot_data(self, goal: str) -> list[dict[str, any]]:
         """Pull ranked hypotheses and reviews from memory"""
         return self.memory.get_ranked_hypotheses(goal)

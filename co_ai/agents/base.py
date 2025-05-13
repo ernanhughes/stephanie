@@ -26,7 +26,7 @@ class BaseAgent(ABC):
         self.prompt_match_re = cfg.get("prompt_match_re", "")
         self.llm = self.init_llm()
         self.save_context = cfg.get("save_context", False)
-        self.output_keys = cfg.get("output_keys", cfg.name)
+        self.output_keys = cfg.get("output_keys", cfg.get("name", self.__class__.__name__))
 
     def log(self, message, structured=True):
         if structured:

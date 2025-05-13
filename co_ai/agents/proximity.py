@@ -1,10 +1,9 @@
 # co_ai/agents/proximity.py
 import itertools
-from typing import Dict, List, Any
 import numpy as np
 
 from co_ai.agents.base import BaseAgent
-from co_ai.memory.embedding_tool import get_embedding
+from co_ai.tools.embedding_tool import get_embedding
 
 
 class ProximityAgent(BaseAgent):
@@ -96,7 +95,7 @@ class ProximityAgent(BaseAgent):
 
         return context
 
-    def _compute_similarity_matrix(self, hypotheses: List[str]) -> List[tuple]:
+    def _compute_similarity_matrix(self, hypotheses: list[str]) -> list[tuple]:
         """Compute pairwise cosine similarity between hypotheses"""
         vectors = []
         valid_hypotheses = []
@@ -127,7 +126,7 @@ class ProximityAgent(BaseAgent):
         b = np.array(b)
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-    def _cluster_hypotheses(self, graft_candidates: List[tuple]) -> List[List[str]]:
+    def _cluster_hypotheses(self, graft_candidates: list[tuple]) -> list[list[str]]:
         """Build clusters of similar hypotheses"""
         clusters = []
 

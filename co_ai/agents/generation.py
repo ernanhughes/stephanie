@@ -1,6 +1,5 @@
 # co_ai/agents/generation.py
 import re
-from typing import Dict, Any
 
 from co_ai.agents.base import BaseAgent
 
