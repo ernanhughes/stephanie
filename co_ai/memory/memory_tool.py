@@ -21,7 +21,7 @@ class MemoryTool:
         self.conn.autocommit = True
         self.logger = logger
         self.cfg = cfg  # Store cfg if needed later
-        self.db = self.conn.cursor()
+        self.db = self.conn
 
         self.logger = logger
 

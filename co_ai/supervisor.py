@@ -104,7 +104,7 @@ class Supervisor:
         """Generate a report based on the pipeline context."""
         formatter = ReportFormatter(self.cfg.report.path)
         report = formatter.format_report(context)
-        self.memory.store_report(context.get("run_id", ""), context.get("goal", ""), report, self.cfg.report.path)
+        self.memory.report.log(context.get("run_id", ""), context.get("goal", ""), report, self.cfg.report.path)
         self.logger.log("ReportGenerated", {
             "run_id": run_id,
             "report_snippet": report[:100]

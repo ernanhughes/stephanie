@@ -14,7 +14,7 @@ class ContextStore(BaseStore):
 
     def save(self, run_id, stage, context, preferences=None, metadata=None):
         try:
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute("UPDATE context_states SET is_current = FALSE WHERE run_id = %s AND stage_name = %s",
                             (run_id, stage))
                 cur.execute("SELECT MAX(version) FROM context_states WHERE run_id = %s AND stage_name = %s",
@@ -36,14 +36,14 @@ class ContextStore(BaseStore):
         """Check if this stage has already been run"""
         if not run_id or not stage_name:
             return False
-        with self.db as cur:
+        with self.db.cursor() as cur:
             cur.execute("""
                 SELECT COUNT(*) FROM context_states
                 WHERE run_id = %s AND stage_name = %s
             """, (run_id, stage_name))
             return cur.fetchone()[0] > 0
 
-    def load_context(self, run_id: str, stage: str = None) -> dict:
+    def load(self, run_id: str, stage: str = None) -> dict:
         """
         Load the latest saved context for a given run and optional stage.
 
@@ -57,14 +57,14 @@ class ContextStore(BaseStore):
         try:
 
             if stage:
-                with self.db as cur:
+                with self.db.cursor() as cur:
                     cur.execute("""
                         SELECT context FROM context_states
                         WHERE run_id = %s AND stage_name = %s
                         ORDER BY timestamp DESC LIMIT 1
                     """, (run_id, stage))
             else:
-                with self.db as cur:
+                with self.db.cursor() as cur:
                     cur.execute("""
                         SELECT context FROM context_states
                         WHERE run_id = %s

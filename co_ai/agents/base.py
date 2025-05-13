@@ -72,7 +72,7 @@ class BaseAgent(ABC):
                     # source=self.cfg.get("prompt_type", "file"),
                     strategy=self.cfg.get("strategy",  ""),
                     version=self.cfg.get("version", 1),
-                    metadata={}
+                    # metadata={}
                 )
             return remove_think_blocks(output)
         except Exception as e:
@@ -92,12 +92,12 @@ class BaseAgent(ABC):
         if self.memory and self.cfg.get("save_context", False):
             run_id = context.get("run_id")
             name = self.cfg.get("name", self.__class__.__name__)
-            self.memory.context.save_context(run_id, name, context, self.cfg)
+            self.memory.context.save(run_id, name, context, self.cfg)
 
     def _get_completed(self, context: dict) -> dict | None :
         run_id = context.get("run_id")
         name = self.cfg.get("name", self.__class__.__name__)
         if self.memory.context.has_completed(run_id, name):
-           return self.memory.context.load_context(run_id, name)
+           return self.memory.context.load(run_id, name)
         return None
 

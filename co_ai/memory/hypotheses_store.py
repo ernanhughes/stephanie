@@ -18,7 +18,7 @@ class HypothesesStore(BaseStore):
     def store(self, goal, text, confidence, review, features):
         embedding = self.embeddings.get_or_create(text)
         try:
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute(
                     """
                     INSERT INTO hypotheses (goal, text, confidence, review, features, embedding)
@@ -41,7 +41,7 @@ class HypothesesStore(BaseStore):
 
     def store_review(self, hypothesis_text: str, review: dict):
         try:
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute(
                     """
                     UPDATE hypotheses
@@ -69,7 +69,7 @@ class HypothesesStore(BaseStore):
         try:
             print(f"[VectorMemory] Storing ranking: '{hypothesis[:60]}...' with score {score}")
             if self.db:
-                with self.db as cur:
+                with self.db.cursor() as cur:
                     cur.execute(
                         "INSERT INTO rankings (hypothesis, score) VALUES (%s, %s) "
                         "ON CONFLICT (hypothesis) DO UPDATE SET score = EXCLUDED.score;",
@@ -102,7 +102,7 @@ class HypothesesStore(BaseStore):
         try:
             # Get embedding for current goal
             goal_embedding = get_embedding(goal, self.cfg)
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute("""
                     SELECT text, embedding <-> %s AS distance, source, elo_rating
                     FROM hypotheses
@@ -138,7 +138,7 @@ class HypothesesStore(BaseStore):
         """
         try:
             # Fetch top hypotheses sorted by Elo rating
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute("""
                     SELECT 
                         hypothesis, 

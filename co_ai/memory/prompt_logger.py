@@ -15,7 +15,7 @@ class PromptLogger(BaseStore):
 
     def log(self, agent_name, prompt_key, prompt_text, response=None, strategy="default", version=1):
         try:
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute(
                     """
                     INSERT INTO prompts (

@@ -14,7 +14,7 @@ class EmbeddingStore(BaseStore):
 
     def get_or_create(self, text):
         try:
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute("SELECT embedding FROM embeddings WHERE text = %s", (text,))
                 row = cur.fetchone()
                 if row:
@@ -25,7 +25,7 @@ class EmbeddingStore(BaseStore):
 
         embedding = get_embedding(text, self.cfg)
         try:
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute("INSERT INTO embeddings (text, embedding) VALUES (%s, %s) ON CONFLICT (text) DO NOTHING",
                             (text, embedding))
         except Exception as e:
@@ -36,7 +36,7 @@ class EmbeddingStore(BaseStore):
     def search_related(self, query: str, top_k: int = 5):
         try:
             embedding = get_embedding(query, self.cfg)
-            with self.db as cur:
+            with self.db.cursor() as cur:
                 cur.execute(
                     """
                     SELECT text, goal, confidence, review
