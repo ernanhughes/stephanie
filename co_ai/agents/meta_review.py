@@ -1,13 +1,14 @@
 # co_ai/agents/meta_review.py
 
 from co_ai.agents.base import BaseAgent
+from co_ai.constants import HYPOTHESES, EVOLVED, REVIEWED, STRATEGY
 
 
 class MetaReviewAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.strategy = cfg.get("strategy", "synthesis")
+        self.strategy = cfg.get(STRATEGY, "synthesis")
         # Load preferences from config or default list
         self.preferences = cfg.get("preferences", ["goal_consistency", "plausibility"])
 
@@ -27,10 +28,10 @@ class MetaReviewAgent(BaseAgent):
         """
 
         # Get inputs from context
-        evolved_hypotheses = context.get("evolved", [])
+        evolved_hypotheses = context.get(EVOLVED, [])
         if len(evolved_hypotheses) == 0:
-            evolved_hypotheses = context.get("evolved", [])
-        reviewed = context.get("reviewed", [])
+            evolved_hypotheses = context.get(HYPOTHESES, [])
+        reviewed = context.get(REVIEWED, [])
         reflections = context.get("reflections", [])
         ranked_hypotheses = context.get("ranked", [])
         strategic_directions = context.get("strategic_directions", [])
@@ -85,8 +86,6 @@ class MetaReviewAgent(BaseAgent):
         feedback = self._extract_feedback_from_meta_review(raw_response)
         context["feedback"] = feedback
 
-        if self.cfg.get("save_context", False):
-            self._save_context(context)
         return context
 
     def _extract_feedback_from_meta_review(self, meta_review_text):

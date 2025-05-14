@@ -61,8 +61,6 @@ class GenericAgent(BaseAgent):
                 "response_snippet": result[:300]
             })
 
-            if self.cfg.get("save_context", False):
-                self._save_context(context)
             return context
 
         except Exception as e:

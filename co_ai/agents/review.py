@@ -33,6 +33,4 @@ class ReviewAgent(BaseAgent):
             "reviews": reviews
         })
 
-        if self.cfg.get("save_context", False):
-            self._save_context(context)
         return context

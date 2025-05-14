@@ -6,11 +6,14 @@ import litellm
 
 from co_ai.logs import JSONLogger
 from co_ai.utils import PromptLoader
+from co_ai.parsers import ResponseParser
 
 from co_ai.constants import (
     API_BASE,
     MODEL,
     STRATEGY,
+    EVENT,
+    DETAILS,
     API_KEY,
     PROMPT_PATH,
     SAVE_PROMPT,
@@ -53,8 +56,8 @@ class BaseAgent(ABC):
                 self.__class__.__name__,
                 {
                     AGENT: self.__class__.__name__,
-                    "event": message if isinstance(message, str) else "log",
-                    "details": message if isinstance(message, dict) else None,
+                    EVENT: message if isinstance(message, str) else "log",
+                    DETAILS: message if isinstance(message, dict) else None,
                 },
             )
         else:
@@ -78,7 +81,7 @@ class BaseAgent(ABC):
                 model=self.llm[MODEL],
                 messages=messages,
                 api_base=self.llm[API_BASE],
-                api_key=self.llm.get("api_key"),
+                api_key=self.llm.get(API_KEY),
             )
             output = response["choices"][0]["message"]["content"]
             if self.cfg.get(SAVE_PROMPT, False) and self.memory:
@@ -105,16 +108,3 @@ class BaseAgent(ABC):
     @abstractmethod
     async def run(self, context: dict) -> dict:
         pass
-
-    def _save_context(self, context: dict):
-        if self.memory and self.cfg.get(SAVE_CONTEXT, False):
-            run_id = context.get(RUN_ID)
-            name = self.cfg.get(NAME, self.__class__.__name__)
-            self.memory.context.save(run_id, name, context, self.cfg)
-
-    def _get_completed(self, context: dict) -> dict | None:
-        run_id = context.get(RUN_ID)
-        name = self.cfg.get(NAME, self.__class__.__name__)
-        if self.memory.context.has_completed(run_id, name):
-            return self.memory.context.load(run_id, name)
-        return None

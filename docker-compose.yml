@@ -1,0 +1,8 @@
+services:
+  searxng:
+    image: searxng/searxng
+    ports:
+      - "8080:8080"
+    environment:
+      - SEARXNG_PORT=8080
+      - SEARXNG_BASE_URL=http://localhost:8080

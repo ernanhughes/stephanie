@@ -88,8 +88,6 @@ class ProximityAgent(BaseAgent):
             "proximity_graph": similarities
         }
 
-        if self.cfg.get("save_context", False):
-            self._save_context(context)
         return context
 
     def _compute_similarity_matrix(self, hypotheses: list[str]) -> list[tuple]:

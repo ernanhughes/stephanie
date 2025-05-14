@@ -71,8 +71,6 @@ class RankingAgent(BaseAgent):
             "preferences": self.preferences
         })
 
-        if self.cfg.get("save_context", False):
-            self._save_context(context)
         return context
 
     def _initialize_elo(self, hypotheses):

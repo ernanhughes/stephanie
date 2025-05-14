@@ -39,13 +39,6 @@ class LiteratureAgent(BaseAgent):
                 - goal: Research objective
                 - preferences: Optional override of evaluation criteria
         """
-        if self.cfg.get("skip_if_completed", False):
-            results  = self._get_completed(context)
-            if results:
-                self.logger.log("LiteratureSearchSkipped", {
-                    "goal": context.get("goal", "")
-                })
-                return results
 
         self.log(f"Searching literature for: {context}")
 
@@ -91,8 +84,6 @@ class LiteratureAgent(BaseAgent):
         context["literature"] = parsed_results
         context["literature_data"] = results
 
-        if self.cfg.get("save_context", False):
-            self._save_context(context)
         return context
 
     def _generate_search_query(self, context: dict) -> str:

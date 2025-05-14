@@ -2,6 +2,7 @@
 import re
 
 from co_ai.agents.base import BaseAgent
+from co_ai.constants import GOAL, HYPOTHESES
 
 
 class GenerationAgent(BaseAgent):
@@ -9,12 +10,7 @@ class GenerationAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
-        goal = context.get("goal", "")
-        if self.cfg.get("skip_if_completed", False):
-            results  = self._get_completed(context)
-            if results:
-                self.logger.log("GenerationAgent", {"goal": goal})
-                return results
+        goal = context.get(GOAL, "")
 
         self.log(f"Generating hypotheses for: {goal}")
 
@@ -25,7 +21,7 @@ class GenerationAgent(BaseAgent):
         render_context = {
             "literature": literature,
             "feedback": context.get("feedback", {}),
-            "hypotheses": context.get("hypotheses", [])
+            HYPOTHESES: context.get(HYPOTHESES, [])
         }
 
         # Load prompt based on strategy
@@ -49,14 +45,12 @@ class GenerationAgent(BaseAgent):
 
         # Log event
         self.logger.log("GeneratedHypotheses", {
-            "goal": goal,
-            "hypotheses": hypotheses,
+            GOAL: goal,
+            HYPOTHESES: hypotheses,
             "prompt_snippet": prompt[:300],
             "response_snippet": response[:500]
         })
 
-        if self.cfg.get("save_context", False):
-            self._save_context(context)
         return context
 
     @staticmethod

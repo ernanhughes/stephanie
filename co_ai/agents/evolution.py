@@ -87,8 +87,7 @@ class EvolutionAgent(BaseAgent):
             "evolved_count": len(evolved),
             "preferences": preferences
         })
-        if self.cfg.get("save_context", False):
-            self._save_context(context)
+
         return context
    
     async def graft_similar(self, hypotheses: list[str], threshold: float = 0.90) -> list[str]:
