@@ -15,7 +15,7 @@ review:
     api_key: null
   prompt_mode: file
   prompt_file: full_review.txt
-  output_keys: review
+  output_key: review
   preferences:
     - goal_consistency
     - factual

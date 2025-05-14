@@ -19,7 +19,7 @@ generation:
     endpoint: "http://localhost:11434/api/embeddings"
   prompt_mode: file
   prompt_file: out_of_the_box.txt
-  output_keys: hypotheses
+  output_key: hypotheses
   prompt_match_re: Hypothesis\s+\d+:\s+(.*?)(?=\nHypothesis\s+\d+:|\Z)
   preferences:
     - goal_consistency

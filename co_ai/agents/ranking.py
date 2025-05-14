@@ -140,7 +140,7 @@ class RankingAgent(BaseAgent):
 
             prompt = self.prompt_loader.load_prompt(merged, context=context)
 
-            self.log(f"Comparing:\n{hyp1[:60]}...\nvs\n{hyp2[:60]}...")
+            self.logger.log("RankingCompare", {"hyp1": hyp1[:60],  "hyp1":hyp2[:60]})
 
             try:
                 response = self.call_llm(prompt).strip()
@@ -172,8 +172,8 @@ class RankingAgent(BaseAgent):
         self.elo_scores[hyp1] = max(100, min(2800, self.elo_scores[hyp1] + K * (S1 - E1)))
         self.elo_scores[hyp2] = max(100, min(2800, self.elo_scores[hyp2] + K * (S2 - E2)))
 
-        self.memory.hypotheses.store_ranking(hyp1, self.elo_scores[hyp1])
-        self.memory.hypotheses.store_ranking(hyp2, self.elo_scores[hyp2])
+        self.memory.hypotheses.store_elo_ranking(hyp1, self.elo_scores[hyp1])
+        self.memory.hypotheses.store_elo_ranking(hyp2, self.elo_scores[hyp2])
 
         self.win_history.append((hyp1, hyp2, winner))
         self.logger.log("RankingUpdated", {

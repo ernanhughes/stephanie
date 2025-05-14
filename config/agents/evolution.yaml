@@ -14,13 +14,10 @@ evolution:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
-  embeddings:
-    model: "mxbai-embed-large"
-    dimension: 1024
-    endpoint: "http://localhost:11434/api/embeddings"
   prompt_mode: file
   prompt_file: simplification.txt
-  output_keys: evolution
+  input_key: hypotheses
+  output_key: evolution
   preferences: 
     - goal_consistency
     - testability

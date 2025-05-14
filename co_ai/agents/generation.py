@@ -12,7 +12,7 @@ class GenerationAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, "")
 
-        self.log(f"Generating hypotheses for: {goal}")
+        self.logger.log("GenerationStart", {"goal":goal})
 
         # Load literature if available
         literature = context.get("literature", {})
@@ -38,10 +38,9 @@ class GenerationAgent(BaseAgent):
         for h in hypotheses:
             self.memory.hypotheses.store(goal, h, 0.0, None, None)
 
-        self.log(f"Parsed {len(hypotheses)} hypotheses.")
         
         # Update context with new hypotheses
-        context[self.output_keys] = hypotheses
+        context[self.output_key] = hypotheses
 
         # Log event
         self.logger.log("GeneratedHypotheses", {

@@ -21,7 +21,7 @@ class ReviewAgent(BaseAgent):
 
         # Note here we use the singular hypothesis (also in the template)
         for h in hypotheses:
-            self.log(f"Generating review for: {h}")
+            self.log("Review",{ Okay h}")
             prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{"hypothesis":h}})
             review = self.call_llm(prompt).strip()
             self.memory.hypotheses.store_review(h, review)

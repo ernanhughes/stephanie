@@ -65,20 +65,20 @@ class HypothesesStore(BaseStore):
             else:
                 print(f"[VectorMemory] Failed to store review: {e}")
 
-    def store_ranking(self, hypothesis: str, score: float):
+    def store_elo_ranking(self, hypothesis: str, score: float):
         try:
             print(f"[VectorMemory] Storing ranking: '{hypothesis[:60]}...' with score {score}")
             if self.db:
                 with self.db.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO rankings (hypothesis, score) VALUES (%s, %s) "
-                        "ON CONFLICT (hypothesis) DO UPDATE SET score = EXCLUDED.score;",
-                        (hypothesis, score)
+                        """UPDATE hypotheses 
+                        SET elo_rating = %s
+                        WHERE text = %s""",
+                        (score, hypothesis)
                     )
                     self.db.commit()
             else:
                 self._rankings[hypothesis] = score
-
             if self.logger:
                 self.logger.log("RankingStored", {
                     "hypotheses": hypothesis[:200],

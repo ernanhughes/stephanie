@@ -16,7 +16,8 @@ literature:
   prompt_mode: file
   prompt_file: query.txt
   parse_prompt: parse.txt
-  output_keys: literature
+  input_key: goal
+  output_key: literature
   preferences:
     - goal_consistency
     - factual

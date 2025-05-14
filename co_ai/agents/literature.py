@@ -11,12 +11,12 @@ class LiteratureAgent(BaseAgent):
     """
     The LiteratureAgent turns a research goal into a web search query,
     retrieves recent research findings, and parses them into usable summaries.
-    
+
     From the paper:
     > 'The Generation agent iteratively searches the web, retrieves and reads relevant research articles'
     """
 
-    def __init__(self, cfg, memory:VectorMemory=None, logger:JSONLogger=None):
+    def __init__(self, cfg, memory: VectorMemory = None, logger: JSONLogger = None):
         super().__init__(cfg, memory, logger)
         self.strategy = cfg.get("strategy", "query_and_summarize")
         self.preferences = cfg.get("preferences", ["goal_consistency", "novelty"])
@@ -24,23 +24,26 @@ class LiteratureAgent(BaseAgent):
 
         self.web_search_tool = WebSearchTool(cfg.get("web_search", {}))
 
-        self.logger.log("LiteratureAgentInit", {
-            "strategy": self.strategy,
-            "preferences": self.preferences,
-            "max_results": self.max_results
-        })
+        self.logger.log(
+            "LiteratureAgentInit",
+            {
+                "strategy": self.strategy,
+                "preferences": self.preferences,
+                "max_results": self.max_results,
+            },
+        )
 
     async def run(self, context: dict) -> dict:
         """
         Run literature search based on current goal and preferences.
-        
+
         Args:
             context: Dictionary with keys:
                 - goal: Research objective
                 - preferences: Optional override of evaluation criteria
         """
 
-        self.log(f"Searching literature for: {context}")
+        self.logger.log("LiteratureQuery", {"context": context})
 
         # Step 1: Generate search query using LLM
         search_query = self._generate_search_query(context)
@@ -49,36 +52,47 @@ class LiteratureAgent(BaseAgent):
             self.logger.log("LiteratureQueryFailed", {"goal": goal})
             return context
 
-        self.log("SearchingWeb", {"query": search_query, "goal": goal})
+        self.logger.log("SearchingWeb", {"query": search_query, "goal": goal})
 
         # Step 2: Perform web search
-        results = await self.web_search_tool.search(search_query, max_results=self.max_results)
+        results = await self.web_search_tool.search(
+            search_query, max_results=self.max_results
+        )
         if not results:
-            self.logger.log("NoResultsFromWebSearch", {
-                "goal_snippet": goal[:60],
-                "search_query": search_query
-            })
+            self.logger.log(
+                "NoResultsFromWebSearch",
+                {"goal_snippet": goal[:60], "search_query": search_query},
+            )
             return context
-        self.log("SearchResult", {"results": results})
+        self.logger.log("SearchResult", {"results": results})
 
         # Step 3: Parse each result with LLM
         parsed_results = []
         for result in results:
-            summary_context = {**{"title": result["title"], "link":result["href"], "snippet":result["body"]}, **context}
+            summary_context = {
+                **{
+                    "title": result["title"],
+                    "link": result["href"],
+                    "snippet": result["body"],
+                },
+                **context,
+            }
             summary = self._summarize_result(summary_context)
             if summary.strip():
                 parsed_results.append(f"""
                     [Title: {result["title"]}]({result["href"]})\n
                     Summary: {summary}
-                    """
-                )
+                    """)
 
         # Log full search results
-        self.logger.log("LiteratureSearchCompleted", {
-            "total_results": len(parsed_results),
-            "goal": goal,
-            "search_query": search_query
-        })
+        self.logger.log(
+            "LiteratureSearchCompleted",
+            {
+                "total_results": len(parsed_results),
+                "goal": goal,
+                "search_query": search_query,
+            },
+        )
 
         # Store in context
         context["literature"] = parsed_results
@@ -98,32 +112,36 @@ class LiteratureAgent(BaseAgent):
                 return match.group(1).strip()
 
             # Fallback: use keyword-based parsing
-            match = re.search(r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE)
+            match = re.search(
+                r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE
+            )
             if match:
                 query = match.group(1).strip()
-                self.logger.log("SearchQuery",{"Search Query": query})
+                self.logger.log("SearchQuery", {"Search Query": query})
                 return query
 
             # Final fallback: use goal as-is
-            goal =context.get("goal", "")
+            goal = context.get("goal", "")
             self.logger.log("FallingBackToGoalAsQuery", {"goal": goal})
             return f"{goal} productivity study"
 
         except Exception as e:
             self.logger.log("LiteratureQueryGenerationFailed", {"error": str(e)})
-            return f'{context.get("goal", "")} remote work meta-analysis'
+            return f"{context.get('goal', '')} remote work meta-analysis"
 
-    def _summarize_result(self, context:dict) -> str:
+    def _summarize_result(self, context: dict) -> str:
         """Ask LLM to extract key insights from article metadata."""
         try:
-            prompt = self.prompt_loader.from_file(self.cfg.parse_prompt, self.cfg, context)
+            prompt = self.prompt_loader.from_file(
+                self.cfg.parse_prompt, self.cfg, context
+            )
             raw_summary = self.call_llm(prompt).strip()
 
             # Extract summary section if present
             summary_match = re.search(
                 r"Summary\s*\n(?:.*\n)*?\s*(.+?)(?=\n#|\Z)",
                 raw_summary,
-                re.DOTALL | re.IGNORECASE
+                re.DOTALL | re.IGNORECASE,
             )
             if summary_match:
                 return summary_match.group(1).strip()

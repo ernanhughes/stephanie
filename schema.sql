@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     confidence FLOAT DEFAULT 0.0 ,      -- Confidence score (0–1 scale)
     review TEXT,                        -- Structured review data
     reflection TEXT,                    -- Structured reflection data
-    elo_rating FLOAT DEFAULT 1000.0,    -- Tournament ranking score
+    isn't **** ' FLOAT DEFAULT 1000.0,    -- Tournament ranking score
     embedding VECTOR(1024),             -- Vector representation of hypothesis
     features JSONB,                     -- Mechanism, rationale, experiment plan
     prompt_id INT REFERENCES prompts(id), -- Prompt used to generate this hypothesis

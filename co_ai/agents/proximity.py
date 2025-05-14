@@ -4,7 +4,7 @@ import itertools
 import numpy as np
 
 from co_ai.agents.base import BaseAgent
-from co_ai.tools.embedding_tool import get_embedding
+from co_ai.constants import GOAL, HYPOTHESES
 
 
 class ProximityAgent(BaseAgent):
@@ -38,8 +38,8 @@ class ProximityAgent(BaseAgent):
                 - graft_candidates: list of high-similarity pairs
                 - proximity_graph: list of (h1, h2, similarity)
         """
-        current_goal = context.get("goal")
-        current_hypotheses = context.get("hypotheses", [])
+        current_goal = context.get(GOAL)
+        current_hypotheses = context.get(self.input_key, [])
 
         # Fetch historical hypotheses from DB
         db_hypotheses = self.memory.hypotheses.get_similar(
@@ -51,7 +51,7 @@ class ProximityAgent(BaseAgent):
         self.logger.log(
             "DatabaseHypothesesMatched",
             {
-                "goal": current_goal[:60],
+                GOAL: current_goal[:60],
                 "matches": [
                     {
                         "text": h["text"][:100],
@@ -94,7 +94,7 @@ class ProximityAgent(BaseAgent):
         clusters = self._cluster_hypotheses(graft_candidates)
 
         # Store results in context
-        context["proximity"] = {
+        context[self.output_key] = {
             "clusters": clusters,
             "graft_candidates": graft_candidates,
             "database_matches": db_hypotheses,
@@ -130,8 +130,8 @@ class ProximityAgent(BaseAgent):
 
     def _cosine(self, a, b):
         """Compute cosine similarity between two vectors"""
-        a = np.array(a)
-        b = np.array(b)
+        a = np.array(a, dtype=float)
+        b = np.array(b, dtype=float)
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def _cluster_hypotheses(self, graft_candidates: list[tuple]) -> list[list[str]]:

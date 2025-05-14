@@ -1,6 +1,7 @@
 from co_ai.memory import BaseStore
 from co_ai.tools import get_embedding
 
+import pgvector.psycopg2
 
 class EmbeddingStore(BaseStore):
     def __init__(self, db, cfg, logger=None):
@@ -8,6 +9,7 @@ class EmbeddingStore(BaseStore):
         self.cfg = cfg
         self.logger = logger
         self.name = "embedding"
+        pgvector.psycopg2.register_vector(self.db)
 
     def name(self) -> str:
         return "embedding"
@@ -18,7 +20,7 @@ class EmbeddingStore(BaseStore):
                 cur.execute("SELECT embedding FROM embeddings WHERE text = %s", (text,))
                 row = cur.fetchone()
                 if row:
-                    return row[0]
+                    return list(row[0])  # Force conversion to list of floats
         except Exception as e:
             if self.logger:
                 self.logger.log("EmbeddingFetchFailed", {"error": str(e)})
