@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from jinja2 import Template
-from co_ai.constants import PROMPT_DIR, PROMPT_TYPE, NAME, STRATEGY, DEFAULT, FILE, PROMPT_FILE
+from co_ai.constants import PROMPT_DIR, PROMPT_MODE, NAME, STRATEGY, DEFAULT, FILE, PROMPT_FILE
 
 
 def get_text_from_file(file_path: str) -> str:
@@ -28,7 +28,7 @@ class PromptLoader:
         Returns:
             str: The loaded prompt text
         """
-        prompt_type = config.get(PROMPT_TYPE, FILE)
+        prompt_type = config.get(PROMPT_MODE, FILE)
         prompts_dir = context.get(PROMPT_DIR, "prompts")
 
         if not os.path.isdir(prompts_dir):
@@ -77,12 +77,12 @@ class PromptLoader:
     def _load_from_file(self, config: dict) -> str:
         """Load prompt from disk"""
         prompt_dir = config.get(PROMPT_DIR, "prompts/")
-        prompt_type = config.get(PROMPT_TYPE, FILE)
+        prompt_mode = config.get(PROMPT_MODE, FILE)
 
         file_name = DEFAULT
-        if prompt_type == STRATEGY:
+        if prompt_mode == STRATEGY:
             file_name = config.get(STRATEGY, DEFAULT)
-        elif prompt_type == FILE:
+        elif prompt_mode == FILE:
             file_name = config.get(PROMPT_FILE, DEFAULT)
         if file_name.lower().endswith(".txt"):
             path = os.path.join(prompt_dir, f"{config[NAME]}/{file_name}")

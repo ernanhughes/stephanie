@@ -1,8 +1,8 @@
 You are an expert in scientific research and technological feasibility analysis.
 Refine the following conceptual idea to enhance its practical implementability by leveraging contemporary technological capabilities.
 
-Goal: {goal}
-Evaluation Criteria: {preferences}
+Goal: {{ goal }}
+Evaluation Criteria: {{ preferences }}
 
 Instructions:
 1. Evaluate current technical limitations or assumptions
@@ -11,6 +11,6 @@ Instructions:
 4. Ensure the revised concept retains its novelty and logical coherence
 
 # Original Hypothesis
-{hypothesis}
+{{ hypothesis }}
 
 # Refined Hypothesis

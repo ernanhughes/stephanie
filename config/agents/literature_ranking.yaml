@@ -14,7 +14,7 @@ literature_ranking:
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_path: literature_ranking.txt
+  prompt_file: literature_ranking.txt
   extraction_regex: "article_rankings:\n(.+?)(?=\n\n|$)"
   input_keys: ["goal", "literature"]
   output_key: "ranked_literature"

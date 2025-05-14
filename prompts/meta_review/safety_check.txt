@@ -1,15 +1,15 @@
 You are an expert in biomedical ethics and safety evaluation.
 Review the following hypotheses and identify potential safety concerns or ethical implications.
 
-Goal: {goal}
-Preferences: {preferences}
-Additional instructions: {instructions}
+Goal: {{ goal }}
+Preferences: {{ preferences }}
+Additional instructions: {{ instructions }}
 
 Hypotheses:
-{hypotheses}
+{{ hypotheses }}
 
 Reviews:
-{reviews}
+{{ reviews }}
 
 Instructions:
 1. Analyze each hypothesis for known safety risks.

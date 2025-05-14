@@ -22,4 +22,4 @@ ranking:
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_path: ranking_debate.txt
+  prompt_file: debate.txt

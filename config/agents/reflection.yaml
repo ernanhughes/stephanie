@@ -21,8 +21,8 @@ reflection:
 
   save_prompt: true
   prompt_mode: strategy
-  strategy: full_reflection  # Options: initial, full, observation, deep_verification
-  prompt_path:
+  strategy: default  # Options: initial, full, observation, deep_verification
+  prompt_file:
   # A set of keys that will tune the prompts operation
   preferences:
     - goal_consistency

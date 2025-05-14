@@ -1,10 +1,10 @@
 You are an expert researcher tasked with combining two hypotheses into a unified, stronger version.
 
-Hypothesis A: {hypothesis_a}
-Hypothesis B: {hypothesis_b}
+Hypothesis A: {{ hypothesis_a }}
+Hypothesis B: {{ hypothesis_b }}
 
-Goal: {goal}
-Improvement Criteria: {preferences}
+Goal: {{ goal }}
+Improvement Criteria: {{ preferences }}
 
 Instructions:
 1. Compare both hypotheses — identify overlapping or complementary elements.

@@ -2,17 +2,17 @@
 You are an expert in hypothesis synthesis and proposal writing.
 Generate a detailed research overview based on the following information:
 
-Goal: {goal}
-Preferences: {preferences}
-Additional instructions: {instructions}
+Goal: {{ goal }}
+Preferences: {{ preferences }}
+Additional instructions: {{ instructions }}
 
 Hypotheses and reviews:
-{reviews}
+{{ reviews }}
 
 Structure your output EXACTLY as follows:
 
 # Research Goal
-{goal}
+{{ goal }}
 
 # Background & Significance
 [Summarize current understanding and unmet need]

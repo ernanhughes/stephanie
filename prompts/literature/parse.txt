@@ -3,12 +3,12 @@ You are an expert researcher generating a concise, structured summary of this ar
 Your summary must be directly relevant to the following research goal:
 
 Goal:
-{goal}
+{{ goal }}
 
 Review the following information:
-Title: {title}
-Link: {link}
-Snippet: {snippet}
+Title: {{ title }}
+Link: {{ link }}
+Snippet: {{ snippet }}
 
 Instructions:
 1. Extract core information in the article related ot the goal

@@ -1,10 +1,10 @@
 You are an expert evaluator engaged in simulated scientific debate.
 
-Goal: {goal}
-Evaluation criteria: {preferences}
+Goal: {{ goal }}
+Evaluation criteria: {{ preferences }}
 
-Hypothesis 1: {hypothesis_1}
-Hypothesis 2: {hypothesis_2}
+Hypothesis 1: {{ hypothesis_1 }}
+Hypothesis 2: {{ hypothesis_2 }}
 
 Instructions:
 1. Compare both hypotheses across listed criteria

@@ -9,7 +9,6 @@ def convert_to_jinja_format(content: str) -> str:
     """
     return re.sub(r'(?<!{){(\w+)}(?!})', r'{{ \1 }}', content)
 
-
 def convert_templates_to_jinja(base_dir: str, file_extensions=None):
     """
     Recursively converts all matching files in a directory to Jinja-style placeholders.
@@ -49,4 +48,4 @@ def convert_templates_to_jinja(base_dir: str, file_extensions=None):
 
 if __name__ == "__main__":
 # Change this to your local projectI
-    convert_templates_to_jinja("/prompts", ".txt")
+    convert_templates_to_jinja("prompts", ".txt")

@@ -1,6 +1,6 @@
 You are an expert researcher participating in a collaborative discourse to generate novel, testable hypotheses.
 
-Goal: {goal}
+Goal: {{ goal }}
 
 Instructions:
 1. Generate exactly 3 distinct, scientifically grounded hypotheses.

@@ -169,3 +169,29 @@ class HypothesesStore(BaseStore):
         except Exception as e:
             print(f"[Memory] Failed to load ranked hypotheses: {e}")
             return []
+
+    def store_reflection(self, hypothesis_text: str, reflection: dict):
+        try:
+            with self.db.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE hypotheses
+                    SET reflection = %s
+                    WHERE text = %s
+                    """,
+                    (reflection, hypothesis_text)
+                )
+
+            if self.logger:
+                self.logger.log("ReflectionStored", {
+                    "hypothesis_text": hypothesis_text[:200],
+                    "reflection_snippet": reflection[:100]
+                })
+        except Exception as e:
+            if self.logger:
+                self.logger.log("ReflectionStoreFailed", {
+                    "error": str(e),
+                    "hypothesis_text": hypothesis_text[:200]
+                })
+            else:
+                print(f"[VectorMemory] Failed to store reflection: {e}")

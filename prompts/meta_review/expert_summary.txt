@@ -1,14 +1,14 @@
 You are an expert researcher tasked with creating a concise, scientist-facing summary of the current state of hypothesis development.
 
-Goal: {goal}
-Preferences: {preferences}
-Additional instructions: {instructions}
+Goal: {{ goal }}
+Preferences: {{ preferences }}
+Additional instructions: {{ instructions }}
 
 Input Hypotheses:
-{hypotheses}
+{{ hypotheses }}
 
 Input Reviews:
-{reviews}
+{{ reviews }}
 
 Instructions:
 1. Provide a short, evidence-based summary of the research goal and its importance.
@@ -20,7 +20,7 @@ Output in the following format:
 
 # Expert Summary: Scientific Hypothesis Review
 ## Research Goal
-{goal}
+{{ goal }}
 
 ## Top Hypotheses
 1. [Hypothesis 1]
@@ -47,15 +47,15 @@ Output in the following format:
 - [Direction 2]
 - [Direction 3]You are an expert researcher tasked with creating a concise, scientist-facing summary of the current state of hypothesis development.
 
-Goal: {goal}
-Preferences: {preferences}
-Additional instructions: {instructions}
+Goal: {{ goal }}
+Preferences: {{ preferences }}
+Additional instructions: {{ instructions }}
 
 Input Hypotheses:
-{hypotheses}
+{{ hypotheses }}
 
 Input Reviews:
-{reviews}
+{{ reviews }}
 
 Instructions:
 1. Provide a short, evidence-based summary of the research goal and its importance.
@@ -67,7 +67,7 @@ Output in the following format:
 
 # Expert Summary: Scientific Hypothesis Review
 ## Research Goal
-{goal}
+{{ goal }}
 
 ## Top Hypotheses
 1. [Hypothesis 1]

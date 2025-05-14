@@ -1,10 +1,10 @@
 You are an expert in scientific synthesis and hypothesis mapping.
 Analyze the following hypothesis relationships and extract patterns.
 
-Goal: {goal}
+Goal: {{ goal }}
 
 Most similar hypothesis pairs:
-{most_similar}
+{{ most_similar }}
 
 Instructions:
 1. Identify common themes across similar hypotheses

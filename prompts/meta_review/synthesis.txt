@@ -1,11 +1,11 @@
 You are an expert in scientific research and meta-analysis.
 Synthesize a comprehensive meta-review of provided reviews pertaining to the following research goal:
 
-Goal: {goal}
-Preferences: {preferences}
+Goal: {{ goal }}
+Preferences: {{ preferences }}
 
 Provided reviews for meta-analysis:
-{reviews}
+{{ reviews }}
 
 Instructions:
 1. Generate a structured meta-analysis report of the provided reviews.

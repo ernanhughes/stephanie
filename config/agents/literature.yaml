@@ -14,7 +14,7 @@ literature:
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_path: query.txt
+  prompt_file: query.txt
   parse_prompt: parse.txt
   output_keys: literature
   preferences:

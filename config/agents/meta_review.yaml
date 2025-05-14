@@ -15,7 +15,7 @@ meta_review:
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_path: synthesis.txt
+  prompt_file: synthesis.txt
   preferences:
     - goal_consistency
     - biological_plausibility

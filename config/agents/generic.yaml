@@ -15,6 +15,6 @@ generic:
   input_keys: ["goal"]   # add nodes
   output_key: "generic"  # change
   prompt_mode: file
-  prompt_path: query_and_summarize.txt
+  prompt_file: query_and_summarize.txt
   extraction_regex: "search query:<([^>]+)>\n(.*)"
   strategy: query_and_summarize

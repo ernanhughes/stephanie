@@ -1,8 +1,8 @@
 You are an expert researcher skilled in simplifying complex biological mechanisms.
 Take the following hypothesis and simplify it for clarity and testability.
 
-Goal: {goal}
-Simplification Preferences: {preferences}
+Goal: {{ goal }}
+Simplification Preferences: {{ preferences }}
 
 Instructions:
 1. Identify overly complex or ambiguous parts of the hypothesis.
@@ -11,6 +11,6 @@ Instructions:
 4. Avoid introducing new concepts — focus on making it accessible.
 
 # Original Hypothesis
-{hypothesis}
+{{ hypothesis }}
 
 # Simplified Hypothesis

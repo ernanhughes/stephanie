@@ -2,13 +2,13 @@ You are an expert researcher generating novel scientific hypotheses.
 Use inspiration from analogous domains or mechanisms to generate new ideas.
 
 Goal:
-{goal}
+{{ goal }}
 
 Relevant Research Findings:
-{literature}
+{{ literature }}
 
 Preferences:
-{preferences}
+{{ preferences }}
 
 Instructions:
 1. Review findings above before generating new hypotheses

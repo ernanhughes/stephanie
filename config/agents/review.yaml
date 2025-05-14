@@ -14,7 +14,7 @@ review:
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_path: full_review.txt
+  prompt_file: full_review.txt
   output_keys: review
   preferences:
     - goal_consistency

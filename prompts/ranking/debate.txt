@@ -1,11 +1,11 @@
 You are an expert evaluator engaged in simulated scientific debate.
 Compare two hypotheses across listed criteria and choose the better one.
 
-Goal: {goal}
-Evaluation Criteria: {preferences}
+Goal: {{ goal }}
+Evaluation Criteria: {{ preferences }}
 
-Hypothesis A: {hypothesis_a}
-Hypothesis B: {hypothesis_b}
+Hypothesis A: {{ hypothesis_a }}
+Hypothesis B: {{ hypothesis_b }}
 
 Instructions:
 1. Evaluate both hypotheses based on their clarity, novelty, feasibility, and goal alignment

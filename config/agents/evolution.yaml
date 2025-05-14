@@ -19,7 +19,7 @@ evolution:
     dimension: 1024
     endpoint: "http://localhost:11434/api/embeddings"
   prompt_mode: file
-  prompt_path: evolution_simplification.txt
+  prompt_file: simplification.txt
   output_keys: evolution
   preferences: 
     - goal_consistency

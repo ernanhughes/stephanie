@@ -17,7 +17,7 @@ proximity:
     dimension: 1024
     endpoint: "http://localhost:11434/api/embeddings"
   prompt_mode: file
-  prompt_path: proximity_analysis.txt
+  prompt_file: proximity_analysis.txt
   preferences:
     - goal_consistency
     - biological_plausibility

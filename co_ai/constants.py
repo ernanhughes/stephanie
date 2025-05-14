@@ -18,7 +18,7 @@ NAME="name"
 # Config keys
 SAVE_PROMPT = "save_prompt"
 PROMPT_PATH = "prompt_path"
-PROMPT_TYPE = "prompt_type"
+PROMPT_MODE = "prompt_mode"
 PROMPT_DIR = "prompt_dir"
 PROMPT_FILE = "prompt_file"
 

@@ -1,9 +1,9 @@
 You are an expert researcher tasked with evolving promising hypotheses while ensuring they remain aligned with the original research goal.
 
-Goal: {goal}
+Goal: {{ goal }}
 
 Improvement Criteria:
-{preferences}
+{{ preferences }}
 
 Instructions:
 1. Review the following hypothesis carefully.
@@ -13,6 +13,6 @@ Instructions:
 5. Keep your output concise and only return the improved hypothesis.
 
 # Original Hypothesis
-{hypothesis}
+{{ hypothesis }}
 
 # Improved Hypothesis

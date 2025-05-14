@@ -120,6 +120,34 @@ class VectorMemory:
             else:
                 print(f"[VectorMemory] Failed to store review: {e}")
 
+    def store_reflection(self, hypothesis_text: str, reflection: dict):
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE hypotheses
+                    SET reflection = %s
+                    WHERE text = %s
+                    """,
+                    (reflection, hypothesis_text)
+                )
+
+            if self.logger:
+                self.logger.log("ReflectionStored", {
+                    "hypothesis_text": hypothesis_text[:200],
+                    "reflection_snippet": reflection[:100]
+                })
+        except Exception as e:
+            if self.logger:
+                self.logger.log("ReflectionStoreFailed", {
+                    "error": str(e),
+                    "hypothesis_text": hypothesis_text[:200]
+                })
+            else:
+                print(f"[VectorMemory] Failed to store reflection: {e}")
+
+
+
     def store_ranking(self, hypothesis: str, score: float):
         try:
             print(f"[VectorMemory] Storing ranking: '{hypothesis[:60]}...' with score {score}")

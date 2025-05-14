@@ -1,9 +1,9 @@
 Based on the meta-analysis, provide actionable suggestions for improving future hypothesis generation.
 
-Goal: {goal}
-Current reviews: {reviews}
-Preferences: {preferences}
-Feedback from prior generations: {feedback}
+Goal: {{ goal }}
+Current reviews: {{ reviews }}
+Preferences: {{ preferences }}
+Feedback from prior generations: {{ feedback }}
 
 Instructions:
 1. Identify recurring issues in previous hypotheses
