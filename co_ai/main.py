@@ -2,8 +2,7 @@
 import asyncio
 import logging
 import os
-import re
-import uuid
+import yaml
 from datetime import datetime, timezone
 
 import hydra
@@ -38,10 +37,18 @@ def run(cfg: DictConfig):
              {"goal": cfg.get("goal", ""), "run_id": run_id}
         )
 
-        print("Pipeline Result:", result)
+        save_yaml_result(log_path, result)
+
         if (cfg.report.generate_report):
             supervisor.generate_report(result, run_id=run_id)
     asyncio.run(main())
+
+
+def save_yaml_result(log_path: str, result: dict):
+    report_path = log_path.replace(".jsonl", ".yaml")
+    with open(report_path, 'w', encoding='utf-8') as f:
+        yaml.dump(result, f, allow_unicode=True, sort_keys=False)
+    print(f"✅ Result saved to: {report_path}")
 
 
 if __name__ == "__main__":

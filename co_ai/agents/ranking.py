@@ -70,6 +70,9 @@ class RankingAgent(BaseAgent):
             "win_loss_patterns": self._extract_win_loss_feedback(),
             "preferences": self.preferences
         })
+
+        if self.cfg.get("save_context", False):
+            self._save_context(context)
         return context
 
     def _initialize_elo(self, hypotheses):

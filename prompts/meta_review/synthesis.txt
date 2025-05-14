@@ -3,7 +3,6 @@ Synthesize a comprehensive meta-review of provided reviews pertaining to the fol
 
 Goal: {goal}
 Preferences: {preferences}
-Additional instructions: {instructions}
 
 Provided reviews for meta-analysis:
 {reviews}

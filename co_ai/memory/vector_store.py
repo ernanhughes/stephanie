@@ -25,6 +25,7 @@ class VectorMemory:
         self.conn.autocommit = True
         self.logger = logger
         self.cfg = cfg  # Store cfg if needed later
+        self.rankings = {}
 
     def store_hypothesis(self, goal, text, confidence, review, features):
         try:
@@ -123,16 +124,14 @@ class VectorMemory:
         try:
             print(f"[VectorMemory] Storing ranking: '{hypothesis[:60]}...' with score {score}")
             if hasattr(self, "db"):
-                self.db.execute(
-                    "INSERT INTO rankings (hypothesis, score) VALUES (%s, %s) "
-                    "ON CONFLICT (hypothesis) DO UPDATE SET score = EXCLUDED.score;",
-                    (hypothesis, score)
-                )
-                self.db.commit()
+                with self.db.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO rankings (hypothesis, score) VALUES (%s, %s) "
+                        "ON CONFLICT (hypothesis) DO UPDATE SET score = EXCLUDED.score;",
+                        (hypothesis, score)
+                    )
             else:
-                if not hasattr(self, "_rankings"):
-                    self._rankings = {}
-                self._rankings[hypothesis] = score
+                self.rankings[hypothesis] = score
 
             if self.logger:
                 self.logger.log("RankingStored", {

@@ -42,12 +42,12 @@ pipeline:
   stages:
     - name: literature
       cls: co_ai.agents.literature.LiteratureAgent
-      enabled: true
+      enabled: false
       iterations: 1
-#    - name: literature_ranking
-#      cls: co_ai.agents.generic.GenericAgent
-#      enabled: false
-#      iterations: 1
+    - name: literature_ranking
+      cls: co_ai.agents.generic.GenericAgent
+      enabled: false
+      iterations: 1
     - name: generation
       cls: co_ai.agents.generation.GenerationAgent
       enabled: true

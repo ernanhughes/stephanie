@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS context_states (
 CREATE TABLE IF NOT EXISTS embeddings (
     id SERIAL PRIMARY KEY,
     text TEXT UNIQUE,
-    embedding VECTOR(1536),  -- adjust dimension if needed
+    embedding VECTOR(1024),  -- adjust dimension if needed
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

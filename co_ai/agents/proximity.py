@@ -43,12 +43,6 @@ class ProximityAgent(BaseAgent):
         # Fetch historical hypotheses from DB
         db_hypotheses = self.memory.hypotheses.get_similar(current_goal, top_k=20)
 
-        # test change
-        context["hypotheses"] = [h["text"] for h in db_hypotheses]
-
-        db_hypotheses = self.memory.hypotheses.get_similar(current_goal, top_k=50)
-
-
         db_texts = [h["text"] for h in db_hypotheses]
 
         self.logger.log("DatabaseHypothesesMatched", {
@@ -94,6 +88,8 @@ class ProximityAgent(BaseAgent):
             "proximity_graph": similarities
         }
 
+        if self.cfg.get("save_context", False):
+            self._save_context(context)
         return context
 
     def _compute_similarity_matrix(self, hypotheses: list[str]) -> list[tuple]:

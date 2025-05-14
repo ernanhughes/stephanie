@@ -68,6 +68,10 @@ class JSONLogger:
         "ProximityGraphComputed": "🗺️",
         
         "Prompt": "📜",
+        "ReviewAgent": "🧑‍⚖️",
+        "MetaReviewInput": "📉",
+        "NotEnoughHypothesesForRanking": "⚠️",
+        "StoreRegistered": "️✅",
         "ContextAfterStage": "🗃️",
         "debug": "🐞"
     }

@@ -19,12 +19,13 @@ class ReviewAgent(BaseAgent):
         hypotheses = context.get("hypotheses", [])
         reviews = []
 
+        # Note here we use the singular hypothesis (also in the template)
         for h in hypotheses:
             self.log(f"Generating review for: {h}")
-            prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{"hypotheses":h}})
+            prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{"hypothesis":h}})
             review = self.call_llm(prompt).strip()
             self.memory.hypotheses.store_review(h, review)
-            reviews.append({"hypotheses": h, "review": review})
+            reviews.append({"hypothesis": h, "review": review})
 
         context["reviews"] = reviews
         self.logger.log("GeneratedReviews", {

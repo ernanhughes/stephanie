@@ -8,7 +8,7 @@ generation:
   save_prompt: true
   save_context: true
   skip_if_completed: false
-  strategy : hypothesis
+  strategy : default
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
@@ -19,7 +19,7 @@ generation:
     endpoint: "http://localhost:11434/api/embeddings"
   prompt_mode: Oh come on stop come on sorry I am
   prompt_path: out_of_the_box.txt
-  output_keys: hypothesis
+  output_keys: hypotheses
   prompt_match_re: Hypothesis\s+\d+:\s+(.*?)(?=\nHypothesis\s+\d+:|\Z)
   preferences:
     - goal_consistency

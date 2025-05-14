@@ -28,6 +28,8 @@ class MetaReviewAgent(BaseAgent):
 
         # Get inputs from context
         evolved_hypotheses = context.get("evolved", [])
+        if len(evolved_hypotheses) == 0:
+            evolved_hypotheses = context.get("evolved", [])
         reviewed = context.get("reviewed", [])
         reflections = context.get("reflections", [])
         ranked_hypotheses = context.get("ranked", [])
@@ -42,7 +44,10 @@ class MetaReviewAgent(BaseAgent):
             h.text if hasattr(h, "text") else h for h in evolved_hypotheses
         ]
         reflection_texts = [
-            r.review if hasattr(r, "review") else r for r in reflections
+            r.review if hasattr(r, "reflection") else r for r in reflections
+        ]
+        reviewed_texts = [
+            r.review if hasattr(r, "text") else r for r in reviewed
         ]
 
         # Log inputs for traceability
@@ -50,7 +55,7 @@ class MetaReviewAgent(BaseAgent):
             "MetaReviewInput",
             {
                 "hypothesis_count": len(hypothesis_texts),
-                "review_count": len(reflection_texts),
+                "review_count": len(reviewed_texts),
                 "ranked_count": len(ranked_hypotheses),
                 "strategic_directions": strategic_directions,
             },
@@ -80,31 +85,9 @@ class MetaReviewAgent(BaseAgent):
         feedback = self._extract_feedback_from_meta_review(raw_response)
         context["feedback"] = feedback
 
+        if self.cfg.get("save_context", False):
+            self._save_context(context)
         return context
-
-    def _build_meta_review_prompt(
-        self,
-        goal,
-        hypotheses: list[str],
-        reviews: list[str],
-        directions: list[str],
-        db_themes: list[str],
-    ) -> str:
-        """Build prompt using goal, preferences, and input data."""
-        preferences = ", ".join(self.preferences)
-
-        evolved_hypotheses = "\n".join(f"- {h}" for h in hypotheses)
-        full_reviews = "\n".join(f"- {r}" for r in reviews)
-        strategic_directions = "\n".join(f"- {d}" for d in directions)
-        return self.prompt_template.format(
-            goal=goal,
-            preferences=preferences,
-            hypotheses=hypotheses,
-            evolved_hypotheses=evolved_hypotheses,
-            reviews=full_reviews,
-            db_themes=db_themes,
-            instructions=strategic_directions or "No additional instructions",
-        )
 
     def _extract_feedback_from_meta_review(self, meta_review_text):
         try:

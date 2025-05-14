@@ -1,4 +1,7 @@
 import json
+import os
+from datetime import datetime, timezone
+import yaml
 
 from co_ai.memory import BaseStore
 
@@ -8,6 +11,7 @@ class ContextStore(BaseStore):
         self.db = db
         self.logger = logger
         self.name = "context"
+        self.dump_dir = os.path.dirname(self.logger.log_path)
 
     def name(self) -> str:
         return "context"
@@ -28,6 +32,8 @@ class ContextStore(BaseStore):
                     """,
                     (run_id, stage, version, json.dumps(context), json.dumps(preferences), json.dumps(metadata or {}))
                 )
+            if self.dump_dir:
+                self._dump_to_yaml(run_id, stage, context)
         except Exception as e:
             if self.logger:
                 self.logger.log("ContextSaveFailed", {"error": str(e)})
@@ -55,7 +61,7 @@ class ContextStore(BaseStore):
             dict: The deserialized context
         """
         try:
-
+            rows = []
             if stage:
                 with self.db.cursor() as cur:
                     cur.execute("""
@@ -63,6 +69,7 @@ class ContextStore(BaseStore):
                         WHERE run_id = %s AND stage_name = %s
                         ORDER BY timestamp DESC LIMIT 1
                     """, (run_id, stage))
+                    rows = cur.fetchall()
             else:
                 with self.db.cursor() as cur:
                     cur.execute("""
@@ -70,8 +77,8 @@ class ContextStore(BaseStore):
                         WHERE run_id = %s
                         ORDER BY timestamp ASC
                     """, (run_id,))
+                    rows = cur.fetchall()
 
-            rows = cur.fetchall()
             if not rows:
                 return {}
 
@@ -86,3 +93,17 @@ class ContextStore(BaseStore):
             self.logger.log("ContextLoadFailed", {"error": str(e)})
             return {}
 
+    def _dump_to_yaml(self, run_id, stage, context):
+        os.makedirs(self.dump_dir, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+        filename = f"{run_id}_{stage}_{timestamp}.yaml"
+        path = os.path.join(self.dump_dir, filename)
+
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                yaml.dump(context, f, allow_unicode=True, sort_keys=False)
+            if self.logger:
+                self.logger.log("ContextYAMLDumpSaved", {"path": path})
+        except Exception as e:
+            if self.logger:
+                self.logger.log("ContextYAMLDumpFailed", {"error": str(e)})

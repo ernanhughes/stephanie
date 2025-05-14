@@ -101,7 +101,7 @@ class HypothesesStore(BaseStore):
         """
         try:
             # Get embedding for current goal
-            goal_embedding = get_embedding(goal, self.cfg)
+            goal_embedding = self.embeddings.get_or_create(goal)
             with self.db.cursor() as cur:
                 cur.execute("""
                     SELECT text, embedding <-> %s AS distance, source, elo_rating
