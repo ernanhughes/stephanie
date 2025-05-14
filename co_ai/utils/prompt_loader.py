@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from jinja2 import Template
+from co_ai.constants import PROMPT_DIR, PROMPT_TYPE, NAME, STRATEGY, DEFAULT, FILE, PROMPT_FILE
 
 
 def get_text_from_file(file_path: str) -> str:
@@ -27,36 +28,30 @@ class PromptLoader:
         Returns:
             str: The loaded prompt text
         """
-        prompt_type = config.get("prompt_type", "file")
-        prompts_dir = context.get("prompts_dir", "prompts")
+        prompt_type = config.get(PROMPT_TYPE, FILE)
+        prompts_dir = context.get(PROMPT_DIR, "prompts")
 
         if not os.path.isdir(prompts_dir):
-            raise FileNotFoundError(f"Prompts Directory not found: {prompts_dir}")
-
+            raise FileNotFoundError(f"Prompts Directory not found: {prompts_dir} please check your config.")
         try:
             merged = self._merge_context(config, context)
 
             if prompt_type == "static":
-                return config.get("prompt_text", "")
-
-            elif prompt_type == "file":
-                return self._load_from_file(merged)
-
-            elif prompt_type == "template":
-                base_prompt = self._load_from_file(config)
-                return Template(base_prompt).render(**merged)
-
+                prompt_text = config.get("prompt_text", None)
+                if prompt_text is None:
+                        raise ValueError(f"""Static prompt text is not provided in the config. 
+                                           When you choose static you need to add the prompt text in a [prompt_text] node. 
+                                            \n{config}""")
             elif prompt_type == "tuning":
-                agent_name = config.get("name", "default")
+                agent_name = config.get(NAME, "default")
                 return self._load_best_version(agent_name, context.get("goal", ""), merged)
 
-            else:
-                return self._fallback_prompt(context.get("goal", ""))
+            return self._load_from_file(merged)
 
         except Exception as e:
             if self.logger:
                 self.logger.log("PromptLoadFailed", {
-                    "agent": config.get("name", "default"),
+                    "agent": config.get(NAME, DEFAULT),
                     "error": str(e),
                     "config_used": config
                 })
@@ -72,28 +67,39 @@ class PromptLoader:
     @staticmethod
     def get_file_name(file_name: str, cfg: dict, context: dict) -> str:
         """Constructs a file path for a prompt file"""
-        prompts_dir = context.get("prompts_dir", "prompts")
+        prompts_dir = context.get(PROMPT_DIR, "prompts")
         if file_name.endswith(".txt"):
             path = os.path.join(prompts_dir, f"{cfg['name']}/{file_name}")
         else:
             path = os.path.join(prompts_dir, f"{cfg['name']}/{file_name}.txt")
         return path
 
-    def get_template_path(self, prompts_dir: str, config: dict) -> str:
-        """Get the path to the template file"""
-        template_name = config.get("template_name", "default_template.txt")
-        return os.path.join(prompts_dir, template_name)
-
     def _load_from_file(self, config: dict) -> str:
         """Load prompt from disk"""
-        prompt_dir = config.get("prompts_dir", "prompts/")
-        strategy = config.get("strategy", "default")
-        path = os.path.join(prompt_dir, f"{config['name']}/{strategy}.txt")
+        prompt_dir = config.get(PROMPT_DIR, "prompts/")
+        prompt_type = config.get(PROMPT_TYPE, FILE)
+
+        file_name = DEFAULT
+        if prompt_type == STRATEGY:
+            file_name = config.get(STRATEGY, DEFAULT)
+        elif prompt_type == FILE:
+            file_name = config.get(PROMPT_FILE, DEFAULT)
+        if file_name.lower().endswith(".txt"):
+            path = os.path.join(prompt_dir, f"{config[NAME]}/{file_name}")
+        else:
+            path =os.path.join(prompt_dir, f"{config[NAME]}/{file_name}.txt")
+        if not os.path.exists(path):
+            if self.logger:
+                self.logger.log("PromptFileNotFound", {
+                    "path": path,
+                    "agent": config.get(NAME, DEFAULT)
+                })
+            raise FileNotFoundError(f"Prompt file not found: {path}")
 
         prompt = get_text_from_file(path)
         merged = self._merge_context(config, {})
-        try:
-            return prompt.format(**merged)
+        try: 
+            return Template(prompt).render(**merged)
         except KeyError as ke:
             if self.logger:
                 self.logger.log("PromptFormattingError", {
@@ -106,7 +112,7 @@ class PromptLoader:
         """Load the most effective prompt version from memory"""
         best_prompt = self.memory.prompt.get_best_prompt_for_agent(
             agent_name=agent_name,
-            strategy=config.get("strategy", "default"),
+            strategy=config.get(STRATEGY, DEFAULT),
             goal=goal
         )
 

@@ -215,4 +215,4 @@ class RankingAgent(BaseAgent):
                     "error": "Could not extract winner from response",
                     "response": response
                 })
-        return None
+        return response

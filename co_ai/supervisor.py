@@ -6,7 +6,7 @@ from omegaconf import DictConfig, OmegaConf
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
 from co_ai.reports import ReportFormatter
-from co_ai.constants import SAVE_CONTEXT, NAME, RUN_ID, SKIP_IF_COMPLETED, STAGE
+from co_ai.constants import SAVE_CONTEXT, NAME, RUN_ID, SKIP_IF_COMPLETED, PROMPT_DIR, STAGE
 
 
 class PipelineStage:
@@ -52,7 +52,7 @@ class Supervisor:
 
         # Start with empty context
         context = input_data.copy()
-        context["prompts_dir"] = self.cfg.paths.prompts
+        context[PROMPT_DIR] = self.cfg.paths.prompts
 
         try:
             for stage in self.pipeline_stages:

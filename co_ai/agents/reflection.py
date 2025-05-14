@@ -1,6 +1,6 @@
 # co_ai/agents/reflection.py
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, SKIP_IF_COMPLETED
+from co_ai.constants import GOAL, HYPOTHESES, REFLECTION
 
 
 class ReflectionAgent(BaseAgent):
@@ -10,26 +10,19 @@ class ReflectionAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, "")
-        if self.cfg.get(SKIP_IF_COMPLETED, False):
-            results  = self._get_completed(context)
-            if results:
-                self.logger.log("ReflectionAgent", {GOAL: goal})
-                return results
-
-        hypotheses = context.get("hypotheses", [])
-        reviews = []
-
+        hypotheses = context.get(HYPOTHESES, [])
+        reflection = []
         for h in hypotheses:
             self.log(f"Generating reflection for: {h}")
-            prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{"hypotheses":h}})
-            review = self.call_llm(prompt).strip()
-            self.memory.hypotheses.store_review(h, review)
-            reviews.append({"hypotheses": h, "review": review})
+            prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{HYPOTHESES:h}})
+            reflection = self.call_llm(prompt).strip()
+            self.memory.hypotheses.store_review(h, reflection)
+            reflection.append({HYPOTHESES: h, "review": reflection})
 
-        context["reviews"] = reviews
-        self.logger.log("GeneratedReviews", {
+        context[REFLECTION] = reflection
+        self.logger.log("GeneratedReflection", {
             "goal": goal,
-            "reviews": reviews
+            "reflection": reflection
         })
 
         return context
