@@ -10,7 +10,7 @@ from co_ai.tools.embedding_tool import get_embedding
 class ProximityAgent(BaseAgent):
     """
     The Proximity Agent calculates similarity between hypotheses and builds a proximity graph.
-    
+
     From the paper:
     > 'The Proximity agent calculates the similarity between research hypotheses and builds a proximity graph...'
     """
@@ -20,11 +20,12 @@ class ProximityAgent(BaseAgent):
 
         self.similarity_threshold = cfg.get("similarity_threshold", 0.75)
         self.max_graft_candidates = cfg.get("max_graft_candidates", 3)
+        self.top_k_database_matches = self.cfg.get("top_k_database_matches", 5)
 
     async def run(self, context: dict) -> dict:
         """
         Run proximity analysis on current hypotheses.
-        
+
         Args:
             context: Dictionary with keys:
                 - hypotheses: list of hypothesis strings
@@ -41,42 +42,54 @@ class ProximityAgent(BaseAgent):
         current_hypotheses = context.get("hypotheses", [])
 
         # Fetch historical hypotheses from DB
-        db_hypotheses = self.memory.hypotheses.get_similar(current_goal, top_k=20)
+        db_hypotheses = self.memory.hypotheses.get_similar(
+            current_goal, top_k=self.top_k_database_matches
+        )
 
         db_texts = [h["text"] for h in db_hypotheses]
 
-        self.logger.log("DatabaseHypothesesMatched", {
-            "goal": current_goal[:60],
-            "matches": [
-                {"text": h["text"][:100], "similarity": h["similarity"], "source": h.get("source")}
-                for h in db_hypotheses
-            ]
-        })
+        self.logger.log(
+            "DatabaseHypothesesMatched",
+            {
+                "goal": current_goal[:60],
+                "matches": [
+                    {
+                        "text": h["text"][:100],
+                        "similarity": h["similarity"],
+                        "source": h.get("source"),
+                    }
+                    for h in db_hypotheses
+                ],
+            },
+        )
 
         # Combine current and past hypotheses
         all_hypotheses = list(set(current_hypotheses + db_texts))
 
         if not all_hypotheses.__len__():
-            self.logger.log("NoHypothesesForProximity", {
-                "reason": "empty_input"
-            })
+            self.logger.log("NoHypothesesForProximity", {"reason": "empty_input"})
             return context
 
         # Compute pairwise similarity between all hypotheses
         similarities = self._compute_similarity_matrix(all_hypotheses)
 
         # Log proximity graph
-        self.logger.log("ProximityGraphComputed", {
-            "total_pairs": len(similarities),
-            "threshold": self.similarity_threshold,
-            "top_matches": [
-                {"pair": (h1[:60], h2[:60]), "score": sim}
-                for h1, h2, sim in similarities[:3]
-            ]
-        })
+        self.logger.log(
+            "ProximityGraphComputed",
+            {
+                "total_pairs": len(similarities),
+                "threshold": self.similarity_threshold,
+                "top_matches": [
+                    {"pair": (h1[:60], h2[:60]), "score": sim}
+                    for h1, h2, sim in similarities[:3]
+                ],
+            },
+        )
 
         # Identify grafting candidates
-        graft_candidates = [(h1, h2) for h1, h2, sim in similarities if sim >= self.similarity_threshold]
+        graft_candidates = [
+            (h1, h2) for h1, h2, sim in similarities if sim >= self.similarity_threshold
+        ]
         # Cluster similar hypotheses
         clusters = self._cluster_hypotheses(graft_candidates)
 
@@ -85,7 +98,7 @@ class ProximityAgent(BaseAgent):
             "clusters": clusters,
             "graft_candidates": graft_candidates,
             "database_matches": db_hypotheses,
-            "proximity_graph": similarities
+            "proximity_graph": similarities,
         }
 
         return context
@@ -96,7 +109,7 @@ class ProximityAgent(BaseAgent):
         valid_hypotheses = []
 
         for h in hypotheses:
-            vec = get_embedding(h, self.cfg)
+            vec = self.memory.embedding.get_or_create(h)
             if vec is None:
                 self.logger.log("MissingEmbedding", {"hypothesis_snippet": h[:60]})
                 continue

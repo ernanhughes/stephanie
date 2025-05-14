@@ -5,21 +5,33 @@ defaults:
 ranking:
   name: ranking
   enabled: true
-  strategy: debate
   tournament_type: elo
   max_comparisons: 6
-  save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
-  preferences:
-    - goal_consistency
-    - biological_plausibility
-    - experimental_validity
-    - novelty
-    - simplicity
+
+  # model
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
+
+  # Required keys for the agent ot effectively process the context
+  required_keys: ["goal", "hypotheses"]   # add nodes
+  # Key that it will iterate over ot generate reflections
+  input_key: "hypotheses"
+  # Key that it store the results of those reflections
+  output_key: "ranking"  # change
+
+  # prompt
+  save_prompt: true
   prompt_mode: file
+  strategy: debate
   prompt_file: debate.txt
+  # preferences
+  preferences:
+  - goal_consistency
+  - biological_plausibility
+  - experimental_validity
+  - novelty
+  - simplicity

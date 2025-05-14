@@ -5,26 +5,35 @@ defaults:
 proximity:
   name: proximity
   enabled: true
-  save_prompt: true
-  save_context: true
-  skip_if_completed: false
-  model:
-    name: ollama_chat/qwen3
-    api_base: http://localhost:11434
-    api_key: null
-  embeddings:
-    model: "mxbai-embed-large"
-    dimension: 1024
-    endpoint: "http://localhost:11434/api/embeddings"
-  prompt_mode: file
-  prompt_file: proximity_analysis.txt
-  preferences:
-    - goal_consistency
-    - biological_plausibility
-    - experimental_validity
-    - novelty
-    - simplicity
+
   similarity_threshold: 0.75  # Only show pairs with at least 75% similarity
   max_graft_candidates: 3   # Max number of pairs to suggest for grafting
   use_database_search: true # Whether to pull past hypotheses from DB
   top_k_database_matches: 10  # How many prior hypotheses to retrieve
+
+  save_context: false
+  skip_if_completed: false
+
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  # Required keys for the agent ot effectively process the context
+  required_keys: ["goal", "hypotheses"]   # add nodes
+  # Key that it will iterate over ot generate reflections
+  input_key: "hypotheses"
+  # Key that it store the results of those reflections
+  output_key: "proximity"  # change
+
+  save_prompt: true
+  strategy:
+  prompt_mode: file
+  prompt_file: proximity_analysis.txt
+
+  preferences:
+  - goal_consistency
+  - biological_plausibility
+  - experimental_validity
+  - novelty
+  - simplicity
