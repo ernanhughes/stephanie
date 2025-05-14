@@ -6,7 +6,7 @@ reflection:
   name: reflection
   enabled: true
   save_context: true
-  skip_if_completed: false
+  skip_if_completed: true
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434

@@ -135,7 +135,7 @@ class LiteratureAgent(BaseAgent):
             prompt = self.prompt_loader.from_file(
                 self.cfg.parse_prompt, self.cfg, context
             )
-            raw_summary = self.call_llm(prompt).strip()
+            raw_summary = self.call_llm(prompt)
 
             # Extract summary section if present
             summary_match = re.search(

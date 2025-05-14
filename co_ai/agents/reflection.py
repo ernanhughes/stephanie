@@ -14,9 +14,9 @@ class ReflectionAgent(BaseAgent):
         for h in hypotheses:
             self.logger.log("ReflectionStart", {HYPOTHESES: h})
             prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{HYPOTHESES:h}})
-            reflection_response = self.call_llm(prompt).strip()
+            reflection_response = self.call_llm(prompt)
             self.memory.hypotheses.store_reflection(h, reflection_response)
-            reflection.append({HYPOTHESES: h, REFLECTION: reflection})
+            reflection.append({REFLECTION: reflection_response})
 
 
         context[REFLECTION] = reflection

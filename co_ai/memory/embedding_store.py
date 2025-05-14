@@ -20,7 +20,7 @@ class EmbeddingStore(BaseStore):
                 cur.execute("SELECT embedding FROM embeddings WHERE text = %s", (text,))
                 row = cur.fetchone()
                 if row:
-                    return list(row[0])  # Force conversion to list of floats
+                    return row[0]  # Force conversion to list of floats
         except Exception as e:
             if self.logger:
                 self.logger.log("EmbeddingFetchFailed", {"error": str(e)})

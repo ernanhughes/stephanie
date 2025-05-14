@@ -36,6 +36,11 @@ class ContextStore(BaseStore):
                 self._dump_to_yaml(run_id, stage, context)
         except Exception as e:
             if self.logger:
+                for k, v in context.items():
+                    try:
+                        json.dumps(v)
+                    except Exception as ex:
+                        print(f"❌ Key '{k}' failed: {ex}")
                 self.logger.log("ContextSaveFailed", {"error": str(e)})
 
     def has_completed(self, run_id: str, stage_name: str) -> bool:

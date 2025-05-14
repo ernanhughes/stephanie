@@ -1,14 +1,13 @@
 # co_ai/agents/meta_review.py
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import HYPOTHESES, EVOLVED, REVIEWED, STRATEGY
+from co_ai.constants import HYPOTHESES, EVOLVED, REVIEWED, STRATEGY, REFLECTION, RANKING
 
 
 class MetaReviewAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.strategy = cfg.get(STRATEGY, "synthesis")
         # Load preferences from config or default list
         self.preferences = cfg.get("preferences", ["goal_consistency", "plausibility"])
 
@@ -32,8 +31,8 @@ class MetaReviewAgent(BaseAgent):
         if len(evolved_hypotheses) == 0:
             evolved_hypotheses = context.get(HYPOTHESES, [])
         reviewed = context.get(REVIEWED, [])
-        reflections = context.get("reflections", [])
-        ranked_hypotheses = context.get("ranked", [])
+        reflections = context.get(REFLECTION, [])
+        ranked_hypotheses = context.get(RANKING, [])
         strategic_directions = context.get("strategic_directions", [])
         db_matches = context.get("proximity", {}).get("database_matches", [])
 
@@ -72,7 +71,7 @@ class MetaReviewAgent(BaseAgent):
         }
         prompt = self.prompt_loader.load_prompt(self.cfg, merged)
 
-        raw_response = self.call_llm(prompt).strip()
+        raw_response = self.call_llm(prompt)
 
         # Store full response for debugging
         self.logger.log(

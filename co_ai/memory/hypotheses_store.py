@@ -109,7 +109,7 @@ class HypothesesStore(BaseStore):
                     WHERE enabled IS NOT FALSE
                     ORDER BY distance ASC
                     LIMIT %s
-                """, (str(goal_embedding), top_k))
+                """, (goal_embedding, top_k))
 
                 results = []
                 for row in cur.fetchall():

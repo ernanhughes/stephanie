@@ -33,14 +33,14 @@ class RankingAgent(BaseAgent):
                 - goal: research objective
                 - preferences: override criteria
         """
-        hypotheses = context.get("hypotheses", [])
+        hypotheses = context.get(self.input_key, [])
 
         if len(hypotheses) < 2:
             self.logger.log("NotEnoughHypothesesForRanking", {
                 "count": len(hypotheses),
                 "reason": "less than 2 hypotheses"
             })
-            context["ranked"] = [(h, 1000) for h in hypotheses]
+            context[self.output_key] = [(h, 1000) for h in hypotheses]
             return context
 
         self._initialize_elo(hypotheses)
@@ -50,7 +50,7 @@ class RankingAgent(BaseAgent):
 
         for hyp1, hyp2 in comparisons:
             prompt = self._build_ranking_prompt(hyp1, hyp2, context)
-            response = self.call_llm(prompt).strip()
+            response = self.call_llm(prompt)
             winner = self._parse_response(response)
 
             if winner:
@@ -63,7 +63,7 @@ class RankingAgent(BaseAgent):
                 })
 
         ranked = sorted(self.elo_scores.items(), key=lambda x: x[1], reverse=True)
-        context["ranked"] = ranked
+        context[self.output_key] = ranked
         context["preferences_used"] = self.preferences
         self.logger.log("TournamentCompleted", {
             "total_hypotheses": len(ranked),
@@ -86,7 +86,7 @@ class RankingAgent(BaseAgent):
         """Simulate multi-turn scientific debate between hypotheses"""
         for i in range(turns):
             prompt = self._build_ranking_prompt(goal, hyp1, hyp2)
-            response = self.call_llm(prompt).strip()
+            response = self.call_llm(prompt)
             winner = self._parse_response(response)
             if winner:
                 self._update_elo(hyp1, hyp2, winner)
@@ -143,7 +143,7 @@ class RankingAgent(BaseAgent):
             self.logger.log("RankingCompare", {"hyp1": hyp1[:60],  "hyp1":hyp2[:60]})
 
             try:
-                response = self.call_llm(prompt).strip()
+                response = self.call_llm(prompt)
                 winner = self._parse_response(response)
 
                 if winner:

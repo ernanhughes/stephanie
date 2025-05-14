@@ -61,7 +61,7 @@ class EvolutionAgent(BaseAgent):
         for h in top_texts:
             try:
                 prompt = self.prompt_loader.load_prompt({**self.cfg, **{"hypotheses":h}}, context)
-                raw_output = self.call_llm(prompt).strip()
+                raw_output = self.call_llm(prompt)
                 refined_list = self.extract_list_items(raw_output)
 
                 if refined_list:
@@ -112,7 +112,7 @@ class EvolutionAgent(BaseAgent):
                     f"Combine the following hypotheses into a clearer, unified statement:\n\n"
                     f"A: {h1}\nB: {h2}"
                 )
-                graft = self.call_llm(prompt).strip()
+                graft = self.call_llm(prompt)
                 grafted.append(graft)
                 used.update([i, j])
 

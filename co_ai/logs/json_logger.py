@@ -66,7 +66,9 @@ class JSONLogger:
         "NoResultsFromWebSearch": "🚫",
         "DatabaseHypothesesMatched": "🔍",
         "ProximityGraphComputed": "🗺️",
-        
+        "ReflectionStart": "🤔",
+        "ReflectionStored": "💾",
+        "ContextLoaded": "📂",
         "Prompt": "📜",
         "ReviewAgent": "🧑‍⚖️",
         "MetaReviewInput": "📉",

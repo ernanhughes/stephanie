@@ -130,8 +130,8 @@ class ProximityAgent(BaseAgent):
 
     def _cosine(self, a, b):
         """Compute cosine similarity between two vectors"""
-        a = np.array(a, dtype=float)
-        b = np.array(b, dtype=float)
+        a = np.array(list(a), dtype=float)
+        b = np.array(list(b), dtype=float)
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def _cluster_hypotheses(self, graft_candidates: list[tuple]) -> list[list[str]]:

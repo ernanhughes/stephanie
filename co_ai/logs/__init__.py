@@ -1,3 +1,2 @@
-"""Dataclasses and utilities for logging"""
+"""Main logger for app"""
 from .json_logger import JSONLogger
-from .ranking_log import EloRankingLog

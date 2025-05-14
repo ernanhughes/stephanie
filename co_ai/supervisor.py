@@ -109,7 +109,7 @@ class Supervisor:
                     {STAGE: stage.name, "context_keys": list(context.keys())},
                 )
 
-            self.logger.log("PipelineSuccess", context)
+            self.logger.log("PipelineSuccess", list(context.keys()))
             return context
 
         except Exception as e:

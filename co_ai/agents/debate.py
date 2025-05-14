@@ -16,7 +16,7 @@ class OptimistDebater(BaseAgent):
                 f"{h}\n\n"
                 f"Focus on strengths, positive implications, and reasons it might be valid."
             )
-            review = self.call_llm(prompt).strip()
+            review = self.call_llm(prompt)
             reviews.append({"hypotheses": h, "review": review, "persona": "Optimist"})
 
         return {"reviews": reviews}
@@ -35,7 +35,7 @@ class SkepticDebater(BaseAgent):
                 f"{h}\n\n"
                 f"Focus on weaknesses, uncertainties, or reasons it might be flawed."
             )
-            review = self.call_llm(prompt).strip()
+            review = self.call_llm(prompt)
             reviews.append({"hypotheses": h, "review": review, "persona": "Skeptic"})
 
         return {"reviews": reviews}
@@ -54,7 +54,7 @@ class BalancedDebater(BaseAgent):
                 f"{h}\n\n"
                 f"Provide both positive and negative aspects."
             )
-            review = self.call_llm(prompt).strip()
+            review = self.call_llm(prompt)
             reviews.append({"hypotheses": h, "review": review, "persona": "Balanced"})
 
         return {"reviews": reviews}

@@ -39,7 +39,7 @@ class GenericAgent(BaseAgent):
             prompt = self.prompt_loader.load_prompt(self.cfg, context)
 
             # Call LLM
-            response = self.call_llm(prompt).strip()
+            response = self.call_llm(prompt)
 
             # Extract result using regex
             match = re.search(self.extraction_regex, response, re.DOTALL)

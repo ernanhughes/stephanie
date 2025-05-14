@@ -30,7 +30,7 @@ class GenerationAgent(BaseAgent):
         )
 
         # Call LLM
-        response = self.call_llm(prompt).strip()
+        response = self.call_llm(prompt)
 
         # Extract hypotheses
         hypotheses = self.extract_hypotheses(response)
