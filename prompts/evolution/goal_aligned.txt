@@ -13,6 +13,6 @@ Instructions:
 5. Keep your output concise and only return the improved hypothesis.
 
 # Original Hypothesis
-{{ hypothesis }}
+{{ hypotheses }}
 
 # Improved Hypothesis

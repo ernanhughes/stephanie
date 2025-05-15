@@ -1,7 +1,7 @@
 You are an expert in scientific peer review and hypothesis validation.
 Perform a comprehensive full review of the following hypothesis using relevant literature.
 
-Hypothesis: {{ hypothesis }}
+Hypothesis: {{ hypotheses }}
 Goal: {{ goal }}
 
 Preferences: {{ preferences }}

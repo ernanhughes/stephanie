@@ -27,7 +27,6 @@ class EvolutionAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.use_grafting = cfg.get("use_grafting", False)
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
-        self.logger.log(f"Evolution Preferences: {self.preferences}")
 
     async def run(self, context: dict) -> dict:
         """
@@ -62,7 +61,7 @@ class EvolutionAgent(BaseAgent):
                     {**self.cfg, **{HYPOTHESES: h}}, context
                 )
                 raw_output = self.call_llm(prompt)
-                refined_list = self.extract_list_items(raw_output)
+                refined_list = self.extract_hypothesis(raw_output)
 
                 if refined_list:
                     for r in refined_list:
@@ -129,28 +128,14 @@ class EvolutionAgent(BaseAgent):
         v2 = np.array(vec2)
         return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
 
-    def extract_list_items(self, text: str) -> list[str]:
-        # First attempt: Try precise regex-based extraction
-        pattern = re.compile(
-            r"(# Hypothesis\s+\d+\s*\n(?:.*?\n)*?)(?=(# Hypothesis\s+\d+|\Z))",
-            re.IGNORECASE,
-        )
-        matches = list(pattern.finditer(text))
+    def extract_hypothesis(self, text: str) -> list[str]:
+        """
+        Extracts hypothesis from markdown-style output with '**Hypothesis:**' section.
+        Returns a list of simplified hypotheses.
+        """
+        pattern = re.compile(r"\*\*Hypothesis:\*\*\s*(.*?)\n", re.IGNORECASE)
+        matches = pattern.findall(text)
 
-        if matches:
-            return [match.group(1).strip() for match in matches]
-
-        # Fallback: Split on the word "hypotheses" and rebuild sections
-        split_parts = re.split(r"\bHypothesis\s+\d+\b", text, flags=re.IGNORECASE)
-
-        if len(split_parts) <= 1:
-            return []  # No valid hypotheses found at all
-
-        # Reconstruct each hypothesis section
-        hypotheses = []
-        for i, part in enumerate(split_parts[1:], start=1):  # Skip preamble
-            cleaned = part.strip()
-            if cleaned:
-                hypotheses.append(f"Hypothesis {i} {cleaned}")
-
-        return hypotheses
+        if len(matches) == 0:
+            return [text]
+        return [match.strip() for match in matches if match.strip()]

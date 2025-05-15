@@ -2,7 +2,7 @@ You are an expert researcher reviewing scientific hypotheses.
 Use the following information to evaluate correctness and novelty.
 
 Goal: {{ goal }}
-Hypothesis: {{ hypothesis }}
+Hypothesis: {{ hypotheses }}
 
 Instructions:
 1. Evaluate the hypothesis for biological plausibility

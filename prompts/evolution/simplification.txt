@@ -11,6 +11,7 @@ Instructions:
 4. Avoid introducing new concepts — focus on making it accessible.
 
 # Original Hypothesis
-{{ hypothesis }}
+{{ hypotheses }}
 
-# Simplified Hypothesis
+# Evolved Hypothesis
+<hypothesis here>

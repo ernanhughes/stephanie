@@ -1,7 +1,7 @@
 You are an expert researcher acting as a self-critic.
 Review and challenge the following hypothesis to find flaws or opportunities for improvement.
 
-Hypothesis: {{ hypothesis }}
+Hypothesis: {{ hypotheses }}
 Goal: {{ goal }}
 Current Preferences: {{ preferences }}
 
@@ -10,4 +10,5 @@ Instructions:
 2. Are they supported by existing literature or just speculation?
 3. Could this be tested directly? If not, suggest modifications.
 
-# Improved Hypothesis
+# Evolved Hypothesis
+<hypothesis here>

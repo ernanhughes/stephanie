@@ -11,6 +11,6 @@ Instructions:
 4. Ensure the revised concept retains its novelty and logical coherence
 
 # Original Hypothesis
-{{ hypothesis }}
+{{ hypotheses }}
 
 # Refined Hypothesis

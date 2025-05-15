@@ -11,6 +11,7 @@ Instructions:
 4. Explain why each variant could be worth pursuing.
 
 # Original Hypothesis
-{{ hypothesis }}
+{{ hypotheses }}
 
 # Evolved Hypothesis
+<hypothesis here>
