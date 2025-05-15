@@ -12,7 +12,7 @@ REVIEWS = "reviews"
 REFLECTION = "reflection"
 FILE = "file"
 DEFAULT = "default"
-
+PROXIMITY = "proximity"
 AGENT = "Agent"
 NAME="name"
 # Config keys
@@ -40,5 +40,4 @@ LITERATURE = "literature"
 MODEL = "model"
 
 EVOLVED = "evolved"
-REVIEWED = "reviewed"
 

@@ -17,5 +17,6 @@ literature_ranking:
   prompt_file: literature_ranking.txt
   extraction_regex: "article_rankings:\n(.+?)(?=\n\n|$)"
   input_keys: ["goal", "literature"]
-  output_key: "ranked_literature"
+  input_key: literature
+  output_key: ranked_literature
 

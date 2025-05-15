@@ -1,7 +1,7 @@
 # co_ai/agents/meta_review.py
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import HYPOTHESES, EVOLVED, REVIEWED, STRATEGY, REFLECTION, RANKING
+from co_ai.constants import HYPOTHESES, EVOLVED, REVIEW, PROXIMITY, REFLECTION, RANKING
 
 
 class MetaReviewAgent(BaseAgent):
@@ -27,27 +27,27 @@ class MetaReviewAgent(BaseAgent):
         """
 
         # Get inputs from context
-        evolved_hypotheses = context.get(EVOLVED, [])
-        if len(evolved_hypotheses) == 0:
-            evolved_hypotheses = context.get(HYPOTHESES, [])
-        reviewed = context.get(REVIEWED, [])
-        reflections = context.get(REFLECTION, [])
-        ranked_hypotheses = context.get(RANKING, [])
+        evolved = context.get(EVOLVED, [])
+        if len(evolved) == 0:
+            evolved = context.get(HYPOTHESES, [])
+        review = context.get(REVIEW, [])
+        reflection = context.get(REFLECTION, [])
+        ranking = context.get(RANKING, [])
         strategic_directions = context.get("strategic_directions", [])
-        db_matches = context.get("proximity", {}).get("database_matches", [])
+        db_matches = context.get(PROXIMITY, {}).get("database_matches", [])
 
         # Extract key themes from DB hypotheses
         db_themes = "\n".join(f"- {h['text'][:100]}" for h in db_matches)
 
         # Extract text if needed
         hypothesis_texts = [
-            h.text if hasattr(h, "text") else h for h in evolved_hypotheses
+            h.text if hasattr(h, "text") else h for h in evolved
         ]
         reflection_texts = [
-            r.review if hasattr(r, "reflection") else r for r in reflections
+            r.review if hasattr(r, "reflection") else r for r in reflection
         ]
         reviewed_texts = [
-            r.review if hasattr(r, "text") else r for r in reviewed
+            r.review if hasattr(r, "text") else r for r in review
         ]
 
         # Log inputs for traceability
@@ -55,8 +55,11 @@ class MetaReviewAgent(BaseAgent):
             "MetaReviewInput",
             {
                 "hypothesis_count": len(hypothesis_texts),
+                "evolved_count": len(evolved),
                 "review_count": len(reviewed_texts),
-                "ranked_count": len(ranked_hypotheses),
+                "ranked_count": len(ranking),
+                "reflection_count": len(reflection_texts),
+                "strategic_directions_count": len(strategic_directions),
                 "strategic_directions": strategic_directions,
             },
         )
@@ -64,8 +67,9 @@ class MetaReviewAgent(BaseAgent):
         merged = {
             **context,
             **{
-                "evolved_hypotheses": evolved_hypotheses,
-                "reviews": reviewed,
+                EVOLVED: evolved,
+                REVIEW: review,
+                RANKING: ranking,
                 "db_themes": db_themes,
             },
         }
@@ -79,7 +83,7 @@ class MetaReviewAgent(BaseAgent):
         )
 
         # Add to context
-        context["meta_review"] = raw_response
+        context[self.output_key] = raw_response
 
         # Extract structured feedback
         feedback = self._extract_feedback_from_meta_review(raw_response)

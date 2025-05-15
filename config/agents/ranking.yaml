@@ -8,7 +8,7 @@ ranking:
   tournament_type: elo
   max_comparisons: 6
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
 
   # model
   model:
@@ -19,9 +19,9 @@ ranking:
   # Required keys for the agent ot effectively process the context
   required_keys: ["goal", "hypotheses"]   # add nodes
   # Key that it will iterate over ot generate reflections
-  input_key: "hypotheses"
+  input_key: hypotheses
   # Key that it store the results of those reflections
-  output_key: "ranking"  # change
+  output_key: ranking  # change
 
   # prompt
   save_prompt: true

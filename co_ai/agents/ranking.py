@@ -64,7 +64,7 @@ class RankingAgent(BaseAgent):
 
         ranked = sorted(self.elo_scores.items(), key=lambda x: x[1], reverse=True)
         context[self.output_key] = ranked
-        context["preferences_used"] = self.preferences
+
         self.logger.log("TournamentCompleted", {
             "total_hypotheses": len(ranked),
             "win_loss_patterns": self._extract_win_loss_feedback(),
