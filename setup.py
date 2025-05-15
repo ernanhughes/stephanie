@@ -7,7 +7,11 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     package_data={
-        "co_ai": ["config/**/*.yaml"],
+        "co_ai": ["config/**/*.yaml",
+        "prompts/**/*.txt",   # all prompt templates
+        "schema.sql",  # your schema
+        "docker-compose.yml",  # your schema
+        ]
     },
     install_requires=[
         "omegaconf",
