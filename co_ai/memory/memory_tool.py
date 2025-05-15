@@ -3,7 +3,8 @@ from typing import Optional
 import psycopg2
 
 from co_ai.memory import (ContextStore, EmbeddingStore, HypothesesStore,
-                          PromptLogger, ReportLogger)
+                          PromptStore, ReportLogger)
+                          
 from co_ai.memory import BaseStore
 
 
@@ -28,7 +29,7 @@ class MemoryTool:
         self.register_store(EmbeddingStore(self.db, cfg.embeddings, logger))
         self.register_store(HypothesesStore(self.db, self.get("embedding"), logger))
         self.register_store(ContextStore(self.db, logger))
-        self.register_store(PromptLogger(self.db, logger))
+        self.register_store(PromptStore(self.db, logger))
         self.register_store(ReportLogger(self.db, logger))
 
         # Register extra pluggable stores

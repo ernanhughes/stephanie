@@ -1,4 +1,3 @@
-from pathlib import Path
 import os
 
 from jinja2 import Template

@@ -2,7 +2,7 @@
 import re
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, HYPOTHESES
+from co_ai.constants import GOAL, HYPOTHESES, LITERATURE, FEEDBACK, NAME
 
 
 class GenerationAgent(BaseAgent):
@@ -12,43 +12,61 @@ class GenerationAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, "")
 
-        self.logger.log("GenerationStart", {"goal":goal})
+        self.logger.log("GenerationStart", {GOAL: goal})
 
         # Load literature if available
-        literature = context.get("literature", {})
+        literature = context.get(LITERATURE, {})
 
         # Build context for prompt
         render_context = {
-            "literature": literature,
-            "feedback": context.get("feedback", {}),
-            HYPOTHESES: context.get(HYPOTHESES, [])
+            LITERATURE: literature,
+            FEEDBACK: context.get(FEEDBACK, {}),
+            HYPOTHESES: context.get(HYPOTHESES, []),
         }
 
         # Load prompt based on strategy
-        prompt = self.prompt_loader.load_prompt(self.cfg,
-            context={**render_context, **context}
+        prompt = self.prompt_loader.load_prompt(
+            self.cfg, context={**render_context, **context}
         )
+        context[f"{self.cfg.get(NAME)}_prompt"] = prompt
 
-        # Call LLM
         response = self.call_llm(prompt)
 
         # Extract hypotheses
         hypotheses = self.extract_hypotheses(response)
 
         for h in hypotheses:
-            self.memory.hypotheses.store(goal, h, 0.0, None, None)
+            self.memory.hypotheses.store(goal, h, 0.0, None, None, prompt)
 
-        
+        merged = {**context, **{"input_prompt":prompt, "example_output":response}}
+
+        prompt_improved_prompt = self.prompt_loader.from_file("improve.txt", self.cfg, merged)
+
+        # Call LLM
+        improved_prompt = self.call_llm(prompt_improved_prompt)
+
+        improved_response = self.call_llm(improved_prompt)
+
+
+        hypotheses = self.extract_hypotheses(improved_response)
+
+        for h in hypotheses:
+            self.memory.hypotheses.store(goal, h, 0.0, None, None, improved_prompt)
+
+
         # Update context with new hypotheses
         context[self.output_key] = hypotheses
 
         # Log event
-        self.logger.log("GeneratedHypotheses", {
-            GOAL: goal,
-            HYPOTHESES: hypotheses,
-            "prompt_snippet": prompt[:300],
-            "response_snippet": response[:500]
-        })
+        self.logger.log(
+            "GeneratedHypotheses",
+            {
+                GOAL: goal,
+                HYPOTHESES: hypotheses,
+                "prompt_snippet": prompt[:300],
+                "response_snippet": response[:500],
+            },
+        )
 
         return context
 
@@ -57,7 +75,7 @@ class GenerationAgent(BaseAgent):
         # First attempt: Try precise regex-based extraction
         pattern = re.compile(
             r"(# Hypothesis\s+\d+\s*\n(?:.*?))(?:\n(?=# Hypothesis\s+\d+)|\Z)",
-            re.IGNORECASE | re.DOTALL
+            re.IGNORECASE | re.DOTALL,
         )
         matches = list(pattern.finditer(text))
 

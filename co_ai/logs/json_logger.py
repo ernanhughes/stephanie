@@ -1,13 +1,23 @@
-# co_ai/logs/json_logger.py
-
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 class JSONLogger:
+    DEFAULT_ICON = "📦"
+
     EVENT_ICONS = {
-        # Pipeline-level
+        # General System & Supervisor
+        "SupervisorInit": "🧑‍🏫",
+        "AgentInitialized": "🛠️",
+        "StoreRegistered": "✅",
+        "ContextSaved": "💾",
+        "ContextLoaded": "📂",
+        "ContextYAMLDumpSaved": "📄",
+        "ContextAfterStage": "🗃️",
+        "debug": "🐞",
+
+        # Pipeline execution
         "PipelineStart": "🔬",
         "PipelineSuccess": "✅",
         "PipelineError": "❌",
@@ -20,62 +30,51 @@ class JSONLogger:
         "IterationEnd": "🔚",
 
         # Generation phase
+        "GenerationStart": "✨",
         "GenerationAgent": "🧪",
         "GeneratedHypotheses": "💡",
-        "RankingStored": "🗃️",
-        "RankingUpdated": "🔁",
-        "GeneratedReviews": "🧾",
-        "TournamentCompleted": "🏆",
-        # Prompt handling
-        "PromptLogged": "🧾",
-        "EvolvedParsedHypotheses": "🧬",
-        # Reflection phase
-        "ReflectionAgent": "🪞",
-        "ReviewStored": "💬",
-        "ReflectedHypotheses": "🔎",
 
         # Ranking phase
         "RankingAgent": "🏆",
         "RankedHypotheses": "🏅",
+        "RankingStored": "🗃️",
+        "RankingUpdated": "🔁",
+
+        # Review and reflection
+        "ReviewAgent": "🧑‍⚖️",
+        "ReviewStored": "💬",
+        "MetaReviewAgent": "🧠",
+        "MetaReviewSummary": "📘",
+        "MetaReviewInput": "📉",
+        "NotEnoughHypothesesForRanking": "⚠️",
+        "GeneratedReviews": "🧾",
+        "RawMetaReviewOutput": "📜",
+        "SummaryLogged": "📝",
+        "ReflectionAgent": "🪞",
+        "ReflectionStart": "🤔",
+        "ReflectionStored": "💾",
 
         # Evolution phase
         "EvolutionAgent": "🧬",
         "EvolvingTopHypotheses": "🔄",
         "EvolvedHypotheses": "🌱",
+        "EvolvedParsedHypotheses": "🧬",
         "GraftingPair": "🌿",
         "EvolutionCompleted": "🦾",
         "EvolutionError": "⚠️",
 
-        # Meta-review phase
-        "MetaReviewAgent": "🧠",
-        "MetaReviewSummary": "📘",
-        "SummaryLogged": "📝",
-        "RawMetaReviewOutput": "📜",
-
-        # Hypothesis storage
-        "HypothesisStored": "📥",
-
-        # Reporting
-        "ReportGenerated": "📊",
-
-        # General
-        "SupervisorInit": "🧑‍🏫",
+        # Literature & research
         "LiteratureAgentInit": "📚",
         "LiteratureSearchSkipped": "⏭️",
         "LiteratureQueryFailed": "❓",
         "NoResultsFromWebSearch": "🚫",
         "DatabaseHypothesesMatched": "🔍",
         "ProximityGraphComputed": "🗺️",
-        "ReflectionStart": "🤔",
-        "ReflectionStored": "💾",
-        "ContextLoaded": "📂",
+
+        # Prompt handling
         "Prompt": "📜",
-        "ReviewAgent": "🧑‍⚖️",
-        "MetaReviewInput": "📉",
-        "NotEnoughHypothesesForRanking": "⚠️",
-        "StoreRegistered": "️✅",
-        "ContextAfterStage": "🗃️",
-        "debug": "🐞"
+        "PromptLogged": "🧾",
+        "ReportGenerated": "📊",
     }
 
     def __init__(self, log_path="logs/pipeline_log.jsonl"):
@@ -83,13 +82,13 @@ class JSONLogger:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, event_type: str, data: dict):
-        icon = self.EVENT_ICONS.get(event_type, "📦")  # Default icon for unknown types
-        print(f"{icon} Logging event: {event_type} | {str(data)[:100]}")
+        icon = self.EVENT_ICONS.get(event_type, self.DEFAULT_ICON)
+        print(f"{icon} [{event_type}] {str(data)[:100]}")
 
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "event_type": event_type,
-            "data": data
+            "data": data,
         }
 
         try:
@@ -97,5 +96,7 @@ class JSONLogger:
                 json.dump(log_entry, f, default=str)
                 f.write("\n")
         except (TypeError, ValueError) as e:
-            print(f"[Logger] ❌ Failed to serialize log entry: {e}")
-            print(f"[Logger] 🚨 Problematic log data: {data}")
+            print("❌ [Logger] Failed to serialize log entry.")
+            print(f"🛠️  Event Type: {event_type}")
+            print(f"🪵  Error: {e}")
+            print(f"🧱  Data: {repr(data)[:200]}")

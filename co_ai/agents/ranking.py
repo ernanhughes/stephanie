@@ -140,7 +140,7 @@ class RankingAgent(BaseAgent):
 
             prompt = self.prompt_loader.load_prompt(merged, context=context)
 
-            self.logger.log("RankingCompare", {"hyp1": hyp1[:60],  "hyp1":hyp2[:60]})
+            self.logger.log("RankingCompare", {"hyp1": hyp1[:60],  "hyp2":hyp2[:60]})
 
             try:
                 response = self.call_llm(prompt)

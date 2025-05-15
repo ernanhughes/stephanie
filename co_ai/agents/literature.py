@@ -3,7 +3,7 @@ import re
 
 from co_ai.agents.base import BaseAgent
 from co_ai.logs import JSONLogger
-from co_ai.memory import VectorMemory
+from co_ai.memory import MemoryTool
 from co_ai.tools import WebSearchTool
 
 
@@ -16,7 +16,7 @@ class LiteratureAgent(BaseAgent):
     > 'The Generation agent iteratively searches the web, retrieves and reads relevant research articles'
     """
 
-    def __init__(self, cfg, memory: VectorMemory = None, logger: JSONLogger = None):
+    def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.strategy = cfg.get("strategy", "query_and_summarize")
         self.preferences = cfg.get("preferences", ["goal_consistency", "novelty"])

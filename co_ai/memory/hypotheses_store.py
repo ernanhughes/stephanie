@@ -1,7 +1,6 @@
 import json
 
 from co_ai.memory import BaseStore
-from co_ai.tools.embedding_tool import get_embedding
 
 
 class HypothesesStore(BaseStore):
@@ -15,16 +14,36 @@ class HypothesesStore(BaseStore):
     def name(self) -> str:
         return "hypotheses"
 
-    def store(self, goal, text, confidence, review, features):
+    def get_prompt_id(self, prompt_text: str) -> int:
+        prompt_id = 0
+        try:
+            with self.db.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM prompts WHERE prompt_text = %s ORDER BY timestamp DESC LIMIT 1",
+                    (prompt_text,)
+                )
+                row = cur.fetchone()
+                if row:
+                    prompt_id = row[0]
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PromptLookupFailed", {
+                    "error": str(e),
+                    "prompt_snippet": prompt_text[:100]
+                })
+        return prompt_id
+
+    def store(self, goal, text, confidence, review, features, prompt_text=None):
         embedding = self.embeddings.get_or_create(text)
+        prompt_id = self.get_prompt_id(prompt_text)
         try:
             with self.db.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO hypotheses (goal, text, confidence, review, features, embedding)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO hypotheses (goal, text, confidence, review, features, embedding, prompt_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (goal, text, confidence, review, features, embedding)
+                    (goal, text, confidence, review, features, embedding, prompt_id)
                 )
             if self.logger:
                 self.logger.log("HypothesisStored", {
@@ -138,32 +157,29 @@ class HypothesesStore(BaseStore):
         """
         try:
             # Fetch top hypotheses sorted by Elo rating
+            rows = []
             with self.db.cursor() as cur:
                 cur.execute("""
                     SELECT 
-                        hypothesis, 
+                        text, 
                         reflection, 
-                        elo_rating,
-                        metadata
-                    FROM hypothesis
+                        review, 
+                        elo_rating
+                    FROM hypotheses
                     WHERE goal = %s
                     ORDER BY elo_rating DESC
                     LIMIT %s
-                """, (goal[:200], limit))
-
-            rows = cur.fetchall()
+                """, (goal, limit))
+                rows = cur.fetchall()
             result = []
-
-            for hyp, reflection, score, meta in rows:
-                reflection_dict = json.loads(reflection) if isinstance(reflection, str) else reflection or {}
-                
+            for text, reflection, review, score in rows:
                 result.append({
                     "goal": goal,
-                    "hypotheses": hyp,
-                    "review": reflection_dict.get("full_review", ""),
+                    "hypotheses": text,
+                    "reflection": reflection,
                     "score": score,
-                    "elo_rating": score,
-                    "metadata": meta
+                    "review": review,
+                    "elo_rating": score
                 })
             return result
         except Exception as e:

@@ -6,7 +6,6 @@ import litellm
 
 from co_ai.logs import JSONLogger
 from co_ai.utils import PromptLoader
-from co_ai.parsers import ResponseParser
 
 from co_ai.constants import (
     API_BASE,
@@ -79,7 +78,7 @@ class BaseAgent(ABC):
             )
             output = response["choices"][0]["message"]["content"]
             if self.cfg.get(SAVE_PROMPT, False) and self.memory:
-                self.memory.prompt.log(
+                self.memory.prompt.save(
                     agent_name=self.__class__.__name__,
                     prompt_key=self.cfg.get(PROMPT_PATH, ""),
                     prompt_text=prompt,
@@ -93,11 +92,6 @@ class BaseAgent(ABC):
         except Exception as e:
             self.logger.log("LLMCallError", {"exception": e})
             raise
-
-    def extract_list_items(self, text: str) -> list[str]:
-        return [
-            match.strip() for match in re.findall(r"(?m)^\s*[\-\*\d]+\.\s+(.*)", text)
-        ]
 
     @abstractmethod
     async def run(self, context: dict) -> dict:

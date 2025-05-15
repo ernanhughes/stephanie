@@ -150,3 +150,15 @@ CREATE TABLE IF NOT EXISTS embeddings (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+
+CREATE TABLE IF NOT EXISTS public.prompt_evaluations (
+    id SERIAL PRIMARY KEY,
+    prompt_id INTEGER NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
+    benchmark_name TEXT NOT NULL,                      -- e.g. "goal_alignment_test_set_1"
+    score FLOAT,                                       -- Aggregated score for this benchmark
+    metrics JSONB DEFAULT '{}'::jsonb,                 -- e.g. {"exact_match": 0.8, "precision": 0.75}
+    dataset_hash TEXT,                                 -- Optional hash of the dataset used
+    evaluator TEXT DEFAULT 'auto',                     -- "manual", "dspy", "llm", etc.
+    notes TEXT,                                        -- Freeform notes about the evaluation
+    created_at TIMESTAMPTZ DEFAULT now()
+);

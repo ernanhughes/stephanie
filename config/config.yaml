@@ -3,7 +3,9 @@ defaults:
   - _self_
   - db: postgres
   - logging/json_logger
+  - agents/prompt_tuning
   - agents/generation
+  - agents/prompt_refiner
   - agents/review
   - agents/reflection
   - agents/ranking
@@ -16,7 +18,7 @@ defaults:
 
 # The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
 # This is a placeholder and should be replaced with the actual goal.
-goal: ""
+goal: "The USA is about to default on it national debt"
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -51,28 +53,32 @@ pipeline:
     - name: generation
       cls: co_ai.agents.generation.GenerationAgent
       enabled: true
-      iterations: 1
+      iterations: 5
     - name: reflection
       cls: co_ai.agents.reflection.ReflectionAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: review
       cls: co_ai.agents.review.ReviewAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: proximity
       cls: co_ai.agents.proximity.ProximityAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: ranking
       cls: co_ai.agents.ranking.RankingAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: evolution
       cls: co_ai.agents.evolution.EvolutionAgent
-      enabled: true
+      enabled: false
       iterations: 1
     - name: meta_review
       cls: co_ai.agents.meta_review.MetaReviewAgent
-      enabled: true
+      enabled: false
+      iterations: 1
+    - name: prompt_tuning
+      cls: co_ai.agents.prompt_tuning.PromptTuningAgent
+      enabled: false
       iterations: 1

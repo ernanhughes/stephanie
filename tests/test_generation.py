@@ -1,4 +1,4 @@
-There's you need to configure configimport pytest
+import pytest
 from unittest.mock import AsyncMock
 from co_ai.agents.generation import GenerationAgent
 

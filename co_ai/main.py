@@ -1,9 +1,7 @@
 # main.py
 import asyncio
 import logging
-import os
 import yaml
-from datetime import datetime, timezone
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -36,7 +34,7 @@ def run(cfg: DictConfig):
 
         save_yaml_result(log_path, result)
 
-        if (cfg.report.generate_report):
+        if cfg.report.generate_report:
             supervisor.generate_report(result, run_id=run_id)
     asyncio.run(main())
 

@@ -1,0 +1,14 @@
+site_name: co_ai
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Agents: agents.md
+  - Memory: memory.md
+  - Tools: tools.md
+  - Configuration: config.md
+  - Custom Pipeline: custom.md
+
+docs_dir: docs

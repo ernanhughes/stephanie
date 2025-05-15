@@ -20,7 +20,9 @@ dependencies = [
     "hydra-core", 
     "jinja2",
     "beautifulsoup4",
-    "tabulate"
+    "tabulate",
+    "python_dotenv",
+    "ollama"
 ]
 
 [project.urls]
