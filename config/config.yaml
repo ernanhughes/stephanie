@@ -70,8 +70,8 @@ pipeline:
       iterations: 1
     - name: evolution
       cls: co_ai.agents.evolution.EvolutionAgent
-      enabled: false
-      iterations: 2
+      enabled: true
+      iterations: 1
     - name: meta_review
       cls: co_ai.agents.meta_review.MetaReviewAgent
       enabled: true

@@ -6,6 +6,7 @@ import numpy as np
 
 from co_ai.agents.base import BaseAgent
 from co_ai.tools.embedding_tool import get_embedding
+from co_ai.constants import RANKING, HYPOTHESES, EVOLVED, GOAL
 
 
 class EvolutionAgent(BaseAgent):
@@ -24,25 +25,22 @@ class EvolutionAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.logger.log(f"Initializing Evolution Agent: {cfg}")
-        self.strategy = cfg.get("strategy", "grafting")
         self.use_grafting = cfg.get("use_grafting", False)
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
         self.logger.log(f"Evolution Preferences: {self.preferences}")
-        self.cfg = cfg
 
     async def run(self, context: dict) -> dict:
         """
         Evolve top-ranked hypotheses individually.
-        
+       
         Args:
             context: Dictionary with keys:
                 - ranked: list of (hypotheses, score) tuples
                 - hypotheses: list of unranked hypotheses (fallback)
                 - preferences: override criteria for refinement
         """
-        ranked = context.get("ranked", [])
-        fallback_hypotheses = context.get("hypotheses", [])
+        ranked = context.get(RANKING, [])
+        fallback_hypotheses = context.get(HYPOTHESES, [])
         preferences = context.get("preferences", self.preferences)
 
         # Decide which hypotheses to evolve
@@ -51,46 +49,49 @@ class EvolutionAgent(BaseAgent):
         elif fallback_hypotheses:
             top_texts = fallback_hypotheses
         else:
-            self.logger.log("NoHypothesesToEvolve", {
-                "reason": "no_ranked_or_unranked_input"
-            })
-            context["evolved"] = []
+            self.logger.log(
+                "NoHypothesesToEvolve", {"reason": "no_ranked_or_unranked_input"}
+            )
+            context[EVOLVED] = []
             return context
 
         evolved = []
         for h in top_texts:
             try:
-                prompt = self.prompt_loader.load_prompt({**self.cfg, **{"hypotheses":h}}, context)
+                prompt = self.prompt_loader.load_prompt(
+                    {**self.cfg, **{HYPOTHESES: h}}, context
+                )
                 raw_output = self.call_llm(prompt)
                 refined_list = self.extract_list_items(raw_output)
 
                 if refined_list:
                     for r in refined_list:
-                        goal = context.get("goal", "")
-                        evol_goal= f"Evolved from top-ranked {goal}"
-                        self.memory.hypotheses.store(evol_goal, h, None, None, None)
+                        goal = context.get(GOAL, "")
+                        evolved_goal = f"Evolved from top-ranked {goal}"
+                        self.memory.hypotheses.store(evolved_goal, h, None, None, None)
                         evolved.append(r)
                 else:
-                    self.logger.log("EvolutionFailed", {
-                        "original": h[:100],
-                        "response_snippet": raw_output[:200]
-                    })
+                    self.logger.log(
+                        "EvolutionFailed",
+                        {"original": h[:100], "response_snippet": raw_output[:200]},
+                    )
 
             except Exception as e:
-                self.logger.log("EvolutionError", {
-                    "error": str(e),
-                    "hypotheses": h[:100]
-                })
+                self.logger.log(
+                    "EvolutionError", {"error": str(e), "hypotheses": h[:100]}
+                )
 
         context["evolved"] = evolved
-        self.logger.log("EvolutionCompleted", {
-            "evolved_count": len(evolved),
-            "preferences": preferences
-        })
+        self.logger.log(
+            "EvolutionCompleted",
+            {"evolved_count": len(evolved), "preferences": preferences},
+        )
 
         return context
-   
-    async def graft_similar(self, hypotheses: list[str], threshold: float = 0.90) -> list[str]:
+
+    async def graft_similar(
+        self, hypotheses: list[str], threshold: float = 0.90
+    ) -> list[str]:
         """
         Graft pairs of highly similar hypotheses into unified versions.
         """
@@ -103,11 +104,10 @@ class EvolutionAgent(BaseAgent):
                 continue
             sim = self.cosine_similarity(embeddings[i], embeddings[j])
             if sim >= threshold:
-                self.logger.log("GraftingPair", {
-                    "similarity": sim,
-                    "h1": h1[:60] + "...",
-                    "h2": h2[:60] + "..."
-                })
+                self.logger.log(
+                    "GraftingPair",
+                    {"similarity": sim, "h1": h1[:60] + "...", "h2": h2[:60] + "..."},
+                )
                 prompt = (
                     f"Combine the following hypotheses into a clearer, unified statement:\n\n"
                     f"A: {h1}\nB: {h2}"
@@ -133,7 +133,7 @@ class EvolutionAgent(BaseAgent):
         # First attempt: Try precise regex-based extraction
         pattern = re.compile(
             r"(# Hypothesis\s+\d+\s*\n(?:.*?\n)*?)(?=(# Hypothesis\s+\d+|\Z))",
-            re.IGNORECASE
+            re.IGNORECASE,
         )
         matches = list(pattern.finditer(text))
 
