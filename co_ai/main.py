@@ -19,10 +19,7 @@ def run(cfg: DictConfig):
     async def main():
         print(f"Initial Config:\n{OmegaConf.to_yaml(cfg)}")
 
-        cfg.goal = "The USA is about to default on it national debt"
-
-        # run_id = generate_run_id(cfg.goal)
-        run_id = "Test Run"
+        run_id = generate_run_id(cfg.goal)
         log_path = get_log_file_path(run_id, cfg)
         logger = JSONLogger(log_path=log_path)
         memory = MemoryTool(cfg=cfg.db, logger=logger)

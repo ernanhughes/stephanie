@@ -62,6 +62,10 @@ class EvolutionAgent(BaseAgent):
                 )
                 raw_output = self.call_llm(prompt)
                 refined_list = self.extract_hypothesis(raw_output)
+                self.logger.log("EvolvedParsedHypotheses", {
+                    "raw_response_snippet": raw_output[:300],
+                    "parsed": refined_list
+                })
 
                 if refined_list:
                     for r in refined_list:

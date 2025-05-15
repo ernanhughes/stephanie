@@ -8,7 +8,7 @@ ranking:
   tournament_type: elo
   max_comparisons: 6
   save_context: true
-  skip_if_completed: false
+  skip_if_completed: true
 
   # model
   model:

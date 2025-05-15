@@ -28,7 +28,7 @@ class JSONLogger:
         "TournamentCompleted": "🏆",
         # Prompt handling
         "PromptLogged": "🧾",
-
+        "EvolvedParsedHypotheses": "🧬",
         # Reflection phase
         "ReflectionAgent": "🪞",
         "ReviewStored": "💬",
