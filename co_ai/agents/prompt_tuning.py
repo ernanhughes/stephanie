@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+import re
 import dspy
 from dspy import Predict, Signature, InputField, OutputField, Example, BootstrapFewShot
 
@@ -64,6 +65,7 @@ class PromptTuningAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, "")
         generation_count = self.sample_size + self.generate_count
+        self.logger.log("PromptTuningExamples", {"samples size": self.sample_size, "generation count": generation_count})
         examples = self.memory.prompt.get_prompt_training_set(
             goal, generation_count
         )
@@ -98,7 +100,7 @@ class PromptTuningAgent(BaseAgent):
             {
                 "goal": goal,
                 "example_count": len(training_set),
-                "refined_prompt_snippet": context["refined_prompt"][:200],
+                "generated_count": len(val_data)
             },
         )
 
@@ -156,6 +158,9 @@ class PromptTuningAgent(BaseAgent):
 
                 stored_count += 1
 
+                # Append to context history
+                self.add_to_prompt_history(context, refined_prompt, {"original": example["prompt_text"]})
+
                 self.logger.log(
                     "TunedPromptStored",
                     {"goal": goal, "refined_snippet": refined_prompt[:100]},
@@ -171,3 +176,31 @@ class PromptTuningAgent(BaseAgent):
             "goal": goal,
             "count": stored_count
         })
+
+    def _score_prompts(self, context: dict, prompt_a: str, prompt_b: str) -> float:
+        """Run both prompts and compare results"""
+        try:
+            hypotheses_a = self.call_llm(prompt_a, context)
+            hypotheses_b = self.call_llm(prompt_b, context)
+
+            # Run comparison
+            merged = {**context, **{"prompt_a":prompt_a,
+                "prompt_b":prompt_b,
+                "hypotheses_a":hypotheses_a,
+                "hypotheses_b":hypotheses_b}}
+            comparison_prompt = self.prompt_loader.load_prompt().render(
+                self.cfg, merged
+            )
+
+            response = self.call_llm(comparison_prompt, context)
+            match = re.search(r"better prompt:<([AB])>", response, re.IGNORECASE)
+
+            if match and match.group(1).upper() == "A":
+                return 0.5  # Tie or neutral
+            elif match and match.group(1).upper() == "B":
+                return 1.0  # B is better
+            else:
+                return 0.0  # No clear winner
+        except Exception as e:
+            print(f"[PromptTuner] Failed to score prompts: {e}")
+            return 0.0

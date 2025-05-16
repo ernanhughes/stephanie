@@ -27,9 +27,9 @@ prompt_tuning:
   output_key: "tuned_prompts"  # change
 
   save_prompt: true
-  prompt_mode: strategy
-  strategy: default  # Options: initial, full, observation, deep_verification
-  prompt_file:
+  prompt_mode: file
+  strategy:
+  prompt_file: score_prompt.txt
   # A set of keys that will tune the prompts operation
   preferences:
     - goal_consistency

@@ -86,15 +86,7 @@ class BaseAgent(ABC):
                     # metadata={}
                 )
             response = remove_think_blocks(output)
-            if "prompt_history" not in context:
-                context["prompt_history"] = {}
-            context["prompt_history"][self.name] = {
-                "prompt": prompt,
-                "agent": self.name,
-                "response": response,  # Adding think will confuse the refinement
-                "preferences": self.preferences,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            self.add_to_prompt_history(context, prompt, {"response":response})
             return response
         except Exception as e:
             self.logger.log("LLMCallError", {"exception": e})
@@ -103,3 +95,31 @@ class BaseAgent(ABC):
     @abstractmethod
     async def run(self, context: dict) -> dict:
         pass
+
+    def add_to_prompt_history(
+        self,
+        context: dict,
+        prompt: str,
+        metadata: dict = None
+    ):
+        """
+        Appends a prompt record to the context['prompt_history'] under the agent's name.
+
+        Args:
+            context (dict): The context dict to modify
+            prompt (str): prompt to store
+            metadata (dict): any extra info
+        """
+        if "prompt_history" not in context:
+            context["prompt_history"] = {}
+        if self.name not in context["prompt_history"]:
+            context["prompt_history"][self.name] = []
+        entry = {
+            "prompt": prompt,
+            "agent": self.name,
+            "preferences": self.preferences,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        if metadata:
+            entry.update(metadata)
+        context["prompt_history"][self.name].append(entry)
