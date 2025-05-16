@@ -1,0 +1,132 @@
+# co_ai/logs/icons.py
+
+def get_event_icon(event_type: str) -> str:
+    """
+    Get the icon associated with a specific event type.
+    """
+    return EVENT_ICONS.get(event_type, "❓")
+
+
+EVENT_ICONS = {
+    # ────────────────────────────────────────────
+    # General System & Initialization
+    # ────────────────────────────────────────────
+    "AgentInitialized": "🛠️",
+    "ContextAfterStage": "🗃️",
+    "ContextLoaded": "📂",
+    "ContextSaved": "💾",
+    "ContextYAMLDumpSaved": "📄",
+    "StoreRegistered": "✅",
+    "SupervisorInit": "🧑‍🏫",
+    "debug": "🐞",
+
+    # ────────────────────────────────────────────
+    # Pipeline Execution
+    # ────────────────────────────────────────────
+    "IterationEnd": "🔚",
+    "IterationStart": "🔄",
+    "PipelineError": "❌",
+    "PipelineIterationEnd": "🔚",
+    "PipelineIterationStart": "🔄",
+    "PipelineStageEnd": "🏁",
+    "PipelineStageSkipped": "⏭️",
+    "PipelineStageStart": "🚀",
+    "PipelineStart": "🔬",
+    "PipelineSuccess": "✅",
+
+    # ────────────────────────────────────────────
+    # Prompt Processing & Tuning
+    # ────────────────────────────────────────────
+    "BatchTunedPromptsComplete": "📊🧬",
+    "ComparisonPromptConstructed": "🛠️",
+    "ComparisonResponseReceived": "📩",
+    "Prompt": "📜",
+    "PromptAResponseGenerated": "🅰️",
+    "PromptABResponseGenerated": "🅰️",
+    "PromptBResponseGenerated": "🅱️",
+    "PromptComparisonNoMatch": "❓",
+    "PromptComparisonResult": "🏁",
+    "PromptEvaluationFailed": "❌",
+    "PromptFileNotFound": "🚫",
+    "PromptLoadFailed": "❓",
+    "PromptLogged": "🧾",
+    "PromptParseFailed": "⚠️",
+    "PromptQualityCompareStart": "⚖️",
+    "PromptTuningCompleted": "🧪✨",
+    "PromptTuningExamples": "📚",
+    "PromptTuningSkipped": "⏭️",
+    "TunedPromptGenerationFailed": "❌",
+    "TunedPromptStored": "🗃️",
+
+    # ────────────────────────────────────────────
+    # Hypotheses Generation
+    # ────────────────────────────────────────────
+    "GeneratedHypotheses": "💡",
+    "GenerationAgent": "🧪",
+    "GenerationStart": "✨",
+    "HypothesisStoreFailed": "❌",
+    "HypothesisStored": "💾",
+
+    # ────────────────────────────────────────────
+    # Hypotheses Evaluation & Ranking
+    # ────────────────────────────────────────────
+    "NotEnoughHypothesesForRanking": "⚠️",
+    "RankedHypotheses": "🏅",
+    "RankingAgent": "🏆",
+    "RankingStored": "🗃️",
+    "RankingUpdated": "🔁",
+    "TournamentCompleted": "🏆",
+
+
+    # ────────────────────────────────────────────
+    # Review & Reflection
+    # ────────────────────────────────────────────
+    "MetaReviewAgent": "🧠",
+    "MetaReviewInput": "📉",
+    "MetaReviewSummary": "📘",
+    "RawMetaReviewOutput": "📜",
+    "RefinedSkipped": "⏭️",
+    "RefinedUpdated": "🔄",
+    "RefinerEvaluationPromptGenerated": "💬",
+    "RefinerEvaluationResponse": "📊",
+    "RefinerError": "❌",
+    "RefinerHypothesesExtracted": "🔍",
+    "RefinerImprovementPromptLoaded": "📜",
+    "RefinerNoHistoryFound": "🚫",
+    "RefinerPromptGenerated": "💡",
+    "RefinerResponseGenerated": "💬",
+    "RefinerStart": "🔄",
+    "ReflectionAgent": "🪞",
+    "ReflectionStart": "🤔",
+    "ReflectionStored": "💾",
+    "ReviewAgent": "🧑‍⚖️",
+    "ReviewStored": "💬",
+    "SummaryLogged": "📝",
+    "GeneratedReviews": "🧾",
+
+    # ────────────────────────────────────────────
+    # Evolution
+    # ────────────────────────────────────────────
+    "EvolutionAgent": "🧬",
+    "EvolutionCompleted": "🦾",
+    "EvolutionError": "⚠️",
+    "EvolvedHypotheses": "🌱",
+    "EvolvedParsedHypotheses": "🧬",
+    "EvolvingTopHypotheses": "🔄",
+    "GraftingPair": "🌿",
+
+    # ────────────────────────────────────────────
+    # Literature & Research
+    # ────────────────────────────────────────────
+    "DatabaseHypothesesMatched": "🔍",
+    "LiteratureAgentInit": "📚",
+    "LiteratureQueryFailed": "❓",
+    "LiteratureSearchSkipped": "⏭️",
+    "NoResultsFromWebSearch": "🚫",
+    "ProximityGraphComputed": "🗺️",
+
+    # ────────────────────────────────────────────
+    # Reporting
+    # ────────────────────────────────────────────
+    "ReportGenerated": "📊"
+}
