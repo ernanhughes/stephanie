@@ -75,7 +75,7 @@ class MetaReviewAgent(BaseAgent):
         }
         prompt = self.prompt_loader.load_prompt(self.cfg, merged)
 
-        raw_response = self.call_llm(prompt)
+        raw_response = self.call_llm(prompt, context)
 
         # Store full response for debugging
         self.logger.log(

@@ -1,7 +1,7 @@
 # co_ai/agents/base.py
 import re
 from abc import ABC, abstractmethod
-
+from datetime import datetime, timezone
 import litellm
 
 from co_ai.logs import JSONLogger
@@ -31,6 +31,8 @@ def remove_think_blocks(text: str) -> str:
 class BaseAgent(ABC):
     def __init__(self, cfg, memory=None, logger=None):
         self.cfg = cfg
+        agent_key = self.__class__.__name__.replace(AGENT, "").lower()
+        self.name = cfg.get(NAME, agent_key)
         self.memory = memory
         self.logger = logger or JSONLogger()
         self.model_config = cfg.get(MODEL, {})
@@ -40,13 +42,7 @@ class BaseAgent(ABC):
         self.save_context = cfg.get(SAVE_CONTEXT, False)
         self.input_key = cfg.get(INPUT_KEY, HYPOTHESES)
         self.preferences = cfg.get("preferences", {})
-        # self.response_parser = ResponseParser(
-        #     cfg.get("response_parser", {}),
-        #     logger=self.logger,
-        #     memory=self.memory,
-        # )
-        agent_key = self.__class__.__name__.replace(AGENT, "").lower()
-        self.output_key = cfg.get(OUTPUT_KEY, cfg.get(NAME, agent_key))
+        self.output_key = cfg.get(OUTPUT_KEY, self.name)
         self.logger.log(
             "AgentInitialized",
             {
@@ -67,7 +63,7 @@ class BaseAgent(ABC):
             API_KEY: self.model_config.get(API_KEY),
         }
 
-    def call_llm(self, prompt: str) -> str:
+    def call_llm(self, prompt: str, context: dict) -> str:
         messages = [{"role": "user", "content": prompt}]
         try:
             response = litellm.completion(
@@ -88,7 +84,17 @@ class BaseAgent(ABC):
                     version=self.cfg.get("version", 1),
                     # metadata={}
                 )
-            return remove_think_blocks(output)
+            response = remove_think_blocks(output)
+            if "prompt_history" not in context:
+                context["prompt_history"] = {}
+            context["prompt_history"][self.name] = {
+                "prompt": prompt,
+                "agent": self.name,
+                "response": response,  # Adding think will confuse the refinement
+                "preferences": self.preferences,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            return response
         except Exception as e:
             self.logger.log("LLMCallError", {"exception": e})
             raise

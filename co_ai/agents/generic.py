@@ -13,8 +13,6 @@ class GenericAgent(BaseAgent):
         self.logger = logger
 
         # Input/output mapping
-        self.input_keys = cfg.get("input_keys", [])
-        self.output_key = cfg.get("output_key", "result")
         self.strategy = cfg.get("strategy", "default")
 
         # Regex pattern to extract result
@@ -26,20 +24,11 @@ class GenericAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         """Run agent based on config-defined behavior"""
         try:
-            # Validate required inputs exist
-            missing = [key for key in self.input_keys if key not in context]
-            if missing:
-                self.logger.log("MissingInputKeys", {
-                    "agent": self.name,
-                    "missing": missing
-                })
-                return context
-
             # Build prompt from template and context
             prompt = self.prompt_loader.load_prompt(self.cfg, context)
 
             # Call LLM
-            response = self.call_llm(prompt)
+            response = self.call_llm(prompt, context)
 
             # Extract result using regex
             match = re.search(self.extraction_regex, response, re.DOTALL)
@@ -55,7 +44,7 @@ class GenericAgent(BaseAgent):
 
             self.logger.log("AgentRanSuccessfully", {
                 "agent": self.name,
-                "inputs_used": self.input_keys,
+                "input_key": self.input_key,
                 "output_key": self.output_key,
                 "prompt_snippet": prompt[:200],
                 "response_snippet": result[:300]

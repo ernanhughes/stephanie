@@ -1,77 +1,56 @@
-import re
-
 from co_ai.agents.base import BaseAgent
+from co_ai.constants import GOAL, HYPOTHESES
+from co_ai.parsers import extract_hypotheses
 
 class PromptRefinerAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         # Get inputs
-        goal = context.get("goal", "")
-        input_prompt = context.get("current_prompt", "")
-        example_output = context.get("example_output", "")
-        preferences = context.get("preferences", ["goal_consistency", "simplicity"])
+        goal = context.get(GOAL, "")
+        target_agent = self.cfg.get("target_agent", "generation")
+        history = context.get("prompt_history", {}).get(target_agent, None)
+        if history:
+            original_prompt = history["prompt"]
+            original_response = history["response"]
+            preferences = history["preferences"]
+            merged = {
+                **context,
+                **{
+                    "input_prompt": original_prompt,
+                    "example_output": original_response,
+                    "preferences": preferences,
+                },
+            }
+            original_hypotheses = context[HYPOTHESES]
+            prompt_improved_prompt = self.prompt_loader.load_prompt(
+                self.cfg, context=merged
+            )
+            # Call LLM to get the improved prompt
+            refined_prompt = self.call_llm(prompt_improved_prompt, context)
 
-        # Build refinement prompt
-        refinement_prompt = self._build_refinement_prompt(
-            goal=goal,
-            input_prompt=input_prompt,
-            example_output=example_output,
-            preferences=preferences
-        )
+            # Use the improved prompt to get the improved response
+            refined_response = self.call_llm(refined_prompt, context)
 
-        # Call LLM to get improved prompt
-        try:
-            response = self.call_llm(refinement_prompt)
-            match = re.search(r"Refined Prompt:\n(.+)", response, re.DOTALL)
-            refined_prompt = match.group(1).strip() if match else input_prompt
+            refined_hypotheses = extract_hypotheses(refined_response)
 
-            # Store only if improvement detected
-            if refined_prompt != input_prompt:
-                self.memory.store_prompt_version(
-                    agent_name=context["agent"],
-                    prompt_key=context["prompt_key"],
-                    prompt_text=refined_prompt,
-                    source="manual_to_refined",
-                    version=context["version"] + 1,
-                    metadata={"improvement_score": self._evaluate_improvement(input_prompt, refined_prompt)}
-                )
-                context["refined_prompt"] = refined_prompt
-        except Exception as e:
-            self.logger.log("PromptRefiningFailed", {"error": str(e)})
-            refined_prompt = input_prompt
+            for h in refined_hypotheses:
+                self.memory.hypotheses.store(goal, h, 0.0, None, None, refined_prompt)
+        
+            info = {"original_response": original_response, 
+                                           "original_hypotheses": original_hypotheses,
+                                           "refined_prompt": refined_prompt,
+                                           "refined_hypotheses": refined_hypotheses
+                                           }
+            refined_merged = {**merged, **info}
+
+            evaluation_template = self.cfg.get("evaluation_template", "evaluate.txt")
+            # Store the refined prompt and response in the context
+            evaluation_prompt = self.prompt_loader.from_file(evaluation_template, self.cfg, refined_merged)
+            evaluation_response = self.call_llm(evaluation_prompt, context)
+
+            if evaluation_response.find(" 2"):
+                context[HYPOTHESES] = refined_hypotheses
+                self.log("RefinedSuccess", info)
+            else:
+                self.log("RefinedFailure", info)
 
         return context
-
-    def _build_refinement_prompt(self, goal, input_prompt, example_output, preferences):
-        """Build prompt using template + context"""
-        preferences_str = ", ".join(preferences)
-
-        return f"""
-You are an expert in prompt engineering and scientific reasoning.
-Your task is to refine the following prompt to produce better hypotheses.
-
-Goal: {goal}
-Preferences: {preferences_str}
-
-Old Prompt:
-{input_prompt}
-
-Example Output:
-{example_output}
-
-Instructions:
-1. Analyze the old prompt's structure and effectiveness.
-2. Rewrite it to align more closely with the stated goals and preferences.
-3. Ensure clarity, logical flow, and domain-specific grounding.
-4. Make sure it still produces structured output like:
-# Hypothesis 1
-<hypothesis here>
-# Hypothesis 2
-<hypothesis here>
-# Hypothesis 3
-<hypothesis here>
-
-5. Avoid hallucinations — keep it factual and testable.
-6. Return only the refined prompt — no extra explanation.
-
-Refined Prompt:
-"""

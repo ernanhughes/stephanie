@@ -93,21 +93,22 @@ CREATE TABLE IF NOT EXISTS events (
 -- Table to track prompt evolution across agents
 CREATE TABLE IF NOT EXISTS prompt_history (
     id SERIAL PRIMARY KEY,
+    original_prompt_id INT REFERENCES prompts(id),
+    prompt_text TEXT NOT NULL,        -- The actual prompt template
     agent_name TEXT NOT NULL,         -- e.g., "generation", "reflection"
-    strategy TEXT NOT NULL,          -- e.g., "goal_aligned", "out_of_the_box"
-    prompt_key TEXT NOT NULL,        -- e.g., "generation_goal_aligned.txt"
-    prompt_text TEXT NOT NULL,       -- The actual prompt template
-    output_key TEXT,                -- Which context key this affects (e.g., "hypotheses")
-    input_keys JSONB,                -- Context fields used (e.g., ["goal", "literature"])
-    extraction_regex TEXT,          -- Regex used to extract response
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    strategy TEXT NOT NULL,           -- e.g., "goal_aligned", "out_of_the_box"
+    prompt_key TEXT NOT NULL,         -- e.g., "generation_goal_aligned.txt"
+    output_key TEXT,                  -- Which context key this affects (e.g., "hypotheses")
+    input_key TEXT,                 -- Context fields used (e.g., ["goal", "literature"])
+    extraction_regex TEXT,            -- Regex used to extract response
     version INT DEFAULT 1,
-    source TEXT,                    -- e.g., "manual", "feedback_injection", "dsp_refinement"
+    source TEXT,                      -- e.g., "manual", "feedback_injection", "dsp_refinement"
     is_current BOOLEAN DEFAULT FALSE,
-    metadata JSONB DEFAULT '{}'::JSONB
+    config JSONB DEFAULT '{}'::JSONB,
+    metadata JSONB DEFAULT '{}'::JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 
 CREATE TABLE IF NOT EXISTS prompt_versions (
     id SERIAL PRIMARY KEY,
@@ -151,7 +152,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 
-CREATE TABLE IF NOT EXISTS public.prompt_evaluations (
+CREATE TABLE IF NOT EXISTS prompt_evaluations (
     id SERIAL PRIMARY KEY,
     prompt_id INTEGER NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
     benchmark_name TEXT NOT NULL,                      -- e.g. "goal_alignment_test_set_1"

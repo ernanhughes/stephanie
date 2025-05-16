@@ -60,7 +60,7 @@ class EvolutionAgent(BaseAgent):
                 prompt = self.prompt_loader.load_prompt(
                     {**self.cfg, **{HYPOTHESES: h}}, context
                 )
-                raw_output = self.call_llm(prompt)
+                raw_output = self.call_llm(prompt, context)
                 refined_list = self.extract_hypothesis(raw_output)
                 self.logger.log("EvolvedParsedHypotheses", {
                     "raw_response_snippet": raw_output[:300],
@@ -93,7 +93,7 @@ class EvolutionAgent(BaseAgent):
         return context
 
     async def graft_similar(
-        self, hypotheses: list[str], threshold: float = 0.90
+        self, context:dict,  threshold: float = 0.90
     ) -> list[str]:
         """
         Graft pairs of highly similar hypotheses into unified versions.
@@ -115,11 +115,12 @@ class EvolutionAgent(BaseAgent):
                     f"Combine the following hypotheses into a clearer, unified statement:\n\n"
                     f"A: {h1}\nB: {h2}"
                 )
-                graft = self.call_llm(prompt)
+                graft = self.call_llm(prompt, context)
                 grafted.append(graft)
                 used.update([i, j])
 
         # Add ungrafted hypotheses back
+        hypotheses = context.get(HYPOTHESES, [])
         for i, h in enumerate(hypotheses):
             if i not in used:
                 grafted.append(h)

@@ -86,7 +86,7 @@ from co_ai.agents.base import BaseAgent
 class MyGenerationAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         prompt = self.prompt_loader.load_prompt(self.cfg, context)
-        result = self.call_llm(prompt)
+        result = self.call_llm(prompt, context)
         context["hello"] = "World"
         return context
 ```

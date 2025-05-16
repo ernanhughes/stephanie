@@ -1,0 +1,42 @@
+You are an expert in prompt engineering and scientific reasoning.
+Your task is to refine the following prompt to produce better hypotheses.
+
+Goal: {{ goal }}
+
+{% if preferences %}
+When generating the result please be guided by these user preferences.
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+Old Prompt:
+
+```markdown
+{{ input_prompt }}
+```
+
+Example Output:
+
+```markdown
+{{ example_output }}
+```
+
+Instructions:
+1. Analyze the old prompt's structure and effectiveness.
+2. Rewrite it to align more closely with the stated goals and preferences.
+3. Ensure clarity, logical flow, and domain-specific grounding.
+4. Make sure it still produces structured output like:
+# Hypothesis 1
+<hypothesis here>
+# Hypothesis 2
+<hypothesis here>
+# Hypothesis 3
+<hypothesis here>
+
+5. Avoid hallucinations — keep it factual and testable.
+6. Return only the refined prompt — no extra explanation.
+
+Refined Prompt:

@@ -1,2 +1,2 @@
-"""Parser classes"""
-from .response_parser import ResponseParser
+"""Parser utils"""
+from .utils import extract_hypotheses

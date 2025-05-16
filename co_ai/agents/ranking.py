@@ -50,7 +50,7 @@ class RankingAgent(BaseAgent):
 
         for hyp1, hyp2 in comparisons:
             prompt = self._build_ranking_prompt(hyp1, hyp2, context)
-            response = self.call_llm(prompt)
+            response = self.call_llm(prompt, context)
             winner = self._parse_response(response)
 
             if winner:
@@ -82,11 +82,11 @@ class RankingAgent(BaseAgent):
         """Build prompt dynamically with or without reviews."""
         return self.prompt_loader.load_prompt(self.cfg, {**context,  **{"hypothesis_a":hyp1, "hypothesis_b":hyp2}})
 
-    def _conduct_multi_turn_debate(self, goal, hyp1, hyp2, turns=3):
+    def _conduct_multi_turn_debate(self, goal:str, context:dict, hyp1:str, hyp2:str, turns:int=3):
         """Simulate multi-turn scientific debate between hypotheses"""
         for i in range(turns):
             prompt = self._build_ranking_prompt(goal, hyp1, hyp2)
-            response = self.call_llm(prompt)
+            response = self.call_llm(prompt, context)
             winner = self._parse_response(response)
             if winner:
                 self._update_elo(hyp1, hyp2, winner)
@@ -143,7 +143,7 @@ class RankingAgent(BaseAgent):
             self.logger.log("RankingCompare", {"hyp1": hyp1[:60],  "hyp2":hyp2[:60]})
 
             try:
-                response = self.call_llm(prompt)
+                response = self.call_llm(prompt, context)
                 winner = self._parse_response(response)
 
                 if winner:

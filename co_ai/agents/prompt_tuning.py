@@ -5,9 +5,7 @@ import requests
 import dspy
 from ollama import chat
 from abc import ABC, abstractmethod
-
-from co_ai.eval.ollama_eval import OllamaEvaluator
-from co_ai.eval.dspy_eval import DSPyEvaluator
+import re
 from co_ai.constants import GOAL
 
 class HypothesisRefinementSignature(Signature):

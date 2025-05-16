@@ -12,7 +12,7 @@ class ReviewAgent(BaseAgent):
 
         for h in hypotheses:
             prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{HYPOTHESES:h}})
-            review = self.call_llm(prompt)
+            review = self.call_llm(prompt, context)
             self.memory.hypotheses.store_review(h, review)
             reviews.append({HYPOTHESES: h, REVIEW: review})
 

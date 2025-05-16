@@ -2,8 +2,6 @@
 import re
 
 from co_ai.agents.base import BaseAgent
-from co_ai.logs import JSONLogger
-from co_ai.memory import MemoryTool
 from co_ai.tools import WebSearchTool
 
 
@@ -104,7 +102,7 @@ class LiteratureAgent(BaseAgent):
         """Use LLM to turn natural language goal into a precise search query."""
         try:
             prompt = self.prompt_loader.load_prompt(self.cfg, context)
-            response = self.call_llm(prompt)
+            response = self.call_llm(prompt, context)
 
             # Try matching structured format first
             match = re.search(r"search query:<([^>]+)>", response, re.IGNORECASE)
@@ -135,7 +133,7 @@ class LiteratureAgent(BaseAgent):
             prompt = self.prompt_loader.from_file(
                 self.cfg.parse_prompt, self.cfg, context
             )
-            raw_summary = self.call_llm(prompt)
+            raw_summary = self.call_llm(prompt, context)
 
             # Extract summary section if present
             summary_match = re.search(
