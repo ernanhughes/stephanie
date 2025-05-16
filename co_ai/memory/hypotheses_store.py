@@ -15,7 +15,7 @@ class HypothesesStore(BaseStore):
         return "hypotheses"
 
     def get_prompt_id(self, prompt_text: str) -> int:
-        prompt_id = 0
+        prompt_id = None
         try:
             with self.db.cursor() as cur:
                 cur.execute(
@@ -86,7 +86,6 @@ class HypothesesStore(BaseStore):
 
     def store_elo_ranking(self, hypothesis: str, score: float):
         try:
-            print(f"[VectorMemory] Storing ranking: '{hypothesis[:60]}...' with score {score}")
             if self.db:
                 with self.db.cursor() as cur:
                     cur.execute(
@@ -100,8 +99,8 @@ class HypothesesStore(BaseStore):
                 self._rankings[hypothesis] = score
             if self.logger:
                 self.logger.log("RankingStored", {
-                    "hypotheses": hypothesis[:200],
-                    "score": score
+                    "score": score,
+                    "hypotheses": hypothesis[:200]
                 })
         except Exception as e:
             if self.logger:

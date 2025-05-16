@@ -10,7 +10,7 @@ Agents responsible for core reasoning steps:
 - debate
 - literature
 - generic
-- prompt refiner
+- refiner
 """
 from .base import BaseAgent
 from .debate import DebateAgent
@@ -22,4 +22,4 @@ from .meta_review import MetaReviewAgent
 from .proximity import ProximityAgent
 from .ranking import RankingAgent
 from .reflection import ReflectionAgent
-from .prompt_refiner import PromptRefinerAgent
+from .refiner import RefinerAgent

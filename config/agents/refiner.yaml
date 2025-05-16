@@ -1,0 +1,22 @@
+defaults:
+  - /prompt_refiner/default
+
+refiner:
+  name: refiner
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+  strategy : default
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434/api/generate
+    api_key: null
+  prompt_mode: file
+  prompt_file: default.txt
+
+  # Which agent and prompt to refine
+  target_agent: generation
+  preferences:
+    - goal_consistency
+    - simplicity
