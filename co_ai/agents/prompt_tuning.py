@@ -85,15 +85,18 @@ class PromptTuningAgent(BaseAgent):
                 hypotheses=item["hypothesis_text"],
                 review=item.get("review", ""),
                 score=item.get("elo_rating", 1000),
-                refined_prompt=item.get("refined_prompt", item["prompt_text"])  # fallbackIt's kind of like this
             ).with_inputs("goal", "input_prompt", "hypotheses", "review", "score")
             for item in train_data
         ]
 
-        tuner = BootstrapFewShot(metric=self._exact_match_metric)
-        tuned_program = tuner.compile(
-            student=Predict(PromptTuningSignature), trainset=training_set
-        )
+        # Wrap metric with current context
+        def wrapped_metric(example, pred, trace=None):
+            return self._prompt_quality_metric(example, pred, context=context)
+
+        tuner = BootstrapFewShot(metric=wrapped_metric)
+        student = Predict(PromptTuningSignature)
+        tuned_program = tuner.compile(student=student, trainset=training_set)
+
         await self.generate_and_store_refined_prompts(tuned_program, goal, context, val_data)
         self.logger.log(
             "PromptTuningCompleted",
@@ -177,9 +180,12 @@ class PromptTuningAgent(BaseAgent):
             "count": stored_count
         })
 
-    def _score_prompts(self, context: dict, prompt_a: str, prompt_b: str) -> float:
+    def _prompt_quality_metric(self, example, pred, context: dict) -> float:
         """Run both prompts and compare results"""
         try:
+            prompt_a = example.input_prompt
+            prompt_b = pred.refined_prompt
+
             hypotheses_a = self.call_llm(prompt_a, context)
             hypotheses_b = self.call_llm(prompt_b, context)
 
@@ -188,9 +194,7 @@ class PromptTuningAgent(BaseAgent):
                 "prompt_b":prompt_b,
                 "hypotheses_a":hypotheses_a,
                 "hypotheses_b":hypotheses_b}}
-            comparison_prompt = self.prompt_loader.load_prompt().render(
-                self.cfg, merged
-            )
+            comparison_prompt = self.prompt_loader.load_prompt(self.cfg, merged)
 
             response = self.call_llm(comparison_prompt, context)
             match = re.search(r"better prompt:<([AB])>", response, re.IGNORECASE)

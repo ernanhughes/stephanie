@@ -1,0 +1,23 @@
+OK You are an expert evaluator engaged in scientific debate.
+Compare two prompts and decide which one leads to better hypotheses.
+
+Goal:
+{{ goal }}
+
+Prompt A:
+{{ prompt_a }}
+
+Hypotheses from Prompt A:
+{{ hypotheses_a }}
+
+Prompt B:
+{{ prompt_b }}
+
+Hypotheses from Prompt B:
+{{ hypotheses_b }}
+
+Instructions:
+1. Evaluate each hypothesis set for clarity, novelty, testability, and alignment with preferences
+2. Determine which prompt produced higher-quality results
+3. Return only:
+better prompt:<A or B>
