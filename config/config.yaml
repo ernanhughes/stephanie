@@ -46,8 +46,8 @@ pipeline:
       cls: co_ai.agents.generation.GenerationAgent
       enabled: true
       iterations: 1
-    - name: refiner
-      cls: co_ai.agents.refiner.RefinerAgent
+    - name: prompt_tuning
+      cls: co_ai.agents.prompt_tuning.PromptTuningAgent
       enabled: true
       iterations: 1
     # - name: literature
