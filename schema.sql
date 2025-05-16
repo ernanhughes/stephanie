@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     confidence FLOAT DEFAULT 0.0 ,      -- Confidence score (0–1 scale)
     review TEXT,                        -- Structured review data
     reflection TEXT,                    -- Structured reflection data
-    isn't **** ' FLOAT DEFAULT 1000.0,    -- Tournament ranking score
+    elo_rating FLOAT DEFAULT 750.0,    -- Tournament ranking score
     embedding VECTOR(1024),             -- Vector representation of hypothesis
     features JSONB,                     -- Mechanism, rationale, experiment plan
     prompt_id INT REFERENCES prompts(id), -- Prompt used to generate this hypothesis
@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS prompts (
     agent_name TEXT NOT NULL,
     prompt_key TEXT NOT NULL,         -- e.g., generation_goal_aligned.txt
     prompt_text TEXT NOT NULL,
+    goal TEXT;
     response_text TEXT,
     source TEXT,                      -- e.g., manual, dsp_refinement, feedback_injection
     version INT DEFAULT 1,

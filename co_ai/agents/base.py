@@ -75,7 +75,8 @@ class BaseAgent(ABC):
             output = response["choices"][0]["message"]["content"]
             if self.cfg.get(SAVE_PROMPT, False) and self.memory:
                 self.memory.prompt.save(
-                    agent_name=self.__class__.__name__,
+                    context.get("goal"),
+                    agent_name=self.name,
                     prompt_key=self.cfg.get(PROMPT_PATH, ""),
                     prompt_text=prompt,
                     response=output,

@@ -5,7 +5,6 @@ defaults:
 generation:
   name: generation
   enabled: true
-  save_prompt: true
   save_context: true
   skip_if_completed: true
   strategy : default
@@ -13,6 +12,8 @@ generation:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
+
+  save_prompt: true
   prompt_mode: file
   prompt_file: out_of_the_box.txt
   improve_file: improve.txt

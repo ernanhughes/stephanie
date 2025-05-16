@@ -14,6 +14,7 @@ class PromptStore(BaseStore):
 
     def save(
         self,
+        goal: str,
         agent_name,
         prompt_key,
         prompt_text,
@@ -26,11 +27,12 @@ class PromptStore(BaseStore):
                 cur.execute(
                     """
                     INSERT INTO prompts (
-                        agent_name, prompt_key, prompt_text, response_text,
+                        goal, agent_name, prompt_key, prompt_text, response_text,
                         source, version, is_current, strategy, metadata
-                    ) VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
                     """,
                     (
+                        goal,
                         agent_name,
                         prompt_key,
                         prompt_text,
@@ -124,4 +126,89 @@ class PromptStore(BaseStore):
         except Exception as e:
             if self.logger:
                 self.logger.log("PromptFetchFailed", {"error": str(e)})
+            return []
+
+    def get_prompt_training_set(self, goal: str, limit: int = 5, agent_name='generation') -> list[dict]:
+        try:
+            with self.db.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT DISTINCT ON (p.id)
+                        p.id,
+                        p.goal,
+                        p.prompt_text,
+                        p.prompt_key,
+                        p.timestamp,
+                        h.text AS hypothesis_text,
+                        h.elo_rating,
+                        h.review
+                    FROM prompts p
+                    JOIN hypotheses h ON h.prompt_id = p.id
+                    WHERE p.goal = %s
+                      AND p.agent_name = %s
+                      AND h.goal = %s
+                      AND h.enabled = TRUE
+                    ORDER BY p.id, h.elo_rating DESC, h.updated_at DESC
+                    LIMIT %s
+                    """,
+                    (goal, agent_name, goal, limit),
+                )
+                rows = cur.fetchall()
+                return [
+                    {
+                        "id": row[0],
+                        "goal": row[1],
+                        "prompt_text": row[2],
+                        "prompt_key": row[3],
+                        "timestamp": row[4],
+                        "hypothesis_text": row[5],
+                        "elo_rating": row[6],
+                        "review": row[7],
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GetLatestPromptsFailed", {
+                    "error": str(e),
+                    "goal": goal
+                })
+            return []
+
+    def get_eliciting_prompts(self, goal: str, limit: int = 20, agent_name='generation') -> list[dict]:
+        try:
+            with self.db.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT p.id, p.prompt_text, p.prompt_key, p.timestamp, e.score
+                    FROM prompts p
+                    LEFT JOIN LATERAL (
+                        SELECT score
+                        FROM prompt_evaluations e
+                        WHERE e.prompt_id = p.id
+                        ORDER BY e.timestamp DESC
+                        LIMIT 1
+                    ) e ON true
+                    WHERE p.agent_name = %s
+                    AND p.prompt_text IS NOT NULL
+                    AND p.goal = %s
+                    ORDER BY e.score DESC NULLS LAST, p.timestamp DESC
+                    LIMIT %s
+                    """,
+                    (agent_name, goal, limit),
+                )
+                rows = cur.fetchall()
+                return [
+                    {
+                        "id": row[0],
+                        "prompt_text": row[1],
+                        "prompt_key": row[2],
+                        "timestamp": row[3],
+                        "score": row[4],
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GetElicitingPromptsFailed", {"error": str(e), "goal": goal})
             return []

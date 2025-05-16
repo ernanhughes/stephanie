@@ -1,11 +1,18 @@
 # config/agents/prompt_tuning.yaml
 defaults:
   - /prompt_refiner/disabled
+
 prompt_tuning:
   name: prompt_tuning
   enabled: true
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
+
+  # Number of sample prompts to use in tuning
+  sample_size: 20
+  # How many prompts to generate once tuned
+  generate_count: 5
+
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
