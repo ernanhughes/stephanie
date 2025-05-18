@@ -33,6 +33,9 @@ class GenerationAgent(BaseAgent):
 
         # Extract hypotheses
         hypotheses = extract_hypotheses(response)
+        for h in hypotheses:
+            self.memory.hypotheses.store(goal, h, None, None, None, prompt)
+
 
         # Update context with new hypotheses
         context[self.output_key] = hypotheses

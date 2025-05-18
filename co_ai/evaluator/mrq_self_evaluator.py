@@ -35,10 +35,10 @@ class MRQSelfEvaluator:
     def train_from_database(
         self, goal: str, limit: int = 500, epochs: int = 5, lr: float = 1e-4
     ):
-        if self.db is None:
+        if self.memory is None:
             raise ValueError("Database connection not provided.")
 
-        samples = self.db.get_mrq_training_pairs(goal=goal, limit=limit)
+        samples = self.memory.prompt.get_mrq_training_pairs(goal=goal, limit=limit)
 
         inputs, labels = [], []
         for item in samples:

@@ -37,27 +37,20 @@ class ReflectionAgent(BaseAgent):
             })
 
             response = self.call_llm(prompt, context).strip()
-            reflection_data = self._parse_reflection_response(response)
+            self.memory.hypotheses.store_reflection(h, response)
+            reflections.append({HYPOTHESES: h, REFLECTION: response})
 
-            # Store back in DB or context
             if self.source == "database":
-                self.memory.hypotheses.update_reflection(h, reflection_data)
-            else:
-                reflections.append({HYPOTHESES: h, REFLECTION: reflection_data})
-
-        if self.source == "database":
-            self.logger.log("BatchReflectionComplete", {
-                "goal": goal,
-                "reflected_count": len(reflections),
-                "preferences_used": context.get("preferences", [])
-            })
-        else:
+                self.logger.log("BatchReflectionComplete", {
+                    "goal": goal,
+                    "reflected_count": len(reflections),
+                    "preferences_used": context.get("preferences", [])
+                })
             context[REFLECTION] = reflections
             self.logger.log("GeneratedReflection", {
                 "goal": goal,
                 "reflected_count": len(reflections)
             })
-
         return context
 
     def _get_hypotheses_from_db(self, goal: str, limit: int = 10) -> list:
