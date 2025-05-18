@@ -18,4 +18,3 @@ Instructions:
 article_rankings:
 1. [Title] → [Relevance score]
 2. [Title] → [Relevance score]
-It's a combination of the two right

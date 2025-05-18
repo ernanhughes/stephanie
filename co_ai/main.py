@@ -26,7 +26,7 @@ def run(cfg: DictConfig):
 
         print(f"🟢 Running pipeline with run_id={run_id}")
         print(f"🧠 Goal: {cfg.goal}")
-        print(f"📁 Config source: {cfg}")  
+        print(f"📁 Config source: {str(cfg)[:100]}...")  
 
         result = await supervisor.run_pipeline_config(
              {"goal": cfg.get("goal", ""), "run_id": run_id}

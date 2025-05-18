@@ -8,11 +8,13 @@ literature:
   save_context: true
   skip_if_completed: true
   strategy: query_and_summarize
-  max_results: 15
+  max_results: 5
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
+  save_prompt: false
+  add_prompt_to_history: false # prompt will be very large will include text of pages
   prompt_mode: file
   prompt_file: query.txt
   parse_prompt: parse.txt

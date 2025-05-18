@@ -2,6 +2,21 @@ You are an expert researcher participating in a collaborative discourse to gener
 
 Goal: {{ goal }}
 
+{% if literature %}
+Relevant Research Findings:
+{{ literature }}
+{% endif %}
+
+{% if preferences %}
+When generating the result please be guided by these user preferences.
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+
 Instructions:
 1. Generate exactly 3 distinct, scientifically grounded hypotheses.
 2. Each hypothesis must be self-contained and actionable—clearly stating a proposed mechanism or cause-effect relationship.

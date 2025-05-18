@@ -86,7 +86,8 @@ class BaseAgent(ABC):
                     # metadata={}
                 )
             response = remove_think_blocks(output)
-            self.add_to_prompt_history(context, prompt, {"response":response})
+            if self.cfg.get("add_prompt_to_history", True):
+                self.add_to_prompt_history(context, prompt, {"response":response})
             return response
         except Exception as e:
             self.logger.log("LLMCallError", {"exception": e})

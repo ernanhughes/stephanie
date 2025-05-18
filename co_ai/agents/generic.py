@@ -7,7 +7,7 @@ from co_ai.agents.base import BaseAgent
 class GenericAgent(BaseAgent):
     def __init__(self, cfg: dict, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.name = cfg.name
+        self.name = cfg.get("name")
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

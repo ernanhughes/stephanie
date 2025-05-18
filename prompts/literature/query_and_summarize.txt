@@ -4,7 +4,7 @@ You are an AI search assistant. Your task is to generate an effective web search
 Use the goal below to craft a focused and well-structured search query that returns high-quality, relevant results to help a researcher investigate or evaluate the goal.
 
 Goal:
-I {{ goal }}
+{{ goal }}
 
 Instructions:
     Identify the key concepts and intent behind the goal.
@@ -14,5 +14,6 @@ Instructions:
     Adapt your query depending on whether the goal is a claim, a topic, or a question.
 
 Output format:
-Search query: <your generated query>
+Search query:
+<your generated query>
 

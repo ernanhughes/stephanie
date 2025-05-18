@@ -1,0 +1,33 @@
+# config/agents/sharpening.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+sharpening:
+  name: sharpening
+  target: generation # prompt history target for sharpening generally generation
+  device: cpu
+  enabled: true
+  save_context: true
+  skip_if_completed: true
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  # Required keys for the agent ot effectively process the context
+  required_keys: ["goal", "hypotheses"]   # add nodes
+  # Key that it will iterate over ot generate reflections
+  input_key: "hypotheses"
+  # Key that it store the results of those reflections
+  output_key: "sharpening"  # change
+
+  save_prompt: true
+  prompt_mode: strategy
+  strategy: sharpening  # Options: initial, full, observation, deep_verification
+  prompt_file:
+  # A set of keys that will tune the prompts operation
+  preferences:
+    - goal_consistency
+    - factual
+    - reliable_source
+    - simplicity

@@ -7,16 +7,16 @@ literature_ranking:
   enabled: true
   save_prompt: true
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
   strategy: literature_ranking
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_file: literature_ranking.txt
+  prompt_file: sharpening.txt
   extraction_regex: "article_rankings:\n(.+?)(?=\n\n|$)"
   input_keys: ["goal", "literature"]
   input_key: literature
-  output_key: ranked_literature
+  output_key: literature_ranking
 

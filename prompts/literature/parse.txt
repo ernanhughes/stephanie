@@ -9,6 +9,7 @@ Review the following information:
 Title: {{ title }}
 Link: {{ link }}
 Snippet: {{ snippet }}
+Page: {{ page }}
 
 Instructions:
 1. Extract core information in the article related ot the goal

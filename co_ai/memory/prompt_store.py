@@ -212,3 +212,45 @@ class PromptStore(BaseStore):
             if self.logger:
                 self.logger.log("GetElicitingPromptsFailed", {"error": str(e), "goal": goal})
             return []
+
+    def get_mrq_training_pairs(self, goal: str, limit: int = 10, agent_name='generation') -> list[dict]:
+        try:
+            with self.db.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT p.id, p.goal, p.prompt_text, 
+                           h1.text AS output_a, h1.elo_rating AS rating_a,
+                           h2.text AS output_b, h2.elo_rating AS rating_b
+                    FROM prompts p
+                    JOIN hypotheses h1 ON h1.prompt_id = p.id
+                    JOIN hypotheses h2 ON h2.prompt_id = p.id AND h1.id != h2.id
+                    WHERE p.goal = %s
+                      AND p.agent_name = %s
+                      AND h1.goal = %s
+                      AND h2.goal = %s
+                      AND h1.enabled = TRUE AND h2.enabled = TRUE
+                      AND h1.elo_rating != h2.elo_rating
+                    ORDER BY p.id, GREATEST(h1.elo_rating, h2.elo_rating) DESC
+                    LIMIT %s
+                    """,
+                    (goal, agent_name, goal, goal, limit),
+                )
+                rows = cur.fetchall()
+                return [
+                    {
+                        "prompt": row[2],
+                        "output_a": row[3],
+                        "output_b": row[5],
+                        "preferred": "a" if row[4] > row[6] else "b",
+                        "rating_a": row[4],
+                        "rating_b": row[6],
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GetMRQTrainingPairsFailed", {
+                    "error": str(e),
+                    "goal": goal
+                })
+            return []

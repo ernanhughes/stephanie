@@ -1,51 +1,31 @@
 # co_ai/agents/literature.py
-import re
 
+import re
 from co_ai.agents.base import BaseAgent
 from co_ai.tools import WebSearchTool
+from co_ai.utils.file_utils import write_text_to_file
 
 
 class LiteratureAgent(BaseAgent):
-    """
-    The LiteratureAgent turns a research goal into a web search query,
-    retrieves recent research findings, and parses them into usable summaries.
-
-    From the paper:
-    > 'The Generation agent iteratively searches the web, retrieves and reads relevant research articles'
-    """
-
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.strategy = cfg.get("strategy", "query_and_summarize")
         self.preferences = cfg.get("preferences", ["goal_consistency", "novelty"])
         self.max_results = cfg.get("max_results", 5)
+        self.web_search_tool = WebSearchTool(cfg.get("web_search", {}), self.logger)
 
-        self.web_search_tool = WebSearchTool(cfg.get("web_search", {}))
-
-        self.logger.log(
-            "LiteratureAgentInit",
-            {
-                "strategy": self.strategy,
-                "preferences": self.preferences,
-                "max_results": self.max_results,
-            },
-        )
+        self.logger.log("LiteratureAgentInit", {
+            "strategy": self.strategy,
+            "preferences": self.preferences,
+            "max_results": self.max_results,
+        })
 
     async def run(self, context: dict) -> dict:
-        """
-        Run literature search based on current goal and preferences.
-
-        Args:
-            context: Dictionary with keys:
-                - goal: Research objective
-                - preferences: Optional override of evaluation criteria
-        """
-
         self.logger.log("LiteratureQuery", {"context": context})
+        goal = context.get("goal", "")
 
         # Step 1: Generate search query using LLM
         search_query = self._generate_search_query(context)
-        goal = context.get("goal", "")
         if not search_query:
             self.logger.log("LiteratureQueryFailed", {"goal": goal})
             return context
@@ -56,12 +36,14 @@ class LiteratureAgent(BaseAgent):
         results = await self.web_search_tool.search(
             search_query, max_results=self.max_results
         )
+
         if not results:
-            self.logger.log(
-                "NoResultsFromWebSearch",
-                {"goal_snippet": goal[:60], "search_query": search_query},
-            )
+            self.logger.log("NoResultsFromWebSearch", {
+                "goal_snippet": goal[:60],
+                "search_query": search_query,
+            })
             return context
+
         self.logger.log("SearchResult", {"results": results})
 
         # Step 3: Parse each result with LLM
@@ -69,56 +51,53 @@ class LiteratureAgent(BaseAgent):
         for result in results:
             summary_context = {
                 **{
-                    "title": result["title"],
-                    "link": result["href"],
-                    "snippet": result["body"],
+                    "title": result.get("title", "no Title"),
+                    "link": result.get("url", ""),
+                    "snippet": result.get("snippet", ""),
+                    "page": result.get("page", ""),
                 },
                 **context,
             }
+
             summary = self._summarize_result(summary_context)
+
             if summary.strip():
                 parsed_results.append(f"""
-                    [Title: {result["title"]}]({result["href"]})\n
+                    [Title: {result["title"]}]({result["url"]})\n
                     Summary: {summary}
-                    """)
+                """)
 
-        # Log full search results
-        self.logger.log(
-            "LiteratureSearchCompleted",
-            {
-                "total_results": len(parsed_results),
-                "goal": goal,
-                "search_query": search_query,
-            },
-        )
+        self.logger.log("LiteratureSearchCompleted", {
+            "total_results": len(parsed_results),
+            "goal": goal,
+            "search_query": search_query,
+        })
 
-        # Store in context
         context["literature"] = parsed_results
-        context["literature_data"] = results
 
         return context
 
     def _generate_search_query(self, context: dict) -> str:
-        """Use LLM to turn natural language goal into a precise search query."""
         try:
             prompt = self.prompt_loader.load_prompt(self.cfg, context)
-            response = self.call_llm(prompt, context)
+            self.logger.log("LLMPromptGenerated_SearchQuery", {"prompt_snippet": prompt[:200]})
 
-            # Try matching structured format first
+            response = self.call_llm(prompt, context)
+            self.logger.log("LLMResponseReceived_SearchQuery", {"response_snippet": response[:200]})
+
+            # Structured format
             match = re.search(r"search query:<([^>]+)>", response, re.IGNORECASE)
             if match:
                 return match.group(1).strip()
 
-            # Fallback: use keyword-based parsing
-            match = re.search(
-                r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE
-            )
+            # Fallback format
+            match = re.search(r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE)
             if match:
                 query = match.group(1).strip()
                 self.logger.log("SearchQuery", {"Search Query": query})
                 return query
 
-            # Final fallback: use goal as-is
+            # Fallback to goal
             goal = context.get("goal", "")
             self.logger.log("FallingBackToGoalAsQuery", {"goal": goal})
             return f"{goal} productivity study"
@@ -128,14 +107,22 @@ class LiteratureAgent(BaseAgent):
             return f"{context.get('goal', '')} remote work meta-analysis"
 
     def _summarize_result(self, context: dict) -> str:
-        """Ask LLM to extract key insights from article metadata."""
         try:
             prompt = self.prompt_loader.from_file(
-                self.cfg.parse_prompt, self.cfg, context
+                self.cfg.get("parse_prompt", "parse.txt"), self.cfg, context
             )
-            raw_summary = self.call_llm(prompt, context)
+            self.logger.log("LLMPromptGenerated_Summarize", {
+                "title": context.get("title", ""),
+                "prompt_snippet": prompt[:200]
+            })
 
-            # Extract summary section if present
+            raw_summary = self.call_llm(prompt, context)
+            self.logger.log("LLMResponseReceived_Summarize", {
+                "title": context.get("title", ""),
+                "response_snippet": raw_summary[:200]
+            })
+
+            # Try extracting "Summary" section
             summary_match = re.search(
                 r"Summary\s*\n(?:.*\n)*?\s*(.+?)(?=\n#|\Z)",
                 raw_summary,
@@ -144,7 +131,7 @@ class LiteratureAgent(BaseAgent):
             if summary_match:
                 return summary_match.group(1).strip()
 
-            # Fallback: extract any paragraph
+            # Fallback: first paragraph of sufficient length
             lines = raw_summary.splitlines()
             for line in lines:
                 if len(line.strip()) > 50:
