@@ -5,13 +5,20 @@ regardless of domain (it could be science, finance, AI, business, law, etc.)
 Hypothesis: {{ hypotheses }}
 Goal: {{ goal }}
 
-Preferences: {{ preferences_str }}
+{% if preferences %}
+When generating the result please be guided by these user preferences.
 (These preferences guide how you evaluate the hypothesis. Examples include:
 - "goal_aligned" → Focus on direct relevance
 - "novelty_driven" → Look for unexpected but valid connections
 - "feasibility_first" → Prioritize real-world applicability
 - "biological_plausibility" → Ensure mechanism makes biological sense
 - "simplicity" → Favor clean, clear explanations over complex ones)
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
 
 Instructions:
 1. Analyze whether the hypothesis logically supports the stated goal.

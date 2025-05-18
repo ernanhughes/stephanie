@@ -4,7 +4,20 @@ Perform a comprehensive full review of the following hypothesis using relevant l
 Hypothesis: {{ hypotheses }}
 Goal: {{ goal }}
 
-Preferences: {{ preferences }}
+{% if preferences %}
+When generating the result please be guided by these user preferences.
+(These preferences guide how you evaluate the hypothesis. Examples include:
+- "goal_aligned" → Focus on direct relevance
+- "novelty_driven" → Look for unexpected but valid connections
+- "feasibility_first" → Prioritize real-world applicability
+- "biological_plausibility" → Ensure mechanism makes biological sense
+- "simplicity" → Favor clean, clear explanations over complex ones)
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
 
 Related Articles:
 {{ articles_with_reasoning }}

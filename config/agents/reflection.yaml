@@ -5,8 +5,9 @@ defaults:
 reflection:
   name: reflection
   enabled: true
+  source: database  # database or context
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
@@ -21,7 +22,7 @@ reflection:
 
   save_prompt: true
   prompt_mode: strategy
-  strategy: default  # Options: initial, full, observation, deep_verification
+  strategy: full_reflection  # Options: default, full_reflection, or custom
   prompt_file:
   # A set of keys that will tune the prompts operation
   preferences:
