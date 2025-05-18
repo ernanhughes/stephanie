@@ -25,10 +25,8 @@ class GenerationAgent(BaseAgent):
 
         # Load prompt based on strategy
         prompt = self.prompt_loader.load_prompt(
-            self.cfg, context={**render_context, **context}
+            self.cfg, context={**context, **render_context}
         )
-        context[f"{self.cfg.get(NAME)}_prompt"] = prompt
-
         response = self.call_llm(prompt, context)
 
         # Extract hypotheses

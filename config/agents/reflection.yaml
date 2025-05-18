@@ -6,7 +6,8 @@ reflection:
   name: reflection
   enabled: true
   source: database  # database or context
-  save_context: true
+  batch_size: 20
+  save_context: false
   skip_if_completed: false
   model:
     name: ollama_chat/qwen3

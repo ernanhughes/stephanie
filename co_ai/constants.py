@@ -9,7 +9,8 @@ API_BASE = "api_base"
 API_KEY ="api_key"
 STAGE = "stage"
 REVIEWS = "reviews"
-FEEDBACK = "feedback"
+# FEEDBACK = "feedback"
+BATCH_SIZE = "batch_size"
 REFLECTION = "reflection"
 FILE = "file"
 LITERATURE = "literature"
@@ -36,8 +37,13 @@ DETAILS = "details"
 PROMPT_MATCH_RE="prompt_match_re"
 SKIP_IF_COMPLETED="skip_if_completed"
 
+SOURCE = "source"
+CONTEXT = "context"
+DATABASE = "database"
+
+
 # Output keys
-LITERATURE = "literature"
+# LITERATURE = "literature"
 
 MODEL = "model"
 

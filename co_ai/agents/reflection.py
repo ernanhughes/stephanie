@@ -11,21 +11,7 @@ class ReflectionAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, "")
-        
-        if self.source == "context":
-            hypotheses = context.get(HYPOTHESES, [])
-            if not hypotheses:
-                self.logger.log("NoHypothesesInContext", {"agent": self.name})
-                return context
-        elif self.source == "database":
-            hypotheses = self._get_hypotheses_from_db(goal, self.batch_size)
-            if not hypotheses:
-                self.logger.log("NoHypothesesInDatabase", {"agent": self.name})
-                return context
-        else:
-            self.logger.log("InvalidSourceConfig", {"source": self.source})
-            return context
-
+        hypotheses = self.get_hypotheses(goal, context)
         # Run reflection logic
         reflections = []
         for h in hypotheses:
@@ -53,6 +39,16 @@ class ReflectionAgent(BaseAgent):
             })
         return context
 
-    def _get_hypotheses_from_db(self, goal: str, limit: int = 10) -> list:
-        """Get hypotheses directly from database"""
-        return self.memory.hypotheses.get_unreviewed(goal=goal, limit=limit)
+    def get_hypotheses(self, goal:str, context:dict) -> list[str]:
+        if self.source == "context":
+            hypotheses = context.get(HYPOTHESES, [])
+            if not hypotheses:
+                self.logger.log("NoHypothesesInContext", {"agent": self.name})
+        elif self.source == "database":
+            hypotheses = self.memory.hypotheses.get_unreflected(goal=goal, limit=self.batch_size)
+            if not hypotheses:
+                self.logger.log("NoUnReflectedInDatabase", {"agent": self.name})
+            return []
+        else:
+            self.logger.log("InvalidSourceConfig", {"source": self.source})
+        return []

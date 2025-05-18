@@ -4,6 +4,22 @@ Use the following information to evaluate correctness and novelty.
 Goal: {{ goal }}
 Hypothesis: {{ hypotheses }}
 
+{% if preferences %}
+When generating the result please be guided by these user preferences.
+(These preferences guide how you evaluate the hypothesis. Examples include:
+- "goal_aligned" → Focus on direct relevance
+- "novelty_driven" → Look for unexpected but valid connections
+- "feasibility_first" → Prioritize real-world applicability
+- "biological_plausibility" → Ensure mechanism makes biological sense
+- "simplicity" → Favor clean, clear explanations over complex ones)
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+
 Instructions:
 1. Evaluate the hypothesis for biological plausibility
 2. Assess whether it could be tested in the lab

@@ -21,6 +21,9 @@ from co_ai.constants import (
     NAME,
     PROMPT_MATCH_RE,
     HYPOTHESES,
+    SOURCE,
+    CONTEXT,
+    BATCH_SIZE
 )
 
 
@@ -39,6 +42,8 @@ class BaseAgent(ABC):
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
         self.prompt_match_re = cfg.get(PROMPT_MATCH_RE, "")
         self.llm = self.init_llm()
+        self.source = cfg.get(SOURCE, CONTEXT)
+        self.batch_size = cfg.get(BATCH_SIZE, 100)
         self.save_context = cfg.get(SAVE_CONTEXT, False)
         self.input_key = cfg.get(INPUT_KEY, HYPOTHESES)
         self.preferences = cfg.get("preferences", {})
@@ -124,3 +129,4 @@ class BaseAgent(ABC):
         if metadata:
             entry.update(metadata)
         context["prompt_history"][self.name].append(entry)
+

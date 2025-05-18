@@ -211,7 +211,7 @@ class HypothesesStore(BaseStore):
             else:
                 print(f"[VectorMemory] Failed to store reflection: {e}")
 
-    def get_unreviewed(self, goal: str, limit: int = 10) -> list[dict[str, any]]:
+    def get_unreviewed(self, goal: str, limit: int = 10) -> list[dict[str, any]] | None:
         try:
             rows = []
             with self.db.cursor() as cur:
@@ -238,4 +238,33 @@ class HypothesesStore(BaseStore):
                 })
             else:
                 print(f"GetUnReviewedFailed: {e}")
+        return None
 
+    def get_unreflected(self, goal: str, limit: int = 10) -> list[dict[str, any]] | None:
+        try:
+            rows = []
+            with self.db.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT text FROM hypotheses
+                    WHERE reflected IS NULL
+                    AND goal = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (goal, limit),
+                )
+                rows = cur.fetchall()
+            result = []
+            for text in rows:
+                result.append(text)
+            return result
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GetUnReflectedFailed", {
+                    "error": str(e),
+                    "goal": goal
+                })
+            else:
+                print(f"GetUnReflectedFailed: {e}")
+            return None
