@@ -203,3 +203,16 @@ CREATE TABLE IF NOT EXISTS model_performance (
 CREATE INDEX idx_model_name ON model_performance(model_name);
 CREATE INDEX idx_task_type ON model_performance(task_type);
 CREATE INDEX idx_preference_used ON model_performance USING GIN(preference_used);
+
+
+CREATE TABLE IF NOT EXISTS goals (
+    id SERIAL PRIMARY KEY,
+    goal_text TEXT NOT NULL,
+    goal_type TEXT,                   -- e.g., 'research', 'forecast', 'writing'
+    focus_area TEXT,                  -- e.g., 'AI', 'stock', 'healthcare'
+    strategy TEXT,                    -- e.g., 'generation_reflect_review', 'cot_eval_refine'
+    llm_suggested_strategy TEXT,
+    source TEXT DEFAULT 'user',       -- 'user', 'llm', or 'hybrid'
+    created_at TIMESTAMP DEFAULT now()
+);
+

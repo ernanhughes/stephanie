@@ -41,10 +41,15 @@ class EmbeddingStore(BaseStore):
             with self.db.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT text, goal, confidence, review
-                    FROM hypotheses
-                    ORDER BY embedding <-> %s
-                    LIMIT %s;
+                        SELECT 
+                            h.text,
+                            g.goal_text AS goal,
+                            h.confidence,
+                            h.review
+                        FROM hypotheses h
+                        JOIN goals g ON h.goal_id = g.id
+                        ORDER BY h.embedding <-> %s
+                        LIMIT %s;
                     """,
                     (embedding, top_k)
                 )

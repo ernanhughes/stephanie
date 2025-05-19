@@ -19,7 +19,7 @@ reflection:
   # Key that it will iterate over ot generate reflections
   input_key: "hypotheses"
   # Key that it store the results of those reflections
-  output_key: "reflection"  # change
+  output_key: "reflection"
 
   save_prompt: true
   prompt_mode: strategy

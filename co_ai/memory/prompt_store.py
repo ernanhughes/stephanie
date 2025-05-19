@@ -12,6 +12,44 @@ class PromptStore(BaseStore):
     def name(self) -> str:
         return "prompt"
 
+    def get_or_create_goal(self, goal_text, goal_type=None, focus_area=None,
+                           strategy=None, source="user"):
+        """
+        Looks up or inserts a goal in the `goals` table and returns the goal_id.
+        Assumes `conn` is a psycopg2 or asyncpg connection or cursor.
+        """
+        try:
+            with self.db.cursor() as cur:
+                # Try to find existing goal
+                cur.execute(
+                    """
+                    SELECT id FROM goals
+                    WHERE goal_text = %s
+                    LIMIT 1
+                """,
+                    (goal_text,),
+                )
+                result = cur.fetchone()
+                if result:
+                    return result[0]
+
+                # Insert new goal
+                cur.execute(
+                    """
+                    INSERT INTO goals (goal_text, goal_type, focus_area, strategy, source)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
+                """,
+                    (goal_text, goal_type, focus_area, strategy, source),
+                )
+                new_id = cur.fetchone()[0]
+                return new_id
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GoalGetFailed", {"error": str(e)})
+            return None
+
+
     def save(
         self,
         goal: str,
@@ -23,16 +61,17 @@ class PromptStore(BaseStore):
         version=1,
     ):
         try:
+            goal_id =  self.get_or_create_goal(goal)
             with self.db.cursor() as cur:
                 cur.execute(
                     """
                     INSERT INTO prompts (
-                        goal, agent_name, prompt_key, prompt_text, response_text,
+                        goal_id, agent_name, prompt_key, prompt_text, response_text,
                         source, version, is_current, strategy, metadata
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
                     """,
                     (
-                        goal,
+                        goal_id,
                         agent_name,
                         prompt_key,
                         prompt_text,
@@ -211,46 +250,4 @@ class PromptStore(BaseStore):
         except Exception as e:
             if self.logger:
                 self.logger.log("GetElicitingPromptsFailed", {"error": str(e), "goal": goal})
-            return []
-
-    def get_mrq_training_pairs(self, goal: str, limit: int = 10, agent_name='generation') -> list[dict]:
-        try:
-            with self.db.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT p.id, p.goal, p.prompt_text, 
-                           h1.text AS output_a, h1.elo_rating AS rating_a,
-                           h2.text AS output_b, h2.elo_rating AS rating_b
-                    FROM prompts p
-                    JOIN hypotheses h1 ON h1.prompt_id = p.id
-                    JOIN hypotheses h2 ON h2.prompt_id = p.id AND h1.id != h2.id
-                    WHERE p.goal = %s
-                      AND p.agent_name = %s
-                      AND h1.goal = %s
-                      AND h2.goal = %s
-                      AND h1.enabled = TRUE AND h2.enabled = TRUE
-                      AND h1.elo_rating != h2.elo_rating
-                    ORDER BY p.id, GREATEST(h1.elo_rating, h2.elo_rating) DESC
-                    LIMIT %s
-                    """,
-                    (goal, agent_name, goal, goal, limit),
-                )
-                rows = cur.fetchall()
-                return [
-                    {
-                        "prompt": row[2],
-                        "output_a": row[3],
-                        "output_b": row[5],
-                        "preferred": "a" if row[4] > row[6] else "b",
-                        "rating_a": row[4],
-                        "rating_b": row[6],
-                    }
-                    for row in rows
-                ]
-        except Exception as e:
-            if self.logger:
-                self.logger.log("GetMRQTrainingPairsFailed", {
-                    "error": str(e),
-                    "goal": goal
-                })
             return []

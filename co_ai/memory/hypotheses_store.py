@@ -31,17 +31,56 @@ class HypothesesStore(BaseStore):
                 })
         return prompt_id
 
+    def get_or_create_goal(self, goal_text, goal_type=None, focus_area=None,
+                           strategy=None, source="user"):
+        """
+        Looks up or inserts a goal in the `goals` table and returns the goal_id.
+        Assumes `conn` is a psycopg2 or asyncpg connection or cursor.
+        """
+        try:
+            with self.db.cursor() as cur:
+                # Try to find existing goal
+                cur.execute(
+                    """
+                    SELECT id FROM goals
+                    WHERE goal_text = %s
+                    LIMIT 1
+                """,
+                    (goal_text,),
+                )
+                result = cur.fetchone()
+                if result:
+                    return result[0]
+
+                # Insert new goal
+                cur.execute(
+                    """
+                    INSERT INTO goals (goal_text, goal_type, focus_area, strategy, source)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
+                """,
+                    (goal_text, goal_type, focus_area, strategy, source),
+                )
+                new_id = cur.fetchone()[0]
+                return new_id
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GoalGetFailed", {"error": str(e)})
+            return None
+
+
     def store(self, goal, text, confidence, review, features, prompt_text=None):
         embedding = self.embeddings.get_or_create(text)
         prompt_id = self.get_prompt_id(prompt_text)
         try:
             with self.db.cursor() as cur:
+                goal_id = self.get_or_create_goal(goal)
                 cur.execute(
                     """
-                    INSERT INTO hypotheses (goal, text, confidence, review, features, embedding, prompt_id)
+                    INSERT INTO hypotheses (goal_id, text, confidence, review, features, embedding, prompt_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (goal, text, confidence, review, features, embedding, prompt_id)
+                    (goal_id, text, confidence, review, features, embedding, prompt_id)
                 )
             if self.logger:
                 self.logger.log("HypothesisStored", {
@@ -158,14 +197,15 @@ class HypothesesStore(BaseStore):
             with self.db.cursor() as cur:
                 cur.execute("""
                     SELECT 
-                        text, 
-                        reflection, 
-                        review, 
-                        elo_rating
-                    FROM hypotheses
-                    WHERE goal = %s
-                    ORDER BY elo_rating DESC
-                    LIMIT %s
+                        h.text, 
+                        h.reflection, 
+                        h.review, 
+                        h.elo_rating
+                    FROM hypotheses h
+                    JOIN goals g ON h.goal_id = g.id
+                    WHERE g.goal_text = %s
+                    ORDER BY h.elo_rating DESC
+                    LIMIT %s;
                 """, (goal, limit))
                 rows = cur.fetchall()
             result = []
@@ -215,11 +255,13 @@ class HypothesesStore(BaseStore):
             with self.db.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT text FROM hypotheses
-                    WHERE review IS NULL
-                    AND goal = %s
-                    ORDER BY created_at DESC
-                    LIMIT %s
+                    SELECT h.text
+                    FROM hypotheses h
+                    JOIN goals g ON h.goal_id = g.id
+                    WHERE h.review IS NULL
+                    AND g.goal_text = %s
+                    ORDER BY h.created_at DESC
+                    LIMIT %s;
                     """,
                     (goal, limit),
                 )
@@ -244,11 +286,13 @@ class HypothesesStore(BaseStore):
             with self.db.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT text FROM hypotheses
-                    WHERE reflected IS NULL
-                    AND goal = %s
-                    ORDER BY created_at DESC
-                    LIMIT %s
+                        SELECT h.text
+                        FROM hypotheses h
+                        JOIN goals g ON h.goal_id = g.id
+                        WHERE h.reflected IS NULL
+                        AND g.goal_text = %s
+                        ORDER BY h.created_at DESC
+                        LIMIT %s;
                     """,
                     (goal, limit),
                 )
@@ -260,6 +304,36 @@ class HypothesesStore(BaseStore):
         except Exception as e:
             if self.logger:
                 self.logger.log("GetUnReflectedFailed", {
+                    "error": str(e),
+                    "goal": goal
+                })
+            else:
+                print(f"GetUnReflectedFailed: {e}")
+            return None
+
+    def get_latest(self, goal: str, limit: int = 10) -> list[dict[str, any]] | None:
+        try:
+            rows = []
+            with self.db.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT h.text
+                    FROM hypotheses h
+                    JOIN goals g ON h.goal_id = g.id
+                    AND g.goal_text = %s
+                    ORDER BY h.created_at DESC
+                    LIMIT %s;
+                    """,
+                    (goal, limit),
+                )
+                rows = cur.fetchall()
+            result = []
+            for text in rows:
+                result.append(text)
+            return result
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GetLatestFailed", {
                     "error": str(e),
                     "goal": goal
                 })

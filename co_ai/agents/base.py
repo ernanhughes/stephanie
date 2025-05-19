@@ -43,7 +43,7 @@ class BaseAgent(ABC):
         self.prompt_match_re = cfg.get(PROMPT_MATCH_RE, "")
         self.llm = self.init_llm()
         self.source = cfg.get(SOURCE, CONTEXT)
-        self.batch_size = cfg.get(BATCH_SIZE, 100)
+        self.batch_size = cfg.get(BATCH_SIZE, 6)
         self.save_context = cfg.get(SAVE_CONTEXT, False)
         self.input_key = cfg.get(INPUT_KEY, HYPOTHESES)
         self.preferences = cfg.get("preferences", {})
@@ -130,3 +130,32 @@ class BaseAgent(ABC):
             entry.update(metadata)
         context["prompt_history"][self.name].append(entry)
 
+    def get_hypotheses(self, goal: str, context: dict) -> list[str]:
+        try:
+            if self.source == "context":
+                hypotheses = context.get(HYPOTHESES, [])
+                if not hypotheses:
+                    self.logger.log("NoHypothesesInContext", {"agent": self.name, "goal": goal})
+                return hypotheses
+
+            elif self.source == "database":
+                hypotheses = self.get_hypotheses_from_db(goal=goal)
+                if not hypotheses:
+                    self.logger.log("NoUnReflectedInDatabase", {"agent": self.name, "goal": goal})
+                return hypotheses or []
+
+            else:
+                self.logger.log("InvalidSourceConfig", {
+                    "agent": self.name,
+                    "source": self.source
+                })
+        except Exception as e:
+            self.logger.log(
+                "HypothesisFetchError",
+                {"agent": self.name, "source": self.source, "error": str(e)},
+            )
+
+        return []
+
+    def get_hypotheses_from_db(self, goal:str):
+        return self.memory.hypotheses.get_latest(goal=goal, limit=self.batch_size)

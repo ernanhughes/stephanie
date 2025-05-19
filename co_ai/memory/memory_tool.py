@@ -4,6 +4,7 @@ import psycopg2
 
 from co_ai.memory import (ContextStore, EmbeddingStore, HypothesesStore,
                           PromptStore, ReportLogger)
+from co_ai.memory.mrq_store import MRQStore
                           
 from co_ai.memory import BaseStore
 
@@ -31,6 +32,7 @@ class MemoryTool:
         self.register_store(ContextStore(self.db, logger))
         self.register_store(PromptStore(self.db, logger))
         self.register_store(ReportLogger(self.db, logger))
+        self.register_store(MRQStore(self.db, self.get("embedding"), logger))
 
         # Register extra pluggable stores
         if cfg.get("extra_stores"):

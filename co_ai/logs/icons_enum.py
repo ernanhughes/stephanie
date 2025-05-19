@@ -35,6 +35,13 @@ EVENT_ICONS = {
     "PipelineStageStart": "🚀",
     "PipelineStart": "🔬",
     "PipelineSuccess": "✅",
+    "GeneratedReflection": "🪞✨",
+    "ReflectingOnHypothesis": "🤔💡",
+    "JudgeRunStarted": "⚖️🚦",
+    "JudgeStrategy": "🧠📐",
+    "PairJudged": "⚔️⚖️",
+    "JudgeRunCompleted": "✅⚖️",
+    "HypothesisRanked": "🏆📊",
     # ────────────────────────────────────────────
     # Prompt Processing & Tuning
     # ────────────────────────────────────────────

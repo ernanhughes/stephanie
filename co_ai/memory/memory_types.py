@@ -2,6 +2,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+@dataclass
+class Goal:
+    id: Optional[int]
+    goal_text: str
+    goal_type: Optional[str] = None
+    focus_area: Optional[str] = None
+    strategy: Optional[str] = None
+    llm_suggested_strategy: Optional[str] = None
+    source: str = "user"
+    created_at: Optional[datetime] = None
 
 @dataclass
 class MRQMemoryEntry:
@@ -18,3 +28,16 @@ class MRQMemoryEntry:
     metadata: dict = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.utcnow)
     id: Optional[int] = None  # Assigned by the DB
+
+@dataclass
+class SharpeningPrediction:
+    id: Optional[int]
+    goal_id: int
+    prompt_text: str
+    output_a: str
+    output_b: str
+    preferred: str  # 'a' or 'b'
+    predicted: str  # 'a' or 'b'
+    value_a: float
+    value_b: float
+    created_at: Optional[datetime] = None

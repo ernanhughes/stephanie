@@ -21,18 +21,5 @@ class ReviewAgent(BaseAgent):
         context[self.output_key] = reviews
         return context
 
-    def get_hypotheses(self, goal:str, context:dict) -> list[str]:
-        if self.source == "context":
-            hypotheses = context.get(HYPOTHESES, [])
-            if not hypotheses:
-                self.logger.log("NoHypothesesInContext", {"agent": self.name})
-        elif self.source == "database":
-            hypotheses = self.memory.hypotheses.get_unreviewed(goal=goal, limit=self.batch_size)
-            if not hypotheses:
-                self.logger.log("NoUnReviewedInDatabase", {"agent": self.name})
-                return []
-            else:
-                return hypotheses
-        else:
-            self.logger.log("SourceConfigError", {**{"source": self.source, "message": "your source config setting is invalid"}, **self.cfg})
-        return []
+    def get_hypotheses_from_db(self, goal: str):
+        return self.memory.hypotheses.get_unreviewed(goal=goal, limit=self.batch_size)

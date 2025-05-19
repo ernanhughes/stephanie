@@ -21,7 +21,7 @@ class ReflectionAgent(BaseAgent):
 
             response = self.call_llm(prompt, context).strip()
             self.memory.hypotheses.store_reflection(h, response)
-            reflections.append({HYPOTHESES: h, REFLECTION: response})
+            reflections.append(response)
 
             if self.source == "database":
                 self.logger.log("BatchReflectionComplete", {
@@ -30,22 +30,11 @@ class ReflectionAgent(BaseAgent):
                     "preferences_used": context.get("preferences", [])
                 })
             context[REFLECTION] = reflections
-            self.logger.log("GeneratedReflection", {
-                "goal": goal,
-                "reflected_count": len(reflections)
-            })
+            self.logger.log(
+                "GeneratedReflection",
+                {"goal": goal, "reflected_count": len(reflections)},
+            )
         return context
 
-    def get_hypotheses(self, goal:str, context:dict) -> list[str]:
-        if self.source == "context":
-            hypotheses = context.get(HYPOTHESES, [])
-            if not hypotheses:
-                self.logger.log("NoHypothesesInContext", {"agent": self.name})
-        elif self.source == "database":
-            hypotheses = self.memory.hypotheses.get_unreflected(goal=goal, limit=self.batch_size)
-            if not hypotheses:
-                self.logger.log("NoUnReflectedInDatabase", {"agent": self.name})
-            return []
-        else:
-            self.logger.log("InvalidSourceConfig", {"source": self.source})
-        return []
+    def get_hypotheses_from_db(self, goal: str):
+        return self.memory.hypotheses.get_unreflected(goal=goal, limit=self.batch_size)

@@ -12,13 +12,13 @@ class MRQSelfEvaluator:
 
     def evaluate(self, prompt, output_a, output_b):
         prompt_emb = torch.tensor(
-            self.memory.get_embedding(prompt), device=self.device
+            self.memory.embedding.get_or_create(prompt), device=self.device
         ).unsqueeze(0)
         output_a_emb = torch.tensor(
-            self.memory.get_embedding(output_a), device=self.device
+            self.memory.embedding.get_or_create(output_a), device=self.device
         ).unsqueeze(0)
         output_b_emb = torch.tensor(
-            self.memory.get_embedding(output_b), device=self.device
+            self.memory.embedding.get_or_create(output_b), device=self.device
         ).unsqueeze(0)
 
         zsa_a = self.encoder(prompt_emb, output_a_emb)
