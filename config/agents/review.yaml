@@ -5,7 +5,7 @@ defaults:
 review:
   name: review
   enabled: true
-  source: database
+  source: context
   batch_size: 50
   save_prompt: true
   save_context: false

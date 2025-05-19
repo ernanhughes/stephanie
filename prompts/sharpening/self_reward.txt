@@ -1,0 +1,25 @@
+You are an expert scientific evaluator participating in a structured reasoning assessment.
+
+Your task is to score the following hypothesis based on how well it supports the stated goal.
+Assess the hypothesis along three dimensions:
+
+- **Correctness**: Is the reasoning factually accurate and logically sound?
+- **Novelty**: Does the hypothesis offer original insight, or reframe the problem in a meaningful way?
+- **Feasibility**: Could this hypothesis realistically be implemented, tested, or developed?
+
+---
+
+### Goal:
+{{ goal }}
+
+### Hypothesis:
+{{ response }}
+
+---
+
+### Instructions:
+- Assign a single score from **1 to 10**, reflecting the **overall quality** with respect to the goal.
+- Consider all three dimensions above.
+- Output **only** the score in this format:
+
+<self_reward>{{ score }}</self_reward>

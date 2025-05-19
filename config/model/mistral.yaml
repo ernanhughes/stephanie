@@ -1,0 +1,7 @@
+Let's focus on just one second mistral:
+  name: mistral
+  description: Strong in creative hypothesis generation and analogical reasoning
+  capabilities:
+    - creativity
+    - out_of_the_box
+    - analogy_generation

@@ -5,9 +5,6 @@ from co_ai.constants import GOAL, HYPOTHESES, REFLECTION
 class ReflectionAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.source = cfg.get("source", "context")
-        self.batch_size = cfg.get("batch_size", 10)
-        self.auto_run = cfg.get("auto_run", False)
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, "")

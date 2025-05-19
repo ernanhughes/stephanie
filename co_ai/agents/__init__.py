@@ -23,5 +23,5 @@ from .proximity import ProximityAgent
 from .ranking import RankingAgent
 from .reflection import ReflectionAgent
 from .refiner import RefinerAgent
-from .prompt_dpo import PromptDPOAgent
+from .judge import JudgeAgent
 from .sharpening import SharpeningAgent

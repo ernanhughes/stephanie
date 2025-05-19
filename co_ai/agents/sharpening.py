@@ -1,7 +1,7 @@
 # co_ai/agents/sharpening.py
 from co_ai.agents import BaseAgent
 from co_ai.evaluator import MRQSelfEvaluator
-
+import re
 
 class SharpeningAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -10,17 +10,14 @@ class SharpeningAgent(BaseAgent):
         self.device = cfg.get("device", "cpu")
         self.evaluator = MRQSelfEvaluator(memory, device=self.device)
 
-    async def generate_output(self, prompt, context):
-        response = await self.llm(prompt, context)
-        return response
-
     async def sharpen(self, prompt, context: dict):
-        goal = context.get("goal")
-        self.logger.log("Sharpening", {"Prompt": prompt, "goal": goal})
         merged = {**context, **{"prompt": prompt}}
-        prompt = self.prompt_loader.load_prompt(self.cfg, merged)
-        response = self.generate_output(prompt, merged)
-        return response, 100
+        prompt_template = self.prompt_loader.from_file(
+            "sharpening.txt", self.cfg, merged
+        )
+
+        response = self.call_llm(prompt_template, context)
+        return response, self._get_self_reward(response, context)
 
     async def run(self, context: dict):
         prompts = context.get("prompt_history", {}).get(self.target, [])
@@ -36,3 +33,10 @@ class SharpeningAgent(BaseAgent):
                 self.logger.log("SharpeningWithMRQEvaluation", log_entry)
 
         return context
+
+    def _get_self_reward(self, response: str, context: dict) -> float:
+        merged = {**context, **{"response":response}}
+        critique_prompt = self.prompt_loader.from_file("self_reward.txt", self.cfg, merged)
+        result = self.call_llm(critique_prompt, context)
+        match = re.search(r"<self_reward>(\d+)</self_reward>", result)
+        return int(match.group(1)) if match else 7  # Default to average

@@ -164,3 +164,42 @@ CREATE TABLE IF NOT EXISTS prompt_evaluations (
     notes TEXT,                                        -- Freeform notes about the evaluation
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS mrq_memory (
+    id SERIAL PRIMARY KEY,
+    goal TEXT NOT NULL,
+    agent_name TEXT NOT NULL,
+    strategy TEXT NOT NULL, -- e.g., recap, critic, devil
+    prompt TEXT NOT NULL,
+    response TEXT NOT NULL,
+    reward FLOAT NOT NULL,
+    prompt_embedding VECTOR(1024),
+    response_embedding VECTOR(1024),
+    review_embedding VECTOR(1024),
+    reflection_embedding VECTOR(1024),
+    metadata JSONB DEFAULT '{}'::JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_mrq_goal ON mrq_memory(goal);
+CREATE INDEX idx_mrq_strategy ON mrq_memory(strategy);
+CREATE INDEX idx_mrq_reward ON mrq_memory(reward DESC);
+
+
+CREATE TABLE IF NOT EXISTS model_performance (
+    id SERIAL PRIMARY KEY,
+    model_name TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    prompt_strategy TEXT NOT NULL,
+    preference_used TEXT[],
+    reward FLOAT NOT NULL,
+    confidence_score FLOAT,
+    metadata JSONB DEFAULT '{}'::JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_model_name ON model_performance(model_name);
+CREATE INDEX idx_task_type ON model_performance(task_type);
+CREATE INDEX idx_preference_used ON model_performance USING GIN(preference_used);

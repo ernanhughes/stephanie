@@ -15,9 +15,10 @@ class MetaReviewAgent(BaseAgent):
         """
         Synthesize insights from reviews and evolved hypotheses.
 
-        Takes:
+        Takes:Well I'd like to understand this what ok I've got to review the reflection ground 
         - Evolved hypotheses
-        - Reviews (from ReflectionAgent)
+        - Reflections (from ReflectionAgent)
+        - Reviews (from ReviewAgent)
         - Rankings (from RankingAgent)
         - Strategic directions (from ProximityAgent)
 

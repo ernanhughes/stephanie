@@ -1,5 +1,3 @@
-import json
-
 from co_ai.memory import BaseStore
 
 

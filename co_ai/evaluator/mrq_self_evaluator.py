@@ -75,3 +75,8 @@ class MRQSelfEvaluator:
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
+
+
+    def retrieve_similar(self, prompt, k=3):
+        """Fetch top-k similar (prompt, output, reward) tuples from memory."""
+        return self.memory.get_similar(prompt, k)

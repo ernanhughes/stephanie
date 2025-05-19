@@ -1,0 +1,9 @@
+model:
+  description: High-quality reasoning with strong math and logic capabilities
+  name: ollama_chat/qwen3
+  api_base: http://localhost:11434
+  api_key: null
+  capabilities:
+    - reasoning
+    - planning
+    - logical consistency

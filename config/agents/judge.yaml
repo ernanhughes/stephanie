@@ -2,8 +2,8 @@
 defaults:
   - /prompt_refiner/disabled
 
-generic:
-  name: generic
+judge:
+  name: judge
   enabled: true
   save_prompt: true
   save_context: false
@@ -13,8 +13,7 @@ generic:
     api_base: http://localhost:11434
     api_key: null
   input_key: hypotheses   # add nodes
-  output_key: generic  # change
+  output_key: judge  # change
   prompt_mode: file
-  prompt_file: query_and_summarize.txt
-  extraction_regex: "search query:<([^>]+)>\n(.*)"
-  strategy: query_and_summarize
+  prompt_file: scientific_debate.txt
+OK but how do I   strategy: scientific_debate
