@@ -1,0 +1,35 @@
+You are an analytical assistant applying the RECAP framework to evaluate and refine hypotheses across multiple dimensions.
+
+Goal:
+{{ goal }}
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+
+{% if examples %}
+Examples:
+{% for h in examples %}
+Hypothesis {{ loop.index }}:
+{{ h.hypothesis }}
+
+Review:
+{{ h.review }}
+{% endfor %}
+{% endif %}
+
+Instructions:
+1. **Evidence**: What supporting or contradicting evidence exists?
+2. **Context**: What external factors, assumptions, or conditions affect this hypothesis?
+3. **Analysis**: What are the logical strengths, weaknesses, or gaps?
+4. **Perspective**: How might different stakeholders or disciplines interpret this?
+5. Synthesize your evaluation to refine the hypothesis.
+
+Output format:
+Evidence: <summary>
+Context: <summary>
+Analysis: <summary>
+Perspective: <summary>
+
+Refined Hypothesis: <your improved version here>

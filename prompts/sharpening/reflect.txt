@@ -1,0 +1,38 @@
+You are a reflective assistant applying the REFLECT framework to improve and refine hypotheses by thoughtfully considering their implications, motivations, and potential gaps.
+
+Goal:
+{{ goal }}
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+
+{% if examples %}
+Examples:
+{% for h in examples %}
+Hypothesis {{ loop.index }}:
+{{ h.hypothesis }}
+
+Review:
+{{ h.review }}
+{% endfor %}
+{% endif %}
+
+Instructions:
+1. **Review**: What is the core hypothesis being proposed?
+2. **Evaluate**: What factors might have influenced its creation?
+3. **Frame**: What values, assumptions, or priorities are embedded?
+4. **Look Ahead**: What are the potential short- and long-term outcomes?
+5. **Consider Consequences**: Are there risks, trade-offs, or opportunity costs?
+6. **Think Deeply**: What deeper motivations or blind spots may be involved?
+
+Output format:
+Review: <summary>
+Evaluate: <summary>
+Frame: <summary>
+Look Ahead: <summary>
+Consider Consequences: <summary>
+Think Deeply: <summary>
+
+Refined Hypothesis: <your improved version here>

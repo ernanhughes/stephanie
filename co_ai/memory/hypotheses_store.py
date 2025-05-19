@@ -340,3 +340,37 @@ class HypothesesStore(BaseStore):
             else:
                 print(f"GetUnReflectedFailed: {e}")
             return None
+
+    def get_hypotheses_for_prompt(self, prompt_text: str, limit: int = 10) -> list[dict[str, any]] | None:
+        try:
+            with self.db.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT h.text, h.review
+                    FROM hypotheses h
+                    JOIN prompts p ON h.prompt_id = p.id
+                    WHERE p.prompt_text = %s
+                    ORDER BY h.created_at DESC
+                    LIMIT %s;
+                    """,
+                    (prompt_text, limit),
+                )
+                rows = cur.fetchall()
+
+            result = []
+            for row in rows:
+                result.append({
+                    "hypothesis": row[0],
+                    "review": row[1]
+                })
+            return result
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GetHypothesesForPromptFailed", {
+                    "error": str(e),
+                    "prompt_text": prompt_text
+                })
+            else:
+                print(f"GetHypothesesForPromptFailed: {e}")
+            return None

@@ -10,8 +10,7 @@ class ReviewAgent(BaseAgent):
         self.auto_run = cfg.get("auto_run", False)
 
     async def run(self, context: dict) -> dict:
-        goal = context.get(GOAL)
-        hypotheses = self.get_hypotheses(goal, context)
+        hypotheses = self.get_hypotheses(context)
         reviews = []
         for h in hypotheses:
             prompt = self.prompt_loader.load_prompt(self.cfg, {**context, **{HYPOTHESES:h}})

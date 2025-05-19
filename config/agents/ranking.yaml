@@ -6,9 +6,11 @@ ranking:
   name: ranking
   enabled: true
   tournament_type: elo
-  max_comparisons: 6
+  max_comparisons: 6  # if using database willc hange
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
+  source: database
+  batch_size: 100
 
   # model
   model:

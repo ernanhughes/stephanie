@@ -55,19 +55,10 @@ pipeline:
       cls: co_ai.agents.generation.GenerationAgent
       enabled: true
       iterations: 1
-    # - name: reflection
-    #   cls: co_ai.agents.reflection.ReflectionAgent
-    #   enabled: true
-    #   iterations: 1
-#    - name: review
-#      cls: co_ai.agents.review.ReviewAgent
-#      enabled: true
-#      iterations: 1
-    # - name: judge
-    #   cls: co_ai.agents.judge.JudgeAgent
-    #   enabled: true
-    #   iterations: 1
-
+    - name: review
+      cls: co_ai.agents.review.ReviewAgent
+      enabled: true
+      iterations: 1
     - name: sharpening
       cls: co_ai.agents.sharpening.SharpeningAgent
       enabled: true

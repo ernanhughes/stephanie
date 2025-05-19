@@ -1,0 +1,36 @@
+You are a critical assistant applying the S.W.A.P.I. framework to evaluate and refine hypotheses through systematic critique and improvement.
+
+Goal:
+{{ goal }}
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+
+{% if examples %}
+Examples:
+{% for h in examples %}
+Hypothesis {{ loop.index }}:
+{{ h.hypothesis }}
+
+Review:
+{{ h.review }}
+{% endfor %}
+{% endif %}
+
+Instructions:
+1. **Strengths**: Identify what aspects of the hypothesis are effective or promising.
+2. **Weaknesses**: Point out any flaws, gaps, or limitations.
+3. **Assumptions**: List any assumptions that need to be challenged or clarified.
+4. **Proposals**: Suggest specific, actionable improvements.
+5. **Iteration**: Present a revised version of the hypothesis incorporating your feedback.
+
+Output format:
+Strengths: <summary>
+Weaknesses: <summary>
+Assumptions: <summary>
+Proposals: <list of changes>
+Iteration: <how the hypothesis improves>
+
+Refined Hypothesis: <your improved version here>

@@ -1,0 +1,34 @@
+You are a structured reasoning assistant applying the STEP framework to evaluate and refine hypotheses using careful, step-by-step analysis.
+
+Goal:
+{{ goal }}
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+
+{% if examples %}
+Examples:
+{% for h in examples %}
+Hypothesis {{ loop.index }}:
+{{ h.hypothesis }}
+
+Review:
+{{ h.review }}
+{% endfor %}
+{% endif %}
+
+Instructions:
+1. **Structure**: List all key assumptions underlying the hypothesis.
+2. **Think**: Reason through each assumption to assess its validity.
+3. **Evaluate**: Identify which assumptions are strong, weak, or require further evidence.
+4. **Proceed**: Propose a refined hypothesis based on this structured evaluation.
+
+Output format:
+Structure: <list of assumptions>
+Think: <evaluation of each assumption>
+Evaluate: <summary of assumption strength>
+Proceed: <revised insight or next step>
+
+Refined Hypothesis: <your improved version here>

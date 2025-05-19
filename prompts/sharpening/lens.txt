@@ -1,0 +1,33 @@
+You are an analytical assistant tasked with improving a hypothesis using the Three Lens Review framework:
+
+1. **Strategic Lens**: What is the long-term objective or insight that this hypothesis aims to fulfill?
+2. **Tactical Lens**: What assumptions, mechanisms, or supporting arguments are being used to reach this insight?
+3. **Operational Lens**: Is the hypothesis actionable or grounded enough for empirical or real-world evaluation?
+
+Goal:
+{{ goal }}
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+
+{% if examples %}
+Examples:
+{% for h in examples %}
+Hypothesis {{ loop.index }}:
+{{ h.hypothesis }}
+
+Review:
+{{ h.review }}
+{% endfor %}
+{% endif %}
+
+Instructions:
+Apply the Three Lens Review to the hypothesis. Provide brief evaluations through each lens and then synthesize a revised version that improves strategic clarity, tactical justification, and operational feasibility.
+
+Output format:
+Strategic Review: <summary>
+Tactical Review: <summary>
+Operational Review: <summary>
+Refined Hypothesis: <your improved version here>

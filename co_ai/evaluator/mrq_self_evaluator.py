@@ -4,13 +4,14 @@ from co_ai.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
 
 
 class MRQSelfEvaluator:
-    def __init__(self, memory, device="cpu"):
+    def __init__(self, memory, logger, device="cpu"):
         self.device = device
         self.memory = memory  # memory provides get_embedding
+        self.logger = logger
         self.encoder = TextEncoder().to(self.device)
         self.value_predictor = HypothesisValuePredictor(512, 1024).to(self.device)
 
-    def evaluate(self, prompt, output_a, output_b):
+    def All right OK always no matter what interaction evaluate(self, prompt, output_a, output_b):
         prompt_emb = torch.tensor(
             self.memory.embedding.get_or_create(prompt), device=self.device
         ).unsqueeze(0)
@@ -38,13 +39,20 @@ class MRQSelfEvaluator:
         if self.memory is None:
             raise ValueError("Database connection not provided.")
 
-        samples = self.memory.prompt.get_mrq_training_pairs(goal=goal, limit=limit)
+        self.logger.log("MRQTrainingStart", {
+            "goal": goal,
+            "limit": limit,
+            "epochs": epochs,
+            "learning_rate": lr
+        })
+
+        samples = self.memory.mrq.get_training_pairs(goal=goal, limit=limit)
 
         inputs, labels = [], []
         for item in samples:
-            prompt_emb = self.memory.get_embedding(item["prompt"])
-            output_a_emb = self.memory.get_embedding(item["output_a"])
-            output_b_emb = self.memory.get_embedding(item["output_b"])
+            prompt_emb = self.memory.embedding.get_or_create(item["prompt"])
+            output_a_emb = self.memory.embedding.get_or_create(item["output_a"])
+            output_b_emb = self.memory.embedding.get_or_create(item["output_b"])
             preferred = item["preferred"]
 
             zsa_a = self.encoder(
@@ -57,7 +65,7 @@ class MRQSelfEvaluator:
             )
 
             diff = zsa_a - zsa_b if preferred == "a" else zsa_b - zsa_a
-            inputs.append(diff.squeeze(0))
+            inputs.append(diff.squeeze(0).detach())
             labels.append(torch.tensor([1.0], device=self.device))
 
         dataset = torch.utils.data.TensorDataset(
@@ -69,14 +77,27 @@ class MRQSelfEvaluator:
 
         self.value_predictor.train()
         for epoch in range(epochs):
+            total_loss = 0.0
             for x_batch, y_batch in dataloader:
                 preds = self.value_predictor(x_batch)
                 loss = -torch.log(torch.sigmoid(preds)).mean()
                 opt.zero_grad()
                 loss.backward()
                 opt.step()
+                total_loss += loss.item()
 
+            avg_loss = total_loss / len(dataloader)
+            self.logger.log("MRQTrainingEpoch", {
+                "epoch": epoch + 1,
+                "avg_loss": round(avg_loss, 5),
+                "goal": goal
+            })
+
+        self.logger.log("MRQTrainingComplete", {
+            "goal": goal,
+            "epochs": epochs
+        })
 
     def retrieve_similar(self, prompt, k=3):
         """Fetch top-k similar (prompt, output, reward) tuples from memory."""
-        return self.memory.get_similar(prompt, k)
+        return self.memory.prompt.get_similar(prompt, k)

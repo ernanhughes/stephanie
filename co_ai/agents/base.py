@@ -130,15 +130,16 @@ class BaseAgent(ABC):
             entry.update(metadata)
         context["prompt_history"][self.name].append(entry)
 
-    def get_hypotheses(self, goal: str, context: dict) -> list[str]:
+    def get_hypotheses(self, context: dict) -> list[str]:
         try:
             if self.source == "context":
-                hypotheses = context.get(HYPOTHESES, [])
+                hypotheses = context.get(self.input_key, [])
                 if not hypotheses:
-                    self.logger.log("NoHypothesesInContext", {"agent": self.name, "goal": goal})
+                    self.logger.log("NoHypothesesInContext", {"agent": self.name})
                 return hypotheses
 
             elif self.source == "database":
+                goal = context.get("goal", "")
                 hypotheses = self.get_hypotheses_from_db(goal=goal)
                 if not hypotheses:
                     self.logger.log("NoUnReflectedInDatabase", {"agent": self.name, "goal": goal})

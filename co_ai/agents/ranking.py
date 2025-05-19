@@ -10,7 +10,7 @@ from co_ai.agents.base import BaseAgent
 class RankingAgent(BaseAgent):
     """
     The Ranking agent simulates scientific debate between hypotheses using a tournament-style approach.
-    
+
     From the paper:
     > 'The Ranking agent employs an Elo-based tournament to assess and prioritize generated hypotheses'
     """
@@ -26,14 +26,14 @@ class RankingAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         """
         Rank hypotheses using pairwise comparisons and Elo updates.
-        
+
         Args:
             context: Dictionary with keys:
                 - hypotheses: list of hypothesis strings
                 - goal: research objective
                 - preferences: override criteria
         """
-        hypotheses = context.get(self.input_key, [])
+        hypotheses = self.get_hypotheses(context)
 
         if len(hypotheses) < 2:
             self.logger.log("NotEnoughHypothesesForRanking", {
@@ -101,7 +101,7 @@ class RankingAgent(BaseAgent):
     def _generate_proximity_based_pairs(self, hypotheses):
         """Prioritize comparisons between similar hypotheses"""
         similarities = [
-            (h1, h2, self._compute_similarity(h1, h2)) 
+            (h1, h2, self._compute_similarity(h1, h2))
             for h1, h2 in itertools.combinations(hypotheses, 2)
         ]
         return sorted(similarities, key=lambda x: x[2], reverse=True)
@@ -182,12 +182,12 @@ class RankingAgent(BaseAgent):
             "winner": winner,
             "elo_a": self.elo_scores[hyp1],
             "elo_b": self.elo_scores[hyp2]
-        })  
+        })
 
     def _parse_response(self, response: str) -> Optional[str]:
         """
         Try multiple methods to extract winner from LLM output
-        
+
         Returns:
             'A' or 'B' based on comparison
         """
@@ -210,7 +210,7 @@ class RankingAgent(BaseAgent):
             return "A" if winner_key == "1" else "B"
 
         # Default fallback logic
-        self.logger.log("[⚠️] Could not extract winner from response.")
+        self.logger.log("[⚠️my 0 my god it's lost me ] Could not extract winner from response.")
         self.logger.log("ParseError", {
                     "error": "Could not extract winner from response",
                     "response": response

@@ -216,3 +216,19 @@ CREATE TABLE IF NOT EXISTS goals (
     created_at TIMESTAMP DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS mrq_evaluations (
+    id SERIAL PRIMARY KEY,
+    goal TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    output_a TEXT NOT NULL,
+    output_b TEXT NOT NULL,
+    winner TEXT NOT NULL, -- 'A' or 'B'
+    score_a FLOAT NOT NULL,
+    score_b FLOAT NOT NULL,
+    metadata JSONB DEFAULT '{}'::JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_mrq_goal ON mrq_evaluations(goal);
+CREATE INDEX idx_mrq_winner ON mrq_evaluations(winner);

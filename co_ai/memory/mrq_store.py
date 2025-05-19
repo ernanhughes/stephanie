@@ -149,8 +149,9 @@ class MRQStore(BaseStore):
                     {"error": str(e), "goal_text": goal_text, "prediction": prediction},
                 )
 
-
-    def get_training_pairs(self, goal: str, limit: int = 100, agent_name='generation') -> list[dict]:
+    def get_training_pairs(
+        self, goal: str, limit: int = 100, agent_name="generation"
+    ) -> list[dict]:
         try:
             with self.db.cursor() as cur:
                 query = """
@@ -178,7 +179,7 @@ class MRQStore(BaseStore):
 
                 # DEBUG: Print SQL query with full values
                 if self.logger:
-                    full_sql = cur.mogrify(query, params).decode('utf-8')
+                    full_sql = cur.mogrify(query, params).decode("utf-8")
                     self.logger.log("SQLQuery", {"query": full_sql})
 
                 cur.execute(query, params)
@@ -198,8 +199,7 @@ class MRQStore(BaseStore):
 
         except Exception as e:
             if self.logger:
-                self.logger.log("GetMRQTrainingPairsFailed", {
-                    "error": str(e),
-                    "goal": goal
-                })
+                self.logger.log(
+                    "GetMRQTrainingPairsFailed", {"error": str(e), "goal": goal}
+                )
             return []

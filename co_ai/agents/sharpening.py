@@ -1,77 +1,60 @@
 # co_ai/agents/sharpening.py
 from co_ai.agents import BaseAgent
 from co_ai.evaluator import MRQSelfEvaluator
-from co_ai.memory.memory_types import SharpeningPrediction
-import re
 
 class SharpeningAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.target = cfg.get("target", "generation")
         self.device = cfg.get("device", "cpu")
-        self.evaluator = MRQSelfEvaluator(memory, device=self.device)
+        self.evaluator = MRQSelfEvaluator(memory, logger, device=self.device)
+        self.templates = cfg.get("templates", ["critic"])
 
     async def run(self, context: dict):
         goal = context.get("goal")
-        limit = self.cfg.get("limit", 100)
 
-        dpo_samples = self.memory.mrq.get_training_pairs(goal=goal, limit=limit)
-        if not dpo_samples:
-            self.logger.log("NoDPOSamplesFound", {"goal": goal})
-            return context
-        predictions = []
-        for sample in dpo_samples:
-            preferred_output, scores = self.evaluator.evaluate(
-                sample["prompt"],
-                sample["output_a"],
-                sample["output_b"]
-            )
+        self.evaluator.train_from_database(
+            goal=goal,
+            limit=1000,
+            epochs=self.cfg.get("epochs", 5),
+            lr=self.cfg.get("lr", 1e-4))
 
-            prediction = {
-                "prompt": sample["prompt"],
-                "output_a": sample["output_a"],
-                "output_b": sample["output_b"],
-                "preferred": sample["preferred"],
-                "predicted": "a" if preferred_output == sample["output_a"] else "b",
-                "scores": scores
-            }
-            predictions.append(prediction)
-
-        context["sharpening_predictions"] = predictions
-        return context
-
-
-
-        prompts = context.get("prompt_history2", {}).get(self.target, [])
+        prompts = context.get("prompt_history", {}).get(self.target, [])
+        results = []
         for data in prompts:
-            prompt = data.get("prompt")
-            if prompt:
-                sharpened_output, scores = await self.sharpen(prompt, context)
-                log_entry = {
-                    "prompt": prompt,
-                    "sharpened_output": sharpened_output,
-                    "scores": scores,
-                }
-                self.logger.log("SharpeningWithMRQEvaluation", log_entry)
-
+            result = self.run_selected(data, context)
+            results.append(result)
+        context[self.output_key] = results
         return context
 
-    async def sharpen(self, prompt, context: dict):
-        merged = {**context, **{"prompt": prompt}}
-        prompt_template = self.prompt_loader.from_file(
-            "sharpening.txt", self.cfg, merged
-        )
+    def run_selected(self, data: dict, context: dict) -> list[dict]:
+        results = []
+        prompt = data.get("prompt")
+        examples = self.memory.hypotheses.get_hypotheses_for_prompt(prompt, 3)
+        merged = {**context, **{"prompt": prompt, "examples": examples}}
+
+        if prompt:
+            for name in self.templates:
+                prompt_template = self.prompt_loader.from_file(name, self.cfg, merged)
+                sharpened_hypothesis = self.call_llm(prompt_template, merged)
+                hypothesis = data.get("response") # hypotheses result for prompt
+                preferred_output, scores = self.evaluator.evaluate(prompt, hypothesis, sharpened_hypothesis)
+                results.append({
+                    "template": name,
+                    "output": preferred_output,
+                    "score": scores,
+                    # "justification": justification,
+                })
+
+        return sorted(results, key=lambda x: x["score"], reverse=True)
+
+    async def sharpen_hypotheses(self, prompt, context: dict):
+        examples = self.memory.hypotheses.get_hypotheses_for_prompt(prompt, 3)
+        merged = {**context, **{"prompt": prompt, "examples": examples}}
+        prompt_template = self.prompt_loader.from_file("critic.txt", self.cfg, merged)
 
         response = self.call_llm(prompt_template, context)
-        return response, self._get_self_reward(response, context)
-
-    def _get_self_reward(self, response: str, context: dict) -> float:
-        merged = {**context, **{"response":response}}
-        critique_prompt = self.prompt_loader.from_file("self_reward.txt", self.cfg, merged)
-        result = self.call_llm(critique_prompt, context)
-        match = re.search(r"<self_reward>(\d+)</self_reward>", result)
-        return int(match.group(1)) if match else 7  # Default to average
-
+        return response
 
     def save_predictions(self, goal, context: dict):
         for prediction in context["sharpening_predictions"]:

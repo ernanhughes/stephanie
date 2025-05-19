@@ -8,7 +8,7 @@ class ReflectionAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, "")
-        hypotheses = self.get_hypotheses(goal, context)
+        hypotheses = self.get_hypotheses(context)
         # Run reflection logic
         reflections = []
         for h in hypotheses:
