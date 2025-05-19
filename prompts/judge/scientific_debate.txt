@@ -4,8 +4,14 @@ Compare two hypotheses and decide which one leads to better output.
 Goal:
 {{ goal }}
 
+{% if preferences %}
+When generating the result please be guided by these user preferences.
+
 Preferences:
-{{ preferences_str }}
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
 
 Hypothesis A:
 {{ hypothesis_a }}
