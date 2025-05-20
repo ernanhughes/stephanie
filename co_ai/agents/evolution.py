@@ -80,6 +80,7 @@ class EvolutionAgent(BaseAgent):
                     )
 
             except Exception as e:
+                print(f"❌ Exception: {type(e).__name__}: {e}")
                 self.logger.log(
                     "EvolutionError", {"error": str(e), "hypotheses": h[:100]}
                 )

@@ -1,8 +1,6 @@
 # co_ai/tools/embedding_tool.py
 from collections import OrderedDict
-
 import requests
-
 
 # Simple in-memory LRU cache
 class EmbeddingCache:
@@ -24,8 +22,6 @@ class EmbeddingCache:
             self.cache.popitem(last=False)  # Remove least recently used item
 
 embedding_cache = EmbeddingCache(max_size=10000)
-
-
 
 def get_embedding(text: str, cfg):
     """

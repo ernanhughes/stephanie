@@ -95,6 +95,7 @@ class BaseAgent(ABC):
                 self.add_to_prompt_history(context, prompt, {"response":response})
             return response
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log("LLMCallError", {"exception": e})
             raise
 
@@ -151,6 +152,7 @@ class BaseAgent(ABC):
                     "source": self.source
                 })
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log(
                 "HypothesisFetchError",
                 {"agent": self.name, "source": self.source, "error": str(e)},

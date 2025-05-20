@@ -44,6 +44,7 @@ class PromptLoader:
             return self._load_from_file(merged)
 
         except Exception as e:
+            print(f"❌ Exception:  {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("PromptLoadFailed", {
                     "agent": config.get(NAME, DEFAULT),

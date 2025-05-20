@@ -1,16 +1,24 @@
 from co_ai.memory import BaseStore
+from co_ai.memory.memory_types import SharpeningResult
 import json
 
 
 class MRQStore(BaseStore):
-    def __init__(self, db, embeddings, logger=None):
+    def __init__(self, db, cfg, embeddings, logger=None):
         self.db = db
+        self.cfg = cfg
         self.embeddings = embeddings
         self.logger = logger
         self.name = "mrq"
 
+    def __repr__(self):
+        return f"<{self.name} connected={self.db is not None}>"
+
     def name(self) -> str:
         return "mrq"
+
+    def log_evaluations(self):
+        return self.cfg.get("log_evaluations", False)
 
     def add(
         self,
@@ -42,6 +50,7 @@ class MRQStore(BaseStore):
                     ),
                 )
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log(
                     "PromptLookupFailed",
@@ -69,6 +78,7 @@ class MRQStore(BaseStore):
                 for r in cur.fetchall()
             ]
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log(
                     "PromptLookupFailed",
@@ -93,6 +103,7 @@ class MRQStore(BaseStore):
 
             return cur.fetchall()
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log(
                     "PromptLookupFailed",
@@ -100,7 +111,7 @@ class MRQStore(BaseStore):
                 )
             return []
 
-    def insert_sharpening_prediction(self, prediction: dict, goal_text: str):
+    def insert_sharpening_prediction(self, prediction: dict, goal_text: str=None):
         """
         Insert a sharpening prediction into the database.
         Resolves the goal_id internally based on goal_text.
@@ -110,14 +121,16 @@ class MRQStore(BaseStore):
         """
         try:
             with self.db.cursor() as cur:
-                # Resolve goal_id
-                cur.execute(
-                    "SELECT id FROM goals WHERE goal_text = %s LIMIT 1", (goal_text,)
-                )
-                result = cur.fetchone()
-                if not result:
-                    raise ValueError(f"Goal not found: {goal_text}")
-                goal_id = result[0]
+                goal_id = None
+                if goal_text:
+                    # Resolve goal_id
+                    cur.execute(
+                        "SELECT id FROM goals WHERE goal_text = %s LIMIT 1", (goal_text,)
+                    )
+                    result = cur.fetchone()
+                    if not result:
+                        raise ValueError(f"Goal not found: {goal_text}")
+                    goal_id = result[0]
 
                 # Insert prediction
                 cur.execute(
@@ -130,19 +143,19 @@ class MRQStore(BaseStore):
                 """,
                     (
                         goal_id,
-                        prediction["prompt"],
+                        prediction["prompt_text"],
                         prediction["output_a"],
                         prediction["output_b"],
                         prediction["preferred"],
                         prediction["predicted"],
-                        prediction["scores"]["value_a"],
-                        prediction["scores"]["value_b"],
+                        prediction["value_a"],
+                        prediction["value_b"],
                     ),
                 )
-
                 self.db.commit()
 
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log(
                     "InsertSharpeningPredictionFailed",
@@ -155,29 +168,51 @@ class MRQStore(BaseStore):
         try:
             with self.db.cursor() as cur:
                 query = """
+                    WITH top_h AS (
+                        SELECT DISTINCT ON (p.id)
+                            p.id AS prompt_id,
+                            g.goal_text AS goal,
+                            p.prompt_text,
+                            h.text AS output_a,
+                            h.elo_rating AS rating_a
+                        FROM prompts p
+                        JOIN goals g ON p.goal_id = g.id
+                        JOIN hypotheses h ON h.prompt_id = p.id
+                        WHERE h.enabled = TRUE
+                        AND h.goal_id = g.id
+                        AND p.agent_name = %s
+                        AND g.goal_text = %s
+                        ORDER BY p.id, h.elo_rating DESC
+                    ),
+                    bottom_h AS (
+                        SELECT DISTINCT ON (p.id)
+                            p.id AS prompt_id,
+                            h.text AS output_b,
+                            h.elo_rating AS rating_b
+                        FROM prompts p
+                        JOIN hypotheses h ON h.prompt_id = p.id
+                        JOIN goals g ON p.goal_id = g.id
+                        WHERE h.enabled = TRUE
+                        AND h.goal_id = g.id
+                        AND p.agent_name = %s
+                        AND g.goal_text = %s
+                        ORDER BY p.id, h.elo_rating ASC
+                    )
                     SELECT 
-                        p.id, 
-                        g.goal_text AS goal, 
-                        p.prompt_text, 
-                        h1.text AS output_a, 
-                        h1.elo_rating AS rating_a,
-                        h2.text AS output_b, 
-                        h2.elo_rating AS rating_b
-                    FROM prompts p
-                    JOIN goals g ON p.goal_id = g.id
-                    JOIN hypotheses h1 ON h1.prompt_id = p.id
-                    JOIN hypotheses h2 ON h2.prompt_id = p.id AND h1.id != h2.id
-                    WHERE g.goal_text = %s
-                    AND p.agent_name = %s
-                    AND h1.enabled = TRUE AND h2.enabled = TRUE
-                    AND h1.goal_id = g.id AND h2.goal_id = g.id
-                    AND h1.elo_rating != h2.elo_rating
-                    ORDER BY p.id, GREATEST(h1.elo_rating, h2.elo_rating) DESC
+                        top_h.prompt_id,
+                        top_h.goal,
+                        top_h.prompt_text,
+                        top_h.output_a,
+                        top_h.rating_a,
+                        bottom_h.output_b,
+                        bottom_h.rating_b
+                    FROM top_h
+                    JOIN bottom_h ON top_h.prompt_id = bottom_h.prompt_id
+                    WHERE top_h.rating_a != bottom_h.rating_b
                     LIMIT %s;
                 """
-                params = (goal, agent_name, limit)
+                params = (agent_name, goal, agent_name, goal, limit)  # 🛠️ FIXED
 
-                # DEBUG: Print SQL query with full values
                 if self.logger:
                     full_sql = cur.mogrify(query, params).decode("utf-8")
                     self.logger.log("SQLQuery", {"query": full_sql})
@@ -198,8 +233,39 @@ class MRQStore(BaseStore):
                 ]
 
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log(
                     "GetMRQTrainingPairsFailed", {"error": str(e), "goal": goal}
                 )
             return []
+
+    def insert_sharpening_result(self, result: SharpeningResult):
+        with self.db.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO sharpening_results (
+                    goal, prompt, template, original_output, sharpened_output,
+                    preferred_output, winner, improved, comparison,
+                    score_a, score_b, score_diff, best_score,
+                    prompt_template
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    result.goal,
+                    result.prompt,
+                    result.template,
+                    result.original_output,
+                    result.sharpened_output,
+                    result.preferred_output,
+                    result.winner,
+                    result.improved,
+                    result.comparison,
+                    result.score_a,
+                    result.score_b,
+                    result.score_diff,
+                    result.best_score,
+                    result.prompt_template,
+                ),
+            )
+            self.db.commit()

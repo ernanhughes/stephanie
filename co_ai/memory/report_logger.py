@@ -7,6 +7,9 @@ class ReportLogger(BaseStore):
         self.logger = logger
         self.name = "report"
 
+    def __repr__(self):
+        return f"<{self.name} connected={self.db is not None}>"
+
     def name(self) -> str:
         return "report"
 
@@ -21,5 +24,6 @@ class ReportLogger(BaseStore):
                     (run_id, goal, summary, path)
                 )
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("ReportLogFailed", {"error": str(e)})

@@ -9,6 +9,9 @@ class HypothesesStore(BaseStore):
         self.name = "hypotheses"
         self._rankings = {}
 
+    def __repr__(self):
+        return f"<{self.name} connected={self.db is not None}>"
+
     def name(self) -> str:
         return "hypotheses"
 
@@ -24,6 +27,7 @@ class HypothesesStore(BaseStore):
                 if row:
                     prompt_id = row[0]
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("PromptLookupFailed", {
                     "error": str(e),
@@ -64,6 +68,7 @@ class HypothesesStore(BaseStore):
                 new_id = cur.fetchone()[0]
                 return new_id
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("GoalGetFailed", {"error": str(e)})
             return None
@@ -84,11 +89,12 @@ class HypothesesStore(BaseStore):
                 )
             if self.logger:
                 self.logger.log("HypothesisStored", {
-                    "goal": goal,
                     "text": text[:100],
+                    "goal": goal,
                     "confidence": confidence
                 })
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("HypothesisStoreFailed", {
                     "error": str(e),
@@ -113,6 +119,7 @@ class HypothesesStore(BaseStore):
                     "review_snippet": review[:100]
                 })
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("ReviewStoreFailed", {
                     "error": str(e),
@@ -140,6 +147,7 @@ class HypothesesStore(BaseStore):
                     "hypotheses": hypothesis[:200]
                 })
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("RankingStoreFailed", {
                     "error": str(e),
@@ -177,7 +185,7 @@ class HypothesesStore(BaseStore):
                 return results
         
         except Exception as e:
-            print(f"[VectorMemory] Failed to fetch similar hypotheses: {e}")
+            print(f"❌ Exception Failed to fetch similar hypotheses:: {type(e).__name__}: {e}")
             return []
         
     def get_ranked(self, goal: str, limit: int = 5) -> list[dict[str, any]]:
@@ -241,6 +249,7 @@ class HypothesesStore(BaseStore):
                     "reflection_snippet": reflection[:100]
                 })
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("ReflectionStoreFailed", {
                     "error": str(e),
@@ -271,6 +280,7 @@ class HypothesesStore(BaseStore):
                 result.append(text)
             return result
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("GetUnReviewedFailed", {
                     "error": str(e),
@@ -366,6 +376,7 @@ class HypothesesStore(BaseStore):
             return result
 
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("GetHypothesesForPromptFailed", {
                     "error": str(e),

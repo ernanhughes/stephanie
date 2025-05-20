@@ -5,25 +5,34 @@ defaults:
 sharpening:
   name: sharpening
   target: generation # prompt history target for sharpening generally generation
-  device: cpu
+
+  device: cpu # How many epochs to wait after no improvement
+  limit: 1000 # max training data
+  epochs: 20  # how much to train
+  patience: 3  # How many epochs to wait after no improvement
+  min_delta: 0.0001  # Minimum change in loss to qualify as improvement
+  log_results: true # save results to database
+  save_improved: true # save improved prompts and hypotheses
+
   enabled: true
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
 
   # Required keys for the agent ot effectively process the context
-  required_keys: ["goal", "hypotheses"]   # add nodes
+  required_keys: ["goal", "prompt_history"]   # add nodes
   # Key that it will iterate over ot generate reflections
-  input_key: "hypotheses"
+  input_key: "prompt_history"
   # Key that it store the results of those reflections
   output_key: "sharpening"  # change
 
   save_prompt: true
   prompt_mode: strategy
   strategy: sharpening  # Options: initial, full, observation, deep_verification
+
   prompt_file:
   # A set of keys that will tune the prompts operation
   preferences:
@@ -31,15 +40,19 @@ sharpening:
     - factual
     - reliable_source
     - simplicity
+
+  # New sharpening mode
+  mode: templates  # Options: templates, self_judge
+
   templates:
     - critic
     - grow
     - grows
-    - devil
-    - lens
-    - cot
-    - aot
-    - recap
-    - reflect
-    - step
-    - swapi
+#    - devil
+#    - lens
+#    - cot
+#    - aot
+#    - recap
+#    - reflect
+#    - step
+#    - swapi

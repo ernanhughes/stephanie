@@ -86,6 +86,7 @@ class RefinerAgent(BaseAgent):
                 self.logger.log("RefinedSkipped", info)
 
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log("RefinerError", {
                 "error": str(e),
                 "context_keys": list(context.keys())

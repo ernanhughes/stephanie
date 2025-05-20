@@ -103,6 +103,7 @@ class LiteratureAgent(BaseAgent):
             return f"{goal} productivity study"
 
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log("LiteratureQueryGenerationFailed", {"error": str(e)})
             return f"{context.get('goal', '')} remote work meta-analysis"
 
@@ -140,5 +141,6 @@ class LiteratureAgent(BaseAgent):
             return ""
 
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log("FailedToParseLiterature", {"error": str(e)})
             return ""

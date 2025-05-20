@@ -128,5 +128,6 @@ class MetaReviewAgent(BaseAgent):
             }
 
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log("FeedbackExtractionFailed", {"error": str(e)})
             return {}

@@ -113,6 +113,7 @@ class Supervisor:
             return context
 
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log("PipelineError", {"error": str(e)})
             raise
 

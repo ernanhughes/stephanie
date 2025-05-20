@@ -232,3 +232,24 @@ CREATE TABLE IF NOT EXISTS mrq_evaluations (
 -- Indexes
 CREATE INDEX idx_mrq_goal ON mrq_evaluations(goal);
 CREATE INDEX idx_mrq_winner ON mrq_evaluations(winner);
+
+
+
+CREATE TABLE IF NOT EXISTS sharpening_results (
+    id SERIAL PRIMARY KEY,
+    goal TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    template TEXT NOT NULL,
+    original_output TEXT NOT NULL,
+    sharpened_output TEXT NOT NULL,
+    preferred_output TEXT NOT NULL,
+    winner TEXT NOT NULL,  -- 'a' or 'b'
+    improved BOOLEAN NOT NULL,
+    comparison TEXT NOT NULL,  -- 'sharpened_better' or 'original_better'
+    score_a FLOAT NOT NULL,
+    score_b FLOAT NOT NULL,
+    score_diff FLOAT NOT NULL,
+    best_score FLOAT NOT NULL,
+    prompt_template TEXT,  -- raw text if you want to log it
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);

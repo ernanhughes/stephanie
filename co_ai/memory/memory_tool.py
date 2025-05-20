@@ -32,7 +32,7 @@ class MemoryTool:
         self.register_store(ContextStore(self.db, logger))
         self.register_store(PromptStore(self.db, logger))
         self.register_store(ReportLogger(self.db, logger))
-        self.register_store(MRQStore(self.db, self.get("embedding"), logger))
+        self.register_store(MRQStore(self.db, cfg.mrq, self.get("embedding"), logger))
 
         # Register extra pluggable stores
         if cfg.get("extra_stores"):

@@ -180,6 +180,7 @@ class PromptTuningAgent(BaseAgent):
                 )
 
             except Exception as e:
+                print(f"❌ Exception: {type(e).__name__}: {e}")
                 self.logger.log(
                     "TunedPromptGenerationFailed",
                     {"error": str(e), "example_snippet": str(example)[:100]},
@@ -245,6 +246,7 @@ class PromptTuningAgent(BaseAgent):
                 self.logger.log("PromptComparisonNoMatch", {"response": response})
                 return 0.0
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log(
                 "PromptQualityMetricError",
                 {

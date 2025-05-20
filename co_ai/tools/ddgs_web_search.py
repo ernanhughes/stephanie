@@ -22,5 +22,5 @@ class DDGSWebSearchTool:
         try:
             return await asyncio.to_thread(_run_search)
         except Exception as e:
-            print(f"[WebSearchTool] Search error: {e}")
+            print(f"❌ Exception [WebSearchTool] Search error: {type(e).__name__}: {e}")
             return [f"Search failed: {str(e)}"]

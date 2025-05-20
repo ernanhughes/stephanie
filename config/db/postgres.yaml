@@ -11,3 +11,6 @@ embeddings:
   model: "mxbai-embed-large"
   dimension: 1024
   endpoint: "http://localhost:11434/api/embeddings"
+
+mrq:
+  log_evaluations: true

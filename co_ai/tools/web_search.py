@@ -31,7 +31,7 @@ class WebSearchTool:
                 html = resp.text
 
         except Exception as e:
-            print(f"[WebSearchTool] SearXNG search error: {e}")
+            print(f"❌ Exception:  {type(e).__name__}: {e}")
             return [f"Search failed: {str(e)}"]
 
         return self.parse_searxng_results(html, max_results)

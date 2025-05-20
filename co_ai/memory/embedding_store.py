@@ -11,6 +11,9 @@ class EmbeddingStore(BaseStore):
         self.name = "embedding"
         pgvector.psycopg2.register_vector(self.db)
 
+    def __repr__(self):
+        return f"<{self.name} connected={self.db is not None} cfg={self.cfg}>"
+
     def name(self) -> str:
         return "embedding"
 
@@ -22,6 +25,7 @@ class EmbeddingStore(BaseStore):
                 if row:
                     return row[0]  # Force conversion to list of floats
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("EmbeddingFetchFailed", {"error": str(e)})
 
@@ -31,6 +35,7 @@ class EmbeddingStore(BaseStore):
                 cur.execute("INSERT INTO embeddings (text, embedding) VALUES (%s, %s) ON CONFLICT (text) DO NOTHING",
                             (text, embedding))
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("EmbeddingInsertFailed", {"error": str(e)})
         return embedding

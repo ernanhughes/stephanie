@@ -12,11 +12,12 @@ EVENT_ICONS = {
     # General System & Initialization
     # ────────────────────────────────────────────
     "AgentInitialized": "🛠️",
+    "SharpeningResultSaved": "🪓",
     "ContextAfterStage": "🗃️",
     "ContextLoaded": "📂",
     "ContextSaved": "💾",
     "ContextYAMLDumpSaved": "📄",
-    "StoreRegistered": "✅",
+    "StoreRegistered": "🛍️",
     "SupervisorInit": "🧑‍🏫",
     "debug": "🐞",
     "LiteratureQuery": "📚",
@@ -77,6 +78,7 @@ EVENT_ICONS = {
     "GenerationStart": "✨",
     "HypothesisStoreFailed": "❌",
     "HypothesisStored": "💾",
+    "MRQTraining": "📊🛠️",
     # ────────────────────────────────────────────
     # Hypotheses Evaluation & Ranking
     # ────────────────────────────────────────────
@@ -86,6 +88,8 @@ EVENT_ICONS = {
     "RankingStored": "🗃️",
     "RankingUpdated": "🔁",
     "TournamentCompleted": "🏆",
+    "SharpenedHypothesisSaved": "🪓💾",
+    "SharpenedGoalSaved": "🪓🏆",
     # ────────────────────────────────────────────
     # Review & Reflection
     # ────────────────────────────────────────────

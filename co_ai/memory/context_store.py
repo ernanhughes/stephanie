@@ -13,6 +13,9 @@ class ContextStore(BaseStore):
         self.name = "context"
         self.dump_dir = os.path.dirname(self.logger.log_path)
 
+    def __repr__(self):
+        return f"<{self.name} connected={self.db is not None}>"
+
     def name(self) -> str:
         return "context"
 
@@ -35,6 +38,7 @@ class ContextStore(BaseStore):
             if self.dump_dir:
                 self._dump_to_yaml(run_id, stage, context)
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 for k, v in context.items():
                     try:
@@ -95,6 +99,7 @@ class ContextStore(BaseStore):
 
             return result
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log("ContextLoadFailed", {"error": str(e)})
             return {}
 
@@ -110,5 +115,6 @@ class ContextStore(BaseStore):
             if self.logger:
                 self.logger.log("ContextYAMLDumpSaved", {"path": path})
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("ContextYAMLDumpFailed", {"error": str(e)})

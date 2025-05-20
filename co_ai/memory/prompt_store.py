@@ -9,6 +9,9 @@ class PromptStore(BaseStore):
         self.logger = logger
         self.name = "prompt"
 
+    def __repr__(self):
+        return f"<{self.name} connected={self.db is not None}>"
+
     def name(self) -> str:
         return "prompt"
 
@@ -45,6 +48,7 @@ class PromptStore(BaseStore):
                 new_id = cur.fetchone()[0]
                 return new_id
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("GoalGetFailed", {"error": str(e)})
             return None
@@ -59,9 +63,12 @@ class PromptStore(BaseStore):
         response=None,
         strategy="default",
         version=1,
+        meta_data=None
     ):
         try:
             goal_id =  self.get_or_create_goal(goal)
+            if meta_data is None:
+                meta_data = {}
             with self.db.cursor() as cur:
                 cur.execute(
                     """
@@ -79,7 +86,7 @@ class PromptStore(BaseStore):
                         "manual",
                         version,
                         strategy,
-                        json.dumps({}),
+                        json.dumps(meta_data),
                     ),
                 )
                 cur.execute(
@@ -90,6 +97,7 @@ class PromptStore(BaseStore):
                     (agent_name, prompt_key),
                 )
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("PromptLogFailed", {"error": str(e)})
 
@@ -131,6 +139,7 @@ class PromptStore(BaseStore):
                     },
                 )
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log(
                     "PromptEvaluationStoreFailed",
@@ -163,6 +172,7 @@ class PromptStore(BaseStore):
                 cols = [desc[0] for desc in cur.description]
                 return [dict(zip(cols, row)) for row in rows]
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("PromptFetchFailed", {"error": str(e)})
             return []
@@ -207,6 +217,7 @@ class PromptStore(BaseStore):
                     for row in rows
                 ]
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("GetLatestPromptsFailed", {
                     "error": str(e),
@@ -248,6 +259,7 @@ class PromptStore(BaseStore):
                     for row in rows
                 ]
         except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("GetElicitingPromptsFailed", {"error": str(e), "goal": goal})
             return []

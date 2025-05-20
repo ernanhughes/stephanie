@@ -1,7 +1,8 @@
 import torch
 from co_ai.evaluator.text_encoder import TextEncoder
 from co_ai.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
-
+from co_ai.memory.memory_types import SharpeningPrediction
+from dataclasses import asdict
 
 class MRQSelfEvaluator:
     def __init__(self, memory, logger, device="cpu"):
@@ -11,7 +12,7 @@ class MRQSelfEvaluator:
         self.encoder = TextEncoder().to(self.device)
         self.value_predictor = HypothesisValuePredictor(512, 1024).to(self.device)
 
-    def All right OK always no matter what interaction evaluate(self, prompt, output_a, output_b):
+    def evaluate(self, goal, prompt, output_a, output_b):
         prompt_emb = torch.tensor(
             self.memory.embedding.get_or_create(prompt), device=self.device
         ).unsqueeze(0)
@@ -31,22 +32,56 @@ class MRQSelfEvaluator:
         preferred_output = output_a if value_a >= value_b else output_b
         scores = {"value_a": value_a, "value_b": value_b}
 
+        if self.memory.mrq.log_evaluations():
+            prediction = SharpeningPrediction(
+                id=None,
+                goal_id=-1,
+                prompt_text=prompt,
+                output_a=output_a,
+                output_b=output_b,
+                preferred="a" if value_a >= value_b else "b",
+                predicted="a" if value_a >= value_b else "b",
+                value_a=value_a,
+                value_b=value_b,
+            )
+
+            self.memory.mrq.insert_sharpening_prediction(asdict(prediction), goal)
+
         return preferred_output, scores
 
-    def train_from_database(
-        self, goal: str, limit: int = 500, epochs: int = 5, lr: float = 1e-4
-    ):
+    def train_from_database(self, goal:str, cfg:dict):
         if self.memory is None:
             raise ValueError("Database connection not provided.")
+
+        limit = cfg.get("limit", 1000)
+        epochs = cfg.get("epochs", 20)
+        lr = cfg.get("lr", 1e-4)
+        patience = cfg.get("patience", 3)
+        min_delta = cfg.get("min_delta", 0.0001)
 
         self.logger.log("MRQTrainingStart", {
             "goal": goal,
             "limit": limit,
             "epochs": epochs,
-            "learning_rate": lr
+            "learning_rate": lr,
+            "patience": patience,
+            "min_delta": min_delta
         })
 
         samples = self.memory.mrq.get_training_pairs(goal=goal, limit=limit)
+        if not samples or len(samples) == 0:
+            self.logger.log("MRQTrainingError", {
+                "error": "No training samples found for the given goal.",
+                "goal": goal
+            })
+            print("[ERROR] No training samples found. Cannot train MR.Q evaluator.")
+            return  # Exit gracefully
+        else:
+            self.logger.log("MRQTraining", {
+                "Sample count": len(samples),
+                "goal": goal
+            })
+
 
         inputs, labels = [], []
         for item in samples:
@@ -76,6 +111,9 @@ class MRQSelfEvaluator:
         opt = torch.optim.Adam(self.value_predictor.parameters(), lr=lr)
 
         self.value_predictor.train()
+
+        best_loss = float("inf") # early stopping
+        epochs_no_improve = 0
         for epoch in range(epochs):
             total_loss = 0.0
             for x_batch, y_batch in dataloader:
@@ -87,11 +125,26 @@ class MRQSelfEvaluator:
                 total_loss += loss.item()
 
             avg_loss = total_loss / len(dataloader)
-            self.logger.log("MRQTrainingEpoch", {
-                "epoch": epoch + 1,
-                "avg_loss": round(avg_loss, 5),
-                "goal": goal
-            })
+            self.logger.log(
+                "MRQTrainingEpoch",
+                {"epoch": epoch + 1, "avg_loss": round(avg_loss, 5), "goal": goal},
+            )
+            # 🛑 Early stopping logic
+            if best_loss - avg_loss > min_delta:
+                best_loss = avg_loss
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
+                if epochs_no_improve >= patience:
+                    self.logger.log(
+                        "MRQEarlyStopping",
+                        {
+                            "stopped_epoch": epoch + 1,
+                            "best_loss": round(best_loss, 5),
+                            "goal": goal,
+                        },
+                    )
+                    break
 
         self.logger.log("MRQTrainingComplete", {
             "goal": goal,
