@@ -435,7 +435,7 @@ class HypothesesStore(BaseStore):
         """Insert a list of PatternStat dataclass instances into the cot_patterns table."""
 
         insert_query = """
-               INSERT INTO cot_patterns (
+               INSERT INTO cot_pattern_stats (
                    goal_id,
                    hypothesis_id,
                    model_name,
