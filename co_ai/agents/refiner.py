@@ -57,11 +57,10 @@ class RefinerAgent(BaseAgent):
             )
 
             for h in refined_hypotheses:
-                prompt_id = self.memory.prompt.get_prompt_id(refined_prompt)
                 hyp = Hypothesis(
                     goal=goal,
                     text=h,
-                    prompt_id=prompt_id
+                    prompt=refined_prompt
                 )
                 self.memory.hypotheses.store(hyp)
 

@@ -60,8 +60,7 @@ class ChainOfThoughtGeneratorAgent(BaseAgent):
             "pattern": pattern,
         }
 
-        prompt_id = self.memory.hypotheses.get_prompt_id(prompt)
-        hyp = Hypothesis(goal=goal, text=best, confidence=score, features=features, prompt_id=prompt_id)
+        hyp = Hypothesis(goal=goal, text=best, confidence=score, features=features, prompt=prompt)
         self.memory.hypotheses.store(hyp)
         context[self.output_key] = [best]
 

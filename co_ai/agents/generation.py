@@ -33,8 +33,7 @@ class GenerationAgent(BaseAgent):
         # Extract hypotheses
         hypotheses = extract_hypotheses(response)
         for h in hypotheses:
-            prompt_id = self.memory.prompt.get_prompt_id(prompt)
-            hyp = Hypothesis(goal=goal, text=h, prompt_id=prompt_id)
+            hyp = Hypothesis(goal=goal, text=h, prompt=prompt)
             self.memory.hypotheses.store(hyp)
 
         # Update context with new hypotheses

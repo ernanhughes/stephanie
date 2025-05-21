@@ -81,8 +81,8 @@ class HypothesesStore(BaseStore):
         try:
             # Resolve prompt and goal
             embedding = self.embeddings.get_or_create(hypothesis.text)
-            prompt_id = self.get_prompt_id(prompt_text)
-            goal_id = self.get_or_create_goal(hypothesis.goal)
+            prompt_id = self.get_prompt_id(hypothesis.prompt)
+            goal_id = self.get_or_create_goal(hypothesis.goal, hypothesis.goal_type)
 
             with self.db.cursor() as cur:
                 cur.execute(

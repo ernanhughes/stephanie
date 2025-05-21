@@ -14,7 +14,7 @@ class WebSearchTool:
         self.language = cfg.get("language", "en")
         self.logger = logger
 
-    async def search(self, query: str, max_results: int = 15) -> list[str]:
+    async def search(self, query: str, max_results: int = 15) -> list[str] | None:
         max_results = max_results or self.max_results
 
         params = {
@@ -32,7 +32,7 @@ class WebSearchTool:
 
         except Exception as e:
             print(f"❌ Exception:  {type(e).__name__}: {e}")
-            return [f"Search failed: {str(e)}"]
+            return None
 
         return self.parse_searxng_results(html, max_results)
 

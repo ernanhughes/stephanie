@@ -76,9 +76,8 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         cot = result.answer.strip()
         self.logger.log("CoTGenerated", {"goal": goal["prompt"], "cot": cot})
 
-        prompt_id = self.memory.hypotheses.get_prompt_id(goal["prompt"])
         hyp = Hypothesis(goal=goal, text=cot, features={"source": "cot_dspy"},
-                         prompt_id=prompt_id)
+                         prompt=goal["prompt"])
         self.memory.hypotheses.store(hyp)
 
         context[self.output_key] = [cot]

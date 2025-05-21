@@ -139,8 +139,7 @@ class SharpeningAgent(BaseAgent):
                     "prompt_text": prompt[:100],
                 },
             )
-            prompt_id = self.memory.hypotheses.get_prompt_id(prompt)
-            hyp = Hypothesis(goal=goal, text= entry["sharpened_hypothesis"], prompt_id=prompt_id)
+            hyp = Hypothesis(goal=goal, text= entry["sharpened_hypothesis"], prompt=prompt)
             # Save new hypothesis for that prompt
             self.memory.hypotheses.store(hyp)
 
