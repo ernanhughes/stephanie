@@ -6,7 +6,7 @@ literature_ranking:
   name: literature_ranking
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
   strategy: literature_ranking
   model:
@@ -14,7 +14,7 @@ literature_ranking:
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file
-  prompt_file: sharpening.txt
+  prompt_file: default.txt
   extraction_regex: "article_rankings:\n(.+?)(?=\n\n|$)"
   input_keys: ["goal", "literature"]
   input_key: literature

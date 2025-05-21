@@ -184,23 +184,23 @@ class PromptStore(BaseStore):
                     """
                     SELECT DISTINCT ON (p.id)
                         p.id,
-                        p.goal,
+                        g.goal_text AS goal,
                         p.prompt_text,
                         p.prompt_key,
                         p.timestamp,
                         h.text AS hypothesis_text,
                         h.elo_rating,
                         h.review
-                    FROM prompts p
-                    JOIN hypotheses h ON h.prompt_id = p.id
-                    WHERE p.goal = %s
-                      AND p.agent_name = %s
-                      AND h.goal = %s
-                      AND h.enabled = TRUE
+                    FROM goals g
+                    JOIN prompts p ON p.goal_id = g.id
+                    JOIN hypotheses h ON h.prompt_id = p.id AND h.goal_id = g.id
+                    WHERE g.goal_text = %s
+                    AND p.agent_name = %s
+                    AND h.enabled = TRUE
                     ORDER BY p.id, h.elo_rating DESC, h.updated_at DESC
                     LIMIT %s
                     """,
-                    (goal, agent_name, goal, limit),
+                    (goal, agent_name, limit),
                 )
                 rows = cur.fetchall()
                 return [

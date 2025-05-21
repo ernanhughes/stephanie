@@ -22,7 +22,12 @@ class SharpeningAgent(BaseAgent):
         prompts = context.get("prompt_history", {}).get(self.target, [])
         results = []
         for data in prompts:
-            result = self.run_selected(data, context)
+            if self.cfg.get("mode", "template") == "judge":
+                result = self.run_judge_only(data, context)
+            elif self.cfg.get("mode", "template") == "compare_mrq":
+                result = self.compare_mrq(data, context)
+            else:
+                result = self.run_selected(data, context)
             results.append(result)
             if self.cfg.get("log_results", False):
                 self.log_sharpening_results(goal, data.get("prompt"), data.get("response"), result)
@@ -67,11 +72,46 @@ class SharpeningAgent(BaseAgent):
                 results.append(result)
         return sorted(results, key=lambda x: x["score"], reverse=True)
 
-    async def sharpen_hypotheses(self, prompt, context: dict):
+    def compare_mrq(self, data: dict, context: dict) -> list[dict]:
+        goal = context.get(GOAL)
+        prompt = data.get("prompt")
+        hypothesis = data.get("response")
+
+        # For judge-only, use a simple reflection-based transformation (or leave unchanged)
+        sharpened_hypothesis = hypothesis  # no change, just self-judging
+
+        _, scores = self.evaluator.evaluate(goal, prompt, hypothesis, sharpened_hypothesis)
+        value_a = scores["value_a"]
+        value_b = scores["value_b"]
+        winner = "a" if value_a >= value_b else "b"
+        score = max(value_a, value_b)
+        score_diff = abs(value_a - value_b)
+        improved = winner == "b"
+        comparison = "sharpened_better" if improved else "original_better"
+
+        result = {
+            "template": "judge_only",
+            "winner": winner,
+            "improved": improved,
+            "comparison": comparison,
+            "score": round(score, 4),
+            "score_diff": round(score_diff, 4),
+            "output": hypothesis,
+            "raw_scores": scores,
+            "sharpened_hypothesis": sharpened_hypothesis,
+            "prompt_template": None,
+        }
+
+        if improved:
+            self.save_improved(goal, prompt, result)
+
+        return [result]
+
+    async def run_judge_only(self, data:dict, context: dict):
+        prompt = data.get("prompt")
         examples = self.memory.hypotheses.get_hypotheses_for_prompt(prompt, 3)
         merged = {**context, **{"prompt": prompt, "examples": examples}}
-        prompt_template = self.prompt_loader.from_file("critic.txt", self.cfg, merged)
-
+        prompt_template = self.prompt_loader.from_file("self_reward.txt", self.cfg, merged)
         response = self.call_llm(prompt_template, context)
         return response
 

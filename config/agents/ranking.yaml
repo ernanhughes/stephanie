@@ -7,9 +7,9 @@ ranking:
   enabled: true
   tournament_type: elo
   max_comparisons: 6  # if using database willc hange
-  save_context: true
+  save_context: false
   skip_if_completed: false
-  source: database
+  source: context
   batch_size: 100
 
   # model

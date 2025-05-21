@@ -5,8 +5,8 @@ defaults:
 literature:
   name: literature
   enabled: true
-  save_context: true
-  skip_if_completed: true
+  save_context: false
+  skip_if_completed: false
   strategy: query_and_summarize
   max_results: 5
   model:

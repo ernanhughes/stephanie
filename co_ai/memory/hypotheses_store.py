@@ -167,13 +167,12 @@ class HypothesesStore(BaseStore):
             goal_embedding = self.embeddings.get_or_create(goal)
             with self.db.cursor() as cur:
                 cur.execute("""
-                    SELECT text, embedding <-> %s AS distance, source, elo_rating
+                    SELECT text, embedding <-> %s::vector AS distance, source, elo_rating
                     FROM hypotheses
                     WHERE enabled IS NOT FALSE
                     ORDER BY distance ASC
                     LIMIT %s
                 """, (goal_embedding, top_k))
-
                 results = []
                 for row in cur.fetchall():
                     results.append({
