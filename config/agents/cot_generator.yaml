@@ -8,10 +8,22 @@ cot_generator:
   save_prompt: true
   save_context: false
   skip_if_completed: false
+  evaluation: model         #(mrq or model)  tmay not be enough items fo mrq
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
+
+  evaluation_model:
+    name: ollama/mistral:7b-instruct
+    api_base: http://localhost:11434
+    api_key: null
+
+  analysis_model:
+    name: ollama/mistral:7b-instruct
+    api_base: http://localhost:11434
+    api_key: null
+
   input_key: hypotheses   # add nodes
   output_key: hypotheses
   prompt_mode: file

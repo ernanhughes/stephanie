@@ -3,7 +3,8 @@
 from co_ai.agents import BaseAgent
 from co_ai.evaluator import MRQSelfEvaluator
 from co_ai.constants import GOAL
-from co_ai.memory.memory_types import SharpeningResult
+from co_ai.models import Hypothesis
+from co_ai.models.sharpening_result import SharpeningResult
 from dataclasses import asdict
 
 class SharpeningAgent(BaseAgent):
@@ -138,15 +139,10 @@ class SharpeningAgent(BaseAgent):
                     "prompt_text": prompt[:100],
                 },
             )
-
+            prompt_id = self.memory.hypotheses.get_prompt_id(prompt)
+            hyp = Hypothesis(goal=goal, text= entry["sharpened_hypothesis"], prompt_id=prompt_id)
             # Save new hypothesis for that prompt
-            self.memory.hypotheses.store(                 goal,
-                    entry["sharpened_hypothesis"],
-                    entry["score"],
-                    None,
-                    None,
-                    prompt
-            )
+            self.memory.hypotheses.store(hyp)
 
             self.logger.log(
                 "SharpenedHypothesisSaved",

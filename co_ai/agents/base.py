@@ -103,6 +103,41 @@ class BaseAgent(ABC):
             self.logger.log("LLMCallError", {"exception": e})
             raise
 
+    def call_custom_llm(self, props, prompt: str, context: dict) -> str:
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            response = litellm.completion(
+                model=props[NAME],
+                messages=messages,
+                api_base=props[API_BASE],
+                api_key=props.get(API_KEY, ""),
+            )
+            output = response["choices"][0]["message"]["content"]
+            if self.cfg.get(SAVE_PROMPT, False) and self.memory:
+                self.memory.prompt.save(
+                    context.get("goal"),
+                    agent_name=self.name,
+                    prompt_key=self.cfg.get(PROMPT_PATH, ""),
+                    prompt_text=prompt,
+                    response=output,
+                    # source=self.cfg.get("prompt_type", "file"),
+                    strategy=self.cfg.get(STRATEGY, ""),
+                    version=self.cfg.get("version", 1),
+                    # metadata={}
+                )
+            if self.remove_think:
+                response = remove_think_blocks(output)
+            else:
+                response = output
+            if self.cfg.get("add_prompt_to_history", True):
+                self.add_to_prompt_history(context, prompt, {"response":response})
+            return response
+        except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
+            self.logger.log("LLMCallError", {"exception": e})
+            raise
+
+
     @abstractmethod
     async def run(self, context: dict) -> dict:
         pass

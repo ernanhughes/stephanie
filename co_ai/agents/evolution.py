@@ -7,6 +7,7 @@ import numpy as np
 from co_ai.agents.base import BaseAgent
 from co_ai.tools.embedding_tool import get_embedding
 from co_ai.constants import RANKING, HYPOTHESES, EVOLVED, GOAL
+from co_ai.models import Hypothesis
 
 
 class EvolutionAgent(BaseAgent):
@@ -71,7 +72,8 @@ class EvolutionAgent(BaseAgent):
                     for r in refined_list:
                         goal = context.get(GOAL, "")
                         evolved_goal = f"Evolved from top-ranked {goal}"
-                        self.memory.hypotheses.store(evolved_goal, h, None, None, None)
+                        hyp = Hypothesis(goal=evolved_goal, text=h)
+                        self.memory.hypotheses.store(hyp)
                         evolved.append(r)
                 else:
                     self.logger.log(
@@ -93,12 +95,11 @@ class EvolutionAgent(BaseAgent):
 
         return context
 
-    async def graft_similar(
-        self, context:dict,  threshold: float = 0.90
-    ) -> list[str]:
+    async def graft_similar(self, context: dict, threshold: float = 0.90) -> list[str]:
         """
         Graft pairs of highly similar hypotheses into unified versions.
         """
+        hypotheses =self.get_hypotheses(context)
         embeddings = [get_embedding(h, self.cfg) for h in hypotheses]
         used = set()
         grafted = []

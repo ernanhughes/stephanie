@@ -3,6 +3,7 @@
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL, HYPOTHESES, LITERATURE, FEEDBACK, NAME
 from co_ai.parsers import extract_hypotheses
+from co_ai.models import Hypothesis
 
 class GenerationAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -32,8 +33,9 @@ class GenerationAgent(BaseAgent):
         # Extract hypotheses
         hypotheses = extract_hypotheses(response)
         for h in hypotheses:
-            self.memory.hypotheses.store(goal, h, None, None, None, prompt)
-
+            prompt_id = self.memory.prompt.get_prompt_id(prompt)
+            hyp = Hypothesis(goal=goal, text=h, prompt_id=prompt_id)
+            self.memory.hypotheses.store(hyp)
 
         # Update context with new hypotheses
         context[self.output_key] = hypotheses

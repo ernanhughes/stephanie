@@ -1,6 +1,7 @@
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL, HYPOTHESES
 from co_ai.parsers import extract_hypotheses
+from co_ai.models import Hypothesis
 
 class RefinerAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
@@ -51,12 +52,18 @@ class RefinerAgent(BaseAgent):
             })
 
             refined_hypotheses = extract_hypotheses(refined_response)
-            self.logger.log("RefinerHypothesesExtracted", {
-                "count": len(refined_hypotheses)
-            })
+            self.logger.log(
+                "RefinerHypothesesExtracted", {"count": len(refined_hypotheses)}
+            )
 
             for h in refined_hypotheses:
-                self.memory.hypotheses.store(goal, h, 0.0, None, None, refined_prompt)
+                prompt_id = self.memory.prompt.get_prompt_id(refined_prompt)
+                hyp = Hypothesis(
+                    goal=goal,
+                    text=h,
+                    prompt_id=prompt_id
+                )
+                self.memory.hypotheses.store(hyp)
 
             info = {
                 "original_response": original_response,

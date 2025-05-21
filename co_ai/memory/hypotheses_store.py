@@ -1,5 +1,7 @@
 from co_ai.memory import BaseStore
-
+from co_ai.models.hypothesis import Hypothesis
+from typing import Optional
+from psycopg2.extras import Json
 
 class HypothesesStore(BaseStore):
     def __init__(self, db, embeddings, logger=None):
@@ -74,31 +76,57 @@ class HypothesesStore(BaseStore):
             return None
 
 
-    def store(self, goal, text, confidence, review, features, prompt_text=None):
-        embedding = self.embeddings.get_or_create(text)
-        prompt_id = self.get_prompt_id(prompt_text)
+
+    def store(self, hypothesis: Hypothesis, prompt_text: Optional[str] = None):
         try:
+            # Resolve prompt and goal
+            embedding = self.embeddings.get_or_create(hypothesis.text)
+            prompt_id = self.get_prompt_id(prompt_text)
+            goal_id = self.get_or_create_goal(hypothesis.goal)
+
             with self.db.cursor() as cur:
-                goal_id = self.get_or_create_goal(goal)
                 cur.execute(
                     """
-                    INSERT INTO hypotheses (goal_id, text, confidence, review, features, embedding, prompt_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO hypotheses (
+                        goal_id, text, confidence, review, reflection, elo_rating,
+                        embedding, features, prompt_id, source_hypothesis,
+                        strategy_used, version, source, enabled, created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (goal_id, text, confidence, review, features, embedding, prompt_id)
+                    (
+                        goal_id,
+                        hypothesis.text,
+                        hypothesis.confidence,
+                        hypothesis.review,
+                        hypothesis.reflection,
+                        hypothesis.elo_rating,
+                        embedding,
+                        Json(hypothesis.features),
+                        prompt_id,
+                        hypothesis.source_hypothesis,
+                        hypothesis.strategy_used,
+                        hypothesis.version,
+                        hypothesis.source,
+                        hypothesis.enabled,
+                        hypothesis.created_at,
+                        hypothesis.updated_at,
+                    )
                 )
+
             if self.logger:
                 self.logger.log("HypothesisStored", {
-                    "text": text[:100],
-                    "goal": goal,
-                    "confidence": confidence
+                    "text": hypothesis.text[:100],
+                    "goal": hypothesis.goal,
+                    "confidence": hypothesis.confidence
                 })
+
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("HypothesisStoreFailed", {
                     "error": str(e),
-                    "text": text[:100]
+                    "text": hypothesis.text[:100]
                 })
 
     def store_review(self, hypothesis_text: str, review: dict):

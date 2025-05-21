@@ -1,5 +1,5 @@
 from co_ai.memory import BaseStore
-from co_ai.memory.memory_types import SharpeningResult
+from co_ai.models.sharpening_result import SharpeningResult
 import json
 
 
