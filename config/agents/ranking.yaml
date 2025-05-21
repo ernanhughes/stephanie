@@ -6,7 +6,7 @@ ranking:
   name: ranking
   enabled: true
   tournament_type: elo
-  max_comparisons: 6  # if using database willc hange
+  max_comparisons: 6  # if using database will change
   save_context: false
   skip_if_completed: false
   source: context

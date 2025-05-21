@@ -2,6 +2,7 @@ from co_ai.memory import BaseStore
 from co_ai.models.hypothesis import Hypothesis
 from typing import Optional
 from psycopg2.extras import Json
+from datetime import datetime
 
 class HypothesesStore(BaseStore):
     def __init__(self, db, embeddings, logger=None):
@@ -16,6 +17,23 @@ class HypothesesStore(BaseStore):
 
     def name(self) -> str:
         return "hypotheses"
+
+    def get_id_by_text(self, text: str) -> Optional[int]:
+        hypothesis_id = None
+        try:
+            with self.db.cursor() as cur:
+                cur.execute("SELECT id FROM hypotheses WHERE text = %s", (text,))
+                row = cur.fetchone()
+                if row:
+                    hypothesis_id = row[0]
+        except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
+            if self.logger:
+                self.logger.log(
+                    "HypothesesLookupFailed",
+                    {"error": str(e), "hypotheses_snippet": text[:100]},
+                )
+        return hypothesis_id
 
     def get_prompt_id(self, prompt_text: str) -> int:
         prompt_id = None
@@ -405,10 +423,49 @@ class HypothesesStore(BaseStore):
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
-                self.logger.log("GetHypothesesForPromptFailed", {
-                    "error": str(e),
-                    "prompt_text": prompt_text
-                })
+                self.logger.log(
+                    "GetHypothesesForPromptFailed",
+                    {"error": str(e), "prompt_text": prompt_text},
+                )
             else:
                 print(f"GetHypothesesForPromptFailed: {e}")
             return None
+
+    def store_pattern_stats(self, goal_id, hypothesis_id, patterns: list):
+        """Insert a list of PatternStat dataclass instances into the cot_patterns table."""
+
+        insert_query = """
+               INSERT INTO cot_patterns (
+                   goal_id,
+                   hypothesis_id,
+                   model_name,
+                   agent_name,
+                   dimension,
+                   label,
+                   confidence_score,
+                   created_at
+               ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+           """
+        values = [
+            (
+                pattern.goal_id,
+                pattern.hypothesis_id,
+                pattern.model_name,
+                pattern.agent_name,
+                pattern.dimension,
+                pattern.label,
+                pattern.confidence_score,
+                pattern.created_at or datetime.utcnow(),
+            )
+            for pattern in patterns
+        ]
+        try:
+            with self.db.cursor() as cur:
+                cur.executemany(insert_query, values)
+        except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
+            if self.logger:
+                self.logger.log(
+                    "StorePatternStatsFailed",
+                    {"error": str(e), "hypothesis_id": hypothesis_id},
+                )

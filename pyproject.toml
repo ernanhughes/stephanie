@@ -20,7 +20,7 @@ dependencies = [
     "hydra-core", 
     "jinja2",
     "beautifulsoup4",
-    "tabulate",
+    "scikit-learn",
     "python_dotenv",
     "ollama"
 ]

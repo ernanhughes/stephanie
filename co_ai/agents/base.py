@@ -64,46 +64,15 @@ class BaseAgent(ABC):
             if key not in self.model_config:
                 raise ValueError(f"Missing required LLM config key: {key}")
         return {
-            MODEL: self.model_config[NAME],
+            NAME: self.model_config[NAME],
             API_BASE: self.model_config[API_BASE],
             API_KEY: self.model_config.get(API_KEY),
         }
 
-    def call_llm(self, prompt: str, context: dict) -> str:
-        messages = [{"role": "user", "content": prompt}]
-        try:
-            response = litellm.completion(
-                model=self.llm[MODEL],
-                messages=messages,
-                api_base=self.llm[API_BASE],
-                api_key=self.llm.get(API_KEY),
-            )
-            output = response["choices"][0]["message"]["content"]
-            if self.cfg.get(SAVE_PROMPT, False) and self.memory:
-                self.memory.prompt.save(
-                    context.get("goal"),
-                    agent_name=self.name,
-                    prompt_key=self.cfg.get(PROMPT_PATH, ""),
-                    prompt_text=prompt,
-                    response=output,
-                    # source=self.cfg.get("prompt_type", "file"),
-                    strategy=self.cfg.get(STRATEGY, ""),
-                    version=self.cfg.get("version", 1),
-                    # metadata={}
-                )
-            if self.remove_think:
-                response = remove_think_blocks(output)
-            else:
-                response = output
-            if self.cfg.get("add_prompt_to_history", True):
-                self.add_to_prompt_history(context, prompt, {"response":response})
-            return response
-        except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
-            self.logger.log("LLMCallError", {"exception": e})
-            raise
-
-    def call_custom_llm(self, props, prompt: str, context: dict) -> str:
+    def call_llm(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
+        """Call the default or custom LLM, log the prompt, and handle output."""
+        props = llm_cfg or self.llm  # Use passed-in config or default
+        
         messages = [{"role": "user", "content": prompt}]
         try:
             response = litellm.completion(
@@ -113,6 +82,8 @@ class BaseAgent(ABC):
                 api_key=props.get(API_KEY, ""),
             )
             output = response["choices"][0]["message"]["content"]
+
+            # Save prompt and response if enabled
             if self.cfg.get(SAVE_PROMPT, False) and self.memory:
                 self.memory.prompt.save(
                     context.get("goal"),
@@ -120,21 +91,22 @@ class BaseAgent(ABC):
                     prompt_key=self.cfg.get(PROMPT_PATH, ""),
                     prompt_text=prompt,
                     response=output,
-                    # source=self.cfg.get("prompt_type", "file"),
                     strategy=self.cfg.get(STRATEGY, ""),
                     version=self.cfg.get("version", 1),
-                    # metadata={}
                 )
-            if self.remove_think:
-                response = remove_think_blocks(output)
-            else:
-                response = output
+
+            # Remove [THINK] blocks if configured
+            response_cleaned = remove_think_blocks(output) if self.remove_think else output
+
+            # Optionally add to context history
             if self.cfg.get("add_prompt_to_history", True):
-                self.add_to_prompt_history(context, prompt, {"response":response})
-            return response
+                self.add_to_prompt_history(context, prompt, {"response": response_cleaned})
+
+            return response_cleaned
+
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")
-            self.logger.log("LLMCallError", {"exception": e})
+            self.logger.log("LLMCallError", {"exception": str(e)})
             raise
 
 

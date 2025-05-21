@@ -236,8 +236,6 @@ CREATE TABLE IF NOT EXISTS mrq_evaluations (
 CREATE INDEX idx_mrq_goal ON mrq_evaluations(goal);
 CREATE INDEX idx_mrq_winner ON mrq_evaluations(winner);
 
-
-
 CREATE TABLE IF NOT EXISTS sharpening_results (
     id SERIAL PRIMARY KEY,
     goal TEXT NOT NULL,
@@ -256,3 +254,21 @@ CREATE TABLE IF NOT EXISTS sharpening_results (
     prompt_template TEXT,  -- raw text if you want to log it
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE cot_pattern_stats (
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
+    model_name TEXT NOT NULL,
+    agent_name TEXT NOT NULL,
+    dimension TEXT NOT NULL,      -- e.g. "Inference Style"
+    label TEXT NOT NULL,          -- e.g. "Analogical"
+    confidence_score FLOAT,       -- optional if scoring is enabled
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_cot_pattern_goal ON cot_pattern_stats (goal_id);
+CREATE INDEX idx_cot_pattern_model ON cot_pattern_stats (model_name);
+CREATE INDEX idx_cot_pattern_dimension ON cot_pattern_stats (dimension);
+
+
