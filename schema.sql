@@ -1,5 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto; -- text hashing
+
 -- Stores all generated hypotheses and their evaluations
 CREATE TABLE IF NOT EXISTS hypotheses (
     id SERIAL PRIMARY KEY,
@@ -147,7 +149,8 @@ CREATE TABLE IF NOT EXISTS context_states (
 
 CREATE TABLE IF NOT EXISTS embeddings (
     id SERIAL PRIMARY KEY,
-    text TEXT UNIQUE,
+    text TEXT,
+    text_hash TEXT UNIQUE,
     embedding VECTOR(1024),  -- adjust dimension if needed
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

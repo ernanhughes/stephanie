@@ -2,6 +2,7 @@ from co_ai.memory import BaseStore
 from co_ai.tools import get_embedding
 
 import pgvector.psycopg2
+import hashlib
 
 class EmbeddingStore(BaseStore):
     def __init__(self, db, cfg, logger=None):
@@ -17,10 +18,11 @@ class EmbeddingStore(BaseStore):
     def name(self) -> str:
         return "embedding"
 
-    def get_or_create(self, text):
+    def get_or_create(self, text: str):
+        text_hash = self.get_text_hash(text)
         try:
             with self.db.cursor() as cur:
-                cur.execute("SELECT embedding FROM embeddings WHERE text = %s", (text,))
+                cur.execute("SELECT embedding FROM embeddings WHERE text_hash  = %s", (text_hash,))
                 row = cur.fetchone()
                 if row:
                     return row[0]  # Force conversion to list of floats
@@ -32,8 +34,8 @@ class EmbeddingStore(BaseStore):
         embedding = get_embedding(text, self.cfg)
         try:
             with self.db.cursor() as cur:
-                cur.execute("INSERT INTO embeddings (text, embedding) VALUES (%s, %s) ON CONFLICT (text) DO NOTHING",
-                            (text, embedding))
+                cur.execute("INSERT INTO embeddings (text, text_hash, embedding) VALUES (%s, %s, %s) ON CONFLICT (text_hash) DO NOTHING",
+                            (text, text_hash, embedding))
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
@@ -77,3 +79,6 @@ class EmbeddingStore(BaseStore):
             else:
                 print(f"[VectorMemory] Search failed: {e}")
             return []
+
+    def get_text_hash(self, text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()

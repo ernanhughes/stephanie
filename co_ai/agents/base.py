@@ -47,6 +47,7 @@ class BaseAgent(ABC):
         self.save_context = cfg.get(SAVE_CONTEXT, False)
         self.input_key = cfg.get(INPUT_KEY, HYPOTHESES)
         self.preferences = cfg.get("preferences", {})
+        self.remove_think = cfg.get("remove_think", True)
         self.output_key = cfg.get(OUTPUT_KEY, self.name)
         self.logger.log(
             "AgentInitialized",
@@ -90,7 +91,10 @@ class BaseAgent(ABC):
                     version=self.cfg.get("version", 1),
                     # metadata={}
                 )
-            response = remove_think_blocks(output)
+            if self.remove_think:
+                response = remove_think_blocks(output)
+            else:
+                response = output
             if self.cfg.get("add_prompt_to_history", True):
                 self.add_to_prompt_history(context, prompt, {"response":response})
             return response

@@ -15,6 +15,7 @@ defaults:
   - agents/proximity
   - agents/sharpening
   - agents/judge
+  - agents/cot_generator
   - agents/supervisor
   - logging/json_logger
 
@@ -43,47 +44,51 @@ pipeline:
   name: default_pipeline
   description: "Default hypothesis generation and refinement pipeline"
   stages:
-    - name: literature
-      cls: co_ai.agents.literature.LiteratureAgent
+    # - name: literature
+    #   cls: co_ai.agents.literature.LiteratureAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: literature_ranking
+    #   cls: co_ai.agents.generic.GenericAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: generation
+    #   cls: co_ai.agents.generation.GenerationAgent
+    #   enabled: true
+    #   iterations: 1
+    - name: cot_generator
+      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
       enabled: true
       iterations: 1
-    - name: literature_ranking
-      cls: co_ai.agents.generic.GenericAgent
-      enabled: true
-      iterations: 1
-    - name: generation
-      cls: co_ai.agents.generation.GenerationAgent
-      enabled: true
-      iterations: 1
-    - name: review
-      cls: co_ai.agents.review.ReviewAgent
-      enabled: true
-      iterations: 1
-    - name: reflection
-      cls: co_ai.agents.reflection.ReflectionAgent
-      enabled: true
-      iterations: 1
-    - name: proximity
-      cls: co_ai.agents.proximity.ProximityAgent
-      enabled: true
-      iterations: 1
-    - name: ranking
-      cls: co_ai.agents.ranking.RankingAgent
-      enabled: true
-      iterations: 1
-    - name: evolution
-      cls: co_ai.agents.evolution.EvolutionAgent
-      enabled: true
-      iterations: 1
-    - name: meta_review
-      cls: co_ai.agents.meta_review.MetaReviewAgent
-      enabled: true
-      iterations: 1
-    - name: prompt_tuning
-      cls: co_ai.agents.prompt_tuning.PromptTuningAgent
-      enabled: true
-      iterations: 1
-    - name: sharpening
-      cls: co_ai.agents.sharpening.SharpeningAgent
-      enabled: true
-      iterations: 1
+    # - name: review
+    #   cls: co_ai.agents.review.ReviewAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: reflection
+    #   cls: co_ai.agents.reflection.ReflectionAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: proximity
+    #   cls: co_ai.agents.proximity.ProximityAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: ranking
+    #   cls: co_ai.agents.ranking.RankingAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: evolution
+    #   cls: co_ai.agents.evolution.EvolutionAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: meta_review
+    #   cls: co_ai.agents.meta_review.MetaReviewAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: prompt_tuning
+    #   cls: co_ai.agents.prompt_tuning.PromptTuningAgent
+    #   enabled: true
+    #   iterations: 1
+    # - name: sharpening
+    #   cls: co_ai.agents.sharpening.SharpeningAgent
+    #   enabled: true
+    #   iterations: 1
