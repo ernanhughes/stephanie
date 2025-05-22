@@ -6,3 +6,11 @@ requests
 duckduckgo-search
 tabulate
 matplotlib
+pgvector
+readability-lxml
+hydra-core 
+jinja2
+beautifulsoup4
+scikit-learn
+python_dotenv
+ollama
