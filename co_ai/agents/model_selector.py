@@ -1,5 +1,5 @@
 from co_ai.agents.base import BaseAgent
-
+from co_ai.constants import GOAL
 
 class ModelSelectorAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -7,7 +7,7 @@ class ModelSelectorAgent(BaseAgent):
         self.model_rankings = {}
 
     async def run(self, context: dict) -> dict:
-        goal = context.get("goal", "")
+        goal = self.extract_goal_text(context.get(GOAL))
         preferences = context.get("preferences", [])
 
         # Use metadata to select best model

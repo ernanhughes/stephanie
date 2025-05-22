@@ -8,6 +8,7 @@ from co_ai.logs import JSONLogger
 from co_ai.prompts import PromptLoader
 
 from co_ai.constants import (
+    GOAL,
     API_BASE,
     MODEL,
     STRATEGY,
@@ -86,7 +87,7 @@ class BaseAgent(ABC):
             # Save prompt and response if enabled
             if self.cfg.get(SAVE_PROMPT, False) and self.memory:
                 self.memory.prompt.save(
-                    context.get("goal"),
+                    BaseAgent.extract_goal_text(context.get("goal")),
                     agent_name=self.name,
                     prompt_key=self.cfg.get(PROMPT_PATH, ""),
                     prompt_text=prompt,
@@ -151,7 +152,7 @@ class BaseAgent(ABC):
                 return hypotheses
 
             elif self.source == "database":
-                goal = context.get("goal", "")
+                goal = extract_goal_text(context.get(GOAL))
                 hypotheses = self.get_hypotheses_from_db(goal=goal)
                 if not hypotheses:
                     self.logger.log("NoUnReflectedInDatabase", {"agent": self.name, "goal": goal})
@@ -173,3 +174,7 @@ class BaseAgent(ABC):
 
     def get_hypotheses_from_db(self, goal:str):
         return self.memory.hypotheses.get_latest(goal=goal, limit=self.batch_size)
+    
+    @staticmethod
+    def extract_goal_text(goal):
+        return goal.get("goal_text") if isinstance(goal, dict) else goal

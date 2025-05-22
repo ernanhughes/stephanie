@@ -16,7 +16,7 @@ class SharpeningAgent(BaseAgent):
         self.templates = cfg.get("templates", ["critic"])
 
     async def run(self, context: dict):
-        goal = context.get(GOAL)
+        goal = self.extract_goal_text(context.get(GOAL))
 
         self.evaluator.train_from_database(goal=goal, cfg=self.cfg)
 
@@ -36,7 +36,7 @@ class SharpeningAgent(BaseAgent):
         return context
 
     def run_selected(self, data: dict, context: dict) -> list[dict]:
-        goal = context.get(GOAL)
+        goal = self.extract_goal_text(context.get(GOAL))
         results = []
         prompt = data.get("prompt")
         examples = self.memory.hypotheses.get_hypotheses_for_prompt(prompt, 3)
@@ -74,7 +74,7 @@ class SharpeningAgent(BaseAgent):
         return sorted(results, key=lambda x: x["score"], reverse=True)
 
     def compare_mrq(self, data: dict, context: dict) -> list[dict]:
-        goal = context.get(GOAL)
+        goal = self.extract_goal_text(context.get(GOAL))
         prompt = data.get("prompt")
         hypothesis = data.get("response")
 

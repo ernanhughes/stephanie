@@ -4,6 +4,7 @@ import re
 from co_ai.agents.base import BaseAgent
 from co_ai.tools import WebSearchTool
 from co_ai.utils.file_utils import write_text_to_file
+from co_ai.constants import GOAL
 
 
 class LiteratureAgent(BaseAgent):
@@ -22,7 +23,7 @@ class LiteratureAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         self.logger.log("LiteratureQuery", {"context": context})
-        goal = context.get("goal", "")
+        goal = self.extract_goal_text(context.get(GOAL))
 
         # Step 1: Generate search query using LLM
         search_query = self._generate_search_query(context)
@@ -98,7 +99,7 @@ class LiteratureAgent(BaseAgent):
                 return query
 
             # Fallback to goal
-            goal = context.get("goal", "")
+            goal = self.extract_goal_text(context.get(GOAL))
             self.logger.log("FallingBackToGoalAsQuery", {"goal": goal})
             return f"{goal} productivity study"
 

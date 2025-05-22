@@ -11,7 +11,7 @@ meta_review:
   save_context: false
   skip_if_completed: false
   model:
-    name: ollama_chat/qwen3
+    name: ollama_chat/qwen:0.5b
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file

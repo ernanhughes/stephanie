@@ -17,24 +17,32 @@ def run(cfg: DictConfig):
     async def main():
         print(f"Initial Config:\n{OmegaConf.to_yaml(cfg)}")
 
-        run_id = generate_run_id(cfg.goal.text)
+        # Setup logger and memory
+        run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
         log_path = get_log_file_path(run_id, cfg)
         logger = JSONLogger(log_path=log_path)
         memory = MemoryTool(cfg=cfg.db, logger=logger)
-
         supervisor = Supervisor(cfg=cfg, memory=memory, logger=logger)
 
+        # ✅ Batch Mode: input_file provided
+        if "input_file" in cfg and cfg.input_file:
+            print(f"📂 Batch mode: Loading from file: {cfg.input_file}")
+            result = await supervisor.run_pipeline_config({"input_file": cfg.input_file})
+            print(f"✅ Batch run completed for file: {cfg.input_file}: {str(result)[:100]}")
+            return
+
+        # ✅ Single goal mode
         print(f"🟢 Running pipeline with run_id={run_id}")
-        print(f"🧠 Goal: {cfg.goal.text}")
+        print(f"🧠 Goal: {cfg.goal}")
         print(f"📁 Config source: {str(cfg)[:100]}...")
 
-        result = await supervisor.run_pipeline_config(
-            {
-                "goal": cfg.goal.text,
-                "goal_type": cfg.goal.get("type", "other"),  # fallback to "other"
-                "run_id": run_id,
-            }
-        )
+        goal = OmegaConf.to_container(cfg.goal, resolve=True)
+        context = {
+            "goal": goal,
+            "run_id": run_id,
+        }
+
+        result = await supervisor.run_pipeline_config(context)
 
         save_yaml_result(log_path, result)
 

@@ -70,7 +70,7 @@ class EvolutionAgent(BaseAgent):
 
                 if refined_list:
                     for r in refined_list:
-                        goal = context.get(GOAL, "")
+                        goal = self.extract_goal_text(context.get(GOAL))
                         evolved_goal = f"Evolved from top-ranked {goal}"
                         hyp = Hypothesis(goal=evolved_goal, text=h)
                         self.memory.hypotheses.store(hyp)

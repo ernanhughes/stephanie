@@ -16,15 +16,19 @@ defaults:
   - agents/sharpening
   - agents/judge
   - agents/cot_generator
+  - agents/general_reasoner
   - agents/cot_dspy_generator
   - agents/supervisor
   - logging/json_logger
 
+# file based run will override the goal
+input_file: data/strategyqa_goals.jsonl
+
 # The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
 # This is a placeholder and should be replaced with the actual goal.
-goal: 
-  goal_text: "Will AI ever be able to reprogram itself?"
-  goal_type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
+#goal:
+#  text: "Will AI ever be able to reprogram itself?"
+#  type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -47,15 +51,11 @@ pipeline:
   name: default_pipeline
   description: "Default hypothesis generation and refinement pipeline"
   stages:
-    - name: cot_generator
-      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
+    - name: general_reasoner
+      cls: co_ai.agents.general_reasoner.GeneralReasonerAgent
       enabled: true
       iterations: 1
     # - name: ranking
     #   cls: co_ai.agents.ranking.RankingAgent
     #   enabled: true
     #   iterations: 1
-    - name: cot_dspy_generator
-      cls: co_ai.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
-      enabled: true
-      iterations: 1

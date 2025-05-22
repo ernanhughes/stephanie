@@ -54,7 +54,7 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
 
         # Setup DSPy
         lm = dspy.LM(
-            "ollama_chat/qwen3",
+            "ollama_chat/qwen:0.5b",
             api_base="http://localhost:11434",
             api_key="",
         )
@@ -63,7 +63,7 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         self.module = CoTGeneratorModule()
 
     async def run(self, context: dict):
-        goal = context.get(GOAL)
+        goal = self.extract_goal_text(context.get(GOAL))
         references = context.get("references", "")
         preferences = context.get("preferences", "")
 
@@ -76,7 +76,7 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         cot = result.answer.strip()
         self.logger.log("CoTGenerated", {"goal": goal, "cot": cot})
 
-        hyp = Hypothesis(goal=goal, goal_type=context.get("goal_type"), text=cot, features={"source": "cot_dspy"},
+        hyp = Hypothesis(goal=goal, goal_type=context.get(GOAL).get("goal_type"), text=cot, features={"source": "cot_dspy"},
                          prompt=goal)
         self.memory.hypotheses.store(hyp)
 

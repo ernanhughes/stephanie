@@ -68,14 +68,14 @@ class PromptTuningAgent(BaseAgent):
 
         # Configure DSPy with local LLM (Ollama)
         lm = dspy.LM(
-            "ollama_chat/qwen3",
+            "ollama_chat/qwen:0.5b",
             api_base="http://localhost:11434",
             api_key="",
         )
         dspy.configure(lm=lm)
 
     async def run(self, context: dict) -> dict:
-        goal = context.get(GOAL, "")
+        goal = self.extract_goal_text(context.get(GOAL))
         generation_count = self.sample_size + self.generate_count
         self.logger.log(
             "PromptTuningExamples",

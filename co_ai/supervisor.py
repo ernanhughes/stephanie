@@ -3,6 +3,9 @@
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+import os
+import json
+
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
 from co_ai.reports import ReportFormatter
@@ -49,80 +52,80 @@ class Supervisor:
         Each stage loads its class dynamically via hydra.utils.get_class()
         """
         self.logger.log("PipelineStart", input_data)
+        input_file = input_data.get("input_file", self.cfg.get("input_file", None))
+        # Handle JSONL file for batch input
+        if input_file and os.path.exists(input_file):
+            self.logger.log("BatchProcessingStart", {"file": input_file})
+            with open(input_file, "r", encoding="utf-8") as f:
+                for i, line in enumerate(f):
+                    goal = json.loads(line)
+                    run_id = goal.get("id", f"goal_{i}")
+                    context = {
+                        "goal": goal,
+                        "run_id": run_id,
+                        "prompt_dir": self.cfg.paths.prompts,
+                    }
+                    try:
+                        await self._run_pipeline_stages(context)
+                    except Exception as e:
+                        self.logger.log(
+                            "BatchItemFailed",
+                            {"index": i, "run_id": run_id, "error": str(e)},
+                        )
+            self.logger.log("BatchProcessingComplete", {"file": input_file})
+            return {"status": "completed_batch", "input_file": input_file}
 
-        # Start with empty context
+        # Fallback to single goal execution
         context = input_data.copy()
         context[PROMPT_DIR] = self.cfg.paths.prompts
+        return await self._run_pipeline_stages(context)
 
-        try:
-            for stage in self.pipeline_stages:
-                if not stage.enabled:
-                    self.logger.log(
-                        "PipelineStageSkipped",
-                        {STAGE: stage.name, "reason": "disabled_in_config"},
-                    )
-                    continue
-                cls = hydra.utils.get_class(stage.cls)
-                stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
-
-                saved_context = self.load_context(stage_dict, run_id=context.get(RUN_ID))
-                if saved_context:
-                    self.logger.log(
-                        "PipelineStageSkipped",
-                        {STAGE: stage.name, "reason": "context_loaded"},
-                    )
-                    context = {**context, **saved_context} # we just replace also
-                    continue
-
-                agent = cls(cfg=stage_dict, memory=self.memory, logger=self.logger)
-                if not agent:
-                    self.logger.log(
-                        "PipelineStageError",
-                        {STAGE: stage.name, "reason": "agent_not_found"},
-                    )
-                    continue
-
-                self.logger.log("PipelineStageStart", {STAGE: stage.name})
-
-                for i in range(stage.iterations):
-                    self.logger.log(
-                        "PipelineIterationStart",
-                        {STAGE: stage.name, "iteration": i + 1},
-                    )
-
-                    # Pass context and expect it back modified
-                    context = await agent.run(context)
-
-                    self.logger.log(
-                        "PipelineIterationEnd",
-                        {
-                            STAGE: stage.name,
-                            "iteration": i + 1,
-                            # "context_snapshot": {k: v[:3] if isinstance(v, list) else v for k, v in context.items()}
-                        },
-                    )
-
-                self.save_context(stage_dict, context)
-                self.logger.log("PipelineStageEnd", {STAGE: stage.name})
+    async def _run_pipeline_stages(self, context: dict) -> dict:
+        for stage in self.pipeline_stages:
+            if not stage.enabled:
                 self.logger.log(
-                    "ContextAfterStage",
-                    {STAGE: stage.name, "context_keys": list(context.keys())},
+                    "PipelineStageSkipped",
+                    {STAGE: stage.name, "reason": "disabled_in_config"},
+                )
+                continue
+
+            cls = hydra.utils.get_class(stage.cls)
+            stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
+
+            saved_context = self.load_context(stage_dict, run_id=context.get(RUN_ID))
+            if saved_context:
+                self.logger.log(
+                    "PipelineStageSkipped",
+                    {STAGE: stage.name, "reason": "context_loaded"},
+                )
+                context = {**context, **saved_context}
+                continue
+
+            agent = cls(cfg=stage_dict, memory=self.memory, logger=self.logger)
+            self.logger.log("PipelineStageStart", {STAGE: stage.name})
+
+            for i in range(stage.iterations):
+                self.logger.log(
+                    "PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1}
+                )
+                context = await agent.run(context)
+                self.logger.log(
+                    "PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1}
                 )
 
-            self.logger.log("PipelineSuccess", list(context.keys()))
-            return context
+            self.save_context(stage_dict, context)
+            self.logger.log("PipelineStageEnd", {STAGE: stage.name})
+            self.logger.log("ContextAfterStage", {STAGE: stage.name, "context_keys": list(context.keys())})
 
-        except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
-            self.logger.log("PipelineError", {"error": str(e)})
-            raise
+        return context
+
 
     def generate_report(self, context: dict[str, any], run_id: str) -> str:
         """Generate a report based on the pipeline context."""
         formatter = ReportFormatter(self.cfg.report.path)
         report = formatter.format_report(context)
         self.memory.report.log(
-            run_id, context.get("goal", ""), report, self.cfg.report.path
+            run_id, str(context.get("goal")), report, self.cfg.report.path
         )
         self.logger.log(
             "ReportGenerated", {RUN_ID: run_id, "report_snippet": report[:100]}

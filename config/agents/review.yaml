@@ -12,7 +12,7 @@ review:
   skip_if_completed: false
   strategy: full_review  # Options: initial, full, observation, deep_verification
   model:
-    name: ollama_chat/qwen3
+    name: ollama_chat/qwen:0.5b
     api_base: http://localhost:11434
     api_key: null
   prompt_mode: file

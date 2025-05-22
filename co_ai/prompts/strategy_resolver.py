@@ -1,4 +1,5 @@
 import os
+from co_ai.constants import GOAL
 
 class StrategyResolver:
     def __init__(self, config):
@@ -17,7 +18,7 @@ class StrategyResolver:
         Returns:
             (str, str): Tuple of (strategy_used, prompt_file_path)
         """
-        goal = context.get("goal", {})
+        goal = context.get(GOAL).get("goal_text")
         is_reasoning_agent = context.get("agent_type", "reasoning") == "reasoning"
 
         if is_reasoning_agent:

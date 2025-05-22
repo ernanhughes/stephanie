@@ -38,7 +38,7 @@ class ProximityAgent(BaseAgent):
                 - graft_candidates: list of high-similarity pairs
                 - proximity_graph: list of (h1, h2, similarity)
         """
-        current_goal = context.get(GOAL)
+        current_goal = self.extract_goal_text(context.get(GOAL))
         current_hypotheses = context.get(self.input_key, [])
 
         # Fetch historical hypotheses from DB

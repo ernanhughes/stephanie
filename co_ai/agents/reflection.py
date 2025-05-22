@@ -7,7 +7,7 @@ class ReflectionAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
-        goal = context.get(GOAL, "")
+        goal = self.extract_goal_text(context.get(GOAL))
         hypotheses = self.get_hypotheses(context)
         # Run reflection logic
         reflections = []

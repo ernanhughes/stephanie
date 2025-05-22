@@ -5,7 +5,7 @@ from co_ai.models import Hypothesis
 
 class RefinerAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
-        goal = context.get(GOAL, "")
+        goal = self.extract_goal_text(context.get(GOAL))
         target_agent = self.cfg.get("target_agent", "generation")
         history = context.get("prompt_history", {}).get(target_agent, None)
 

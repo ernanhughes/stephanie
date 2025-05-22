@@ -21,7 +21,14 @@ class PromptStore(BaseStore):
         Looks up or inserts a goal in the `goals` table and returns the goal_id.
         Assumes `conn` is a psycopg2 or asyncpg connection or cursor.
         """
+        if isinstance(goal_text, dict):
+            str_goal_text = goal_text.get("goal_text")
+            str_goal_type = goal_text.get("goal_type")
+        else:
+            str_goal_text = goal_text
+            str_goal_type = goal_type
         try:
+
             with self.db.cursor() as cur:
                 # Try to find existing goal
                 cur.execute(
@@ -30,7 +37,7 @@ class PromptStore(BaseStore):
                     WHERE goal_text = %s
                     LIMIT 1
                 """,
-                    (goal_text,),
+                    (str_goal_text,),
                 )
                 result = cur.fetchone()
                 if result:
@@ -43,7 +50,7 @@ class PromptStore(BaseStore):
                     VALUES (%s, %s, %s, %s, %s)
                     RETURNING id
                 """,
-                    (goal_text, goal_type, focus_area, strategy, source),
+                    (str_goal_text, str_goal_type, focus_area, strategy, source),
                 )
                 new_id = cur.fetchone()[0]
                 return new_id

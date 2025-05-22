@@ -22,8 +22,8 @@ defaults:
 # The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
 # This is a placeholder and should be replaced with the actual goal.
 goal: 
-  text: "Will AI ever be able to reprogram itself?"
-  type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
+  goal_text: "Will AI ever be able to reprogram itself?"
+  goal_type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
