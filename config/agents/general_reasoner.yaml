@@ -6,7 +6,7 @@ general_reasoner:
   name: general_reasoner
   enabled: true
   save_prompt: true
-  save_context: false
+  save_context: true
   skip_if_completed: false
 
   thinking_mode: generate_and_judge  # (judge_only (for processing hypotheses from other agents or generate_and_judge )
@@ -35,3 +35,61 @@ general_reasoner:
   prompt_file: cot
   extraction_regex: "search query:<([^>]+)>\n(.*)"
   strategy: 
+
+  rubrics:
+    - dimension: "Strategy Orientation"
+      rubric: "Does the reasoning proceed in a hypothesis-first (top-down) or data-first (bottom-up) manner?"
+      options: ["Top-Down", "Bottom-Up"]
+      enabled: true
+    - dimension: "Inference Style"
+      rubric: "Is the reasoning based on deductive logic from known facts, or analogical reasoning across domains?"
+      options: ["Deductive", "Analogical"]
+      enabled: true
+    - dimension: "Exploration Breadth"
+      rubric: "Does the reasoning consider only one main path (greedy) or explore multiple possibilities before deciding (exhaustive)?"
+      options: ["Greedy", "Exhaustive"]
+      enabled: true
+    - dimension: "Reasoning Depth"
+      rubric: "Is the reasoning shallow and surface-level, or deep and multi-step with recursive analysis?"
+      options: ["Shallow", "Deep"]
+      enabled: true
+    - dimension: "Evidence Use"
+      rubric: "Is the reasoning guided primarily by prior beliefs and assumptions, or by explicit evidence and data?"
+      options: ["Belief-Driven", "Data-Driven"]
+      enabled: true
+    - dimension: "Certainty Expression"
+      rubric: "Does the reasoning assert answers with confidence, or express uncertainty and hedging?"
+      options: ["Confident", "Tentative"]
+      enabled: true
+    - dimension: "Planning Approach"
+      rubric: "Does the reasoning follow a predefined plan from the start, or adaptively revise as new steps unfold?"
+      options: ["Planned", "Adaptive"]
+      enabled: false
+    - dimension: "Goal Focus"
+      rubric: "Is the reasoning focused directly on answering the question, or does it explore adjacent ideas and tangents?"
+      options: ["Focused", "Exploratory"]
+      enabled: false
+    - dimension: "Perspective Use"
+      rubric: "Does the reasoning rely on a single viewpoint, or synthesize multiple perspectives or stakeholder views?"
+      options: ["Single-Perspective", "Multi-Perspective"]
+      enabled: false
+    - dimension: "Abstraction Level"
+      rubric: "Does the reasoning remain at a high abstract level, or include concrete examples and specific details?"
+      options: ["Abstract", "Concrete"]
+      enabled: false
+    - dimension: "Error Handling"
+      rubric: "Does the reasoning acknowledge and correct possible errors, or proceed as if all steps are valid?"
+      options: ["Self-Correcting", "Linear"]
+      enabled: false
+    - dimension: "Generative vs Discriminative"
+      rubric: "Does the reasoning create multiple hypotheses and choose among them, or verify a single leading idea?"
+      options: ["Generative", "Discriminative"]
+      enabled: false
+    - dimension: "Time Orientation"
+      rubric: "Does the reasoning emphasize past causes or future consequences?"
+      options: ["Retrospective", "Prospective"]
+      enabled: false
+    - dimension: "Narrative Style"
+      rubric: "Is the reasoning framed as a story or scenario, or structured logically and factually?"
+      options: ["Narrative", "Analytical"]
+      enabled: false

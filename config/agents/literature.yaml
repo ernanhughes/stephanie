@@ -10,7 +10,7 @@ literature:
   strategy: query_and_summarize
   max_results: 5
   model:
-    name: ollama_chat/qwen:0.5b
+    name: ollama_chat/qwen3
     api_base: http://localhost:11434
     api_key: null
   save_prompt: false

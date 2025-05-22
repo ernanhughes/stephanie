@@ -1,12 +1,13 @@
 from co_ai.agents.base import BaseAgent
 from co_ai.evaluator import LLMJudgeEvaluator
 from co_ai.evaluator import MRQSelfEvaluator
-from co_ai.constants import GOAL, GOAL_TYPE
+from co_ai.constants import GOAL
 from co_ai.models import Hypothesis, Score
 from co_ai.prompts import PromptLoader
 from co_ai.analysis.rubric_classifier import RubricClassifierMixin
 from co_ai.models.pattern_stat import generate_pattern_stats
 from itertools import combinations
+from dataclasses import asdict
 
 class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
     def __init__(self, cfg, memory, logger):
@@ -25,12 +26,15 @@ class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
         else:
             hypotheses = self.get_hypotheses(context)
 
+        context["hypotheses"] = [asdict(h) for h in hypotheses]
+
         win_counts = {h.id: 0 for h in hypotheses}
         evaluations = []
 
         prompt_loader = PromptLoader(None, self.logger)
         judging_prompt_template = self.cfg.get("evaluator_prompt_file", "judge_pairwise_comparison.txt")
 
+        context["scoring"] = []
         for hyp_a, hyp_b in combinations(hypotheses, 2):
             judge_context = {
                 "goal": goal,
@@ -41,12 +45,16 @@ class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
 
             preferred, score = self.judge.judge(prompt_text, goal, hyp_a.text, hyp_b.text)
 
+
+
             s_a = Score.build(goal, hyp_a.text, self.cfg)
             s_a.set_score(score["score_a"])
+            s_a.reasoning_strategy = hyp_a.strategy_used
             self.memory.hypotheses.insert_score(s_a)
 
             s_b = Score.build(goal, hyp_b.text, self.cfg)
             s_b.set_score(score["score_b"])
+            s_b.reasoning_strategy = hyp_b.strategy_used
             self.memory.hypotheses.insert_score(s_b)
 
             evaluations.append(score)
@@ -62,6 +70,16 @@ class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
                 "score_a": score["score_a"],
                 "score_b": score["score_b"],
                 "reason": score["reason"],
+                "evaluator": self.cfg.get("judge", "llm"),
+            })
+            context["scoring"].append({
+                "hypothesis_a": hyp_a.text,
+                "hypothesis_b": hyp_b.text,
+                "winner": score["winner"],
+                "score_a": score["score_a"],
+                "score_b": score["score_b"],
+                "reason": score["reason"],
+                "preferred": preferred,
                 "evaluator": self.cfg.get("judge", "llm"),
             })
 
@@ -82,13 +100,15 @@ class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
         )
 
         summarized = self._summarize_pattern(pattern)
+        context["pattern"] = summarized
+
         goal_id, hypothesis_id, pattern_stats = generate_pattern_stats(
             self.extract_goal_text(context.get(GOAL)), best_hypothesis.text, summarized, self.memory, self.cfg, self.name, win_counts[best_id]
         )
         self.memory.hypotheses.store_pattern_stats(goal_id, hypothesis_id, pattern_stats)
         context["pattern_stats"] = summarized
 
-        context[self.output_key] = best_hypothesis
+        context[self.output_key] = asdict(best_hypothesis)
         return context
 
     def generate_hypotheses(self, question, context):

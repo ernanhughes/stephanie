@@ -2,9 +2,11 @@
 import asyncio
 import logging
 import yaml
+import json
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
+from datetime import datetime
 
 from co_ai.logs import JSONLogger
 from co_ai.memory import MemoryTool
@@ -44,7 +46,7 @@ def run(cfg: DictConfig):
 
         result = await supervisor.run_pipeline_config(context)
 
-        save_yaml_result(log_path, result)
+        save_json_result(log_path, result)
 
         if cfg.report.generate_report:
             supervisor.generate_report(result, run_id=run_id)
@@ -58,6 +60,16 @@ def save_yaml_result(log_path: str, result: dict):
         yaml.dump(result, f, allow_unicode=True, sort_keys=False)
     print(f"✅ Result saved to: {report_path}")
 
+def default_serializer(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
+
+def save_json_result(log_path: str, result: dict):
+    report_path = log_path.replace(".jsonl", "_report.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2, default=default_serializer)
+    print(f"✅ JSON result saved to: {report_path}")
 
 if __name__ == "__main__":
     # Suppress HTTPX logs

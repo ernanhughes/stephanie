@@ -68,7 +68,7 @@ class PromptTuningAgent(BaseAgent):
 
         # Configure DSPy with local LLM (Ollama)
         lm = dspy.LM(
-            "ollama_chat/qwen:0.5b",
+            "ollama_chat/qwen3",
             api_base="http://localhost:11434",
             api_key="",
         )
