@@ -71,7 +71,7 @@ Prompts are formatted with context values, e.g. `{goal}`.
 The `OllamaEvaluator` scores refinements using an LLM (e.g. `qwen2.5`) running locally:
 
 ```python
-evaluation = evaluator.evaluate(original, proposal)
+evaluation = evaluator.judge(original, proposal)
 print(evaluation.score, evaluation.reason)
 ```
 

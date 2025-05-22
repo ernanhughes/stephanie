@@ -2,7 +2,7 @@
 
 import re
 from co_ai.evaluator.base import BaseEvaluator
-from co_ai.utils import PromptLoader
+from co_ai.prompts import PromptLoader
 
 
 class LLMJudgeEvaluator(BaseEvaluator):
@@ -13,7 +13,7 @@ class LLMJudgeEvaluator(BaseEvaluator):
         self.llm = llm  # callable: prompt, context, llm_cfg -> response
         self.logger = logger
 
-    def evaluate(self, prompt, goal, output_a, output_b):
+    def judge(self, prompt, goal, output_a, output_b):
         context = {
             "goal": goal,
             "hypothesis_a": output_a,

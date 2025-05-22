@@ -1,5 +1,5 @@
 from co_ai.memory import BaseStore
-from co_ai.models.hypothesis import Hypothesis
+from co_ai.models import Hypothesis,Score
 from typing import Optional
 from psycopg2.extras import Json
 from datetime import datetime
@@ -468,4 +468,60 @@ class HypothesesStore(BaseStore):
                 self.logger.log(
                     "StorePatternStatsFailed",
                     {"error": str(e), "hypothesis_id": hypothesis_id},
+                )
+
+
+
+    def insert_score(self, score: Score):
+        """
+        Inserts a Score record into the database, resolving goal_id and hypothesis_id.
+        """
+        try:
+            with self.db.cursor() as cur:
+                # Look up goal_id
+                cur.execute("SELECT id FROM goals WHERE goal_text = %s LIMIT 1", (score.goal,))
+                goal_row = cur.fetchone()
+                if not goal_row:
+                    raise ValueError(f"Goal not found: {score.goal}")
+                goal_id = goal_row[0]
+
+                # Look up hypothesis_id
+                cur.execute("SELECT id FROM hypotheses WHERE text = %s LIMIT 1", (score.hypothesis,))
+                hyp_row = cur.fetchone()
+                if not hyp_row:
+                    raise ValueError(f"Hypothesis not found: {score.hypothesis}")
+                hypothesis_id = hyp_row[0]
+
+                # Insert score
+                cur.execute("""
+                    INSERT INTO scores (
+                        goal_id, hypothesis_id, agent_name, model_name, evaluator_name,
+                        score_type, score, score_text, strategy, reasoning_strategy,
+                        rationale, reflection, review, meta_review, run_id, metadata
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    goal_id,
+                    hypothesis_id,
+                    score.agent_name,
+                    score.model_name,
+                    score.evaluator_name,
+                    score.score_type,
+                    score.score,
+                    score.score_text,
+                    score.strategy,
+                    score.reasoning_strategy,
+                    score.rationale,
+                    score.reflection,
+                    score.review,
+                    score.meta_review,
+                    score.run_id,
+                    Json(score.metadata or {})
+                ))
+        except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
+            if self.logger:
+                self.logger.log(
+                    "StoreScoreFailed",
+                    {**score, **{"error": str(e)}}
                 )

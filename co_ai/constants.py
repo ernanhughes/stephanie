@@ -2,6 +2,7 @@
 
 # Context keys
 GOAL = "goal"
+GOAL_TYPE = "goal_type"
 RUN_ID = "run_id"
 HYPOTHESES = "hypotheses"
 FEEDBACK = "feedback"

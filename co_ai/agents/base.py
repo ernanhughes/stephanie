@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import litellm
 
 from co_ai.logs import JSONLogger
-from co_ai.utils import PromptLoader
+from co_ai.prompts import PromptLoader
 
 from co_ai.constants import (
     API_BASE,

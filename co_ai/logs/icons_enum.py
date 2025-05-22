@@ -85,6 +85,8 @@ EVENT_ICONS = {
     "NotEnoughHypothesesForRanking": "⚠️",
     "RankedHypotheses": "🏅",
     "RankingAgent": "🏆",
+    "AgentInit": "🤖",
+    "EvaluatorInit": "📏",
     "RankingStored": "🗃️",
     "RankingUpdated": "🔁",
     "RubricClusteringStarted": "🧩",

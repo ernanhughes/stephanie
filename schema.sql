@@ -272,3 +272,23 @@ CREATE INDEX idx_cot_pattern_model ON cot_pattern_stats (model_name);
 CREATE INDEX idx_cot_pattern_dimension ON cot_pattern_stats (dimension);
 
 
+CREATE TABLE IF NOT EXISTS scores (
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
+    agent_name TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    evaluator_name TEXT NOT NULL,
+    score_type TEXT NOT NULL,
+    score FLOAT,
+    score_text TEXT,
+    strategy TEXT,
+    reasoning_strategy TEXT,
+    rationale TEXT,
+    reflection TEXT,            -- NEW
+    review TEXT,                -- NEW
+    meta_review TEXT,           -- NEW
+    run_id TEXT,
+    metadata JSONB DEFAULT '{}'::JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

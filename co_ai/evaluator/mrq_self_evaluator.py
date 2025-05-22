@@ -1,10 +1,12 @@
 import torch
+
+from co_ai.evaluator.base import BaseEvaluator
 from co_ai.evaluator.text_encoder import TextEncoder
 from co_ai.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
 from co_ai.models.sharpening_prediction import SharpeningPrediction
 from dataclasses import asdict
 
-class MRQSelfEvaluator:
+class MRQSelfEvaluator(BaseEvaluator):
     def __init__(self, memory, logger, device="cpu"):
         self.device = device
         self.memory = memory  # memory provides get_embedding
@@ -12,7 +14,7 @@ class MRQSelfEvaluator:
         self.encoder = TextEncoder().to(self.device)
         self.value_predictor = HypothesisValuePredictor(512, 1024).to(self.device)
 
-    def evaluate(self, goal, prompt, output_a, output_b):
+    def judge(self, goal, prompt, output_a, output_b):
         prompt_emb = torch.tensor(
             self.memory.embedding.get_or_create(prompt), device=self.device
         ).unsqueeze(0)

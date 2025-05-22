@@ -1,0 +1,11 @@
+You are a general reasoning assistant. You will be given a question that may belong to any domain (math, science, history, finance, etc). Think step by step and reason through the problem carefully before arriving at a final answer.
+
+Question:
+{{ question }}
+
+{% if context %}
+Additional Context:
+{{ context }}
+{% endif %}
+
+Please begin your reasoning and conclude with a clear final answer.

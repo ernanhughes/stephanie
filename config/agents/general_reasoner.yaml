@@ -1,0 +1,37 @@
+# configs/agents/proximity.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+general_reasoner:
+  name: general_reasoner
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  thinking_mode: generate_and_judge  # (judge_only (for processing hypotheses from other agents or generate_and_judge )
+  judge: llm
+  judge_prompt_file: judge_pairwise_comparison.txt
+  judge_model:
+    name: ollama/mistral:7b-instruct
+    api_base: http://localhost:11434
+    api_key: null
+
+  generation_strategy_list:  # the list of strategies the agent wil use to generate hypotheses
+    - cot
+    - plan_first
+    - debate
+    - verify_then_answer
+    - counterfactual
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  input_keys: ["goal"]   # add nodes
+  output_key: general_reasoner  # change
+  prompt_mode: file
+  prompt_file: cot
+  extraction_regex: "search query:<([^>]+)>\n(.*)"
+  strategy: 

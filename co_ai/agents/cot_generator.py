@@ -36,7 +36,7 @@ class ChainOfThoughtGeneratorAgent(BaseAgent):
         best = candidates[0]
         scores = {}
         for candidate in candidates[1:]:
-            best, scores = self.evaluator.evaluate(
+            best, scores = self.evaluator.judge(
                 prompt=prompt,
                 goal=goal,
                 output_a=best,

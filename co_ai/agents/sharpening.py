@@ -47,9 +47,9 @@ class SharpeningAgent(BaseAgent):
                 prompt_template = self.prompt_loader.from_file(name, self.cfg, merged)
                 sharpened_hypothesis = self.call_llm(prompt_template, merged)
                 hypothesis = data.get("response") # hypotheses result for prompt
-                preferred_output, scores = self.evaluator.evaluate(goal,
-                    prompt, hypothesis, sharpened_hypothesis
-                )
+                preferred_output, scores = self.evaluator.judge(goal,
+                                                                prompt, hypothesis, sharpened_hypothesis
+                                                                )
                 value_a = scores["value_a"]
                 value_b = scores["value_b"]
                 winner = "a" if value_a >= value_b else "b"
@@ -81,7 +81,7 @@ class SharpeningAgent(BaseAgent):
         # For judge-only, use a simple reflection-based transformation (or leave unchanged)
         sharpened_hypothesis = hypothesis  # no change, just self-judging
 
-        _, scores = self.evaluator.evaluate(goal, prompt, hypothesis, sharpened_hypothesis)
+        _, scores = self.evaluator.judge(goal, prompt, hypothesis, sharpened_hypothesis)
         value_a = scores["value_a"]
         value_b = scores["value_b"]
         winner = "a" if value_a >= value_b else "b"
