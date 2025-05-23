@@ -13,7 +13,7 @@ general_reasoner:
   judge: llm
   judge_prompt_file: judge_pairwise_comparison.txt
   judge_model:
-    name: ollama/mistral:7b-instruct
+    name: ollama/phi3
     api_base: http://localhost:11434
     api_key: null
 

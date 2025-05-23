@@ -12,12 +12,12 @@ cot_generator:
   evaluator: llm         #(mrq or llm)  may not be enough items fo mrq
   evaluator_prompt_file: evaluation.txt
   evaluator_model:
-    name: ollama/mistral:7b-instruct
+    name: ollama/phi3
     api_base: http://localhost:11434
     api_key: null
 
   analysis_model:
-    name: ollama/mistral:7b-instruct
+    name: ollama/llama3.2
     api_base: http://localhost:11434
     api_key: null
 
