@@ -1,7 +1,9 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+
 from co_ai.logs.icons_enum import get_event_icon
+
 
 class JSONLogger:
 

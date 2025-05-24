@@ -1,11 +1,13 @@
 import asyncio
 
 import httpx
+import requests
 from bs4 import BeautifulSoup
 from readability import Document
-import requests
 
 from co_ai.utils.file_utils import write_text_to_file
+
+
 class WebSearchTool:
     def __init__(self, cfg: dict, logger):
         self.base_url = f'{cfg.get("instance_url", "localhost:8080")}/search'

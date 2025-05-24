@@ -1,8 +1,9 @@
+import re
 from abc import ABC, abstractmethod
 
-import re
 import dspy
-from dspy import Predict, Signature, InputField, OutputField, Example, BootstrapFewShot
+from dspy import (BootstrapFewShot, Example, InputField, OutputField, Predict,
+                  Signature)
 
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL

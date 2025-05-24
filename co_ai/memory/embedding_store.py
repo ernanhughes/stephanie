@@ -1,14 +1,15 @@
+import hashlib
+
+import pgvector.psycopg2
+
 from co_ai.memory import BaseStore
 from co_ai.tools import get_embedding
 
-import pgvector.psycopg2
-import hashlib
 
 class EmbeddingStore(BaseStore):
     def __init__(self, db, cfg, logger=None):
-        self.db = db
+        super().__init__(db, logger)
         self.cfg = cfg
-        self.logger = logger
         self.name = "embedding"
         pgvector.psycopg2.register_vector(self.db)
 

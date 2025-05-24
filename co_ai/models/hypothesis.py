@@ -11,6 +11,7 @@ class Hypothesis:
     text: str = ""                            # Required
     prompt: str = ""
     confidence: float = 0.0
+    pipeline_signature: Optional[str] = None
     review: Optional[str] = None
     reflection: Optional[str] = None
     elo_rating: float = 750.0

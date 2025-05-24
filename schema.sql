@@ -1,4 +1,4 @@
-CREATE EXTENSION IF NOT EXISTS vector;
+Yeah he's not a he's not a good guy right I don't be terrible CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- text hashing
 
@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     goal TEXT NOT NULL,                 -- Research objective
     text TEXT NOT NULL,                 -- Hypothesis statement
     confidence FLOAT DEFAULT 0.0 ,      -- Confidence score (0–1 scale)
+    pipeline_signature TEXT,            -- Unique identifier for the pipeline used
     review TEXT,                        -- Structured review data
     reflection TEXT,                    -- Structured reflection data
     elo_rating FLOAT DEFAULT 750.0,    -- Tournament ranking score
@@ -290,5 +291,52 @@ CREATE TABLE IF NOT EXISTS scores (
     meta_review TEXT,           -- NEW
     run_id TEXT,
     metadata JSONB DEFAULT '{}'::JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE IF NOT EXISTS lookaheads (
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    agent_name TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    input_pipeline TEXT[],
+    suggested_pipeline TEXT[],
+    rationale TEXT,
+    reflection TEXT,
+    backup_plans TEXT[],
+    metadata JSONB DEFAULT '{}'::JSONB,
+    run_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE pipeline_runs (
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    run_id TEXT UNIQUE NOT NULL, -- UUID or generated string
+    pipeline TEXT NOT NULL, -- list of agent names
+    strategy TEXT,
+    model_name TEXT,
+    run_config JSONB,
+    lookahead_context JSONB,
+    symbolic_suggestion JSONB,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS reflection_deltas (
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    run_id_a TEXT NOT NULL,
+    run_id_b TEXT NOT NULL,
+    score_a FLOAT,
+    score_b FLOAT,
+    score_delta FLOAT,
+    pipeline_a JSONB DEFAULT '{}'::JSONB,
+    pipeline_b JSONB DEFAULT '{}'::JSONB,
+    pipeline_diff JSONB DEFAULT '{}'::JSONB, -- {"only_in_a": [...], "only_in_b": [...]}
+    strategy_diff BOOLEAN DEFAULT FALSE,
+    model_diff BOOLEAN DEFAULT FALSE,
+    rationale_diff JSONB DEFAULT '["", ""]'::JSONB, -- tuple stored as array
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
 
 @dataclass
 class Score:
@@ -38,26 +39,7 @@ class Score:
             if goal_id is None or hypothesis_id is None:
                 raise ValueError("Missing goal_id or hypothesis_id")
 
-            memory.hypotheses.insert_score(
-                {
-                    "goal_id": goal_id,
-                    "hypothesis_id": hypothesis_id,
-                    "agent_name": self.agent_name,
-                    "model_name": self.model_name,
-                    "evaluator_name": self.evaluator_name,
-                    "score_type": self.score_type,
-                    "score": self.score,
-                    "score_text": self.score_text,
-                    "strategy": self.strategy,
-                    "reasoning_strategy": self.reasoning_strategy,
-                    "rationale": self.rationale,
-                    "reflection": self.reflection,
-                    "review": self.review,
-                    "meta_review": self.meta_review,
-                    "run_id": self.run_id,
-                    "metadata": self.metadata or {},
-                }
-            )
+            memory.scores.insert(self)
 
             if logger:
                 logger.log(

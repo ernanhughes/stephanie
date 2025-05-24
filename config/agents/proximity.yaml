@@ -5,6 +5,8 @@ defaults:
 proximity:
   name: proximity
   enabled: true
+  source: database
+  batch_size: 10
 
   similarity_threshold: 0.75  # Only show pairs with at least 75% similarity
   max_graft_candidates: 3   # Max number of pairs to suggest for grafting

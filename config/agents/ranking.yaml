@@ -5,12 +5,14 @@ defaults:
 ranking:
   name: ranking
   enabled: true
+  source: database  # database or context
+  batch_size: 10    # limit to process at a time
+
   tournament_type: elo
   max_comparisons: 6  # if using database will change
+
   save_context: false
   skip_if_completed: false
-  source: context
-  batch_size: 100
 
   # model
   model:

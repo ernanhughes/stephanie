@@ -1,7 +1,8 @@
 # co_ai/agents/meta_review.py
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import HYPOTHESES, EVOLVED, REVIEW, PROXIMITY, REFLECTION, RANKING
+from co_ai.constants import (EVOLVED, HYPOTHESES, PROXIMITY, RANKING,
+                             REFLECTION, REVIEW)
 
 
 class MetaReviewAgent(BaseAgent):

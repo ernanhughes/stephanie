@@ -1,5 +1,6 @@
+import torch
 from torch import nn
-import torch    
+
 
 # Sparse Autoencoder for embedding analysis and dimensionality reduction
 class SparseAutoencoder(nn.Module):

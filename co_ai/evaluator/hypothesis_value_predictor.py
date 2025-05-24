@@ -1,5 +1,6 @@
 from torch import nn
 
+
 class HypothesisValuePredictor(nn.Module):
     """Predicts a quality score for a hypothesis given its embedding."""
     def __init__(self, zsa_dim=512, hdim=1024):

@@ -7,15 +7,23 @@ defaults:
   - agents/prompt_tuning
   - agents/generation
   - agents/refiner
+  - agents/ranking
+  - agents/debate
   - agents/review
   - agents/reflection
-  - agents/ranking
   - agents/evolution
   - agents/meta_review
   - agents/proximity
   - agents/sharpening
   - agents/judge
+  - agents/lookahead
+  - agents/reflection_delta
+  - agents/symbolic_optimizer
   - agents/cot_generator
+  - agents/general_reasoner
+  - agents/cot_dspy_generator
+  - agents/pipeline_judge
+  - agents/mrq_strategy
   - agents/supervisor
   - logging/json_logger
 
@@ -24,6 +32,17 @@ defaults:
 goal: 
   goal_text: "Will AI ever be able to reprogram itself?"
   goal_type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
+
+dynamic:
+  name: lookahead
+  enabled: false
+  cls: co_ai.agents.lookahead.LookaheadAgent
+
+post_judgment:
+  name: pipeline_judge
+  enabled: true
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -92,5 +111,13 @@ pipeline:
       iterations: 1
     - name: sharpening
       cls: co_ai.agents.sharpening.SharpeningAgent
+      enabled: true
+      iterations: 1
+    - name: reflection_delta
+      cls: co_ai.agents.reflection_delta.ReflectionDeltaAgent
+      enabled: true
+      iterations: 1
+    - name: mrq_strategy
+      cls: co_ai.agents.mrq_strategy.MRQStrategyAgent
       enabled: true
       iterations: 1

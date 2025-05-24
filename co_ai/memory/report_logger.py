@@ -3,8 +3,7 @@ from co_ai.memory import BaseStore
 
 class ReportLogger(BaseStore):
     def __init__(self, db, logger=None):
-        self.db = db
-        self.logger = logger
+        super().__init__(db, logger)
         self.name = "report"
 
     def __repr__(self):

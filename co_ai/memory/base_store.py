@@ -3,6 +3,11 @@ from abc import ABC, abstractmethod
 
 
 class BaseStore(ABC):
+
+    def __init__(self, db, logger=None):
+        self.db = db
+        self.logger = logger
+
     @property
     @abstractmethod
     def name(self) -> str:

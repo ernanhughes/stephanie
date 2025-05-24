@@ -1,0 +1,35 @@
+# Goal
+{{ goal }}
+{% if goal_type %}- Type: {{ goal_type }}{% endif %}
+{% if focus_area %}- Focus Area: {{ focus_area }}{% endif %}
+{% if strategy %}- Current Strategy: {{ strategy }}{% endif %}
+{% if llm_suggested_strategy %}- LLM Suggested Strategy: {{ llm_suggested_strategy }}{% endif %}
+
+# Current Pipeline:
+{% for step in pipeline %}
+- {{ step }}: {{ pipeline_info[step]["description"] }}
+{% endfor %}
+
+# All Available Agents:
+{% for name, data in all_agents.items() %}
+- {{ name }}: {{ data["description"] }}
+{% endfor %}
+
+# Instructions
+You are an anticipatory reasoning agent. Your task is to reflect on whether the current pipeline is optimal for the given goal.
+
+1. Identify any potential weaknesses or unnecessary agents in the current pipeline.
+2. Check if any available agents could better serve this goal type, focus area, or strategy.
+3. Suggest a revised pipeline if appropriate.
+4. Justify your changes with reasoning based on agent capabilities and goal alignment.
+
+# Analysis
+[Your analysis here]
+
+# Suggested Pipeline
+- [agent_1]
+- [agent_2]
+...
+
+# Rationale
+[Your explanation of why this revision improves alignment with the goal.]

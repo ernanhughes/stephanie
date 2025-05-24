@@ -1,5 +1,7 @@
 import os
+
 from co_ai.constants import GOAL
+
 
 class StrategyResolver:
     def __init__(self, config):

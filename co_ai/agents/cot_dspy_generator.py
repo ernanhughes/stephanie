@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
 
-import re
 import dspy
-from dspy import Predict, Signature, InputField, OutputField, Example, BootstrapFewShot
+from dspy import InputField, OutputField, Signature
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL
+from co_ai.constants import GOAL, PIPELINE
 from co_ai.models import Hypothesis
 
 
@@ -24,11 +23,9 @@ class CoTGeneratorModule(dspy.Module):
 
     def forward(self, question, references="", preferences=""):
         return self.generator(
-            question=question,
-            references=references,
-            preferences=preferences
+            question=question, references=references, preferences=preferences
         )
-    
+
 
 # Simple evaluation result class to return from evaluator
 class EvaluationResult:
@@ -63,22 +60,26 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         self.module = CoTGeneratorModule()
 
     async def run(self, context: dict):
-        goal = self.extract_goal_text(context.get(GOAL))
+        goal_text = self.extract_goal_text(context.get(GOAL))
         references = context.get("references", "")
         preferences = context.get("preferences", "")
 
         result = self.module(
-            question=goal,
-            references=references,
-            preferences=preferences
+            question=goal_text, references=references, preferences=preferences
         )
 
         cot = result.answer.strip()
-        self.logger.log("CoTGenerated", {"goal": goal, "cot": cot})
+        self.logger.log("CoTGenerated", {"goal": goal_text, "cot": cot})
 
-        hyp = Hypothesis(goal=goal, goal_type=context.get(GOAL).get("goal_type"), text=cot, features={"source": "cot_dspy"},
-                         prompt=goal)
-        self.memory.hypotheses.store(hyp)
+        hyp = Hypothesis(
+            goal=goal_text,
+            goal_type=context.get(GOAL).get("goal_type"),
+            text=cot,
+            features={"source": "cot_dspy"},
+            prompt=goal_text,
+            pipeline_signature=context.get(PIPELINE),
+        )
+        self.memory.hypotheses.insert(hyp)
 
         context[self.output_key] = [cot]
         return context

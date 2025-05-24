@@ -1,9 +1,9 @@
 import os
 
 from jinja2 import Template
-from co_ai.constants import (
-    PROMPT_DIR, PROMPT_MODE, NAME, STRATEGY, DEFAULT, FILE, PROMPT_FILE
-)
+
+from co_ai.constants import (DEFAULT, FILE, NAME, PROMPT_DIR, PROMPT_FILE,
+                             PROMPT_MODE, STRATEGY)
 
 
 def get_text_from_file(file_path: str) -> str:

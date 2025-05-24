@@ -1,9 +1,9 @@
 # co_ai/utils/resource_extractor.py
 import os
-import pkg_resources
 from pathlib import Path
 from typing import List
 
+import pkg_resources
 
 RESOURCE_MAP = {
     "configs": "resources/configs",

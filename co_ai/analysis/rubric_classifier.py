@@ -1,5 +1,6 @@
-from co_ai.models.pattern_stat import generate_pattern_stats
 from co_ai.constants import GOAL
+from co_ai.models.pattern_stat import generate_pattern_stats
+
 
 class RubricClassifierMixin:
     def _load_enabled_rubrics(self, cfg):

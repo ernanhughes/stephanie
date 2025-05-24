@@ -2,12 +2,18 @@ from typing import Optional
 
 import psycopg2
 
-from co_ai.memory import (ContextStore, EmbeddingStore, HypothesesStore,
-                          PromptStore, ReportLogger)
-from co_ai.memory.mrq_store import MRQStore
-                          
-from co_ai.memory import BaseStore
+from co_ai.memory import (BaseStore, ContextStore, EmbeddingStore,
+                          HypothesesStore)
+from co_ai.memory.goal_store import GoalStore
+from co_ai.memory.prompt_store import PromptStore
+from co_ai.memory.report_logger import ReportLogger
+from co_ai.memory.score_store import ScoreStore
+from co_ai.memory.pipeline_run_store import PipelineRunStore
+from co_ai.memory.reflection_delta_store import ReflectionDeltaStore
 
+from co_ai.memory.lookahead_store import LookaheadStore
+from co_ai.memory.mrq_store import MRQStore
+from psycopg2.extras import DictCursor  # ← This makes rows dict-like
 
 class MemoryTool:
     def __init__(self, cfg, logger=None):
@@ -19,6 +25,7 @@ class MemoryTool:
             password=db_config.password,
             host=db_config.host,
             port=db_config.port,
+            cursor_factory=DictCursor,  # ← Very important!
         )
         self.conn.autocommit = True
         self.logger = logger
@@ -27,12 +34,17 @@ class MemoryTool:
 
         self.logger = logger
 
+        self.register_store(GoalStore(self.db, logger))
         self.register_store(EmbeddingStore(self.db, cfg.embeddings, logger))
         self.register_store(HypothesesStore(self.db, self.get("embedding"), logger))
         self.register_store(ContextStore(self.db, logger))
         self.register_store(PromptStore(self.db, logger))
         self.register_store(ReportLogger(self.db, logger))
         self.register_store(MRQStore(self.db, cfg.mrq, self.get("embedding"), logger))
+        self.register_store(LookaheadStore(self.db, logger))
+        self.register_store(ScoreStore(self.db, logger))
+        self.register_store(PipelineRunStore(self.db, logger))
+        self.register_store(ReflectionDeltaStore(self.db, logger))
 
         # Register extra pluggable stores
         if cfg.get("extra_stores"):

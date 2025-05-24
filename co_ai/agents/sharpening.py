@@ -1,11 +1,13 @@
 # co_ai/agents/sharpening.py
 
+from dataclasses import asdict
+
 from co_ai.agents import BaseAgent
+from co_ai.constants import GOAL, PIPELINE
 from co_ai.evaluator import MRQSelfEvaluator
-from co_ai.constants import GOAL
 from co_ai.models import Hypothesis
 from co_ai.models.sharpening_result import SharpeningResult
-from dataclasses import asdict
+
 
 class SharpeningAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -68,6 +70,7 @@ class SharpeningAgent(BaseAgent):
                     "raw_scores": scores,
                     "sharpened_hypothesis": sharpened_hypothesis,
                     "prompt_template": prompt_template,
+                    PIPELINE: context.get(PIPELINE),
                 }
                 self.save_improved(goal, prompt_template, result)
                 results.append(result)
@@ -101,6 +104,7 @@ class SharpeningAgent(BaseAgent):
             "raw_scores": scores,
             "sharpened_hypothesis": sharpened_hypothesis,
             "prompt_template": None,
+            PIPELINE: context.get(PIPELINE),
         }
 
         if improved:
@@ -139,9 +143,14 @@ class SharpeningAgent(BaseAgent):
                     "prompt_text": prompt[:100],
                 },
             )
-            hyp = Hypothesis(goal=goal, text= entry["sharpened_hypothesis"], prompt=prompt)
+            hyp = Hypothesis(
+                goal=goal, 
+                text=entry["sharpened_hypothesis"], 
+                prompt=prompt,
+                pipeline_signature=entry.get(PIPELINE)
+                )
             # Save new hypothesis for that prompt
-            self.memory.hypotheses.store(hyp)
+            self.memory.hypotheses.insert(hyp)
 
             self.logger.log(
                 "SharpenedHypothesisSaved",

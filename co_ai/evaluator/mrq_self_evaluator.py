@@ -1,10 +1,12 @@
+from dataclasses import asdict
+
 import torch
 
 from co_ai.evaluator.base import BaseEvaluator
-from co_ai.evaluator.text_encoder import TextEncoder
 from co_ai.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
+from co_ai.evaluator.text_encoder import TextEncoder
 from co_ai.models.sharpening_prediction import SharpeningPrediction
-from dataclasses import asdict
+
 
 class MRQSelfEvaluator(BaseEvaluator):
     def __init__(self, memory, logger, device="cpu"):

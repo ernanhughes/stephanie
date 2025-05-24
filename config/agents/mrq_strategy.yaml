@@ -1,0 +1,22 @@
+# configs/agents/proximity.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+mrq_strategy:
+  name: mrq_strategy
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal"]   # add nodes
+  output_key: generic  # change
+  strategy_file:
+  candidate_strategies:
+    - [ generation, judge ]
+    - [ generation, verifier, judge ]
+    - [ cot_generator, reviewer, judge ]
+    - [ retriever, generator, judge ]

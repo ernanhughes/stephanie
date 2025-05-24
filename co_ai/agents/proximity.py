@@ -39,7 +39,7 @@ class ProximityAgent(BaseAgent):
                 - proximity_graph: list of (h1, h2, similarity)
         """
         current_goal = self.extract_goal_text(context.get(GOAL))
-        current_hypotheses = context.get(self.input_key, [])
+        current_hypotheses = self.get_hypotheses(context)
 
         # Fetch historical hypotheses from DB
         db_hypotheses = self.memory.hypotheses.get_similar(

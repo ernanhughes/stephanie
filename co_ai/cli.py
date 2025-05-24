@@ -1,6 +1,8 @@
-import click
-from co_ai.utils import extract_resources
 import logging
+
+import click
+
+from co_ai.utils import extract_resources
 
 
 @click.group()

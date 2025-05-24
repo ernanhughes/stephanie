@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
+
 def save_markdown_report(result: dict, out_dir: str = "./reports"):
     goal = result["goal"]["goal_text"]
     run_id = result.get("run_id", datetime.now().isoformat())

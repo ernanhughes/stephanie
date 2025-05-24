@@ -1,0 +1,334 @@
+agents:
+
+  literature:
+    name: literature
+    description: "Searches the web based on a goal and returns a configurable number of results."
+    provides:
+      - Search result page
+      - Title of the page
+      - Snippet of the page
+      - URL of the page
+    requires:
+      - Goal (string)
+    failure_modes:
+      - Fails if search engine API is down or rate-limited
+      - Returns no results for ambiguous or overly broad queries
+    preferred_for:
+      - Research
+      - Science
+      - Creative writing
+    avoid_for:
+      - Factoid questions (e.g., “Who is president?”)
+      - Commonsense reasoning
+
+  literature_ranking:
+    name: literature_ranking
+    description: "Ranks a list of literature search results by relevance to the input goal."
+    provides:
+      - Ranked list of search results
+      - Confidence scores per result
+      - Relevance summary
+    requires:
+      - List of search results (from `literature`)
+      - Goal (string)
+    failure_modes:
+      - Misranks results due to semantic mismatch
+      - Slow when handling large result sets
+    preferred_for:
+      - Research
+      - Literature review
+      - Academic writing
+    avoid_for:
+      - Short fact lookup
+      - Commonsense tasks
+
+  generation:
+    name: generation
+    description: "Generates creative or analytical text based on a goal or prompt."
+    provides:
+      - Generated text output
+      - Metadata (token count, model used, timestamp)
+    requires:
+      - Prompt or goal
+      - Optional context/history
+    failure_modes:
+      - Repetitive or low-diversity outputs
+      - Hallucinations in complex domains
+    preferred_for:
+      - Creative writing
+      - Scientific hypothesis generation
+      - Content creation
+    avoid_for:
+      - Tasks requiring high factual accuracy without verification
+
+  refiner:
+    name: refiner
+    description: "Takes an initial response and improves clarity, coherence, and relevance."
+    provides:
+      - Refined version of the original text
+      - Summary of changes made
+    requires:
+      - Initial draft/response
+      - Goal or evaluation criteria
+    failure_modes:
+      - May remove key details unintentionally
+      - Overwrites intent in pursuit of fluency
+    preferred_for:
+      - Writing refinement
+      - Report editing
+      - Instruction tuning
+    avoid_for:
+      - Code generation/refinement
+      - Structured data transformations
+
+  ranking:
+    name: ranking
+    description: "Compares multiple responses and ranks them by quality, relevance, or correctness."
+    provides:
+      - Ranked list of responses
+      - Score for each response
+      - Reasoning for rankings
+    requires:
+      - Multiple candidate responses
+      - Goal or evaluation criteria
+    failure_modes:
+      - Biased toward confident-sounding answers
+      - Struggles with nuanced trade-offs
+    preferred_for:
+      - Preference modeling
+      - Multi-strategy comparison
+      - MRQ-style self-evaluation
+    avoid_for:
+      - Binary decisions (use judge instead)
+      - Large-scale batch processing
+
+  debate:
+    name: debate
+    description: "Simulates a multi-agent debate between different reasoning strategies or perspectives."
+    provides:
+      - Debate transcript
+      - Winning side/conclusion
+      - Summary of arguments
+    requires:
+      - Topic or question
+      - Number of debaters
+      - Strategy/persona for each debater
+    failure_modes:
+      - Repetition across agents
+      - Lack of coherent resolution
+    preferred_for:
+      - Complex reasoning
+      - Ethical dilemmas
+      - Opinion synthesis
+    avoid_for:
+      - Simple factual questions
+      - Low-latency environments
+
+  review:
+    name: review
+    description: "Analyzes content and provides structured feedback using rubrics or guidelines."
+    provides:
+      - Strengths and weaknesses
+      - Rubric-based scores
+      - Suggested improvements
+    requires:
+      - Text to review
+      - Review guidelines/rubrics
+    failure_modes:
+      - Misses subtle logical flaws
+      - Overly generic suggestions
+    preferred_for:
+      - Essay reviews
+      - Code explanation
+      - Argument critique
+    avoid_for:
+      - Automated code linting
+      - High-speed QA filtering
+
+  reflection:
+    name: reflection
+    description: "Generates a reflective analysis of a process or outcome, often after task completion."
+    provides:
+      - Self-assessment of performance
+      - Identified errors or successes
+      - Suggestions for future improvement
+    requires:
+      - Task history/context
+      - Final result or answer
+    failure_modes:
+      - Inaccurate self-critique
+      - Overconfidence in incorrect outcomes
+    preferred_for:
+      - Learning from mistakes
+      - Meta-reasoning
+      - Agent introspection
+    avoid_for:
+      - Real-time decision making
+      - Low-resource environments
+
+  evolution:
+    name: evolution
+    description: "Refines a solution iteratively through simulated evolutionary steps like mutation and selection."
+    provides:
+      - Evolved version of the solution
+      - Mutation log
+      - Selection history
+    requires:
+      - Initial solution/hypothesis
+      - Mutation rules
+    failure_modes:
+      - Premature convergence
+      - Stagnation in local optima
+    preferred_for:
+      - Strategy optimization
+      - Puzzle solving
+      - Design thinking
+    avoid_for:
+      - Deterministic problems
+      - Time-sensitive tasks
+
+  meta_review:
+    name: meta_review
+    description: "Analyzes a set of reviews to synthesize a higher-level assessment."
+    provides:
+      - Consensus view
+      - Conflicts among reviews
+      - Overall quality score
+    requires:
+      - Multiple reviews
+      - Criteria for synthesis
+    failure_modes:
+      - Misinterprets conflicting opinions
+      - Overlooks outlier insights
+    preferred_for:
+      - Peer review systems
+      - Crowdsourced evaluations
+      - Quality assurance
+    avoid_for:
+      - Single-review contexts
+      - Binary approval workflows
+
+  proximity:
+    name: proximity
+    description: "Evaluates how closely two pieces of text match in meaning, style, or intent."
+    provides:
+      - Similarity score (0–1)
+      - Key differences
+      - Alignment summary
+    requires:
+      - Two texts to compare
+    failure_modes:
+      - Poor at detecting subtle misalignments
+      - May overfit to surface-level similarity
+    preferred_for:
+      - Answer validation
+      - Style matching
+      - Paraphrase detection
+    avoid_for:
+      - Semantic equivalence in math/code
+      - Long-form document alignment
+
+  prompt_tuning:
+    name: prompt_tuning
+    description: "Optimizes prompts to improve downstream task performance via iterative refinement."
+    provides:
+      - Optimized prompt
+      - Performance metrics
+      - Tuning history
+    requires:
+      - Base prompt
+      - Evaluation metric
+    failure_modes:
+      - Overfitting to specific models
+      - Becomes too verbose
+    preferred_for:
+      - Prompt engineering
+      - Zero-shot instruction tuning
+      - Chain-of-thought prompting
+    avoid_for:
+      - Dynamic user interaction
+      - Hard-constrained interfaces
+
+  sharpening:
+    name: sharpening
+    description: "Enhances vague or ambiguous goals into precise, actionable instructions."
+    provides:
+      - Clarified goal
+      - Expanded requirements
+      - Assumptions made explicit
+    requires:
+      - Ambiguous or high-level goal
+    failure_modes:
+      - Makes incorrect assumptions
+      - Over-specifies constraints
+    preferred_for:
+      - Vague user requests
+      - Instruction refinement
+      - Goal decomposition
+    avoid_for:
+      - Well-defined tasks
+      - Real-time conversational use
+
+  judge:
+    name: judge
+    description: "Performs pairwise comparisons between two hypotheses and determines the better one."
+    provides:
+      - Winner (A/B)
+      - Scores for both options
+      - Reason for preference
+    requires:
+      - Goal
+      - Hypothesis A
+      - Hypothesis B
+    failure_modes:
+      - Biases toward longer answers
+      - Struggles with domain-specific knowledge
+    preferred_for:
+      - Hypothesis selection
+      - Preference learning
+      - LLM-based reward modeling
+    avoid_for:
+      - Multi-option comparisons
+      - High-throughput settings
+
+  cot_generator:
+    name: cot_generator
+    description: "Generates chain-of-thought reasoning paths for complex problem-solving."
+    provides:
+      - Step-by-step reasoning trace
+      - Final conclusion
+      - Intermediate thoughts
+    requires:
+      - Problem or question
+    failure_modes:
+      - Logical fallacies
+      - Incomplete reasoning chains
+    preferred_for:
+      - Math and logic puzzles
+      - Scientific reasoning
+      - Decision-making under uncertainty
+    avoid_for:
+      - Simple yes/no questions
+      - Highly subjective topics
+
+  general_reasoner:
+    name: general_reasoner
+    description: "Uses multiple reasoning strategies to generate and evaluate hypotheses for a given goal."
+    provides:
+      - Best hypothesis (based on win counts)
+      - Rubric-based classification
+      - Pairwise comparison logs
+    requires:
+      - Goal
+      - List of reasoning strategies
+      - Evaluator (LLM or MRQ)
+    failure_modes:
+      - Biased strategy sampling
+      - Overconfidence in suboptimal answers
+    preferred_for:
+      - General-purpose reasoning
+      - Domain-agnostic problem solving
+      - Multi-strategy exploration
+    avoid_for:
+      - Single-path deterministic tasks
+      - Fast-turnaround QA

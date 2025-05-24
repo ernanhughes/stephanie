@@ -1,5 +1,6 @@
 import re
 
+
 def extract_hypotheses(text: str):
     # First attempt: Try precise regex-based extraction
     pattern = re.compile(

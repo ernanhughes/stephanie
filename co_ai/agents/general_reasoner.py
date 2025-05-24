@@ -1,13 +1,14 @@
-from co_ai.agents.base import BaseAgent
-from co_ai.evaluator import LLMJudgeEvaluator
-from co_ai.evaluator import MRQSelfEvaluator
-from co_ai.constants import GOAL
-from co_ai.models import Hypothesis, Score
-from co_ai.prompts import PromptLoader
-from co_ai.analysis.rubric_classifier import RubricClassifierMixin
-from co_ai.models.pattern_stat import generate_pattern_stats
-from itertools import combinations
 from dataclasses import asdict
+from itertools import combinations
+
+from co_ai.agents.base import BaseAgent
+from co_ai.analysis.rubric_classifier import RubricClassifierMixin
+from co_ai.constants import GOAL, PIPELINE
+from co_ai.evaluator import LLMJudgeEvaluator, MRQSelfEvaluator
+from co_ai.models import Hypothesis, Score
+from co_ai.models.pattern_stat import generate_pattern_stats
+from co_ai.prompts import PromptLoader
+
 
 class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
     def __init__(self, cfg, memory, logger):
@@ -50,12 +51,12 @@ class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
             s_a = Score.build(goal, hyp_a.text, self.cfg)
             s_a.set_score(score["score_a"])
             s_a.reasoning_strategy = hyp_a.strategy_used
-            self.memory.hypotheses.insert_score(s_a)
+            self.memory.scores.insert(s_a)
 
             s_b = Score.build(goal, hyp_b.text, self.cfg)
             s_b.set_score(score["score_b"])
             s_b.reasoning_strategy = hyp_b.strategy_used
-            self.memory.hypotheses.insert_score(s_b)
+            self.memory.scores.insert(s_b)
 
             evaluations.append(score)
             winner_id = hyp_a.id if score["winner"] == "A" else hyp_b.id
@@ -124,9 +125,10 @@ class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
                 goal_type = "",
                 strategy_used=strategy,
                 features={"strategy": strategy},
-                source=self.name
+                source=self.name,
+                pipeline_signature=context.get(PIPELINE)
             )
-            self.memory.hypotheses.store(hypothesis)
+            self.memory.hypotheses.insert(hypothesis)
             hypotheses.append(hypothesis)
         return hypotheses
 

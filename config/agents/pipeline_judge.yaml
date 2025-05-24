@@ -1,0 +1,22 @@
+# config/agents/reflection.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+pipeline_judge:
+  name: pipeline_judge
+  enabled: true
+  source: context
+  batch_size: 10
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  strategy: full_review  # Options: initial, full, observation, deep_verification
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_mode: file
+  prompt_file: judge.txt
+  output_key: pipeline_judge
+  preferences:
+    - accuracy

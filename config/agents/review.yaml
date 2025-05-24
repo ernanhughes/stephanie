@@ -5,8 +5,8 @@ defaults:
 review:
   name: review
   enabled: true
-  source: context
-  batch_size: 50
+  source: database
+  batch_size: 10
   save_prompt: true
   save_context: true
   skip_if_completed: false

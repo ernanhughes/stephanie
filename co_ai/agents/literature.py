@@ -1,11 +1,11 @@
 # co_ai/agents/literature.py
 
 import re
+
 from co_ai.agents.base import BaseAgent
+from co_ai.constants import GOAL
 from co_ai.tools import WebSearchTool
 from co_ai.utils.file_utils import write_text_to_file
-from co_ai.constants import GOAL
-
 
 class LiteratureAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

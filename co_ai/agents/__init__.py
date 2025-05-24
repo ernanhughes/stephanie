@@ -17,11 +17,11 @@ from .debate import DebateAgent
 from .evolution import EvolutionAgent
 from .generation import GenerationAgent
 from .generic import GenericAgent
+from .judge import JudgeAgent
 from .literature import LiteratureAgent
 from .meta_review import MetaReviewAgent
 from .proximity import ProximityAgent
 from .ranking import RankingAgent
-from .reflection import ReflectionAgent
 from .refiner import RefinerAgent
-from .judge import JudgeAgent
+from .reflection import ReflectionAgent
 from .sharpening import SharpeningAgent

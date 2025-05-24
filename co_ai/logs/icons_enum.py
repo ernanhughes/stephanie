@@ -115,6 +115,7 @@ EVENT_ICONS = {
     "RawMetaReviewOutput": "📜",
     "RefinedSkipped": "⏭️",
     "RefinedUpdated": "🔄",
+    "ScoreStored": "💾",
     "GeneralReasoningJudgement": "⚖️",
     "BatchProcessingStart": "📥",
     "RefinerEvaluationPromptGenerated": "💬",
@@ -162,4 +163,9 @@ EVENT_ICONS = {
     # Reporting
     # ────────────────────────────────────────────
     "ReportGenerated": "📊",
+    "GoalFetchedByText": "📄🔍",
+    "GoalExists": "✔️📌",
+    "ReflectionDeltaInserted": "🧩📈",
+    "ReflectionDeltaLogged": "🔁📝OK ",
+    "PipelineRunInserted": "🧱🚀",
 }

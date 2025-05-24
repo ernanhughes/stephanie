@@ -1,0 +1,14 @@
+# Goal
+{{ goal }}
+
+# Pipeline Steps
+{{ pipeline | join(" → ") }}
+
+# Final Hypothesis (top scored)
+{{ hypothesis }}
+
+# Reflection from Lookahead
+{{ lookahead }}
+
+# Did this pipeline produce a strong, relevant hypothesis for this goal?
+Reply with a score from 0 (bad) to 1 (excellent), followed by a rationale.

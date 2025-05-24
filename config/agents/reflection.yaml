@@ -5,10 +5,12 @@ defaults:
 reflection:
   name: reflection
   enabled: true
-  source: context  # database or context
-  batch_size: 20
+  source: database  # database or context
+  batch_size: 10
+
   save_context: false
   skip_if_completed: false
+
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434

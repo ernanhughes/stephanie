@@ -1,9 +1,9 @@
 from co_ai.agents import BaseAgent
+from co_ai.analysis.rubric_classifier import RubricClassifierMixin
+from co_ai.constants import GOAL, PIPELINE
 from co_ai.evaluator.llm_judge_evaluator import LLMJudgeEvaluator
 from co_ai.evaluator.mrq_self_evaluator import MRQSelfEvaluator
-from co_ai.constants import GOAL
 from co_ai.models import Hypothesis
-from co_ai.analysis.rubric_classifier import RubricClassifierMixin
 
 
 class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
@@ -27,8 +27,12 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
 
         # Step 1: Generate candidates
         self.logger.log("GenerationStarted", {"num_candidates": self.num_candidates})
-        candidates = [self.call_llm(prompt, context) for _ in range(self.num_candidates)]
-        self.logger.log("GenerationCompleted", {"candidates": [c[:100] for c in candidates]})
+        candidates = [
+            self.call_llm(prompt, context) for _ in range(self.num_candidates)
+        ]
+        self.logger.log(
+            "GenerationCompleted", {"candidates": [c[:100] for c in candidates]}
+        )
 
         # Step 2: Evaluate pairwise
         best = candidates[0]
@@ -51,8 +55,15 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
             "best_output": best,
             "candidates": candidates,
         }
-        hyp = Hypothesis(goal=goal_text, text=best, confidence=score, features=features, prompt=prompt)
-        self.memory.hypotheses.store(hyp)
+        hyp = Hypothesis(
+            goal=goal_text,
+            text=best,
+            confidence=score,
+            features=features,
+            prompt=prompt,
+            pipeline_signature=context.get(PIPELINE),
+        )
+        self.memory.hypotheses.insert(hyp)
         self.logger.log("HypothesisStored", {"text": best[:100], "confidence": score})
 
         self.classify_and_store_patterns(
@@ -63,7 +74,7 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
             memory=self.memory,
             logger=self.logger,
             agent_name=self.name,
-            score=score
+            score=score,
         )
 
         context[self.output_key] = [best]
@@ -74,8 +85,12 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         if self.cfg.get("evaluator", "mrq") == "llm":
             llm = self.cfg.get("evaluator_model", self.cfg.get("model"))
             prompt_file = self.cfg.get("evaluator_prompt_file", "evaluation.txt")
-            self.logger.log("EvaluatorInit", {"strategy": "LLM", "prompt_file": prompt_file})
-            return LLMJudgeEvaluator(self.cfg, llm, prompt_file, self.call_llm, self.logger)
+            self.logger.log(
+                "EvaluatorInit", {"strategy": "LLM", "prompt_file": prompt_file}
+            )
+            return LLMJudgeEvaluator(
+                self.cfg, llm, prompt_file, self.call_llm, self.logger
+            )
         else:
             self.logger.log("EvaluatorInit", {"strategy": "MRQ"})
             return MRQSelfEvaluator(self.memory, self.logger)

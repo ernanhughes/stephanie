@@ -1,6 +1,7 @@
-from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, REFLECTION, HYPOTHESES
 import re
+
+from co_ai.agents.base import BaseAgent
+from co_ai.constants import GOAL, HYPOTHESES, REFLECTION
 
 
 class JudgeAgent(BaseAgent):
@@ -9,7 +10,7 @@ class JudgeAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         goal = self.extract_goal_text(context.get(GOAL))
-        hypotheses = context.get(self.input_key, [])
+        hypotheses = self.get_hypotheses(context)
 
         self.logger.log("JudgeRunStarted", {"goal": goal[:100], "hypothesis_count": len(hypotheses)})
 

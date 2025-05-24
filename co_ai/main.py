@@ -1,12 +1,12 @@
 # main.py
 import asyncio
-import logging
-import yaml
 import json
+import logging
+from datetime import datetime
 
 import hydra
+import yaml
 from omegaconf import DictConfig, OmegaConf
-from datetime import datetime
 
 from co_ai.logs import JSONLogger
 from co_ai.memory import MemoryTool
@@ -24,6 +24,7 @@ def run(cfg: DictConfig):
         log_path = get_log_file_path(run_id, cfg)
         logger = JSONLogger(log_path=log_path)
         memory = MemoryTool(cfg=cfg.db, logger=logger)
+
         supervisor = Supervisor(cfg=cfg, memory=memory, logger=logger)
 
         # ✅ Batch Mode: input_file provided

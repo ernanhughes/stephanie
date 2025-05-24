@@ -1,14 +1,16 @@
-from co_ai.memory import BaseStore
-from co_ai.models import Hypothesis,Score
-from typing import Optional
-from psycopg2.extras import Json
 from datetime import datetime
+from typing import Optional
+
+from psycopg2.extras import Json
+
+from co_ai.memory import BaseStore
+from co_ai.models import Hypothesis, Score
+
 
 class HypothesesStore(BaseStore):
     def __init__(self, db, embeddings, logger=None):
-        self.db = db
+        super().__init__(db, logger)
         self.embeddings = embeddings
-        self.logger = logger
         self.name = "hypotheses"
         self._rankings = {}
 
@@ -95,7 +97,7 @@ class HypothesesStore(BaseStore):
 
 
 
-    def store(self, hypothesis: Hypothesis, prompt_text: Optional[str] = None):
+    def insert(self, hypothesis: Hypothesis, prompt_text: Optional[str] = None):
         try:
             # Resolve prompt and goal
             embedding = self.embeddings.get_or_create(hypothesis.text)
@@ -108,9 +110,10 @@ class HypothesesStore(BaseStore):
                     INSERT INTO hypotheses (
                         goal_id, text, confidence, review, reflection, elo_rating,
                         embedding, features, prompt_id, source_hypothesis,
-                        strategy_used, version, source, enabled, created_at, updated_at
+                        strategy_used, version, source, enabled,  pipeline_signature, 
+                        created_at, updated_at 
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         goal_id,
@@ -127,6 +130,7 @@ class HypothesesStore(BaseStore):
                         hypothesis.version,
                         hypothesis.source,
                         hypothesis.enabled,
+                        hypothesis.pipeline_signature,
                         hypothesis.created_at,
                         hypothesis.updated_at,
                     )
@@ -382,10 +386,7 @@ class HypothesesStore(BaseStore):
                     (goal, limit),
                 )
                 rows = cur.fetchall()
-            result = []
-            for text in rows:
-                result.append(text)
-            return result
+            return [row[0] for row in rows]
         except Exception as e:
             if self.logger:
                 self.logger.log("GetLatestFailed", {

@@ -19,7 +19,7 @@ The `MemoryTool` manages pluggable stores, each handling a specific data type:
 | `ReportLogger`    | Saves YAML reports per run                      |
 
 ```python
-memory.hypotheses.store(goal, text, confidence, review, features)
+memory.hypotheses.insert(goal, text, confidence, review, features)
 memory.context.save(run_id, stage, context_dict)
 ````
 

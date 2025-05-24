@@ -5,8 +5,7 @@ from co_ai.memory import BaseStore
 
 class PromptStore(BaseStore):
     def __init__(self, db, logger=None):
-        self.db = db
-        self.logger = logger
+        super().__init__(db, logger)
         self.name = "prompt"
 
     def __repr__(self):

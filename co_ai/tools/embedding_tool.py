@@ -1,6 +1,8 @@
 # co_ai/tools/embedding_tool.py
 from collections import OrderedDict
+
 import requests
+
 
 # Simple in-memory LRU cache
 class EmbeddingCache:

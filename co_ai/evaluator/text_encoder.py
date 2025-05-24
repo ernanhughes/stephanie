@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 # TextEncoder for embedding prompts and hypotheses
 class TextEncoder(nn.Module):
     def __init__(self, embedding_dim=1024, zs_dim=512, za_dim=256, zsa_dim=512, hdim=1024):
