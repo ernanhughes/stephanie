@@ -1,5 +1,6 @@
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, HYPOTHESES, REFLECTION
+from co_ai.constants import GOAL, HYPOTHESES, REFLECTION, TEXT
+from co_ai.scoring import ReflectionScore
 
 
 class ReflectionAgent(BaseAgent):
@@ -11,30 +12,28 @@ class ReflectionAgent(BaseAgent):
         hypotheses = self.get_hypotheses(context)
         # Run reflection logic
         reflections = []
-        for h in hypotheses:
-            self.logger.log("ReflectingOnHypothesis", {HYPOTHESES: h})
-            
+        reflection_scorer = ReflectionScore(self.cfg, self.memory, self.logger)
+        for hyp in hypotheses:
+            self.logger.log("ReflectingOnHypothesis", {HYPOTHESES: hyp})
+
+            hyp_text = hyp.get(TEXT)
             prompt = self.prompt_loader.load_prompt(self.cfg, {
                 **context,
-                **{HYPOTHESES: h}
+                **{HYPOTHESES: hyp_text}
             })
 
-            response = self.call_llm(prompt, context).strip()
-            self.memory.hypotheses.store_reflection(h, response)
-            reflections.append(response)
+            hyp_id = self.get_hypothesis_id(hyp)
+            reflection = self.call_llm(prompt, context).strip()
+            self.memory.hypotheses.update_reflection(hyp_id, reflection)
+            hyp[REFLECTION] = reflection
 
-            if self.source == "database":
-                self.logger.log("BatchReflectionComplete", {
-                    "goal": goal,
-                    "reflected_count": len(reflections),
-                    "preferences_used": context.get("preferences", [])
-                })
-            context[REFLECTION] = reflections
+            reflection_score = reflection_scorer.get_score(hyp, context)
+
+            reflections.append({"reflection":reflection, "score": reflection_score})
             self.logger.log(
-                "GeneratedReflection",
+                "ReflectionScoreComputed",
                 {"goal": goal, "reflected_count": len(reflections)},
             )
-        return context
 
-    def get_hypotheses_from_db(self, goal: str):
-        return self.memory.hypotheses.get_unreflected(goal=goal, limit=self.batch_size)
+        context[self.output_key] = reflections
+        return context

@@ -5,7 +5,7 @@ import torch
 from co_ai.evaluator.base import BaseEvaluator
 from co_ai.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
 from co_ai.evaluator.text_encoder import TextEncoder
-from co_ai.models.sharpening_prediction import SharpeningPrediction
+from co_ai.models.sharpening_prediction import SharpeningPredictionORM
 
 
 class MRQSelfEvaluator(BaseEvaluator):
@@ -37,7 +37,7 @@ class MRQSelfEvaluator(BaseEvaluator):
         scores = {"value_a": value_a, "value_b": value_b}
 
         if self.memory.mrq.log_evaluations():
-            prediction = SharpeningPrediction(
+            prediction = SharpeningPredictionORM(
                 id=None,
                 goal_id=-1,
                 prompt_text=prompt,
@@ -49,7 +49,7 @@ class MRQSelfEvaluator(BaseEvaluator):
                 value_b=value_b,
             )
 
-            self.memory.mrq.insert_sharpening_prediction(asdict(prediction), goal)
+            self.memory.sharpening.insert_sharpening_prediction(prediction.to_dict(), goal)
 
         return preferred_output, scores
 

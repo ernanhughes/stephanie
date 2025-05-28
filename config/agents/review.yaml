@@ -5,11 +5,14 @@ defaults:
 review:
   name: review
   enabled: true
-  source: database
+
+  source: context
   batch_size: 10
+
   save_prompt: true
   save_context: true
   skip_if_completed: false
+
   strategy: full_review  # Options: initial, full, observation, deep_verification
   model:
     name: ollama_chat/qwen3
@@ -18,6 +21,7 @@ review:
   prompt_mode: file
   prompt_file: full_review.txt
   output_key: review
+
   preferences:
     - goal_consistency
     - factual

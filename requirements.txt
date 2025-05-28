@@ -1,16 +1,24 @@
-dspy 
 psycopg2-binary 
 pyyaml 
-numpy 
-requests
-duckduckgo-search
-tabulate
-matplotlib
 pgvector
-readability-lxml
 hydra-core 
 jinja2
-beautifulsoup4
-scikit-learn
+numpy 
+dspy 
+tabulate
 python_dotenv
 ollama
+
+# web search tools
+requests
+wikipedia
+duckduckgo-search
+readability-lxml
+beautifulsoup4
+
+# Hugging face tool
+huggingface_hub
+
+# analysis
+matplotlib
+scikit-learn

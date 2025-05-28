@@ -1,6 +1,6 @@
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL
-from co_ai.models.reflection_delta import ReflectionDelta
+from co_ai.models.reflection_delta import ReflectionDeltaORM
 from co_ai.analysis.reflection_delta import compute_pipeline_delta
 from dataclasses import asdict
 from datetime import datetime
@@ -31,7 +31,7 @@ class ReflectionDeltaAgent(BaseAgent):
 
                 delta = compute_pipeline_delta(run_a, run_b, scores_a, scores_b)
 
-                self.memory.reflection_deltas.insert(ReflectionDelta(**delta))
+                self.memory.reflection_deltas.insert(ReflectionDeltaORM(**delta))
                 self.logger.log("ReflectionDeltaLogged", {
                     "goal_id": goal.id,
                     "run_id_a": run_a.run_id,

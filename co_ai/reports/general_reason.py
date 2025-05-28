@@ -19,7 +19,7 @@ def save_markdown_report(result: dict, out_dir: str = "./reports"):
 
 """
     for hyp in result["hypotheses"]:
-        strategy = hyp.get("strategy_used", hyp["features"].get("strategy", "unknown"))
+        strategy = hyp.get("strategy", hyp["features"].get("strategy", "unknown"))
         report_md += f"""### Strategy: `{strategy}`  
 {hyp['text']}
 

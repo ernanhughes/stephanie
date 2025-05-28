@@ -8,7 +8,7 @@ class ModelSelectorAgent(BaseAgent):
         self.model_rankings = {}
 
     async def run(self, context: dict) -> dict:
-        goal = self.extract_goal_text(context.get(GOAL))
+        goal = self.memory.goals.get_or_create(context.get(GOAL))
         preferences = context.get("preferences", [])
 
         # Use metadata to select best model

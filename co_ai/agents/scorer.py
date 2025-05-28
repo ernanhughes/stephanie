@@ -1,21 +1,24 @@
 from co_ai.agents import BaseAgent
-from co_ai.logs.icons_enum import get_event_icon
+from co_ai.models import HypothesisORM
+from co_ai.scoring.proximity import ProximityScore
 
 
-class HypothesisScorerAgent(BaseAgent):
+class ScorerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.weight_proximity = cfg.get("weight_proximity", 0.4)
         self.weight_review = cfg.get("weight_review", 0.3)
         self.weight_llm_judge = cfg.get("weight_llm_judge", 0.2)
         self.weight_elo = cfg.get("weight_elo", 0.1)
+        print(f"ScorerAgent initialized with weights: {self.weight_proximity}, {self.weight_review}, {self.weight_llm_judge}, {self.weight_elo}")
 
-    def score(self, hypothesis: dict, context: dict) -> float:
+    def score(self, hypothesis: HypothesisORM, context: dict) -> float:
         # Extract features (assumes values already normalized 0–1)
-        proximity = hypothesis.get("proximity_score", 0.0)
-        review = hypothesis.get("review_score", 0.0)
-        llm_judge = hypothesis.get("llm_judge_score", 0.0)
-        elo = hypothesis.get("elo_rating", 0.0) / 1000.0  # normalize
+        s = ProximityScore(self.cfg, self.memory, self.logger)
+        proximity = s.get_score(hypothesis, context)
+        review = hypothesis.review or 0.0
+        llm_judge = hypothesis.reflection or 0.0
+        elo = hypothesis.elo_rating or 0.0
 
         # Weighted score aggregation
         score = (
@@ -30,14 +33,15 @@ class HypothesisScorerAgent(BaseAgent):
     async def run(self, context: dict):
         hypotheses = self.get_hypotheses(context)
         scored = []
-
+        scores = []
         for hypo in hypotheses:
-            score = self.score(hypo, context)
-            hypo["composite_score"] = score
+            h = self.memory.hypotheses.get_from_text(hypo)
+            score = self.score(h, context)
+            scores.append(score)
 
             self.logger.log("HypothesisScored", {
-                "prompt": hypo.get("prompt_text"),
-                "hypothesis": hypo.get("text"),
+                "prompt": h.prompt_id,
+                "hypothesis": h.text,
                 "score": score
             })
 

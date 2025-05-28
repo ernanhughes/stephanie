@@ -18,7 +18,7 @@ class StrategyResolver:
             context (dict): Contains the goal object and optionally agent metadata.
 
         Returns:
-            (str, str): Tuple of (strategy_used, prompt_file_path)
+            (str, str): Tuple of (strategy, prompt_file_path)
         """
         goal = context.get(GOAL).get("goal_text")
         is_reasoning_agent = context.get("agent_type", "reasoning") == "reasoning"

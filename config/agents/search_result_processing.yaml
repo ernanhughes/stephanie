@@ -1,0 +1,21 @@
+# configs/agents/proximity.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+search_result_processing:
+  name: search_result_processing
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  strategy:
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_mode: file
+  prompt_file: refine_results.txt
+  input_keys: ["goal", "literature"]
+  input_key: literature
+  output_key: literature_ranking
+

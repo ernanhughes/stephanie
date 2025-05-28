@@ -1,0 +1,33 @@
+# config/agents/survey.yaml
+
+survey:
+  name: survey
+  enabled: true
+
+  source: context
+  batch_size: 10
+
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+  strategy: full_review  # Options: initial, full, observation, deep_verification
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_mode: file
+  prompt_file: survey.txt
+  output_key: search_queries
+  sources:
+    - arxiv
+    - web_search_tool
+    - internal_codebase
+  preferences:
+    - goal_consistency
+    - factual
+    - reliable_source
+    - simplicity
+    - architectural_relevance
+    - codebase_awareness
+    - evolution_potential

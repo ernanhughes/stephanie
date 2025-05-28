@@ -4,8 +4,8 @@ import dspy
 from dspy import InputField, OutputField, Signature
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, PIPELINE
-from co_ai.models import Hypothesis
+from co_ai.constants import GOAL, PIPELINE, PROMPT_PATH, STRATEGY
+from co_ai.models import HypothesisORM
 
 
 # DSPy signature for generating Chains of Thought
@@ -47,7 +47,6 @@ class BaseEvaluator(ABC):
 class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.agent_name = cfg.get("name", "cot_dspy_generator")
 
         # Setup DSPy
         lm = dspy.LM(
@@ -60,23 +59,36 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         self.module = CoTGeneratorModule()
 
     async def run(self, context: dict):
-        goal_text = self.extract_goal_text(context.get(GOAL))
+        goal = context.get(GOAL)
         references = context.get("references", "")
         preferences = context.get("preferences", "")
 
         result = self.module(
-            question=goal_text, references=references, preferences=preferences
+            question=goal.get("goal_text"), references=references, preferences=preferences
         )
 
         cot = result.answer.strip()
-        self.logger.log("CoTGenerated", {"goal": goal_text, "cot": cot})
+        self.logger.log("CoTGenerated", {"goal": goal, "cot": cot})
 
-        hyp = Hypothesis(
-            goal=goal_text,
+        prompt_text = goal.goal_text
+        prompt = self.memory.prompt.get_from_text(prompt_text)
+        if prompt is None:
+            self.memory.prompt.save(
+                context.get("goal"),
+                agent_name=self.name,
+                prompt_key=self.cfg.get(PROMPT_PATH, ""),
+                prompt_text=prompt,
+                strategy=self.cfg.get(STRATEGY, ""),
+                version=self.cfg.get("version", 1),
+            )
+
+
+        hyp = HypothesisORM(
+            goal_id=goal.id,
             goal_type=context.get(GOAL).get("goal_type"),
             text=cot,
             features={"source": "cot_dspy"},
-            prompt=goal_text,
+            prompt=prompt_text,
             pipeline_signature=context.get(PIPELINE),
         )
         self.memory.hypotheses.insert(hyp)

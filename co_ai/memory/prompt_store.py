@@ -1,271 +1,184 @@
+# stores/prompt_store.py
 import json
+from typing import Optional
+from sqlalchemy.orm import Session
+from co_ai.models.prompt import PromptORM
+from co_ai.models.goal import GoalORM
 
-from co_ai.memory import BaseStore
 
-
-class PromptStore(BaseStore):
-    def __init__(self, db, logger=None):
-        super().__init__(db, logger)
+class PromptStore:
+    def __init__(self, session: Session, logger=None):
+        self.session = session
+        self.logger = logger
         self.name = "prompt"
 
-    def __repr__(self):
-        return f"<{self.name} connected={self.db is not None}>"
-
-    def name(self) -> str:
-        return "prompt"
-
-    def get_or_create_goal(self, goal_text, goal_type=None, focus_area=None,
-                           strategy=None, source="user"):
+    def get_or_create_goal(self, goal_text: str, goal_type: str = None,
+                           focus_area: str = None, strategy: str = None,
+                           source: str = "user") -> GoalORM:
         """
-        Looks up or inserts a goal in the `goals` table and returns the goal_id.
-        Assumes `conn` is a psycopg2 or asyncpg connection or cursor.
+        Returns existing goal or creates a new one.
         """
-        if isinstance(goal_text, dict):
-            str_goal_text = goal_text.get("goal_text")
-            str_goal_type = goal_text.get("goal_type")
-        else:
-            str_goal_text = goal_text
-            str_goal_type = goal_type
         try:
-
-            with self.db.cursor() as cur:
-                # Try to find existing goal
-                cur.execute(
-                    """
-                    SELECT id FROM goals
-                    WHERE goal_text = %s
-                    LIMIT 1
-                """,
-                    (str_goal_text,),
+            # Try to find by text
+            goal = self.session.query(GoalORM).filter_by(goal_text=goal_text).first()
+            if not goal:
+                # Create new
+                goal = GoalORM(
+                    goal_text=goal_text,
+                    goal_type=goal_type,
+                    focus_area=focus_area,
+                    strategy=strategy,
+                    llm_suggested_strategy=None,
+                    source=source
                 )
-                result = cur.fetchone()
-                if result:
-                    return result[0]
+                self.session.add(goal)
+                self.session.flush()  # Get ID before commit
 
-                # Insert new goal
-                cur.execute(
-                    """
-                    INSERT INTO goals (goal_text, goal_type, focus_area, strategy, source)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                """,
-                    (str_goal_text, str_goal_type, focus_area, strategy, source),
-                )
-                new_id = cur.fetchone()[0]
-                return new_id
+                if self.logger:
+                    self.logger.log("GoalCreated", {
+                        "goal_id": goal.id,
+                        "goal_text": goal_text[:100],
+                        "source": source
+                    })
+
+            return goal
+
         except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
+            self.session.rollback()
             if self.logger:
-                self.logger.log("GoalGetFailed", {"error": str(e)})
-            return None
+                self.logger.log("GoalGetOrCreateFailed", {"error": str(e)})
+            raise
 
-
-    def save(
-        self,
-        goal: str,
-        agent_name,
-        prompt_key,
-        prompt_text,
-        response=None,
-        strategy="default",
-        version=1,
-        meta_data=None
-    ):
+    def save(self, goal: dict, agent_name: str, prompt_key: str, prompt_text: str,
+             response: Optional[str] = None, strategy: str = "default",
+             extra_data: dict = None, version: int = 1):
+        """
+        Saves a prompt to the database and marks it as current for its key/agent.
+        """
         try:
-            goal_id =  self.get_or_create_goal(goal)
-            if meta_data is None:
-                meta_data = {}
-            with self.db.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO prompts (
-                        goal_id, agent_name, prompt_key, prompt_text, response_text,
-                        source, version, is_current, strategy, metadata
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
-                    """,
-                    (
-                        goal_id,
-                        agent_name,
-                        prompt_key,
-                        prompt_text,
-                        response,
-                        "manual",
-                        version,
-                        strategy,
-                        json.dumps(meta_data),
-                    ),
-                )
-                cur.execute(
-                    """
-                    UPDATE prompts SET is_current = FALSE
-                    WHERE agent_name = %s AND prompt_key = %s AND is_current IS TRUE
-                    """,
-                    (agent_name, prompt_key),
-                )
+            goal_text = goal.get("goal_text", "")
+            goal_type=goal.get("goal_type")
+            # Get or create the associated goal
+            goal_orm = self.get_or_create_goal(goal_text=goal_text, goal_type=goal_type)
+
+            # Deactivate previous versions of this prompt key/agent combo
+            self.session.query(PromptORM).filter_by(
+                agent_name=agent_name,
+                prompt_key=prompt_key
+            ).update({"is_current": False})
+
+            # Build ORM object
+            db_prompt = PromptORM(
+                goal_id=goal_orm.id,
+                agent_name=agent_name,
+                prompt_key=prompt_key,
+                prompt_text=prompt_text,
+                response_text=response,
+                strategy=strategy,
+                version=version,
+                extra_data=json.dumps(extra_data or {})
+            )
+
+            self.session.add(db_prompt)
+            self.session.flush()  # Get ID immediately
+
+            if self.logger:
+                self.logger.log("PromptStored", {
+                    "prompt_id": db_prompt.id,
+                    "prompt_key": prompt_key,
+                    "goal_id": goal_orm.id,
+                    "agent": agent_name,
+                    "strategy": strategy,
+                    "length": len(prompt_text),
+                    "timestamp": db_prompt.timestamp.isoformat()
+                })
+
+            return db_prompt.id
+
         except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
-            if self.logger:
-                self.logger.log("PromptLogFailed", {"error": str(e)})
-
-    def store_evaluation(
-        self,
-        prompt_id: int,
-        benchmark_name: str,
-        score: float,
-        metrics: dict,
-        evaluator: str = "auto",
-        notes: str | None = None,
-        dataset_hash: list | None = None,
-    ):
-        try:
-            with self.db.cursor() as cur:
-                cur.execute(
-                    """
-                        INSERT INTO prompt_evaluations
-                        (prompt_id, benchmark_name, score, metrics, evaluator, notes, dataset_hash)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """,
-                    (
-                        prompt_id,
-                        benchmark_name,
-                        score,
-                        json.dumps(metrics),
-                        evaluator,
-                        notes,
-                        dataset_hash,
-                    ),
-                )
+            self.session.rollback()
             if self.logger:
                 self.logger.log(
-                    "PromptEvaluationStored",
+                    "PromptStoreFailed", {"error": str(e), "prompt_key": prompt_key}
+                )
+            raise
+
+    def get_from_text(
+        self,
+        prompt_text: str
+    ) -> Optional[PromptORM]:
+        """
+        Retrieve a prompt from the DB based on its exact prompt_text.
+        Optionally filter by agent_name and/or strategy.
+        """
+        try:
+            query = self.session.query(PromptORM).filter(
+                PromptORM.prompt_text == prompt_text
+            )
+
+            prompt = query.order_by(PromptORM.timestamp.desc()).first()
+
+            if self.logger:
+                self.logger.log(
+                    "PromptLookup",
                     {
-                        "prompt_id": prompt_id,
-                        "benchmark_name": benchmark_name,
-                        "score": score,
+                        "matched": bool(prompt),
+                        "text_snippet": prompt_text[:100],
                     },
                 )
+
+            return prompt
+
         except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
+            self.session.rollback()
             if self.logger:
                 self.logger.log(
-                    "PromptEvaluationStoreFailed",
-                    {"prompt_id": prompt_id, "error": str(e)},
+                    "PromptLookupFailed",
+                    {"error": str(e), "text_snippet": prompt_text[:100]},
                 )
+            return None
 
-    def get_latest_prompts(self, limit: int = 10) -> list[dict]:
+    def get_id_from_response(
+        self,
+        response_text: str
+    ) -> Optional[PromptORM]:
         """
-        Return the latest prompts added to the database, ordered by most recent.
-
-        Args:
-            limit (int): Number of prompts to return.
-
-        Returns:
-            List of prompt records as dictionaries.
+        Retrieve a prompt from the DB based on its exact prompt_text.
+        Optionally filter by agent_name and/or strategy.
         """
         try:
-            with self.db.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT id, agent_name, prompt_key, prompt_text, response_text,
-                           source, version, is_current, strategy, metadata, timestamp
-                    FROM prompts
-                    ORDER BY timestamp DESC
-                    LIMIT %s
-                    """,
-                    (limit,)
-                )
-                rows = cur.fetchall()
-                cols = [desc[0] for desc in cur.description]
-                return [dict(zip(cols, row)) for row in rows]
-        except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
-            if self.logger:
-                self.logger.log("PromptFetchFailed", {"error": str(e)})
-            return []
+            query = self.session.query(PromptORM).filter(
+                PromptORM.response_text == response_text
+            )
 
-    def get_prompt_training_set(self, goal: str, limit: int = 5, agent_name='generation') -> list[dict]:
-        try:
-            with self.db.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT DISTINCT ON (p.id)
-                        p.id,
-                        g.goal_text AS goal,
-                        p.prompt_text,
-                        p.prompt_key,
-                        p.timestamp,
-                        h.text AS hypothesis_text,
-                        h.elo_rating,
-                        h.review
-                    FROM goals g
-                    JOIN prompts p ON p.goal_id = g.id
-                    JOIN hypotheses h ON h.prompt_id = p.id AND h.goal_id = g.id
-                    WHERE g.goal_text = %s
-                    AND p.agent_name = %s
-                    AND h.enabled = TRUE
-                    ORDER BY p.id, h.elo_rating DESC, h.updated_at DESC
-                    LIMIT %s
-                    """,
-                    (goal, agent_name, limit),
-                )
-                rows = cur.fetchall()
-                return [
-                    {
-                        "id": row[0],
-                        "goal": row[1],
-                        "prompt_text": row[2],
-                        "prompt_key": row[3],
-                        "timestamp": row[4],
-                        "hypothesis_text": row[5],
-                        "elo_rating": row[6],
-                        "review": row[7],
-                    }
-                    for row in rows
-                ]
-        except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
-            if self.logger:
-                self.logger.log("GetLatestPromptsFailed", {
-                    "error": str(e),
-                    "goal": goal
-                })
-            return []
+            prompt = query.order_by(PromptORM.timestamp.desc()).first()
 
-    def get_eliciting_prompts(self, goal: str, limit: int = 20, agent_name='generation') -> list[dict]:
-        try:
-            with self.db.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT p.id, p.prompt_text, p.prompt_key, p.timestamp, e.score
-                    FROM prompts p
-                    LEFT JOIN LATERAL (
-                        SELECT score
-                        FROM prompt_evaluations e
-                        WHERE e.prompt_id = p.id
-                        ORDER BY e.timestamp DESC
-                        LIMIT 1
-                    ) e ON true
-                    WHERE p.agent_name = %s
-                    AND p.prompt_text IS NOT NULL
-                    AND p.goal = %s
-                    ORDER BY e.score DESC NULLS LAST, p.timestamp DESC
-                    LIMIT %s
-                    """,
-                    (agent_name, goal, limit),
-                )
-                rows = cur.fetchall()
-                return [
-                    {
-                        "id": row[0],
-                        "prompt_text": row[1],
-                        "prompt_key": row[2],
-                        "timestamp": row[3],
-                        "score": row[4],
-                    }
-                    for row in rows
-                ]
-        except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
-                self.logger.log("GetElicitingPromptsFailed", {"error": str(e), "goal": goal})
-            return []
+                self.logger.log(
+                    "PromptLookup",
+                    {
+                        "matched": bool(prompt),
+                        "text_snippet": response_text[:100],
+                    },
+                )
+
+            return prompt.id
+
+        except Exception as e:
+            self.session.rollback()
+            if self.logger:
+                self.logger.log(
+                    "PromptLookupFailed",
+                    {"error": str(e), "text_snippet": prompt_text[:100]},
+                )
+            return None
+
+    def find_matching(self, agent_name, prompt_text, strategy=None):
+        query = self.session.query(PromptORM).filter_by(
+            agent_name=agent_name,
+            prompt_text=prompt_text
+        )
+        if strategy:
+            query = query.filter_by(strategy=strategy)
+
+        return [p.to_dict() for p in query.limit(10).all()]

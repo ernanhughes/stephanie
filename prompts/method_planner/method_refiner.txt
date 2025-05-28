@@ -1,0 +1,13 @@
+You are the Method Refiner Agent. Given this current plan:
+{{ current_plan }}
+
+And this feedback:
+{{ feedback }}
+
+Refine the plan to improve:
+- Novelty
+- Feasibility
+- Impact
+- Alignment with goal
+
+Return only JSON with updated fields.

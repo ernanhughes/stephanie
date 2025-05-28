@@ -1,25 +1,26 @@
-Yeah he's not a he's not a good guy right I don't be terrible CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- text hashing
 
 -- Stores all generated hypotheses and their evaluations
 CREATE TABLE IF NOT EXISTS hypotheses (
     id SERIAL PRIMARY KEY,
-    goal TEXT NOT NULL,                 -- Research objective
     text TEXT NOT NULL,                 -- Hypothesis statement
+    goal_id INT REFERENCES goals(id), -- Prompt used to generate this hypothesis
+    prompt_id INT REFERENCES prompts(id), -- Prompt used to generate this hypothesis
+    strategy TEXT,                      -- e.g., goal_aligned, out_of_the_box
     confidence FLOAT DEFAULT 0.0 ,      -- Confidence score (0–1 scale)
-    pipeline_signature TEXT,            -- Unique identifier for the pipeline used
     review TEXT,                        -- Structured review data
     reflection TEXT,                    -- Structured reflection data
     elo_rating FLOAT DEFAULT 750.0,    -- Tournament ranking score
     embedding VECTOR(1024),             -- Vector representation of hypothesis
     features JSONB,                     -- Mechanism, rationale, experiment plan
-    prompt_id INT REFERENCES prompts(id), -- Prompt used to generate this hypothesis
-    source_hypothesis INT REFERENCES hypotheses(id), -- If derived from another
-    strategy_used TEXT,                 -- e.g., goal_aligned, out_of_the_box
-    version INT DEFAULT 1,              -- Evolve count
+    source_hypothesis_id INT REFERENCES hypotheses(id), -- If derived from another
     source TEXT,                        -- e.g., manual, refinement, grafting
+    pipeline_signature TEXT,            -- Unique identifier for the pipeline used
+    pipeline_id INT REFERENCES pipeline_runs(id), -- Pipeline run this hypothesis belongs to
     enabled BOOLEAN DEFAULT TRUE,       -- Soft delete flag
+    version INT DEFAULT 1,              -- Evolve count
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -74,13 +75,13 @@ CREATE TABLE IF NOT EXISTS prompts (
     agent_name TEXT NOT NULL,
     prompt_key TEXT NOT NULL,         -- e.g., generation_goal_aligned.txt
     prompt_text TEXT NOT NULL,
-    goal TEXT;
+    goal_id int REFERENCES goals(id) ON DELETE CASCADE, -- Goal this prompt is associated with;
     response_text TEXT,
     source TEXT,                      -- e.g., manual, dsp_refinement, feedback_injection
     version INT DEFAULT 1,
     is_current BOOLEAN DEFAULT FALSE,
     strategy TEXT,                    -- e.g., goal_aligned, out_of_the_box
-    metadata JSONB DEFAULT '{}'::JSONB,
+    extra_data JSONB DEFAULT '{}'::JSONB,
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -109,7 +110,7 @@ CREATE TABLE IF NOT EXISTS prompt_history (
     source TEXT,                      -- e.g., "manual", "feedback_injection", "dsp_refinement"
     is_current BOOLEAN DEFAULT FALSE,
     config JSONB DEFAULT '{}'::JSONB,
-    metadata JSONB DEFAULT '{}'::JSONB,
+    extra_data JSONB DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -124,7 +125,7 @@ CREATE TABLE IF NOT EXISTS prompt_versions (
     version INT NOT NULL,
     source TEXT,                     -- manual, feedback_injection, dsp_refinement
     score_improvement FLOAT,         -- How much better is this prompt than last?
-    metadata JSONB DEFAULT '{}'::JSONB,
+    extra_data JSONB DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -137,7 +138,7 @@ CREATE TABLE IF NOT EXISTS context_states (
     context JSONB NOT NULL,          -- Full context dict after stage
     preferences JSONB,              -- Preferences used (novelty, feasibility)
     feedback JSONB,                 -- Feedback from previous stages
-    metadata JSONB DEFAULT '{}'::JSONB, -- Strategy, prompt_version, etc.
+    extra_data JSONB DEFAULT '{}'::JSONB, -- Strategy, prompt_version, etc.
     timestamp TIMESTAMPTZ DEFAULT NOW(),
     is_current BOOLEAN DEFAULT TRUE  -- Only one active version per run/stage
 );
@@ -181,7 +182,7 @@ CREATE TABLE IF NOT EXISTS mrq_memory (
     response_embedding VECTOR(1024),
     review_embedding VECTOR(1024),
     reflection_embedding VECTOR(1024),
-    metadata JSONB DEFAULT '{}'::JSONB,
+    extra_data JSONB DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -199,7 +200,7 @@ CREATE TABLE IF NOT EXISTS model_performance (
     preference_used TEXT[],
     reward FLOAT NOT NULL,
     confidence_score FLOAT,
-    metadata JSONB DEFAULT '{}'::JSONB,
+    extra_data JSONB DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -229,7 +230,7 @@ CREATE TABLE IF NOT EXISTS mrq_evaluations (
     winner TEXT NOT NULL, -- 'A' or 'B'
     score_a FLOAT NOT NULL,
     score_b FLOAT NOT NULL,
-    metadata JSONB DEFAULT '{}'::JSONB,
+    extra_data JSONB DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -290,7 +291,7 @@ CREATE TABLE IF NOT EXISTS scores (
     review TEXT,                -- NEW
     meta_review TEXT,           -- NEW
     run_id TEXT,
-    metadata JSONB DEFAULT '{}'::JSONB,
+    extra_data JSONB DEFAULT '{}'::JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -305,7 +306,7 @@ CREATE TABLE IF NOT EXISTS lookaheads (
     rationale TEXT,
     reflection TEXT,
     backup_plans TEXT[],
-    metadata JSONB DEFAULT '{}'::JSONB,
+    extra_data JSONB DEFAULT '{}'::JSONB,
     run_id TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -320,7 +321,7 @@ CREATE TABLE pipeline_runs (
     run_config JSONB,
     lookahead_context JSONB,
     symbolic_suggestion JSONB,
-    metadata JSONB,
+    extra_data JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -340,3 +341,103 @@ CREATE TABLE IF NOT EXISTS reflection_deltas (
     rationale_diff JSONB DEFAULT '["", ""]'::JSONB, -- tuple stored as array
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+
+CREATE TABLE IF NOT EXISTS ideas (
+    id SERIAL PRIMARY KEY,
+
+    idea_text VARCHAR NOT NULL,
+    parent_goal VARCHAR,
+    focus_area VARCHAR,
+    strategy VARCHAR,
+    source VARCHAR,
+    origin VARCHAR,
+    extra_data JSON,
+    goal_id INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    FOREIGN KEY(goal_id) REFERENCES goals(id)
+);
+
+CREATE TABLE IF NOT EXISTS search_results (
+    id SERIAL PRIMARY KEY,
+
+    query TEXT NOT NULL,
+    source TEXT NOT NULL,
+    result_type TEXT,
+    title TEXT,
+    summary TEXT,
+    url TEXT,
+    author TEXT,
+    published_at DATETIME,
+    tags TEXT[],
+    goal_id INTEGER REFERENCES goals(id),
+    parent_goal TEXT,
+    strategy TEXT,
+    focus_area TEXT,
+    key_concepts TEXT[],
+    technical_insights TEXT[],
+    relevance_score INTEGER,
+    novelty_score INTEGER,
+    related_ideas TEXT[],
+    refined_summary TEXT,
+    extracted_methods TEXT[],
+    domain_knowledge_tags TEXT[],
+    critique_notes TEXT
+    extra_data JSON,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- Table: method_plans
+-- Purpose: Store structured research methodologies generated from hypotheses
+
+CREATE TABLE IF NOT EXISTS method_plans (
+    id SERIAL PRIMARY KEY,
+
+    -- Core Research Idea
+    idea_text TEXT NOT NULL,
+    idea_id INTEGER REFERENCES ideas(id) ON DELETE SET NULL,
+
+    -- Goal Context
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+
+    -- Methodological Components
+    research_objective TEXT NOT NULL,
+    key_components JSONB,         -- List of method components
+    experimental_plan TEXT,
+    hypothesis_mapping TEXT,      -- Mapping between hypotheses and plan parts
+    search_strategy TEXT,        -- Keywords and sources to use in next round
+    knowledge_gaps TEXT,        -- Missing info before testing
+    next_steps TEXT,            -- What should be done after this plan
+
+    -- Supporting Metadata
+    task_description TEXT,
+    baseline_method TEXT,
+    literature_summary TEXT,
+    code_plan TEXT,             -- Optional starter code / pseudocode
+    focus_area TEXT,
+    strategy TEXT,
+
+    -- Evaluation Metrics
+    score_novelty FLOAT,
+    score_feasibility FLOAT,
+    score_impact FLOAT,
+    score_alignment FLOAT,
+
+    -- Evolution Tracking
+    evolution_level INTEGER DEFAULT 0,
+    parent_plan_id INTEGER REFERENCES method_plans(id) ON DELETE SET NULL,
+    is_refinement BOOLEAN DEFAULT FALSE,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes for faster querying
+CREATE INDEX idx_idea_text ON method_plans USING GIN (to_tsvector('english', idea_text));
+CREATE INDEX idx_research_objective ON method_plans USING GIN (to_tsvector('english', research_objective));
+CREATE INDEX idx_focus_area ON method_plans (focus_area);
+CREATE INDEX idx_evolution_level ON method_plans (evolution_level);
+CREATE INDEX idx_goal_id ON method_plans (goal_id);
+CREATE INDEX idx_parent_plan_id ON method_plans (parent_plan_id);

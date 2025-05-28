@@ -12,6 +12,7 @@ class WebSearchTool:
     def __init__(self, cfg: dict, logger):
         self.base_url = f'{cfg.get("instance_url", "localhost:8080")}/search'
         self.max_results = cfg.get("max_results", 15)
+        self.fetch_page = cfg.get("fetch_page", False)
         self.categories = cfg.get("categories", "general")
         self.language = cfg.get("language", "en")
         self.logger = logger
@@ -56,7 +57,9 @@ class WebSearchTool:
             snippet_tag = article.find("p", class_="content")
             snippet = snippet_tag.get_text(strip=True) if snippet_tag else None
 
-            cleand_page = self.fetch_html(href)
+            cleand_page = ""
+            if self.fetch_page:
+                cleand_page = self.fetch_html(href)
 
             if href and title:
                 results.append(

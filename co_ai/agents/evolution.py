@@ -6,7 +6,7 @@ import numpy as np
 
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import EVOLVED, GOAL, HYPOTHESES, RANKING, PIPELINE
-from co_ai.models import Hypothesis
+from co_ai.models import HypothesisORM
 from co_ai.tools.embedding_tool import get_embedding
 
 
@@ -72,7 +72,7 @@ class EvolutionAgent(BaseAgent):
                     for r in refined_list:
                         goal = self.extract_goal_text(context.get(GOAL))
                         evolved_goal = f"Evolved from top-ranked {goal}"
-                        hyp = Hypothesis(
+                        hyp = HypothesisORM(
                             goal=evolved_goal,
                             text=h,
                             pipeline_signature=context.get(PIPELINE)

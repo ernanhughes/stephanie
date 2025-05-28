@@ -1,8 +1,8 @@
 import json
 from typing import Optional, List
 
-from co_ai.memory.base_store import BaseStore
-from co_ai.models.reflection_delta import ReflectionDelta
+from co_ai.memory.base import BaseStore
+from co_ai.models.reflection_delta import ReflectionDeltaORM
 
 
 class ReflectionDeltaStore(BaseStore):
@@ -16,7 +16,7 @@ class ReflectionDeltaStore(BaseStore):
     def name(self) -> str:
         return "reflection_deltas"
 
-    def insert(self, delta: ReflectionDelta) -> int:
+    def insert(self, delta: ReflectionDeltaORM) -> int:
         """
         Inserts a new reflection delta into the database.
 
@@ -97,7 +97,7 @@ class ReflectionDeltaStore(BaseStore):
                 self.logger.log("ReflectionDeltaInsertFailed", {"error": str(e)})
             raise
 
-    def get_by_goal_id(self, goal_id: int) -> list[ReflectionDelta]:
+    def get_by_goal_id(self, goal_id: int) -> list[ReflectionDeltaORM]:
         """
         Fetches all reflection deltas associated with a given goal.
 
@@ -107,7 +107,7 @@ class ReflectionDeltaStore(BaseStore):
         query = "SELECT * FROM reflection_deltas WHERE goal_id = %s ORDER BY created_at DESC"
         return self._fetch_all(query, (goal_id,))
 
-    def get_by_run_ids(self, run_id_a: str, run_id_b: str) -> Optional[ReflectionDelta]:
+    def get_by_run_ids(self, run_id_a: str, run_id_b: str) -> Optional[ReflectionDeltaORM]:
         """
         Fetches a reflection delta comparing two specific runs.
 
@@ -118,7 +118,7 @@ class ReflectionDeltaStore(BaseStore):
         query = "SELECT * FROM reflection_deltas WHERE run_id_a = %s AND run_id_b = %s"
         return self._fetch_one(query, (run_id_a, run_id_b))
 
-    def get_all(self, limit: int = 100) -> list[ReflectionDelta]:
+    def get_all(self, limit: int = 100) -> list[ReflectionDeltaORM]:
         """
         Returns the most recent reflection deltas up to a limit.
 
@@ -128,7 +128,7 @@ class ReflectionDeltaStore(BaseStore):
         query = f"SELECT * FROM reflection_deltas ORDER BY created_at DESC LIMIT {limit}"
         return self._fetch_all(query)
 
-    def find(self, filters: dict) -> list[ReflectionDelta]:
+    def find(self, filters: dict) -> list[ReflectionDeltaORM]:
         """
         Generic search method for reflection deltas.
 
@@ -160,7 +160,7 @@ class ReflectionDeltaStore(BaseStore):
 
         return self._fetch_all(query, params)
 
-    def _fetch_one(self, query: str, params=None) -> Optional[ReflectionDelta]:
+    def _fetch_one(self, query: str, params=None) -> Optional[ReflectionDeltaORM]:
         """
         Helper to fetch one result and convert it to a ReflectionDelta object.
         """
@@ -176,7 +176,7 @@ class ReflectionDeltaStore(BaseStore):
                 self.logger.log("ReflectionDeltaFetchFailed", {"error": str(e)})
             return None
 
-    def _fetch_all(self, query: str, params=None) -> List[ReflectionDelta]:
+    def _fetch_all(self, query: str, params=None) -> List[ReflectionDeltaORM]:
         """
         Helper to fetch multiple results and convert them to ReflectionDelta objects.
         """
@@ -190,11 +190,11 @@ class ReflectionDeltaStore(BaseStore):
                 self.logger.log("ReflectionDeltasFetchFailed", {"error": str(e)})
             return []
 
-    def _row_to_delta(self, row) -> ReflectionDelta:
+    def _row_to_delta(self, row) -> ReflectionDeltaORM:
         """
         Converts a database row to a ReflectionDelta object.
         """
-        return ReflectionDelta(
+        return ReflectionDeltaORM(
             id=row["id"],
             goal_id=row["goal_id"],
             run_id_a=row["run_id_a"],

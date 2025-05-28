@@ -1,6 +1,6 @@
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL, HYPOTHESES, PIPELINE
-from co_ai.models import Hypothesis
+from co_ai.models import HypothesisORM
 from co_ai.parsers import extract_hypotheses
 
 
@@ -58,7 +58,7 @@ class RefinerAgent(BaseAgent):
             )
 
             for h in refined_hypotheses:
-                hyp = Hypothesis(
+                hyp = HypothesisORM(
                     goal=goal,
                     text=h,
                     prompt=refined_prompt,

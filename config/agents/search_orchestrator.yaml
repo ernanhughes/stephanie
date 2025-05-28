@@ -1,0 +1,35 @@
+# configs/agents/search_orchestrator.yaml
+defaults:
+  - /prompt_refiner/default
+
+search_orchestrator:
+  name: search_orchestrator
+  enabled: true
+  save_context: false
+  skip_if_completed: false
+  strategy: query_and_summarize
+  max_results: 5
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  save_prompt: true
+  add_prompt_to_history: true
+  prompt_mode: file
+  prompt_file: query.txt
+
+  input_key: search_queries
+  output_key: literature
+
+  preferences:
+    - goal_consistency
+    - factual
+    - reliable_source
+    - simplicity
+
+  web_search:
+    engine: "searxng"
+    instance_url: "http://localhost:8080"
+    max_results: 20
+  

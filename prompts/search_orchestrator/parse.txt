@@ -1,0 +1,23 @@
+You are an expert researcher generating a concise, structured summary of this article snippet.
+Your summary must be directly relevant to the following research goal:
+
+Goal:
+{{ goal }}
+
+Review the following information:
+Title: {{ title }}
+Link: {{ link }}
+Snippet: {{ snippet }}
+Page: {{ page }}
+
+Instructions:
+1. Extract core information in the article related ot the goal
+2. Identify any novel approaches used
+3. Explain how it relates to the stated goal — does it support it, contradict it, or provide neutral evidence?
+4. Keep it focused and concise — avoid vague or generic statements
+
+Please output your results in this format
+
+# Summary
+
+Your results here

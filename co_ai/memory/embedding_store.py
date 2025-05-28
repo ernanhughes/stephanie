@@ -1,17 +1,15 @@
 import hashlib
 
-import pgvector.psycopg2
-
 from co_ai.memory import BaseStore
 from co_ai.tools import get_embedding
 
 
 class EmbeddingStore(BaseStore):
-    def __init__(self, db, cfg, logger=None):
+    def __init__(self, cfg, conn, db, logger=None):
         super().__init__(db, logger)
         self.cfg = cfg
+        self.conn = conn
         self.name = "embedding"
-        pgvector.psycopg2.register_vector(self.db)
 
     def __repr__(self):
         return f"<{self.name} connected={self.db is not None} cfg={self.cfg}>"
@@ -22,7 +20,7 @@ class EmbeddingStore(BaseStore):
     def get_or_create(self, text: str):
         text_hash = self.get_text_hash(text)
         try:
-            with self.db.cursor() as cur:
+            with self.conn.cursor() as cur:
                 cur.execute("SELECT embedding FROM embeddings WHERE text_hash  = %s", (text_hash,))
                 row = cur.fetchone()
                 if row:
@@ -34,7 +32,7 @@ class EmbeddingStore(BaseStore):
 
         embedding = get_embedding(text, self.cfg)
         try:
-            with self.db.cursor() as cur:
+            with self.conn.cursor() as cur:
                 cur.execute("INSERT INTO embeddings (text, text_hash, embedding) VALUES (%s, %s, %s) ON CONFLICT (text_hash) DO NOTHING",
                             (text, text_hash, embedding))
         except Exception as e:
@@ -46,7 +44,7 @@ class EmbeddingStore(BaseStore):
     def search_related(self, query: str, top_k: int = 5):
         try:
             embedding = get_embedding(query, self.cfg)
-            with self.db.cursor() as cur:
+            with self.conn.cursor() as cur:
                 cur.execute(
                     """
                         SELECT 

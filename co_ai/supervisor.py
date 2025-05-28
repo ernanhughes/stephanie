@@ -6,14 +6,21 @@ import os
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from co_ai.constants import (NAME, PROMPT_DIR, PIPELINE, RUN_ID, SAVE_CONTEXT,
-                             SKIP_IF_COMPLETED, STAGE)
+from co_ai.constants import (
+    NAME,
+    PROMPT_DIR,
+    PIPELINE,
+    RUN_ID,
+    SAVE_CONTEXT,
+    SKIP_IF_COMPLETED,
+    STAGE,
+)
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
 from co_ai.reports import ReportFormatter
 from uuid import uuid4
 from datetime import datetime
-from co_ai.models import PipelineRun  # if placed in models
+from co_ai.models import PipelineRunORM  # if placed in models
 
 
 class PipelineStage:
@@ -56,19 +63,21 @@ class Supervisor:
         Each stage loads its class dynamically via hydra.utils.get_class()
         """
         self.logger.log("PipelineStart", input_data)
+        goal_orm= {}
         input_file = input_data.get("input_file", self.cfg.get("input_file", None))
         # Handle JSONL file for batch input
         if input_file and os.path.exists(input_file):
             self.logger.log("BatchProcessingStart", {"file": input_file})
             with open(input_file, "r", encoding="utf-8") as f:
                 for i, line in enumerate(f):
-                    goal = json.loads(line)
-                    run_id = goal.get("id", f"goal_{i}")
+                    goal_dict = json.loads(line)
+                    goal_orm = self.memory.goals.get_or_create(goal_dict)
+                    run_id = goal_orm.get("id", f"goal_{i}")
                     context = {
-                        "goal": goal,
+                        "goal": goal_dict,
                         "run_id": run_id,
                         "prompt_dir": self.cfg.paths.prompts,
-                        PIPELINE: [stage.name for stage in self.pipeline_stages]
+                        PIPELINE: [stage.name for stage in self.pipeline_stages],
                     }
                     try:
                         await self._run_pipeline_stages(context)
@@ -86,25 +95,27 @@ class Supervisor:
         pipeline_list = [stage.name for stage in self.pipeline_stages]
 
         context = input_data.copy()
-        context.update({
-            RUN_ID: run_id,
-            PIPELINE: pipeline_list,
-            PROMPT_DIR: self.cfg.paths.prompts,
-        })
-
-        # Create and store PipelineRun
-        pipeline_run = PipelineRun(
-            run_id=run_id,
-            goal_id=self.memory.goals.get_or_create(context["goal"]).id,  # assumes .get_or_create returns goal with id
-            pipeline=str(pipeline_list),
-            strategy=context.get("strategy"),
-            # model_name=self.cfg.model.name,
-            run_config=OmegaConf.to_container(self.cfg),
-            created_at=datetime.utcnow(),
+        context.update(
+            {
+                RUN_ID: run_id,
+                PIPELINE: pipeline_list,
+                PROMPT_DIR: self.cfg.paths.prompts,
+            }
         )
 
-        self.memory.pipeline_runs.insert(pipeline_run)
+        # Create and store PipelineRun
+        # Create and store PipelineRun
+        pipeline_run_data = {
+            "run_id": run_id,
+            "pipeline": pipeline_list,  # Should be list of strings like ["generation", "judge"]
+            "strategy": context.get("strategy"),
+            "model_name": self.cfg.get("model.name", "unknown"),
+            "run_config": OmegaConf.to_container(self.cfg),
+            "created_at": datetime.utcnow()
+        }
 
+        # Insert into DB
+        self.memory.pipeline_runs.insert(pipeline_run_data)
         # Now allow lookahead or other steps to adjust context
         context = await self.maybe_adjust_pipeline(context)
         return await self._run_pipeline_stages(context)
@@ -160,24 +171,25 @@ class Supervisor:
 
             # After final stage
             if self.cfg.get("post_judgment", {}).get("enabled", False):
-                judge_cfg = OmegaConf.to_container(
-                    self.cfg.post_judgment, resolve=True
+                judge_cfg = OmegaConf.to_container(self.cfg.post_judgment, resolve=True)
+                stage_dict = OmegaConf.to_container(
+                    self.cfg.agents.pipeline_judge, resolve=True
                 )
-                stage_dict =  OmegaConf.to_container(self.cfg.agents.pipeline_judge, resolve=True)
                 judge_cls = hydra.utils.get_class(judge_cfg["cls"])
-                judge_agent = judge_cls(cfg=stage_dict, memory=self.memory, logger=self.logger)
+                judge_agent = judge_cls(
+                    cfg=stage_dict, memory=self.memory, logger=self.logger
+                )
                 context = await judge_agent.run(context)
 
         return context
-
 
     def generate_report(self, context: dict[str, any], run_id: str) -> str:
         """Generate a report based on the pipeline context."""
         formatter = ReportFormatter(self.cfg.report.path)
         report = formatter.format_report(context)
-        self.memory.report.log(
-            run_id, str(context.get("goal")), report, self.cfg.report.path
-        )
+        # self.memory.report.log(
+        #     run_id, str(context.get("goal")), report, self.cfg.report.path
+        # )
         self.logger.log(
             "ReportGenerated", {RUN_ID: run_id, "report_snippet": report[:100]}
         )
@@ -193,7 +205,7 @@ class Supervisor:
                 {NAME: name, RUN_ID: run_id, "context_keys": list(context.keys())},
             )
 
-    def load_context(self, cfg: DictConfig, run_id:str):
+    def load_context(self, cfg: DictConfig, run_id: str):
         if self.memory and cfg.get(SKIP_IF_COMPLETED, False):
             name = cfg.get(NAME, None)
             if name and self.memory.context.has_completed(run_id, name):
@@ -205,36 +217,68 @@ class Supervisor:
 
     async def maybe_adjust_pipeline(self, context: dict) -> dict:
         """
-        Optionally run LookaheadAgent before pipeline stages to revise or select the pipeline.
+        Optionally run DOTSPlanner and/or LookaheadAgent to revise or select the pipeline.
         """
-        if not self.cfg.get("dynamic", {}).get("enabled", False):
-            return context  # Skip if not enabled
+        goal = context.get("goal", {})
 
-        lookahead_cfg = OmegaConf.to_container(self.cfg.dynamic, resolve=True)
-        stage_dict =  OmegaConf.to_container(self.cfg.agents.lookahead, resolve=True)
-        agent_cls = hydra.utils.get_class(lookahead_cfg["cls"])
-        lookahead_agent = agent_cls(
-            cfg=stage_dict, memory=self.memory, logger=self.logger
-        )
+        # === RUN DOTS PLANNER FIRST (STRATEGY PLANNER) ===
+        if self.cfg.get("planner", {}).get("enabled", False):
+            try:
+                planner_cfg = OmegaConf.to_container(self.cfg.planner, resolve=True)
+                planner_cls = hydra.utils.get_class(planner_cfg["cls"])
+                planner = planner_cls(cfg=planner_cfg, memory=self.memory, logger=self.logger)
 
-        self.logger.log("LookaheadStart", {"goal": context.get("goal", {})})
+                context = await planner.run(context)
 
-        # Add current pipeline so LookaheadAgent can reflect on it
-        context[PIPELINE] = [stage.name for stage in self.pipeline_stages]
-        context["agent_registry"] = OmegaConf.to_container(OmegaConf.load("config/agent_registry.yaml")["agents"])
-        updated_context = await lookahead_agent.run(context)
+                if "suggested_pipeline" in context:
+                    suggested = context["suggested_pipeline"]
+                    self.logger.log(
+                        "PipelineUpdatedByDOTSPlanner",
+                        {
+                            "strategy": context.get("strategy", "unknown"),
+                            "suggested": suggested,
+                        },
+                    )
+                    self.pipeline_stages = self._parse_pipeline_stages_from_list(
+                        suggested
+                    )
+            except Exception as e:
+                self.logger.log("DOTSPlannerFailed", {"error": str(e)})
 
-        # Optional: if lookahead returned a revised pipeline
-        if "suggested_pipeline" in updated_context:
-            suggested = updated_context["suggested_pipeline"]
-            self.logger.log("PipelineUpdatedByLookahead", {
-                "original": [stage.name for stage in self.pipeline_stages],
-                "suggested": suggested
-            })
-            self.pipeline_stages = self._parse_pipeline_stages_from_list(suggested)
+        # === RUN LOOKAHEAD SECOND (OPTIONAL REFLECTIVE OVERRIDE) ===
+        if not self.cfg.get("dynamic", {}).get("lookahead_enabled", False):
+            return context
 
-        return updated_context
+        try:
+            lookahead_cfg = OmegaConf.to_container(self.cfg.dynamic, resolve=True)
+            stage_dict = OmegaConf.to_container(self.cfg.agents.lookahead, resolve=True)
+            agent_cls = hydra.utils.get_class(lookahead_cfg["cls"])
+            lookahead_agent = agent_cls(
+                cfg=stage_dict, memory=self.memory, logger=self.logger
+            )
 
+            self.logger.log("LookaheadStart", {"goal": goal})
+            context[PIPELINE] = [stage.name for stage in self.pipeline_stages]
+            context["agent_registry"] = OmegaConf.to_container(
+                OmegaConf.load("config/agent_registry.yaml")["agents"]
+            )
+            updated_context = await lookahead_agent.run(context)
+
+            if "suggested_pipeline" in updated_context:
+                suggested = updated_context["suggested_pipeline"]
+                self.logger.log(
+                    "PipelineUpdatedByLookahead",
+                    {
+                        "original": [stage.name for stage in self.pipeline_stages],
+                        "suggested": suggested,
+                    },
+                )
+                self.pipeline_stages = self._parse_pipeline_stages_from_list(suggested)
+            return updated_context
+
+        except Exception as e:
+            self.logger.log("LookaheadFailed", {"error": str(e)})
+            return context
 
     async def rerun_pipeline(self, run_id: str) -> dict:
         """
@@ -263,7 +307,9 @@ class Supervisor:
         }
 
         # Optional: override pipeline stages to match recorded run
-        self.pipeline_stages = self._parse_pipeline_stages_from_list(pipeline_run.pipeline)
+        self.pipeline_stages = self._parse_pipeline_stages_from_list(
+            pipeline_run.pipeline
+        )
 
         # Optional: reapply lookahead suggestion or symbolic context (or skip it for pure repeatability)
         # context["lookahead"] = pipeline_run.lookahead_context
@@ -278,9 +324,9 @@ class Supervisor:
         self.logger.log("PipelineRerunComplete", {"run_id": run_id})
         return context
 
-
     def analyze_pipeline_deltas(self, goal_id: int):
         from co_ai.analysis.reflection_delta import compare_pipeline_runs
+
         deltas = compare_pipeline_runs(self.memory, goal_id)
         for delta in deltas:
             self.logger.log("ReflectionDeltaComputed", delta)

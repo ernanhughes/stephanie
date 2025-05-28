@@ -1,0 +1,15 @@
+You are the Evolution Agent. Given this idea:
+"{{ idea }}"
+
+And these critiques:
+{{ critique }}
+
+And this literature summary:
+{{ literature_summary }}
+
+Generate 3 evolved variants that increase:
+- Novelty
+- Feasibility
+- Alignment with goal
+
+Return only the list of evolved ideas, one per line.

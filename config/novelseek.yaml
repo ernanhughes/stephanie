@@ -1,0 +1,123 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/literature
+  - agents/literature_ranking
+  - agents/prompt_tuning
+  - agents/generation
+  - agents/refiner
+  - agents/ranking
+  - agents/debate
+  - agents/review
+  - agents/reflection
+  - agents/evolution
+  - agents/meta_review
+  - agents/proximity
+  - agents/sharpening
+  - agents/judge
+  - agents/lookahead
+  - agents/reflection_delta
+  - agents/symbolic_optimizer
+  - agents/cot_generator
+  - agents/general_reasoner
+  - agents/cot_dspy_generator
+  - agents/pipeline_judge
+  - agents/mrq_strategy
+  - agents/supervisor
+  - logging/json_logger
+
+# The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
+# This is a placeholder and should be replaced with the actual goal.
+goal: 
+  goal_text: "Will AI ever be able to reprogram itself?"
+  goal_type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
+
+dynamic:
+  name: lookahead
+  enabled: false
+  cls: co_ai.agents.lookahead.LookaheadAgent
+
+post_judgment:
+  name: pipeline_judge
+  enabled: true
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: default_pipeline
+  description: "Default hypothesis generation and refinement pipeline"
+  stages:
+    - name: literature
+      cls: co_ai.agents.literature.LiteratureAgent
+      enabled: false
+      iterations: 1
+    - name: literature_ranking
+      cls: co_ai.agents.generic.GenericAgent
+      enabled: false
+      iterations: 1
+    - name: generation
+      cls: co_ai.agents.generation.GenerationAgent
+      enabled: true
+      iterations: 1
+    - name: cot_generator
+      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
+      enabled: true
+      iterations: 1
+    - name: review
+      cls: co_ai.agents.review.ReviewAgent
+      enabled: true
+      iterations: 1
+    - name: reflection
+      cls: co_ai.agents.reflection.ReflectionAgent
+      enabled: true
+      iterations: 1
+    - name: proximity
+      cls: co_ai.agents.proximity.ProximityAgent
+      enabled: true
+      iterations: 1
+    - name: ranking
+      cls: co_ai.agents.ranking.RankingAgent
+      enabled: true
+      iterations: 1
+    - name: evolution
+      cls: co_ai.agents.evolution.EvolutionAgent
+      enabled: true
+      iterations: 1
+    - name: meta_review
+      cls: co_ai.agents.meta_review.MetaReviewAgent
+      enabled: true
+      iterations: 1
+    - name: prompt_tuning
+      cls: co_ai.agents.prompt_tuning.PromptTuningAgent
+      enabled: true
+      iterations: 1
+    - name: sharpening
+      cls: co_ai.agents.sharpening.SharpeningAgent
+      enabled: true
+      iterations: 1
+    - name: reflection_delta
+      cls: co_ai.agents.reflection_delta.ReflectionDeltaAgent
+      enabled: true
+      iterations: 1
+    - name: mrq_strategy
+      cls: co_ai.agents.mrq_strategy.MRQStrategyAgent
+      enabled: true
+      iterations: 1

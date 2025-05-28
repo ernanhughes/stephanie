@@ -10,8 +10,9 @@ from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                              OUTPUT_KEY, PROMPT_MATCH_RE, PROMPT_PATH,
                              SAVE_CONTEXT, SAVE_PROMPT, SOURCE, STRATEGY)
 from co_ai.logs import JSONLogger
+from co_ai.models import HypothesisORM
 from co_ai.prompts import PromptLoader
-
+import random
 
 def remove_think_blocks(text: str) -> str:
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
@@ -28,6 +29,8 @@ class BaseAgent(ABC):
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
         self.prompt_match_re = cfg.get(PROMPT_MATCH_RE, "")
         self.llm = self.init_llm()
+        self.strategy = cfg.get(STRATEGY, "default")
+        self.model_name = self.llm.get(NAME, "")
         self.source = cfg.get(SOURCE, CONTEXT)
         self.batch_size = cfg.get(BATCH_SIZE, 6)
         self.save_context = cfg.get(SAVE_CONTEXT, False)
@@ -35,6 +38,9 @@ class BaseAgent(ABC):
         self.preferences = cfg.get("preferences", {})
         self.remove_think = cfg.get("remove_think", True)
         self.output_key = cfg.get(OUTPUT_KEY, self.name)
+        self._goal_id_cache = {}
+        self._prompt_id_cache = {}
+        self._hypothesis_id_cache = {}
         self.logger.log(
             "AgentInitialized",
             {
@@ -48,17 +54,48 @@ class BaseAgent(ABC):
         required_keys = [NAME, API_BASE]
         for key in required_keys:
             if key not in self.model_config:
-                raise ValueError(f"Missing required LLM config key: {key}")
+                self.logger.log(
+                    "MissingLLMConfig",
+                    {"agent": self.name, "missing_key": key}
+                )   
         return {
-            NAME: self.model_config[NAME],
-            API_BASE: self.model_config[API_BASE],
+            NAME: self.model_config.get(NAME),
+            API_BASE: self.model_config.get(API_BASE),
             API_KEY: self.model_config.get(API_KEY),
         }
 
     def call_llm(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
         """Call the default or custom LLM, log the prompt, and handle output."""
         props = llm_cfg or self.llm  # Use passed-in config or default
-        
+
+        agent_name = self.name
+        strategy = self.cfg.get(STRATEGY, "")
+        prompt_key = self.cfg.get(PROMPT_PATH, "")
+        use_memory_for_fast_prompts = self.cfg.get("use_memory_for_fast_prompts", True)
+
+        # 🔁 Check cache
+        if self.memory and use_memory_for_fast_prompts:
+            previous = self.memory.prompt.find_matching(
+                agent_name=agent_name,
+                prompt_text=prompt,
+                strategy=strategy
+            )
+            if previous:
+                chosen = random.choice(previous)
+                cached_response = chosen.get("response_text")
+                self.logger.log(
+                    "LLMCacheHit",
+                    {
+                        "agent": agent_name,
+                        "strategy": strategy,
+                        "prompt_key": prompt_key,
+                        "cached": True,
+                        "count": len(previous),
+                        "emoji": "📦🔁💬",
+                    },
+                )
+                return cached_response
+
         messages = [{"role": "user", "content": prompt}]
         try:
             response = litellm.completion(
@@ -72,7 +109,7 @@ class BaseAgent(ABC):
             # Save prompt and response if enabled
             if self.cfg.get(SAVE_PROMPT, False) and self.memory:
                 self.memory.prompt.save(
-                    BaseAgent.extract_goal_text(context.get("goal")),
+                    context.get("goal"),
                     agent_name=self.name,
                     prompt_key=self.cfg.get(PROMPT_PATH, ""),
                     prompt_text=prompt,
@@ -128,20 +165,20 @@ class BaseAgent(ABC):
             entry.update(metadata)
         context["prompt_history"][self.name].append(entry)
 
-    def get_hypotheses(self, context: dict) -> list[str]:
+    def get_hypotheses(self, context: dict) -> list[dict]:
         try:
             if self.source == "context":
-                hypotheses = context.get(self.input_key, [])
-                if not hypotheses:
+                hypothesis_dicts = context.get(self.input_key, [])
+                if not hypothesis_dicts:
                     self.logger.log("NoHypothesesInContext", {"agent": self.name})
-                return hypotheses
+                return hypothesis_dicts
 
             elif self.source == "database":
                 goal = context.get(GOAL)
                 hypotheses = self.get_hypotheses_from_db(goal.get("goal_text"))
                 if not hypotheses:
-                    self.logger.log("NoUnReflectedInDatabase", {"agent": self.name, "goal": goal})
-                return hypotheses or []
+                    self.logger.log("NoHypothesesInDatabase", {"agent": self.name, "goal": goal})
+                return [h.to_dict() for h in hypotheses] if hypotheses else []
 
             else:
                 self.logger.log("InvalidSourceConfig", {
@@ -159,7 +196,34 @@ class BaseAgent(ABC):
 
     def get_hypotheses_from_db(self, goal_text:str):
         return self.memory.hypotheses.get_latest(goal_text, self.batch_size)
-    
+
     @staticmethod
     def extract_goal_text(goal):
         return goal.get("goal_text") if isinstance(goal, dict) else goal
+
+    def get_goal_id(self, goal: dict):
+        if not isinstance(goal, dict):
+            raise ValueError(f"Expected goal to be a dict, got {type(goal).__name__}: {goal}")
+        goal_text = goal.get("goal_text", "")
+        if goal_text in self._goal_id_cache:
+            return self._goal_id_cache[goal_text][0]
+        goal = self.memory.goals.get_from_text(goal_text)
+        self._goal_id_cache[goal_text] = (goal.id, goal)
+        return goal.id
+
+    def get_prompt_id(self, prompt_text: str):
+        if prompt_text in self._prompt_id_cache:
+            return self._prompt_id_cache[prompt_text][0]
+        prompt = self.memory.prompt.get_from_text(prompt_text)
+        self._prompt_id_cache[prompt_text] = (prompt.id, prompt)
+        return prompt.id
+
+    def get_hypothesis_id(self, hypothesis_dict: dict):
+        if not isinstance(hypothesis_dict, dict):
+            raise ValueError(f"Expected hypothesis_text to be a dict, got {type(hypothesis_dict).__name__}: {hypothesis_dict}")
+        text = hypothesis_dict.get("text")
+        if text in self._hypothesis_id_cache:
+            return self._hypothesis_id_cache[text][0]
+        hypothesis = self.memory.hypotheses.get_from_text(text)
+        self._hypothesis_id_cache[text] = (hypothesis.id, hypothesis)
+        return hypothesis.id

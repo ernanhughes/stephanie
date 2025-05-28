@@ -1,93 +1,95 @@
+# stores/lookahead_store.py
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from co_ai.models.lookahead import LookaheadORM
+from co_ai.models.goal import GoalORM
+from datetime import datetime
 import json
 
-from co_ai.memory.base_store import BaseStore
-from co_ai.models.lookahead import Lookahead
-from co_ai.constants import PIPELINE
 
-
-class LookaheadStore(BaseStore):
-    def __init__(self, db, logger=None):
-        super().__init__(db, logger)
+class LookaheadStore:
+    def __init__(self, session: Session, logger=None):
+        self.session = session
+        self.logger = logger
         self.name = "lookahead"
-
-    def __repr__(self):
-        return f"<{self.name} connected={self.db is not None}>"
-
+    
     def name(self) -> str:
         return "lookahead"
 
-    def insert(self, goal_id: int, result: Lookahead):
-        query = """
-            INSERT INTO lookaheads (
-                goal_id,
-                agent_name,
-                model_name,
-                input_pipeline,
-                suggested_pipeline,
-                rationale,
-                reflection,
-                backup_plans,
-                metadata,
-                run_id
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    def insert(self, goal_id: int, result: LookaheadORM):
+        """
+        Inserts a new lookahead result into the database.
+        Assumes goal already exists.
         """
         try:
-            with self.db.cursor() as cur:
-                cur.execute(
-                    query,
-                    (
-                        goal_id,
-                        result.agent_name,
-                        result.model_name,
-                        result.input_pipeline,
-                        result.suggested_pipeline,
-                        result.rationale,
-                        result.reflection,
-                        result.backup_plans,
-                        json.dumps(result.metadata or {}),  # <-- Convert dict to JSON string
-                        result.run_id,
-                    ),
+            # Build ORM object
+            db_lookahead = LookaheadORM(
+                goal_id=goal_id,
+                agent_name=result.agent_name,
+                model_name=result.model_name,
+                input_pipeline=result.input_pipeline,
+                suggested_pipeline=result.suggested_pipeline,
+                rationale=result.rationale,
+                reflection=result.reflection,
+                backup_plans=json.dumps(result.backup_plans) if result.backup_plans else None,
+                extra_data=json.dumps(result.extra_data or {}),
+                run_id=result.run_id,
+                created_at=result.created_at or datetime.utcnow()
+            )
+
+            self.session.add(db_lookahead)
+            self.session.flush()  # To get ID immediately
+
+            if self.logger:
+                self.logger.log(
+                    "LookaheadInserted",
+                    {
+                        "goal_id": goal_id,
+                        "agent": result.agent_name,
+                        "model": result.model_name,
+                        "pipeline": result.input_pipeline,
+                        "suggested_pipeline": result.suggested_pipeline,
+                        "rationale_snippet": (result.rationale or "")[:100],
+                    },
                 )
-                if self.logger:
-                    self.logger.log(
-                        "LookaheadInserted",
-                        {
-                            "goal_id": goal_id,
-                            "agent": result.agent_name,
-                            "model": result.model_name,
-                            PIPELINE: result.input_pipeline,
-                            "suggested_pipeline": result.suggested_pipeline,
-                            "rationale_snippet": (result.rationale or "")[:100],
-                        },
-                    )
-            return None
+
+            return db_lookahead.id
+
         except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
+            self.session.rollback()
             if self.logger:
                 self.logger.log("LookaheadInsertFailed", {"error": str(e)})
-            return None
+            raise
 
-    def list_all(self) -> list[Lookahead]:
-        query = "SELECT * FROM lookaheads ORDER BY created_at DESC"
-        rows = self.db.fetch_all(query)
-        results = [self._row_to_result(row) for row in rows]
+    def list_all(self, limit: int = 100) -> List[LookaheadORM]:
+        """Returns all stored lookaheads, converted back to dataclass"""
+        db_results = self.session.query(LookaheadORM).order_by(LookaheadORM.created_at.desc()).limit(limit).all()
+        return [self._orm_to_dataclass(result) for result in db_results]
 
-        if self.logger:
-            self.logger.log("LookaheadsListed", {"count": len(results)})
+    def get_by_goal_id(self, goal_id: int) -> List[LookaheadORM]:
+        results = (
+            self.session.query(LookaheadORM)
+            .filter_by(goal_id=goal_id)
+            .order_by(LookaheadORM.created_at.desc())
+            .all()
+        )
+        return [self._orm_to_dataclass(r) for r in results]
 
-        return results
+    def get_by_run_id(self, run_id: str) -> Optional[LookaheadORM]:
+        result = self.session.query(LookaheadORM).filter_by(run_id=run_id).first()
+        return self._orm_to_dataclass(result) if result else None
 
-    def _row_to_result(self, row) -> Lookahead:
-        return Lookahead(
-            goal=row["goal_id"],
-            agent_name=row["agent_name"],
-            model_name=row["model_name"],
-            input_pipeline=row["input_pipeline"],
-            suggested_pipeline=row["suggested_pipeline"],
-            rationale=row["rationale"],
-            reflection=row["reflection"],
-            backup_plans=row["backup_plans"],
-            metadata=row["metadata"],
-            run_id=row["run_id"],
-            created_at=row["created_at"],
+    def _orm_to_dataclass(self, row: LookaheadORM) -> LookaheadORM:
+        return LookaheadORM(
+            goal=row.goal_id,
+            agent_name=row.agent_name,
+            model_name=row.model_name,
+            input_pipeline=row.input_pipeline,
+            suggested_pipeline=row.suggested_pipeline,
+            rationale=row.rationale,
+            reflection=row.reflection,
+            backup_plans=json.loads(row.backup_plans) if row.backup_plans else [],
+            metadata=json.loads(row.extra_data) if row.extra_data else {},
+            run_id=row.run_id,
+            created_at=row.created_at,
         )

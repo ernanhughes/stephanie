@@ -1,20 +1,23 @@
-from dataclasses import dataclass
-from typing import Optional, Dict, Tuple
+# models/reflection_delta.py
+from sqlalchemy import Boolean, Column, Integer, String, Float, JSON, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
+from .base import Base
 
-@dataclass
-class ReflectionDelta:
-    id: Optional[int] = None
-    goal_id: int = 0
-    run_id_a: str = ""
-    run_id_b: str = ""
-    score_a: Optional[float] = None
-    score_b: Optional[float] = None
-    score_delta: Optional[float] = None
-    pipeline_a: Optional[Dict] = None
-    pipeline_b: Optional[Dict] = None
-    pipeline_diff: Optional[Dict] = None  # {"only_in_a": [...], "only_in_b": [...]}
-    strategy_diff: Optional[bool] = False
-    model_diff: Optional[bool] = False
-    rationale_diff: Optional[Tuple[str, str]] = None
-    created_at: Optional[datetime] = None
+class ReflectionDeltaORM(Base):
+    __tablename__ = "reflection_deltas"
+
+    id = Column(Integer, primary_key=True)
+    goal_id = Column(Integer, ForeignKey("goals.id"))
+    run_id_a = Column(String, nullable=False)
+    run_id_b = Column(String, nullable=False)
+    score_a = Column(Float)
+    score_b = Column(Float)
+    score_delta = Column(Float)
+    pipeline_diff = Column(JSON)
+    strategy_diff = Column(Boolean, default=False)
+    model_diff = Column(Boolean, default=False)
+    rationale_diff = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    goal = relationship("GoalORM", back_populates="reflection_deltas")

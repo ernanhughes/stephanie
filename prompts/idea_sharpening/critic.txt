@@ -1,0 +1,28 @@
+You are an expert researcher applying the CRITIC framework to refine scientific hypotheses.
+
+Goal:
+{{ goal }}
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+
+Examples:
+{% for h in examples %}
+Hypothesis {{ loop.index }}:
+{{ h.hypothesis }}
+
+Review:
+{{ h.review }}
+{% endfor %}
+
+Instructions:
+1. Clarify the objective and assumptions
+2. Reflect on current limitations
+3. Identify gaps in reasoning
+4. Suggest refinements that improve clarity, novelty, and feasibility
+5. Ensure biological plausibility if the goal involves biological or cognitive systems
+
+Output format:
+Refined Hypothesis: <your improved version here>

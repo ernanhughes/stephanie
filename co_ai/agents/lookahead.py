@@ -4,7 +4,7 @@ from dataclasses import asdict
 
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL, PIPELINE
-from co_ai.models import Lookahead
+from co_ai.models import LookaheadORM
 
 
 class LookaheadAgent(BaseAgent):
@@ -12,7 +12,7 @@ class LookaheadAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict):
-        goal = self.memory.goals.get_or_create(context.get(GOAL))
+        goal = self.memory.goaIls.get_or_create(context.get(GOAL))
 
         # Build context for prompt template
 
@@ -54,19 +54,19 @@ class LookaheadAgent(BaseAgent):
         extracted = self.parse_response(response)
         context.update(extracted)
         pipeline = context.get(PIPELINE, [])
-        reflection = Lookahead(
-            goal=goal.goal_text,
+        lookahead_data = LookaheadORM(
+            goal=goal.id,
             agent_name=self.name,
             model_name=model_name,
-            input_pipeline=pipeline,
-            suggested_pipeline=extracted.get("suggested_pipeline"),
-            rationale=extracted.get("rationale"),
-            reflection=response,
-            metadata={"raw_output": response},
-            run_id=context.get("run_id"),
+            input_pipeline=context.get(PIPELINE),
+            suggested_pipeline=["generation", "verifier", "judge"],
+            rationale="Input pipeline lacks verification step.",
+            reflection="# Predicted Risks\n- Hallucination risk\n- No validation",
+            backup_plans=["Plan A: Add fact-checking", "Plan B: Use retrieval-augmented generation"],
+            metadata={"domain": "AI Safety"},
+            run_id=context.get("run_id")
         )
-        reflection.store(self.memory, self.logger)
-
+        self.memory.lookahead.insert(goal.id, lookahead_data)
         # Log the result
         self.logger.log(
             "LookaheadGenerated",
@@ -77,7 +77,7 @@ class LookaheadAgent(BaseAgent):
         )
 
         # Store in context
-        context[self.output_key] = asdict(reflection)
+        context[self.output_key] = lookahead_data
         return context
 
     def parse_response(self, text: str) -> dict:

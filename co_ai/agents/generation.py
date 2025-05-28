@@ -2,7 +2,7 @@
 
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import FEEDBACK, GOAL, HYPOTHESES, LITERATURE, PIPELINE
-from co_ai.models import Hypothesis
+from co_ai.models import HypothesisORM
 from co_ai.parsers import extract_hypotheses
 
 
@@ -11,7 +11,7 @@ class GenerationAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
-        goal = self.extract_goal_text(context.get(GOAL))
+        goal = self.memory.goals.get_or_create(context.get(GOAL))
 
         self.logger.log("GenerationStart", {GOAL: goal})
 
@@ -20,30 +20,34 @@ class GenerationAgent(BaseAgent):
 
         # Build context for prompt
         render_context = {
+            GOAL: goal.goal_text,
             LITERATURE: literature,
             FEEDBACK: context.get(FEEDBACK, {}),
             HYPOTHESES: context.get(HYPOTHESES, []),
         }
 
         # Load prompt based on strategy
-        prompt = self.prompt_loader.load_prompt(
+        prompt_text = self.prompt_loader.load_prompt(
             self.cfg, context={**context, **render_context}
         )
-        response = self.call_llm(prompt, context)
+        response = self.call_llm(prompt_text, context)
 
         # Extract hypotheses
         hypotheses = extract_hypotheses(response)
+        hypotheses_saved = []
+        prompt = self.memory.prompt.get_from_text(prompt_text)
         for h in hypotheses:
-            hyp = Hypothesis(
-                goal=goal,
+            hyp = HypothesisORM(
+                goal_id=goal.id,
                 text=h,
-                prompt=prompt,
+                prompt_id=prompt.id,
                 pipeline_signature=context.get(PIPELINE),
             )
             self.memory.hypotheses.insert(hyp)
+            hypotheses_saved.append(hyp.to_dict())
 
         # Update context with new hypotheses
-        context[self.output_key] = hypotheses
+        context[self.output_key] = hypotheses_saved
 
         # Log event
         self.logger.log(
@@ -51,8 +55,8 @@ class GenerationAgent(BaseAgent):
             {
                 GOAL: goal,
                 HYPOTHESES: hypotheses,
-                "prompt_snippet": prompt[:300],
-                "response_snippet": response[:500],
+                "prompt_snippet": prompt_text[:100],
+                "response_snippet": response[:200],
             },
         )
 

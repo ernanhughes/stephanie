@@ -1,141 +1,66 @@
-from typing import List, Optional
+# stores/goal_store.py
+from sqlalchemy.orm import Session
+from co_ai.models.goal import GoalORM
+from sqlalchemy.exc import IntegrityError
+from datetime import datetime
 
-from co_ai.memory.base_store import BaseStore
-from co_ai.models.goal import Goal
 
-
-class GoalStore(BaseStore):
-    def __init__(self, db, logger=None):
-        super().__init__(db, logger)
-        self.table_name = "goals"
+class GoalStore:
+    def __init__(self, session: Session, logger=None):
+        self.session = session
+        self.logger = logger
         self.name = "goals"
-
-    def __repr__(self):
-        return f"<{self.name} connected={self.db is not None}>"
-
+    
     def name(self) -> str:
         return "goals"
 
+    def get_from_text(self, goal_text: str):
+        return self.session.query(GoalORM).filter(GoalORM.goal_text == goal_text).first()
 
-    def get_by_id(self, goal_id: int) -> Optional[Goal]:
-        query = f"SELECT * FROM {self.table_name} WHERE id = %s"
-        row = self.db.fetch_one(query, (goal_id,))
-        goal = self._row_to_goal(row) if row else None
-        if self.logger:
-            self.logger.log("GoalFetchedById", {
-                "goal_id": goal_id,
-                "found": goal is not None
-            })
-        return goal
-
-    def get_by_text(self, goal_text: str) -> Optional[Goal]:
-        query = f"SELECT * FROM {self.table_name} WHERE goal_text = %s"
+    def create(self, goal_dict: dict):
         try:
-            with self.db.cursor() as cur:
-                cur.execute(query, (goal_text,))
-                row = cur.fetchone()
-                goal = self._row_to_goal(row) if row else None
-                if self.logger:
-                    self.logger.log("GoalFetchedByText", {
-                        "goal_text": goal_text[:100],
-                        "found": goal is not None
-                    })
-                return goal
-        except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
-            if self.logger:
-                self.logger.log("GoalGetFailed", {"error": str(e)})
-            return None
+            new_goal = GoalORM(
+                goal_text=goal_dict["goal_text"],
+                goal_type=goal_dict.get("goal_type"),
+                focus_area=goal_dict.get("focus_area"),
+                strategy=goal_dict.get("strategy"),
+                llm_suggested_strategy=goal_dict.get("llm_suggested_strategy"),
+                source=goal_dict.get("source", "user"),
+                created_at=goal_dict.get("created_at") or datetime.utcnow()
+            )
+            self.session.add(new_goal)
+            self.session.commit()
+            self.session.refresh(new_goal)
 
-    def get_or_create(self, goal_dict: dict) -> Goal:
-        goal = Goal(**goal_dict)
-        existing = self.get_by_text(goal.goal_text)
-        if existing:
             if self.logger:
-                self.logger.log("GoalExists", {
-                    "goal_id": existing.id,
-                    "goal_text": goal.goal_text[:100]
+                self.logger.log("GoalCreated", {
+                    "goal_id": new_goal.id,
+                    "goal_text": new_goal.goal_text[:100],
+                    "source": new_goal.source
                 })
-            return existing
-        goal.id = self.insert(goal)
-        if self.logger:
-            self.logger.log("GoalCreated", {
-                "goal_text": goal.goal_text[:100],
-                "goal_type": goal.goal_type
-            })
-        return goal
 
-    def insert(self, goal: Goal) -> int:
-        query = f"""
-            INSERT INTO {self.table_name}
-            (goal_text, goal_type, focus_area, strategy, llm_suggested_strategy, source)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING id
+            return new_goal
+
+        except IntegrityError:
+            self.session.rollback()
+            return self.get_by_text(goal_dict["goal_text"])
+
+        except Exception as e:
+            self.session.rollback()
+            if self.logger:
+                self.logger.log("GoalCreateFailed", {"error": str(e)})
+            raise
+
+    def get_or_create(self, goal_dict: dict):
         """
-        try:
-            with self.db.cursor() as cur:
-                cur.execute(
-                    query,
-                    (
-                        goal.goal_text,
-                        goal.goal_type,
-                        goal.focus_area,
-                        goal.strategy,
-                        goal.llm_suggested_strategy,
-                        goal.source,
-                    ),
-                )
-                new_id = cur.fetchone()[0]
-                self.db.commit()  # Commit after write
-                if self.logger:
-                    self.logger.log("GoalInserted", {
-                        "goal_id": new_id,
-                        "goal_text": goal.goal_text[:100],
-                        "goal_type": goal.goal_type,
-                        "focus_area": goal.focus_area,
-                        "strategy": goal.strategy
-                    })
-                return new_id
-        except Exception as e:
-            self.db.rollback()
-            print(f"❌ Insert failed: {e}")
-            if self.logger:
-                self.logger.log("GoalInsertFailed", {"error": str(e)})
-            return -1
+        Returns existing goal or creates a new one.
+        """
+        goal_text = goal_dict.get("goal_text")
+        if not goal_text:
+            raise ValueError("Missing 'goal_text' in input")
 
-    def list_all(self) -> List[Goal]:
-        query = f"SELECT * FROM {self.table_name} ORDER BY created_at DESC"
-        rows = self.db.fetch_all(query)
-        goals = [self._row_to_goal(row) for row in rows]
-        if self.logger:
-            self.logger.log("GoalsListed", {
-                "count": len(goals)
-            })
-        return goals
+        existing = self.get_from_text(goal_text)
+        if existing:
+            return existing
 
-    def update_strategy(self, goal_id: int, strategy: str):
-        query = f"UPDATE {self.table_name} SET strategy = %s WHERE id = %s"
-        try:
-            self.db.execute(query, (strategy, goal_id))
-            self.db.commit()
-            if self.logger:
-                self.logger.log("GoalStrategyUpdated", {
-                    "goal_id": goal_id,
-                    "new_strategy": strategy
-                })
-        except Exception as e:
-            self.db.rollback()
-            if self.logger:
-                self.logger.log("GoalStrategyUpdateFailed", {"error": str(e)})
-
-    def _row_to_goal(self, row) -> Goal:
-        return Goal(
-            id=row["id"],
-            goal_text=row["goal_text"],
-            goal_type=row["goal_type"],
-            focus_area=row["focus_area"],
-            strategy=row["strategy"],
-            llm_suggested_strategy=row["llm_suggested_strategy"],
-            source=row["source"],
-            created_at=row["created_at"],
-        )
+        return self.create(goal_dict)

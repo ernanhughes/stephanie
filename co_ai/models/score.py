@@ -1,74 +1,66 @@
-from dataclasses import dataclass
+# models/score.py
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, JSON
+from sqlalchemy.orm import relationship
 from datetime import datetime
-from typing import Optional
+from .base import Base
 
+class ScoreORM(Base):
+    __tablename__ = "scores"
 
-@dataclass
-class Score:
-    goal: str
-    hypothesis: str
-    agent_name: str
-    model_name: str
-    evaluator_name: str
-    score_type: str
-    score: Optional[float] = None
-    score_text: Optional[str] = None
-    strategy: Optional[str] = None
-    reasoning_strategy: Optional[str] = None
-    rationale: Optional[str] = None
-    reflection: Optional[str] = None       # NEW
-    review: Optional[str] = None           # NEW
-    meta_review: Optional[str] = None      # NEW
-    run_id: Optional[str] = None
-    metadata: Optional[dict] = None
-    created_at: Optional[datetime] = None
+    id = Column(Integer, primary_key=True)
+    goal_id = Column(Integer, ForeignKey("goals.id"))
+    hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
+    agent_name = Column(String, nullable=False)
+    model_name = Column(String, nullable=False)
+    evaluator_name = Column(String, nullable=False)
+    score_type = Column(String, nullable=False)
+    score = Column(Float)
+    score_text = Column(Text)
+    strategy = Column(String)
+    reasoning_strategy = Column(String)
+    rationale = Column(Text)
+    reflection = Column(Text)
+    review = Column(Text)
+    meta_review = Column(Text)
+    run_id = Column(String)
+    extra_data = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
+    goal = relationship("GoalORM", back_populates="scores")
+    hypothesis = relationship("HypothesisORM", back_populates="scores")
 
-    def set_score(self, value):
-        self.score, self.score_text = self.to_float_or_text(value)
+    def to_dict(self, include_relationships: bool = False) -> dict:
+        data = {
+            "id": self.id,
+            "goal_id": self.goal_id,
+            "hypothesis_id": self.hypothesis_id,
+            "agent_name": self.agent_name,
+            "model_name": self.model_name,
+            "evaluator_name": self.evaluator_name,
+            "score_type": self.score_type,
+            "score": self.score,
+            "score_text": self.score_text,
+            "strategy": self.strategy,
+            "reasoning_strategy": self.reasoning_strategy,
+            "rationale": self.rationale,
+            "reflection": self.reflection,
+            "review": self.review,
+            "meta_review": self.meta_review,
+            "run_id": self.run_id,
+            "extra_data": self.extra_data,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
 
-    def store(self, memory, logger=None):
-        """
-        Saves this score object to the database using the memory object.
-        Resolves goal_id and hypothesis_id using goal/hypothesis text.
-        """
-        try:
-            goal_id = memory.hypotheses.get_or_create_goal(self.goal)
-            hypothesis_id = memory.hypotheses.get_id_by_text(self.hypothesis)
+        if include_relationships:
+            data["goal"] = (
+                self.goal.to_dict()
+                if self.goal and hasattr(self.goal, "to_dict")
+                else None
+            )
+            data["hypothesis"] = (
+                self.hypothesis.to_dict()
+                if self.hypothesis and hasattr(self.hypothesis, "to_dict")
+                else None
+            )
 
-            if goal_id is None or hypothesis_id is None:
-                raise ValueError("Missing goal_id or hypothesis_id")
-
-            memory.scores.insert(self)
-
-            if logger:
-                logger.log(
-                    "ScoreStored",
-                    {
-                        "goal_id": goal_id,
-                        "hypothesis_id": hypothesis_id,
-                        "score": self.score,
-                        "strategy": self.strategy,
-                        "score_type": self.score_type,
-                    },
-                )
-
-        except Exception as e:
-            if logger:
-                logger.log("ScoreStorageError", {"error": str(e)})
-            raise
-
-    @staticmethod
-    def to_float_or_text(value):
-        try:
-            return float(value), None
-        except (ValueError, TypeError):
-            return None, str(value)
-
-    @staticmethod
-    def build(goal: str, hypothesis: str, cfg: dict):
-        model_name = cfg.get("model", {}).get("name")
-        evaluator_name = cfg.get("judge", "mrq")
-        score_type = cfg.get("name", "undefined")
-        agent_name = cfg.get("name", "undefined")
-        return Score(goal=goal, hypothesis=hypothesis,model_name=model_name, score_type=score_type, agent_name=agent_name, evaluator_name=evaluator_name)
+        return data

@@ -1,0 +1,16 @@
+You are the Search Result Processing Agent. Your task is to analyze scientific literature and distill its most useful parts.
+
+Goal: {{ goal_text }}
+Focus Area: {{ focus_area }}
+
+Title: {{ title }}
+Summary: {{ summary }}
+Source: {{ source }}
+
+Please return a JSON object with:
+- key_concepts: Important terms or techniques mentioned
+- technical_insights: Specific findings or implications
+- relevance_score: 1–10 score for how relevant this is to the goal
+- related_ideas: List of hypotheses or research directions this supports
+
+Return only the JSON, no explanation.

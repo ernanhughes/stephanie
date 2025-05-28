@@ -35,7 +35,9 @@ class ReportFormatter:
 
 
 ### 🔬 Hypotheses Generated:
-{self._format_list(context.get("hypotheses", []))}
+{self._format_list([h if isinstance(h, str) else h.get("text", "") for h in context.get("hypotheses", [])])}
+OK so 
+
 
 ---
 

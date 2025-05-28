@@ -1,0 +1,67 @@
+# configs/agents/idea_innovation.yaml
+
+idea_sharpening:
+  name: idea_sharpening
+  enabled: true
+
+  save_count: 5
+
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  strategy:
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_mode: file
+  prompt_file: idea_sharpening.txt
+  input_keys: ["goal"]
+  input_key:
+  output_key: idea
+  baselines:
+    meta_learning:
+      self_modifying_ai:
+        description: "A system where AI reflects on its own outputs and modifies reasoning steps dynamically."
+        strategy: |
+          - Use introspection to analyze model output
+          - Generate reflection prompt based on output
+          - Update system prompt with new knowledge
+          - Validate changes before applying them
+
+    chemistry:
+      reaction_yield_prediction:
+        description: "Predicting chemical reaction yield using molecular structure and context."
+        strategy: |
+          - Encode molecules as SMILES strings
+          - Extract graph-derived features from molecular structure
+          - Use attention masking to highlight relevant substructures
+          - Train model to predict yield given reactants + conditions
+
+    nlp:
+      sentiment_analysis:
+        description: "Classify text sentiment using transformer architecture."
+        strategy: |
+          - Tokenize input text
+          - Use pretrained embedding layer (e.g., BERT)
+          - Add custom attention layer for domain-specific emphasis
+          - Fine-tune on labeled sentiment dataset
+
+    computer_vision:
+      pointnet_classifier:
+        description: "3D point cloud classification using PointNet-style architecture."
+        strategy: |
+          - Normalize and sample point clouds
+          - Use shared MLP to extract features per point
+          - Apply max-pooling for global feature aggregation
+          - Feed into classifier head
+
+    default:
+      generic_ai_research:
+        description: "General AI research methodology pattern"
+        strategy: |
+          - Define clear objective
+          - Identify constraints and assumptions
+          - Choose baseline method
+          - Design experiment to test hypothesis
+          - Evaluate performance improvements

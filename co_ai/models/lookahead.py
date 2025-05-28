@@ -1,42 +1,31 @@
-from dataclasses import dataclass
+# models/lookahead.py
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
-from typing import Dict, List, Optional
+from co_ai.models.base import Base
 
 
-@dataclass
-class Lookahead:
-    goal: str
-    agent_name: str
-    model_name: str
-    input_pipeline: Optional[List[str]] = None
-    suggested_pipeline: Optional[List[str]] = None
-    rationale: Optional[str] = None
-    reflection: Optional[str] = None
-    backup_plans: Optional[List[str]] = None
-    metadata: Optional[Dict] = None
-    run_id: Optional[str] = None
-    created_at: Optional[datetime] = None
+class LookaheadORM(Base):
+    __tablename__ = "lookaheads"
 
-    def store(self, memory, logger=None):
-        """
-        Stores this LookaheadResult in the `lookaheads` table using the memory layer.
-        Resolves goal_id from goal text.
-        """
-        try:
-            goal = memory.goal.get_by_text(self.goal)
-            if goal is None:
-                raise ValueError("Missing goal_id")
+    id = Column(Integer, primary_key=True)
 
-            memory.lookahead.insert(goal.id, self)
+    # Goal info
+    goal_id = Column(Integer, ForeignKey("goals.id"), nullable=False)
 
-            if logger:
-                logger.log("LookaheadSaved", {
-                    "goal_id": goal.id,
-                    "suggested_pipeline": self.suggested_pipeline,
-                    "rationale_snippet": (self.rationale or "")[:100]
-                })
+    # Agent metadata
+    agent_name = Column(String, nullable=False)
+    model_name = Column(String, nullable=False)
 
-        except Exception as e:
-            if logger:
-                logger.log("LookaheadStorageError", {"error": str(e)})
-            raise
+    # Pipeline information
+    input_pipeline = Column(String)  # Store as JSON string if needed
+    suggested_pipeline = Column(String)  # Same here
+    rationale = Column(Text)
+    reflection = Column(Text)
+    backup_plans = Column(Text)  # List[str] stored as JSON or newline-separated
+    extra_data = Column("metadata", Text)  # Renamed to avoid conflict with SQLAlchemy
+    run_id = Column(String)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    goal = relationship("GoalORM", back_populates="lookaheads")

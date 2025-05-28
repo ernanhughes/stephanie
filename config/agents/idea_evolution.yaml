@@ -1,0 +1,19 @@
+# configs/agents/idea_evolution.yaml
+
+idea_evolution:
+  name: idea_evolution
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  strategy:
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_mode: file
+  prompt_file: evolve.txt
+  input_keys: ["goal", "hypotheses"]
+  input_key: hypotheses
+  output_key: evolved_hypotheses
+

@@ -1,6 +1,7 @@
-from co_ai.constants import GOAL
-from co_ai.models.pattern_stat import generate_pattern_stats
+from datetime import datetime
 
+from co_ai.constants import GOAL
+from co_ai.models import PatternStatORM
 
 class RubricClassifierMixin:
     def _load_enabled_rubrics(self, cfg):
@@ -21,8 +22,7 @@ class RubricClassifierMixin:
         rubrics = self._load_enabled_rubrics(cfg)
 
         for rubric in rubrics:
-            rubric["goal"] = context["goal"]["goal_text"]
-            rubric["hypotheses"] = hypothesis.text
+            rubric["hypotheses"] = hypothesis.get("text")
             merged = {**context, **rubric}
             prompt_text = prompt_loader.from_file(pattern_file, cfg, merged)
             custom_llm = cfg.get("analysis_model", None)
@@ -59,13 +59,13 @@ class RubricClassifierMixin:
             logger=logger,
         )
 
-        goal = self.extract_goal_text(context.get(GOAL))
+        goal = context.get(GOAL)
         summarized = self._summarize_pattern(pattern)
 
-        goal_id, hypothesis_id, pattern_stats = generate_pattern_stats(
-            goal, hypothesis.text, summarized, memory, cfg, agent_name, score
+        goal_id, hypothesis_id, pattern_stats = self.generate_pattern_stats(
+            goal, hypothesis, summarized, memory, cfg, agent_name, score
         )
-        memory.hypotheses.store_pattern_stats(goal_id, hypothesis_id, pattern_stats)
+        memory.pattern_stats.insert(pattern_stats)
         logger.log(
             "RubricPatternsStored",
             {"goal_id": goal_id, "hypothesis_id": hypothesis_id, "summary": summarized},
@@ -73,3 +73,42 @@ class RubricClassifierMixin:
 
         context["pattern_stats"] = summarized
         return summarized
+
+    def generate_pattern_stats(self, goal,
+                               hypothesis,
+                               pattern_dict,
+                               memory,
+                               cfg,
+                               agent_name,
+                               confidence_score=None,
+                               ):
+        """
+        Create PatternStatORM entries for a classified CoT using DB lookup for IDs.
+        """
+        try:
+            # Get or create goal
+            goal_id = self.get_goal_id(goal)
+
+            # Get hypothesis by text
+            hypothesis_id = self.get_hypothesis_id(hypothesis)
+            model_name = cfg.get("model", {}).get("name", "unknown")
+
+            stats = []
+            for dimension, label in pattern_dict.items():
+                stat = PatternStatORM(
+                    goal_id=goal_id,
+                    hypothesis_id=hypothesis_id,
+                    model_name=model_name,
+                    agent_name=agent_name,
+                    dimension=dimension,
+                    label=label,
+                    confidence_score=confidence_score,
+                    created_at=datetime.utcnow(),
+                )
+                stats.append(stat)
+
+            return goal_id, hypothesis_id, stats
+
+        except Exception as e:
+            print(f"❌ Failed to generate pattern stats: {e}")
+            raise

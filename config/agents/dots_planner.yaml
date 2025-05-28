@@ -1,0 +1,63 @@
+# config/agents/ranking.yaml
+defaults:
+  - /prompt_refiner/disabled
+
+dots_planner:
+  name: dots_planner
+  enabled: true
+  source: context  # database or context
+
+
+  save_context: false
+  skip_if_completed: false
+
+  # model
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  # Required keys for the agent ot effectively process the context
+  required_keys: ["goal"]   # add nodes
+  # Key that it will iterate over ot generate reflections
+  input_key: goal
+  # Key that it store the results of those reflections
+  output_key: planner  # change
+
+  # prompt
+  save_prompt: true
+  prompt_mode: file
+  strategy: debate
+  prompt_file: debate.txt
+  # preferences
+  preferences:
+  - goal_consistency
+  - biological_plausibility
+  - experimental_validity
+  - novelty
+  - simplicity
+
+default_strategy: "default"
+strategy_routes:
+  dataset-first:
+    - survey
+    - idea_innovation
+    - method_builder
+    - evaluation
+  evaluation-centric:
+    - survey
+    - idea_innovation
+    - evaluation
+  deep_literature:
+    - survey
+    - idea_innovation
+    - method_builder
+  code-centric:
+    - survey
+    - idea_innovation
+    - method_builder
+    - implementation
+  default:
+    - survey
+    - idea_innovation
+    - evaluation
