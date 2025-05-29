@@ -2,6 +2,52 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- text hashing
 
+
+CREATE TABLE IF NOT EXISTS goals (
+    id SERIAL PRIMARY KEY,
+    goal_text TEXT NOT NULL,
+    goal_type TEXT,                   -- e.g., 'research', 'forecast', 'writing'
+    focus_area TEXT,                  -- e.g., 'AI', 'stock', 'healthcare'
+    strategy TEXT,                    -- e.g., 'generation_reflect_review', 'cot_eval_refine'
+    llm_suggested_strategy TEXT,
+    source TEXT DEFAULT 'user',       -- 'user', 'llm', or 'hybrid'
+    created_at TIMESTAMP DEFAULT now()
+);
+
+
+
+CREATE TABLE IF NOT EXISTS prompts (
+    id SERIAL PRIMARY KEY,
+    agent_name TEXT NOT NULL,
+    prompt_key TEXT NOT NULL,         -- e.g., generation_goal_aligned.txt
+    prompt_text TEXT NOT NULL,
+    goal_id int REFERENCES goals(id) ON DELETE CASCADE, -- Goal this prompt is associated with;
+    response_text TEXT,
+    source TEXT,                      -- e.g., manual, dsp_refinement, feedback_injection
+    version INT DEFAULT 1,
+    is_current BOOLEAN DEFAULT FALSE,
+    strategy TEXT,                    -- e.g., goal_aligned, out_of_the_box
+    extra_data JSONB DEFAULT '{}'::JSONB,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+
+CREATE TABLE pipeline_runs (
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    run_id TEXT UNIQUE NOT NULL, -- UUID or generated string
+    pipeline TEXT NOT NULL, -- list of agent names
+    strategy TEXT,
+    model_name TEXT,
+    run_config JSONB,
+    lookahead_context JSONB,
+    symbolic_suggestion JSONB,
+    extra_data JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
 -- Stores all generated hypotheses and their evaluations
 CREATE TABLE IF NOT EXISTS hypotheses (
     id SERIAL PRIMARY KEY,
@@ -31,6 +77,8 @@ CREATE TABLE IF NOT EXISTS hypotheses (
 -- CREATE INDEX idx_hypothesis_embedding ON hypotheses USING ivfflat(embedding vector_cosine_ops);
 -- CREATE INDEX idx_hypothesis_source ON hypotheses(source);
 -- CREATE INDEX idx_hypothesis_strategy ON hypotheses(strategy_used);
+
+
 
 
 CREATE TABLE elo_ranking_log (
@@ -67,21 +115,6 @@ CREATE TABLE IF NOT EXISTS reports (
     goal TEXT,
     summary TEXT,
     path TEXT NOT NULL,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS prompts (
-    id SERIAL PRIMARY KEY,
-    agent_name TEXT NOT NULL,
-    prompt_key TEXT NOT NULL,         -- e.g., generation_goal_aligned.txt
-    prompt_text TEXT NOT NULL,
-    goal_id int REFERENCES goals(id) ON DELETE CASCADE, -- Goal this prompt is associated with;
-    response_text TEXT,
-    source TEXT,                      -- e.g., manual, dsp_refinement, feedback_injection
-    version INT DEFAULT 1,
-    is_current BOOLEAN DEFAULT FALSE,
-    strategy TEXT,                    -- e.g., goal_aligned, out_of_the_box
-    extra_data JSONB DEFAULT '{}'::JSONB,
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -187,9 +220,9 @@ CREATE TABLE IF NOT EXISTS mrq_memory (
 );
 
 -- Indexes
-CREATE INDEX idx_mrq_goal ON mrq_memory(goal);
-CREATE INDEX idx_mrq_strategy ON mrq_memory(strategy);
-CREATE INDEX idx_mrq_reward ON mrq_memory(reward DESC);
+-- CREATE INDEX idx_mrq_goal ON mrq_memory(goal);
+-- CREATE INDEX idx_mrq_strategy ON mrq_memory(strategy);
+-- CREATE INDEX idx_mrq_reward ON mrq_memory(reward DESC);
 
 
 CREATE TABLE IF NOT EXISTS model_performance (
@@ -208,18 +241,6 @@ CREATE TABLE IF NOT EXISTS model_performance (
 CREATE INDEX idx_model_name ON model_performance(model_name);
 CREATE INDEX idx_task_type ON model_performance(task_type);
 CREATE INDEX idx_preference_used ON model_performance USING GIN(preference_used);
-
-
-CREATE TABLE IF NOT EXISTS goals (
-    id SERIAL PRIMARY KEY,
-    goal_text TEXT NOT NULL,
-    goal_type TEXT,                   -- e.g., 'research', 'forecast', 'writing'
-    focus_area TEXT,                  -- e.g., 'AI', 'stock', 'healthcare'
-    strategy TEXT,                    -- e.g., 'generation_reflect_review', 'cot_eval_refine'
-    llm_suggested_strategy TEXT,
-    source TEXT DEFAULT 'user',       -- 'user', 'llm', or 'hybrid'
-    created_at TIMESTAMP DEFAULT now()
-);
 
 CREATE TABLE IF NOT EXISTS mrq_evaluations (
     id SERIAL PRIMARY KEY,
@@ -310,21 +331,6 @@ CREATE TABLE IF NOT EXISTS lookaheads (
     run_id TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE TABLE pipeline_runs (
-    id SERIAL PRIMARY KEY,
-    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
-    run_id TEXT UNIQUE NOT NULL, -- UUID or generated string
-    pipeline TEXT NOT NULL, -- list of agent names
-    strategy TEXT,
-    model_name TEXT,
-    run_config JSONB,
-    lookahead_context JSONB,
-    symbolic_suggestion JSONB,
-    extra_data JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS reflection_deltas (
     id SERIAL PRIMARY KEY,
     goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
@@ -360,7 +366,6 @@ CREATE TABLE IF NOT EXISTS ideas (
 
 CREATE TABLE IF NOT EXISTS search_results (
     id SERIAL PRIMARY KEY,
-
     query TEXT NOT NULL,
     source TEXT NOT NULL,
     result_type TEXT,
@@ -368,7 +373,7 @@ CREATE TABLE IF NOT EXISTS search_results (
     summary TEXT,
     url TEXT,
     author TEXT,
-    published_at DATETIME,
+    published_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     tags TEXT[],
     goal_id INTEGER REFERENCES goals(id),
     parent_goal TEXT,
@@ -382,10 +387,10 @@ CREATE TABLE IF NOT EXISTS search_results (
     refined_summary TEXT,
     extracted_methods TEXT[],
     domain_knowledge_tags TEXT[],
-    critique_notes TEXT
+    critique_notes TEXT,
     extra_data JSON,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 
@@ -445,63 +450,37 @@ CREATE INDEX idx_parent_plan_id ON method_plans (parent_plan_id);
 
 -- Create table for storing preference pairs used in ARM/MrQ training
 CREATE TABLE IF NOT EXISTS mrq_preference_pairs (
-    id SERIAL PRIMARY KEY, -- Primary key
-
-    goal TEXT NOT NULL, -- Task group key (e.g., 'arm_dpo', 'math_reasoning')
-    prompt TEXT NOT NULL, -- Prompt that generated the pair
-    output_a TEXT NOT NULL, -- First model output
-    output_b TEXT NOT NULL, -- Second model output
-    preferred TEXT NOT NULL CHECK (preferred IN ('a', 'b')), -- Preferred output ('a' or 'b')
-
-    fmt_a TEXT, -- Format tag for output A
-    fmt_b TEXT, -- Format tag for output B
-    difficulty TEXT, -- Difficulty level (easy/medium/hard)
-    source TEXT, -- Source (e.g., 'agent', 'human')
-    run_id TEXT, -- Run/session ID
-    features JSONB, -- Extra metadata (e.g., reward shaping info)
-    created_at TIMESTAMP DEFAULT NOW() -- Timestamp
-);
-
-
-
-CREATE TABLE IF NOT EXISTS symbolic_rules
-(
     id SERIAL PRIMARY KEY,
-    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
-    hypotheses_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
-    pipeline_run_id integer,
-    prompt_id integer,
-    agent_name TEXT,
-    pipeline_signature TEXT,
-    score double precision,
-);
 
+    -- Goal or task group key (e.g., "arm_dpo", "math_reasoning")
+    goal TEXT NOT NULL,
 
-CREATE TABLE IF NOT EXISTS symbolic_rules (
-    id SERIAL PRIMARY KEY, -- Unique ID for the symbolic rule
+    -- Prompt/input question that generated the pair
+    prompt TEXT NOT NULL,
 
-    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE, -- Related goal
-    agent_name TEXT NOT NULL, -- Agent or stage responsible (e.g., 'refiner', 'cot_generator')
-    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE, -- Optional: pipeline run that originated the rule
-    prompt_id INTEGER REFERENCES prompts(id) ON DELETE CASCADE, -- Optional: pipeline run that originated the rule
-    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE, -- Optional: pipeline run that originated the rule
+    -- Output A and B (chosen and rejected responses)
+    output_a TEXT NOT NULL,
+    output_b TEXT NOT NULL,
 
-    rule_text TEXT, -- Human-readable description (optional)
+    -- Which response was preferred: 'a' or 'b'
+    preferred TEXT NOT NULL,
 
-    score FLOAT, -- Cached average score from evaluations
-    source TEXT, -- e.g., 'learned', 'manual', 'lookahead', etc.
+    -- Format used in each output
+    fmt_a TEXT,
+    fmt_b TEXT,
 
-    -- Optional metadata to guide selection or analysis
-    goal_type TEXT,
-    goal_category TEXT,
+    -- Difficulty level (easy/medium/hard)
     difficulty TEXT,
-    focus_area TEXT,
 
-    created_at TIMESTAMP DEFAULT NOW(), -- Creation time
-    updated_at TIMESTAMP DEFAULT NOW() -- Last update time
+    -- Source of this pair (e.g., arm_dataloader, human, agent)
+    source TEXT,
+
+    -- Run ID or session ID for tracking training runs
+    run_id TEXT,
+
+    -- Optional features (JSON metadata, e.g., reward shaping info)
+    features JSONB,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
 );
-
-CREATE INDEX idx_symbolic_rules_goal_id ON symbolic_rules(goal_id);
-CREATE INDEX idx_symbolic_rules_pipeline_run_id ON symbolic_rules(pipeline_run_id);
-CREATE INDEX idx_symbolic_rules_prompt_id ON symbolic_rules(prompt_id);
-
