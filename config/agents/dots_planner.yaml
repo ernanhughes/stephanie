@@ -1,6 +1,4 @@
-# config/agents/ranking.yaml
-defaults:
-  - /prompt_refiner/disabled
+# config/agents/dots_planner.yaml
 
 dots_planner:
   name: dots_planner

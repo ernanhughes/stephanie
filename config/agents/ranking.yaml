@@ -1,6 +1,4 @@
 # config/agents/ranking.yaml
-defaults:
-  - /prompt_refiner/disabled
 
 ranking:
   name: ranking

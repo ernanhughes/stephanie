@@ -1,8 +1,9 @@
 # stores/search_result_store.py
-from typing import List, Dict, Optional
-from co_ai.models.search_result import SearchResultORM
-from co_ai.memory import BaseStore
 from datetime import datetime
+from typing import Dict, List, Optional
+
+from co_ai.memory import BaseStore
+from co_ai.models.search_result import SearchResultORM
 
 
 class SearchResultStore(BaseStore):

@@ -1,5 +1,4 @@
-defaults:
-  - /prompt_refiner/default
+# config/agents/refiner.yaml
 
 refiner:
   name: refiner

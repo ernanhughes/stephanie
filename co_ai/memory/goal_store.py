@@ -1,8 +1,10 @@
 # stores/goal_store.py
-from sqlalchemy.orm import Session
-from co_ai.models.goal import GoalORM
-from sqlalchemy.exc import IntegrityError
 from datetime import datetime
+
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from co_ai.models.goal import GoalORM
 
 
 class GoalStore:

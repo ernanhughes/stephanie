@@ -159,7 +159,7 @@ class PromptTuningAgent(BaseAgent):
 
                 # Store refined prompt to the DB
                 self.memory.prompt.save(
-                    goal=example["goal"],
+                    goal={"goal_text": example["goal"]},
                     agent_name=self.name,
                     prompt_key=self.prompt_key,
                     prompt_text=refined_prompt,

@@ -1,7 +1,10 @@
 # models/search_result.py
-from sqlalchemy import ARRAY, Column, Integer, String, ForeignKey, JSON, DateTime, Text
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import (ARRAY, JSON, Column, DateTime, ForeignKey, Integer,
+                        String, Text)
+from sqlalchemy.orm import relationship
+
 from .base import Base
 
 

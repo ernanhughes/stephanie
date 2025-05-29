@@ -1,8 +1,12 @@
 # models/mrq_memory_entry.py
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, JSON
 from datetime import datetime
-from co_ai.models.base import Base
+
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text)
 from sqlalchemy.dialects.postgresql import ARRAY, REAL
+
+from co_ai.models.base import Base
+
 
 class MRQMemoryEntryORM(Base):
     __tablename__ = "mrq_memory"

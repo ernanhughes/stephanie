@@ -4,7 +4,7 @@ import itertools
 import numpy as np
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, HYPOTHESES
+from co_ai.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT, TEXT
 
 
 class ProximityAgent(BaseAgent):
@@ -38,33 +38,30 @@ class ProximityAgent(BaseAgent):
                 - graft_candidates: list of high-similarity pairs
                 - proximity_graph: list of (h1, h2, similarity)
         """
-        current_goal = self.extract_goal_text(context.get(GOAL))
+        goal = context.get(GOAL)
+        goal_text = goal.get(GOAL_TEXT)
         current_hypotheses = self.get_hypotheses(context)
 
         # Fetch historical hypotheses from DB
-        db_hypotheses = self.memory.hypotheses.get_similar(
-            current_goal, top_k=self.top_k_database_matches
+        db_texts = self.memory.hypotheses.get_similar(
+            goal_text, limit=self.top_k_database_matches
         )
-
-        db_texts = [h["text"] for h in db_hypotheses]
-
         self.logger.log(
             "DatabaseHypothesesMatched",
             {
-                GOAL: current_goal[:60],
+                GOAL: goal,
                 "matches": [
                     {
-                        "text": h["text"][:100],
-                        "similarity": h["similarity"],
-                        "source": h.get("source"),
+                        "text": h[:100]
                     }
-                    for h in db_hypotheses
+                    for h in db_texts
                 ],
             },
         )
 
         # Combine current and past hypotheses
-        all_hypotheses = list(set(current_hypotheses + db_texts))
+        hypotheses_texts = [h.get(TEXT) for h in current_hypotheses]
+        all_hypotheses = list(set(hypotheses_texts + db_texts))
 
         if not all_hypotheses.__len__():
             self.logger.log("NoHypothesesForProximity", {"reason": "empty_input"})
@@ -97,7 +94,7 @@ class ProximityAgent(BaseAgent):
         context[self.output_key] = {
             "clusters": clusters,
             "graft_candidates": graft_candidates,
-            "database_matches": db_hypotheses,
+            DATABASE_MATCHES: db_texts,
             "proximity_graph": similarities,
         }
 

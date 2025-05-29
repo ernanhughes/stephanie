@@ -1,6 +1,8 @@
 # models/context_state.py
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, Boolean
 from datetime import datetime, timezone
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
+
 from co_ai.models.base import Base
 
 

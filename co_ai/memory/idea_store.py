@@ -1,6 +1,6 @@
 # stores/idea_store.py
-from co_ai.models.idea import IdeaORM
 from co_ai.memory import BaseStore
+from co_ai.models.idea import IdeaORM
 
 
 class IdeaStore(BaseStore):

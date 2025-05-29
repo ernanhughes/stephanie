@@ -1,5 +1,6 @@
 from huggingface_hub import HfApi
 
+
 def search_huggingface_datasets(queries: list[str], max_results: int = 5) -> list[dict]:
     api = HfApi()
     results = []

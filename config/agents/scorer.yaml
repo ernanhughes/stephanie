@@ -1,9 +1,10 @@
 # configs/agents/scorer.yaml
+
 scorer:
   name: scorer
   enabled: true
 
-  source: database  # Options: database, context where to get hypotheses from
+  source: context  # Options: database, context where to get hypotheses from
   batch_size: 10    # Number of hypotheses to process if database is used
 
   weight_proximity: 0.4

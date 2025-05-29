@@ -1,6 +1,4 @@
 # config/agents/evolution.yaml
-defaults:
-  - /prompt_refiner/default
 
 evolution:
   name: evolution

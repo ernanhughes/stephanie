@@ -1,6 +1,7 @@
 from co_ai.agents.base import BaseAgent
+from co_ai.constants import GOAL, STRATEGY
 from co_ai.utils.goal_classifier import classify_goal_strategy  # See below
-from co_ai.constants import STRATEGY, GOAL
+
 
 class DOTSPlannerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

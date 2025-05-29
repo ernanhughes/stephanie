@@ -1,6 +1,4 @@
-# configs/agents/proximity.yaml
-defaults:
-  - /prompt_refiner/disabled
+# configs/agents/cot_generator.yaml
 
 cot_generator:
   name: cot_generator

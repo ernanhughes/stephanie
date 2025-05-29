@@ -1,4 +1,5 @@
 # co_ai/agents/base.py
+import random
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
 from co_ai.logs import JSONLogger
 from co_ai.models import HypothesisORM
 from co_ai.prompts import PromptLoader
-import random
+
 
 def remove_think_blocks(text: str) -> str:
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()

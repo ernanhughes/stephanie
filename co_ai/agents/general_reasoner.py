@@ -3,12 +3,11 @@ from itertools import combinations
 from typing import Optional
 
 from co_ai.agents.base import BaseAgent
+from co_ai.analysis.rubric_classifier import RubricClassifierMixin
 from co_ai.constants import GOAL, GOAL_TEXT, PIPELINE
 from co_ai.evaluator import LLMJudgeEvaluator, MRQSelfEvaluator
-from co_ai.models import HypothesisORM, ScoreORM, PatternStatORM
+from co_ai.models import HypothesisORM, ScoreORM
 from co_ai.prompts import PromptLoader
-from co_ai.analysis.rubric_classifier import RubricClassifierMixin
-from datetime import datetime, timezone
 
 
 class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):

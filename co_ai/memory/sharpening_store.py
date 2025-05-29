@@ -1,6 +1,7 @@
 # stores/sharpening_store.py
-from co_ai.models.sharpening_prediction import SharpeningPredictionORM
 from sqlalchemy.orm import Session
+
+from co_ai.models.sharpening_prediction import SharpeningPredictionORM
 
 
 class SharpeningStore:

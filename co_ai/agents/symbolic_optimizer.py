@@ -1,7 +1,9 @@
 
+from collections import defaultdict
+
 from co_ai.agents import BaseAgent
 from co_ai.constants import GOAL, PIPELINE
-from collections import defaultdict
+
 
 class SymbolicOptimizerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

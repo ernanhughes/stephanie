@@ -1,6 +1,4 @@
 # configs/agents/search_orchestrator.yaml
-defaults:
-  - /prompt_refiner/default
 
 search_orchestrator:
   name: search_orchestrator

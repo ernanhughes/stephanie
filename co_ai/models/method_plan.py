@@ -1,8 +1,11 @@
 # models/method_plan.py
-from sqlalchemy import Column, Integer, String, ForeignKey, JSON, DateTime, Float, Boolean
-from sqlalchemy.orm import relationship
-from .base import Base
 from datetime import datetime
+
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
+                        Integer, String)
+from sqlalchemy.orm import relationship
+
+from .base import Base
 
 
 class MethodPlanORM(Base):

@@ -1,7 +1,9 @@
-from co_ai.models import HypothesisORM
-from co_ai.scoring.base_score import BaseScore
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+
+from co_ai.models import HypothesisORM
+from co_ai.scoring.base_score import BaseScore
+
 
 class ProximityScore(BaseScore):
     name = "proximity"

@@ -2,25 +2,18 @@
 
 import json
 import os
+from datetime import datetime
+from uuid import uuid4
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from co_ai.constants import (
-    NAME,
-    PROMPT_DIR,
-    PIPELINE,
-    RUN_ID,
-    SAVE_CONTEXT,
-    SKIP_IF_COMPLETED,
-    STAGE,
-)
+from co_ai.constants import (NAME, PIPELINE, PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
+                             SKIP_IF_COMPLETED, STAGE)
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
-from co_ai.reports import ReportFormatter
-from uuid import uuid4
-from datetime import datetime
 from co_ai.models import PipelineRunORM  # if placed in models
+from co_ai.reports import ReportFormatter
 
 
 class PipelineStage:

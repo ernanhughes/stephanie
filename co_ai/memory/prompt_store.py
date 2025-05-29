@@ -1,9 +1,12 @@
 # stores/prompt_store.py
 import json
 from typing import Optional
+
+from sqlalchemy import text
 from sqlalchemy.orm import Session
-from co_ai.models.prompt import PromptORM
+
 from co_ai.models.goal import GoalORM
+from co_ai.models.prompt import PromptORM
 
 
 class PromptStore:
@@ -169,7 +172,7 @@ class PromptStore:
             if self.logger:
                 self.logger.log(
                     "PromptLookupFailed",
-                    {"error": str(e), "text_snippet": prompt_text[:100]},
+                    {"error": str(e)},
                 )
             return None
 
@@ -182,3 +185,54 @@ class PromptStore:
             query = query.filter_by(strategy=strategy)
 
         return [p.to_dict() for p in query.limit(10).all()]
+
+    def get_prompt_training_set(self, goal: str, limit: int = 5, agent_name: str = 'generation') -> list[dict]:
+        try:
+            sql = text("""
+                SELECT DISTINCT ON (p.id)
+                    p.id,
+                    g.goal_text AS goal,
+                    p.prompt_text,
+                    p.prompt_key,
+                    p.timestamp,
+                    h.text AS hypothesis_text,
+                    h.elo_rating,
+                    h.review
+                FROM goals g
+                JOIN prompts p ON p.goal_id = g.id
+                JOIN hypotheses h ON h.prompt_id = p.id AND h.goal_id = g.id
+                WHERE g.goal_text = :goal
+                AND p.agent_name = :agent_name
+                AND h.enabled = TRUE
+                ORDER BY p.id, h.elo_rating DESC, h.updated_at DESC
+                LIMIT :limit
+            """)
+            result = self.session.execute(sql, {
+                'goal': goal,
+                'agent_name': agent_name,
+                'limit': limit
+            })
+
+            rows = result.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "goal": row[1],
+                    "prompt_text": row[2],
+                    "prompt_key": row[3],
+                    "timestamp": row[4],
+                    "hypothesis_text": row[5],
+                    "elo_rating": row[6],
+                    "review": row[7],
+                }
+                for row in rows
+            ]
+
+        except Exception as e:
+            self.session.rollback()
+            if self.logger:
+                self.logger.log("GetLatestPromptsFailed", {
+                    "error": str(e),
+                    "goal": goal
+                })
+            return []

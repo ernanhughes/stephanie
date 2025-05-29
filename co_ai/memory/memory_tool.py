@@ -1,29 +1,27 @@
-from typing import Optional, Any
-
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.exc import SQLAlchemyError
-
-from co_ai.models.base import engine  # From your SQLAlchemy setup
-from co_ai.memory.goal_store import GoalStore
-from co_ai.memory.hypothesis_store import HypothesisStore
-from co_ai.memory.context_store import ContextStore
-from co_ai.memory.pipeline_run_store import PipelineRunStore
-from co_ai.memory.score_store import ScoreStore
-from co_ai.memory.lookahead_store import LookaheadStore
-from co_ai.memory.reflection_delta_store import ReflectionDeltaStore
-from co_ai.memory.mrq_store import MRQStore
-from co_ai.memory.pattern_store import PatternStatStore
-from co_ai.memory.prompt_store import PromptStore
-from co_ai.memory.search_result_store import SearchResultStore
-from co_ai.memory.idea_store import IdeaStore
-from co_ai.memory.method_plan_store import MethodPlanStore
-from co_ai.memory.embedding_store import EmbeddingStore
-from co_ai.memory.sharpening_store import SharpeningStore
+from typing import Any, Optional
 
 import psycopg2
 from pgvector.psycopg2 import register_vector
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 from co_ai.logs import JSONLogger
+from co_ai.memory.context_store import ContextStore
+from co_ai.memory.embedding_store import EmbeddingStore
+from co_ai.memory.goal_store import GoalStore
+from co_ai.memory.hypothesis_store import HypothesisStore
+from co_ai.memory.idea_store import IdeaStore
+from co_ai.memory.lookahead_store import LookaheadStore
+from co_ai.memory.method_plan_store import MethodPlanStore
+from co_ai.memory.mrq_store import MRQStore
+from co_ai.memory.pattern_store import PatternStatStore
+from co_ai.memory.pipeline_run_store import PipelineRunStore
+from co_ai.memory.prompt_store import PromptStore
+from co_ai.memory.reflection_delta_store import ReflectionDeltaStore
+from co_ai.memory.score_store import ScoreStore
+from co_ai.memory.search_result_store import SearchResultStore
+from co_ai.memory.sharpening_store import SharpeningStore
+from co_ai.models.base import engine  # From your SQLAlchemy setup
 
 
 class MemoryTool:
@@ -42,8 +40,9 @@ class MemoryTool:
             user=self.cfg.get("db").get("user"),
             password=self.cfg.get("db").get("password"),
             host=self.cfg.get("db").get("host"),
-            port=self.cfg.get("db").get("port")
+            port=self.cfg.get("db").get("port"),
         )
+        conn.autocommit = True
         register_vector(conn)  # Register pgvector extension
 
         # Register stores

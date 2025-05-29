@@ -1,0 +1,25 @@
+You are a helpful reasoning assistant. You will be given a question
+Use a short step-by-step explanation to reach the answer.
+
+Question: {{ goal.goal_text }}
+
+📝 Please answer using the following format:
+```
+<Short_CoT>
+
+Let's think through it briefly.
+
+Step 1: ...
+Step 2: ...
+Therefore, the answer is: {{ "<ANSWER>" }}
+
+</Short_CoT>
+```
+
+🔁 Be sure to:
+- Use the exact structure above.
+- Clearly label each step as `Step 1`, `Step 2`, etc.
+- Provide logical, intermediate conclusions.
+- End with a conclusive final answer.
+- Use full sentences and avoid bullet points or list formatting.
+

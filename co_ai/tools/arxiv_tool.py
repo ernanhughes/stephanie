@@ -1,5 +1,6 @@
 import arxiv
 
+
 def search_arxiv(queries: list[str], max_results: int = 5) -> list[dict]:
     results = []
     for query in queries:

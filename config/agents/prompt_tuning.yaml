@@ -1,6 +1,4 @@
 # config/agents/prompt_tuning.yaml
-defaults:
-  - /prompt_refiner/disabled
 
 prompt_tuning:
   name: prompt_tuning

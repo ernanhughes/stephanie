@@ -3,6 +3,7 @@ from datetime import datetime
 from co_ai.constants import GOAL
 from co_ai.models import PatternStatORM
 
+
 class RubricClassifierMixin:
     def _load_enabled_rubrics(self, cfg):
         enabled_rubrics = []

@@ -33,7 +33,9 @@ class SharpeningAgent(BaseAgent):
                 result = self.run_selected(data, context)
             results.append(result)
             if self.cfg.get("log_results", False):
-                self.log_sharpening_results(goal, data.get("prompt"), data.get("response"), result)
+                self.log_sharpening_results(
+                    goal, data.get("prompt"), data.get("response"), result
+                )
         context[self.output_key] = results
         return context
 
@@ -41,17 +43,17 @@ class SharpeningAgent(BaseAgent):
         goal = self.extract_goal_text(context.get(GOAL))
         results = []
         prompt = data.get("prompt")
-        examples = self.memory.hypotheses.get_similar_hypotheses(prompt, 3)
+        examples = self.memory.hypotheses.get_similar(prompt, 3)
         merged = {**context, **{"prompt": prompt, "examples": examples}}
 
         if prompt:
             for name in self.templates:
                 prompt_template = self.prompt_loader.from_file(name, self.cfg, merged)
                 sharpened_hypothesis = self.call_llm(prompt_template, merged)
-                hypothesis = data.get("response") # hypotheses result for prompt
-                preferred_output, scores = self.evaluator.judge(goal,
-                                                                prompt, hypothesis, sharpened_hypothesis
-                                                                )
+                hypothesis = data.get("response")  # hypotheses result for prompt
+                preferred_output, scores = self.evaluator.judge(
+                    goal, prompt, hypothesis, sharpened_hypothesis
+                )
                 value_a = scores["value_a"]
                 value_b = scores["value_b"]
                 winner = "a" if value_a >= value_b else "b"
@@ -112,11 +114,13 @@ class SharpeningAgent(BaseAgent):
 
         return [result]
 
-    async def run_judge_only(self, data:dict, context: dict):
+    async def run_judge_only(self, data: dict, context: dict):
         prompt = data.get("prompt")
-        examples = self.memory.hypotheses.get_similar_hypotheses(prompt, 3)
+        examples = self.memory.hypotheses.get_similar(prompt, 3)
         merged = {**context, **{"prompt": prompt, "examples": examples}}
-        prompt_template = self.prompt_loader.from_file("self_reward.txt", self.cfg, merged)
+        prompt_template = self.prompt_loader.from_file(
+            "self_reward.txt", self.cfg, merged
+        )
         response = self.call_llm(prompt_template, context)
         return response
 
@@ -144,11 +148,11 @@ class SharpeningAgent(BaseAgent):
                 },
             )
             hyp = HypothesisORM(
-                goal=goal, 
-                text=entry["sharpened_hypothesis"], 
+                goal=goal,
+                text=entry["sharpened_hypothesis"],
                 prompt=prompt,
-                pipeline_signature=entry.get(PIPELINE)
-                )
+                pipeline_signature=entry.get(PIPELINE),
+            )
             # Save new hypothesis for that prompt
             self.memory.hypotheses.insert(hyp)
 
@@ -162,11 +166,7 @@ class SharpeningAgent(BaseAgent):
             )
 
     def log_sharpening_results(
-        self,
-        goal: str,
-        prompt: str,
-        original_output: str,
-        results: list[dict]
+        self, goal: str, prompt: str, original_output: str, results: list[dict]
     ):
         for entry in results:
             result = SharpeningResult(

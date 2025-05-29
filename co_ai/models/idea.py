@@ -1,7 +1,9 @@
 # models/idea.py
-from sqlalchemy import Column, Integer, String, ForeignKey, JSON, DateTime
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+
 from .base import Base
 
 

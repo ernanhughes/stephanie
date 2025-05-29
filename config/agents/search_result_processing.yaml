@@ -1,6 +1,4 @@
-# configs/agents/proximity.yaml
-defaults:
-  - /prompt_refiner/disabled
+# configs/agents/search_result_processing.yaml
 
 search_result_processing:
   name: search_result_processing

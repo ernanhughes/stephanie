@@ -7,6 +7,7 @@ from co_ai.constants import GOAL
 from co_ai.tools import WebSearchTool
 from co_ai.utils.file_utils import write_text_to_file
 
+
 class LiteratureAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)

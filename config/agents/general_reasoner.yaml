@@ -1,6 +1,4 @@
-# configs/agents/proximity.yaml
-defaults:
-  - /prompt_refiner/disabled
+# configs/agents/general_reasoner.yaml
 
 general_reasoner:
   name: general_reasoner

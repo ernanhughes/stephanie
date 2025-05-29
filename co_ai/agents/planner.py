@@ -1,5 +1,6 @@
 from co_ai.agents import DOTSPlannerAgent, LookaheadAgent
 
+
 class PipelinePlannerAgent:
     def __init__(self, cfg, memory=None, logger=None):
         self.cfg = cfg

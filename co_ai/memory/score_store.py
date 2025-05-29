@@ -1,7 +1,9 @@
 # stores/score_store.py
 import json
-from typing import List, Dict
+from typing import Dict, List
+
 from sqlalchemy.orm import Session
+
 from co_ai.models.goal import GoalORM
 from co_ai.models.score import ScoreORM
 
@@ -90,7 +92,9 @@ class ScoreStore:
             "review": row.review,
             "meta_review": row.meta_review,
             "run_id": row.run_id,
-            "metadata": json.loads(row.extra_data) if row.extra_data else {},
+            "extra_data": (
+                row.extra_data if isinstance(row.extra_data, dict) else json.loads(row.extra_data)
+            ) if row.extra_data else {},
             "created_at": row.created_at,
         }
     

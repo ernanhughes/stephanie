@@ -1,8 +1,11 @@
 # models/goal.py
-from sqlalchemy import Column, Integer, String, DateTime
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy.orm import relationship
+
 from .base import Base
+
 
 class GoalORM(Base):
     __tablename__ = "goals"
@@ -25,3 +28,18 @@ class GoalORM(Base):
     ideas = relationship("IdeaORM", back_populates="goal")
     method_plans = relationship("MethodPlanORM", back_populates="goal")
     sharpening_predictions = relationship("SharpeningPredictionORM", back_populates="goal")
+
+    def __repr__(self):
+        return f"<GoalORM(id={self.id}, goal_text='{self.goal_text[:50]}')>"
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "goal_text": self.goal_text,
+            "goal_type": self.goal_type,
+            "focus_area": self.focus_area,
+            "strategy": self.strategy,
+            "llm_suggested_strategy": self.llm_suggested_strategy,
+            "source": self.source,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

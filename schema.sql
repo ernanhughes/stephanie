@@ -441,3 +441,41 @@ CREATE INDEX idx_focus_area ON method_plans (focus_area);
 CREATE INDEX idx_evolution_level ON method_plans (evolution_level);
 CREATE INDEX idx_goal_id ON method_plans (goal_id);
 CREATE INDEX idx_parent_plan_id ON method_plans (parent_plan_id);
+
+
+-- Create table for storing preference pairs used in ARM/MrQ training
+CREATE TABLE IF NOT EXISTS mrq_preference_pairs (
+    id SERIAL PRIMARY KEY,
+
+    -- Goal or task group key (e.g., "arm_dpo", "math_reasoning")
+    goal TEXT NOT NULL,
+
+    -- Prompt/input question that generated the pair
+    prompt TEXT NOT NULL,
+
+    -- Output A and B (chosen and rejected responses)
+    output_a TEXT NOT NULL,
+    output_b TEXT NOT NULL,
+
+    -- Which response was preferred: 'a' or 'b'
+    preferred TEXT NOT NULL,
+
+    -- Format used in each output
+    fmt_a TEXT,
+    fmt_b TEXT,
+
+    -- Difficulty level (easy/medium/hard)
+    difficulty TEXT,
+
+    -- Source of this pair (e.g., arm_dataloader, human, agent)
+    source TEXT,
+
+    -- Run ID or session ID for tracking training runs
+    run_id TEXT,
+
+    -- Optional features (JSON metadata, e.g., reward shaping info)
+    features JSONB,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT NOW()
+);

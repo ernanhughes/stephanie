@@ -1,10 +1,11 @@
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL
-from co_ai.tools.arxiv_tool import search_arxiv
-from co_ai.tools.huggingface_tool import search_huggingface_datasets
-from co_ai.tools.cos_sim_tool import get_top_k_similar
 from co_ai.tools import WebSearchTool
+from co_ai.tools.arxiv_tool import search_arxiv
+from co_ai.tools.cos_sim_tool import get_top_k_similar
+from co_ai.tools.huggingface_tool import search_huggingface_datasets
 from co_ai.tools.wikipedia_tool import WikipediaTool
+
 
 class SearchOrchestratorAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

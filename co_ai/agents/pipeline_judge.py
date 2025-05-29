@@ -1,9 +1,10 @@
 import re
+from dataclasses import asdict
 
 from co_ai.agents.base import BaseAgent
-from co_ai.models import ScoreORM
 from co_ai.constants import PIPELINE, RUN_ID
-from dataclasses import asdict
+from co_ai.models import ScoreORM
+
 
 class PipelineJudgeAgent(BaseAgent):
     async def run(self, context: dict) -> dict:

@@ -2,6 +2,7 @@
 from co_ai.agents.base import BaseAgent
 from co_ai.models import SearchResultORM
 
+
 class KnowledgeLoaderAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)

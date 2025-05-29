@@ -4,7 +4,8 @@ import dspy
 from dspy import InputField, OutputField, Signature
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, PIPELINE, PROMPT_PATH, STRATEGY
+from co_ai.constants import (GOAL, GOAL_TEXT, GOAL_TYPE, PIPELINE, PROMPT_PATH,
+                             STRATEGY)
 from co_ai.models import HypothesisORM
 
 
@@ -70,7 +71,7 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         cot = result.answer.strip()
         self.logger.log("CoTGenerated", {"goal": goal, "cot": cot})
 
-        prompt_text = goal.goal_text
+        prompt_text = goal.get(GOAL_TEXT)
         prompt = self.memory.prompt.get_from_text(prompt_text)
         if prompt is None:
             self.memory.prompt.save(
@@ -81,14 +82,14 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
                 strategy=self.cfg.get(STRATEGY, ""),
                 version=self.cfg.get("version", 1),
             )
+            prompt = self.memory.prompt.get_from_text(prompt_text)
 
-
+        goal_id = self.get_goal_id(goal)
         hyp = HypothesisORM(
-            goal_id=goal.id,
-            goal_type=context.get(GOAL).get("goal_type"),
+            goal_id=goal_id,
+            prompt_id=prompt.id,
             text=cot,
             features={"source": "cot_dspy"},
-            prompt=prompt_text,
             pipeline_signature=context.get(PIPELINE),
         )
         self.memory.hypotheses.insert(hyp)

@@ -69,7 +69,7 @@ class IdeaSharpeningAgent(BaseAgent):
             "idea": idea,
             "baseline": baseline,
             "literature_summary": context.get("knowledge_base_summaries", []),
-            "examples": self.memory.hypotheses.get_similar_hypotheses(idea, limit=3),
+            "examples": self.memory.hypotheses.get_similar(idea, limit=3),
             "strategy": goal.get("strategy", "default"),
         }
 

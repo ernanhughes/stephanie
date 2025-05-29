@@ -1,6 +1,4 @@
-# configs/agents/proximity.yaml
-defaults:
-  - /prompt_refiner/disabled
+# configs/agents/debate.yaml
 
 debate:
   name: debate

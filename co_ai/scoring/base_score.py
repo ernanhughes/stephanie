@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 from co_ai.models import ScoreORM
 
+
 class BaseScore(ABC):
     name: str = "unnamed"
     default_value: float = 0.0

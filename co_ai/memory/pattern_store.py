@@ -1,6 +1,7 @@
 # stores/pattern_stat_store.py
-from co_ai.models.pattern_stat import PatternStatORM
 from datetime import datetime
+
+from co_ai.models.pattern_stat import PatternStatORM
 
 
 class PatternStatStore:

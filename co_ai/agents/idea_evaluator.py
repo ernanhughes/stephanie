@@ -1,8 +1,8 @@
 # co_ai/agents/idea_evaluator.py
 from co_ai.agents.base import BaseAgent
+from co_ai.constants import GOAL
 from co_ai.evaluator.llm_judge_evaluator import LLMJudgeEvaluator
 from co_ai.evaluator.mrq_self_evaluator import MRQSelfEvaluator
-from co_ai.constants import GOAL
 
 
 class IdeaEvaluatorAgent(BaseAgent):

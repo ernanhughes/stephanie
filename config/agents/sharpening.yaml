@@ -1,6 +1,4 @@
 # config/agents/sharpening.yaml
-defaults:
-  - /prompt_refiner/disabled
 
 sharpening:
   name: sharpening

@@ -3,6 +3,7 @@ from co_ai.agents.base import BaseAgent
 from co_ai.constants import HYPOTHESES, REVIEW, TEXT
 from co_ai.scoring.review import ReviewScore
 
+
 class ReviewAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)

@@ -1,12 +1,11 @@
 # co_ai/agents/meta_review.py
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import (EVOLVED, HYPOTHESES, PROXIMITY, RANKING,
-                             REFLECTION, REVIEW)
+from co_ai.constants import (DATABASE_MATCHES, EVOLVED, HYPOTHESES, PROXIMITY,
+                             RANKING, REFLECTION, REVIEW)
 
 
 class MetaReviewAgent(BaseAgent):
-
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         # Load preferences from config or default list
@@ -16,7 +15,7 @@ class MetaReviewAgent(BaseAgent):
         """
         Synthesize insights from reviews and evolved hypotheses.
 
-        Takes:Well I'd like to understand this what ok I've got to review the reflection ground 
+        Takes:Well I'd like to understand this what ok I've got to review the reflection ground
         - Evolved hypotheses
         - Reflections (from ReflectionAgent)
         - Reviews (from ReviewAgent)
@@ -36,21 +35,17 @@ class MetaReviewAgent(BaseAgent):
         reflection = context.get(REFLECTION, [])
         ranking = context.get(RANKING, [])
         strategic_directions = context.get("strategic_directions", [])
-        db_matches = context.get(PROXIMITY, {}).get("database_matches", [])
+        db_matches = context.get(PROXIMITY, {}).get(DATABASE_MATCHES, [])
 
         # Extract key themes from DB hypotheses
-        db_themes = "\n".join(f"- {h['text'][:100]}" for h in db_matches)
+        db_themes = "\n".join(f"- {h[:100]}" for h in db_matches)
 
         # Extract text if needed
-        hypothesis_texts = [
-            h.text if hasattr(h, "text") else h for h in evolved
-        ]
+        hypothesis_texts = [h.text if hasattr(h, "text") else h for h in evolved]
         reflection_texts = [
             r.review if hasattr(r, "reflection") else r for r in reflection
         ]
-        reviewed_texts = [
-            r.review if hasattr(r, "text") else r for r in review
-        ]
+        reviewed_texts = [r.review if hasattr(r, "text") else r for r in review]
 
         # Log inputs for traceability
         self.logger.log(

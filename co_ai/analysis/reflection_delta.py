@@ -1,6 +1,6 @@
 # co_ai/analyzer/reflection_delta.py
-from statistics import mean
 from datetime import datetime
+from statistics import mean
 
 
 def compare_pipeline_runs(memory, goal_id):

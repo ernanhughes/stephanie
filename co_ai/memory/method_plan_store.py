@@ -1,6 +1,7 @@
 # stores/method_plan_store.py
-from co_ai.memory import BaseStore
 from sqlalchemy.orm import Session
+
+from co_ai.memory import BaseStore
 from co_ai.models.method_plan import MethodPlanORM
 
 

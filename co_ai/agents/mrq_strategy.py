@@ -1,6 +1,7 @@
+from omegaconf import OmegaConf
+
 from co_ai.agents import BaseAgent
 from co_ai.constants import GOAL
-from omegaconf import OmegaConf
 
 DEFAULT_PIPELINES = [
     ["generation", "judge"],
@@ -57,10 +58,10 @@ class MRQStrategyAgent(BaseAgent):
         examples = []
 
         for d in deltas:
-            a = d.get("pipeline_a")
-            b = d.get("pipeline_b")
-            score_a = d.get("score_a")
-            score_b = d.get("score_b")
+            a = d.pipeline_a
+            b = d.pipeline_b
+            score_a = d.score_a
+            score_b = d.score_b
 
             if not isinstance(a, list) or not isinstance(b, list):
                 continue

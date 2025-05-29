@@ -1,6 +1,4 @@
-# config/agents/reflection.yaml
-defaults:
-  - /prompt_refiner/disabled
+# config/agents/lookahead.yaml
 
 lookahead:
   name: lookahead

@@ -1,6 +1,4 @@
-# configs/agents/proximity.yaml
-defaults:
-  - /prompt_refiner/disabled
+# configs/agents/cot_dspy_generator.yaml
 
 cot_dspy_generator:
   name: cot_dspy_generator

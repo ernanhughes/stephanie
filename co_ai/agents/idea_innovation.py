@@ -1,8 +1,8 @@
 # co_ai/agents/idea_innovation.py
 from co_ai.agents.base import BaseAgent
-from co_ai.models.idea import IdeaORM
-from co_ai.memory import IdeaStore
 from co_ai.constants import GOAL
+from co_ai.memory import IdeaStore
+from co_ai.models.idea import IdeaORM
 
 
 class IdeaInnovationAgent(BaseAgent):

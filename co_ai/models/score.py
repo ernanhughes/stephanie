@@ -1,8 +1,12 @@
 # models/score.py
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text)
+from sqlalchemy.orm import relationship
+
 from .base import Base
+
 
 class ScoreORM(Base):
     __tablename__ = "scores"

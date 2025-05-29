@@ -1,6 +1,4 @@
-# configs/agents/proximity.yaml
-defaults:
-  - /prompt_refiner/disabled
+# configs/agents/literature_ranking.yaml
 
 literature_ranking:
   name: literature_ranking

@@ -1,7 +1,8 @@
-from co_ai.scoring.base_score import BaseScore
+import re
+
 from co_ai.constants import REFLECTION
 from co_ai.models import ScoreORM
-import re
+from co_ai.scoring.base_score import BaseScore
 
 
 class ReflectionScore(BaseScore):

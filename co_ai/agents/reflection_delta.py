@@ -1,9 +1,11 @@
-from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL
-from co_ai.models.reflection_delta import ReflectionDeltaORM
-from co_ai.analysis.reflection_delta import compute_pipeline_delta
 from dataclasses import asdict
 from datetime import datetime
+
+from co_ai.agents.base import BaseAgent
+from co_ai.analysis.reflection_delta import compute_pipeline_delta
+from co_ai.constants import GOAL
+from co_ai.models.reflection_delta import ReflectionDeltaORM
+
 
 class ReflectionDeltaAgent(BaseAgent):
     async def run(self, context: dict) -> dict:

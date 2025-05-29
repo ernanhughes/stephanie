@@ -1,6 +1,8 @@
 # models/pattern_stat.py
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from datetime import datetime
+
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+
 from co_ai.models.base import Base
 
 

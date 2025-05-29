@@ -1,8 +1,10 @@
 # co_ai/agents/method_planner.py
-from co_ai.agents.base import BaseAgent
-from co_ai.models.method_plan import MethodPlanORM
-from co_ai.constants import GOAL, HYPOTHESES, PIPELINE
 import re
+
+from co_ai.agents.base import BaseAgent
+from co_ai.constants import GOAL, HYPOTHESES, PIPELINE
+from co_ai.models.method_plan import MethodPlanORM
+
 
 class MethodPlannerAgent(BaseAgent):
     """

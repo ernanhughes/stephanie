@@ -1,6 +1,4 @@
-# config/agents/reflection.yaml
-defaults:
-  - /prompt_refiner/disabled
+# config/agents/pipeline_judge.yaml
 
 pipeline_judge:
   name: pipeline_judge

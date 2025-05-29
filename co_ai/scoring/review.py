@@ -1,7 +1,8 @@
 # co_ai/scoring/review.py
 
-from co_ai.scoring.base_score import BaseScore
 from co_ai.constants import REVIEW, SCORE
+from co_ai.scoring.base_score import BaseScore
+
 
 class ReviewScore(BaseScore):
     name = REVIEW

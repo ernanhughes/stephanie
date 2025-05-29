@@ -1,7 +1,10 @@
 # models/prompt.py
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,
+                        String, Text)
+from sqlalchemy.orm import relationship
+
 from co_ai.models.base import Base
 
 

@@ -1,6 +1,4 @@
-# configs/agents/proximity.yaml
-defaults:
-  - /prompt_refiner/default
+# configs/agents/method_planner.yaml
 
 method_planner:
   name: method_planner

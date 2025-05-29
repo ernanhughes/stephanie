@@ -1,6 +1,4 @@
-# configs/agents/proximity.yaml
-defaults:
-  - /prompt_refiner/default
+# configs/agents/literature.yaml
 
 literature:
   name: literature

@@ -1,8 +1,11 @@
 # models/pipeline_run.py
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+
 from .base import Base
+
 
 class PipelineRunORM(Base):
     __tablename__ = "pipeline_runs"

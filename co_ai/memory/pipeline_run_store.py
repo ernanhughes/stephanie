@@ -1,9 +1,11 @@
 # stores/pipeline_run_store.py
-from typing import Optional
-from sqlalchemy.orm import Session
-from co_ai.models.pipeline_run import PipelineRunORM
 import json
 from datetime import datetime
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from co_ai.models.pipeline_run import PipelineRunORM
 
 
 class PipelineRunStore:

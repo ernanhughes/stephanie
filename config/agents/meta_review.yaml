@@ -1,6 +1,4 @@
 # config/agents/meta_review.yaml
-defaults:
-  - /prompt_refiner/default
 
 meta_review:
   name: meta_review

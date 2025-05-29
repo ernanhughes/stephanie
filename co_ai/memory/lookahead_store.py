@@ -1,10 +1,12 @@
 # stores/lookahead_store.py
-from typing import List, Optional
-from sqlalchemy.orm import Session
-from co_ai.models.lookahead import LookaheadORM
-from co_ai.models.goal import GoalORM
-from datetime import datetime
 import json
+from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy.orm import Session
+
+from co_ai.models.goal import GoalORM
+from co_ai.models.lookahead import LookaheadORM
 
 
 class LookaheadStore:
