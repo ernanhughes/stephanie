@@ -445,37 +445,63 @@ CREATE INDEX idx_parent_plan_id ON method_plans (parent_plan_id);
 
 -- Create table for storing preference pairs used in ARM/MrQ training
 CREATE TABLE IF NOT EXISTS mrq_preference_pairs (
-    id SERIAL PRIMARY KEY,
+    id SERIAL PRIMARY KEY, -- Primary key
 
-    -- Goal or task group key (e.g., "arm_dpo", "math_reasoning")
-    goal TEXT NOT NULL,
+    goal TEXT NOT NULL, -- Task group key (e.g., 'arm_dpo', 'math_reasoning')
+    prompt TEXT NOT NULL, -- Prompt that generated the pair
+    output_a TEXT NOT NULL, -- First model output
+    output_b TEXT NOT NULL, -- Second model output
+    preferred TEXT NOT NULL CHECK (preferred IN ('a', 'b')), -- Preferred output ('a' or 'b')
 
-    -- Prompt/input question that generated the pair
-    prompt TEXT NOT NULL,
-
-    -- Output A and B (chosen and rejected responses)
-    output_a TEXT NOT NULL,
-    output_b TEXT NOT NULL,
-
-    -- Which response was preferred: 'a' or 'b'
-    preferred TEXT NOT NULL,
-
-    -- Format used in each output
-    fmt_a TEXT,
-    fmt_b TEXT,
-
-    -- Difficulty level (easy/medium/hard)
-    difficulty TEXT,
-
-    -- Source of this pair (e.g., arm_dataloader, human, agent)
-    source TEXT,
-
-    -- Run ID or session ID for tracking training runs
-    run_id TEXT,
-
-    -- Optional features (JSON metadata, e.g., reward shaping info)
-    features JSONB,
-
-    -- Timestamps
-    created_at TIMESTAMP DEFAULT NOW()
+    fmt_a TEXT, -- Format tag for output A
+    fmt_b TEXT, -- Format tag for output B
+    difficulty TEXT, -- Difficulty level (easy/medium/hard)
+    source TEXT, -- Source (e.g., 'agent', 'human')
+    run_id TEXT, -- Run/session ID
+    features JSONB, -- Extra metadata (e.g., reward shaping info)
+    created_at TIMESTAMP DEFAULT NOW() -- Timestamp
 );
+
+
+
+CREATE TABLE IF NOT EXISTS symbolic_rules
+(
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    hypotheses_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
+    pipeline_run_id integer,
+    prompt_id integer,
+    agent_name TEXT,
+    pipeline_signature TEXT,
+    score double precision,
+);
+
+
+CREATE TABLE IF NOT EXISTS symbolic_rules (
+    id SERIAL PRIMARY KEY, -- Unique ID for the symbolic rule
+
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE, -- Related goal
+    agent_name TEXT NOT NULL, -- Agent or stage responsible (e.g., 'refiner', 'cot_generator')
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE, -- Optional: pipeline run that originated the rule
+    prompt_id INTEGER REFERENCES prompts(id) ON DELETE CASCADE, -- Optional: pipeline run that originated the rule
+    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE, -- Optional: pipeline run that originated the rule
+
+    rule_text TEXT, -- Human-readable description (optional)
+
+    score FLOAT, -- Cached average score from evaluations
+    source TEXT, -- e.g., 'learned', 'manual', 'lookahead', etc.
+
+    -- Optional metadata to guide selection or analysis
+    goal_type TEXT,
+    goal_category TEXT,
+    difficulty TEXT,
+    focus_area TEXT,
+
+    created_at TIMESTAMP DEFAULT NOW(), -- Creation time
+    updated_at TIMESTAMP DEFAULT NOW() -- Last update time
+);
+
+CREATE INDEX idx_symbolic_rules_goal_id ON symbolic_rules(goal_id);
+CREATE INDEX idx_symbolic_rules_pipeline_run_id ON symbolic_rules(pipeline_run_id);
+CREATE INDEX idx_symbolic_rules_prompt_id ON symbolic_rules(prompt_id);
+

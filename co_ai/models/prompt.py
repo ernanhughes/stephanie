@@ -28,6 +28,7 @@ class PromptORM(Base):
 
     goal = relationship("GoalORM", back_populates="prompts")
     hypotheses = relationship("HypothesisORM", back_populates="prompt")
+    symbolic_rules = relationship("SymbolicRuleORM", back_populates="prompt")
 
     def to_dict(self, include_relationships: bool = False) -> dict:
         data = {

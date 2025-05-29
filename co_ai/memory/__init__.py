@@ -14,3 +14,4 @@ from .report_logger import ReportLogger
 from .score_store import ScoreStore
 from .search_result_store import SearchResultStore
 from .sharpening_store import SharpeningStore
+from .symbolic_rule_store import SymbolicRuleStore

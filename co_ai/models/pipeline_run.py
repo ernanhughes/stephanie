@@ -24,3 +24,4 @@ class PipelineRunORM(Base):
 
     goal = relationship("GoalORM", back_populates="pipeline_runs")
     hypotheses = relationship("HypothesisORM", back_populates="pipeline_run")
+    symbolic_rules = relationship("SymbolicRuleORM", back_populates="pipeline_run")

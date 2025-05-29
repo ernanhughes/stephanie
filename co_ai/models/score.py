@@ -14,6 +14,7 @@ class ScoreORM(Base):
     id = Column(Integer, primary_key=True)
     goal_id = Column(Integer, ForeignKey("goals.id"))
     hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
+    symbolic_rule_id = Column(Integer, ForeignKey("symbolic_rules.id"), nullable=True)
     agent_name = Column(String, nullable=False)
     model_name = Column(String, nullable=False)
     evaluator_name = Column(String, nullable=False)
@@ -32,12 +33,14 @@ class ScoreORM(Base):
 
     goal = relationship("GoalORM", back_populates="scores")
     hypothesis = relationship("HypothesisORM", back_populates="scores")
+    symbolic_rule = relationship("SymbolicRuleORM", back_populates="scores")
 
     def to_dict(self, include_relationships: bool = False) -> dict:
         data = {
             "id": self.id,
             "goal_id": self.goal_id,
             "hypothesis_id": self.hypothesis_id,
+            "symbolic_rule_id": self.symbolic_rule_id,
             "agent_name": self.agent_name,
             "model_name": self.model_name,
             "evaluator_name": self.evaluator_name,

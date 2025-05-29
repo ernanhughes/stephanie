@@ -17,6 +17,9 @@ class GoalORM(Base):
     strategy = Column(String)
     llm_suggested_strategy = Column(String)
     source = Column(String, default="user")
+    difficulty = Column(String, default="medium")
+    goal_category = Column(String, default="analyze")
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     prompts = relationship("PromptORM", back_populates="goal")
@@ -28,6 +31,7 @@ class GoalORM(Base):
     ideas = relationship("IdeaORM", back_populates="goal")
     method_plans = relationship("MethodPlanORM", back_populates="goal")
     sharpening_predictions = relationship("SharpeningPredictionORM", back_populates="goal")
+    symbolic_rules = relationship("SymbolicRuleORM", back_populates="goal")
 
     def __repr__(self):
         return f"<GoalORM(id={self.id}, goal_text='{self.goal_text[:50]}')>"

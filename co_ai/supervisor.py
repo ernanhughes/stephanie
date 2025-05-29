@@ -12,8 +12,8 @@ from co_ai.constants import (NAME, PIPELINE, PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
                              SKIP_IF_COMPLETED, STAGE)
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
-from co_ai.models import PipelineRunORM  # if placed in models
 from co_ai.reports import ReportFormatter
+from co_ai.rules.symbolic_rule_applier import SymbolicRuleApplier
 
 
 class PipelineStage:
@@ -31,7 +31,7 @@ class Supervisor:
         self.memory = memory or MemoryTool(cfg=cfg.db, logger=logger)
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
         self.logger.log("SupervisorInit", {"cfg": cfg})
-
+        self.rule_applier = SymbolicRuleApplier(cfg, self.memory, self.logger)
         # Parse pipeline stages from config
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
 
@@ -56,15 +56,15 @@ class Supervisor:
         Each stage loads its class dynamically via hydra.utils.get_class()
         """
         self.logger.log("PipelineStart", input_data)
-        goal_orm= {}
         input_file = input_data.get("input_file", self.cfg.get("input_file", None))
-        # Handle JSONL file for batch input
+
         if input_file and os.path.exists(input_file):
             self.logger.log("BatchProcessingStart", {"file": input_file})
             with open(input_file, "r", encoding="utf-8") as f:
                 for i, line in enumerate(f):
                     goal_dict = json.loads(line)
                     goal_orm = self.memory.goals.get_or_create(goal_dict)
+
                     run_id = goal_orm.get("id", f"goal_{i}")
                     context = {
                         "goal": goal_dict,
@@ -83,7 +83,11 @@ class Supervisor:
             return {"status": "completed_batch", "input_file": input_file}
 
         # Fallback to single goal execution
-        context = input_data.copy()
+        goal_dict = input_data.get("goal")
+        if not goal_dict:
+            raise ValueError("Missing 'goal' key in input_data")
+
+        goal_orm = self.memory.goals.get_or_create(goal_dict)
         run_id = str(uuid4())
         pipeline_list = [stage.name for stage in self.pipeline_stages]
 
@@ -93,6 +97,7 @@ class Supervisor:
                 RUN_ID: run_id,
                 PIPELINE: pipeline_list,
                 PROMPT_DIR: self.cfg.paths.prompts,
+                "goal": goal_orm.to_dict(),
             }
         )
 
@@ -108,9 +113,11 @@ class Supervisor:
         }
 
         # Insert into DB
-        self.memory.pipeline_runs.insert(pipeline_run_data)
+        run_id = self.memory.pipeline_runs.insert(pipeline_run_data)
+        context["pipeline_run_id"] = run_id
         # Now allow lookahead or other steps to adjust context
         context = await self.maybe_adjust_pipeline(context)
+        context = self.rule_applier.apply(context)
         return await self._run_pipeline_stages(context)
 
     def _parse_pipeline_stages_from_list(
@@ -144,6 +151,8 @@ class Supervisor:
                 continue
 
             agent = cls(cfg=stage_dict, memory=self.memory, logger=self.logger)
+
+
             self.logger.log("PipelineStageStart", {STAGE: stage.name})
 
             for i in range(stage.iterations):
@@ -173,6 +182,8 @@ class Supervisor:
                     cfg=stage_dict, memory=self.memory, logger=self.logger
                 )
                 context = await judge_agent.run(context)
+
+            self.memory.symbolic_rules.track_pipeline_stage(stage_dict, context)
 
         return context
 
@@ -245,6 +256,7 @@ class Supervisor:
         try:
             lookahead_cfg = OmegaConf.to_container(self.cfg.dynamic, resolve=True)
             stage_dict = OmegaConf.to_container(self.cfg.agents.lookahead, resolve=True)
+            stage_dict = self.rule_applier.apply_to_agent(stage_dict)
             agent_cls = hydra.utils.get_class(lookahead_cfg["cls"])
             lookahead_agent = agent_cls(
                 cfg=stage_dict, memory=self.memory, logger=self.logger

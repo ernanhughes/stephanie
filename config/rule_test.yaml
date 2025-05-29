@@ -30,8 +30,6 @@ defaults:
   - agents/symbolic_optimizer
   - logging/json_logger
 
-# The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
-# This is a placeholder and should be replaced with the actual goal.
 goal:
   goal_text: "If I was to develop a self improving process what would be the steps needed?"
   goal_type: "research"
@@ -44,6 +42,15 @@ goal:
 
 symbolic:
   enabled: true  # set to false to skip symbolic rule application
+  rules_file: "config/rules/rules.yaml"
+  enable_db_rules: true # load rules from the database
+  match_priority:
+    - goal_id
+    - pipeline_run_id
+    - metadata
+  metadata_match_mode: partial   # options: exact, partial, off
+  allow_fallback: true           # if no ID matches, allow metadata fallback
+
 
 #dynamic:
 #  name: lookahead

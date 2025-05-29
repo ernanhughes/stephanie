@@ -21,6 +21,7 @@ from co_ai.memory.reflection_delta_store import ReflectionDeltaStore
 from co_ai.memory.score_store import ScoreStore
 from co_ai.memory.search_result_store import SearchResultStore
 from co_ai.memory.sharpening_store import SharpeningStore
+from co_ai.memory.symbolic_rule_store import SymbolicRuleStore
 from co_ai.models.base import engine  # From your SQLAlchemy setup
 
 
@@ -62,6 +63,7 @@ class MemoryTool:
         self.register_store(MethodPlanStore(self.session, logger))
         self.register_store(MRQStore(cfg, self.session, logger))
         self.register_store(SharpeningStore(self.session, logger))
+        self.register_store(SymbolicRuleStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):
