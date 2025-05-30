@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Column, DateTime, Integer, Text)
 
@@ -26,7 +26,7 @@ class MRQPreferencePairORM(Base):
     run_id = Column(Text)
     source = Column(Text)  # e.g., arm_dataloader, user, 
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
 
     def to_dict(self):

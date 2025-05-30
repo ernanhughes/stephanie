@@ -1,5 +1,5 @@
 # models/reflection_delta.py
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
                         Integer, String)
@@ -24,6 +24,6 @@ class ReflectionDeltaORM(Base):
     strategy_diff = Column(Boolean, default=False)
     model_diff = Column(Boolean, default=False)
     rationale_diff = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     goal = relationship("GoalORM", back_populates="reflection_deltas")

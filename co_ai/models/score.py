@@ -1,5 +1,5 @@
 # models/score.py
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
                         String, Text)
@@ -29,7 +29,7 @@ class ScoreORM(Base):
     meta_review = Column(Text)
     run_id = Column(String)
     extra_data = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     goal = relationship("GoalORM", back_populates="scores")
     hypothesis = relationship("HypothesisORM", back_populates="scores")

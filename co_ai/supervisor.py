@@ -2,7 +2,7 @@
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import hydra
@@ -109,7 +109,7 @@ class Supervisor:
             "strategy": context.get("strategy"),
             "model_name": self.cfg.get("model.name", "unknown"),
             "run_config": OmegaConf.to_container(self.cfg),
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         # Insert into DB

@@ -1,5 +1,5 @@
 # co_ai/analyzer/reflection_delta.py
-from datetime import datetime
+from datetime import datetime, timezone
 from statistics import mean
 
 
@@ -53,5 +53,5 @@ def compute_pipeline_delta(run_a, run_b, scores_a, scores_b):
             run_a.lookahead_context.get("rationale") if run_a.lookahead_context else None,
             run_b.lookahead_context.get("rationale") if run_b.lookahead_context else None,
         ),
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }

@@ -1,6 +1,6 @@
 # models/rule_application.py
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import relationship
 
@@ -16,7 +16,7 @@ class RuleApplicationORM(Base):
     pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"))
     hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"), nullable=True)
 
-    applied_at = Column(DateTime, default=datetime.utcnow)
+    applied_at = Column(DateTime, default=datetime.now(timezone.utc))
     agent_name = Column(String, nullable=True)
     change_type = Column(String, nullable=True)  # e.g., pipeline_override, hint, etc.
     details = Column(JSON, nullable=True)        # Can store {old:..., new:...}
@@ -29,10 +29,10 @@ class RuleApplicationORM(Base):
     notes = Column(Text, nullable=True)
 
     # Relationships (optional, if you want to access related objects)
-    rule = relationship("SymbolicRuleORM", back_populates="applications", lazy="joined")
-    goal = relationship("GoalORM", back_populates="rule_applications", lazy="joined")
-    pipeline_run = relationship("PipelineRunORM", back_populates="rule_applications", lazy="joined")
-    hypothesis = relationship("HypothesisORM", back_populates="rule_applications", lazy="joined")
+    goal = relationship("GoalORM", back_populates="rule_applications")
+    rule = relationship("SymbolicRuleORM", back_populates="applications")
+    pipeline_run = relationship("PipelineRunORM", back_populates="rule_applications")
+    hypothesis = relationship("HypothesisORM", back_populates="rule_applications")
 
     def to_dict(self) -> dict:
         return {

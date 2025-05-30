@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from co_ai.constants import GOAL
 from co_ai.models import PatternStatORM
@@ -104,7 +104,7 @@ class RubricClassifierMixin:
                     dimension=dimension,
                     label=label,
                     confidence_score=confidence_score,
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc).isoformat(),
                 )
                 stats.append(stat)
 

@@ -47,7 +47,7 @@ class PipelineRunStore:
                     "pipeline": db_run.pipeline,
                     "strategy": db_run.strategy,
                     "model": db_run.model_name,
-                    "timestamp": db_run.created_at.isoformat() if db_run.created_at else None
+                    "timestamp": db_run.created_at if db_run.created_at else None
                 })
 
             return run_id

@@ -1,5 +1,5 @@
 # models/method_plan.py
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
                         Integer, String)
@@ -47,7 +47,7 @@ class MethodPlanORM(Base):
     is_refinement = Column(Boolean, default=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     # Relationships
     goal = relationship("GoalORM", back_populates="method_plans")

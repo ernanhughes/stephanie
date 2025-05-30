@@ -1,5 +1,5 @@
 # models/prompt.py
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,
                         String, Text)
@@ -24,7 +24,7 @@ class PromptORM(Base):
     version = Column(Integer, default=1)
     is_current = Column(Boolean, default=False)
     extra_data = Column(JSON)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
 
     goal = relationship("GoalORM", back_populates="prompts")
     hypotheses = relationship("HypothesisORM", back_populates="prompt")

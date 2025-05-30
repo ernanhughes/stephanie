@@ -1,9 +1,8 @@
 # models/search_result.py
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (ARRAY, JSON, Column, DateTime, ForeignKey, Integer,
                         String, Text)
-from sqlalchemy.orm import relationship
 
 from .base import Base
 
@@ -26,7 +25,7 @@ class SearchResultORM(Base):
     strategy = Column(String)
     focus_area = Column(String)
     extra_data = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     # 🔍 New Fields Below — For Knowledge Refinement & Idea Linking
     key_concepts = Column(ARRAY(String))

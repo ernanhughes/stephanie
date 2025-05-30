@@ -1,6 +1,6 @@
 # stores/mrq_store.py
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -42,7 +42,7 @@ class MRQStore:
                 source="manual",
                 run_id=metadata.get("run_id") if metadata else None,
                 metadata_=json.dumps(metadata or {}),
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
 
             self.db.add(db_entry)

@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 def save_markdown_report(result: dict, out_dir: str = "./reports"):
     goal = result["goal"]["goal_text"]
-    run_id = result.get("run_id", datetime.now().isoformat())
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    run_id = result.get("run_id", datetime.now(timezone.utc).isoformat())
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
 
     report_md = f"""# General Reasoner Run Report
 

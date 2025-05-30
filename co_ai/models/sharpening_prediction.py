@@ -1,5 +1,5 @@
 # models/sharpening_prediction.py
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
@@ -29,8 +29,8 @@ class SharpeningPredictionORM(Base):
     value_a = Column(Float, nullable=False)
     value_b = Column(Float, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    
     # Relationships
     goal = relationship("GoalORM", back_populates="sharpening_predictions")
 

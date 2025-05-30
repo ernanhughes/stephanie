@@ -1,11 +1,10 @@
 # stores/lookahead_store.py
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from co_ai.models.goal import GoalORM
 from co_ai.models.lookahead import LookaheadORM
 
 
@@ -36,7 +35,7 @@ class LookaheadStore:
                 backup_plans=json.dumps(result.backup_plans) if result.backup_plans else None,
                 extra_data=json.dumps(result.extra_data or {}),
                 run_id=result.run_id,
-                created_at=result.created_at or datetime.utcnow()
+                created_at=result.created_at or datetime.now(timezone.utc),
             )
 
             self.session.add(db_lookahead)

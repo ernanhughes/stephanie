@@ -1,5 +1,5 @@
 # stores/goal_store.py
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -28,7 +28,7 @@ class GoalStore:
                 strategy=goal_dict.get("strategy"),
                 llm_suggested_strategy=goal_dict.get("llm_suggested_strategy"),
                 source=goal_dict.get("source", "user"),
-                created_at=goal_dict.get("created_at") or datetime.utcnow()
+                created_at=goal_dict.get("created_at") or datetime.now(timezone.utc),
             )
             self.session.add(new_goal)
             self.session.commit()

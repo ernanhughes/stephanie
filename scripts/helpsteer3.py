@@ -1,7 +1,6 @@
 from datasets import load_dataset
-from datetime import datetime
+from datetime import datetime, timezone
 import json
-import uuid
 
 # Config
 NUM_SAMPLES = 100
@@ -17,7 +16,7 @@ def build_entries(example, idx):
     goal_id = f"helpsteer3_stem_{idx}"
     run_id_a = f"{goal_id}_a"
     run_id_b = f"{goal_id}_b"
-    created_at = datetime.utcnow().isoformat()
+    created_at = datetime.now(timezone.utc)
 
     # Build goal
     goal = {

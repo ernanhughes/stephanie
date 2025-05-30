@@ -1,5 +1,5 @@
 # models/pattern_stat.py
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
 
@@ -25,4 +25,4 @@ class PatternStatORM(Base):
     confidence_score = Column(Float)           # Optional numeric score
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))

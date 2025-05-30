@@ -1,6 +1,6 @@
 from datasets import load_dataset
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Load StrategyQA dataset
 dataset = load_dataset("ChilleD/StrategyQA", split="train")
@@ -15,7 +15,7 @@ def convert_to_goal_format(example, idx):
         "source": "strategyqa",
         "answer": example["answer"],
         "facts": example.get("facts", []),
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc)
     }
 
 # Output file path

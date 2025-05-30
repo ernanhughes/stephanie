@@ -36,9 +36,7 @@ class GoalORM(Base):
     symbolic_rules = relationship("SymbolicRuleORM", back_populates="goal")
 
     rule_applications = relationship(
-        "RuleApplicationORM",
-        back_populates="goal",
-        cascade="all, delete-orphan",
+        "RuleApplicationORM", back_populates="goal", cascade="all, delete-orphan"
     )
 
     def __repr__(self):
