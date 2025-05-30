@@ -23,7 +23,7 @@ class RubricClassifierMixin:
         rubrics = self._load_enabled_rubrics(cfg)
 
         for rubric in rubrics:
-            rubric["hypotheses"] = hypothesis.get("text")To be
+            rubric["hypotheses"] = hypothesis.get("text")
             merged = {**context, **rubric}
             prompt_text = prompt_loader.from_file(pattern_file, cfg, merged)
             custom_llm = cfg.get("analysis_model", None)

@@ -3,6 +3,7 @@ from collections import defaultdict
 
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
+from co_ai.evaluator import ARMReasoningSelfEvaluator, MRQSelfEvaluator
 from co_ai.models import ScoreORM, RuleApplicationORM
 
 
@@ -11,7 +12,6 @@ class PipelineJudgeAgent(BaseAgent):
         self.logger.log("PipelineJudgeAgentStart", {"pipeline_run_id": context.get(PIPELINE_RUN_ID)})
 
         goal = context["goal"]
-        self.get_mrq_training(context)
         pipeline = context[PIPELINE]
         hypotheses = context.get("scored_hypotheses", []) or context.get(
             "hypotheses", []
@@ -162,45 +162,3 @@ class PipelineJudgeAgent(BaseAgent):
             },
         )
 
-    def get_mrq_training(self, context:dict):
-        goal = context.get(GOAL)
-        goal_id = goal.get("id") if goal else None
-
-        all_scores = self.memory.scores.get_by_goal_id(goal_id=goal_id)
-        grouped_by_prompt = defaultdict(list)
-
-        for score in all_scores:
-            grouped_by_prompt[score.prompt].append(score)
-
-        pairs = []
-        for prompt, scores in grouped_by_prompt.items():
-            scores.sort(key=lambda s: s.score, reverse=True)
-            for i in range(len(scores)):
-                for j in range(i + 1, len(scores)):
-                    s1, s2 = scores[i], scores[j]
-                    if abs(s1.score - s2.score) < self.margin:
-                        continue
-                    preferred = "a" if s1.score > s2.score else "b"
-                    pairs.append({
-                        "prompt": prompt,
-                        "output_a": s1.response,
-                        "output_b": s2.response,
-                        "preferred": preferred,
-                        "pipeline_a": s1.metadata.get("pipeline"),
-                        "pipeline_b": s2.metadata.get("pipeline"),
-                        "score_a": s1.score,
-                        "score_b": s2.score,
-                        "goal_id": goal_id,
-                    })
-                    if len(pairs) >= self.max_pairs:
-                        break
-                if len(pairs) >= self.max_pairs:
-                    break
-
-        self.logger.log("MRQTrainingPairsExtracted", {
-            "count": len(pairs),
-            "goal_id": goal_id,
-        })
-
-        context["dpo_samples"] = pairs
-        return context

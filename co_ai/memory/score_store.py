@@ -52,7 +52,7 @@ class ScoreStore:
                         pipeline_run_id=score.pipeline_run_id,
                         goal_id=score.goal_id,
                     )
-                    .all()I 
+                    .all()
                 )
                 if possible_apps:
                     score.rule_application_id = possible_apps[0].id

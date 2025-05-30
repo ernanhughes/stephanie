@@ -10,13 +10,12 @@ class SharpeningStore:
         self.logger = logger
         self.name = "sharpening"
 
-    def insert_sharpening_prediction(self, prediction_dict: dict, goal_text: str):
+    def insert_sharpening_prediction(self, prediction_dict: dict, goal: dict):
         """
         Inserts a new sharpening comparison from A/B hypothesis testing
         """
         prediction = SharpeningPredictionORM(**prediction_dict)
-        goal = self.memory.goals.get_or_create({"goal_text": goal_text})
-        prediction.goal_id = goal.id  # Ensure correct goal linkage
+        prediction.goal_id = goal.get("id")  # Ensure correct goal linkage
 
         self.session.add(prediction)
         self.session.commit()
