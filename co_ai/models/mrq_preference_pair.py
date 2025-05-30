@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import (JSON, Column, DateTime, Integer, Text)
+from sqlalchemy import JSON, Column, DateTime, Integer, Text
 
 from co_ai.models.base import Base
 

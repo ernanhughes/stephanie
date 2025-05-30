@@ -1,9 +1,10 @@
 from typing import Union
 
 from co_ai.agents import BaseAgent
-from co_ai.evaluator import LLMJudgeEvaluator, ARMReasoningSelfEvaluator
 from co_ai.constants import GOAL
 from co_ai.dataloaders import ARMDataLoader
+from co_ai.evaluator import ARMReasoningSelfEvaluator, LLMJudgeEvaluator
+
 
 class AdaptiveReasonerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

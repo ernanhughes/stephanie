@@ -26,14 +26,13 @@ defaults:
   - agents/review
   - agents/scorer
   - agents/sharpening
-  # - agents/strategy_selector
   - agents/symbolic_optimizer
   - logging/json_logger
 
 goal:
   goal_text: "If I was to develop a self improving process what would be the steps needed?"
-  goal_type: "research"
-  focus_area: "ai_research"
+  goal_type: "theoretical"
+  goal_category: "ai_research"
   strategy: "reasoning"
   difficulty: "medium"
   expected_formats:
@@ -67,7 +66,7 @@ planner:
 
 post_judgment:
   name: pipeline_judge
-  enabled: false
+  enabled: true
   cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
 
 
@@ -92,12 +91,12 @@ pipeline:
   name: default_pipeline
   description: "Default hypothesis generation and refinement pipeline"
   stages:
-#    - name: cot_generator
-#      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
-#      enabled: true
-#      iterations: 1
       - name: generation
         cls: co_ai.agents.generation.GenerationAgent
+        enabled: true
+        iterations: 1
+      - name: symbolic_optimizer
+        cls: co_ai.agents.symbolic_optimizer.SymbolicOptimizerAgent
         enabled: true
         iterations: 1
     #  - name: proximity

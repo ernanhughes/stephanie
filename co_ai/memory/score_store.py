@@ -48,6 +48,11 @@ class ScoreStore:
         results = self.session.query(ScoreORM).join(GoalORM).filter(GoalORM.id == goal_id).all()
         return [self._orm_to_dict(r) for r in results]
 
+    def get_by_goal_type(self, goal_type: str) -> List[Dict]:
+        """Returns all scores associated with a specific goal."""
+        results = self.session.query(ScoreORM).join(GoalORM).filter(GoalORM.goal_type == goal_type).all()
+        return [self._orm_to_dict(r) for r in results]
+
     def get_by_hypothesis_id(self, hypothesis_id: int) -> List[Dict]:
         """Returns all scores associated with a specific hypothesis."""
         results = self.session.query(ScoreORM).filter(ScoreORM.hypothesis_id == hypothesis_id).all()

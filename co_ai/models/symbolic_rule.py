@@ -1,36 +1,79 @@
-# models/symbolic_rule.py
 from datetime import datetime
-
-from sqlalchemy import Column, DateTime, Integer, String, Float, ForeignKey
+import hashlib
+import json
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Text,
+    Float,
+    ForeignKey,
+    DateTime,
+    JSON,
+)
 from sqlalchemy.orm import relationship
-
 from .base import Base
-
-
 
 class SymbolicRuleORM(Base):
     __tablename__ = "symbolic_rules"
 
     id = Column(Integer, primary_key=True)
 
-    goal_id = Column(Integer, ForeignKey("goals.id"), nullable=False)
-    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"), nullable=True)
-    prompt_id = Column(Integer, ForeignKey("prompts.id"), nullable=True)
-    rule_text = Column(String)
-    agent_name = Column(String)
-    source = Column(String)
+    # General metadata
+    source = Column(String)  # e.g., 'manual', 'lookahead', 'pipeline_stage'
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # New design: generalized rules
+    target = Column(String, nullable=False)  # e.g., 'goal', 'agent', 'prompt', 'pipeline', 'hypothesis'
+    attributes = Column(JSON)  # What to apply, e.g., {"difficulty": "hard"}
+    filter = Column(JSON)  # How to match, e.g., {"goal_type": "research", "strategy": "reasoning"}
+    context_hash = Column(String, index=True)  # Hash of (filters + attributes)
+
+
     goal_type = Column(String)
     goal_category = Column(String)
     difficulty = Column(String)
     focus_area = Column(String)
-    score = Column(Float)
 
-    goal = relationship("GoalORM", back_populates="symbolic_rules")
-    pipeline_run = relationship("PipelineRunORM", back_populates="symbolic_rules")
-    prompt = relationship("PromptORM", back_populates="symbolic_rules")
+    # Optional linkage (for legacy/rule provenance/debugging)
+    goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True)
+    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"), nullable=True)
+    prompt_id = Column(Integer, ForeignKey("prompts.id"), nullable=True)
+    agent_name = Column(String, nullable=True)
+
+    # Optional scoring/description
+    score = Column(Float)
+    rule_text = Column(Text)
+
+    # Relationships
+    goal = relationship("GoalORM", back_populates="symbolic_rules", lazy="joined")
+    pipeline_run = relationship("PipelineRunORM", back_populates="symbolic_rules", lazy="joined")
+    prompt = relationship("PromptORM", back_populates="symbolic_rules", lazy="joined")
     scores = relationship("ScoreORM", back_populates="symbolic_rule")
-    # rule_applications = relationship("RuleApplicationORM",  back_populates="rule", cascade="all, delete-orphan")
     applications = relationship("RuleApplicationORM", back_populates="rule", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<SymbolicRule(agent={self.agent_name}, pipeline={self.pipeline_signature}, score={self.score:.2f})>"
+
+    @staticmethod
+    def compute_context_hash(filters: dict, attributes: dict) -> str:
+        merged = {"filters": filters or {}, "attributes": attributes or {}}
+        canonical_str = json.dumps(merged, sort_keys=True)
+        return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+
+    def to_dict(self, include_relationships=False):
+        return {
+            "id": self.id,
+            "target": self.target,
+            "filter": self.filter,
+            "attributes": self.attributes,
+            "context_hash": self.context_hash,
+            "source": self.source,
+            "goal_id": self.goal_id,
+            "pipeline_run_id": self.pipeline_run_id,
+            "prompt_id": self.prompt_id,
+            "agent_name": self.agent_name,
+            "score": self.score,
+            "rule_text": self.rule_text,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }

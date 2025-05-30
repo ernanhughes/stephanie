@@ -1,5 +1,6 @@
 from collections import OrderedDict
 
+
 class SimpleLRUCache:
     def __init__(self, max_size=10000):
         self.cache = OrderedDict()

@@ -1,7 +1,9 @@
 # models/rule_application.py
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, JSON
+
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text)
 from sqlalchemy.orm import relationship
 
 from .base import Base
@@ -15,6 +17,7 @@ class RuleApplicationORM(Base):
     goal_id = Column(Integer, ForeignKey("goals.id", ondelete="CASCADE"))
     pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"))
     hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"), nullable=True)
+    context_hash = Column(String, index=True)
 
     applied_at = Column(DateTime, default=datetime.now(timezone.utc))
     agent_name = Column(String, nullable=True)
@@ -33,6 +36,8 @@ class RuleApplicationORM(Base):
     rule = relationship("SymbolicRuleORM", back_populates="applications")
     pipeline_run = relationship("PipelineRunORM", back_populates="rule_applications")
     hypothesis = relationship("HypothesisORM", back_populates="rule_applications")
+    scores = relationship("ScoreORM", back_populates="rule_applications")
+
 
     def to_dict(self) -> dict:
         return {

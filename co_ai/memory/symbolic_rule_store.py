@@ -1,10 +1,12 @@
-from sqlalchemy.orm import Session
-from co_ai.models.symbolic_rule import SymbolicRuleORM
-from co_ai.models.score import ScoreORM
 from typing import List
-from co_ai.constants import PIPELINE
+
 import yaml
-from sqlalchemy import or_, and_
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session
+
+from co_ai.constants import PIPELINE
+from co_ai.models.score import ScoreORM
+from co_ai.models.symbolic_rule import SymbolicRuleORM
 
 
 class SymbolicRuleStore:
@@ -120,16 +122,18 @@ class SymbolicRuleStore:
             .all()
         )
 
-    def track_pipeline_stage(self, cfg: dict, context: dict):
+    def track_pipeline_stage(self, stage_dict: dict, context: dict):
         # Only create if not already exists
         goal = context.get("goal")
         goal_id = goal.get("id")
         pipeline_run_id = context.get("pipeline_run_id")
-        agent_name = cfg.get("name", "default_agent")
+        agent_name = stage_dict.get("name", "default_agent")
+        rule_filter = {"agent_name": agent_name, "goal_id": goal_id}
+        context_hash = SymbolicRuleORM.compute_context_hash(stage_dict, rule_filter)
         existing = (
             self.session.query(SymbolicRuleORM)
             .filter_by(
-                goal_id=goal_id, pipeline_run_id=pipeline_run_id, agent_name=agent_name
+                goal_id=goal_id, context_hash=context_hash, agent_name=agent_name
             )
             .first()
         )
@@ -139,9 +143,13 @@ class SymbolicRuleStore:
                 goal_id=goal_id,
                 pipeline_run_id=pipeline_run_id,
                 agent_name=agent_name,
+                target="pipeline",
+                attributes=stage_dict,
+                filter=rule_filter,
                 goal_type=goal.get("goal_type"),
-                goal_category=goal.get("category"),
+                goal_category=goal.get("goal_category") or goal.get("focus_area"),
                 difficulty=goal.get("difficulty"),
+                context_hash=context_hash,
                 source="pipeline_stage",
             )
             self.add_rule(rule)

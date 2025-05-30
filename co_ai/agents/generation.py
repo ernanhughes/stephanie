@@ -2,7 +2,6 @@
 
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import FEEDBACK, GOAL, HYPOTHESES, LITERATURE, PIPELINE
-from co_ai.models import HypothesisORM
 from co_ai.parsers import extract_hypotheses
 
 
@@ -11,6 +10,7 @@ class GenerationAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
+        from co_ai.models import HypothesisORM
         goal = self.memory.goals.get_or_create(context.get(GOAL))
 
         self.logger.log("GenerationStart", {GOAL: goal})

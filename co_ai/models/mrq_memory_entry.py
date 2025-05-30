@@ -1,8 +1,7 @@
 # models/mrq_memory_entry.py
 from datetime import datetime, timezone
 
-from sqlalchemy import (JSON, Column, DateTime, Float, Integer,
-                        String, Text)
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, REAL
 
 from co_ai.models.base import Base

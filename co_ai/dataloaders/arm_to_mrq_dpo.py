@@ -5,7 +5,6 @@ from typing import Dict, List, Optional
 
 from datasets import load_dataset
 
-
 REASONING_FORMATS = {
     "direct": "<Direct>",
     "short_cot": "<Short_CoT>",

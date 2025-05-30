@@ -1,9 +1,13 @@
-# co_ai/symbolic/symbolic_rule_applier.py
-
-from typing import Any, Dict, List
-from co_ai.memory.symbolic_rule_store import SymbolicRuleORM
-import yaml
 from pathlib import Path
+from typing import Any, Dict, List
+from datetime import datetime
+import hashlib
+import json
+import yaml
+
+from co_ai.memory.symbolic_rule_store import SymbolicRuleORM
+from co_ai.models.rule_application import RuleApplicationORM
+
 
 class SymbolicRuleApplier:
     def __init__(self, cfg, memory, logger):
@@ -12,6 +16,152 @@ class SymbolicRuleApplier:
         self.logger = logger
         self.enabled = cfg.get("symbolic", {}).get("enabled", False)
         self.rules = self._load_rules()
+
+    def apply(self, context: dict) -> dict:
+        if not self.enabled:
+            return context
+
+        goal = context.get("goal", {})
+        pipeline_run_id = context.get("pipeline_run_id")
+        current_pipeline = context.get("pipeline", [])
+
+        matching_rules = [r for r in self.rules if self._matches_metadata(r, goal)]
+
+        if not matching_rules:
+            self.logger.log("NoSymbolicRulesApplied", {"goal_id": goal.get("id")})
+            return context
+
+        self.logger.log("SymbolicRulesFound", {"count": len(matching_rules)})
+
+        for rule in matching_rules:
+            if rule.rule_text and "pipeline:" in rule.rule_text:
+                suggested_pipeline = (
+                    rule.rule_text.split("pipeline:")[-1].strip().split(",")
+                )
+                suggested_pipeline = [
+                    s.strip() for s in suggested_pipeline if s.strip()
+                ]
+                if suggested_pipeline:
+                    self.logger.log(
+                        "PipelineUpdatedBySymbolicRule",
+                        {
+                            "from": current_pipeline,
+                            "to": suggested_pipeline,
+                            "rule_id": rule.id,
+                        },
+                    )
+                    context["pipeline"] = suggested_pipeline
+                    context["pipeline_updated_by_symbolic_rule"] = True
+
+            if rule.source == "lookahead" and rule.goal_type:
+                context["symbolic_hint"] = f"use_{rule.goal_type.lower()}_strategy"
+
+        return context
+
+    from datetime import datetime
+    from co_ai.models import RuleApplicationORM
+
+    def apply_to_agent(self, cfg: Dict, context: Dict) -> Dict:
+        if not self.enabled:
+            return cfg
+
+        goal = context.get("goal", {})
+        pipeline_run_id = context.get("pipeline_run_id")
+        agent_name = cfg.get("name")
+
+        matching_rules = [
+            r
+            for r in self.rules
+            if r.agent_name == agent_name and self._matches_metadata(r, goal)
+        ]
+
+        if not matching_rules:
+            self.logger.log(
+                "NoSymbolicAgentRulesApplied",
+                {
+                    "agent": agent_name,
+                    "goal_id": goal.get("id"),
+                },
+            )
+            return cfg
+
+        self.logger.log(
+            "SymbolicAgentRulesFound",
+            {
+                "agent": agent_name,
+                "goal_id": goal.get("id"),
+                "count": len(matching_rules),
+            },
+        )
+
+        for rule in matching_rules:
+            # Apply new-style attributes
+            if rule.attributes:
+                for key, value in rule.attributes.items():
+                    if key in cfg:
+                        self.logger.log(
+                            "SymbolicAgentOverride",
+                            {
+                                "agent": agent_name,
+                                "key": key,
+                                "old_value": cfg[key],
+                                "new_value": value,
+                                "rule_id": rule.id,
+                            },
+                        )
+                    else:
+                        self.logger.log(
+                            "SymbolicAgentNewKey",
+                            {
+                                "agent": agent_name,
+                                "key": key,
+                                "value": value,
+                                "rule_id": rule.id,
+                            },
+                        )
+                    cfg[key] = value
+
+            # Apply legacy rule_text (optional, for backward compatibility)
+            if rule.rule_text:
+                entries = [e.strip() for e in rule.rule_text.split(",") if e.strip()]
+                for entry in entries:
+                    if ":" in entry:
+                        key, value = [s.strip() for s in entry.split(":", 1)]
+                        if key in cfg:
+                            self.logger.log(
+                                "SymbolicAgentOverride",
+                                {
+                                    "agent": agent_name,
+                                    "key": key,
+                                    "old_value": cfg[key],
+                                    "new_value": value,
+                                    "rule_id": rule.id,
+                                },
+                            )
+                        else:
+                            self.logger.log(
+                                "SymbolicAgentNewKey",
+                                {
+                                    "agent": agent_name,
+                                    "key": key,
+                                    "value": value,
+                                    "rule_id": rule.id,
+                                },
+                            )
+                        cfg[key] = value
+
+            # Record the application of this rule
+            self.memory.rule_effects.insert(
+                goal_id=goal.get("id"),
+                rule_id=rule.id,
+                pipeline_run_id=pipeline_run_id,
+                details=rule.to_dict()
+            )
+
+        return cfg
+
+    def track_pipeline_stage(self, stage_dict: dict, context: dict):
+        self.memory.symbolic_rules.track_pipeline_stage(stage_dict, context)
 
     def _load_rules(self):
         rules = []
@@ -29,51 +179,20 @@ class SymbolicRuleApplier:
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f)
 
-        rules_list = raw.get("rules", raw)  # fallback to raw if it's already a list
+        rules_list = raw.get("rules", raw)
 
         rules = []
+        existing_rules = {
+            r.rule_text for r in self.memory.symbolic_rules.get_all_rules()
+        }
         for item in rules_list:
-            if isinstance(item, dict):
+            if isinstance(item, dict) and item.get("rule_text") not in existing_rules:
                 rules.append(SymbolicRuleORM(**item))
             else:
-                self.logger.log("InvalidSymbolicRuleFormat", {"item": str(item)})
+                self.logger.log(
+                    "DuplicateSymbolicRuleSkipped", {"rule_text": item.get("rule_text")}
+                )
         return rules
-
-    def apply(self, context: dict) -> dict:
-        if not self.enabled:
-            return context
-
-        goal = context.get("goal", {})
-        pipeline_run_id = context.get("pipeline_run_id")
-        current_pipeline = context.get("pipeline", [])
-
-        matching_rules = [
-            r for r in self.rules if self._matches_metadata(r, goal)
-        ]
-
-        if not matching_rules:
-            self.logger.log("NoSymbolicRulesApplied", {"goal_id": goal.get("id")})
-            return context
-
-        self.logger.log("SymbolicRulesFound", {"count": len(matching_rules)})
-
-        for rule in matching_rules:
-            if rule.rule_text and "pipeline:" in rule.rule_text:
-                suggested_pipeline = rule.rule_text.split("pipeline:")[-1].strip().split(",")
-                suggested_pipeline = [s.strip() for s in suggested_pipeline if s.strip()]
-                if suggested_pipeline:
-                    self.logger.log("PipelineUpdatedBySymbolicRule", {
-                        "from": current_pipeline,
-                        "to": suggested_pipeline,
-                        "rule_id": rule.id
-                    })
-                    context["pipeline"] = suggested_pipeline
-                    context["pipeline_updated_by_symbolic_rule"] = True
-
-            if rule.source == "lookahead" and rule.goal_type:
-                context["symbolic_hint"] = f"use_{rule.goal_type.lower()}_strategy"
-
-        return context
 
     def _matches_metadata(self, rule: SymbolicRuleORM, goal: Dict[str, Any]) -> bool:
         if rule.goal_id and rule.goal_id != goal.get("id"):
@@ -85,6 +204,11 @@ class SymbolicRuleApplier:
         if rule.difficulty and rule.difficulty != goal.get("difficulty"):
             return False
         if hasattr(goal, "focus_area") and rule.goal_category:
-            if rule.goal_category != goal.get("focus_area"):  # fallback mapping
+            if rule.goal_category != goal.get("focus_area"):
                 return False
         return True
+
+    @staticmethod
+    def compute_context_hash(context_dict: dict) -> str:
+        canonical_str = json.dumps(context_dict, sort_keys=True)
+        return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()

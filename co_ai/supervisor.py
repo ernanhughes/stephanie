@@ -8,8 +8,16 @@ from uuid import uuid4
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from co_ai.constants import (NAME, PIPELINE, PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
-                             SKIP_IF_COMPLETED, STAGE)
+from co_ai.constants import (
+    GOAL,
+    NAME,
+    PIPELINE,
+    PROMPT_DIR,
+    RUN_ID,
+    SAVE_CONTEXT,
+    SKIP_IF_COMPLETED,
+    STAGE,
+)
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
 from co_ai.reports import ReportFormatter
@@ -67,8 +75,8 @@ class Supervisor:
 
                     run_id = goal_orm.get("id", f"goal_{i}")
                     context = {
-                        "goal": goal_dict,
-                        "run_id": run_id,
+                        GOAL: goal_dict,
+                        RUN_ID: run_id,
                         "prompt_dir": self.cfg.paths.prompts,
                         PIPELINE: [stage.name for stage in self.pipeline_stages],
                     }
@@ -82,12 +90,7 @@ class Supervisor:
             self.logger.log("BatchProcessingComplete", {"file": input_file})
             return {"status": "completed_batch", "input_file": input_file}
 
-        # Fallback to single goal execution
-        goal_dict = input_data.get("goal")
-        if not goal_dict:
-            raise ValueError("Missing 'goal' key in input_data")
-
-        goal_orm = self.memory.goals.get_or_create(goal_dict)
+        goal_dict = self.get_goal(input_data)
         run_id = str(uuid4())
         pipeline_list = [stage.name for stage in self.pipeline_stages]
 
@@ -97,11 +100,10 @@ class Supervisor:
                 RUN_ID: run_id,
                 PIPELINE: pipeline_list,
                 PROMPT_DIR: self.cfg.paths.prompts,
-                "goal": goal_orm.to_dict(),
+                "goal": goal_dict,
             }
         )
 
-        # Create and store PipelineRun
         # Create and store PipelineRun
         pipeline_run_data = {
             "run_id": run_id,
@@ -140,6 +142,7 @@ class Supervisor:
 
             cls = hydra.utils.get_class(stage.cls)
             stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
+            self.rule_applier.apply_to_agent(stage_dict, context)
 
             saved_context = self.load_context(stage_dict, run_id=context.get(RUN_ID))
             if saved_context:
@@ -152,7 +155,6 @@ class Supervisor:
 
             agent = cls(cfg=stage_dict, memory=self.memory, logger=self.logger)
 
-
             self.logger.log("PipelineStageStart", {STAGE: stage.name})
 
             for i in range(stage.iterations):
@@ -160,6 +162,7 @@ class Supervisor:
                     "PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1}
                 )
                 context = await agent.run(context)
+                self.rule_applier.track_pipeline_stage(stage_dict, context)
                 self.logger.log(
                     "PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1}
                 )
@@ -182,8 +185,7 @@ class Supervisor:
                     cfg=stage_dict, memory=self.memory, logger=self.logger
                 )
                 context = await judge_agent.run(context)
-
-            self.memory.symbolic_rules.track_pipeline_stage(stage_dict, context)
+                self.rule_applier.track_pipeline_stage(stage_dict, context)
 
         return context
 
@@ -230,7 +232,9 @@ class Supervisor:
             try:
                 planner_cfg = OmegaConf.to_container(self.cfg.planner, resolve=True)
                 planner_cls = hydra.utils.get_class(planner_cfg["cls"])
-                planner = planner_cls(cfg=planner_cfg, memory=self.memory, logger=self.logger)
+                planner = planner_cls(
+                    cfg=planner_cfg, memory=self.memory, logger=self.logger
+                )
 
                 context = await planner.run(context)
 
@@ -256,7 +260,7 @@ class Supervisor:
         try:
             lookahead_cfg = OmegaConf.to_container(self.cfg.dynamic, resolve=True)
             stage_dict = OmegaConf.to_container(self.cfg.agents.lookahead, resolve=True)
-            stage_dict = self.rule_applier.apply_to_agent(stage_dict)
+            stage_dict = self.rule_applier.apply_to_agent(stage_dict, context)
             agent_cls = hydra.utils.get_class(lookahead_cfg["cls"])
             lookahead_agent = agent_cls(
                 cfg=stage_dict, memory=self.memory, logger=self.logger
@@ -335,3 +339,22 @@ class Supervisor:
         deltas = compare_pipeline_runs(self.memory, goal_id)
         for delta in deltas:
             self.logger.log("ReflectionDeltaComputed", delta)
+
+    def get_goal(self, input_data: dict) -> dict:
+        goal_dict = input_data.get("goal")
+        if not goal_dict:
+            raise ValueError("Missing 'goal' key in input_data")
+        goal_orm = self.memory.goals.get_or_create(goal_dict)
+
+        merged = goal_orm.to_dict()
+        for key, value in goal_dict.items():
+            if value is not None:
+                if key in merged and merged[key] != value:
+                    self.logger.log("GoalContextOverride", {
+                        "field": key,
+                        "original": merged[key],
+                        "override": value,
+                        "note": "Overriding goal field from context"
+                    })
+                merged[key] = value
+        return merged
