@@ -120,8 +120,3 @@ rules:
     source: "manual"
     goal_type: "research"
     difficulty: "medium"
-
-  - rule_text: "hint: emphasize_self_improvement"
-    source: "lookahead"
-    goal_category: "ai_research"
-    strategy: "reasoning"

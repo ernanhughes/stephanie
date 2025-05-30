@@ -38,6 +38,12 @@ class HypothesisORM(Base):
     scores = relationship("ScoreORM", back_populates="hypothesis")
     pipeline_run = relationship("PipelineRunORM", back_populates="hypotheses")
 
+    rule_applications = relationship(
+        "RuleApplicationORM",
+        back_populates="hypothesis",
+        cascade="all, delete-orphan",
+    )
+
     def to_dict(self, include_related=False):
         return {
             "id": self.id,

@@ -30,12 +30,20 @@ class GoalORM(Base):
     reflection_deltas = relationship("ReflectionDeltaORM", back_populates="goal")
     ideas = relationship("IdeaORM", back_populates="goal")
     method_plans = relationship("MethodPlanORM", back_populates="goal")
-    sharpening_predictions = relationship("SharpeningPredictionORM", back_populates="goal")
+    sharpening_predictions = relationship(
+        "SharpeningPredictionORM", back_populates="goal"
+    )
     symbolic_rules = relationship("SymbolicRuleORM", back_populates="goal")
+
+    rule_applications = relationship(
+        "RuleApplicationORM",
+        back_populates="goal",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<GoalORM(id={self.id}, goal_text='{self.goal_text[:50]}')>"
-    
+
     def to_dict(self):
         return {
             "id": self.id,

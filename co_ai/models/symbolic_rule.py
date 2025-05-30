@@ -29,6 +29,7 @@ class SymbolicRuleORM(Base):
     pipeline_run = relationship("PipelineRunORM", back_populates="symbolic_rules")
     prompt = relationship("PromptORM", back_populates="symbolic_rules")
     scores = relationship("ScoreORM", back_populates="symbolic_rule")
-    
+    rule_applications = relationship("RuleApplicationORM",  back_populates="rule", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<SymbolicRule(agent={self.agent_name}, pipeline={self.pipeline_signature}, score={self.score:.2f})>"

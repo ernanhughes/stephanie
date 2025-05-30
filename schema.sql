@@ -484,3 +484,26 @@ CREATE TABLE IF NOT EXISTS mrq_preference_pairs (
     -- Timestamps
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+
+CREATE TABLE IF NOT EXISTS rule_applications (
+    id SERIAL PRIMARY KEY,                                  -- Unique application ID
+    rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE CASCADE, -- Applied rule
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE, -- Target goal
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE, -- Affected run
+    hypothesis_id INTEGER REFERENCES hypotheses(id),        -- Resulting hypothesis (optional)
+
+    -- Metadata
+    applied_at TIMESTAMP DEFAULT NOW(),                     -- When the rule was applied
+    agent_name TEXT,                                        -- Which agent was affected
+    change_type TEXT,                                       -- e.g., "pipeline_override", "hint", "param_tweak"
+    details JSONB,                                          -- Any structured data (e.g., {"old":..., "new":...})
+
+    -- Feedback loop: Evaluation
+    post_score FLOAT,                                       -- Final score after applying the rule
+    pre_score FLOAT,                                        -- Score before the rule (if available)
+    delta_score FLOAT,                                      -- Computed delta (post - pre)
+    evaluator_name TEXT,                                    -- Evaluator used to compute scores
+    rationale TEXT,                                         -- Why the rule was applied (optional)
+    notes TEXT                                               -- Extra notes or observations
+);

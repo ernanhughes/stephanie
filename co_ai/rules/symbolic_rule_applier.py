@@ -29,8 +29,10 @@ class SymbolicRuleApplier:
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f)
 
+        rules_list = raw.get("rules", raw)  # fallback to raw if it's already a list
+
         rules = []
-        for item in raw:
+        for item in rules_list:
             if isinstance(item, dict):
                 rules.append(SymbolicRuleORM(**item))
             else:
