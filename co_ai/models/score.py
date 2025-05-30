@@ -15,7 +15,10 @@ class ScoreORM(Base):
     goal_id = Column(Integer, ForeignKey("goals.id"))
     hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
     symbolic_rule_id = Column(Integer, ForeignKey("symbolic_rules.id"), nullable=True)
-    rule_application_id = Column(Integer, ForeignKey("rule_applications.id"), nullable=True)
+    rule_application_id = Column(
+        Integer, ForeignKey("rule_applications.id"), nullable=True
+    )
+    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"), nullable=True)
     agent_name = Column(String, nullable=False)
     model_name = Column(String, nullable=False)
     evaluator_name = Column(String, nullable=False)
@@ -28,7 +31,6 @@ class ScoreORM(Base):
     reflection = Column(Text)
     review = Column(Text)
     meta_review = Column(Text)
-    run_id = Column(String)
     extra_data = Column(JSON)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
@@ -36,6 +38,7 @@ class ScoreORM(Base):
     hypothesis = relationship("HypothesisORM", back_populates="scores")
     symbolic_rule = relationship("SymbolicRuleORM", back_populates="scores")
     rule_applications = relationship("RuleApplicationORM", back_populates="scores")
+    pipeline_run = relationship("PipelineRunORM", back_populates="scores")
 
     def to_dict(self, include_relationships: bool = False) -> dict:
         data = {
@@ -43,6 +46,7 @@ class ScoreORM(Base):
             "goal_id": self.goal_id,
             "hypothesis_id": self.hypothesis_id,
             "symbolic_rule_id": self.symbolic_rule_id,
+            "pipeline_run_id": self.pipeline_run_id,
             "agent_name": self.agent_name,
             "model_name": self.model_name,
             "evaluator_name": self.evaluator_name,
@@ -55,7 +59,6 @@ class ScoreORM(Base):
             "reflection": self.reflection,
             "review": self.review,
             "meta_review": self.meta_review,
-            "run_id": self.run_id,
             "extra_data": self.extra_data,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

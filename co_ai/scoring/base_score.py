@@ -37,7 +37,7 @@ class BaseScore(ABC):
                 evaluator_name=self.evaluator_name,
                 score_type=self.name,
                 score=score,
-                run_id=context.get("run_id"),
+                pipeline_run_id=context.get("pipeline_run_id"),
             )
             try:
                 self.memory.scores.insert(s)

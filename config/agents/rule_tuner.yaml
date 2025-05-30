@@ -1,0 +1,25 @@
+# config/agents/rule_tuner.yaml
+
+rule_tuner:
+  name: rule_tuner
+  enabled: true
+  source: context  # database or context
+  batch_size: 20
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  # Required keys for the agent ot effectively process the context
+  required_keys: ["goal", "hypotheses"]   # add nodes
+  # Key that it will iterate over ot generate reflections
+  input_key: "hypotheses"
+  # Key that it store the results of those reflections
+  output_key: "tuning"
+
+  save_prompt: true
+  prompt_mode: file
+  strategy: 
+  prompt_file: lookahead

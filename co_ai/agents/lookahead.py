@@ -12,7 +12,7 @@ class LookaheadAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict):
-        goal = self.memory.goaIls.get_or_create(context.get(GOAL))
+        goal = self.memory.goals.get_or_create(context.get(GOAL))
 
         # Build context for prompt template
 

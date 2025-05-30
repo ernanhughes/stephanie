@@ -79,7 +79,7 @@ class ReflectionScore(BaseScore):
                 score_type=dimension,
                 score=data["score"],
                 rationale=data["rationale"],
-                run_id=context.get("run_id"),
+                pipeline_run_id=context.get("pipeline_run_id"),
                 metadata={"source": "structured_reflection"},
             )
             self.memory.scores.insert(score_obj)

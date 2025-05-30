@@ -96,7 +96,7 @@ class ScoreStore:
             "reflection": row.reflection,
             "review": row.review,
             "meta_review": row.meta_review,
-            "run_id": row.run_id,
+            "pipeline_run_id": row.pipeline_run_id,
             "extra_data": (
                 row.extra_data if isinstance(row.extra_data, dict) else json.loads(row.extra_data)
             ) if row.extra_data else {},

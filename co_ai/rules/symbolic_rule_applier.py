@@ -153,21 +153,108 @@ class SymbolicRuleApplier:
             # Record the application of this rule
             self.memory.rule_effects.insert(
                 goal_id=goal.get("id"),
+                agent_name=agent_name,
                 rule_id=rule.id,
                 pipeline_run_id=pipeline_run_id,
-                details=rule.to_dict()
+                details=rule.to_dict(),
             )
 
         return cfg
+
+
+    def apply_prompt_rules(
+            self, agent_name: str, prompt_cfg: dict, context: dict
+        ) -> dict:
+        """
+        Applies prompt-level symbolic rules to the prompt config before generation.
+
+        Returns the updated prompt_cfg.
+        """
+        goal = context.get("goal", {})
+        applicable_rules = [
+            rule
+            for rule in self.rules
+            if rule.agent_name == agent_name
+            # and self._matches_filter(rule.filter, goal)
+        ]
+
+        if not applicable_rules:
+            self.logger.log("NoPromptRulesFound", {"agent": agent_name})
+            return prompt_cfg
+
+        for rule in applicable_rules:
+            for key, value in rule.attributes.items():
+                self.logger.log(
+                    "PromptAttributeOverride",
+                    {
+                        "agent": agent_name,
+                        "key": key,
+                        "old_value": prompt_cfg.get(key),
+                        "new_value": value,
+                        "rule_id": rule.id,
+                        "emoji": "🛠️",
+                    },
+                )
+                self.set_nested(prompt_cfg, key, value)
+
+            # Optional: record the rule application
+            self.memory.rule_effects.insert(
+                rule_id=rule.id,
+                goal_id=goal.get("id"),
+                pipeline_run_id=context.get("pipeline_run_id"),
+                details=prompt_cfg,
+            )
+
+        return prompt_cfg
+
+    def set_nested(self, cfg: dict, dotted_key: str, value):
+        keys = dotted_key.split(".")
+        d = cfg
+        for k in keys[:-1]:
+            if k not in d or not isinstance(d[k], dict):
+                d[k] = {}
+            d = d[k]
+        d[keys[-1]] = value
+
+    def apply_to_prompt(self, prompt_cfg: dict, context: dict) -> dict:
+        if not self.enabled:
+            return prompt_cfg
+
+        goal = context.get("goal", {})
+        pipeline_run_id = context.get("pipeline_run_id")
+
+        for rule in self.rules:
+            if rule.target != "prompt":
+                continue
+            if self._matches_filter(rule.filter, goal):
+                for key, value in rule.attributes.items():
+                    prompt_cfg[key] = value
+                # Optional: log RuleApplicationORM here
+
+        return prompt_cfg
+
+    def _matches_filter(self, filter_dict: dict, target_obj: dict) -> bool:
+        """Generic matcher for symbolic rule filters"""
+        for key, value in filter_dict.items():
+            target_value = target_obj.get(key)
+            if isinstance(value, list):
+                if target_value not in value:
+                    return False
+            else:
+                if target_value != value:
+                    return False
+        return True
+
 
     def track_pipeline_stage(self, stage_dict: dict, context: dict):
         self.memory.symbolic_rules.track_pipeline_stage(stage_dict, context)
 
     def _load_rules(self):
         rules = []
-        if self.cfg.symbolic.get("rules_file"):
-            rules += self._load_rules_from_yaml(self.cfg.symbolic.rules_file)
-        if self.cfg.symbolic.get("enable_db_rules", True):
+        symbolic_dict = self.cfg.get("symbolic", {})
+        if symbolic_dict.get("rules_file"):
+            rules += self._load_rules_from_yaml(symbolic_dict.rules_file)
+        if symbolic_dict.get("enable_db_rules", True):
             rules += self.memory.symbolic_rules.get_all_rules()
         return rules
 

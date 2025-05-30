@@ -51,8 +51,20 @@ class SymbolicRuleORM(Base):
     pipeline_run = relationship("PipelineRunORM", back_populates="symbolic_rules", lazy="joined")
     prompt = relationship("PromptORM", back_populates="symbolic_rules", lazy="joined")
     scores = relationship("ScoreORM", back_populates="symbolic_rule")
-    applications = relationship("RuleApplicationORM", back_populates="rule", cascade="all, delete-orphan")
+    applications = relationship(
+        "RuleApplicationORM", back_populates="rule", cascade="all, delete-orphan"
+    )
 
+    def __str__(self):
+        return (
+            f"<SymbolicRuleORM id={self.id} "
+            f"target={self.target} "
+            f"filter={json.dumps(self.filter, sort_keys=True)} "
+            f"attributes={json.dumps(self.attributes, sort_keys=True)} "
+            f"context_hash={self.context_hash[:8]}... "
+            f"source={self.source} "
+            f"agent={self.agent_name}>"
+        )
 
     @staticmethod
     def compute_context_hash(filters: dict, attributes: dict) -> str:

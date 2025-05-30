@@ -173,3 +173,13 @@ class SymbolicRuleStore:
                 self.session.add(new_rule)
         self.session.commit()
 
+    def get_all(self) -> list[SymbolicRuleORM]:
+        try:
+            rules = self.session.query(SymbolicRuleORM).order_by(SymbolicRuleORM.created_at.desc()).all()
+            if self.logger:
+                self.logger.log("SymbolicRulesFetched", {"count": len(rules)})
+            return rules
+        except Exception as e:
+            if self.logger:
+                self.logger.log("SymbolicRulesFetchError", {"error": str(e)})
+            return []

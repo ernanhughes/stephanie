@@ -21,6 +21,7 @@ class RuleEffectStore:
         hypothesis_id: Optional[int] = None,
         result_score: Optional[float] = None,
         notes: Optional[str] = None,
+        agent_name: Optional[str] = None,
         details: Optional[Dict] = None,
         context_hash: Optional[str] = None,
     ) -> RuleApplicationORM:
@@ -29,6 +30,7 @@ class RuleEffectStore:
             application = RuleApplicationORM(
                 rule_id=rule_id,
                 goal_id=goal_id,
+                agent_name=agent_name,
                 pipeline_run_id=pipeline_run_id,
                 hypothesis_id=hypothesis_id,
                 post_score=result_score,
@@ -76,3 +78,26 @@ class RuleEffectStore:
             if label:
                 summary[label] = summary.get(label, 0) + 1
         return summary
+
+    def get_by_run_and_goal(self, pipeline_run_id: int, goal_id: int) -> list[RuleApplicationORM]:
+        return (
+            self.db.query(RuleApplicationORM)
+            .filter(
+                RuleApplicationORM.pipeline_run_id == pipeline_run_id,
+                RuleApplicationORM.goal_id == goal_id
+            )
+            .all())
+
+    def update(self, application):
+        """Update a RuleApplicationORM record in the database."""
+        try:
+            self.db.add(application)
+            self.db.commit()
+            self.db.refresh(application)
+            if self.logger:
+                self.logger.log("RuleApplicationUpdated", application.to_dict())
+        except Exception as e:
+            self.db.rollback()
+            if self.logger:
+                self.logger.log("RuleApplicationUpdateError", {"error": str(e)})
+            raise

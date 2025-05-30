@@ -1,4 +1,16 @@
 rules:
+  - target: "prompt"
+    filter:
+      goal_type: "research"
+      expected_formats: ["short_cot"]
+    attributes:
+      template_name: "research_cot_template"
+      model: "qwen:0.5b"
+      style: "cot"
+      max_tokens: 512
+    source: "expert_tuning"
+    description: "Use structured CoT template for research questions"
+
   - target: "agent"
     agent_name: "generation_agent"
     filter:
@@ -58,3 +70,4 @@ rules:
     attributes:
       pipeline: ["retrieval", "generation", "evaluation"]
     source: "optimizer"
+

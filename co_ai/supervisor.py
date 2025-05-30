@@ -12,6 +12,7 @@ from co_ai.constants import (
     GOAL,
     NAME,
     PIPELINE,
+    PIPELINE_RUN_ID,
     PROMPT_DIR,
     RUN_ID,
     SAVE_CONTEXT,
@@ -116,7 +117,8 @@ class Supervisor:
 
         # Insert into DB
         run_id = self.memory.pipeline_runs.insert(pipeline_run_data)
-        context["pipeline_run_id"] = run_id
+        context[PIPELINE_RUN_ID] = run_id
+
         # Now allow lookahead or other steps to adjust context
         context = await self.maybe_adjust_pipeline(context)
         context = self.rule_applier.apply(context)

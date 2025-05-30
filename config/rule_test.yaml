@@ -21,6 +21,7 @@ defaults:
   - agents/proximity
   - agents/ranking
   - agents/refiner
+  - agents/rule_tuner
   - agents/reflection
   - agents/reflection_delta
   - agents/review
@@ -97,6 +98,10 @@ pipeline:
         iterations: 1
       - name: symbolic_optimizer
         cls: co_ai.agents.symbolic_optimizer.SymbolicOptimizerAgent
+        enabled: true
+        iterations: 1
+      - name: rule_tuner
+        cls: co_ai.agents.rule_tuner.RuleTunerAgent
         enabled: true
         iterations: 1
     #  - name: proximity

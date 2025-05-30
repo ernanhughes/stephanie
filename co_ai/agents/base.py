@@ -13,6 +13,7 @@ from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
 from co_ai.logs import JSONLogger
 from co_ai.models import HypothesisORM
 from co_ai.prompts import PromptLoader
+from co_ai.rules import SymbolicRuleApplier
 
 
 def remove_think_blocks(text: str) -> str:
@@ -26,6 +27,7 @@ class BaseAgent(ABC):
         self.name = cfg.get(NAME, agent_key)
         self.memory = memory
         self.logger = logger or JSONLogger()
+        self.rule_applier = SymbolicRuleApplier(cfg, memory, logger)
         self.model_config = cfg.get(MODEL, {})
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
         self.prompt_match_re = cfg.get(PROMPT_MATCH_RE, "")
@@ -51,28 +53,37 @@ class BaseAgent(ABC):
             },
         )
 
-    def init_llm(self):
+    def init_llm(self, cfg=None):
+        config = cfg or self.cfg
+        model_cfg = config.get(MODEL, {})
         required_keys = [NAME, API_BASE]
         for key in required_keys:
-            if key not in self.model_config:
+            if key not in model_cfg:
                 self.logger.log(
-                    "MissingLLMConfig",
-                    {"agent": self.name, "missing_key": key}
-                )   
+                    "MissingLLMConfig", {"agent": self.name, "missing_key": key}
+                )
         return {
-            NAME: self.model_config.get(NAME),
-            API_BASE: self.model_config.get(API_BASE),
-            API_KEY: self.model_config.get(API_KEY),
+            NAME: model_cfg.get(NAME),
+            API_BASE: model_cfg.get(API_BASE),
+            API_KEY: model_cfg.get(API_KEY),
         }
 
     def call_llm(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
+        updated_cfg = self.rule_applier.apply_to_prompt(self.cfg, context)
+        if self.llm is None:
+            # 🔁 Apply rules here (now that goal is known)
+            updated_cfg = self.rule_applier.apply_to_agent(self.cfg, context)
+            self.llm = self.init_llm(cfg=updated_cfg) # initialize with updated config
+
         """Call the default or custom LLM, log the prompt, and handle output."""
         props = llm_cfg or self.llm  # Use passed-in config or default
 
         agent_name = self.name
-        strategy = self.cfg.get(STRATEGY, "")
-        prompt_key = self.cfg.get(PROMPT_PATH, "")
-        use_memory_for_fast_prompts = self.cfg.get("use_memory_for_fast_prompts", True)
+
+
+        strategy = updated_cfg.get(STRATEGY, "")
+        prompt_key = updated_cfg.get(PROMPT_PATH, "")
+        use_memory_for_fast_prompts = updated_cfg.get("use_memory_for_fast_prompts", True)
 
         # 🔁 Check cache
         if self.memory and use_memory_for_fast_prompts:
@@ -108,22 +119,22 @@ class BaseAgent(ABC):
             output = response["choices"][0]["message"]["content"]
 
             # Save prompt and response if enabled
-            if self.cfg.get(SAVE_PROMPT, False) and self.memory:
+            if updated_cfg.get(SAVE_PROMPT, False) and self.memory:
                 self.memory.prompt.save(
                     context.get("goal"),
                     agent_name=self.name,
-                    prompt_key=self.cfg.get(PROMPT_PATH, ""),
+                    prompt_key=updated_cfg.get(PROMPT_PATH, ""),
                     prompt_text=prompt,
                     response=output,
-                    strategy=self.cfg.get(STRATEGY, ""),
-                    version=self.cfg.get("version", 1),
+                    strategy=updated_cfg.get(STRATEGY, ""),
+                    version=updated_cfg.get("version", 1),
                 )
 
             # Remove [THINK] blocks if configured
             response_cleaned = remove_think_blocks(output) if self.remove_think else output
 
             # Optionally add to context history
-            if self.cfg.get("add_prompt_to_history", True):
+            if updated_cfg.get("add_prompt_to_history", True):
                 self.add_to_prompt_history(context, prompt, {"response": response_cleaned})
 
             return response_cleaned
