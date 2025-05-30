@@ -20,6 +20,7 @@ EVENT_ICONS = {
     "ContextAfterStage": "🗃️",
     "ContextYAMLDumpSaved": "📄",
     "debug": "🐞",
+
     # Pipeline Execution
     "PipelineStart": "🔬",
     "PipelineStageStart": "🚀",
@@ -38,6 +39,22 @@ EVENT_ICONS = {
     "TrainingEpoch": "🏋️‍♂️",
     "EarlyStopping": "⏹️⏳",
     "TrainingComplete": "🎉✅",
+    "SymbolicAgentOverride": "🛠️",
+    "RuleApplicationLogged": "📜",
+    "ScoreParsed": "📊",
+    "SymbolicRulesFound": "🧩",
+    "DuplicateSymbolicRuleSkipped": "♻️",
+    "SymbolicAgentRulesFound": "🔎",
+    "PromptLookup": "📚",
+    "PipelineJudgeAgentStart": "⚖️🚦",
+    "HypothesesReceived": "🧠📥",
+    "PromptLoaded": "📝",
+    "JudgementReceived": "🗣️",
+    "ScoreSaved": "💾",
+    "PipelineJudgeAgentEnd": "🛑⚖️",
+    "PipelineScoreSummary": "📈🧮",
+    "SymbolicPipelineSuggestion": "🧠💡",
+
     # Prompt Processing & Tuning
     "Prompt": "📜",
     "PromptGenerated": "📝",
