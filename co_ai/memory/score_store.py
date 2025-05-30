@@ -4,6 +4,7 @@ from typing import Dict, List
 
 from sqlalchemy.orm import Session
 
+from co_ai.models import RuleApplicationORM
 from co_ai.models.goal import GoalORM
 from co_ai.models.score import ScoreORM
 
@@ -25,16 +26,39 @@ class ScoreStore:
             self.session.flush()  # To get ID immediately
 
             if self.logger:
-                self.logger.log("ScoreStored", {
-                    "score_id": score.id,
-                    "goal_id": score.goal_id,
-                    "hypothesis_id": score.hypothesis_id,
-                    "agent": score.agent_name,
-                    "model": score.model_name,
-                    "score": score.score,
-                    "timestamp": score.created_at.isoformat()
-                })
+                self.logger.log(
+                    "ScoreStored",
+                    {
+                        "score_id": score.id,
+                        "goal_id": score.goal_id,
+                        "hypothesis_id": score.hypothesis_id,
+                        "agent": score.agent_name,
+                        "model": score.model_name,
+                        "score": score.score,
+                        "timestamp": score.created_at.isoformat(),
+                    },
+                )
 
+            # Link score to rule application if possible
+            if (
+                score.pipeline_run_id
+                and score.goal_id
+                and not score.rule_application_id
+            ):
+                print(f"Linking score {score.id} to rule application")
+                possible_apps = (
+                    self.session.query(RuleApplicationORM)
+                    .filter_by(
+                        pipeline_run_id=score.pipeline_run_id,
+                        goal_id=score.goal_id,
+                    )
+                    .all()I 
+                )
+                if possible_apps:
+                    score.rule_application_id = possible_apps[0].id
+                    self.session.commit()  # update linkage
+
+                self.session.refresh(score)
             return score.id
 
         except Exception as e:
