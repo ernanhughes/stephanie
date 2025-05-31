@@ -2,32 +2,11 @@
 defaults:
   - _self_
   - db: postgres
-  - agents/cot_dspy_generator
-  - agents/cot_generator
-  - agents/debate
-  - agents/dots_planner
-  - agents/evolution
-  - agents/general_reasoner
   - agents/generation
-  - agents/generic
-  - agents/judge
-  - agents/literature
-  - agents/literature_ranking
-  - agents/lookahead
-  - agents/meta_review
-  - agents/mrq_strategy
   - agents/pipeline_judge
-  - agents/prompt_tuning
-  - agents/proximity
-  - agents/ranking
-  - agents/refiner
-  - agents/rule_tuner
-  - agents/reflection
-  - agents/reflection_delta
-  - agents/review
-  - agents/scorer
-  - agents/sharpening
+  - agents/mrq_scoring
   - agents/symbolic_optimizer
+  - agents/rule_tuner
   - logging/json_logger
 
 goal:
@@ -50,12 +29,6 @@ symbolic:
     - metadata
   metadata_match_mode: partial   # options: exact, partial, off
   allow_fallback: true           # if no ID matches, allow metadata fallback
-
-
-#dynamic:
-#  name: lookahead
-#  enabled: false
-#  cls: co_ai.agents.lookahead.LookaheadAgent
 
 planner:
   name: planner
@@ -104,19 +77,7 @@ pipeline:
         cls: co_ai.agents.rule_tuner.RuleTunerAgent
         enabled: true
         iterations: 1
-    #  - name: proximity
-    #    cls: co_ai.agents.proximity.ProximityAgent
-    #    enabled: true
-    #    iterations: 1
-    #  - name: review
-    #    cls: co_ai.agents.review.ReviewAgent
-    #    enabled: true
-    #    iterations: 1
-    #  - name: review
-    #    cls: co_ai.agents.review.ReviewAgent
-    #    enabled: true
-    #    iterations: 1
-    #  - name: scorer
-    #    cls: co_ai.agents.scorer.ScorerAgent
-    #    enabled: true
-    #    iterations: 1
+      - name: mrq_scoring
+        cls: co_ai.agents.mrq_scoring.MRQScoringAgent
+        enabled: true
+        iterations: 1

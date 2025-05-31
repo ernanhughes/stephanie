@@ -2,6 +2,11 @@
 defaults:
   - _self_
   - db: postgres
+  - agents/generation
+  - agents/pipeline_judge
+  - agents/mrq_scoring
+  - agents/symbolic_optimizer
+  - agents/rule_tuner
   - agents/cot_dspy_generator
   - agents/cot_generator
   - agents/debate
@@ -25,15 +30,36 @@ defaults:
   - agents/reflection_delta
   - agents/review
   - agents/sharpening
-  # - agents/strategy_selector
   - agents/symbolic_optimizer
   - logging/json_logger
 
-# The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
-# This is a placeholder and should be replaced with the actual goal.
-goal: 
-  goal_text: "Will AI ever be able to reprogram itself?"
-  goal_type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
+goal:
+  goal_text: "If I was to develop a self improving process what would be the steps needed?"
+  goal_type: "theoretical"
+  goal_category: "ai_research"
+  strategy: "reasoning"
+  difficulty: "medium"
+  expected_formats:
+    - "short_cot"
+    - "code"
+
+symbolic:
+  enabled: true  # set to false to skip symbolic rule application
+  rules_file: "config/rules/rules.yaml"
+  enable_db_rules: true # load rules from the database
+  match_priority:
+    - goal_id
+    - pipeline_run_id
+    - metadata
+  metadata_match_mode: partial   # options: exact, partial, off
+  allow_fallback: true           # if no ID matches, allow metadata fallback
+
+planner:
+  name: planner
+  enabled: false
+  cls: co_ai.agents.planner.PipelinePlannerAgent
+  dots_enabled: true
+  lookahead_enabled: true
 
 dynamic:
   name: lookahead
@@ -44,7 +70,6 @@ post_judgment:
   name: pipeline_judge
   enabled: true
   cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
-
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -81,5 +106,17 @@ pipeline:
        iterations: 1
      - name: mrq_strategy
        cls: co_ai.agents.mrq_strategy.MRQStrategyAgent
+       enabled: true
+       iterations: 1
+     - name: symbolic_optimizer
+       cls: co_ai.agents.symbolic_optimizer.SymbolicOptimizerAgent
+       enabled: true
+       iterations: 1
+     - name: rule_tuner
+       cls: co_ai.agents.rule_tuner.RuleTunerAgent
+       enabled: true
+       iterations: 1
+     - name: mrq_scoring
+       cls: co_ai.agents.mrq_scoring.MRQScoringAgent
        enabled: true
        iterations: 1

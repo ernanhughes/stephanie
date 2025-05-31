@@ -1,10 +1,11 @@
 # stores/score_store.py
 import json
-from typing import Dict, List
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from co_ai.models import RuleApplicationORM
+from co_ai.models.score_rule_link import ScoreRuleLinkORM
 from co_ai.models.goal import GoalORM
 from co_ai.models.score import ScoreORM
 
@@ -40,25 +41,25 @@ class ScoreStore:
                 )
 
             # Link score to rule application if possible
-            if (
-                score.pipeline_run_id
-                and score.goal_id
-                and not score.rule_application_id
-            ):
-                print(f"Linking score {score.id} to rule application")
-                possible_apps = (
+            if score.pipeline_run_id and score.goal_id:
+                rule_apps = (
                     self.session.query(RuleApplicationORM)
-                    .filter_by(
-                        pipeline_run_id=score.pipeline_run_id,
-                        goal_id=score.goal_id,
-                    )
+                    .filter_by(pipeline_run_id=score.pipeline_run_id, goal_id=score.goal_id)
                     .all()
                 )
-                if possible_apps:
-                    score.rule_application_id = possible_apps[0].id
-                    self.session.commit()  # update linkage
+                for ra in rule_apps:
+                    link = ScoreRuleLinkORM(score_id=score.id, rule_application_id=ra.id)
+                    self.session.add(link)
+                self.logger.log(
+                    "ScoreLinkedToRuleApplications",
+                    {
+                        "score_id": score.id,
+                        "linked_rule_application_ids": [ra.id for ra in rule_apps],
+                    },
+                )
 
-                self.session.refresh(score)
+            self.session.refresh(score)
+            self.session.commit()
             return score.id
 
         except Exception as e:
@@ -67,37 +68,47 @@ class ScoreStore:
                 self.logger.log("ScoreInsertFailed", {"error": str(e)})
             raise
 
-    def get_by_goal_id(self, goal_id: int) -> List[Dict]:
+    def get_by_goal_id(self, goal_id: int) -> list[dict]:
         """Returns all scores associated with a specific goal."""
         results = self.session.query(ScoreORM).join(GoalORM).filter(GoalORM.id == goal_id).all()
         return [self._orm_to_dict(r) for r in results]
 
-    def get_by_goal_type(self, goal_type: str) -> List[Dict]:
+    def get_by_goal_type(self, goal_type: str) -> list[dict]:
         """Returns all scores associated with a specific goal."""
         results = self.session.query(ScoreORM).join(GoalORM).filter(GoalORM.goal_type == goal_type).all()
         return [self._orm_to_dict(r) for r in results]
 
-    def get_by_hypothesis_id(self, hypothesis_id: int) -> List[Dict]:
-        """Returns all scores associated with a specific hypothesis."""
-        results = self.session.query(ScoreORM).filter(ScoreORM.hypothesis_id == hypothesis_id).all()
+
+    def get_by_hypothesis_id(
+        self,
+        hypothesis_id: int,
+        source: Optional[str] = None
+    ) -> list[dict]:
+        """Returns all scores associated with a specific hypothesis, optionally filtered by evaluator source."""
+        query = self.session.query(ScoreORM).filter(ScoreORM.hypothesis_id == hypothesis_id)
+        
+        if source:
+            query = query.filter(ScoreORM.evaluator_name == source)
+
+        results = query.all()
         return [self._orm_to_dict(r) for r in results]
 
-    def get_by_run_id(self, run_id: str) -> List[Dict]:
+    def get_by_run_id(self, run_id: str) -> list[dict]:
         """Returns all scores associated with a specific pipeline run."""
         results = self.session.query(ScoreORM).filter(ScoreORM.run_id == run_id).all()
         return [self._orm_to_dict(r) for r in results]
 
-    def get_by_evaluator(self, evaluator_name: str) -> List[Dict]:
+    def get_by_evaluator(self, evaluator_name: str) -> list[dict]:
         """Returns all scores produced by a specific evaluator (LLM, MRQ, etc.)"""
         results = self.session.query(ScoreORM).filter(ScoreORM.evaluator_name == evaluator_name).all()
         return [self._orm_to_dict(r) for r in results]
 
-    def get_by_strategy(self, strategy: str) -> List[Dict]:
+    def get_by_strategy(self, strategy: str) -> list[dict]:
         """Returns all scores generated using a specific reasoning strategy."""
         results = self.session.query(ScoreORM).filter(ScoreORM.strategy == strategy).all()
         return [self._orm_to_dict(r) for r in results]
 
-    def get_all(self, limit: int = 100) -> List[Dict]:
+    def get_all(self, limit: int = 100) -> list[dict]:
         """Returns the most recent scores up to a limit."""
         results = self.session.query(ScoreORM).order_by(ScoreORM.created_at.desc()).limit(limit).all()
         return [self._orm_to_dict(r) for r in results]
@@ -127,3 +138,10 @@ class ScoreStore:
             "created_at": row.created_at,
         }
     
+    def get_rules_for_score(self, score_id: int) -> list[int]:
+        links = (
+            self.session.query(ScoreRuleLinkORM.rule_application_id)
+            .filter_by(score_id=score_id)
+            .all()
+        )
+        return [rid for (rid,) in links]

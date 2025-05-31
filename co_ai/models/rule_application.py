@@ -23,6 +23,7 @@ class RuleApplicationORM(Base):
     agent_name = Column(String, nullable=True)
     change_type = Column(String, nullable=True)  # e.g., pipeline_override, hint, etc.
     details = Column(JSON, nullable=True)        # Can store {old:..., new:...}
+    stage_details = Column(JSON, nullable=True)
 
     post_score = Column(Float, nullable=True)
     pre_score = Column(Float, nullable=True)
@@ -36,7 +37,6 @@ class RuleApplicationORM(Base):
     rule = relationship("SymbolicRuleORM", back_populates="applications")
     pipeline_run = relationship("PipelineRunORM", back_populates="rule_applications")
     hypothesis = relationship("HypothesisORM", back_populates="rule_applications")
-    scores = relationship("ScoreORM", back_populates="rule_applications")
 
 
     def to_dict(self) -> dict:

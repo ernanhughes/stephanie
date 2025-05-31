@@ -5,7 +5,7 @@ from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
                         String, Text)
 from sqlalchemy.orm import relationship
 
-from .base import Base
+from co_ai.models.base import Base
 
 
 class ScoreORM(Base):
@@ -15,9 +15,6 @@ class ScoreORM(Base):
     goal_id = Column(Integer, ForeignKey("goals.id"))
     hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
     symbolic_rule_id = Column(Integer, ForeignKey("symbolic_rules.id"), nullable=True)
-    rule_application_id = Column(
-        Integer, ForeignKey("rule_applications.id"), nullable=True
-    )
     pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"), nullable=True)
     agent_name = Column(String, nullable=False)
     model_name = Column(String, nullable=False)
@@ -37,7 +34,6 @@ class ScoreORM(Base):
     goal = relationship("GoalORM", back_populates="scores")
     hypothesis = relationship("HypothesisORM", back_populates="scores")
     symbolic_rule = relationship("SymbolicRuleORM", back_populates="scores")
-    rule_applications = relationship("RuleApplicationORM", back_populates="scores")
     pipeline_run = relationship("PipelineRunORM", back_populates="scores")
 
     def to_dict(self, include_relationships: bool = False) -> dict:

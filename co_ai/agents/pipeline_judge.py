@@ -5,6 +5,7 @@ from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
 from co_ai.evaluator import ARMReasoningSelfEvaluator, MRQSelfEvaluator
 from co_ai.models import ScoreORM, RuleApplicationORM
+from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 
 
 class PipelineJudgeAgent(BaseAgent):
@@ -82,12 +83,6 @@ class PipelineJudgeAgent(BaseAgent):
 
         # Fetch latest RuleApplicationORM for this run (if it exists)
         pipeline_run_id = context.get(PIPELINE_RUN_ID)
-        rule_application = (
-            self.memory.session.query(RuleApplicationORM)
-            .filter_by(pipeline_run_id=pipeline_run_id)
-            .order_by(RuleApplicationORM.applied_at.desc())
-            .first()
-        )
 
         # Save Score
         score_obj = ScoreORM(
@@ -100,9 +95,6 @@ class PipelineJudgeAgent(BaseAgent):
             score=score,
             rationale=rationale,
             pipeline_run_id=context.get(PIPELINE_RUN_ID),
-            rule_application_id=rule_application.id
-            if rule_application
-            else None,  # ✅ Link
             extra_data={"raw_response": judgement},
         )
 
@@ -113,22 +105,20 @@ class PipelineJudgeAgent(BaseAgent):
             {
                 "score_id": score_obj.id,
                 "run_id": context.get(PIPELINE_RUN_ID),
-                "linked_rule_application_id": rule_application.id
-                if rule_application
-                else None,
             },
         )
-
-        self.link_score_to_rule_applications(score_obj, context)
 
         context[self.output_key] = {
             "score": score_obj.to_dict(),
             "judgement": judgement,
         }
 
+        self.run_rule_effects_evaluation(context)
+
         self.logger.log("PipelineJudgeAgentEnd", {"output_key": self.output_key})
         return context
 
+    @DeprecationWarning
     def link_score_to_rule_applications(self, score_obj, context):
         goal = context.get(GOAL, {})
         goal_id = goal.get("id")
@@ -162,3 +152,13 @@ class PipelineJudgeAgent(BaseAgent):
             },
         )
 
+
+    def run_rule_effects_evaluation(self, context: dict) -> dict:
+        """
+        Runs the rule effects evaluation using the MRQSelfEvaluator.
+        """
+        analyzer = RuleEffectAnalyzer(session=self.memory.session, logger=self.logger)
+        summary = analyzer.analyze()
+        top_rules = sorted(summary.items(), key=lambda x: x[1]["avg_score"], reverse=True)
+        for rule_id, data in top_rules[:5]:
+            print(f"Rule {rule_id}: avg {data['avg_score']:.3f} over {data['count']} applications")

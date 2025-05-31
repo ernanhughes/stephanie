@@ -11,17 +11,19 @@ def get_event_icon(event_type: str) -> str:
 EVENT_ICONS = {
     # General System & Initialization
     "AgentInitialized": "🛠️",
-    "AgentInit": "🤖",
-    "EvaluatorInit": "📏",
-    "SupervisorInit": "🧑‍🏫",
-    "StoreRegistered": "🛍️",
     "ContextLoaded": "📂",
     "ContextSaved": "💾",
     "ContextAfterStage": "🗃️",
     "ContextYAMLDumpSaved": "📄",
     "debug": "🐞",
-
+    "RuleApplicationUpdated": "🧩",      # Suggests a symbolic piece being modified
+    "MRQScoringComplete": "📈",          # Indicates successful scoring/completion
+    "NoSymbolicAgentRulesApplied": "🚫", # Signifies nothing matched/applied
+    "RuleApplicationsScored": "🎯",      # Represents target scoring of rule usage
+    "RuleApplicationCount": "🔢",        # Suggests counting or tracking quantity
     # Pipeline Execution
+    "StoreRegistered": "🛒",
+    "SupervisorInit": "🧑‍🏫",
     "PipelineStart": "🔬",
     "PipelineStageStart": "🚀",
     "PipelineStageEnd": "🏁",

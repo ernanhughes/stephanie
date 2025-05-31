@@ -509,3 +509,10 @@ CREATE TABLE IF NOT EXISTS rule_applications (
     rationale TEXT,                                         -- Why the rule was applied (optional)
     notes TEXT                                               -- Extra notes or observations
 );
+
+CREATE TABLE IF NOT EXISTS score_rule_links (
+    id SERIAL PRIMARY KEY,
+    score_id INTEGER NOT NULL REFERENCES scores(id) ON DELETE CASCADE,
+    rule_application_id INTEGER NOT NULL REFERENCES rule_applications(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW()
+);

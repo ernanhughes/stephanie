@@ -40,7 +40,7 @@ class SharpeningAgent(BaseAgent):
         return context
 
     def run_selected(self, data: dict, context: dict) -> list[dict]:
-        goal = self.extract_goal_text(context.get(GOAL))
+        goal = context.get(GOAL)
         results = []
         prompt = data.get("prompt")
         examples = self.memory.hypotheses.get_similar(prompt, 3)

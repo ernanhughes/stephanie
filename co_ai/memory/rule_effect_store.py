@@ -23,6 +23,7 @@ class RuleEffectStore:
         notes: Optional[str] = None,
         agent_name: Optional[str] = None,
         details: Optional[Dict] = None,
+        stage_details: Optional[Dict] = None,
         context_hash: Optional[str] = None,
     ) -> RuleApplicationORM:
         """Insert a new rule application record into the database."""
@@ -36,6 +37,7 @@ class RuleEffectStore:
                 post_score=result_score,
                 notes=notes,
                 details=details,
+                stage_details=stage_details,
                 context_hash=context_hash,
             )
             self.db.add(application)

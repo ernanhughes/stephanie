@@ -157,13 +157,14 @@ class SymbolicRuleApplier:
                 rule_id=rule.id,
                 pipeline_run_id=pipeline_run_id,
                 details=rule.to_dict(),
+                stage_details=cfg,
             )
 
         return cfg
 
 
     def apply_prompt_rules(
-            self, agent_name: str, prompt_cfg: dict, context: dict
+            self, agent_name: str, Hi: dict, context: dict
         ) -> dict:
         """
         Applies prompt-level symbolic rules to the prompt config before generation.

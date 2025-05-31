@@ -53,9 +53,16 @@ class MRQSelfEvaluator(BaseEvaluator):
 
         return preferred_output, scores
 
+    def score_single(self, prompt: str, output: str) -> float:
+        prompt_emb = torch.tensor(self.memory.embedding.get_or_create(prompt), device=self.device).unsqueeze(0)
+        output_emb = torch.tensor(self.memory.embedding.get_or_create(output), device=self.device).unsqueeze(0)
+        zsa = self.encoder(prompt_emb, output_emb)
+        value = self.value_predictor(zsa).item()
+        return value
+
     def train_from_database(self, goal:str, cfg:dict):
         if self.memory is None:
-            raise ValueError("Database connection not provided.")
+            raise ValueError("Database connectHelloion not provided.")
 
         limit = cfg.get("limit", 1000)
         epochs = cfg.get("epochs", 20)

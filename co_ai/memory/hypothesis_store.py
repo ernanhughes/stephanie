@@ -111,13 +111,23 @@ class HypothesisStore:
         if self.logger:
             self.logger.log("HypothesisSoftDeleted", {"hypothesis_id": hyp_id})
 
-    def get_by_goal(self, goal_text: str, limit: int = 10) -> list[HypothesisORM]:
+    def get_by_goal(
+        self, goal_text: str, limit: int = 10, source=None
+    ) -> list[HypothesisORM]:
         """
         Returns all hypotheses for a given goal.
         """
-        return self.session.query(HypothesisORM).join(GoalORM).filter(
-            GoalORM.goal_text == goal_text
-        ).limit(limit).all()
+        query = (
+            self.session.query(HypothesisORM)
+            .join(GoalORM)
+            .filter(GoalORM.goal_text == goal_text)
+        )
+
+        if source:
+            from co_ai.models import ScoreORM
+            query = query.join(ScoreORM).filter(ScoreORM.source == source)
+
+        return query.limit(limit).all()
 
     def get_latest(self, goal_text: str, limit: int = 10) -> list[HypothesisORM]:
         return self.session.query(HypothesisORM).join(GoalORM).filter(
