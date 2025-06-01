@@ -53,7 +53,7 @@ class PromptStore:
             raise
 
     def save(self, goal: dict, agent_name: str, prompt_key: str, prompt_text: str,
-             response: Optional[str] = None, strategy: str = "default",
+             response: Optional[str] = None, strategy: str = "default", pipeline_run_id: Optional[int] = None,
              extra_data: dict = None, version: int = 1):
         """
         Saves a prompt to the database and marks it as current for its key/agent.
@@ -73,6 +73,7 @@ class PromptStore:
             # Build ORM object
             db_prompt = PromptORM(
                 goal_id=goal_orm.id,
+                pipeline_run_id=pipeline_run_id,
                 agent_name=agent_name,
                 prompt_key=prompt_key,
                 prompt_text=prompt_text,

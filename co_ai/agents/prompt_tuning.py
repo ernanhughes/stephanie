@@ -164,6 +164,7 @@ class PromptTuningAgent(BaseAgent):
                     prompt_key=self.prompt_key,
                     prompt_text=refined_prompt,
                     response=None,
+                    pipeline_run_id=context.get("pipeline_run_id"),
                     strategy="refined_via_dspy",
                     version=self.current_version + 1,
                 )

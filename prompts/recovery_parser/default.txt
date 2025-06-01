@@ -1,0 +1,17 @@
+You are a robust parser that recovers structured fields from noisy or inconsistent text.
+
+Here is the raw input:
+{{ raw_text }}
+
+The expected fields are:
+{% for field in expected_fields %}
+- {{ field }}
+{% endfor %}
+
+Here is a regex hint that failed to match:
+{{ regex_hint }}
+
+Your task is to extract the expected fields and return them as a JSON object.
+Only include the fields listed above. If a field is missing or unclear, leave it null.
+
+Return **valid JSON only** with no extra commentary.

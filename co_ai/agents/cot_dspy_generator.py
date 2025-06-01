@@ -80,6 +80,7 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
                 prompt_key=self.cfg.get(PROMPT_PATH, ""),
                 prompt_text=prompt,
                 strategy=self.cfg.get(STRATEGY, ""),
+                pipeline_run_id=context.get("pipeline_run_id"),
                 version=self.cfg.get("version", 1),
             )
             prompt = self.memory.prompt.get_from_text(prompt_text)

@@ -72,7 +72,7 @@ class SharpeningAgent(BaseAgent):
                     "prompt_template": prompt_template,
                     PIPELINE: context.get(PIPELINE),
                 }
-                self.save_improved(goal, prompt_template, result)
+                self.save_improved(goal, prompt_template, result, context)
                 results.append(result)
         return sorted(results, key=lambda x: x["score"], reverse=True)
 
@@ -108,7 +108,7 @@ class SharpeningAgent(BaseAgent):
         }
 
         if improved:
-            self.save_improved(goal, prompt, result)
+            self.save_improved(goal, prompt, result, context)
 
         return [result]
 
@@ -122,7 +122,7 @@ class SharpeningAgent(BaseAgent):
         response = self.call_llm(prompt_template, context)
         return response
 
-    def save_improved(self, goal, prompt: str, entry: dict):
+    def save_improved(self, goal, prompt: str, entry: dict, context: dict):
         if entry["improved"] and self.cfg.get("save_improved", True):
             # Save refined prompt (optional – only if different enough)
             new_prompt_id = self.memory.prompt.save(
@@ -132,6 +132,7 @@ class SharpeningAgent(BaseAgent):
                 prompt_text=prompt,
                 response=entry["sharpened_hypothesis"],
                 strategy=self.cfg.get("strategy", "default"),
+                pipeline_run_id=context.get("pipeline_run_id"),
                 meta_data={
                     "original_prompt": prompt,
                     "template": entry["template"],
@@ -185,4 +186,4 @@ class SharpeningAgent(BaseAgent):
                 prompt_template=entry.get("prompt_template", None),
             )
             self.memory.mrq.insert_sharpening_result(result)
-            self.logger.log("SharpeningResultSaved", asdict(result))
+            self.logger.log("SharpeningResultSaved", result.to_dict())
