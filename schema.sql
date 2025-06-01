@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     source_hypothesis_id INT REFERENCES hypotheses(id), -- If derived from another
     source TEXT,                        -- e.g., manual, refinement, grafting
     pipeline_signature TEXT,            -- Unique identifier for the pipeline used
-    pipeline_id INT REFERENCES pipeline_runs(id), -- Pipeline run this hypothesis belongs to
+    pipeline_run_id INT REFERENCES pipeline_runs(id), -- Pipeline run this hypothesis belongs to
     enabled BOOLEAN DEFAULT TRUE,       -- Soft delete flag
     version INT DEFAULT 1,              -- Evolve count
     created_at TIMESTAMPTZ DEFAULT NOW(),

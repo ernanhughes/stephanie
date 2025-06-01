@@ -1,12 +1,12 @@
 from co_ai.agents import BaseAgent
 from co_ai.analysis.rubric_classifier import RubricClassifierMixin
-from co_ai.constants import GOAL, PIPELINE
+from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID     
 from co_ai.evaluator.llm_judge_evaluator import LLMJudgeEvaluator
 from co_ai.evaluator.mrq_self_evaluator import MRQSelfEvaluator
 from co_ai.models import HypothesisORM
 
 
-class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
+class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin): 
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.logger.log("AgentInit", {"agent": "ChainOfThoughtGeneratorAgent"})
@@ -62,6 +62,7 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
             features=features,
             prompt_id=self.get_prompt_id(prompt),
             pipeline_signature=context.get(PIPELINE),
+            pipeline_run_id=context.get(PIPELINE_RUN_ID),
         )
         self.memory.hypotheses.insert(best_orm)
         self.logger.log("HypothesisStored", {"text": best[:100], "confidence": score})

@@ -15,6 +15,8 @@ class HypothesisORM(Base):
     text = Column(String, nullable=False)
     goal_id = Column(Integer, ForeignKey("goals.id"))
     prompt_id = Column(Integer, ForeignKey("prompts.id"))
+    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"))
+    source_hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
     strategy = Column(String)
     confidence = Column(Float, default=0.0)
     review = Column(String)
@@ -22,10 +24,8 @@ class HypothesisORM(Base):
     elo_rating = Column(Float, default=750.0)
     embedding = Column(JSON)  # Use pgvector later for better support
     features = Column(JSON)   # For structured metadata
-    source_hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
     source = Column(String)
     pipeline_signature = Column(String)
-    pipeline_id = Column(Integer, ForeignKey("pipeline_runs.id"))
     enabled = Column(Boolean, default=True)
     version = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -60,7 +60,7 @@ class HypothesisORM(Base):
             "source_hypothesis_id": self.source_hypothesis_id,
             "source": self.source,
             "pipeline_signature": self.pipeline_signature,
-            "pipeline_id": self.pipeline_id,
+            "pipeline_id": self.pipeline_run_id,
             "enabled": self.enabled,
             "version": self.version,
             "created_at": self.created_at.isoformat() if self.created_at else None,

@@ -127,6 +127,7 @@ class BaseAgent(ABC):
                     prompt_text=prompt,
                     response=output,
                     strategy=updated_cfg.get(STRATEGY, ""),
+                    pipeline_run_id=context.get("pipeline_run_id"),
                     version=updated_cfg.get("version", 1),
                 )
 

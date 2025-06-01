@@ -1,7 +1,7 @@
 # co_ai/agents/generation.py
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import FEEDBACK, GOAL, HYPOTHESES, LITERATURE, PIPELINE
+from co_ai.constants import GOAL, GOAL_TEXT, FEEDBACK, HYPOTHESES, LITERATURE, PIPELINE, PIPELINE_RUN_ID
 from co_ai.parsers import extract_hypotheses
 
 
@@ -11,7 +11,8 @@ class GenerationAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         from co_ai.models import HypothesisORM
-        goal = self.memory.goals.get_or_create(context.get(GOAL))
+
+        goal = context.get(GOAL)
 
         self.logger.log("GenerationStart", {GOAL: goal})
 
@@ -20,16 +21,15 @@ class GenerationAgent(BaseAgent):
 
         # Build context for prompt
         render_context = {
-            GOAL: goal.goal_text,
+            GOAL: goal.get(GOAL_TEXT),
             LITERATURE: literature,
             FEEDBACK: context.get(FEEDBACK, {}),
             HYPOTHESES: context.get(HYPOTHESES, []),
         }
+        merged = {**context, **render_context}
 
         # Load prompt based on strategy
-        prompt_text = self.prompt_loader.load_prompt(
-            self.cfg, context={**context, **render_context}
-        )
+        prompt_text = self.prompt_loader.load_prompt(self.cfg, merged)
         response = self.call_llm(prompt_text, context)
 
         # Extract hypotheses
@@ -38,10 +38,11 @@ class GenerationAgent(BaseAgent):
         prompt = self.memory.prompt.get_from_text(prompt_text)
         for h in hypotheses:
             hyp = HypothesisORM(
-                goal_id=goal.id,
+                goal_id=goal.get("id"),
                 text=h,
                 prompt_id=prompt.id,
                 pipeline_signature=context.get(PIPELINE),
+                pipeline_run_id=context.get(PIPELINE_RUN_ID),
             )
             self.memory.hypotheses.insert(hyp)
             hypotheses_saved.append(hyp.to_dict())

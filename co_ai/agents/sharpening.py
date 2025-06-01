@@ -1,9 +1,7 @@
 # co_ai/agents/sharpening.py
 
-from dataclasses import asdict
-
 from co_ai.agents import BaseAgent
-from co_ai.constants import GOAL, PIPELINE
+from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
 from co_ai.evaluator import MRQSelfEvaluator
 from co_ai.models import HypothesisORM
 from co_ai.models.sharpening_result import SharpeningResult
@@ -151,6 +149,7 @@ class SharpeningAgent(BaseAgent):
                 goal=goal,
                 text=entry["sharpened_hypothesis"],
                 prompt=prompt,
+                pipeline_run_id=context.get(PIPELINE_RUN_ID),
                 pipeline_signature=entry.get(PIPELINE),
             )
             # Save new hypothesis for that prompt

@@ -193,6 +193,7 @@ class GeneralReasonerAgent(BaseAgent, RubricClassifierMixin):
                 features={"strategy": strategy},
                 source=self.name,
                 pipeline_signature=context.get(PIPELINE),
+                pipeline_run_id=context.get(PIPELINE_RUN_ID),
             )
             self.memory.hypotheses.insert(hypothesis)
             hypotheses.append(hypothesis.to_dict())

@@ -1,13 +1,34 @@
 from collections import defaultdict
 import json
+import math
 from sqlalchemy.orm import Session
 from co_ai.models import RuleApplicationORM, ScoreORM, ScoreRuleLinkORM
+from tabulate import tabulate
 
 
 class RuleEffectAnalyzer:
     def __init__(self, session: Session, logger=None):
         self.session = session
         self.logger = logger
+
+    def _compute_stats(self, scores: list[float]) -> dict:
+        if not scores:
+            return {}
+
+        avg = sum(scores) / len(scores)
+        min_score = min(scores)
+        max_score = max(scores)
+        std = math.sqrt(sum((x - avg) ** 2 for x in scores) / len(scores))
+        success_rate = len([s for s in scores if s >= 50]) / len(scores)
+
+        return {
+            "avg_score": avg,
+            "count": len(scores),
+            "min": min_score,
+            "max": max_score,
+            "std": std,
+            "success_rate": success_rate,
+        }
 
     def analyze(self) -> dict:
         """
@@ -48,25 +69,37 @@ class RuleEffectAnalyzer:
                         "raw_value": str(rule_app.stage_details),
                     })
 
+
             param_scores[rule_id][param_key].append(score.score)
 
         # Build summary output
         results = {}
         for rule_id, scores in rule_scores.items():
+            rule_summary = self._compute_stats(scores)
             results[rule_id] = {
-                "avg_score": sum(scores) / len(scores),
-                "count": len(scores),
-                "min": min(scores),
-                "max": max(scores),
+                **rule_summary,
                 "by_params": {},
             }
 
-            for param_key, param_scores_list in param_scores[rule_id].items():
-                results[rule_id]["by_params"][param_key] = {
-                    "avg_score": sum(param_scores_list) / len(param_scores_list),
-                    "count": len(param_scores_list),
-                    "min": min(param_scores_list),
-                    "max": max(param_scores_list),
-                }
+            print(f"\n📘 Rule {rule_id} Summary:")
+            print(tabulate([
+                ["Average Score", f"{rule_summary['avg_score']:.2f}"],
+                ["Count", rule_summary["count"]],
+                ["Min / Max", f"{rule_summary['min']} / {rule_summary['max']}"],
+                ["Std Dev", f"{rule_summary['std']:.2f}"],
+                ["Success Rate ≥50", f"{rule_summary['success_rate']:.2%}"],
+            ], tablefmt="fancy_grid"))
 
+            for param_key, score_list in param_scores[rule_id].items():
+                param_summary = self._compute_stats(score_list)
+                results[rule_id]["by_params"][param_key] = param_summary
+
+                print(f"\n    🔧 Param Config: {param_key}")
+                print(tabulate([
+                    ["Average Score", f"{param_summary['avg_score']:.2f}"],
+                    ["Count", param_summary["count"]],
+                    ["Min / Max", f"{param_summary['min']} / {param_summary['max']}"],
+                    ["Std Dev", f"{param_summary['std']:.2f}"],
+                    ["Success Rate ≥50", f"{param_summary['success_rate']:.2%}"],
+                ], tablefmt="rounded_outline"))
         return results

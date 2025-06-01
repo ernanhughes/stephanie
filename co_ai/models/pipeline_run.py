@@ -23,8 +23,10 @@ class PipelineRunORM(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     goal = relationship("GoalORM", back_populates="pipeline_runs")
+    prompts = relationship("PromptORM", back_populates="pipeline_run", cascade="all, delete-orphan")
     hypotheses = relationship("HypothesisORM", back_populates="pipeline_run")
     symbolic_rules = relationship("SymbolicRuleORM", back_populates="pipeline_run")
+
     rule_applications = relationship(
         "RuleApplicationORM",
         back_populates="pipeline_run",

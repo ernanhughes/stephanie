@@ -1,7 +1,7 @@
 # co_ai/agents/idea_sharpening.py
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, HYPOTHESES, PIPELINE
+from co_ai.constants import GOAL, HYPOTHESES, PIPELINE, PIPELINE_RUN_ID
 from co_ai.evaluator import MRQSelfEvaluator
 from co_ai.models import HypothesisORM
 
@@ -125,6 +125,7 @@ class IdeaSharpeningAgent(BaseAgent):
             text=sharpened,
             prompt_id=prompt_id,
             pipeline_signature=context.get(PIPELINE),
+            pipeline_run_id=context.get(PIPELINE_RUN_ID),
             source="idea_sharpening_agent",
             confidence=result["score"]
         )

@@ -5,7 +5,7 @@ import re
 import numpy as np
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import EVOLVED, GOAL, HYPOTHESES, PIPELINE, RANKING
+from co_ai.constants import EVOLVED, GOAL, HYPOTHESES, PIPELINE, PIPELINE_RUN_ID, RANKING
 from co_ai.models import HypothesisORM
 from co_ai.tools.embedding_tool import get_embedding
 
@@ -74,7 +74,8 @@ class EvolutionAgent(BaseAgent):
                         hyp = HypothesisORM(
                             goal=goal,
                             text=h,
-                            pipeline_signature=context.get(PIPELINE)
+                            pipeline_signature=context.get(PIPELINE),
+                            pipeline_run_id=context.get(PIPELINE_RUN_ID),
                         )
                         self.memory.hypotheses.insert(hyp)
                         evolved.append(r)
@@ -103,6 +104,7 @@ class EvolutionAgent(BaseAgent):
         Graft pairs of highly similar hypotheses into unified versions.
         """
         hypotheses = self.get_hypotheses(context)
+        # TODO: use memory
         embeddings = [get_embedding(h, self.cfg) for h in hypotheses]
         used = set()
         grafted = []

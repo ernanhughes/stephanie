@@ -4,7 +4,7 @@ import dspy
 from dspy import InputField, OutputField, Signature
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import (GOAL, GOAL_TEXT, GOAL_TYPE, PIPELINE, PROMPT_PATH,
+from co_ai.constants import (GOAL, GOAL_TEXT, PIPELINE, PIPELINE_RUN_ID, PROMPT_PATH,
                              STRATEGY)
 from co_ai.models import HypothesisORM
 
@@ -91,6 +91,7 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
             text=cot,
             features={"source": "cot_dspy"},
             pipeline_signature=context.get(PIPELINE),
+            pipeline_run_id=context.get(PIPELINE_RUN_ID),
         )
         self.memory.hypotheses.insert(hyp)
 
