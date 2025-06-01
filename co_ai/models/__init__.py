@@ -14,6 +14,6 @@ from .rule_application import RuleApplicationORM
 from .score import ScoreORM
 from .search_result import SearchResultORM
 from .sharpening_prediction import SharpeningPredictionORM
-from .sharpening_result import SharpeningResult
+from .sharpening_result import SharpeningResultORM
 from .symbolic_rule import SymbolicRuleORM
 from .score_rule_link import ScoreRuleLinkORM

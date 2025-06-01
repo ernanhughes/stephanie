@@ -102,11 +102,11 @@ pipeline:
        iterations: 1
      - name: review
        cls: co_ai.agents.review.ReviewAgent
-       enabled: true
+       enabled: false
        iterations: 1
      - name: proximity
        cls: co_ai.agents.proximity.ProximityAgent
-       enabled: false
+       enabled: true
        iterations: 1
      - name: reflection_delta
        cls: co_ai.agents.reflection_delta.ReflectionDeltaAgent

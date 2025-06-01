@@ -29,7 +29,7 @@ proximity:
   save_prompt: true
   strategy:
   prompt_mode: file
-  prompt_file: proximity_analysis.txt
+  prompt_file: proximity.txt
 
   preferences:
   - goal_consistency

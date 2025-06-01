@@ -4,8 +4,8 @@ from co_ai.agents import BaseAgent
 from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
 from co_ai.evaluator import MRQSelfEvaluator
 from co_ai.models import HypothesisORM
-from co_ai.models.sharpening_result import SharpeningResult
-
+from co_ai.models.sharpening_result import SharpeningResultORM
+from datetime import datetime
 
 class SharpeningAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -165,11 +165,14 @@ class SharpeningAgent(BaseAgent):
                 },
             )
 
+    from datetime import datetime
+
     def log_sharpening_results(
         self, goal: str, prompt: str, original_output: str, results: list[dict]
     ):
         for entry in results:
-            result = SharpeningResult(
+            # Create ORM object
+            sharpening_result_orm = SharpeningResultORM(
                 goal=goal,
                 prompt=prompt,
                 template=entry["template"],
@@ -183,7 +186,15 @@ class SharpeningAgent(BaseAgent):
                 score_b=entry["raw_scores"]["value_b"],
                 score_diff=entry["score_diff"],
                 best_score=entry["score"],
-                prompt_template=entry.get("prompt_template", None),
+                prompt_template=entry.get("prompt_template"),
+                created_at=datetime.utcnow(),
             )
-            self.memory.mrq.insert_sharpening_result(result)
-            self.logger.log("SharpeningResultSaved", result.to_dict())
+
+            # Save to DB via memory
+            self.memory.mrq.insert_sharpening_result(sharpening_result_orm)
+
+            # Log the event
+            self.logger.log(
+                "SharpeningResultSaved",
+                sharpening_result_orm.to_dict()
+            )

@@ -1,96 +1,55 @@
 # co_ai/agents/proximity.py
 import itertools
-
 import numpy as np
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT, TEXT
+from co_ai.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT, PIPELINE_RUN_ID, TEXT
+from co_ai.models import ScoreORM
+from co_ai.scoring.proximity import ProximityScore
 
 
 class ProximityAgent(BaseAgent):
     """
     The Proximity Agent calculates similarity between hypotheses and builds a proximity graph.
-
-    From the paper:
-    > 'The Proximity agent calculates the similarity between research hypotheses and builds a proximity graph...'
     """
 
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-
         self.similarity_threshold = cfg.get("similarity_threshold", 0.75)
         self.max_graft_candidates = cfg.get("max_graft_candidates", 3)
-        self.top_k_database_matches = self.cfg.get("top_k_database_matches", 5)
+        self.top_k_database_matches = cfg.get("top_k_database_matches", 5)
 
     async def run(self, context: dict) -> dict:
-        """
-        Run proximity analysis on current hypotheses.
-
-        Args:
-            context: Dictionary with keys:
-                - hypotheses: list of hypothesis strings
-                - ranked: list of (hypothesis, score)
-                - evolved: list of hypotheses
-                - feedback: optional previous feedback
-        Returns:
-            dict with keys:
-                - clusters: list of hypothesis groups
-                - graft_candidates: list of high-similarity pairs
-                - proximity_graph: list of (h1, h2, similarity)
-        """
         goal = context.get(GOAL)
         goal_text = goal.get(GOAL_TEXT)
         current_hypotheses = self.get_hypotheses(context)
 
-        # Fetch historical hypotheses from DB
-        db_texts = self.memory.hypotheses.get_similar(
-            goal_text, limit=self.top_k_database_matches
-        )
-        self.logger.log(
-            "DatabaseHypothesesMatched",
-            {
-                GOAL: goal,
-                "matches": [
-                    {
-                        "text": h[:100]
-                    }
-                    for h in db_texts
-                ],
-            },
-        )
+        db_texts = self.memory.hypotheses.get_similar(goal_text, limit=self.top_k_database_matches)
+        self.logger.log("DatabaseHypothesesMatched", {
+            GOAL: goal,
+            "matches": [{"text": h[:100]} for h in db_texts],
+        })
 
-        # Combine current and past hypotheses
         hypotheses_texts = [h.get(TEXT) for h in current_hypotheses]
         all_hypotheses = list(set(hypotheses_texts + db_texts))
 
-        if not all_hypotheses.__len__():
+        if not all_hypotheses:
             self.logger.log("NoHypothesesForProximity", {"reason": "empty_input"})
             return context
 
-        # Compute pairwise similarity between all hypotheses
         similarities = self._compute_similarity_matrix(all_hypotheses)
+        self.logger.log("ProximityGraphComputed", {
+            "total_pairs": len(similarities),
+            "threshold": self.similarity_threshold,
+            "top_matches": [
+                {"pair": (h1[:60], h2[:60]), "score": sim}
+                for h1, h2, sim in similarities[:3]
+            ],
+        })
 
-        # Log proximity graph
-        self.logger.log(
-            "ProximityGraphComputed",
-            {
-                "total_pairs": len(similarities),
-                "threshold": self.similarity_threshold,
-                "top_matches": [
-                    {"pair": (h1[:60], h2[:60]), "score": sim}
-                    for h1, h2, sim in similarities[:3]
-                ],
-            },
-        )
-
-        # Identify grafting candidates
-        graft_candidates = [
-            (h1, h2) for h1, h2, sim in similarities if sim >= self.similarity_threshold
-        ]
-        # Cluster similar hypotheses
+        graft_candidates = [(h1, h2) for h1, h2, sim in similarities if sim >= self.similarity_threshold]
         clusters = self._cluster_hypotheses(graft_candidates)
 
-        # Store results in context
         context[self.output_key] = {
             "clusters": clusters,
             "graft_candidates": graft_candidates,
@@ -98,10 +57,45 @@ class ProximityAgent(BaseAgent):
             "proximity_graph": similarities,
         }
 
+        top_similar = similarities[: self.max_graft_candidates]
+        summary_prompt = self.prompt_loader.load_prompt(
+            self.cfg,
+            {
+                GOAL: goal,
+                "most_similar": "\n".join(
+                    [f"{i + 1}. {h1} ↔ {h2} (sim: {score:.2f})"
+                     for i, (h1, h2, score) in enumerate(top_similar)]
+                ),
+            },
+        )
+
+        summary_output = self.call_llm(summary_prompt, context)
+        context["proximity_summary"] = summary_output
+
+        scorer = ProximityScore(self.cfg, memory=self.memory, logger=self.logger)
+        score = scorer.compute({"proximity_analysis": summary_output}, context)
+
+        self.logger.log(
+            "ProximityAnalysisScored",
+            {
+                "score": score,
+                "analysis": summary_output[:300],
+            },
+        )
+
+        score_obj = ScoreORM(
+            hypothesis_id=None,
+            score_type=self.name,
+            score=score,
+            metrics={"score": score},
+            pipeline_run_id=context.get(PIPELINE_RUN_ID),
+        )
+
+        self.memory.scores.insert(score_obj)
+
         return context
 
     def _compute_similarity_matrix(self, hypotheses: list[str]) -> list[tuple]:
-        """Compute pairwise cosine similarity between hypotheses"""
         vectors = []
         valid_hypotheses = []
 
@@ -114,25 +108,21 @@ class ProximityAgent(BaseAgent):
             valid_hypotheses.append(h)
 
         similarities = []
-
         for i, j in itertools.combinations(range(len(valid_hypotheses)), 2):
             h1 = valid_hypotheses[i]
             h2 = valid_hypotheses[j]
             sim = self._cosine(vectors[i], vectors[j])
             similarities.append((h1, h2, sim))
 
-        # Sort by similarity
         similarities.sort(key=lambda x: x[2], reverse=True)
         return similarities
 
     def _cosine(self, a, b):
-        """Compute cosine similarity between two vectors"""
         a = np.array(list(a), dtype=float)
         b = np.array(list(b), dtype=float)
         return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def _cluster_hypotheses(self, graft_candidates: list[tuple]) -> list[list[str]]:
-        """Build clusters of similar hypotheses"""
         clusters = []
 
         for h1, h2 in graft_candidates:
@@ -148,7 +138,6 @@ class ProximityAgent(BaseAgent):
             if not found:
                 clusters.append([h1, h2])
 
-        # Merge overlapping clusters
         merged_clusters = []
         for cluster in clusters:
             merged = False
