@@ -67,6 +67,22 @@ class PipelineJudgeAgent(BaseAgent):
 
             self.logger.log("ScoreSaved", {"score_id": score_obj.id, "run_id": context.get(PIPELINE_RUN_ID)})
 
+            applications = self.memory.rule_effects.get_by_run_and_goal(
+                context.get(PIPELINE_RUN_ID), goal.get("id")
+            )
+
+            for app in applications:
+                if app.hypothesis_id == self.get_hypothesis_id(hypo):
+                    app.result_score = score
+                    app.result_label = "pipeline_judgment"
+                    self.memory.rule_effects.update(app)
+                    self.logger.log("RuleApplicationUpdated", {
+                        "rule_id": app.rule_id,
+                        "score": score,
+                        "hypothesis_id": app.hypothesis_id
+                    })
+
+
         self.run_rule_effects_evaluation(context)
         self.report_rule_analytics()
 
@@ -76,12 +92,24 @@ class PipelineJudgeAgent(BaseAgent):
     def report_rule_analytics(self):
         analytics = RuleAnalytics(db=self.memory, logger=self.logger)
         results = analytics.analyze_all_rules()
-        for r in results:
-            print(r)
+
+        if isinstance(results, list):
+            print("\n=== Rule Analytics Summary ===")
+            print(f"{'Rule ID':<10}{'Applications':<15}{'Avg Score':<12}")
+            print("-" * 40)
+            for result in results:
+                rule_id = result.get("rule_id")
+                count = result.get("count", 0)
+                avg_score = result.get("avg_score", 0.0)
+                print(f"{rule_id:<10}{count:<15}{avg_score:<12.2f}")
+            print("-" * 40)
 
     def run_rule_effects_evaluation(self, context: dict) -> dict:
         analyzer = RuleEffectAnalyzer(session=self.memory.session, logger=self.logger)
         summary = analyzer.analyze()
         top_rules = sorted(summary.items(), key=lambda x: x[1]["avg_score"], reverse=True)
+        print("\nTop Performing Rules:")
         for rule_id, data in top_rules[:5]:
             print(f"Rule {rule_id}: avg {data['avg_score']:.3f} over {data['count']} applications")
+
+
