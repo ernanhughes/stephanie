@@ -1,11 +1,11 @@
 import re
-from collections import defaultdict
 
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
 from co_ai.evaluator import ARMReasoningSelfEvaluator, MRQSelfEvaluator
 from co_ai.models import ScoreORM, RuleApplicationORM
 from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
+from co_ai.analysis.rule_analytics import RuleAnalytics
 
 
 class PipelineJudgeAgent(BaseAgent):
@@ -81,9 +81,6 @@ class PipelineJudgeAgent(BaseAgent):
                 "ScoreParsed", {"score": score, "rationale": rationale[:100]}
             )
 
-        # Fetch latest RuleApplicationORM for this run (if it exists)
-        pipeline_run_id = context.get(PIPELINE_RUN_ID)
-
         # Save Score
         score_obj = ScoreORM(
             goal_id=self.get_goal_id(goal),
@@ -114,9 +111,16 @@ class PipelineJudgeAgent(BaseAgent):
         }
 
         self.run_rule_effects_evaluation(context)
+        self.report_rule_analytics()
 
         self.logger.log("PipelineJudgeAgentEnd", {"output_key": self.output_key})
         return context
+
+    def report_rule_analytics(self):
+        analytics = RuleAnalytics(db=self.memory, logger=self.logger)
+        results = analytics.analyze_all_rules()
+        for r in results:
+            print(r)
 
     @DeprecationWarning
     def link_score_to_rule_applications(self, score_obj, context):

@@ -68,7 +68,7 @@ dynamic:
 
 post_judgment:
   name: pipeline_judge
-  enabled: false
+  enabled: true
   cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:

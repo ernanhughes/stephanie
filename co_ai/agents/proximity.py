@@ -57,19 +57,22 @@ class ProximityAgent(BaseAgent):
             "proximity_graph": similarities,
         }
 
+
         top_similar = similarities[: self.max_graft_candidates]
-        summary_prompt = self.prompt_loader.load_prompt(
-            self.cfg,
-            {
+        to_merge = {
                 GOAL: goal,
                 "most_similar": "\n".join(
                     [f"{i + 1}. {h1} ↔ {h2} (sim: {score:.2f})"
                      for i, (h1, h2, score) in enumerate(top_similar)]
                 ),
-            },
+            }
+
+        merged = {**context, **to_merge}
+        summary_prompt = self.prompt_loader.load_prompt(
+            self.cfg, merged
         )
 
-        summary_output = self.call_llm(summary_prompt, context)
+        summary_output = self.call_llm(summary_prompt, merged)
         context["proximity_summary"] = summary_output
 
         scorer = ProximityScore(self.cfg, memory=self.memory, logger=self.logger)
@@ -83,15 +86,19 @@ class ProximityAgent(BaseAgent):
             },
         )
 
-        score_obj = ScoreORM(
-            hypothesis_id=None,
-            score_type=self.name,
-            score=score,
-            metrics={"score": score},
-            pipeline_run_id=context.get(PIPELINE_RUN_ID),
-        )
-
-        self.memory.scores.insert(score_obj)
+        for hypothesis in current_hypotheses:
+            score_obj = ScoreORM(
+                agent_name=self.name,
+                model_name=self.model_name,
+                goal_id=goal.get("goal_id"),
+                hypothesis_id=hypothesis.get("id"),
+                score_type=self.name,
+                evaluator_name=self.name,
+                score=score,
+                extra_data={"score": score},
+                pipeline_run_id=context.get(PIPELINE_RUN_ID),
+            )
+            self.memory.scores.insert(score_obj)
 
         return context
 
