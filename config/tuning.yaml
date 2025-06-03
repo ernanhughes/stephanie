@@ -1,0 +1,72 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/pipeline_judge
+  - agents/lookahead
+  - agents/prompt_tuning
+  - logging/json_logger
+
+goal:
+  goal_text: "If I was to develop a self improving process what would be the steps needed?"
+  goal_type: "theoretical"
+  goal_category: "ai_research"
+  strategy: "reasoning"
+  difficulty: "medium"
+  expected_formats:
+    - "short_cot"
+    - "code"
+
+symbolic:
+  enabled: true  # set to false to skip symbolic rule application
+  rules_file: "config/rules/rules.yaml"
+  enable_db_rules: true # load rules from the database
+  match_priority:
+    - goal_id
+    - pipeline_run_id
+    - metadata
+  metadata_match_mode: partial   # options: exact, partial, off
+  allow_fallback: true           # if no ID matches, allow metadata fallback
+
+planner:
+  name: planner
+  enabled: false
+  cls: co_ai.agents.planner.PipelinePlannerAgent
+  dots_enabled: true
+  lookahead_enabled: true
+
+dynamic:
+  name: lookahead
+  enabled: false
+  cls: co_ai.agents.lookahead.LookaheadAgent
+
+post_judgment:
+  name: pipeline_judge
+  enabled: true
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: default_pipeline
+  description: "Default hypothesis generation and refinement pipeline"
+  stages:
+     - name: prompt_tuning
+       cls: co_ai.agents.prompt_tuning.PromptTuningAgent
+       enabled: true
+       iterations: 1

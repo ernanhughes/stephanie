@@ -3,6 +3,7 @@
 pipeline_judge:
   name: pipeline_judge
   enabled: true
+  print_results: false
   source: context
   batch_size: 10
   save_prompt: true
