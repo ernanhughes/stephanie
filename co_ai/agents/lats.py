@@ -1,10 +1,10 @@
 import re
-from datetime import datetime
 from dataclasses import asdict
+from datetime import datetime
 
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import PIPELINE, RUN_ID
-from co_ai.models import ScoreORM, RuleApplicationORM
+from co_ai.models import RuleApplicationORM, ScoreORM
 
 
 class PipelineJudgeAgent(BaseAgent):

@@ -1,9 +1,10 @@
 import re
+
 from co_ai.agents.base import BaseAgent
+from co_ai.analysis.rule_analytics import RuleAnalytics
+from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID, RUN_ID
 from co_ai.models import ScoreORM
-from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
-from co_ai.analysis.rule_analytics import RuleAnalytics
 
 
 class PipelineJudgeAgent(BaseAgent):

@@ -1,7 +1,8 @@
 from collections import defaultdict
-from typing import Optional, Dict, List
-from co_ai.models.symbolic_rule import SymbolicRuleORM
+from typing import Dict, List, Optional
+
 from co_ai.models.rule_application import RuleApplicationORM
+from co_ai.models.symbolic_rule import SymbolicRuleORM
 
 
 class RuleAnalytics:

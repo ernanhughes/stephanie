@@ -1,9 +1,11 @@
 # co_ai/agents/rule_tuner_agent.py
 
 from collections import defaultdict
+
 from co_ai.agents import BaseAgent
 from co_ai.constants import GOAL
 from co_ai.models import SymbolicRuleORM
+
 
 class RuleTunerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

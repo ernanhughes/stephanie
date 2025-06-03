@@ -1,5 +1,5 @@
-from co_ai.scoring.review import ReviewScore
 from co_ai.constants import HYPOTHESES, REVIEW
+from co_ai.scoring.review import ReviewScore
 
 
 class ReviewScoringMixin:

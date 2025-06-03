@@ -1,6 +1,6 @@
 from co_ai.agents import BaseAgent
 from co_ai.analysis.rubric_classifier import RubricClassifierMixin
-from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID     
+from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
 from co_ai.evaluator.llm_judge_evaluator import LLMJudgeEvaluator
 from co_ai.evaluator.mrq_self_evaluator import MRQSelfEvaluator
 from co_ai.models import HypothesisORM

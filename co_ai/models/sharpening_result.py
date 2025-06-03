@@ -1,6 +1,9 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Column, String, Float, Text, DateTime
-from co_ai.models.base import Base  # Adjust this import to match your actual Base
+
+from sqlalchemy import Boolean, Column, DateTime, Float, String, Text
+
+from co_ai.models.base import \
+    Base  # Adjust this import to match your actual Base
 
 
 class SharpeningResultORM(Base):

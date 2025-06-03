@@ -1,6 +1,6 @@
-from co_ai.scoring import ReflectionScore
+from co_ai.constants import GOAL, GOAL_TEXT, HYPOTHESES, REFLECTION
 from co_ai.models import ScoreORM, ScoreRuleLinkORM
-from co_ai.constants import HYPOTHESES, GOAL, GOAL_TEXT, REFLECTION
+from co_ai.scoring import ReflectionScore
 
 
 class ReflectionScoringMixin:

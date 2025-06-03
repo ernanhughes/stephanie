@@ -2,6 +2,7 @@
 
 import torch
 
+
 class MRQCalibrator:
     @staticmethod
     def calibrated_preference(value_a: float, value_b: float) -> float:

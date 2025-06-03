@@ -1,8 +1,9 @@
-from pathlib import Path
-from typing import Any, Dict, List
-from datetime import datetime
 import hashlib
 import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List
+
 import yaml
 
 from co_ai.memory.symbolic_rule_store import SymbolicRuleORM
@@ -59,6 +60,7 @@ class SymbolicRuleApplier:
         return context
 
     from datetime import datetime
+
     from co_ai.models import RuleApplicationORM
 
     def apply_to_agent(self, cfg: Dict, context: Dict) -> Dict:

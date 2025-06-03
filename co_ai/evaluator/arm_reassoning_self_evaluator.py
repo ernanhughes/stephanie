@@ -3,9 +3,9 @@ import json
 import torch
 
 from co_ai.dataloaders import ARMDataLoader
+from co_ai.evaluator.base import BaseEvaluator
 from co_ai.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
 from co_ai.evaluator.text_encoder import TextEncoder
-from co_ai.evaluator.base import BaseEvaluator
 
 
 class ARMReasoningSelfEvaluator(BaseEvaluator):

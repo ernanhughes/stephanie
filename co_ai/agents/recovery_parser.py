@@ -1,5 +1,7 @@
-from co_ai.agents import BaseAgent
 import json
+
+from co_ai.agents import BaseAgent
+
 
 class RecoveryParserAgent(BaseAgent):
     def __init__(self, cfg=None, memory=None, logger=None):

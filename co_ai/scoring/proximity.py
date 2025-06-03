@@ -1,5 +1,6 @@
 # co_ai/scoring/proximity.py
 import re
+
 from co_ai.scoring.base_score import BaseScore
 
 

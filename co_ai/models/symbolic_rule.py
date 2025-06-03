@@ -1,18 +1,13 @@
-from datetime import datetime
 import hashlib
 import json
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Text,
-    Float,
-    ForeignKey,
-    DateTime,
-    JSON,
-)
+from datetime import datetime
+
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text)
 from sqlalchemy.orm import relationship
+
 from .base import Base
+
 
 class SymbolicRuleORM(Base):
     __tablename__ = "symbolic_rules"

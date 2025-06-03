@@ -1,6 +1,7 @@
 from typing import List, Optional
+
+from sqlalchemy import and_, desc
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_
 
 from co_ai.models.rule_application import RuleApplicationORM
 

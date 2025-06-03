@@ -1,4 +1,5 @@
 import re
+
 from co_ai.constants import REVIEW
 from co_ai.models import ScoreORM
 from co_ai.scoring.base_score import BaseScore

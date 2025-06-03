@@ -1,9 +1,11 @@
 # co_ai/agents/proximity.py
 import itertools
+
 import numpy as np
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT, PIPELINE_RUN_ID, TEXT
+from co_ai.constants import (DATABASE_MATCHES, GOAL, GOAL_TEXT,
+                             PIPELINE_RUN_ID, TEXT)
 from co_ai.models import ScoreORM
 from co_ai.scoring.proximity import ProximityScore
 

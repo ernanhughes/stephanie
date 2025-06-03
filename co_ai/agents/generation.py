@@ -1,7 +1,8 @@
 # co_ai/agents/generation.py
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, GOAL_TEXT, FEEDBACK, HYPOTHESES, LITERATURE, PIPELINE, PIPELINE_RUN_ID
+from co_ai.constants import (FEEDBACK, GOAL, GOAL_TEXT, HYPOTHESES, LITERATURE,
+                             PIPELINE, PIPELINE_RUN_ID)
 from co_ai.parsers import extract_hypotheses
 
 

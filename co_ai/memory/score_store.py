@@ -5,9 +5,9 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from co_ai.models import RuleApplicationORM
-from co_ai.models.score_rule_link import ScoreRuleLinkORM
 from co_ai.models.goal import GoalORM
 from co_ai.models.score import ScoreORM
+from co_ai.models.score_rule_link import ScoreRuleLinkORM
 
 
 class ScoreStore:

@@ -1,6 +1,6 @@
+from co_ai.constants import PROXIMITY
 from co_ai.models import ScoreORM
 from co_ai.scoring.proximity import ProximityScore
-from co_ai.constants import PROXIMITY
 
 
 class ProximityScoringMixin:

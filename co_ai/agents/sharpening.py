@@ -1,11 +1,13 @@
 # co_ai/agents/sharpening.py
 
+from datetime import datetime
+
 from co_ai.agents import BaseAgent
 from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
 from co_ai.evaluator import MRQSelfEvaluator
 from co_ai.models import HypothesisORM
 from co_ai.models.sharpening_result import SharpeningResultORM
-from datetime import datetime
+
 
 class SharpeningAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

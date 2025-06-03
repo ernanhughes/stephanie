@@ -8,17 +8,8 @@ from uuid import uuid4
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from co_ai.constants import (
-    GOAL,
-    NAME,
-    PIPELINE,
-    PIPELINE_RUN_ID,
-    PROMPT_DIR,
-    RUN_ID,
-    SAVE_CONTEXT,
-    SKIP_IF_COMPLETED,
-    STAGE,
-)
+from co_ai.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID, PROMPT_DIR,
+                             RUN_ID, SAVE_CONTEXT, SKIP_IF_COMPLETED, STAGE)
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
 from co_ai.reports import ReportFormatter

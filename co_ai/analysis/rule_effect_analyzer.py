@@ -1,11 +1,13 @@
-from collections import defaultdict
 import json
 import math
-from sqlalchemy.orm import Session
-from co_ai.models import RuleApplicationORM, ScoreORM, ScoreRuleLinkORM
+from collections import defaultdict
 from typing import Optional
-from co_ai.models import PipelineRunORM
+
+from sqlalchemy.orm import Session
 from tabulate import tabulate
+
+from co_ai.models import (PipelineRunORM, RuleApplicationORM, ScoreORM,
+                          ScoreRuleLinkORM)
 
 
 class RuleEffectAnalyzer:

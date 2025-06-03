@@ -1,4 +1,5 @@
 import statistics
+
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import PIPELINE_RUN_ID
 from co_ai.models.rule_application import RuleApplicationORM

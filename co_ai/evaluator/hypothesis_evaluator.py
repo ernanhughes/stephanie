@@ -1,5 +1,6 @@
 from co_ai.models import ScoreORM
 
+
 class HypothesisEvaluator:
     def __init__(self, session):
         self.session = session

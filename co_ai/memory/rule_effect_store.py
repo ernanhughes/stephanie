@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
