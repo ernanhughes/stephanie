@@ -31,6 +31,7 @@ defaults:
   - agents/review
   - agents/sharpening
   - agents/symbolic_optimizer
+  - agents/auto_tuner
   - logging/json_logger
 
 goal:
@@ -123,6 +124,10 @@ pipeline:
      - name: rule_tuner
        cls: co_ai.agents.rule_tuner.RuleTunerAgent
        enabled: false
+       iterations: 1
+     - name: auto_tuner
+       cls: co_ai.agents.auto_tuner.AutoTunerAgent
+       enabled: true
        iterations: 1
      - name: mrq_scoring
        cls: co_ai.agents.mrq_scoring.MRQScoringAgent

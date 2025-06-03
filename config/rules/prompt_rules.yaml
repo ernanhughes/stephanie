@@ -1,0 +1,81 @@
+rules:
+  - id: 1
+    target: "prompt"
+    filter:
+      goal_type: "research"
+      expected_formats: ["short_cot"]
+    attributes:
+      template_name: "research_cot_template"
+      model: "qwen:0.5b"
+      style: "cot"
+      max_tokens: 512
+    source: "expert_tuning"
+    description: "Use structured CoT template for research questions"
+
+  - id: 2
+    target: "agent"
+    agent_name: "generation_agent"
+    filter:
+      goal_type: "theoretical"
+      goal_category: "ai_research"
+      strategy: "reasoning"
+      difficulty: "medium"
+    attributes:
+      model: "mistral"
+      adapter: "cot_adapter"
+    source: "manual"
+
+  - id: 3
+    target: "agent"
+    agent_name: "cot_generator"
+    filter:
+      goal_type: "research"
+    attributes:
+      model: "mistral"
+      adapter: "cot_adapter"
+    rule_text: "Use CoT adapter for research goals"
+
+  - id: 4
+    target: "goal"
+    filter:
+      goal_type: "debugging"
+    attributes:
+      strategy: "trace"
+      difficulty: "easy"
+    rule_text: "Simplify strategy for debugging goals"
+
+  - id: 5
+    target: "pipeline"
+    filter:
+      goal_category: "ai_research"
+      difficulty: "hard"
+    attributes:
+      stages: ["generate_steps", "refine_steps", "score_results"]
+    rule_text: "Apply structured reasoning for hard AI research tasks"
+
+  - id: 6
+    target: "prompt"
+    agent_name: "cot_generator"
+    filter:
+      agent_name: "cot_generator"
+    attributes:
+      temperature: 0.3
+      max_tokens: 512
+    rule_text: "Lower temperature and restrict length for cot prompts"
+
+  - id: 7
+    target: "agent"
+    agent_name: "symbolic_optimizer"
+    filter:
+      goal_category: "symbolic_tuning"
+    attributes:
+      heuristic_mode: "greedy"
+    rule_text: "Use greedy heuristic in symbolic optimizer"
+
+  - id: 8
+    target: "pipeline"
+    filter:
+      goal_type: "theoretical"
+    attributes:
+      pipeline: ["retrieval", "generation", "evaluation"]
+    source: "optimizer"

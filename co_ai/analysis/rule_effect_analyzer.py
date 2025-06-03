@@ -110,7 +110,7 @@ class RuleEffectAnalyzer:
 
     def pipeline_run_scores(self, pipeline_run_id: Optional[int] = None, context: dict = None) -> None:
         """
-        Generate a report showing all scores for a specific pipeline run.
+        Generate a summary log showing all scores for a specific pipeline run.
 
         Args:
             pipeline_run_id (Optional[int]): ID of the pipeline run to inspect.
@@ -122,12 +122,10 @@ class RuleEffectAnalyzer:
             else:
                 raise ValueError("No pipeline_run_id provided or found in context.")
 
-        # Get the pipeline run object
         pipeline_run = self.session.get(PipelineRunORM, pipeline_run_id)
         if not pipeline_run:
             raise ValueError(f"No pipeline run found with ID {pipeline_run_id}")
 
-        # Query all scores for this pipeline run
         scores = (
             self.session.query(ScoreORM)
             .filter(ScoreORM.pipeline_run_id == pipeline_run_id)
@@ -135,11 +133,14 @@ class RuleEffectAnalyzer:
         )
 
         if not scores:
-            print(f"\n⚠️ No scores found for pipeline run {pipeline_run_id}")
+            if self.logger:
+                self.logger.log("PipelineRunScoreSummary", {
+                    "pipeline_run_id": pipeline_run_id,
+                    "total_scores": 0,
+                    "message": "No scores found"
+                })
             return
 
-        # Prepare data for display
-        table_data = []
         for score in scores:
             rule_app_link = (
                 self.session.query(ScoreRuleLinkORM)
@@ -148,21 +149,24 @@ class RuleEffectAnalyzer:
             )
             rule_app = (
                 self.session.get(RuleApplicationORM, rule_app_link.rule_application_id)
-                if rule_app_link
-                else None
+                if rule_app_link else None
             )
 
-            table_data.append({
-                "Score ID": score.id,
-                "Agent": score.agent_name or "N/A",
-                "Model": score.model_name or "N/A",
-                "Evaluator": score.evaluator_name or "N/A",
-                "Score Type": score.score_type or "N/A",
-                "Score Value": f"{score.score:.2f}" if score.score is not None else "None",
-                "Rule Applied": rule_app.rule_id if rule_app and rule_app.rule_id else "None",
-                "Hypothesis ID": score.hypothesis_id or "N/A"
-            })
+            if self.logger:
+                self.logger.log("PipelineRunScoreEntry", {
+                    "pipeline_run_id": pipeline_run_id,
+                    "score_id": score.id,
+                    "agent": score.agent_name or "N/A",
+                    "model": score.model_name or "N/A",
+                    "evaluator": score.evaluator_name or "N/A",
+                    "score_type": score.score_type or "N/A",
+                    "score_value": score.score,
+                    "rule_id": rule_app.rule_id if rule_app else None,
+                    "hypothesis_id": score.hypothesis_id or None,
+                })
 
-        # Print the report
-        print(f"\n📊 Scores for Pipeline Run ID: {pipeline_run_id}")
-        print(tabulate(table_data, headers="keys", tablefmt="fancy_grid"))
+        if self.logger:
+            self.logger.log("PipelineRunScoreSummary", {
+                "pipeline_run_id": pipeline_run_id,
+                "total_scores": len(scores)
+            })

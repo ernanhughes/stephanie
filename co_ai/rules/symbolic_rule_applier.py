@@ -166,7 +166,7 @@ class SymbolicRuleApplier:
 
 
     def apply_prompt_rules(
-            self, agent_name: str, Hi: dict, context: dict
+            self, agent_name: str, prompt_cfg: dict, context: dict
         ) -> dict:
         """
         Applies prompt-level symbolic rules to the prompt config before generation.
@@ -219,22 +219,62 @@ class SymbolicRuleApplier:
             d = d[k]
         d[keys[-1]] = value
 
-    def apply_to_prompt(self, prompt_cfg: dict, context: dict) -> dict:
+    def apply_to_prompt(self, cfg: Dict, context: Dict) -> Dict:
         if not self.enabled:
-            return prompt_cfg
+            return cfg
 
         goal = context.get("goal", {})
         pipeline_run_id = context.get("pipeline_run_id")
+        prompt_name = cfg.get("prompt_key", "unknown_prompt")
 
-        for rule in self.rules:
-            if rule.target != "prompt":
-                continue
-            if self._matches_filter(rule.filter, goal):
-                for key, value in rule.attributes.items():
-                    prompt_cfg[key] = value
-                # Optional: log RuleApplicationORM here
+        matching_rules = [
+            r for r in self.rules
+            if r.target == "prompt" and self._matches_filter(r.filter, goal)
+        ]
 
-        return prompt_cfg
+        if not matching_rules:
+            self.logger.log("NoSymbolicPromptRulesApplied", {
+                "prompt": prompt_name,
+                "goal_id": goal.get("id"),
+            })
+            return cfg
+
+        self.logger.log("SymbolicPromptRulesFound", {
+            "prompt": prompt_name,
+            "goal_id": goal.get("id"),
+            "count": len(matching_rules),
+        })
+
+        for rule in matching_rules:
+            for key, value in rule.attributes.items():
+                if key in cfg:
+                    self.logger.log("SymbolicPromptOverride", {
+                        "prompt": prompt_name,
+                        "key": key,
+                        "old_value": cfg[key],
+                        "new_value": value,
+                        "rule_id": rule.id,
+                    })
+                else:
+                    self.logger.log("SymbolicPromptNewKey", {
+                        "prompt": prompt_name,
+                        "key": key,
+                        "value": value,
+                        "rule_id": rule.id,
+                    })
+                cfg[key] = value
+
+            # Track the application of the prompt-level rule
+            self.memory.rule_effects.insert(
+                rule_id=rule.id,
+                goal_id=goal.get("id"),
+                pipeline_run_id=pipeline_run_id,
+                agent_name=cfg.get("name", "prompt"),
+                context_hash=self.compute_context_hash(context),
+                run_id=context.get("run_id"),
+            )
+
+        return cfg
 
     def _matches_filter(self, filter_dict: dict, target_obj: dict) -> bool:
         """Generic matcher for symbolic rule filters"""

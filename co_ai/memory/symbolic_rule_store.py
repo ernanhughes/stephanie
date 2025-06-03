@@ -183,3 +183,11 @@ class SymbolicRuleStore:
             if self.logger:
                 self.logger.log("SymbolicRulesFetchError", {"error": str(e)})
             return []
+
+    def get_by_id(self, rule_id: int):
+        try:
+            return self.session.query(SymbolicRuleORM).filter_by(id=rule_id).first()
+        except Exception as e:
+            if self.logger:
+                self.logger.log("SymbolicRuleGetByIdError", {"rule_id": rule_id, "error": str(e)})
+            return None

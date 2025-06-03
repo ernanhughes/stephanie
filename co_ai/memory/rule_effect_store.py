@@ -106,7 +106,7 @@ class RuleEffectStore:
 
         try:
             applications = (
-                self.session.query(RuleApplicationORM)
+                self.db.query(RuleApplicationORM)
                 .filter(
                     RuleApplicationORM.pipeline_run_id == int(run_id),
                     RuleApplicationORM.goal_id == int(goal_id)
