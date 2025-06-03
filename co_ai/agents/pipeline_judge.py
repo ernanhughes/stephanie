@@ -41,7 +41,6 @@ class PipelineJudgeAgent(BaseAgent):
                     "judgement": judgement,
                     "goal_id": goal.get("id"),
                     "run_id": context.get(PIPELINE_RUN_ID),
-                    "emoji": "\ud83d\udea8\u2753\ud83e\udde0"
                 })
                 score = None
                 rationale = judgement

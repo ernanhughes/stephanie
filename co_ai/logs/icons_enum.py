@@ -111,7 +111,7 @@ EVENT_ICONS = {
     "LLMJudgeResult": "⚖️",
     "EvaluationCompleted": "📊",
     "ScoreComputed": "🧮📊✅",
-    "ReviewScoreComputed": "🧑‍⚖️📊✅",
+    "ReviewScoreComputed": "🧑‍⚖️📊",
     "ReflectionScoreComputed": "🪞📊✅",
     "ScoreStored": "💾",
     # Evolution

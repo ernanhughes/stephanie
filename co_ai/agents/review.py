@@ -1,5 +1,4 @@
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import REVIEW
 from co_ai.agents.mixins.review_scoring_mixin import ReviewScoringMixin
 
 
