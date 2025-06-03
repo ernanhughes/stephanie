@@ -83,8 +83,8 @@ class PipelineJudgeAgent(BaseAgent):
                     })
 
 
-        self.run_rule_effects_evaluation(context)
         self.report_rule_analytics()
+        self.run_rule_effects_evaluation(context)
 
         self.logger.log("PipelineJudgeAgentEnd", {"output_key": self.output_key})
         return context
@@ -104,6 +104,7 @@ class PipelineJudgeAgent(BaseAgent):
                 print(f"{rule_id:<10}{count:<15}{avg_score:<12.2f}")
             print("-" * 40)
 
+
     def run_rule_effects_evaluation(self, context: dict) -> dict:
         analyzer = RuleEffectAnalyzer(session=self.memory.session, logger=self.logger)
         summary = analyzer.analyze()
@@ -112,4 +113,5 @@ class PipelineJudgeAgent(BaseAgent):
         for rule_id, data in top_rules[:5]:
             print(f"Rule {rule_id}: avg {data['avg_score']:.3f} over {data['count']} applications")
 
+        analyzer.pipeline_run_scores(context=context)
 
