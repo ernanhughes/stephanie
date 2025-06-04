@@ -44,8 +44,12 @@ class RuleEffectAnalyzer:
         rule_scores = defaultdict(list)
         param_scores = defaultdict(lambda: defaultdict(list))  # rule_id → param_json → scores
 
-        links = self.session.query(ScoreRuleLinkORM).filter(ScoreORM.pipeline_run_id == pipeline_run_id)
-
+        links = (
+            self.session.query(ScoreRuleLinkORM)
+            .join(ScoreORM, ScoreRuleLinkORM.score_id == ScoreORM.id)
+            .join(RuleApplicationORM, ScoreRuleLinkORM.rule_application_id == RuleApplicationORM.id)
+            .all()
+        )
         for link in links:
             score = self.session.get(ScoreORM, link.score_id)
             rule_app = self.session.get(RuleApplicationORM, link.rule_application_id)
