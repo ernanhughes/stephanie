@@ -111,7 +111,7 @@ class PipelineJudgeAgent(BaseAgent):
 
     def run_rule_effects_evaluation(self, context: dict):
         analyzer = RuleEffectAnalyzer(session=self.memory.session, logger=self.logger)
-        summary = analyzer.analyze()
+        summary = analyzer.analyze(context.get(PIPELINE_RUN_ID))
         top_rules = sorted(summary.items(), key=lambda x: x[1]["avg_score"], reverse=True)
         print("\nTop Performing Rules:")
         for rule_id, data in top_rules[:5]:

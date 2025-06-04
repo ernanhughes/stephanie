@@ -34,7 +34,7 @@ class RuleEffectAnalyzer:
             "success_rate": success_rate,
         }
 
-    def analyze(self) -> dict:
+    def analyze(self, pipeline_run_id: int) -> dict:
         """
         Analyze rule effectiveness by collecting all scores linked to rule applications.
 
@@ -44,7 +44,7 @@ class RuleEffectAnalyzer:
         rule_scores = defaultdict(list)
         param_scores = defaultdict(lambda: defaultdict(list))  # rule_id → param_json → scores
 
-        links = self.session.query(ScoreRuleLinkORM).all()
+        links = self.session.query(ScoreRuleLinkORM).filter(ScoreORM.pipeline_run_id == pipeline_run_id)
 
         for link in links:
             score = self.session.get(ScoreORM, link.score_id)

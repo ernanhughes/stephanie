@@ -1,8 +1,8 @@
-import json
 from datetime import datetime
 from co_ai.agents.base import BaseAgent
 from co_ai.models import SymbolicRuleORM
 from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
+from co_ai.constants import PIPELINE_RUN_ID
 
 
 class AutoTunerAgent(BaseAgent):
@@ -16,7 +16,7 @@ class AutoTunerAgent(BaseAgent):
         self.logger.log("AutoTunerStart", {"tune_mode": self.tune_mode})
 
         analyzer = RuleEffectAnalyzer(self.memory.session, logger=self.logger)
-        summary = analyzer.analyze()
+        summary = analyzer.analyze(context.get(PIPELINE_RUN_ID))
 
         underperforming_rules = [
             (rule_id, data) for rule_id, data in summary.items()

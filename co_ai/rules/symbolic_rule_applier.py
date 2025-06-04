@@ -1,13 +1,11 @@
 import hashlib
 import json
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import yaml
 
 from co_ai.memory.symbolic_rule_store import SymbolicRuleORM
-from co_ai.models.rule_application import RuleApplicationORM
 
 
 class SymbolicRuleApplier:

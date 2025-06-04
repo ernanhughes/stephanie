@@ -488,6 +488,29 @@ CREATE TABLE IF NOT EXISTS mrq_preference_pairs (
 );
 
 
+CREATE TABLE IF NOT EXISTS symbolic_rules
+(
+    id SERIAL PRIMARY KEY,
+    goal_id integer,
+    pipeline_run_id integer,
+    prompt_id integer,
+    agent_name text,
+No     target text NOT NULL,
+    rule_text text,
+    source text,
+    attributes jsonb,
+    filter jsonb,
+    context_hash text,
+    score double precision,
+    goal_type text,
+    goal_category text,
+    difficulty text,
+    focus_area text,
+    created_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+)
+
+
 CREATE TABLE IF NOT EXISTS rule_applications (
     id SERIAL PRIMARY KEY,                                  -- Unique application ID
     rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE CASCADE, -- Applied rule
