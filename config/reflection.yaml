@@ -2,40 +2,20 @@
 defaults:
   - _self_
   - db: postgres
-  - agents/cot_dspy_generator
-  - agents/cot_generator
-  - agents/debate
-  - agents/dots_planner
-  - agents/evolution
-  - agents/general_reasoner
   - agents/generation
-  - agents/generic
-  - agents/judge
-  - agents/literature
-  - agents/literature_ranking
-  - agents/lookahead
-  - agents/meta_review
-  - agents/mrq_strategy
-  - agents/pipeline_judge
-  - agents/prompt_tuning
-  - agents/proximity
-  - agents/ranking
-  - agents/refiner
   - agents/reflection
-  - agents/reflection_delta
-  - agents/review
-  - agents/scorer
-  - agents/sharpening
-  # - agents/strategy_selector
-  - agents/symbolic_optimizer
   - logging/json_logger
 
-# The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
-# This is a placeholder and should be replaced with the actual goal.
 goal:
-  goal_text: "Will AI ever be able to reprogram itself?"
-  goal_type: research       # enum: math, science, etc.
-  focus_area: meta_learning
+  goal_text: "How can we teach a small language model to self-correct its own mistakes using only limited labeled data?"
+  goal_type: "research"
+  goal_category: "ai_self_improvement"
+  strategy: "reflection"
+  difficulty: "hard"
+  expected_formats:
+    - "short_cot"
+    - "code"
+    - "mechanism"
 
 dynamic:
   name: lookahead
@@ -48,7 +28,6 @@ planner:
   cls: co_ai.agents.planner.PipelinePlannerAgent
   dots_enabled: true
   lookahead_enabled: true
-
 
 post_judgment:
   name: pipeline_judge

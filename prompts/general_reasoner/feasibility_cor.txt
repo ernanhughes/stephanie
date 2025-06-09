@@ -1,0 +1,15 @@
+You are evaluating the **feasibility** of the following hypothesis.
+
+Rubric:
+- Can the proposed solution be realistically implemented?
+- Are the required tools, data, or steps accessible or achievable?
+
+🧪 Format Instructions:
+- Provide a short explanation of your judgment.
+- End your response with: <answer>[[SCORE]]</answer>
+- SCORE must be a number between **1 and 100** — nothing else.
+- Example: <answer>[[85]]</answer>
+
+<hypothesis>
+{{ hypothesis }}
+</hypothesis>

@@ -1,0 +1,15 @@
+You are evaluating the **alignment** of the following hypothesis with the research goal.
+
+Rubric:
+- Does the hypothesis directly address the goal?
+- Does it reflect the intended strategy or values of the goal?
+
+🧪 Format Instructions:
+- Provide a short explanation of your judgment.
+- End your response with: <answer>[[SCORE]]</answer>
+- SCORE must be a number between **1 and 100** — nothing else.
+- Example: <answer>[[75]]</answer>
+
+<hypothesis>
+{{ hypothesis }}
+</hypothesis>

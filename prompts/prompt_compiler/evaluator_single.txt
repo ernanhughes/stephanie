@@ -1,0 +1,20 @@
+You are an impartial expert evaluator. Given a goal and a hypothesis, your task is to score how well the hypothesis addresses the goal.
+
+### Goal:
+{{ goal }}
+
+### Hypothesis:
+{{ hypothesis }}
+
+### Evaluation Criteria:
+- Relevance to the goal
+- Reasoning quality and depth
+- Clarity and coherence
+- Use of evidence or logical structure
+
+### Instructions:
+Do **not** include any extra explanation or internal thoughts.
+**Respond only using the following exact format**:
+
+score:<0-100>
+reason:<Brief justification>

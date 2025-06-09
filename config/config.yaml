@@ -61,7 +61,7 @@ planner:
 
 post_judgment:
   name: pipeline_judge
-  enabled: true
+  enabled: false
   cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
 
 

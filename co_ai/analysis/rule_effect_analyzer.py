@@ -6,8 +6,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from tabulate import tabulate
 
-from co_ai.models import (PipelineRunORM, RuleApplicationORM, ScoreORM,
-                          ScoreRuleLinkORM)
+from co_ai.models import (EvaluationORM, EvaluationRuleLinkORM, PipelineRunORM,
+                          RuleApplicationORM)
 
 
 class RuleEffectAnalyzer:
@@ -44,17 +44,19 @@ class RuleEffectAnalyzer:
         rule_scores = defaultdict(list)
         param_scores = defaultdict(lambda: defaultdict(list))  # rule_id → param_json → scores
 
+        # Join ScoreRuleLinkORM with RuleApplicationORM to filter on pipeline_run_id
         links = (
-            self.session.query(ScoreRuleLinkORM)
-            .join(ScoreORM, ScoreRuleLinkORM.score_id == ScoreORM.id)
-            .join(RuleApplicationORM, ScoreRuleLinkORM.rule_application_id == RuleApplicationORM.id)
+            self.session.query(EvaluationRuleLinkORM)
+            .join(RuleApplicationORM, RuleApplicationORM.id == EvaluationRuleLinkORM.rule_application_id)
+            .filter(RuleApplicationORM.pipeline_run_id == pipeline_run_id)
             .all()
         )
+
         for link in links:
-            score = self.session.get(ScoreORM, link.score_id)
+            score = self.session.get(EvaluationORM, link.score_id)
             rule_app = self.session.get(RuleApplicationORM, link.rule_application_id)
 
-            if not score or not rule_app or score.score is None:
+            if not score or not rule_app:
                 if self.logger:
                     self.logger.log("SkipScoreLink", {
                         "reason": "missing score or rule_app or score is None",
@@ -64,7 +66,7 @@ class RuleEffectAnalyzer:
                 continue
 
             rule_id = rule_app.rule_id
-            rule_scores[rule_id].append(score.score)
+            rule_scores[rule_id].append(score.evaluations.get("final_score", 0.0))
 
             # Normalize stage_details as sorted JSON
             try:
@@ -78,7 +80,7 @@ class RuleEffectAnalyzer:
                     })
 
 
-            param_scores[rule_id][param_key].append(score.score)
+            param_scores[rule_id][param_key].append(score.evaluations.get("final_score", 0.0))
 
         # Build summary output
         results = {}
@@ -131,43 +133,61 @@ class RuleEffectAnalyzer:
             raise ValueError(f"No pipeline run found with ID {pipeline_run_id}")
 
         scores = (
-            self.session.query(ScoreORM)
-            .filter(ScoreORM.pipeline_run_id == pipeline_run_id)
+            self.session.query(EvaluationORM)
+            .filter(EvaluationORM.pipeline_run_id == pipeline_run_id)
             .all()
         )
 
         if not scores:
             if self.logger:
-                self.logger.log("PipelineRunScoreSummary", {
-                    "pipeline_run_id": pipeline_run_id,
-                    "total_scores": 0,
-                    "message": "No scores found"
-                })
+                self.logger.log(
+                    "PipelineRunScoreSummary",
+                    {
+                        "pipeline_run_id": pipeline_run_id,
+                        "total_scores": 0,
+                        "message": "No scores found",
+                    },
+                )
             return
 
+        table_rows = []
         for score in scores:
             rule_app_link = (
-                self.session.query(ScoreRuleLinkORM)
-                .filter(ScoreRuleLinkORM.score_id == score.id)
+                self.session.query(EvaluationRuleLinkORM)
+                .filter(EvaluationRuleLinkORM.score_id == score.id)
                 .first()
             )
             rule_app = (
                 self.session.get(RuleApplicationORM, rule_app_link.rule_application_id)
-                if rule_app_link else None
+                if rule_app_link
+                else None
             )
 
-            if self.logger:
-                self.logger.log("PipelineRunScoreEntry", {
-                    "pipeline_run_id": pipeline_run_id,
-                    "score_id": score.id,
-                    "agent": score.agent_name or "N/A",
-                    "model": score.model_name or "N/A",
-                    "evaluator": score.evaluator_name or "N/A",
-                    "score_type": score.score_type or "N/A",
-                    "score_value": score.score,
-                    "rule_id": rule_app.rule_id if rule_app else None,
-                    "hypothesis_id": score.hypothesis_id or None,
-                })
+            row = [
+                score.id,
+                score.agent_name or "N/A",
+                score.model_name or "N/A",
+                score.evaluator_name or "N/A",
+                score.scores,
+                rule_app.rule_id if rule_app else "—",
+                score.hypothesis_id or "—",
+            ]
+            table_rows.append(row)
+
+        headers = [
+            "Score ID",
+            "Agent",
+            "Model",
+            "Evaluator",
+            "Type",
+            "Value",
+            "Rule ID",
+            "Hypothesis ID",
+        ]
+
+        # Print the table
+        print(f"\n📊 Scores for Pipeline Run {pipeline_run_id}:")
+        print(tabulate(table_rows, headers=headers, tablefmt="fancy_grid"))
 
         if self.logger:
             self.logger.log("PipelineRunScoreSummary", {

@@ -11,7 +11,6 @@ from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                              OUTPUT_KEY, PROMPT_MATCH_RE, PROMPT_PATH,
                              SAVE_CONTEXT, SAVE_PROMPT, SOURCE, STRATEGY)
 from co_ai.logs import JSONLogger
-from co_ai.models import HypothesisORM
 from co_ai.prompts import PromptLoader
 from co_ai.rules import SymbolicRuleApplier
 
@@ -31,7 +30,7 @@ class BaseAgent(ABC):
         self.model_config = cfg.get(MODEL, {})
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
         self.prompt_match_re = cfg.get(PROMPT_MATCH_RE, "")
-        self.llm = self.init_llm()
+        self.llm = self.init_llm()  # TODO do we need to init here?
         self.strategy = cfg.get(STRATEGY, "default")
         self.model_name = self.llm.get(NAME, "")
         self.source = cfg.get(SOURCE, CONTEXT)
@@ -73,24 +72,23 @@ class BaseAgent(ABC):
         if self.llm is None:
             # 🔁 Apply rules here (now that goal is known)
             updated_cfg = self.rule_applier.apply_to_agent(self.cfg, context)
-            self.llm = self.init_llm(cfg=updated_cfg) # initialize with updated config
+            self.llm = self.init_llm(cfg=updated_cfg)  # initialize with updated config
 
         """Call the default or custom LLM, log the prompt, and handle output."""
         props = llm_cfg or self.llm  # Use passed-in config or default
 
         agent_name = self.name
 
-
         strategy = updated_cfg.get(STRATEGY, "")
         prompt_key = updated_cfg.get(PROMPT_PATH, "")
-        use_memory_for_fast_prompts = updated_cfg.get("use_memory_for_fast_prompts", True)
+        use_memory_for_fast_prompts = updated_cfg.get(
+            "use_memory_for_fast_prompts", True
+        )
 
         # 🔁 Check cache
         if self.memory and use_memory_for_fast_prompts:
-            previous = self.memory.prompt.find_matching(
-                agent_name=agent_name,
-                prompt_text=prompt,
-                strategy=strategy
+            previous = self.memory.prompt.find_similar_prompt(
+                agent_name=agent_name, prompt_text=prompt, strategy=strategy, similarity_threshold=0.7
             )
             if previous:
                 chosen = random.choice(previous)
@@ -132,11 +130,15 @@ class BaseAgent(ABC):
                 )
 
             # Remove [THINK] blocks if configured
-            response_cleaned = remove_think_blocks(output) if self.remove_think else output
+            response_cleaned = (
+                remove_think_blocks(output) if self.remove_think else output
+            )
 
             # Optionally add to context history
             if updated_cfg.get("add_prompt_to_history", True):
-                self.add_to_prompt_history(context, prompt, {"response": response_cleaned})
+                self.add_to_prompt_history(
+                    context, prompt, {"response": response_cleaned}
+                )
 
             return response_cleaned
 
@@ -145,17 +147,11 @@ class BaseAgent(ABC):
             self.logger.log("LLMCallError", {"exception": str(e)})
             raise
 
-
     @abstractmethod
     async def run(self, context: dict) -> dict:
         pass
 
-    def add_to_prompt_history(
-        self,
-        context: dict,
-        prompt: str,
-        metadata: dict = None
-    ):
+    def add_to_prompt_history(self, context: dict, prompt: str, metadata: dict = None):
         """
         Appends a prompt record to the context['prompt_history'] under the agent's name.
 
@@ -190,14 +186,15 @@ class BaseAgent(ABC):
                 goal = context.get(GOAL)
                 hypotheses = self.get_hypotheses_from_db(goal.get("goal_text"))
                 if not hypotheses:
-                    self.logger.log("NoHypothesesInDatabase", {"agent": self.name, "goal": goal})
+                    self.logger.log(
+                        "NoHypothesesInDatabase", {"agent": self.name, "goal": goal}
+                    )
                 return [h.to_dict() for h in hypotheses] if hypotheses else []
 
             else:
-                self.logger.log("InvalidSourceConfig", {
-                    "agent": self.name,
-                    "source": self.source
-                })
+                self.logger.log(
+                    "InvalidSourceConfig", {"agent": self.name, "source": self.source}
+                )
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log(
@@ -207,7 +204,7 @@ class BaseAgent(ABC):
 
         return []
 
-    def get_hypotheses_from_db(self, goal_text:str):
+    def get_hypotheses_from_db(self, goal_text: str):
         return self.memory.hypotheses.get_latest(goal_text, self.batch_size)
 
     @staticmethod
@@ -216,7 +213,9 @@ class BaseAgent(ABC):
 
     def get_goal_id(self, goal: dict):
         if not isinstance(goal, dict):
-            raise ValueError(f"Expected goal to be a dict, got {type(goal).__name__}: {goal}")
+            raise ValueError(
+                f"Expected goal to be a dict, got {type(goal).__name__}: {goal}"
+            )
         goal_text = goal.get("goal_text", "")
         if goal_text in self._goal_id_cache:
             return self._goal_id_cache[goal_text][0]
@@ -233,7 +232,9 @@ class BaseAgent(ABC):
 
     def get_hypothesis_id(self, hypothesis_dict: dict):
         if not isinstance(hypothesis_dict, dict):
-            raise ValueError(f"Expected hypothesis_text to be a dict, got {type(hypothesis_dict).__name__}: {hypothesis_dict}")
+            raise ValueError(
+                f"Expected hypothesis_text to be a dict, got {type(hypothesis_dict).__name__}: {hypothesis_dict}"
+            )
         text = hypothesis_dict.get("text")
         if text in self._hypothesis_id_cache:
             return self._hypothesis_id_cache[text][0]

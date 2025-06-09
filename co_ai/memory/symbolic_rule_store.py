@@ -5,7 +5,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from co_ai.constants import PIPELINE
-from co_ai.models.score import ScoreORM
+from co_ai.models.evaluation import EvaluationORM
 from co_ai.models.symbolic_rule import SymbolicRuleORM
 
 
@@ -100,8 +100,8 @@ class SymbolicRuleStore:
 
     def update_rule_score(self, rule_id: int):
         scores = (
-            self.session.query(ScoreORM.score)
-            .filter(ScoreORM.symbolic_rule_id == rule_id)
+            self.session.query(EvaluationORM.score)
+            .filter(EvaluationORM.symbolic_rule_id == rule_id)
             .all()
         )
         scores = [s[0] for s in scores if s[0] is not None]

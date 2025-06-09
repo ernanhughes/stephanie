@@ -1,8 +1,9 @@
 from datetime import datetime
+
 from co_ai.agents.base import BaseAgent
-from co_ai.models import SymbolicRuleORM
 from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from co_ai.constants import PIPELINE_RUN_ID
+from co_ai.models import SymbolicRuleORM
 
 
 class AutoTunerAgent(BaseAgent):

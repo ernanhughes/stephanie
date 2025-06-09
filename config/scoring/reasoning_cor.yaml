@@ -1,0 +1,34 @@
+# config/scoring/reasoning_cor.yaml
+stage: reasoning
+output_format: cor
+
+dimensions:
+  - name: correctness
+    file: correctness_cor.txt
+    weight: 1.2
+    extra_data:
+      parser: numeric_cor
+
+  - name: feasibility
+    file: feasibility_cor.txt
+    weight: 1.1
+    extra_data:
+      parser: numeric_cor
+
+  - name: insightfulness
+    file: insightfulness_cor.txt
+    weight: 1.3
+    extra_data:
+      parser: numeric_cor
+
+  - name: alignment
+    file: alignment_cor.txt
+    weight: 1.0
+    extra_data:
+      parser: numeric_cor
+
+  - name: completeness
+    file: completeness_cor.txt
+    weight: 0.8
+    extra_data:
+      parser: numeric_cor

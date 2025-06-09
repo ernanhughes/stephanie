@@ -6,7 +6,7 @@ class MRQScoresToTraining:
 
     def get_training_pairs(self, context: dict = None) -> list:
         goal_groups = {}
-        scores = self.memory.scores.get_all()
+        scores = self.memory.evaluations.get_all()
 
         for score in scores:
             hypothesis = self.memory.hypotheses.get_by_id(score.get("hypothesis_id"))

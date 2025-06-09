@@ -1,4 +1,3 @@
-
 from collections import defaultdict
 
 from co_ai.agents import BaseAgent
@@ -9,15 +8,17 @@ from co_ai.memory.symbolic_rule_store import SymbolicRuleORM
 class SymbolicOptimizerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
+        self.score_target = cfg.get("score_target", "correctness")
+        self.min_scores = cfg.get("min_scores", 2)
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, {})
         goal_type = goal.get("goal_type", "unknown")
 
-        # Retrieve score history for this goal type
-        score_history = self.memory.scores.get_by_goal_type(goal_type)
+        # Step 1: Retrieve score history for this goal type
+        score_history = self.memory.evaluations.get_by_goal_type(goal_type)
 
-        # Analyze past scores to determine best-performing pipeline
+        # Step 2: Analyze pipelines
         best_pipeline = self.find_best_pipeline(score_history)
 
         if best_pipeline:
@@ -25,12 +26,11 @@ class SymbolicOptimizerAgent(BaseAgent):
                 "target": "pipeline",
                 "filter": {"goal_type": goal_type},
                 "attributes": {"pipeline": best_pipeline},
-                "source": "optimizer",
+                "source": "symbolic_optimizer",
             }
 
             context["symbolic_suggestion"] = rule_dict
 
-            # Optional: persist it
             if self.cfg.get("auto_write_rules", False):
                 existing = self.memory.symbolic_rules.find_matching_rule(
                     target="pipeline",
@@ -44,7 +44,8 @@ class SymbolicOptimizerAgent(BaseAgent):
 
             self.logger.log("SymbolicPipelineSuggestion", {
                 "goal_type": goal_type,
-                "suggested_pipeline": best_pipeline
+                "suggested_pipeline": best_pipeline,
+                "score_type": self.score_target
             })
 
         return context
@@ -54,23 +55,28 @@ class SymbolicOptimizerAgent(BaseAgent):
 
         for score in score_history:
             run_id = score.get("run_id")
-            if run_id:
-                pipeline_run = self.memory.pipeline_runs.get_by_run_id(run_id)
-                pipeline = pipeline_run.pipeline
-                str_pipeline = str(pipeline)
-                score_val = score.get("score")
-                if str_pipeline and score_val is not None:
-                    scores_by_pipeline[str_pipeline].append(score_val)
+            if not run_id:
+                continue
+            pipeline_run = self.memory.pipeline_runs.get_by_run_id(run_id)
+            if not pipeline_run or not pipeline_run.pipeline:
+                continue
 
+            str_pipeline = str(pipeline_run.pipeline)
+            score_val = score.get("score")
+            if score_val is not None:
+                scores_by_pipeline[str_pipeline].append(score_val)
+
+        # Only keep pipelines with enough data
         pipeline_scores = {
             pipe: sum(vals) / len(vals)
             for pipe, vals in scores_by_pipeline.items()
-            if len(vals) >= 2
+            if len(vals) >= self.min_scores
         }
 
         self.logger.log(
             "PipelineScoreSummary",
             {
+                "score_type": self.score_target,
                 "pipeline_scores": {
                     pipe: round(avg, 4) for pipe, avg in pipeline_scores.items()
                 }
@@ -81,4 +87,4 @@ class SymbolicOptimizerAgent(BaseAgent):
             return None
 
         best = max(pipeline_scores.items(), key=lambda x: x[1])
-        return list(best[0])
+        return list(best[0])  # convert stringified list back to list

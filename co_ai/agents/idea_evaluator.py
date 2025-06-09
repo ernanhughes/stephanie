@@ -33,10 +33,10 @@ class IdeaEvaluatorAgent(BaseAgent):
         for hyp in hypotheses:
             hyp_text = hyp["text"]
             preferred, scores = self.evaluator.judge(
-                goal=goal,
                 prompt=hyp_text,
                 output_a=baseline or hyp_text,
                 output_b=hyp_text,
+                context=context,
             )
             scored_results.append(
                 {

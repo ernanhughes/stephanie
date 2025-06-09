@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from co_ai.logs import JSONLogger
 from co_ai.memory.context_store import ContextStore
 from co_ai.memory.embedding_store import EmbeddingStore
+from co_ai.memory.evaluation_store import EvaluationStore
 from co_ai.memory.goal_store import GoalStore
 from co_ai.memory.hypothesis_store import HypothesisStore
 from co_ai.memory.idea_store import IdeaStore
@@ -16,6 +17,7 @@ from co_ai.memory.method_plan_store import MethodPlanStore
 from co_ai.memory.mrq_store import MRQStore
 from co_ai.memory.pattern_store import PatternStatStore
 from co_ai.memory.pipeline_run_store import PipelineRunStore
+from co_ai.memory.prompt_program_store import PromptProgramStore
 from co_ai.memory.prompt_store import PromptStore
 from co_ai.memory.reflection_delta_store import ReflectionDeltaStore
 from co_ai.memory.rule_application_store import RuleApplicationStore
@@ -54,7 +56,7 @@ class MemoryTool:
         self.register_store(embedding_store)
         self.register_store(HypothesisStore(self.session, logger, embedding_store))
         self.register_store(PromptStore(self.session, logger))
-        self.register_store(ScoreStore(self.session, logger))
+        self.register_store(EvaluationStore(self.session, logger))
         self.register_store(PipelineRunStore(self.session, logger))
         self.register_store(LookaheadStore(self.session, logger))
         self.register_store(ContextStore(self.session, logger))
@@ -68,6 +70,8 @@ class MemoryTool:
         self.register_store(SymbolicRuleStore(self.session, logger))
         self.register_store(RuleEffectStore(self.session, logger))
         self.register_store(RuleApplicationStore(self.session, logger))
+        self.register_store(PromptProgramStore(self.session, logger))
+        self.register_store(ScoreStore(self.session, logger))
 
 
         # Register extra stores if defined in config

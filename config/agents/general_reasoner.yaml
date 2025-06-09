@@ -5,7 +5,7 @@ general_reasoner:
   enabled: true
   save_prompt: true
   save_context: true
-  skip_if_completed: false
+  skip_if_completed: true
 
   thinking_mode: generate_and_judge  # (judge_only (for processing hypotheses from other agents or generate_and_judge )
   judge: llm

@@ -1,8 +1,9 @@
 from collections import defaultdict
 from typing import Dict, List, Optional
 
+from tabulate import tabulate
+
 from co_ai.models.rule_application import RuleApplicationORM
-from co_ai.models.symbolic_rule import SymbolicRuleORM
 
 
 class RuleAnalytics:
@@ -55,6 +56,7 @@ class RuleAnalytics:
     def analyze_all_rules(self) -> List[dict]:
         rules = self.db.symbolic_rules.get_all_rules()
         output = []
+        table_rows = []
         for rule in rules:
             score_summary = self.get_score_summary(rule.id)
             feedback_summary = self.get_feedback_summary(rule.id)
@@ -70,7 +72,37 @@ class RuleAnalytics:
                 "feedback_summary": feedback_summary,
                 "rank_score": rank,
             }
-            if self.logger:
-                self.logger.log("RuleAnalysis", result)
             output.append(result)
+
+            avg_score = score_summary.get("average") or 0.0
+            score_count = score_summary.get("count") or 0
+            pos_feedback = feedback_summary.get("positive", 0)
+            neg_feedback = feedback_summary.get("negative", 0)
+
+            # Prepare a table row summary for printout
+            table_rows.append([
+                rule.id,
+                rule.target or "—",
+                rule.rule_text[:30] + "…" if rule.rule_text and len(rule.rule_text) > 30 else rule.rule_text,
+                f"{avg_score:.2f}",
+                score_count,
+                pos_feedback,
+                neg_feedback,
+                f"{rank:.2f}",
+                ])
+            output.append(result)
+
+        # Print final table
+        print("\n📋 Rule Analysis Summary:")
+        headers = [
+            "Rule ID",
+            "Target",
+            "Rule Text",
+            "Avg Score",
+            "Score Count",
+            "👍 Feedback",
+            "👎 Feedback",
+            "Rank Score",
+        ]
+        print(tabulate(table_rows, headers=headers, tablefmt="fancy_grid"))
         return output

@@ -11,8 +11,8 @@ def compare_pipeline_runs(memory, goal_id):
     deltas = []
     for i, run_a in enumerate(runs):
         for run_b in runs[i+1:]:
-            scores_a = memory.scores.get_by_run_id(run_a.run_id)
-            scores_b = memory.scores.get_by_run_id(run_b.run_id)
+            scores_a = memory.evaluations.get_by_run_id(run_a.run_id)
+            scores_b = memory.evaluations.get_by_run_id(run_b.run_id)
 
             if not scores_a or not scores_b:
                 continue  # skip if unscored

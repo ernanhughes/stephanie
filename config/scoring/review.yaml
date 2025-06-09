@@ -1,0 +1,21 @@
+# config/scoring/review.yaml
+dimensions:
+  - name: correctness
+    file: correctness
+    weight: 1.0
+    extra_data: { parser: numeric }
+
+  - name: originality
+    file: originality
+    weight: 1.0
+    extra_data: { parser: numeric }
+
+  - name: clarity
+    file: clarity
+    weight: 0.8
+    extra_data: { parser: numeric }
+
+  - name: relevance
+    file: relevance
+    weight: 1.2
+    extra_data: { parser: numeric }

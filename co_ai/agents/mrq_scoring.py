@@ -1,6 +1,6 @@
 from co_ai.agents import BaseAgent
 from co_ai.evaluator import MRQSelfEvaluator
-from co_ai.models import ScoreORM
+from co_ai.models import EvaluationORM
 
 
 class MRQScoringAgent(BaseAgent):
@@ -14,35 +14,50 @@ class MRQScoringAgent(BaseAgent):
         goal_text = goal["goal_text"]
         hypotheses = self.memory.hypotheses.get_by_goal(goal_text)
         count_scored = 0
+
         for hypothesis in hypotheses:
             if not hypothesis.prompt or not hypothesis.text:
                 continue
-            existing_score = self.memory.scores.get_by_hypothesis_id(
+
+            existing_score = self.memory.evaluations.get_by_hypothesis_id(
                 hypothesis.id, source=self.score_source
             )
             if existing_score:
                 continue  # Skip if already scored by MR.Q
 
-            score_value = self.evaluator.score_single(
-                prompt=hypothesis.prompt.prompt_text, output=hypothesis.text
+            # Run evaluator
+            result = self.evaluator.score_single(
+                prompt=hypothesis.prompt.prompt_text,
+                output=hypothesis.text
             )
 
-            score_obj = ScoreORM(
-                goal_id=hypothesis.goal_id,  # if available
+            # Handle result: could be float or dict of dimensions
+            if isinstance(result, dict):
+                score_value = result.get("overall", 0.0)
+                dimensions = {k: v for k, v in result.items() if k != "overall"}
+            else:
+                score_value = result
+                dimensions = {}
+
+            rationale = (
+                f"MRQSelfEvaluator assigned a score of {score_value:.4f} "
+                f"based on hypothesis embedding alignment."
+            )
+
+            score_obj = EvaluationORM(
+                goal_id=hypothesis.goal_id,
                 hypothesis_id=hypothesis.id,
-                agent_name=self.name,  # 🔥 Required!
-                model_name=self.model_name,  # Optional
-                evaluator_name="MRQScoringAgent",  # Descriptive
-                score_type=self.score_source,  # "mrq"
-                score=score_value,
-                rationale=(
-                    f"MRQSelfEvaluator assigned a score of {score_value:.4f} "
-                    f"based on the hypothesis embedding's alignment with the prompt: '{hypothesis.prompt.prompt_text[:100]}...'"
-                ),
+                agent_name=self.name,
+                model_name=self.model_name,
+                evaluator_name="MRQScoringAgent",
+                scores=result,
                 pipeline_run_id=context.get("pipeline_run_id"),
                 extra_data=self.cfg,
+                dimensions=dimensions  # 🔥 store rich sub-scores
             )
-            self.memory.scores.insert(score_obj)
+
+            self.memory.evaluations.insert(score_obj)
+            count_scored += 1
 
         self.logger.log(
             "MRQScoringComplete",

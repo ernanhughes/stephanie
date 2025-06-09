@@ -1,9 +1,11 @@
-from collections import defaultdict
 import statistics
+from collections import defaultdict
 
 from co_ai.agents.base import BaseAgent
-from co_ai.models import PipelineRunORM, ScoreORM, RuleApplicationORM, SymbolicRuleORM
 from co_ai.constants import PIPELINE_RUN_ID
+from co_ai.models import (EvaluationORM, PipelineRunORM, RuleApplicationORM,
+                          SymbolicRuleORM)
+
 
 class RuleGeneratorAgent(BaseAgent):
     def __init__(self, *args, min_score_threshold=7.5, min_repeat_count=2, **kwargs):
@@ -45,7 +47,7 @@ class RuleGeneratorAgent(BaseAgent):
         return context
 
     def _get_high_performance_runs(self):
-        scores = self.memory.session.query(ScoreORM).filter(ScoreORM.score >= self.min_score_threshold).all()
+        scores = self.memory.session.query(EvaluationORM).filter(EvaluationORM.score >= self.min_score_threshold).all()
         runs = []
         for score in scores:
             rule_app = (

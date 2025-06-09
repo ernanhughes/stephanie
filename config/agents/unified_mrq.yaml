@@ -1,0 +1,42 @@
+# config/agents/unified_mrq.yaml
+
+unified_mrq:
+  name: unified_mrq
+  enabled: true
+  source: context
+
+  similarity_threshold: 0.85
+  top_k_similar: 20
+  min_score_difference: 10
+  model_output_dir: ./outputs/unified_mrq
+  target_dimensions:
+    - correctness
+    - originality
+    - clarity
+    - relevance
+
+  # model
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  # Required keys for the agent ot effectively process the context
+  required_keys: ["goal", "hypotheses"] # add nodes
+  # Key that it will iterate over ot generate reflections
+  input_key: hypotheses
+  # Key that it store the results of those reflections
+  output_key: ranking # change
+
+  # prompt
+  save_prompt: true
+  prompt_mode: file
+  strategy: debate
+  prompt_file: debate.txt
+  # preferences
+  preferences:
+    - goal_consistency
+    - biological_plausibility
+    - experimental_validity
+    - novelty
+    - simplicity

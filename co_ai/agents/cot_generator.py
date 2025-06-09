@@ -39,9 +39,9 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         for candidate in candidates[1:]:
             best, scores = self.evaluator.judge(
                 prompt=prompt,
-                goal=goal,
                 output_a=best,
-                output_b=candidate,
+                output_b=candidate, 
+                context=context
             )
         self.logger.log("EvaluationCompleted", {"best_output": best[:100], **scores})
 

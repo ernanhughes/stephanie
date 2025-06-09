@@ -124,8 +124,8 @@ class HypothesisStore:
         )
 
         if source:
-            from co_ai.models import ScoreORM
-            query = query.join(ScoreORM).filter(ScoreORM.source == source)
+            from co_ai.models import EvaluationORM
+            query = query.join(EvaluationORM).filter(EvaluationORM.source == source)
 
         return query.limit(limit).all()
 

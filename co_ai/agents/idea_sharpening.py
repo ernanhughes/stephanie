@@ -83,10 +83,10 @@ class IdeaSharpeningAgent(BaseAgent):
 
             try:
                 preferred_output, scores = self.evaluator.judge(
-                    goal=goal,
                     prompt=idea,
                     output_a=idea,
                     output_b=sharpened,
+                    context=merged,
                 )
                 improved = preferred_output
                 winner = "b" if improved == sharpened else "a"

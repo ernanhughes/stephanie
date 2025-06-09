@@ -1,8 +1,8 @@
 from co_ai.agents.base import BaseAgent
-from co_ai.agents.mixins.reflection_scoring_mixin import ReflectionScoringMixin
+from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 
 
-class ReflectionAgent(ReflectionScoringMixin, BaseAgent):
+class ReflectionAgent(ScoringMixin, BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
 
@@ -11,7 +11,11 @@ class ReflectionAgent(ReflectionScoringMixin, BaseAgent):
 
         reflections = []
         for hyp in hypotheses:
-            score = self.score_hypothesis_with_reflection(hyp, context)
+            score = self.score_hypothesis(hyp, context, metrics="reflection")
+            self.logger.log(
+                "ReflectionScoreComputed",
+                score,
+            )
             reflections.append(score)
 
         context[self.output_key] = reflections

@@ -1,8 +1,8 @@
 from co_ai.agents.base import BaseAgent
-from co_ai.agents.mixins.review_scoring_mixin import ReviewScoringMixin
+from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 
 
-class ReviewAgent(ReviewScoringMixin, BaseAgent):
+class ReviewAgent(ScoringMixin, BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
 
@@ -12,7 +12,7 @@ class ReviewAgent(ReviewScoringMixin, BaseAgent):
 
         for hyp in hypotheses:
             # Score and update review
-            score = self.score_hypothesis_with_review(hyp, context)
+            score = self.score_hypothesis(hyp, context, metrics="review")
             self.logger.log(
                 "ReviewScoreComputed",
                 score,

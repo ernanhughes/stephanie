@@ -6,8 +6,9 @@ import numpy as np
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import (DATABASE_MATCHES, GOAL, GOAL_TEXT,
                              PIPELINE_RUN_ID, TEXT)
-from co_ai.models import ScoreORM
+from co_ai.models import EvaluationORM
 from co_ai.scoring.proximity import ProximityScore
+from co_ai.utils import compute_similarity_matrix
 
 
 class ProximityAgent(BaseAgent):
@@ -26,11 +27,16 @@ class ProximityAgent(BaseAgent):
         goal_text = goal.get(GOAL_TEXT)
         current_hypotheses = self.get_hypotheses(context)
 
-        db_texts = self.memory.hypotheses.get_similar(goal_text, limit=self.top_k_database_matches)
-        self.logger.log("DatabaseHypothesesMatched", {
-            GOAL: goal,
-            "matches": [{"text": h[:100]} for h in db_texts],
-        })
+        db_texts = self.memory.hypotheses.get_similar(
+            goal_text, limit=self.top_k_database_matches
+        )
+        self.logger.log(
+            "DatabaseHypothesesMatched",
+            {
+                GOAL: goal,
+                "matches": [{"text": h[:100]} for h in db_texts],
+            },
+        )
 
         hypotheses_texts = [h.get(TEXT) for h in current_hypotheses]
         all_hypotheses = list(set(hypotheses_texts + db_texts))
@@ -39,17 +45,22 @@ class ProximityAgent(BaseAgent):
             self.logger.log("NoHypothesesForProximity", {"reason": "empty_input"})
             return context
 
-        similarities = self._compute_similarity_matrix(all_hypotheses)
-        self.logger.log("ProximityGraphComputed", {
-            "total_pairs": len(similarities),
-            "threshold": self.similarity_threshold,
-            "top_matches": [
-                {"pair": (h1[:60], h2[:60]), "score": sim}
-                for h1, h2, sim in similarities[:3]
-            ],
-        })
+        similarities = compute_similarity_matrix(all_hypotheses, self.memory, self.logger)
+        self.logger.log(
+            "ProximityGraphComputed",
+            {
+                "total_pairs": len(similarities),
+                "threshold": self.similarity_threshold,
+                "top_matches": [
+                    {"pair": (h1[:60], h2[:60]), "score": sim}
+                    for h1, h2, sim in similarities[:3]
+                ],
+            },
+        )
 
-        graft_candidates = [(h1, h2) for h1, h2, sim in similarities if sim >= self.similarity_threshold]
+        graft_candidates = [
+            (h1, h2) for h1, h2, sim in similarities if sim >= self.similarity_threshold
+        ]
         clusters = self._cluster_hypotheses(graft_candidates)
 
         context[self.output_key] = {
@@ -59,20 +70,19 @@ class ProximityAgent(BaseAgent):
             "proximity_graph": similarities,
         }
 
-
         top_similar = similarities[: self.max_graft_candidates]
         to_merge = {
-                GOAL: goal,
-                "most_similar": "\n".join(
-                    [f"{i + 1}. {h1} ↔ {h2} (sim: {score:.2f})"
-                     for i, (h1, h2, score) in enumerate(top_similar)]
-                ),
-            }
+            GOAL: goal,
+            "most_similar": "\n".join(
+                [
+                    f"{i + 1}. {h1} ↔ {h2} (sim: {score:.2f})"
+                    for i, (h1, h2, score) in enumerate(top_similar)
+                ]
+            ),
+        }
 
         merged = {**context, **to_merge}
-        summary_prompt = self.prompt_loader.load_prompt(
-            self.cfg, merged
-        )
+        summary_prompt = self.prompt_loader.load_prompt(self.cfg, merged)
 
         summary_output = self.call_llm(summary_prompt, merged)
         context["proximity_summary"] = summary_output
@@ -88,43 +98,66 @@ class ProximityAgent(BaseAgent):
             },
         )
 
+        # Compute additional dimensions
+        cluster_count = len(clusters)
+        top_k_sims = [sim for _, _, sim in similarities[: self.max_graft_candidates]]
+        avg_top_k_sim = sum(top_k_sims) / len(top_k_sims) if top_k_sims else 0.0
+        graft_count = len(graft_candidates)
+
+        # Format as new score schema
+        structured_scores = {
+            "stage": "proximity",
+            "dimensions": {
+                "proximity_score": {
+                    "score": score,
+                    "rationale": summary_output,
+                    "weight": 1.0,
+                },
+                "cluster_count": {
+                    "score": cluster_count,
+                    "rationale": f"Total unique clusters of hypotheses: {cluster_count}",
+                    "weight": 0.5,
+                },
+                "avg_similarity_top_k": {
+                    "score": avg_top_k_sim,
+                    "rationale": f"Average similarity among top-{self.max_graft_candidates} pairs.",
+                    "weight": 0.8,
+                },
+                "graft_pair_count": {
+                    "score": graft_count,
+                    "rationale": f"Pairs exceeding similarity threshold ({self.similarity_threshold}).",
+                    "weight": 0.7,
+                },
+            },
+        }
+        structured_scores["final_score"] = (
+            round(
+                sum(
+                    dim["score"] * dim["weight"]
+                    for dim in structured_scores["dimensions"].values()
+                )
+                / sum(
+                    dim["weight"] for dim in structured_scores["dimensions"].values()
+                ),
+                2,
+            ),
+        )
+
+        # Save per-hypothesis score
         for hypothesis in current_hypotheses:
-            score_obj = ScoreORM(
+            score_obj = EvaluationORM(
                 agent_name=self.name,
                 model_name=self.model_name,
                 goal_id=goal.get("goal_id"),
                 hypothesis_id=hypothesis.get("id"),
-                score_type=self.name,
                 evaluator_name=self.name,
-                score=score,
-                extra_data={"score": score},
+                extra_data={"summary": summary_output},
+                scores=structured_scores, 
                 pipeline_run_id=context.get(PIPELINE_RUN_ID),
             )
-            self.memory.scores.insert(score_obj)
+            self.memory.evaluations.insert(score_obj)
 
         return context
-
-    def _compute_similarity_matrix(self, hypotheses: list[str]) -> list[tuple]:
-        vectors = []
-        valid_hypotheses = []
-
-        for h in hypotheses:
-            vec = self.memory.embedding.get_or_create(h)
-            if vec is None:
-                self.logger.log("MissingEmbedding", {"hypothesis_snippet": h[:60]})
-                continue
-            vectors.append(vec)
-            valid_hypotheses.append(h)
-
-        similarities = []
-        for i, j in itertools.combinations(range(len(valid_hypotheses)), 2):
-            h1 = valid_hypotheses[i]
-            h2 = valid_hypotheses[j]
-            sim = self._cosine(vectors[i], vectors[j])
-            similarities.append((h1, h2, sim))
-
-        similarities.sort(key=lambda x: x[2], reverse=True)
-        return similarities
 
     def _cosine(self, a, b):
         a = np.array(list(a), dtype=float)

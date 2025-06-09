@@ -1,0 +1,4 @@
+# configs/agents/score_analysis.yaml
+score_analysis:
+  name: score_analysis
+  enabled: true

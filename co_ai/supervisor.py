@@ -46,7 +46,7 @@ class Supervisor:
                 print(f"Skipping disabled stage: {name}")
                 continue
             stage_dict = self.cfg.agents[name]
-            print(f"Stage dict: {stage_dict}")
+            self.logger.log("StageContext", {"stage_dict": stage_dict})
             stages.append(PipelineStage(name, stage_config, stage_dict))
         return stages
 

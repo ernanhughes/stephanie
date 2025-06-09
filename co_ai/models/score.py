@@ -1,8 +1,6 @@
 # models/score.py
-from datetime import datetime, timezone
 
-from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
-                        String, Text)
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from co_ai.models.base import Base
@@ -12,63 +10,20 @@ class ScoreORM(Base):
     __tablename__ = "scores"
 
     id = Column(Integer, primary_key=True)
-    goal_id = Column(Integer, ForeignKey("goals.id"))
-    hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
-    symbolic_rule_id = Column(Integer, ForeignKey("symbolic_rules.id"), nullable=True)
-    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"), nullable=True)
-    agent_name = Column(String, nullable=False)
-    model_name = Column(String, nullable=False)
-    evaluator_name = Column(String, nullable=False)
-    score_type = Column(String, nullable=False)
+    evaluation_id = Column(Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False)
+    dimension = Column(String, nullable=False)
     score = Column(Float)
-    score_text = Column(Text)
-    strategy = Column(String)
-    reasoning_strategy = Column(String)
+    weight = Column(Float)
     rationale = Column(Text)
-    reflection = Column(Text)
-    review = Column(Text)
-    meta_review = Column(Text)
-    extra_data = Column(JSON)
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
-    goal = relationship("GoalORM", back_populates="scores")
-    hypothesis = relationship("HypothesisORM", back_populates="scores")
-    symbolic_rule = relationship("SymbolicRuleORM", back_populates="scores")
-    pipeline_run = relationship("PipelineRunORM", back_populates="scores")
+    evaluation = relationship("EvaluationORM", back_populates="dimension_scores")
 
-    def to_dict(self, include_relationships: bool = False) -> dict:
-        data = {
+    def to_dict(self):
+        return {
             "id": self.id,
-            "goal_id": self.goal_id,
-            "hypothesis_id": self.hypothesis_id,
-            "symbolic_rule_id": self.symbolic_rule_id,
-            "pipeline_run_id": self.pipeline_run_id,
-            "agent_name": self.agent_name,
-            "model_name": self.model_name,
-            "evaluator_name": self.evaluator_name,
-            "score_type": self.score_type,
+            "evaluation_id": self.evaluation_id,
+            "dimension": self.dimension,
             "score": self.score,
-            "score_text": self.score_text,
-            "strategy": self.strategy,
-            "reasoning_strategy": self.reasoning_strategy,
-            "rationale": self.rationale,
-            "reflection": self.reflection,
-            "review": self.review,
-            "meta_review": self.meta_review,
-            "extra_data": self.extra_data,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "weight": self.weight,
+            "rationale": self.rationale
         }
-
-        if include_relationships:
-            data["goal"] = (
-                self.goal.to_dict()
-                if self.goal and hasattr(self.goal, "to_dict")
-                else None
-            )
-            data["hypothesis"] = (
-                self.hypothesis.to_dict()
-                if self.hypothesis and hasattr(self.hypothesis, "to_dict")
-                else None
-            )
-
-        return data

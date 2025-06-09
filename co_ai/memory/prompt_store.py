@@ -1,8 +1,10 @@
 # stores/prompt_store.py
 import json
+from difflib import SequenceMatcher
 from typing import Optional
 
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import dialect
 from sqlalchemy.orm import Session
 
 from co_ai.models.goal import GoalORM
@@ -179,18 +181,41 @@ class PromptStore:
 
     def find_matching(self, agent_name, prompt_text, strategy=None):
         query = self.session.query(PromptORM).filter_by(
-            agent_name=agent_name,
-            prompt_text=prompt_text
+            agent_name=agent_name, prompt_text=prompt_text
         )
         if strategy:
             query = query.filter_by(strategy=strategy)
 
         return [p.to_dict() for p in query.limit(10).all()]
 
-    def get_prompt_training_set(self, goal: str, limit: int = 5, agent_name: str = 'generation') -> list[dict]:
+    from difflib import SequenceMatcher
+
+    def find_similar_prompt(
+        self, agent_name, prompt_text, strategy=None, similarity_threshold=0.80
+    ):
+        # Load candidate prompts
+        query = self.session.query(PromptORM).filter_by(agent_name=agent_name)
+        if strategy:
+            query = query.filter_by(strategy=strategy)
+
+        candidates = query.limit(50).all()  # You can increase this if needed
+
+        # Compute similarity using difflib
+        matches = []
+        for p in candidates:
+            similarity = SequenceMatcher(None, prompt_text, p.prompt_text).ratio()
+            if similarity >= similarity_threshold:
+                matches.append((similarity, p))
+
+        # Sort by descending similarity
+        matches.sort(reverse=True, key=lambda x: x[0])
+
+        return [p.to_dict() for similarity, p in matches]
+
+    def get_prompt_training_set(self, goal: str, limit: int = 500) -> list[dict]:
         try:
             sql = text("""
-                SELECT DISTINCT ON (p.id)
+                SELECT 
                     p.id,
                     g.goal_text AS goal,
                     p.prompt_text,
@@ -203,14 +228,15 @@ class PromptStore:
                 JOIN prompts p ON p.goal_id = g.id
                 JOIN hypotheses h ON h.prompt_id = p.id AND h.goal_id = g.id
                 WHERE g.goal_text = :goal
-                AND p.agent_name = :agent_name
                 AND h.enabled = TRUE
                 ORDER BY p.id, h.elo_rating DESC, h.updated_at DESC
                 LIMIT :limit
             """)
+            print("\n🔍 Final SQL Query:")
+            print(sql.compile(dialect=dialect(), compile_kwargs={"literal_binds": True}).string)
+
             result = self.session.execute(sql, {
                 'goal': goal,
-                'agent_name': agent_name,
                 'limit': limit
             })
 

@@ -1,0 +1,15 @@
+You are evaluating the **insightfulness** of the following hypothesis.
+
+Rubric:
+- Does the hypothesis offer novel or non-obvious ideas?
+- Does it show depth of understanding or unique connections?
+
+🧪 Format Instructions:
+- Provide a short explanation of your judgment.
+- End your response with: <answer>[[SCORE]]</answer>
+- SCORE must be a number between **1 and 100** — nothing else.
+- Example: <answer>[[90]]</answer>
+
+<hypothesis>
+{{ hypothesis }}
+</hypothesis>

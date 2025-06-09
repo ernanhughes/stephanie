@@ -1,0 +1,15 @@
+You are an expert reasoning assistant. Answer the question directly and clearly.
+
+Question: {{ goal.goal_text }}
+
+📝 Please answer using the following format:
+```
+<Direct>
+
+Answer: {{ "<ANSWER>" }}
+</Direct>
+```
+
+🔁 Be sure to:
+- Use the exact structure above.
+- Try to just give a conclusive final answer with no explanation.

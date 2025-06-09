@@ -35,7 +35,7 @@ class HypothesisORM(Base):
     goal = relationship("GoalORM", back_populates="hypotheses")
     prompt = relationship("PromptORM", back_populates="hypotheses")
     source_hypothesis = relationship("HypothesisORM", remote_side=[id])
-    scores = relationship("ScoreORM", back_populates="hypothesis")
+    scores = relationship("EvaluationORM", back_populates="hypothesis")
     pipeline_run = relationship("PipelineRunORM", back_populates="hypotheses")
 
     rule_applications = relationship(

@@ -4,10 +4,7 @@ defaults:
   - db: postgres
   - agents/cot_dspy_generator
   - agents/cot_generator
-  - agents/debate
-  - agents/dots_planner
-  - agents/evolution
-  - agents/general_reasoner
+  - agents/unified_mrq
   - agents/generation
   - agents/generic
   - agents/judge
@@ -83,5 +80,9 @@ pipeline:
        iterations: 1
      - name: review
        cls: co_ai.agents.review.ReviewAgent
+       enabled: true
+       iterations: 1
+     - name: unified_mrq
+       cls: co_ai.agents.unified_mrq.UnifiedMRQAgent
        enabled: true
        iterations: 1

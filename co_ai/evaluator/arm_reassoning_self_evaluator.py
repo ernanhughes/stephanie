@@ -1,6 +1,8 @@
 import json
+from copy import deepcopy
 
 import torch
+import torch.nn.functional as F
 
 from co_ai.dataloaders import ARMDataLoader
 from co_ai.evaluator.base import BaseEvaluator
@@ -19,14 +21,19 @@ class ARMReasoningSelfEvaluator(BaseEvaluator):
             "format_freq", {"direct": 1, "short_cot": 1, "code": 1, "long_cot": 1}
         )
         self.format_rewards = cfg.get(
-            "format_rewards",
-            {"direct": [0.5], "short_cot": [0.5], "code": [0.5], "long_cot": [0.5]},
+            "format_rewards", {k: [0.5] for k in self.format_freq}
         )
+
+        self.apply_penalty_bonus = cfg.get("apply_penalty_bonus", True)
+        self.epsilon = cfg.get("epsilon", 0.1)
+        self.kl_penalty_coeff = cfg.get("kl_penalty_coeff", 0.1)
 
         self.encoder = TextEncoder().to(self.device)
         self.value_predictor = HypothesisValuePredictor(512, 1024).to(self.device)
+        self.ref_value_predictor = deepcopy(self.value_predictor)
+        self.ref_value_predictor.eval()
 
-    def judge(self, goal, prompt, output_a, output_b):
+    def judge(self, prompt, output_a, output_b, context: dict):
         prompt_emb = torch.tensor(
             self.memory.embedding.get_or_create(prompt), device=self.device
         ).unsqueeze(0)
@@ -53,10 +60,21 @@ class ARMReasoningSelfEvaluator(BaseEvaluator):
 
         return preferred_output, scores
 
+    def score_single(self, prompt: str, output: str, context) -> float:
+        """Minimal ABC-compliant scoring method."""
+        prompt_emb = torch.tensor(
+            self.memory.embedding.get_or_create(prompt), device=self.device
+        ).unsqueeze(0)
+        output_emb = torch.tensor(
+            self.memory.embedding.get_or_create(output), device=self.device
+        ).unsqueeze(0)
+        zsa = self.encoder(prompt_emb, output_emb)
+        return self.value_predictor(zsa).item()
+
     def _update_format_stats(self, fmt: str, reward: float):
         """
         Track format usage and average reward per format.
-        
+
         This enables format-aware reward shaping and prevents format collapse.
         """
         if fmt not in self.format_freq:
@@ -128,29 +146,17 @@ class ARMReasoningSelfEvaluator(BaseEvaluator):
         self.logger.log("TrainingComplete", {"goal": goal_text})
 
     def score(self, prompt: str, response: str) -> float:
-        """
-        Public scoring method used by agents like AdaptiveReasonerAgent.
-        Returns a scalar score indicating how good a response is.
-        """
-        prompt_emb = torch.tensor(
-            self.memory.embedding.get_or_create(prompt), device=self.device
-        ).unsqueeze(0)
-        response_emb = torch.tensor(
-            self.memory.embedding.get_or_create(response), device=self.device
-        ).unsqueeze(0)
-
-        with torch.no_grad():
-            zsa = self.encoder(prompt_emb, response_emb)
-            score = self.value_predictor(zsa).item()
+        """Framework-level scoring method with reward shaping."""
+        base_score = self.score_single(prompt, response, context={})
+        if not self.apply_penalty_bonus:
+            return base_score
 
         token_len = len(response.split())
         fmt = ARMDataLoader.detect_format(response)
         rarity_bonus = 1.0 / (1 + self.format_freq.get(fmt, 1))
-        score -= 0.01 * token_len
-        score += rarity_bonus
-
-        self._update_format_stats(fmt, score)
-        return score
+        shaped_score = base_score - 0.01 * token_len + rarity_bonus
+        self._update_format_stats(fmt, shaped_score)
+        return shaped_score
 
     def _score_response(self, prompt_emb, response_emb):
         """Score a single response using prompt-response encoder + value predictor"""
@@ -272,9 +278,6 @@ class ARMReasoningSelfEvaluator(BaseEvaluator):
             {"total_epochs": epoch + 1, "final_loss": round(avg_loss, 5)},
         )
 
-
-
-
     def export_samples_to_json(self, samples: list, output_path: str):
         """
         Exports raw preference pairs to a structured JSON file.
@@ -307,10 +310,20 @@ class ARMReasoningSelfEvaluator(BaseEvaluator):
             # Add rarity bonus
             G = len(samples)
             F_a = (
-                sum(1 for s in samples if ARMDataLoader.detect_format(s.get("output_a", "")) == fmt_a) + 1
+                sum(
+                    1
+                    for s in samples
+                    if ARMDataLoader.detect_format(s.get("output_a", "")) == fmt_a
+                )
+                + 1
             )
             F_b = (
-                sum(1 for s in samples if ARMDataLoader.detect_format(s.get("output_b", "")) == fmt_b) + 1
+                sum(
+                    1
+                    for s in samples
+                    if ARMDataLoader.detect_format(s.get("output_b", "")) == fmt_b
+                )
+                + 1
             )
 
             rarity_bonus_a = G / F_a

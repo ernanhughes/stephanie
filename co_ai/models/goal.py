@@ -25,7 +25,7 @@ class GoalORM(Base):
     prompts = relationship("PromptORM", back_populates="goal")
     hypotheses = relationship("HypothesisORM", back_populates="goal")
     pipeline_runs = relationship("PipelineRunORM", back_populates="goal")
-    scores = relationship("ScoreORM", back_populates="goal")
+    scores = relationship("EvaluationORM", back_populates="goal")
     lookaheads = relationship("LookaheadORM", back_populates="goal")
     reflection_deltas = relationship("ReflectionDeltaORM", back_populates="goal")
     ideas = relationship("IdeaORM", back_populates="goal")

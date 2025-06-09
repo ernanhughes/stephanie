@@ -1,0 +1,15 @@
+Evaluate the logical soundness of the following hypothesis.
+
+### Goal
+{{ goal }}
+
+### Hypothesis
+{{ hypothesis }}
+
+Is the internal logic of the hypothesis valid and free of contradictions?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

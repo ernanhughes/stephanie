@@ -3,6 +3,7 @@ defaults:
   - _self_
   - db: postgres
   - agents/adaptive_reasoner
+  - agents/adaptive_reasoner_llm
   - logging/json_logger
 
 # The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
@@ -39,6 +40,10 @@ pipeline:
   description: "ARM: Adaptive Reasoning Mode - 2505.20258 implementation"
   stages:
     - name: adaptive_reasoner
+      cls: co_ai.agents.adaptive_reasoner.AdaptiveReasonerAgent
+      enabled: true
+      iterations: 1
+    - name: adaptive_reasoner_llm
       cls: co_ai.agents.adaptive_reasoner.AdaptiveReasonerAgent
       enabled: true
       iterations: 1

@@ -16,6 +16,9 @@ EVENT_ICONS = {
     "ContextAfterStage": "🗃️",
     "ContextYAMLDumpSaved": "📄",
     "debug": "🐞",
+    "StageContext": "🎯",
+    "AgentInit": "🤖",
+    "EvaluatorInit": "🧪",
     "RuleApplicationUpdated": "🧩",      # Suggests a symbolic piece being modified
     "MRQScoringComplete": "📈",          # Indicates successful scoring/completion
     "NoSymbolicAgentRulesApplied": "🚫", # Signifies nothing matched/applied
@@ -42,7 +45,7 @@ EVENT_ICONS = {
     "EarlyStopping": "⏹️⏳",
     "TrainingComplete": "🎉✅",
     "SymbolicAgentOverride": "🛠️",
-    "RuleApplicationLogged": "📜",
+    "RuleApplicationLogged": "Roland who they are they are",
     "ScoreParsed": "📊",
     "SymbolicRulesFound": "🧩",
     "DuplicateSymbolicRuleSkipped": "♻️",
@@ -107,6 +110,11 @@ EVENT_ICONS = {
     "RankedHypotheses": "🏅",
     "RankingStored": "🗃️",
     "RankingUpdated": "🔁",
+    "GoalContextOverride": "🎯",
+    "DimensionEvaluated": "📏",
+    "ScoreLinkedToRuleApplications": "🔗",
+    "ScoreSavedToMemory": "💾",
+    "HypothesisScoreComputed": "🧮",
     "NotEnoughHypothesesForRanking": "⚠️",
     "LLMJudgeResult": "⚖️",
     "EvaluationCompleted": "📊",

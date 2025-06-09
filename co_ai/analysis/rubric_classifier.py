@@ -10,11 +10,13 @@ class RubricClassifierMixin:
         rubrics_cfg = cfg.get("rubrics", [])
         for entry in rubrics_cfg:
             if entry.get("enabled", False):
-                enabled_rubrics.append({
-                    "dimension": entry["dimension"],
-                    "rubric": entry["rubric"],
-                    "options": entry["options"]
-                })
+                enabled_rubrics.append(
+                    {
+                        "dimension": entry["dimension"],
+                        "rubric": entry["rubric"],
+                        "options": entry["options"],
+                    }
+                )
         return enabled_rubrics
 
     def classify_with_rubrics(self, hypothesis, context, prompt_loader, cfg, logger):
@@ -63,26 +65,27 @@ class RubricClassifierMixin:
         goal = context.get(GOAL)
         summarized = self._summarize_pattern(pattern)
 
-        goal_id, hypothesis_id, pattern_stats = self.generate_pattern_stats(
-            goal, hypothesis, summarized, memory, cfg, agent_name, score
+        pattern_stats = self.generate_pattern_stats(
+            goal, hypothesis, summarized, cfg, agent_name, score
         )
         memory.pattern_stats.insert(pattern_stats)
         logger.log(
             "RubricPatternsStored",
-            {"goal_id": goal_id, "hypothesis_id": hypothesis_id, "summary": summarized},
+            {"summary": summarized, "goal": goal, "hypothesis": hypothesis},
         )
 
         context["pattern_stats"] = summarized
         return summarized
 
-    def generate_pattern_stats(self, goal,
-                               hypothesis,
-                               pattern_dict,
-                               memory,
-                               cfg,
-                               agent_name,
-                               confidence_score=None,
-                               ):
+    def generate_pattern_stats(
+        self,
+        goal,
+        hypothesis,
+        pattern_dict,
+        cfg,
+        agent_name,
+        confidence_score=None,
+    ):
         """
         Create PatternStatORM entries for a classified CoT using DB lookup for IDs.
         """
@@ -108,8 +111,7 @@ class RubricClassifierMixin:
                 )
                 stats.append(stat)
 
-            return goal_id, hypothesis_id, stats
-
+            return stats
         except Exception as e:
             print(f"❌ Failed to generate pattern stats: {e}")
             raise

@@ -1,0 +1,27 @@
+stage: reasoning
+output_format: cor  # or: simple, json, etc.
+dimensions:
+  - name: correctness
+    file: correctness.txt
+    weight: 1.2
+    extra_data: { parser: numeric }
+
+  - name: feasibility
+    file: feasibility.txt
+    weight: 1.1
+    extra_data: { parser: numeric }
+
+  - name: insightfulness
+    file: insightfulness.txt
+    weight: 1.3
+    extra_data: { parser: numeric }
+
+  - name: alignment
+    file: alignment.txt
+    weight: 1.0
+    extra_data: { parser: numeric }
+
+  - name: completeness
+    file: completeness.txt
+    weight: 0.8
+    extra_data: { parser: numeric }

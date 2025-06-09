@@ -1,0 +1,15 @@
+Evaluate the utility of the following hypothesis.
+
+### Goal
+{{ goal }}
+
+### Hypothesis
+{{ hypothesis }}
+
+Would acting on this hypothesis likely lead to useful or impactful outcomes?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>
