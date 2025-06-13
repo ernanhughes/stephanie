@@ -1,0 +1,36 @@
+{% if mode == "reflect" %}
+Rubric:
+- Does the reflection add concrete detail or reduce ambiguity?
+- Does it revise general statements into specific ones?
+
+<eval>
+Evaluate the following reflection for specificity:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% else %}
+{# reason is the default mode for the template #}
+Rubric:
+- Is the hypothesis specific rather than vague or generic?
+- Are claims supported by precise examples or details?
+
+<eval>
+Evaluate the following hypothesis for specificity:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

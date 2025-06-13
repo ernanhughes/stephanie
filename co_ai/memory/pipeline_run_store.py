@@ -24,16 +24,15 @@ class PipelineRunStore:
         try:
             # Convert dictionary to ORM object
             db_run = PipelineRunORM(
-                run_id=run_dict["run_id"],
-                # goal_id=run_dict["goal_id"],
+                goal_id=run_dict.get("goal_id"),
+                run_id=run_dict.get("run_id"),
                 pipeline=run_dict.get("pipeline"),
                 strategy=run_dict.get("strategy"),
                 model_name=run_dict.get("model_name"),
-                run_config=json.dumps(run_dict.get("run_config")) if run_dict.get("run_config") else None,
-                lookahead_context=json.dumps(run_dict.get("lookahead_context")) if run_dict.get("lookahead_context") else None,
-                symbolic_suggestion=json.dumps(run_dict.get("symbolic_suggestion")) if run_dict.get("symbolic_suggestion") else None,
-                extra_data=json.dumps(run_dict.get("extra_data")) if run_dict.get("extra_data") else None,
-                created_at=run_dict.get("created_at") or datetime.utcnow()
+                run_config=run_dict.get("run_config"),
+                lookahead_context=run_dict.get("lookahead_context"),
+                symbolic_suggestion=run_dict.get("symbolic_suggestion"),
+                extra_data=run_dict.get("extra_data"),
             )
 
             self.session.add(db_run)

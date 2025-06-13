@@ -30,7 +30,7 @@ class EvaluationStore:
                 self.logger.log(
                     "ScoreStored",
                     {
-                        "evaluationSign in_id": evaluation.id,
+                        "evaluation_id": evaluation.id,
                         "goal_id": evaluation.goal_id,
                         "hypothesis_id": evaluation.hypothesis_id,
                         "agent": evaluation.agent_name,

@@ -1,0 +1,38 @@
+{% if mode == "reflect" %}
+Rubric:
+- Does the reflection improve the feasibility of the original idea?
+- Are new constraints acknowledged or mitigated?
+- Is the updated reasoning more grounded?
+
+<eval>
+Evaluate the following reflection for feasibility:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% else %}
+{# reason is the default mode for the template #}
+Rubric:
+- Is the proposed hypothesis realistic and practical to implement?
+- Are technical, resource, or timeline constraints addressed or respected?
+- Would this solution likely succeed in a real-world setting?
+
+<eval>
+Evaluate the following hypothesis for feasibility:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

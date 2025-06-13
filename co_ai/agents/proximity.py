@@ -4,14 +4,15 @@ import itertools
 import numpy as np
 
 from co_ai.agents.base import BaseAgent
+from co_ai.agents.mixins.scoring_mixin import ScoringMixin  # Adjust path if needed
 from co_ai.constants import (DATABASE_MATCHES, GOAL, GOAL_TEXT,
                              PIPELINE_RUN_ID, TEXT)
 from co_ai.models import EvaluationORM
-from co_ai.scoring.proximity import ProximityScore
+from co_ai.scoring.proximity import ProximityHeuristicEvaluator
 from co_ai.utils import compute_similarity_matrix
 
 
-class ProximityAgent(BaseAgent):
+class ProximityAgent(ScoringMixin, BaseAgent):
     """
     The Proximity Agent calculates similarity between hypotheses and builds a proximity graph.
     """
@@ -87,8 +88,13 @@ class ProximityAgent(BaseAgent):
         summary_output = self.call_llm(summary_prompt, merged)
         context["proximity_summary"] = summary_output
 
-        scorer = ProximityScore(self.cfg, memory=self.memory, logger=self.logger)
-        score = scorer.compute({"proximity_analysis": summary_output}, context)
+        score_result = self.score_hypothesis(
+            hypothesis={"text": summary_output, "proximity_analysis": summary_output},
+            context=context,
+            metrics="proximity",  # Must match your config key: `proximity_score_config`
+            evaluator=ProximityHeuristicEvaluator(),
+        )
+        score = score_result["score"]
 
         self.logger.log(
             "ProximityAnalysisScored",

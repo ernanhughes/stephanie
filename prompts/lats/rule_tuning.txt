@@ -1,0 +1,17 @@
+You are an AI assistant tasked with improving a poorly performing rule.
+
+Current Rule:
+Name: {{ rule.name }}
+Description: {{ rule.description }}
+Condition: {{ rule.condition }}
+Action: {{ rule.action }}
+
+Examples where this rule failed:
+{% for ex in examples %}
+- "{{ ex.text }}" (Score change: {{ ex.score_change }})
+{% endfor %}
+
+Please provide an improved version of this rule that addresses the observed issues.
+Output should be in JSON format with the same keys: name, description, condition, action, weight.
+
+Improved Rule:

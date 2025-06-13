@@ -1,0 +1,15 @@
+Evaluate the relevance of the following hypothesis.
+
+### Goal
+{{ goal }}
+
+### Hypothesis
+{{ hypothesis }}
+
+How directly does it address the stated goal?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

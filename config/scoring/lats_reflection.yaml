@@ -1,0 +1,18 @@
+stage: lats_reflection
+output_format: cor
+dimensions:
+  - name: alignment
+    file: alignment_cor.txt
+    weight: 1.0
+    extra_data:
+      parser: numeric_cor
+  - name: completeness
+    file: completeness_cor.txt
+    weight: 0.9
+    extra_data:
+      parser: numeric_cor
+  - name: originality
+    file: originality_cor.txt
+    weight: 1.1
+    extra_data:
+      parser: numeric_cor

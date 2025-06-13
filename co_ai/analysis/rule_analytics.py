@@ -106,3 +106,65 @@ class RuleAnalytics:
         ]
         print(tabulate(table_rows, headers=headers, tablefmt="fancy_grid"))
         return output
+
+    def analyze_rules_for_run(self, pipeline_run_id: str) -> List[dict]:
+        """Analyze rules used in a specific pipeline run."""
+        rule_apps = (
+            self.db.session.query(RuleApplicationORM)
+            .filter(RuleApplicationORM.pipeline_run_id == pipeline_run_id)
+            .all()
+        )
+
+        rules_by_id = defaultdict(list)
+        for app in rule_apps:
+            rules_by_id[app.rule_id].append(app)
+
+        output = []
+        table_rows = []
+        for rule_id, applications in rules_by_id.items():
+            scores = [app.post_score for app in applications if app.post_score is not None]
+            changes = [app.change_type for app in applications if app.change_type]
+
+            feedback_summary = defaultdict(int)
+            for label in changes:
+                feedback_summary[label] += 1
+
+            avg_score = sum(scores) / len(scores) if scores else None
+            rank = self.compute_rule_rank(avg_score, len(scores), feedback_summary)
+
+            rule = self.db.symbolic_rules.get_by_id(rule_id)
+            result = {
+                "rule_id": rule_id,
+                "rule_text": rule.rule_text,
+                "target": rule.target,
+                "attributes": rule.attributes,
+                "score_summary": {
+                    "average": avg_score,
+                    "count": len(scores),
+                    "min": min(scores) if scores else None,
+                    "max": max(scores) if scores else None,
+                },
+                "feedback_summary": dict(feedback_summary),
+                "rank_score": rank,
+            }
+            output.append(result)
+
+            table_rows.append([
+                rule_id,
+                rule.target or "—",
+                rule.rule_text[:30] + "…" if rule.rule_text and len(rule.rule_text) > 30 else rule.rule_text,
+                f"{avg_score:.2f}" if avg_score is not None else "—",
+                len(scores),
+                feedback_summary.get("positive", 0),
+                feedback_summary.get("negative", 0),
+                f"{rank:.2f}" if avg_score is not None else "—",
+            ])
+
+        print(f"\n📊 Rule Analysis for Pipeline Run: {pipeline_run_id}")
+        headers = [
+            "Rule ID", "Target", "Rule Text", "Avg Score", "Score Count",
+            "👍 Feedback", "👎 Feedback", "Rank Score",
+        ]
+        print(tabulate(table_rows, headers=headers, tablefmt="fancy_grid"))
+
+        return output

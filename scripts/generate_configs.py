@@ -30,7 +30,7 @@ prompt_refiner:
   enabled: true
   model:
     name: openai/gpt-4o
-    api_key: ${env.OPENAI_API_KEY}
+    api_key: ${envs.OPENAI_API_KEY}
   max_bootstrapped_demos: 3
   max_labeled_demos: 5
 """,

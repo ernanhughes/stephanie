@@ -15,25 +15,29 @@ class RuleEffectAnalyzer:
         self.session = session
         self.logger = logger
 
-    def _compute_stats(self, scores: list[float]) -> dict:
-        if not scores:
+    def _compute_stats(self, values):
+        if not values:
             return {}
-
-        avg = sum(scores) / len(scores)
-        min_score = min(scores)
-        max_score = max(scores)
-        std = math.sqrt(sum((x - avg) ** 2 for x in scores) / len(scores))
-        success_rate = len([s for s in scores if s >= 50]) / len(scores)
-
+        avg = sum(values) / len(values)
+        std = math.sqrt(sum((x - avg) ** 2 for x in values) / len(values))
         return {
-            "avg_score": avg,
-            "count": len(scores),
-            "min": min_score,
-            "max": max_score,
+            "avg": avg,
+            "min": min(values),
+            "max": max(values),
             "std": std,
-            "success_rate": success_rate,
+            "count": len(values),
+            "success_rate_≥50": len([v for v in values if v >= 50]) / len(values),
         }
-
+        
+    def get_scores_for_evaluation(self, evaluation_id):
+        from co_ai.models.score import ScoreORM  # local import to avoid circularity
+        return (
+            self.session.query(ScoreORM)
+            .filter_by(evaluation_id=evaluation_id)
+            .order_by(ScoreORM.dimension.asc())
+            .all()
+        )
+    
     def analyze(self, pipeline_run_id: int) -> dict:
         """
         Analyze rule effectiveness by collecting all scores linked to rule applications.
@@ -53,66 +57,64 @@ class RuleEffectAnalyzer:
         )
 
         for link in links:
-            score = self.session.get(EvaluationORM, link.score_id)
+            eval_id = link.evaluation_id
             rule_app = self.session.get(RuleApplicationORM, link.rule_application_id)
-
-            if not score or not rule_app:
-                if self.logger:
-                    self.logger.log("SkipScoreLink", {
-                        "reason": "missing score or rule_app or score is None",
-                        "score_id": getattr(link, "score_id", None),
-                        "rule_application_id": getattr(link, "rule_application_id", None),
-                    })
+            if not eval_id or not rule_app:
                 continue
 
             rule_id = rule_app.rule_id
-            rule_scores[rule_id].append(score.evaluations.get("final_score", 0.0))
-
-            # Normalize stage_details as sorted JSON
             try:
                 param_key = json.dumps(rule_app.stage_details or {}, sort_keys=True)
-            except Exception as e:
+            except Exception:
                 param_key = "{}"
-                if self.logger:
-                    self.logger.log("StageDetailsParseError", {
-                        "error": str(e),
-                        "raw_value": str(rule_app.stage_details),
-                    })
 
+            scores = self.get_scores_for_evaluation(eval_id)
+            for score in scores:
+                dim = score.dimension
+                val = score.value
+                rule_scores[rule_id][dim].append(val)
+                param_scores[rule_id][param_key][dim].append(val)
 
-            param_scores[rule_id][param_key].append(score.evaluations.get("final_score", 0.0))
+        # Output
+        for rule_id, dim_dict in rule_scores.items():
+            print(f"\n📘 Rule {rule_id} Dimensional Summary:")
+            table = []
+            for dim, vals in dim_dict.items():
+                stats = self._compute_stats(vals)
+                table.append([
+                    dim,
+                    f"{stats['avg']:.2f}",
+                    f"{stats['min']:.1f} / {stats['max']:.1f}",
+                    f"{stats['std']:.2f}",
+                    stats["count"],
+                    f"{stats['success_rate_≥50']:.0%}",
+                ])
+            print(tabulate(
+                table,
+                headers=["Dimension", "Avg", "Min/Max", "Std", "Count", "Success ≥50"],
+                tablefmt="fancy_grid"
+            ))
 
-        # Build summary output
-        results = {}
-        for rule_id, scores in rule_scores.items():
-            rule_summary = self._compute_stats(scores)
-            results[rule_id] = {
-                **rule_summary,
-                "by_params": {},
-            }
-
-            print(f"\n📘 Rule {rule_id} Summary:")
-            print(tabulate([
-                ["Average Score", f"{rule_summary['avg_score']:.2f}"],
-                ["Count", rule_summary["count"]],
-                ["Min / Max", f"{rule_summary['min']} / {rule_summary['max']}"],
-                ["Std Dev", f"{rule_summary['std']:.2f}"],
-                ["Success Rate ≥50", f"{rule_summary['success_rate']:.2%}"],
-            ], tablefmt="fancy_grid"))
-
-            for param_key, score_list in param_scores[rule_id].items():
-                param_summary = self._compute_stats(score_list)
-                results[rule_id]["by_params"][param_key] = param_summary
-
+            for param_key, dim_subscores in param_scores[rule_id].items():
                 print(f"\n    🔧 Param Config: {param_key}")
-                print(tabulate([
-                    ["Average Score", f"{param_summary['avg_score']:.2f}"],
-                    ["Count", param_summary["count"]],
-                    ["Min / Max", f"{param_summary['min']} / {param_summary['max']}"],
-                    ["Std Dev", f"{param_summary['std']:.2f}"],
-                    ["Success Rate ≥50", f"{param_summary['success_rate']:.2%}"],
-                ], tablefmt="rounded_outline"))
-        return results
+                table = []
+                for dim, vals in dim_subscores.items():
+                    stats = self._compute_stats(vals)
+                    table.append([
+                        dim,
+                        f"{stats['avg']:.2f}",
+                        f"{stats['min']:.1f} / {stats['max']:.1f}",
+                        f"{stats['std']:.2f}",
+                        stats["count"],
+                        f"{stats['success_rate_≥50']:.0%}",
+                    ])
+                print(tabulate(
+                    table,
+                    headers=["Dimension", "Avg", "Min/Max", "Std", "Count", "Success ≥50"],
+                    tablefmt="rounded_outline"
+                ))
+
+        return rule_scores  # or return summarized dict if needed
 
     def pipeline_run_scores(self, pipeline_run_id: Optional[int] = None, context: dict = None) -> None:
         """
@@ -154,7 +156,7 @@ class RuleEffectAnalyzer:
         for score in scores:
             rule_app_link = (
                 self.session.query(EvaluationRuleLinkORM)
-                .filter(EvaluationRuleLinkORM.score_id == score.id)
+                .filter(EvaluationRuleLinkORM.evaluation_id == score.id)
                 .first()
             )
             rule_app = (

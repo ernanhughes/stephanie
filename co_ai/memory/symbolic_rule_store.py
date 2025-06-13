@@ -16,7 +16,7 @@ class SymbolicRuleStore:
         self.name = "symbolic_rules"
         self.table_name = "symbolic_rules"
 
-    def add_rule(self, rule: SymbolicRuleORM):
+    def insert(self, rule: SymbolicRuleORM):
         self.session.add(rule)
         self.session.commit()
         self.session.refresh(rule)
@@ -152,7 +152,7 @@ class SymbolicRuleStore:
                 context_hash=context_hash,
                 source="pipeline_stage",
             )
-            self.add_rule(rule)
+            self.insert(rule)
 
     def load_from_yaml(self, path: str):
         with open(path, "r") as f:
@@ -191,3 +191,9 @@ class SymbolicRuleStore:
             if self.logger:
                 self.logger.log("SymbolicRuleGetByIdError", {"rule_id": rule_id, "error": str(e)})
             return None
+    
+    def exists_by_signature(self, signature: str) -> bool:
+        """
+        Checks if a symbolic rule exists by its signature hash.
+        """
+        return self.session.query(SymbolicRuleORM).filter_by(context_hash=signature).first() is not None

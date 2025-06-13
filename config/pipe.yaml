@@ -97,39 +97,39 @@ pipeline:
        cls: co_ai.agents.generation.GenerationAgent
        enabled: true
        iterations: 1
-     - name: reflection
-       cls: co_ai.agents.reflection.ReflectionAgent
-       enabled: true
-       iterations: 1
-     - name: review
-       cls: co_ai.agents.review.ReviewAgent
-       enabled: true
-       iterations: 1
-     - name: proximity
-       cls: co_ai.agents.proximity.ProximityAgent
-       enabled: true
-       iterations: 1
-     - name: reflection_delta
-       cls: co_ai.agents.reflection_delta.ReflectionDeltaAgent
-       enabled: false
-       iterations: 1
-     - name: mrq_strategy
-       cls: co_ai.agents.mrq_strategy.MRQStrategyAgent
-       enabled: false
-       iterations: 1
-     - name: symbolic_optimizer
-       cls: co_ai.agents.symbolic_optimizer.SymbolicOptimizerAgent
-       enabled: false
-       iterations: 1
-     - name: rule_tuner
-       cls: co_ai.agents.rule_tuner.RuleTunerAgent
-       enabled: false
-       iterations: 1
-     - name: auto_tuner
-       cls: co_ai.agents.auto_tuner.AutoTunerAgent
-       enabled: true
-       iterations: 1
-     - name: mrq_scoring
-       cls: co_ai.agents.mrq_scoring.MRQScoringAgent
-       enabled: false
-       iterations: 1
+    #  - name: reflection
+    #    cls: co_ai.agents.reflection.ReflectionAgent
+    #    enabled: true
+    #    iterations: 1
+    #  - name: review
+    #    cls: co_ai.agents.review.ReviewAgent
+    #    enabled: true
+    #    iterations: 1
+    #  - name: proximity
+    #    cls: co_ai.agents.proximity.ProximityAgent
+    #    enabled: true
+    #    iterations: 1
+    #  - name: reflection_delta
+    #    cls: co_ai.agents.reflection_delta.ReflectionDeltaAgent
+    #    enabled: false
+    #    iterations: 1
+    #  - name: mrq_strategy
+    #    cls: co_ai.agents.mrq_strategy.MRQStrategyAgent
+    #    enabled: false
+    #    iterations: 1
+    #  - name: symbolic_optimizer
+    #    cls: co_ai.agents.symbolic_optimizer.SymbolicOptimizerAgent
+    #    enabled: false
+    #    iterations: 1
+    #  - name: rule_tuner
+    #    cls: co_ai.agents.rule_tuner.RuleTunerAgent
+    #    enabled: false
+    #    iterations: 1
+    #  - name: auto_tuner
+    #    cls: co_ai.agents.auto_tuner.AutoTunerAgent
+    #    enabled: true
+    #    iterations: 1
+    #  - name: mrq_scoring
+    #    cls: co_ai.agents.mrq_scoring.MRQScoringAgent
+    #    enabled: false
+    #    iterations: 1

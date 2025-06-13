@@ -3,7 +3,7 @@ import psycopg2
 import pandas as pd
 from dotenv import load_dotenv
 
-# Load environment variables from .env
+# Load environment variables from .envs
 load_dotenv()
 
 DB_CONFIG = {

@@ -1,0 +1,31 @@
+You are assessing how relevant the proximity analysis is to the original research goal.
+
+## Original Goal:
+
+`{{ goal.goal_text }}`
+
+## Proximity Summary:
+
+`{{ proximity_summary }}`
+
+## Evaluation Rubric:
+
+Assign a numeric score from **0 to 100** based on how well the proximity analysis aligns with the research goal.
+
+* **90–100** – Extremely relevant: Clear, insightful suggestions that directly support next steps related to the goal.
+* **70–89** – Strong relevance: Most insights are aligned and useful, though a few may be weaker or generic.
+* **50–69** – Moderate relevance: Some suggestions are useful, but the connection to the goal is partial or uneven.
+* **30–49** – Weak relevance: The analysis contains loosely related or generic content.
+* **0–29** – Irrelevant: The summary appears unrelated or not useful to the original goal.
+
+## Formatting Instructions:
+
+Respond in the following format **on two lines**:
+
+<rationale>Your explanation of why the score was assigned.</rationale>
+<score>[[<score>]]</score>
+
+### Example Output:
+
+<rationale>The proximity suggestions are mostly relevant, with two strong strategic ideas directly tied to the research goal.</rationale>
+<score>[[82]]</score>

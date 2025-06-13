@@ -12,7 +12,7 @@ class RuleTuner:
         """
         Increases the priority of the rule by a given amount. If no priority is set, defaults to 1.0.
         """
-        rule = self.memory.symbolic_rules.get(rule_id)
+        rule = self.memory.symbolic_rules.get_by_id(rule_id)
         if not rule:
             self.logger.log("RuleNotFound", {"rule_id": rule_id})
             return None

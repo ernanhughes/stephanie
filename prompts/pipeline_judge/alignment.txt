@@ -1,0 +1,15 @@
+Evaluate the alignment of the following hypothesis with the stated goal.
+
+### Goal
+{{ goal }}
+
+### Hypothesis
+{{ hypothesis }}
+
+Does the hypothesis directly address the goal? Is it focused, relevant, and well-targeted to the core objective?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from tabulate import tabulate
 
 from co_ai.models.evaluation import EvaluationORM
-from co_ai.models.score_dimension import ScoreDimensionORM
 from co_ai.models.score import ScoreORM
+from co_ai.models.score_dimension import ScoreDimensionORM
 
 
 class ScoreEvaluator:
@@ -95,11 +95,11 @@ class ScoreEvaluator:
     @staticmethod
     def parse_numeric_cor(response: str) -> float:
         """
-        Extracts the numeric score from a <answer>All right [[X]]</answer> block.
+        Extracts a numeric score from within <answer> tags, supporting [[X]], [X], or bare numbers.
         Example: <answer>[[3]]</answer> → 3.0
         """
         match = re.search(
-            r"(?:<answer>\s*)?\[\[(\d+(?:\.\d+)?)\]\](?:\s*</answer>)?",
+            r"<answer>\s*\[*\s*(\d+(?:\.\d+)?)\s*\]*\s*</answer>",
             response,
             re.IGNORECASE,
         )

@@ -98,6 +98,7 @@ class Supervisor:
 
         # Create and store PipelineRun
         pipeline_run_data = {
+            "goal_id": goal_dict.get("id"),
             "run_id": run_id,
             "pipeline": pipeline_list,  # Should be list of strings like ["generation", "judge"]
             "strategy": context.get("strategy"),

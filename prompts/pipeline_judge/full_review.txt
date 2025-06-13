@@ -1,0 +1,45 @@
+You are an expert reviewer evaluating the quality of a generated hypothesis.
+Use the following information to assess its correctness, originality, clarity, and relevance to the goal.
+
+Goal:
+{{ goal }}
+
+Hypothesis:
+{{ hypotheses }}
+
+{% if preferences %}
+User Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+Instructions:
+Carefully evaluate the hypothesis according to the following dimensions:
+
+1. Correctness: Is the reasoning logically valid and consistent with the goal?
+2. Originality: Does the idea offer a novel or creative insight?
+3. Clarity: Is the expression clear, coherent, and precise?
+4. Relevance: How directly does it address the stated goal?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+correctness: <1–5>
+correctness_rationale: <brief explanation>
+
+originality: <1–5>
+originality_rationale: <brief explanation>
+
+clarity: <1–5>
+clarity_rationale: <brief explanation>
+
+relevance: <1–5>
+relevance_rationale: <brief explanation>
+
+overall_score: <0–100>
+
+summary: <1–2 sentence overview of strengths and weaknesses>
+
+suggested_improvements:
+- <suggestion 1>
+- <suggestion 2>

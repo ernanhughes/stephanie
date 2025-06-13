@@ -58,7 +58,14 @@ class PromptLoader:
         path = self.get_file_path(file_name, config, context)
         prompt_text = get_text_from_file(path)
         merged = self._merge_context(config, context)
-        return Template(prompt_text).render(**merged)
+        try:
+            return Template(prompt_text).render(**merged)
+        except KeyError as ke:
+            if self.logger:
+                self.logger.log("PromptFormattingError", {
+                    "exception": ke,
+                    "prompt_text": prompt_text,
+                })
 
     @staticmethod
     def get_file_path(file_name: str, cfg: dict, context: dict) -> str:
@@ -74,6 +81,12 @@ class PromptLoader:
         file_name = f"{file_key}.txt" if not file_key.endswith(".txt") else file_key
         path = os.path.join(prompt_dir, config.get(NAME, "default"), file_name)
 
+        self.logger.log("PromptFileLoading", {
+            "file_key": file_key,
+            "resolved_file": file_name,
+            "path": path
+        })
+
         if not os.path.exists(path):
             if self.logger:
                 self.logger.log("PromptFileNotFound", {"path": path, "agent": config.get(NAME, DEFAULT)})
@@ -81,7 +94,12 @@ class PromptLoader:
 
         try:
             prompt_text = get_text_from_file(path)
-            return Template(prompt_text).render(**self._merge_context(config, {}))
+            rendered =  Template(prompt_text).render(**self._merge_context(config, {}))
+            self.logger.log("PromptFileLoaded", {
+                "path": path,
+                "rendered_preview": rendered[:100]
+            })
+            return rendered
         except KeyError as ke:
             if self.logger:
                 self.logger.log("PromptFormattingError", {

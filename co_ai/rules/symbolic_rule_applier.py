@@ -14,7 +14,9 @@ class SymbolicRuleApplier:
         self.memory = memory
         self.logger = logger
         self.enabled = cfg.get("symbolic", {}).get("enabled", False)
-        self.rules = self._load_rules()
+        if self.enabled:
+            self.rules = self._load_rules()
+
 
     def apply(self, context: dict) -> dict:
         if not self.enabled:

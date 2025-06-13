@@ -1,0 +1,99 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/generation
+  - agents/pipeline_judge
+  - agents/lats
+  - agents/symbolic_optimizer
+  - agents/rule_tuner
+  - agents/cot_dspy_generator
+  - agents/cot_generator
+  - agents/debate
+  - agents/dots_planner
+  - agents/evolution
+  - agents/general_reasoner
+  - agents/generation
+  - agents/generic
+  - agents/judge
+  - agents/literature
+  - agents/literature_ranking
+  - agents/lookahead
+  - agents/meta_review
+  - agents/mrq_strategy
+  - agents/pipeline_judge
+  - agents/prompt_tuning
+  - agents/proximity
+  - agents/ranking
+  - agents/refiner
+  - agents/reflection
+  - agents/reflection_delta
+  - agents/review
+  - agents/sharpening
+  - agents/symbolic_optimizer
+  - agents/auto_tuner
+  - logging/json_logger
+
+goal:
+  goal_text: "How could an autonomous AI lab iteratively improve its own hypotheses using symbolic rules and evaluation feedback?"
+  goal_type: "strategic"
+  goal_category: "ai_research"
+  strategy: "reasoning"
+  difficulty: "hard"
+  expected_formats:
+    - "tree_of_thought"
+    - "strategy_plan"
+
+symbolic:
+  enabled: false  # set to false to skip symbolic rule application
+  rules_file: "config/rules/rules.yaml"
+  enable_db_rules: false # load rules from the database
+  match_priority:
+    - goal_id
+    - pipeline_run_id
+    - metadata
+  metadata_match_mode: partial   # options: exact, partial, off
+  allow_fallback: true           # if no ID matches, allow metadata fallback
+
+planner:
+  name: planner
+  enabled: false
+  cls: co_ai.agents.planner.PipelinePlannerAgent
+  dots_enabled: true
+  lookahead_enabled: true
+
+dynamic:
+  name: lookahead
+  enabled: false
+  cls: co_ai.agents.lookahead.LookaheadAgent
+
+post_judgment:
+  name: pipeline_judge
+  enabled: false
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: default_pipeline
+  description: "Default hypothesis generation and refinement pipeline"
+  stages:
+     - name: lats
+       cls: co_ai.agents.lats_dspy.LATSDSPyAgent
+       enabled: true
+       iterations: 1

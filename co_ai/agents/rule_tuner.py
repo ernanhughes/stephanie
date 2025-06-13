@@ -7,7 +7,10 @@ from co_ai.memory.symbolic_rule_store import SymbolicRuleStore
 from co_ai.models import (EvaluationORM, PipelineRunORM, RuleApplicationORM,
                           SymbolicRuleORM)
 from co_ai.rules import RuleTuner
-
+from sqlalchemy.orm import joinedload
+from co_ai.models.score import ScoreORM
+from co_ai.utils.high_score_selector import get_high_scoring_runs
+from tabulate import tabulate
 
 class RuleTunerAgent(BaseAgent):
     """
@@ -18,7 +21,7 @@ class RuleTunerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.score_target = cfg.get("score_target", "correctness")  # could be 'overall', 'clarity', etc.
-        self.rule_store = SymbolicRuleStore(memory=self.memory, logger=self.logger)
+        self.rule_store = SymbolicRuleStore(session=self.memory.session, logger=self.logger)
         self.rule_tuner = RuleTuner(memory=self.memory, logger=self.logger)
         self.min_score_threshold = cfg.get("min_score_threshold", 7.5)
         self.min_repeat_count = cfg.get("min_repeat_count", 2)
@@ -60,30 +63,15 @@ class RuleTunerAgent(BaseAgent):
         return context
 
     def _generate_rules_from_high_scores(self):
-        scores = self.memory.session.query(EvaluationORM).filter(EvaluationORM.score >= self.min_score_threshold).all()
-        runs = []
-        for score in scores:
-            rule_app = (
-                self.memory.session.query(RuleApplicationORM)
-                .filter_by(hypothesis_id=score.hypothesis_id)
-                .first()
-            )
-            if rule_app:
-                continue  # Skip if rule already applied
-            run = self.memory.session.get(PipelineRunORM, score.pipeline_run_id)
-            if run:
-                runs.append((score, run))
-
-        grouped = defaultdict(list)
-        for score, run in runs:
-            sig = self._make_signature(run.config)
-            grouped[sig].append((score, run))
+        grouped = get_high_scoring_runs(
+            session=self.memory.session,
+            dimension=self.score_target,
+            threshold=self.min_score_threshold,
+            min_repeat_count=self.min_repeat_count
+        )
 
         new_rules = []
         for sig, entries in grouped.items():
-            if len(entries) < self.min_repeat_count:
-                continue
-
             if self.memory.symbolic_rules.exists_by_signature(sig):
                 continue
 
@@ -92,6 +80,26 @@ class RuleTunerAgent(BaseAgent):
                 self.memory.symbolic_rules.insert(rule)
                 self.logger.log("HeuristicRuleGenerated", rule.to_dict())
                 new_rules.append(rule.to_dict())
+
+        if new_rules:
+            table = [
+                [
+                    rule.get("agent_name"),
+                    rule.get("attributes", {}).get("model.name"),
+                    rule.get("filter", {}).get("goal_type"),
+                    rule.get("context_hash", "")[:8],  # short hash
+                ]
+                for rule in new_rules
+            ]
+
+            print("\n📜 New Symbolic Rules Generated:\n")
+            print(tabulate(
+                table,
+                headers=["Agent", "Model", "Goal Type", "Hash"],
+                tablefmt="fancy_grid"
+            ))
+        else:
+            print("\n⚠️  No new symbolic rules were generated.\n")
 
         return new_rules
 

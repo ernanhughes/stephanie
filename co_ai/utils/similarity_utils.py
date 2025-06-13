@@ -1,6 +1,8 @@
 # utils/similarity_utils.py
 import itertools
+
 import numpy as np
+
 
 def compute_similarity_matrix(hypotheses: list[str], memory, logger) -> list[tuple[str, str, float]]:
     vectors = []

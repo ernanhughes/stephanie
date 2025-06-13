@@ -1,17 +1,18 @@
 # co_ai/scoring/proximity.py
+from co_ai.scoring.base_evaluator import BaseEvaluator
 import re
 
-from co_ai.scoring.base_score import BaseScore
-
-
-class ProximityScore(BaseScore):
-    name = "proximity"
-    default_value = 0.0
-
-    def compute(self, hypothesis: dict, context: dict) -> float:
+class ProximityHeuristicEvaluator(BaseEvaluator):
+    def evaluate(self, hypothesis: dict, context: dict = {}) -> dict:
         analysis = hypothesis.get("proximity_analysis")
         if not analysis:
-            return self.default_value
+            return {
+                "score": 0.0,
+                "rationale": "No proximity analysis available.",
+                "themes": [],
+                "grafts": [],
+                "directions": [],
+            }
 
         try:
             themes = self._extract_block(analysis, "Common Themes Identified")
@@ -20,37 +21,22 @@ class ProximityScore(BaseScore):
             score = self._heuristic_score(themes, grafts, directions)
             justification = self._generate_justification(themes, grafts, directions)
 
-            structured = {
-                "themes": themes,
-                "graft_suggestions": grafts,
-                "strategic_directions": directions,
+            return {
                 "score": score,
-                "justification": justification,
+                "rationale": justification,
+                "themes": themes,
+                "grafts": grafts,
+                "directions": directions,
             }
 
-            hypothesis["proximity_structured"] = structured
-
-            self._store_score(
-                hypothesis,
-                context,
-                score_type="proximity_usefulness",
-                score_data={
-                    "score": score,
-                    "rationale": justification,
-                    "themes": themes,
-                    "grafts": grafts,
-                    "directions": directions,
-                }
-            )
-
-            return score
-
         except Exception as e:
-            self.logger.log("ProximityScoreParseFailed", {
-                "error": str(e),
-                "snippet": analysis[:300],
-            })
-            return self.default_value
+            return {
+                "score": 0.0,
+                "rationale": f"Failed to parse proximity analysis: {str(e)}",
+                "themes": [],
+                "grafts": [],
+                "directions": [],
+            }
 
     def _extract_block(self, text: str, section_title: str) -> list:
         pattern = rf"# {re.escape(section_title)}\n((?:- .+\n?)*)"
@@ -60,14 +46,25 @@ class ProximityScore(BaseScore):
         block = match.group(1).strip()
         return [line.strip("- ").strip() for line in block.splitlines() if line.strip()]
 
-    def _heuristic_score(self, themes, grafts, directions) -> float:
-        """
-        Simple scoring heuristic based on the number of insights generated.
-        """
-        return min(100.0, 10 * len(themes) + 10 * len(grafts) + 20 * len(directions))
-
     def _generate_justification(self, themes, grafts, directions) -> str:
         return (
             f"Identified {len(themes)} themes, {len(grafts)} grafting suggestions, "
             f"and {len(directions)} strategic directions."
         )
+
+    def _fallback(self, message: str):
+        return {
+            "score": 0.0,
+            "rationale": message,
+            "dimensions": {
+                "proximity_themes": {"score": 0, "weight": 0.3, "rationale": message},
+                "proximity_grafts": {"score": 0, "weight": 0.3, "rationale": message},
+                "proximity_directions": {"score": 0, "weight": 0.4, "rationale": message},
+            }
+        }
+
+    def _heuristic_score(self, themes, grafts, directions) -> float:
+        """
+        Simple scoring heuristic based on the number of insights generated.
+        """
+        return min(100.0, 10 * len(themes) + 10 * len(grafts) + 20 * len(directions))

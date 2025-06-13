@@ -16,8 +16,13 @@ EVENT_ICONS = {
     "ContextAfterStage": "🗃️",
     "ContextYAMLDumpSaved": "📄",
     "debug": "🐞",
+    "NoHypothesesInContext": "🤷‍♂️",
+    "SimilarHypothesesFound": "♻️💭",
     "StageContext": "🎯",
     "AgentInit": "🤖",
+    "NodeDebug": "🌲🔍",
+    "NodeSummary": "🪵📋",
+    "CorDimensionEvaluated": "📐✅",
     "EvaluatorInit": "🧪",
     "RuleApplicationUpdated": "🧩",      # Suggests a symbolic piece being modified
     "MRQScoringComplete": "📈",          # Indicates successful scoring/completion
@@ -185,6 +190,9 @@ EVENT_ICONS = {
     "RubricPatternsStored": "📚🧩💾",
     "PatternStatsStored": "📊🧩💾",
     "RubricClassified": "📌",
+    "PromptFileLoading": "🗂️📥",
+    "PromptFileLoaded": "✅📄",
+    "ProximityAnalysisScored": "🗺️📊",
     "DifficultySummary": "📋🧩",
     "SampleByDifficulty": "🧪📚",
     "PreferencePairSaveError": "❌💾",

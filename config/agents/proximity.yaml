@@ -11,6 +11,8 @@ proximity:
   use_database_search: true # Whether to pull past hypotheses from DB
   top_k_database_matches: 10  # How many prior hypotheses to retrieve
 
+  proximity_score_config: config/scoring/proximity.yaml
+
   save_context: false
   skip_if_completed: false
 

@@ -2,17 +2,100 @@
 
 lats:
   name: lats
-  enabled: true
-  save_prompt: true
-  save_context: false
-  skip_if_completed: false
+
+  max_depth: 5
+  branching_factor: 3
+  ucb_weight: 1.41
+  num_simulations: 50
+  use_memory_for_fast_prompts: true
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
+
   input_keys: ["goal"]   # add nodes
   output_key: lats  # change
   prompt_mode: file
-  prompt_file: query_and_summarize.txt
-  extraction_regex: "search query:<([^>]+)>\n(.*)"
-  strategy: query_and_summarize
+  prompt_file: lats.txt
+
+  proximity:   
+    name: proximity
+
+    similarity_threshold: 0.75  # Only show pairs with at least 75% similarity
+    max_graft_candidates: 3   # Max number of pairs to suggest for grafting
+    use_database_search: true # Whether to pull past hypotheses from DB
+    top_k_database_matches: 10  # How many prior hypotheses to retrieve
+
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Key that it will iterate over ot generate reflections
+    input_key: "hypotheses"
+    # Key that it store the results of those reflections
+    output_key: "proximity"  # change
+
+    save_prompt: true
+    strategy:
+    prompt_mode: file
+    prompt_file: proximity.txt
+
+    preferences:
+    - goal_consistency
+    - biological_plausibility
+    - experimental_validity
+    - novelty
+    - simplicity
+
+  rule_tuner:
+    name: rule_tuner
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Required keys for the agent ot effectively process the context
+    required_keys: ["goal", "hypotheses"]   # add nodes
+    # Key that it will iterate over ot generate reflections
+    input_key: "hypotheses"
+    # Key that it store the results of those reflections
+    output_key: "tuning"
+
+  mrq:
+    similarity_threshold: 0.85
+    top_k_similar: 20
+    min_score_difference: 10
+    model_output_dir: ./outputs/unified_mrq
+    target_dimensions:
+      - correctness
+      - originality
+      - clarity
+      - relevance
+
+    # model
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Required keys for the agent ot effectively process the context
+    required_keys: ["goal", "hypotheses"] # add nodes
+    # Key that it will iterate over ot generate reflections
+    input_key: hypotheses
+    # Key that it store the results of those reflections
+    output_key: ranking # change
+
+    # prompt
+    save_prompt: true
+    prompt_mode: file
+    strategy: debate
+    prompt_file: debate.txt
+    # preferences
+    preferences:
+      - goal_consistency
+      - biological_plausibility
+      - experimental_validity
+      - novelty
+      - simplicity

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from co_ai.models.goal import GoalORM
 from co_ai.models.prompt import PromptORM
-
+import re
 
 class PromptStore:
     def __init__(self, session: Session, logger=None):
@@ -191,25 +191,33 @@ class PromptStore:
     from difflib import SequenceMatcher
 
     def find_similar_prompt(
-        self, agent_name, prompt_text, strategy=None, similarity_threshold=0.80
+        self, agent_name, prompt_text, strategy=None, similarity_threshold=0.7
     ):
-        # Load candidate prompts
+        def normalize(text):
+            return re.sub(r"\s+", " ", text.strip().lower())
+
+        text_a = normalize(prompt_text or "")
         query = self.session.query(PromptORM).filter_by(agent_name=agent_name)
         if strategy:
             query = query.filter_by(strategy=strategy)
 
-        candidates = query.limit(50).all()  # You can increase this if needed
+        candidates = query.limit(100).all()
+        if not strategy:
+            return [p.to_dict() for p in candidates]
 
-        # Compute similarity using difflib
         matches = []
         for p in candidates:
-            similarity = SequenceMatcher(None, prompt_text, p.prompt_text).ratio()
+            text_b = normalize(p.prompt_text or "")
+            if not text_a or not text_b:
+                continue
+
+            similarity = SequenceMatcher(None, text_a, text_b).ratio()
             if similarity >= similarity_threshold:
                 matches.append((similarity, p))
+            elif similarity >= 0.5:
+                print(f"⚠️ Near miss ({similarity:.2f}): {text_b[:80]}")
 
-        # Sort by descending similarity
         matches.sort(reverse=True, key=lambda x: x[0])
-
         return [p.to_dict() for similarity, p in matches]
 
     def get_prompt_training_set(self, goal: str, limit: int = 500) -> list[dict]:

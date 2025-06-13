@@ -1,0 +1,37 @@
+{% if mode == "reflect" %}
+Rubric:
+- Does the reflection acknowledge prior misalignment or value conflict?
+- Is the adjustment appropriate and value-consistent?
+
+<eval>
+Evaluate the following reflection for alignment:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% else %}
+{# reason is the default mode for the template #}
+Rubric:
+- Does the hypothesis align with the intended goal and values?
+- Are assumptions consistent with the goal’s framing?
+- Does the reasoning respect known constraints or priorities?
+
+<eval>
+Evaluate the following hypothesis for alignment:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

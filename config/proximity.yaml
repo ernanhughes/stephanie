@@ -64,5 +64,5 @@ pipeline:
        iterations: 1
      - name: unified_mrq
        cls: co_ai.agents.unified_mrq.UnifiedMRQAgent
-       enabled: true
+       enabled: false
        iterations: 1

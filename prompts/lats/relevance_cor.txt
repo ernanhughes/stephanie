@@ -1,0 +1,36 @@
+{% if mode == "reflect" %}
+Rubric:
+- Does the reflection improve focus or eliminate irrelevant ideas?
+- Is the revised approach more aligned with the goal’s scope?
+
+<eval>
+Evaluate the following reflection for relevance:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% else %}
+{# reason is the default mode for the template #}
+Rubric:
+- Is the hypothesis relevant to the core intent of the goal?
+- Does it avoid unnecessary tangents or unrelated information?
+
+<eval>
+Evaluate the following hypothesis for relevance:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

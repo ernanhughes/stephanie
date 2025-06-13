@@ -1,7 +1,7 @@
 import sys
 from datetime import datetime, timezone
 
-from co_ai.logs.icons_enum import get_event_icon
+from co_ai.logs.icons import get_event_icon
 
 
 class ConsoleLogger:

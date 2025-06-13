@@ -1,4 +1,5 @@
 from co_ai.analysis.score_evaluator import ScoreEvaluator
+from co_ai.scoring.base_evaluator import BaseEvaluator
 
 
 class ScoringMixin:
@@ -29,14 +30,22 @@ class ScoringMixin:
             )
         return self._scorers[stage]
 
-    def score_hypothesis(self, hypothesis: dict, context: dict, metrics: str = "review") -> dict:
+    def score_hypothesis(
+        self,
+        hypothesis: dict,
+        context: dict,
+        metrics: str = "review",
+        evaluator: BaseEvaluator = None,
+    ) -> dict:
         """
         Score a hypothesis for a given evaluation stage.
 
         Args:
+            hypothesis:
             hyp (dict): Hypothesis object with a "text" key.
             context (dict): Pipeline context, must include 'goal'.
             metrics (str): Evaluation metrics (e.g., "review", "reasoning", "reflection").
+            evaluator (callable): Optional evaluator override (e.g., a parser function).
 
         Returns:
             dict: {
@@ -46,12 +55,23 @@ class ScoringMixin:
                 "metrics": metrics
             }
         """
-        scorer = self.get_scorer(metrics)
-        dimension_scores = scorer.evaluate(
-            hypothesis=hypothesis,
-            context=context,
-            llm_fn=self.call_llm
-        )
+        if evaluator:
+            result = evaluator.evaluate(hypothesis, context)
+            final_score = result["score"]
+            dimension_scores = result.get("dimensions", {
+                metrics: {
+                    "score": final_score,
+                    "weight": 1.0,
+                    "rationale": result.get("rationale", "")
+                }
+            })
+        else:
+            scorer = self.get_scorer(metrics)
+            dimension_scores = scorer.evaluate(
+                hypothesis=hypothesis,
+                context=context,
+                llm_fn=self.call_llm
+            )
 
         weighted_total = sum(
             s["score"] * s.get("weight", 1.0)
