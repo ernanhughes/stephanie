@@ -1,6 +1,8 @@
 # co_ai/scoring/proximity.py
-from co_ai.scoring.base_evaluator import BaseEvaluator
 import re
+
+from co_ai.scoring.base_evaluator import BaseEvaluator
+
 
 class ProximityHeuristicEvaluator(BaseEvaluator):
     def evaluate(self, hypothesis: dict, context: dict = {}) -> dict:

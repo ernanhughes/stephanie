@@ -1,10 +1,13 @@
+import json
 from collections import defaultdict
+
 from sqlalchemy.orm import joinedload
-from co_ai.models.score import ScoreORM
+
 from co_ai.models.evaluation import EvaluationORM
 from co_ai.models.pipeline_run import PipelineRunORM
 from co_ai.models.rule_application import RuleApplicationORM
-import json
+from co_ai.models.score import ScoreORM
+
 
 def get_high_scoring_runs(session, dimension: str, threshold: float, min_repeat_count: int = 2):
     """

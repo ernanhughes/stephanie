@@ -1,7 +1,7 @@
 # co_ai/agents/survey.py
 from co_ai.agents.base import BaseAgent
 from co_ai.constants import GOAL
-
+import re
 
 class SurveyAgent(BaseAgent):
     """
@@ -37,7 +37,8 @@ class SurveyAgent(BaseAgent):
 
 
         raw_output = self.call_llm(prompt, context)
-        queries = self._parse_query_response(goal, raw_output)
+        formatted_output = self.remove_think_blocks(raw_output)
+        queries = self._parse_query_response(goal, formatted_output)
 
         # Store in context for SearchOrchestratorAgent
         context["search_queries"] = queries
@@ -83,3 +84,6 @@ class SurveyAgent(BaseAgent):
             }
             for q in queries
         ]
+
+    def remove_think_blocks(self, text: str) -> str:
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()

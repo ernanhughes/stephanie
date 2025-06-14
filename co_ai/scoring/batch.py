@@ -1,6 +1,7 @@
-from co_ai.models import HypothesisORM, EvaluationORM, RuleApplicationORM
 from co_ai.agents.pipeline_judge import PipelineJudgeAgent
 from co_ai.constants import GOAL, PIPELINE_RUN_ID, RUN_ID
+from co_ai.models import EvaluationORM, HypothesisORM, RuleApplicationORM
+
 
 def get_unscored_hypotheses(session, run_id: str = None):
     # Get hypotheses with no evaluations for this run

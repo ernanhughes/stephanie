@@ -1,5 +1,6 @@
 from co_ai.utils.graph_tools import compare_graphs
 
+
 class SymbolicImpactAnalyzer:
     """
     Analyzes structural overlap and divergence between two graph representations (e.g., symbolic vs. LATS)

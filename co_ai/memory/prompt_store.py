@@ -1,5 +1,6 @@
 # stores/prompt_store.py
 import json
+import re
 from difflib import SequenceMatcher
 from typing import Optional
 
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from co_ai.models.goal import GoalORM
 from co_ai.models.prompt import PromptORM
-import re
+
 
 class PromptStore:
     def __init__(self, session: Session, logger=None):

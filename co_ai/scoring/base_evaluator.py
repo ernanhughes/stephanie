@@ -1,6 +1,7 @@
 # co_ai/scoring/base_evaluator.py
 from abc import ABC, abstractmethod
 
+
 class BaseEvaluator(ABC):
     @abstractmethod
     def evaluate(self, hypothesis: dict, context: dict = None) -> dict:

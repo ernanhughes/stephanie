@@ -1,7 +1,8 @@
-from typing import Any, Callable, Dict, List, Optional
 import math
-import uuid
 import random
+import uuid
+from typing import Any, Callable, Dict, List, Optional
+
 
 class LATSNode:
     def __init__(self, state, trace, parent=None):

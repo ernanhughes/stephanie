@@ -8,6 +8,7 @@ from .lookahead import LookaheadORM
 from .method_plan import MethodPlanORM
 from .mrq_memory_entry import MRQMemoryEntryORM
 from .mrq_preference_pair import MRQPreferencePairORM
+from .node_orm import NodeORM
 from .pattern_stat import PatternStatORM
 from .pipeline_run import PipelineRunORM
 from .prompt import PromptORM

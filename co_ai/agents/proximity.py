@@ -4,7 +4,8 @@ import itertools
 import numpy as np
 
 from co_ai.agents.base import BaseAgent
-from co_ai.agents.mixins.scoring_mixin import ScoringMixin  # Adjust path if needed
+from co_ai.agents.mixins.scoring_mixin import \
+    ScoringMixin  # Adjust path if needed
 from co_ai.constants import (DATABASE_MATCHES, GOAL, GOAL_TEXT,
                              PIPELINE_RUN_ID, TEXT)
 from co_ai.models import EvaluationORM

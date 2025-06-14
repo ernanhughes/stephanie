@@ -14,7 +14,7 @@ from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
 from co_ai.reports import ReportFormatter
 from co_ai.rules.symbolic_rule_applier import SymbolicRuleApplier
-
+from co_ai.registry import AgentRegistry
 
 class PipelineStage:
     def __init__(self, name: str, config: dict, stage_dict: dict):
@@ -23,6 +23,18 @@ class PipelineStage:
         self.enabled = config.get("enabled", True)
         self.iterations = config.get("iterations", 1)
         self.stage_dict = stage_dict
+
+class SingleAgentPipeline:
+    def __init__(self, agent_name, config):
+        self.agent = AgentRegistry(config).get(agent_name)
+        self.goal_input = config.input_path
+
+    def run(self):
+        pass
+        # goals = load_goal_list(self.goal_input)
+        # for goal in goals:
+        #     result = self.agent.run(goal)
+            # wrap it in pipeline logs, score evals, etc.
 
 
 class Supervisor:

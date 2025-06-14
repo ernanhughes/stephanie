@@ -5,6 +5,7 @@ from co_ai.tools.arxiv_tool import search_arxiv
 from co_ai.tools.cos_sim_tool import get_top_k_similar
 from co_ai.tools.huggingface_tool import search_huggingface_datasets
 from co_ai.tools.wikipedia_tool import WikipediaTool
+from co_ai.agents.knowledge.automind_knowledge_collector import AutoMindKnowledgeCollector
 
 
 class SearchOrchestratorAgent(BaseAgent):
@@ -20,8 +21,7 @@ class SearchOrchestratorAgent(BaseAgent):
         goal_id = goal.get("id")
         results = []
 
-        for query in queries:
-            search_query = query.get("goal_text")
+        for search_query in queries:
             source = self.route_query(goal, search_query)
             try:
                 if source == "arxiv":
@@ -34,6 +34,12 @@ class SearchOrchestratorAgent(BaseAgent):
                     hits = await self.web_search_tool.search(
                         search_query, max_results=self.max_results
                     )
+                elif source == "automind":
+                    collector = AutoMindKnowledgeCollector(self)
+                    task_description = context.get("task_description", "AI agent task")
+                    knowledge = await collector.retrieve_knowledge(task_description)
+                    # Now you can pass this knowledge to planner or tree search agent
+                    context["knowledge"] = knowledge
                 else:
                     continue
 
@@ -89,6 +95,8 @@ class SearchOrchestratorAgent(BaseAgent):
         focus_area = goal.get("focus_area", "").lower()
         goal_type = goal.get("goal_type", "").lower()
 
+        if goal_type == "automind":
+            return "automind"
         if goal_type == "data_search" or "dataset" in query_lower:
             return "huggingface"
         if goal_type == "model_review" or "model" in query_lower:

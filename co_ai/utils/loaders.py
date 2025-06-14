@@ -1,9 +1,11 @@
 # co_ai/utils/loaders.py
 
-from co_ai.memory import MemoryTool
-from co_ai.logs import JSONLogger
-from omegaconf import OmegaConf
 import os
+
+from omegaconf import OmegaConf
+
+from co_ai.logs import JSONLogger
+from co_ai.memory import MemoryTool
 
 
 def get_memory(config_name:str="db/postgres") -> MemoryTool:

@@ -30,7 +30,8 @@ class RuleEffectAnalyzer:
         }
         
     def get_scores_for_evaluation(self, evaluation_id):
-        from co_ai.models.score import ScoreORM  # local import to avoid circularity
+        from co_ai.models.score import \
+            ScoreORM  # local import to avoid circularity
         return (
             self.session.query(ScoreORM)
             .filter_by(evaluation_id=evaluation_id)

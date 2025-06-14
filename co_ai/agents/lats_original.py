@@ -1,19 +1,19 @@
-import math
 import json
+import math
 import re
 from collections import defaultdict
-from typing import Dict, Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from co_ai.agents.base import BaseAgent
-from co_ai.constants import GOAL, PIPELINE_RUN_ID
-from co_ai.models import HypothesisORM, EvaluationORM
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.agents.proximity import ProximityAgent
-from co_ai.utils.graph_tools import build_mermaid_graph, save_mermaid_to_file
 from co_ai.agents.rule_tuner import RuleTunerAgent
 from co_ai.agents.unified_mrq import UnifiedMRQAgent
-from co_ai.utils import compute_similarity_matrix
 from co_ai.analysis.symbolic_impact_analyzer import SymbolicImpactAnalyzer
+from co_ai.constants import GOAL, PIPELINE_RUN_ID
+from co_ai.models import EvaluationORM, HypothesisORM
+from co_ai.utils import compute_similarity_matrix
+from co_ai.utils.graph_tools import build_mermaid_graph, save_mermaid_to_file
 
 
 class LATSAgent(ScoringMixin, BaseAgent):
