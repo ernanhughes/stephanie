@@ -10,6 +10,7 @@ defaults:
   - agents/literature
   - agents/literature_ranking
   - agents/generation
+  - agents/paper_score
   - logging/json_logger
 
 goal:
@@ -59,5 +60,9 @@ pipeline:
        iterations: 1
      - name: document_loader
        cls: co_ai.agents.knowledge.document_loader.DocumentLoaderAgent
+       enabled: true
+       iterations: 1
+     - name: paper_score
+       cls: co_ai.agents.knowledge.paper_score.PaperScoreAgent
        enabled: true
        iterations: 1

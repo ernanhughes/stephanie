@@ -1,17 +1,8 @@
-# config/agents/review.yaml
+# config/agents/paper_score.yaml
 
 paper_score:
   name: paper_score
-  enabled: true
-
-  source: context
-  batch_size: 10
-
-  save_prompt: true
-  save_context: true
-  skip_if_completed: false
-
-  strategy: summary  # Options: full, summay
+  save_prompt: trueNo
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434
@@ -19,6 +10,7 @@ paper_score:
 
   prompt_mode: file
   prompt_file: full_review.txt
+  input_key: documents
   output_key: paper_score
 
   preferences:

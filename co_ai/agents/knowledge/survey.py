@@ -7,7 +7,7 @@ class SurveyAgent(BaseAgent):
     """
     The Survey Agent generates adaptive search queries for literature exploration.
     
-    From the paper:
+    From the paper_score:
     > 'The Survey Agent deconstructs the research task into multiple keyword combinations'
     > 'It supports two distinct modes: literature review mode and deep research mode'
     > 'Each idea is mapped to testable components before being executed'

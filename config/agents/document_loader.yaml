@@ -10,7 +10,7 @@ document_loader:
     api_base: http://localhost:11434
     api_key: null
   input_key: search_results   # add nodes
-  output_key: debate  # change
+  output_key: documents
   prompt_mode: file
   prompt_file: summarize.txt
 

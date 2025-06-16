@@ -5,8 +5,6 @@ from co_ai.agents.base_agent import BaseAgent
 class SearchResultProcessingAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.strategy = cfg.get("strategy", "default")
-        self.output_key = cfg.get("output_key", "knowledge_base")
 
     async def run(self, context: dict) -> dict:
         """
@@ -42,7 +40,7 @@ class SearchResultProcessingAgent(BaseAgent):
             )
 
             # Call LLM to extract insights
-            response = await self.call_llm(prompt)
+            response = self.call_llm(prompt, context)
 
             try:
                 structured = self._parse_refined_result(response)

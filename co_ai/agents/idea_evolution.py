@@ -19,7 +19,7 @@ class IdeaEvolutionAgent(BaseAgent):
     - Inspiration from top-ranked ideas
     - Simplification and clarity enhancement
 
-    These improvements are based on the paper:
+    These improvements are based on the paper_score:
     "NOVELSEEK: When Agent Becomes the Scientist – Building Closed-Loop System from Hypothesis to Verification"
     """
 

@@ -85,7 +85,7 @@ class SearchResultStore(BaseStore):
 
     def get_by_source_and_type(self, source: str, result_type: str) -> List[SearchResultORM]:
         """
-        Get results filtered by source and type (e.g., arxiv/paper).
+        Get results filtered by source and type (e.g., arxiv/paper_score).
         """
         return self.db.query(SearchResultORM).filter(
             SearchResultORM.source == source,

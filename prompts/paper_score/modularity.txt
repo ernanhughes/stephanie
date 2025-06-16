@@ -1,7 +1,7 @@
 You are evaluating the modularity of the concepts introduced in the paper.
 
-Paper title: {{ paper.title }}
-Paper summary: {{ paper.summary }}
+Paper title: {{ document.title }}
+Paper summary: {{ document.summary }}
 
 Do the methods or components described lend themselves well to modular agent design? Could they be plugged into a pipeline (e.g., as a planner, scorer, or reasoner)?
 

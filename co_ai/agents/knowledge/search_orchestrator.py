@@ -115,7 +115,7 @@ class SearchOrchestratorAgent(BaseAgent):
 
     def semantic_fallback_routing(self, query: str) -> str:
         intent_map = {
-            "arxiv": ["find research paper", "latest ML study", "scientific method"],
+            "arxiv": ["find research paper_score", "latest ML study", "scientific method"],
             "huggingface": ["find dataset", "huggingface model", "nlp corpus"],
             "wikipedia": ["define concept", "what is", "overview of topic"],
             "web": ["general info", "random search", "link to resource"]

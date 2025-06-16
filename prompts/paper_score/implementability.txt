@@ -1,7 +1,7 @@
 All right and then we just I don't need this and that's that's a conversation right well rather than MondayYou are evaluating the implementability of a paper’s ideas.
 
-Paper title: {{ paper.title }}
-Paper summary: {{ paper.summary }}
+Paper title: {{ document.title }}
+Paper summary: {{ document.summary }}
 
 Could the described methods be realistically implemented in a modular AI system? Is there code, a clear algorithm, or detailed structure? Would it require excessive infrastructure or can it be added to an existing agent pipeline?
 

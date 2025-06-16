@@ -5,7 +5,7 @@ from co_ai.analysis.paper_score_evaluator import PaperScoreEvaluator
 class PaperScoringMixin:
     def score_paper(self, paper_doc: dict, context: dict = None) -> dict:
         context = context or {}
-        context["paper"] = paper_doc
+        context["paper_score"] = paper_doc
 
         if not hasattr(self, "call_llm"):
             raise AttributeError("Agent must implement `call_llm(prompt, context)`")
@@ -18,5 +18,5 @@ class PaperScoringMixin:
             memory=self.memory,
         )
 
-        scores = evaluator.evaluate(paper=paper_doc, context=context, llm_fn=self.call_llm)
+        scores = evaluator.evaluate(document=paper_doc, context=context, llm_fn=self.call_llm)
         return scores

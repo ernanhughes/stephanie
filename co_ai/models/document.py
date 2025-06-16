@@ -12,9 +12,9 @@ class DocumentORM(Base):
     title = Column(String, nullable=False)
     source = Column(String, nullable=False)         # e.g., "arxiv", "huggingface", "github"
     external_id = Column(String, nullable=True)     # e.g., "2505.19590" (arXiv ID)
-    url = Column(String, nullable=True)             # full paper URL
+    url = Column(String, nullable=True)             # full paper_score URL
     summary = Column(Text, nullable=True)           # optional abstract or extracted summary
-    content = Column(Text, nullable=True)           # full extracted paper text
+    content = Column(Text, nullable=True)           # full extracted paper_score text
     goal_id = Column(Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True)  # optional link
     date_added = Column(DateTime(timezone=True), server_default=func.now())
 

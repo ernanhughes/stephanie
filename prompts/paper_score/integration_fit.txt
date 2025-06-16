@@ -1,7 +1,7 @@
 You are evaluating how well this paper’s ideas fit into an existing modular AI system (Co AI) that includes agents for generation, refinement, scoring, and reflection.
 
-Paper title: {{ paper.title }}
-Paper summary: {{ paper.summary }}
+Paper title: {{ document.title }}
+Paper summary: {{ document.summary }}
 
 Do the concepts map clearly onto components like prompt tuning, symbolic planning, or evaluation agents? Would integration require rewriting or align with existing abstractions?
 

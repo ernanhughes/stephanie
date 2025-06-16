@@ -30,7 +30,7 @@ class PaperSummarizer(BaseAgent):
 
     def summarize(self, paper_content: Dict) -> Dict:
         """
-        Takes parsed paper content (from DocumentParser) and returns a structured summary.
+        Takes parsed paper_score content (from DocumentParser) and returns a structured summary.
         """
         full_text = paper_content.get("full_text", "")
         if not full_text:

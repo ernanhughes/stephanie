@@ -66,7 +66,7 @@ class AgenticTreeSearch:
 
     def select_action(self) -> Tuple[str, Optional[SolutionNode]]:
         """
-        Implements Algorithm 1 from AutoMind paper
+        Implements Algorithm 1 from AutoMind paper_score
         Returns (action_type, parent_node)
         """
         if len([n for n in self.tree if "draft" in n.plan]) < self.N_init:

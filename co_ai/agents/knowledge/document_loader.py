@@ -92,7 +92,7 @@ class DocumentLoaderAgent(BaseAgent):
                 )
 
         context["document_ids"] = [doc.id for doc in stored_documents]
-        context["documents"] = [doc.to_dict() for doc in stored_documents]
+        context[self.output_key] = [doc.to_dict() for doc in stored_documents]
         return context
 
     def guess_title_from_text(self, text: str) -> str:

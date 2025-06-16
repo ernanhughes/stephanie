@@ -14,6 +14,10 @@ class EvaluationORM(Base):
     id = Column(Integer, primary_key=True)
     goal_id = Column(Integer, ForeignKey("goals.id"))
     hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
+    document_id = Column(
+        Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+
     symbolic_rule_id = Column(Integer, ForeignKey("symbolic_rules.id"), nullable=True)
     pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"), nullable=True)
     agent_name = Column(String, nullable=False)

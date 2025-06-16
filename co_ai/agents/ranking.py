@@ -11,7 +11,7 @@ class RankingAgent(BaseAgent):
     """
     The Ranking agent simulates scientific debate between hypotheses using a tournament-style approach.
 
-    From the paper:
+    From the paper_score:
     > 'The Ranking agent employs an Elo-based tournament to assess and prioritize generated hypotheses'
     """
     def __init__(self, cfg, memory=None, logger=None):

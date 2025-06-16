@@ -1,7 +1,7 @@
 You are evaluating a research paper for its novelty.
 
-Paper title: {{ paper.title }}
-Paper summary: {{ paper.summary }}
+Paper title: {{ document.title }}
+Paper summary: {{ document.summary }}
 
 Does the paper introduce new concepts, architectures, or techniques that are not commonly found in existing work on reasoning, planning, or self-evaluation in AI?
 
