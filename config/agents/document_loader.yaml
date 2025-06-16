@@ -1,0 +1,17 @@
+# configs/agents/debate.yaml
+
+debate:
+  name: debate
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_key: hypotheses   # add nodes
+  output_key: debate  # change
+  prompt_mode: file
+  prompt_file: balanced.txt
+  extraction_regex: "search query:<([^>]+)>\n(.*)"
