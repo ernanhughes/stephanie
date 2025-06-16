@@ -1,10 +1,10 @@
 Evaluate the refinement opportunity of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 How could this hypothesis be refined to better support the goal?
 

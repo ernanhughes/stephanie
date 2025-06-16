@@ -1,10 +1,10 @@
 Evaluate the logical soundness of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Is the internal logic of the hypothesis valid and free of contradictions?
 

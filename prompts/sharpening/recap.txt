@@ -1,7 +1,7 @@
 You are an analytical assistant applying the RECAP framework to evaluate and refine hypotheses across multiple dimensions.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Preferences:
 {% for p in preferences %}

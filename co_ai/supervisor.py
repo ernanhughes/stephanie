@@ -110,6 +110,9 @@ class Supervisor:
 
         # Create and store PipelineRun
         pipeline_run_data = {
+            "name": self.cfg.get("pipeline", {}).get(NAME, "UnnamedPipelineRun"),
+            "tag":  self.cfg.get("pipeline", {}).get("tag", "default"),
+            "description": self.cfg.get("pipeline", {}).get("description", ""),
             "goal_id": goal_dict.get("id"),
             "run_id": run_id,
             "pipeline": pipeline_list,  # Should be list of strings like ["generation", "judge"]

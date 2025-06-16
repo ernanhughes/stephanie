@@ -182,8 +182,8 @@ class ScoreEvaluator:
                     config=self.cfg,
                     context={
                         **context,
-                        "goal": context.get("goal").get("goal_text"),
-                        "hypothesis": hypothesis.get("text"),
+                        "goal": context.get("goal"),
+                        "hypothesis": hypothesis,
                     },
                 )
             else:

@@ -1,7 +1,7 @@
 You are an expert researcher reviewing scientific hypotheses.
 Use the following information to evaluate correctness and novelty.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Hypothesis: {{ hypotheses }}
 
 {% if preferences %}

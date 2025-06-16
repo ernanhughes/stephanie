@@ -1,10 +1,10 @@
 Evaluate the feasibility of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Is the hypothesis realistically achievable based on known principles, available resources, and plausible mechanisms?
 

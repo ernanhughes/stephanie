@@ -14,6 +14,7 @@ from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
 from co_ai.logs import JSONLogger
 from co_ai.prompts import PromptLoader
 from co_ai.rules import SymbolicRuleApplier
+from co_ai.models import PromptORM
 
 
 def remove_think_blocks(text: str) -> str:
@@ -67,6 +68,26 @@ class BaseAgent(ABC):
             API_BASE: model_cfg.get(API_BASE),
             API_KEY: model_cfg.get(API_KEY),
         }
+    
+    def get_or_save_prompt(self, prompt_text: str, context:dict) -> PromptORM:
+        prompt = self.memory.prompt.get_from_text(prompt_text)
+        if prompt is None:
+            self.memory.prompt.save(
+                context.get("goal"),
+                agent_name=self.name,
+                prompt_key=self.cfg.get(PROMPT_PATH, ""),
+                prompt_text=prompt_text,
+                strategy=self.cfg.get(STRATEGY, ""),
+                pipeline_run_id=context.get("pipeline_run_id"),
+                version=self.cfg.get("version", 1),
+            )
+            prompt = self.memory.prompt.get_from_text(prompt_text)
+        if prompt is None:
+            raise ValueError(
+                f"Please check this prompe: {prompt_text}. "
+                "Ensure it is saved before use."
+            )
+        return prompt
 
     def call_llm(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
         updated_cfg = self.rule_applier.apply_to_prompt(self.cfg, context)
@@ -89,7 +110,7 @@ class BaseAgent(ABC):
         # 🔁 Check cache
         if self.memory and use_memory_for_fast_prompts:
             previous = self.memory.prompt.find_similar_prompt(
-                agent_name=agent_name, prompt_text=prompt, strategy=strategy, similarity_threshold=0.4
+                agent_name=agent_name, prompt_text=prompt, strategy=strategy, similarity_threshold=0.8
             )
             if previous:
                 chosen = random.choice(previous)
@@ -223,13 +244,6 @@ class BaseAgent(ABC):
         goal = self.memory.goals.get_from_text(goal_text)
         self._goal_id_cache[goal_text] = (goal.id, goal)
         return goal.id
-
-    def get_prompt_id(self, prompt_text: str):
-        if prompt_text in self._prompt_id_cache:
-            return self._prompt_id_cache[prompt_text][0]
-        prompt = self.memory.prompt.get_from_text(prompt_text)
-        self._prompt_id_cache[prompt_text] = (prompt.id, prompt)
-        return prompt.id
 
     def get_hypothesis_id(self, hypothesis_dict: dict):
         if not isinstance(hypothesis_dict, dict):

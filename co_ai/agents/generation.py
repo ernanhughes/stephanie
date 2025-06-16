@@ -4,6 +4,7 @@ from co_ai.agents.base import BaseAgent
 from co_ai.constants import (FEEDBACK, GOAL, GOAL_TEXT, HYPOTHESES, LITERATURE,
                              PIPELINE, PIPELINE_RUN_ID)
 from co_ai.parsers import extract_hypotheses
+from co_ai.tools.huggingface_tool import recommend_similar_papers
 
 
 class GenerationAgent(BaseAgent):
@@ -12,6 +13,9 @@ class GenerationAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         from co_ai.models import HypothesisORM
+
+        papers = recommend_similar_papers()
+
 
         goal = context.get(GOAL)
 

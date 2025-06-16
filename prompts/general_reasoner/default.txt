@@ -3,7 +3,7 @@ Your task is to assess whether the hypothesis logically supports the stated goal
 regardless of domain (it could be science, finance, AI, business, law, etc.)
 
 Hypothesis: {{ hypotheses }}
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 
 {% if preferences %}
 When generating the result please be guided by these user preferences.

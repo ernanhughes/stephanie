@@ -1,0 +1,15 @@
+# config/agents/self_rewarding.yaml
+
+self_rewarding:
+  name: self_rewarding
+  save_prompt: true
+  strategy: full_review  # Options: initial, full, observation, deep_verification
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  prompt_mode: file
+  prompt_file: judge.txt
+  output_key: self_rewarding
+  preferences:
+    - accuracy

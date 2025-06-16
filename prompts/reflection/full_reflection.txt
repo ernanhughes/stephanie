@@ -3,10 +3,10 @@ Your task is to assess whether the following hypothesis logically supports the s
 regardless of domain (biomedicine, AI, policy, finance, etc.)
 
 Hypothesis:
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 {% if preferences %}
 Preferences:

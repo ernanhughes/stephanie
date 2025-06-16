@@ -1,7 +1,7 @@
 You are a step-by-step reasoning assistant applying the Chain of Thought (COT) framework to improve hypotheses through logical progression.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Preferences:
 {% for p in preferences %}

@@ -1,10 +1,10 @@
 Evaluate the utility of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Would acting on this hypothesis likely lead to useful or impactful outcomes?
 

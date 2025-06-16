@@ -1,7 +1,7 @@
 You are an expert researcher applying a devil's advocate strategy to challenge and refine hypotheses.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Preferences:
 {% for p in preferences %}

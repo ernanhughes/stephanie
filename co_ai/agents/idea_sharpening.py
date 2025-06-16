@@ -82,10 +82,9 @@ class IdeaSharpeningAgent(BaseAgent):
             sharpened = self.call_llm(prompt_template, merged)
 
             try:
-                preferred_output, scores = self.evaluator.judge(
+                preferred_output, scores = self.evaluator.score_single(
                     prompt=idea,
-                    output_a=idea,
-                    output_b=sharpened,
+                    output=sharpened,
                     context=merged,
                 )
                 improved = preferred_output

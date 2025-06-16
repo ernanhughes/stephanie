@@ -1,5 +1,5 @@
 # Goal
-{{ goal }}
+{{ goal.goal_text }}
 {% if goal_type %}- Type: {{ goal_type }}{% endif %}
 {% if focus_area %}- Focus Area: {{ focus_area }}{% endif %}
 {% if strategy %}- Current Strategy: {{ strategy }}{% endif %}

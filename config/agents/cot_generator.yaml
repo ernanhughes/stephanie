@@ -29,7 +29,7 @@ cot_generator:
   prompt_mode: file
   prompt_file: generate_cot.txt
   pattern_prompt_file: cot_pattern.txt
-  strategy:
+  use_memory_for_fast_prompts: true
 
   remove_think: false # we require "thinking" part of the prompt
 

@@ -3,7 +3,7 @@ You are an expert in prompt engineering and scientific hypothesis evaluation.
 Your task is to determine which of the following prompts leads to higher-quality hypotheses for the given research goal, based on specific preferences.
 
 ## Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ## Evaluation Preferences
 The generated hypotheses should be assessed based on the following criteria:

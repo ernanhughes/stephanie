@@ -1,4 +1,4 @@
-Given this goal: {{ goal }}
+Given this goal: {{ goal.goal_text }}
 
 And this chain-of-thought response:
 {{ hypotheses }}

@@ -1,10 +1,10 @@
 You are an impartial expert evaluator. Given a goal and a hypothesis, your task is to score how well the hypothesis addresses the goal.
 
 ### Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis:
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 ### Evaluation Criteria:
 - Relevance to the goal

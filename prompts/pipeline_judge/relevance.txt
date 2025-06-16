@@ -1,10 +1,10 @@
 Evaluate the relevance of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 How directly does it address the stated goal?
 

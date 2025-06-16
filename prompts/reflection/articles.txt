@@ -2,7 +2,7 @@ You are an expert in scientific peer review and hypothesis validation.
 Perform a comprehensive full review of the following hypothesis using relevant literature.
 
 Hypothesis: {{ hypotheses }}
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 
 {% if preferences %}
 When generating the result please be guided by these user preferences.

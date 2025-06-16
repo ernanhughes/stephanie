@@ -40,7 +40,7 @@ class MethodPlannerAgent(BaseAgent):
         """
         # Extract input from context
         goal = context.get(GOAL, {})
-        hypothesis = context.get(HYPOTHESES, "")
+        hypothesis = context.get(HYPOTHESES, [])
         baseline_approach = self._get_baseline(goal.get("focus_area"))
         literature_summary = context.get("knowledge_base_summaries", [])
         pipeline_stage = context.get(PIPELINE, "initial_method_plan")
@@ -70,7 +70,7 @@ class MethodPlannerAgent(BaseAgent):
             return context
 
         # Save to database
-        method_plan = self._save_to_db(plan_data, context)
+        method_plan = self._save_to_db(plan_data, merged)
 
         # Update context with result
         context[self.output_key] = plan_data
@@ -148,12 +148,12 @@ class MethodPlannerAgent(BaseAgent):
 
         return result
 
-    def _save_to_db(self, plan_data: dict, goal_id: int) -> MethodPlanORM:
+    def _save_to_db(self, plan_data: dict, context: dict) -> MethodPlanORM:
         """
         Store method plan in ORM with metadata
         """
         plan = MethodPlanORM(
-            idea_text=plan_data.get("idea"),
+            idea_text=context.get("idea"),
             task_description=plan_data.get("task_description"),
             baseline_method=plan_data.get("baseline_used"),
             literature_summary=plan_data.get("relevant_papers"),
@@ -162,9 +162,9 @@ class MethodPlannerAgent(BaseAgent):
             score_feasibility=plan_data.get("score_feasibility"),
             score_impact=plan_data.get("score_impact"),
             score_alignment=plan_data.get("score_alignment"),
-            goal_id=goal_id,
-            focus_area=plan_data.get("focus_area"),
-            strategy=plan_data.get("strategy"),
+            goal_id=context.get("goal", {}).get("id"),
+            focus_area=context.get("goal", {}).get("focus_area"),
+            strategy=context.get("goal", {}).get("strategy"),
             evolution_level=0,  # Initial plan
         )
 

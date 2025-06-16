@@ -2,7 +2,7 @@ You are an expert reviewer evaluating the quality of a generated hypothesis.
 Use the following information to assess its correctness, originality, clarity, and relevance to the goal.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Hypothesis:
 {{ hypotheses }}

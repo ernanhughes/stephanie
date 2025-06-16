@@ -4,7 +4,7 @@ You are an AI search assistant. Your task is to generate an effective web search
 Use the goal below to craft a focused and well-structured search query that returns high-quality, relevant results to help a researcher investigate or evaluate the goal.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Instructions:
     Identify the key concepts and intent behind the goal.

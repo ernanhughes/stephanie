@@ -21,13 +21,13 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
             self.logger.log("MRQTraining", {"type": "MRQ"})
             self.evaluator.train_from_database(goal=goal.goal_text, cfg=self.cfg)
 
-        prompt = self.prompt_loader.load_prompt(self.cfg, context)
-        self.logger.log("PromptGenerated", {"prompt": prompt[:200]})
+        prompt_text = self.prompt_loader.load_prompt(self.cfg, context)
+        self.logger.log("PromptGenerated", {"prompt": prompt_text[:200]})
 
         # Step 1: Generate candidates
         self.logger.log("GenerationStarted", {"num_candidates": self.num_candidates})
         candidates = [
-            self.call_llm(prompt, context) for _ in range(self.num_candidates)
+            self.call_llm(prompt_text, context) for _ in range(self.num_candidates)
         ]
         self.logger.log(
             "GenerationCompleted", {"candidates": [c[:100] for c in candidates]}
@@ -38,7 +38,7 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         scores = {}
         for candidate in candidates[1:]:
             best, scores = self.evaluator.judge(
-                prompt=prompt,
+                prompt=prompt_text,
                 output_a=best,
                 output_b=candidate, 
                 context=context
@@ -50,17 +50,19 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         value_b = scores.get("value_b", 0)
         score = max(value_a, value_b)
         features = {
-            "prompt": prompt,
+            "prompt": prompt_text,
             "best_output": best,
             "candidates": candidates,
         }
 
+        prompt = self.get_or_save_prompt(prompt_text, context)
+ 
         best_orm = HypothesisORM(
             goal_id=self.get_goal_id(goal),
             text=best,
             confidence=score,
             features=features,
-            prompt_id=self.get_prompt_id(prompt),
+            prompt_id=prompt.id,
             pipeline_signature=context.get(PIPELINE),
             pipeline_run_id=context.get(PIPELINE_RUN_ID),
         )

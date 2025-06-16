@@ -1,7 +1,7 @@
 You are an expert in biomedical ethics and safety evaluation.
 Review the following hypotheses and identify potential safety concerns or ethical implications.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Preferences: {{ preferences }}
 Additional instructions: {{ instructions }}
 

@@ -27,6 +27,9 @@ class PipelineRunStore:
                 goal_id=run_dict.get("goal_id"),
                 run_id=run_dict.get("run_id"),
                 pipeline=run_dict.get("pipeline"),
+                name=run_dict.get("name"),
+                tag=run_dict.get("tag"),
+                description=run_dict.get("description"),
                 strategy=run_dict.get("strategy"),
                 model_name=run_dict.get("model_name"),
                 run_config=run_dict.get("run_config"),
@@ -87,6 +90,10 @@ class PipelineRunStore:
 
         if "goal_id" in filters:
             query = query.filter(PipelineRunORM.goal_id == filters["goal_id"])
+        if "name" in filters:
+            query = query.filter(PipelineRunORM.name == filters["name"])
+        if "tag" in filters:
+            query = query.filter(PipelineRunORM.tag == filters["tag"])
         if "strategy" in filters:
             query = query.filter(PipelineRunORM.strategy == filters["strategy"])
         if "model_name" in filters:

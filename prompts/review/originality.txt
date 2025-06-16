@@ -1,10 +1,10 @@
 Evaluate the originality of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Does the idea offer a novel or creative insight?
 

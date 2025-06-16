@@ -1,7 +1,7 @@
 You are an expert researcher applying the CRITIC framework to refine scientific hypotheses.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Preferences:
 {% for p in preferences %}

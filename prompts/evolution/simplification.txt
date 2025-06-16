@@ -1,7 +1,7 @@
 You are an expert researcher skilled in simplifying complex biological mechanisms.
 Take the following hypothesis and simplify it for clarity and testability.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Simplification Preferences: {{ preferences }}
 
 Instructions:

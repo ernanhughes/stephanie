@@ -11,7 +11,7 @@ cot_dspy_generator:
     api_base: http://localhost:11434
     api_key: null
   input_keys: ["goal"]   # add nodes
-  output_key: cot  # change
+  output_key: hypotheses  # change
   prompt_mode: file
   prompt_file: default.txt
   extraction_regex: "search query:<([^>]+)>\n(.*)"

@@ -1,7 +1,7 @@
 Compare two hypotheses and decide which one leads to better output.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 {% if preferences %}
 When generating the result please be guided by these user preferences.

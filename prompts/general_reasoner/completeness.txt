@@ -1,10 +1,10 @@
 Evaluate the completeness of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Does the hypothesis cover all necessary components to support the goal?
 

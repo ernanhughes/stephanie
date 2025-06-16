@@ -1,7 +1,7 @@
 You are an expert researcher analyzing scientific literature.
 Given the following research goal and article summaries, rank them by how useful they are toward addressing the goal.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 
 {% if literature %}
 Literature Summaries:

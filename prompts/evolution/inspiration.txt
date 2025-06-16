@@ -1,7 +1,7 @@
 You are an expert researcher with a strong background in unconventional biological reasoning.
 Generate a novel variation of the following hypothesis by exploring out-of-the-box ideas.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Core Improvement Criteria: {{ preferences }}
 
 Instructions:

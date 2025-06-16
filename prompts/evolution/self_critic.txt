@@ -2,7 +2,7 @@ You are an expert researcher acting as a self-critic.
 Review and challenge the following hypothesis to find flaws or opportunities for improvement.
 
 Hypothesis: {{ hypotheses }}
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Current Preferences: {{ preferences }}
 
 Instructions:

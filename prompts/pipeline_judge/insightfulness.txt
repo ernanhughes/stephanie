@@ -1,10 +1,10 @@
 Evaluate the insightfulness of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Does the hypothesis offer a novel, surprising, or deep understanding of the problem? Does it move beyond surface-level observations?
 

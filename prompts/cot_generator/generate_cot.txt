@@ -1,7 +1,7 @@
 You are solving the following problem using careful chain-of-thought reasoning.
 
 Problem:
-{{ goal }}
+{{ goal.goal_text }}
 
 {% if literature %}
 Here is some relevant reference material:

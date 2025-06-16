@@ -2,7 +2,7 @@ You are an expert in scientific synthesis and hypothesis mapping.
 Analyze the following hypothesis relationships and extract patterns.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Most similar hypothesis pairs:
 {{ most_similar }}

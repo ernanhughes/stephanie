@@ -48,7 +48,7 @@ class PromptCompilerAgent(BaseAgent, PromptEvolverMixin):
         for prompt in refined_prompts:
             # Generate hypothesis from the compiled prompt
             hypothesis_text = self.call_llm(prompt, context).strip()
-            prompt_id  = self.get_prompt_id(prompt)
+            prompt_id  = self.get_or_save_prompt(prompt).id
             self.logger.log("CompiledPromptHypothesisGenerated", {
                 "prompt": prompt[:100],
                 "hypothesis": hypothesis_text[:100]

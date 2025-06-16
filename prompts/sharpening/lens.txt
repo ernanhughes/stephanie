@@ -5,7 +5,7 @@ You are an analytical assistant tasked with improving a hypothesis using the Thr
 3. **Operational Lens**: Is the hypothesis actionable or grounded enough for empirical or real-world evaluation?
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Preferences:
 {% for p in preferences %}

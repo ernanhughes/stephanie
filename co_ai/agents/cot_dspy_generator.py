@@ -1,3 +1,21 @@
+"""
+ChainOfThoughtDSPyGeneratorAgent
+
+This agent uses DSPy to generate a chain-of-thought reasoning trace in response to a given research goal or question.
+It loads a goal from the context, uses a DSPy Module configured with a local Ollama model (e.g., qwen3), and returns
+a structured reasoning output. The result is stored as a hypothesis and linked to the goal, prompt, and pipeline run
+for later evaluation or training (e.g., via MR.Q or LLM-based scoring).
+
+Key features:
+- DSPy integration with structured signature (CoTGenerationSignature)
+- Local model inference via Ollama (e.g., qwen3)
+- Hypothesis logging and memory storage (via HypothesisORM)
+- Prompt metadata management and linking
+- Designed for use in self-improving Co AI pipelines
+
+Intended to be paired with self-judging evaluators and symbolic optimizers.
+"""
+
 from abc import ABC, abstractmethod
 
 import dspy
@@ -7,7 +25,6 @@ from co_ai.agents.base import BaseAgent
 from co_ai.constants import (GOAL, GOAL_TEXT, PIPELINE, PIPELINE_RUN_ID,
                              PROMPT_PATH, STRATEGY)
 from co_ai.models import HypothesisORM
-
 
 # DSPy signature for generating Chains of Thought
 class CoTGenerationSignature(Signature):
@@ -72,19 +89,7 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         self.logger.log("CoTGenerated", {"goal": goal, "cot": cot})
 
         prompt_text = goal.get(GOAL_TEXT)
-        prompt = self.memory.prompt.get_from_text(prompt_text)
-        if prompt is None:
-            self.memory.prompt.save(
-                context.get("goal"),
-                agent_name=self.name,
-                prompt_key=self.cfg.get(PROMPT_PATH, ""),
-                prompt_text=prompt,
-                strategy=self.cfg.get(STRATEGY, ""),
-                pipeline_run_id=context.get("pipeline_run_id"),
-                version=self.cfg.get("version", 1),
-            )
-            prompt = self.memory.prompt.get_from_text(prompt_text)
-
+        prompt = self.get_or_save_prompt(prompt_text, context)
         goal_id = self.get_goal_id(goal)
         hyp = HypothesisORM(
             goal_id=goal_id,
@@ -96,5 +101,5 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         )
         self.memory.hypotheses.insert(hyp)
 
-        context[self.output_key] = [cot]
+        context[self.output_key] = [hyp.to_dict()]
         return context

@@ -1,7 +1,7 @@
 You are an expert in scientific research and technological feasibility analysis.
 Refine the following conceptual idea to enhance its practical implementability by leveraging contemporary technological capabilities.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Evaluation Criteria: {{ preferences }}
 
 Instructions:

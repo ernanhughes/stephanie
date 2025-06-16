@@ -10,7 +10,7 @@ Assess the hypothesis along three dimensions:
 ---
 
 ### Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis:
 {{ response }}

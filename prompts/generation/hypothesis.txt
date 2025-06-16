@@ -2,7 +2,7 @@ You are an expert researcher generating novel scientific hypotheses.
 Use inspiration from analogous domains or mechanisms to generate new ideas.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Relevant Research Findings:
 {{ literature }}

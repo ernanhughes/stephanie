@@ -1,7 +1,7 @@
 You are an expert in prompt engineering and scientific reasoning.
 Your task is to refine the following prompt to produce better hypotheses.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 
 {% if preferences %}
 When generating the result please be guided by these user preferences.

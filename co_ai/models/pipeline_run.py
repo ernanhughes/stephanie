@@ -14,6 +14,9 @@ class PipelineRunORM(Base):
     run_id = Column(String, unique=True, nullable=False)
     goal_id = Column(Integer, ForeignKey("goals.id"), nullable=False)
     pipeline = Column(JSON)  # Stored as JSONB or TEXT[]
+    name = Column(String)
+    tag = Column(String)
+    description = Column(String)
     strategy = Column(String)
     model_name = Column(String)
     run_config = Column(JSON)

@@ -2,7 +2,7 @@ OK You are an expert evaluator engaged in scientific debate.
 Compare two prompts and decide which one leads to better hypotheses.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Prompt A:
 {{ prompt_a }}

@@ -1,0 +1,56 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/pipeline_judge
+  - agents/cot_generator
+  - agents/cot_dspy_generator
+  - logging/json_logger
+
+goal:
+  goal_text: >
+    Design a system in which an autonomous AI lab can improve its scientific hypotheses over time by analyzing failures, updating symbolic reasoning strategies, and using internal evaluation feedback (e.g., multi-dimensional self-judgment). How should such a lab structure its iterative improvement loop?
+  goal_type: "strategic"
+  goal_category: "ai_research"
+  strategy: "reasoning"
+  difficulty: "hard"
+  expected_formats:
+    - "tree_of_thought"
+    - "strategy_plan"
+    - "symbolic_pipeline"
+
+post_judgment:
+  name: pipeline_judge
+  enabled: true
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: default_pipeline
+  description: "Default hypothesis generation and refinement pipeline"
+  stages:
+    - name: cot_generator
+      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
+      enabled: true
+      iterations: 1
+    - name: cot_dspy_generator
+      cls: co_ai.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
+      enabled: true
+      iterations: 1

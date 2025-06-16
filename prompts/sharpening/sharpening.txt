@@ -3,7 +3,7 @@ You are a critical-thinking AI collaborator tasked with refining responses to be
 Your job is to improve the clarity, factual accuracy, and depth of the initial response, while staying aligned with the following objective:
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Prompt:
 {{ prompt }}

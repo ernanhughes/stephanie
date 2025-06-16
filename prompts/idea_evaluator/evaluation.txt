@@ -1,7 +1,7 @@
 You are an impartial expert evaluator. Given a goal and two hypotheses, your task is to judge which hypothesis better addresses the goal.
 
 ### Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis A:
 {{ hypothesis_a }}

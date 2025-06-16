@@ -2,7 +2,7 @@
 You are an expert in hypothesis synthesis and proposal writing.
 Generate a detailed research overview based on the following information:
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Preferences: {{ preferences }}
 Additional instructions: {{ instructions }}
 
@@ -12,7 +12,7 @@ Hypotheses and reviews:
 Structure your output EXACTLY as follows:
 
 # Research Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 # Background & Significance
 [Summarize current understanding and unmet need]

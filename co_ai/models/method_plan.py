@@ -19,7 +19,7 @@ class MethodPlanORM(Base):
     goal_id = Column(Integer, ForeignKey("goals.id"), nullable=False)
 
     # Research design fields
-    research_objective = Column(String, nullable=False)
+    research_objective = Column(String, nullable=False, default="research")
     key_components = Column(JSON)  # List of technical components or modules
     experimental_plan = Column(String)
     hypothesis_mapping = Column(JSON)  # e.g., {"H1": "handled by introspection module"}

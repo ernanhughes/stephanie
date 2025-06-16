@@ -1,7 +1,7 @@
 You are a critical assistant applying the S.W.A.P.I. framework to evaluate and refine hypotheses through systematic critique and improvement.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Preferences:
 {% for p in preferences %}

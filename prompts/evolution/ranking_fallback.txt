@@ -1,6 +1,6 @@
 You are an expert evaluator engaged in simulated scientific debate.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Evaluation criteria: {{ preferences }}
 
 Hypothesis 1: {{ hypothesis_1 }}

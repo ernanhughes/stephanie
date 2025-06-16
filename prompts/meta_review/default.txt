@@ -1,7 +1,7 @@
 You are an expert in scientific research and meta-analysis.
 Synthesize a comprehensive meta-review of provided reviews pertaining to the following research goal:
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Preferences: {{ preferences }}
 Additional instructions: {{ instructions }}
 

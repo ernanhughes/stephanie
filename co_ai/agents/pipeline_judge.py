@@ -7,6 +7,9 @@ from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.analysis.rule_analytics import RuleAnalytics
 from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from co_ai.constants import PIPELINE_RUN_ID
+import csv
+import os
+from datetime import datetime
 
 
 class PipelineJudgeAgent(ScoringMixin, BaseAgent):
@@ -58,9 +61,61 @@ class PipelineJudgeAgent(ScoringMixin, BaseAgent):
                 print(f"{rule_id:<10}{count:<15}{avg_score:<12.2f}")
             print("-" * 40)
 
-    from tabulate import tabulate
+    def run_rule_effects_evaluation(self, context: dict, output_dir: str = "./reports"):
+        analyzer = RuleEffectAnalyzer(session=self.memory.session, logger=self.logger)
+        summary = analyzer.analyze(context.get(PIPELINE_RUN_ID))
 
-    def run_rule_effects_evaluation(self, context: dict):
+        # Sort by average score descending
+        top_rules = sorted(
+            summary.items(), key=lambda x: x[1]["avg_score"], reverse=True
+        )
+
+        # Prepare CSV rows
+        rows = []
+        for rule_id, data in top_rules:
+            rows.append([
+                rule_id,
+                f"{data['avg_score']:.2f}",
+                data["count"],
+                data["min"],
+                data["max"],
+                f"{data['std']:.2f}",
+                f"{data['success_rate']:.2%}",
+            ])
+
+        # Define headers
+        headers = [
+            "Rule ID",
+            "Avg Score",
+            "Count",
+            "Min",
+            "Max",
+            "Std Dev",
+            "Success Rate ≥50%",
+        ]
+
+        # Ensure export directory exists
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Compose output filename with timestamp
+        run_id = context.get(PIPELINE_RUN_ID, "unknown")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"rule_effects_{run_id}_{timestamp}.csv"
+        filepath = os.path.join(output_dir, filename)
+
+        # Write to CSV
+        with open(filepath, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(headers)
+            writer.writerows(rows)
+
+        print(f"\n✅ Rule effect summary saved to: {filepath}")
+
+        # Optional: also return summary if needed
+        return summary
+
+    def run_rule_effects_evaluation_console(self, context: dict):
+        from tabulate import tabulate
         analyzer = RuleEffectAnalyzer(session=self.memory.session, logger=self.logger)
         summary = analyzer.analyze(context.get(PIPELINE_RUN_ID))
 

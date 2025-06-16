@@ -1,10 +1,10 @@
 Evaluate the correctness of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Does the hypothesis logically follow from the available data or goal context?
 

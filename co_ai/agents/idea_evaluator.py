@@ -22,7 +22,7 @@ class IdeaEvaluatorAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         hypotheses = self.get_hypotheses(context)
         goal = context.get(GOAL)
-        baseline = context.get("baseline_hypotheses", {}).get("text")
+        baseline = context.get("baseline_hypotheses", {})
 
         if not hypotheses:
             self.logger.log("NoHypothesesToEvaluate", {})
@@ -31,16 +31,15 @@ class IdeaEvaluatorAgent(BaseAgent):
 
         scored_results = []
         for hyp in hypotheses:
-            hyp_text = hyp["text"]
             preferred, scores = self.evaluator.judge(
-                prompt=hyp_text,
-                output_a=baseline or hyp_text,
-                output_b=hyp_text,
+                prompt=hyp,
+                output_a=baseline or hyp,
+                output_b=hyp,
                 context=context,
             )
             scored_results.append(
                 {
-                    "text": hyp_text,
+                    "hypothesis": hyp,
                     "preferred": preferred,
                     "scores": scores,
                     "source": "llm-judge",

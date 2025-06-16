@@ -1,6 +1,6 @@
 Based on the meta-analysis, provide actionable suggestions for improving future hypothesis generation.
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Current reviews: {{ reviews }}
 Preferences: {{ preferences }}
 Feedback from prior generations: {{ feedback }}

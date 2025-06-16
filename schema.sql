@@ -38,6 +38,9 @@ CREATE TABLE pipeline_runs (
     goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
     run_id TEXT UNIQUE NOT NULL, -- UUID or generated string
     pipeline TEXT NOT NULL, -- list of agent names
+    name TEXT,
+    tag TEXT,
+    description TEXT,
     strategy TEXT,
     model_name TEXT,
     run_config JSONB,
@@ -589,4 +592,29 @@ CREATE TABLE IF NOT EXISTS scores (
     score FLOAT,
     weight FLOAT,
     rationale TEXT
+);
+
+CREATE TABLE IF NOT EXISTS comparison_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    goal_id INTEGER NOT NULL,
+    preferred_tag TEXT NOT NULL,
+    rejected_tag TEXT NOT NULL,
+    preferred_run_id UUID NOT NULL,
+    rejected_run_id UUID NOT NULL,
+    preferred_score FLOAT,
+    rejected_score FLOAT,
+    dimension_scores JSONB,
+    reason TEXT,
+    source TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    source TEXT NOT NULL,
+    external_id TEXT,
+    url TEXT,
+    content TEXT,
+    date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -1,10 +1,10 @@
 Evaluate the novelty of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 How original is the hypothesis relative to prior approaches?
 

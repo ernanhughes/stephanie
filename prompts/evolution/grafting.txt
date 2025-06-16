@@ -1,9 +1,9 @@
 You are an expert researcher tasked with combining two hypotheses into a unified, stronger version.
 
-Hypothesis A: {{ hypothesis_a }}
-Hypothesis B: {{ hypothesis_b }}
+Hypothesis A: {{ hypothesis_a.text }}
+Hypothesis B: {{ hypothesis_b.text }}
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Improvement Criteria: {{ preferences }}
 
 Instructions:

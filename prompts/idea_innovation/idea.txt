@@ -1,7 +1,7 @@
 You are the Idea Innovation Agent.
 Your task is to generate novel research directions based on the following inputs:
 
-Goal: {{ goal }}
+Goal: {{ goal.goal_text }}
 Focus Area: {{ focus_area }}
 Baseline Methods: {{ baseline_methods }}
 Literature Summary:

@@ -1,0 +1,51 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/pipeline_comparison
+  - agents/generation
+  - agents/pipeline_judge
+  - logging/json_logger
+
+goal:
+  goal_text: Design a system in which an autonomous AI lab can improve its scientific hypotheses over time by analyzing failures, updating symbolic reasoning strategies, and using internal evaluation feedback (e.g., multi-dimensional self-judgment). How should such a lab structure its iterative improvement loop?
+  goal_type: "strategic"
+  goal_category: "ai_research"
+  strategy: "reasoning"
+  difficulty: "hard"
+  expected_formats:
+    - "tree_of_thought"
+    - "strategy_plan"
+    - "symbolic_pipeline"
+
+post_judgment:
+  name: pipeline_judge
+  enabled: false
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: ladder_generate
+  tag: "strategy_A"
+  description: "Pipeline for generating hypotheses using a generation agent"
+  stages:
+     - name: pipeline_comparison
+       cls: co_ai.agents.pipeline_comparison.PipelineComparisonAgent
+       enabled: true
+       iterations: 1

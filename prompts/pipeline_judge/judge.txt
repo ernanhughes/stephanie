@@ -1,11 +1,11 @@
 # Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 # Pipeline Steps
 {{ pipeline | join(" → ") }}
 
 # Final Hypothesis (top scored)
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 # Reflection from Lookahead
 {{ lookahead }}

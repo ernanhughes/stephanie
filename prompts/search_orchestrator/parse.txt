@@ -2,7 +2,7 @@ You are an expert researcher generating a concise, structured summary of this ar
 Your summary must be directly relevant to the following research goal:
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Review the following information:
 Title: {{ title }}

@@ -1,10 +1,10 @@
 Evaluate the clarity of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Is the expression clear, coherent, and precise?
 

@@ -22,3 +22,4 @@ huggingface_hub
 # analysis
 matplotlib
 scikit-learn
+pdfminer.six

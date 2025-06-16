@@ -1,10 +1,10 @@
 Evaluate the alignment of the following hypothesis.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 How well does the hypothesis align with the goal and any stated preferences?
 

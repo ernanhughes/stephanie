@@ -1,10 +1,10 @@
 Evaluate the logical correctness of the following hypothesis in relation to the stated goal.
 
 ### Goal
-{{ goal }}
+{{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis }}
+{{ hypothesis.text }}
 
 Is the reasoning logically valid and consistent with the goal?
 

@@ -7,7 +7,7 @@ You are an iterative assistant tasked with improving a hypothesis using the GROW
 5. **Stop**: Evaluate whether the output meets the desired quality or requires another iteration.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Preferences:
 {% for p in preferences %}

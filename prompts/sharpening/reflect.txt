@@ -1,7 +1,7 @@
 You are a reflective assistant applying the REFLECT framework to improve and refine hypotheses by thoughtfully considering their implications, motivations, and potential gaps.
 
 Goal:
-{{ goal }}
+{{ goal.goal_text }}
 
 Preferences:
 {% for p in preferences %}
