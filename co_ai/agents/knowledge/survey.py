@@ -19,6 +19,15 @@ class SurveyAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, {})
+        goal_type = goal.get("goal_type", "survey")
+        context["search_strategy"] = self.strategy
+        
+        if goal_type == "similar_papers":
+            # Skip survey agent if goal is to find similar papers
+            self.logger.log("SurveyAgentSkipped", {"reason": "similar_papers_goal"})
+            context["search_queries"] = [goal.get("goal_text", "")]
+            return context
+
         if not goal:
             self.logger.log("NoGoalProvided", {"reason": "survey_agent_skipped"})
             return context
@@ -42,7 +51,6 @@ class SurveyAgent(BaseAgent):
 
         # Store in context for SearchOrchestratorAgent
         context["search_queries"] = queries
-        context["search_strategy"] = self.strategy
 
         self.logger.log("SurveyQueriesGenerated", {
             "queries": queries,

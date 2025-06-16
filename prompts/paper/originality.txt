@@ -1,9 +1,9 @@
-Evaluate the relevance of this paper to building self-improving AI systems.
+Evaluate the originality of this research paper.
 
 Title: {{ document.title }}
 Abstract: {{ document.summary }}
 
-Is the content directly applicable to autonomous improvement or reasoning agents?
+Does it introduce novel ideas, methods, or perspectives?
 
 Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
 

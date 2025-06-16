@@ -618,3 +618,24 @@ CREATE TABLE IF NOT EXISTS documents (
     content TEXT,
     date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS document_evaluations (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    agent_name TEXT,
+    model_name TEXT,
+    evaluator_name TEXT,
+    strategy TEXT,
+    scores JSONB DEFAULT '{}'::jsonb,
+    extra_data JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS document_scores (
+    id SERIAL PRIMARY KEY,
+    evaluation_id INTEGER NOT NULL REFERENCES document_evaluations(id) ON DELETE CASCADE,
+    dimension VARCHAR NOT NULL,
+    score FLOAT,
+    weight FLOAT,
+    rationale TEXT
+);

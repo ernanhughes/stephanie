@@ -22,7 +22,6 @@ class SearchOrchestratorAgent(BaseAgent):
         goal_id = goal.get("id")
         results = []
 
-        recommend_similar_papers()
         for search_query in queries:
             source = self.route_query(goal, search_query)
             try:
@@ -36,6 +35,8 @@ class SearchOrchestratorAgent(BaseAgent):
                     hits = await self.web_search_tool.search(
                         search_query, max_results=self.max_results
                     )
+                elif source == "similar_papers":
+                    hits = recommend_similar_papers(search_query)
                 elif source == "automind":
                     collector = AutoMindKnowledgeCollector(self)
                     task_description = context.get("task_description", "AI agent task")
@@ -99,6 +100,8 @@ class SearchOrchestratorAgent(BaseAgent):
 
         if goal_type == "automind":
             return "automind"
+        if goal_type == "similar_papers":
+            return "similar_papers"
         if goal_type == "data_search" or "dataset" in query_lower:
             return "huggingface"
         if goal_type == "model_review" or "model" in query_lower:
