@@ -1,17 +1,22 @@
-# configs/agents/debate.yaml
+# configs/agents/document_loader.yaml
 
-debate:
-  name: debate
+document_loader:
+  name: document_loader
   enabled: true
-  save_prompt: true
-  save_context: false
-  skip_if_completed: false
+  max_chars_for_summary: 16000
+  summarize_documents: I
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
-  input_key: hypotheses   # add nodes
+  input_key: search_results   # add nodes
   output_key: debate  # change
   prompt_mode: file
-  prompt_file: balanced.txt
-  extraction_regex: "search query:<([^>]+)>\n(.*)"
+  prompt_file: summarize.txt
+
+  preferences:
+    - novelty_driven
+    - feasibility_first
+    - technical_precision
+    - clarity
+    - simplicity

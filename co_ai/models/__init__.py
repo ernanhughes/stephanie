@@ -22,3 +22,4 @@ from .sharpening_result import SharpeningResultORM
 from .symbolic_rule import SymbolicRuleORM
 from .unified_mrq import UnifiedMRQModelORM
 from .comparison_preference import ComparisonPreferenceORM
+from .search_hit import SearchHitORM

@@ -5,6 +5,7 @@ defaults:
   - agents/survey
   - agents/search_orchestrator
   - agents/knowledge_loader
+  - agents/document_loader
   - agents/paper_score
   - agents/literature
   - agents/literature_ranking
@@ -56,7 +57,7 @@ pipeline:
        cls: co_ai.agents.knowledge.search_orchestrator.SearchOrchestratorAgent
        enabled: true
        iterations: 1
-    #  - name: review
-    #    cls: co_ai.agents.review.ReviewAgent
-    #    enabled: true
-    #    iterations: 1
+     - name: document_loader
+       cls: co_ai.agents.knowledge.document_loader.DocumentLoaderAgent
+       enabled: true
+       iterations: 1

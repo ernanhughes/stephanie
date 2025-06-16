@@ -1,0 +1,28 @@
+You are a helpful AI assistant tasked with summarizing a research paper for a research assistant system.
+
+Please read the following excerpt from a scientific paper and provide a concise summary. The summary should:
+- Highlight the main problem the paper addresses
+- Mention the key contribution or method proposed
+- If possible, comment on results or significance
+
+{% if preferences %}
+When generating the result please be guided by these user preferences.
+(These preferences guide how you evaluate the hypothesis. Examples include:
+- "goal_aligned" → Focus on direct relevance
+- "novelty_driven" → Look for unexpected but valid connections
+- "feasibility_first" → Prioritize real-world applicability
+- "biological_plausibility" → Ensure mechanism makes biological sense
+- "simplicity" → Favor clean, clear explanations over complex ones)
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+Here is the content to summarize:
+----------------------------
+{{ document_text }}
+----------------------------
+
+Summary:

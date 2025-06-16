@@ -1,8 +1,9 @@
 # co_ai/models/document.py
 
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from co_ai.models.base import Base
+
 
 class DocumentORM(Base):
     __tablename__ = "documents"
@@ -12,5 +13,20 @@ class DocumentORM(Base):
     source = Column(String, nullable=False)         # e.g., "arxiv", "huggingface", "github"
     external_id = Column(String, nullable=True)     # e.g., "2505.19590" (arXiv ID)
     url = Column(String, nullable=True)             # full paper URL
+    summary = Column(Text, nullable=True)           # optional abstract or extracted summary
     content = Column(Text, nullable=True)           # full extracted paper text
+    goal_id = Column(Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True)  # optional link
     date_added = Column(DateTime(timezone=True), server_default=func.now())
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "source": self.source,
+            "external_id": self.external_id,
+            "url": self.url,
+            "summary": self.summary,
+            "content": self.content,
+            "goal_id": self.goal_id,
+            "date_added": self.date_added.isoformat() if self.date_added else None
+        }

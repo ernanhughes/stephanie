@@ -29,4 +29,3 @@ class PDFConverter:
             raise ValueError(f"Error parsing PDF file: {e}")
         except Exception as e:
             raise RuntimeError(f"Failed to extract text from PDF: {e}")
-Snow

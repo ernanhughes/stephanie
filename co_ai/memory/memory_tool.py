@@ -26,7 +26,9 @@ from co_ai.memory.score_store import ScoreStore
 from co_ai.memory.search_result_store import SearchResultStore
 from co_ai.memory.sharpening_store import SharpeningStore
 from co_ai.memory.symbolic_rule_store import SymbolicRuleStore
+from co_ai.memory.document_store import DocumentStore
 from co_ai.models.base import engine  # From your SQLAlchemy setup
+
 
 
 class MemoryTool:
@@ -72,6 +74,8 @@ class MemoryTool:
         self.register_store(RuleApplicationStore(self.session, logger))
         self.register_store(PromptProgramStore(self.session, logger))
         self.register_store(ScoreStore(self.session, logger))
+        self.register_store(DocumentStore(self.session, logger))
+
 
 
         # Register extra stores if defined in config
