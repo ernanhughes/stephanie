@@ -5,7 +5,7 @@ import dspy
 from dspy import (BootstrapFewShot, Example, InputField, OutputField, Predict,
                   Signature)
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL
 
 

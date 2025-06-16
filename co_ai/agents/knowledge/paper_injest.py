@@ -1,4 +1,4 @@
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.models.document import DocumentORM
 from co_ai.utils.pdf_tools import extract_text_from_url  # You should have a PDF extraction util
 

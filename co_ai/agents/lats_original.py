@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.agents.proximity import ProximityAgent
 from co_ai.agents.rule_tuner import RuleTunerAgent

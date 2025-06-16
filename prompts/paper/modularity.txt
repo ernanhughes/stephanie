@@ -1,0 +1,10 @@
+You are evaluating the modularity of the concepts introduced in the paper.
+
+Paper title: {{ paper.title }}
+Paper summary: {{ paper.summary }}
+
+Do the methods or components described lend themselves well to modular agent design? Could they be plugged into a pipeline (e.g., as a planner, scorer, or reasoner)?
+
+Rate from 1 (monolithic or unclear) to 5 (highly modular and composable).
+
+score: __

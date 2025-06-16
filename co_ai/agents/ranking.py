@@ -4,7 +4,7 @@ import random
 import re
 from typing import Optional
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 
 
 class RankingAgent(BaseAgent):

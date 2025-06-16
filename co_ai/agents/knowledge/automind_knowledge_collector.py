@@ -1,7 +1,7 @@
 # co_ai/agents/knowledge/automind_knowledge_collector.py
 
 from typing import List, Dict
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.tools import WebSearchTool, WikipediaTool
 from co_ai.tools.arxiv_tool import search_arxiv
 from co_ai.tools.huggingface_tool import search_huggingface_datasets

@@ -1,0 +1,36 @@
+# config/scoring/paper_review.yaml
+output_format: simple
+
+dimensions:
+  - name: relevance
+    weight: 1.5
+    prompt_template: |
+      How relevant is the following paper to the current AI improvement task?
+
+      Title: {{ paper.title }}
+      Summary: {{ paper.summary }}
+
+      Give a score from 1 (not relevant) to 5 (very relevant).
+      score: __
+
+  - name: novelty
+    weight: 1.2
+    prompt_template: |
+      How novel is the main contribution of this paper?
+
+      Title: {{ paper.title }}
+      Summary: {{ paper.summary }}
+
+      Give a score from 1 (very common idea) to 5 (highly novel approach).
+      score: __
+
+  - name: implementability
+    weight: 1.0
+    prompt_template: |
+      How easily could this paper’s ideas be implemented in a modular AI system?
+
+      Title: {{ paper.title }}
+      Summary: {{ paper.summary }}
+
+      Give a score from 1 (very difficult) to 5 (straightforward).
+      score: __

@@ -3,7 +3,7 @@ import re
 from dataclasses import asdict
 from datetime import datetime
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import PIPELINE, PIPELINE_RUN_ID, RUN_ID
 from co_ai.models import EvaluationORM, RuleApplicationORM
 

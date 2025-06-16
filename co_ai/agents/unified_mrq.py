@@ -4,7 +4,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.evaluator.mrq_trainer import MRQTrainer
 from co_ai.models.unified_mrq import UnifiedMRQModelORM
 from co_ai.utils.similarity_utils import compute_similarity_matrix

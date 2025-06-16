@@ -1,0 +1,10 @@
+You are evaluating a research paper for its potential to boost the performance of a self-improving AI system.
+
+Paper title: {{ paper.title }}
+Paper summary: {{ paper.summary }}
+
+Would applying this paper’s techniques likely improve the quality of generation, the reliability of scoring, the planning accuracy, or the overall agent behavior in a modular reasoning pipeline?
+
+Rate from 1 (no impact) to 5 (likely large gains).
+
+score: __

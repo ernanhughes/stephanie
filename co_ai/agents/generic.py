@@ -1,7 +1,7 @@
 # co_ai/agents/generic_agent.py
 import re
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 
 
 class GenericAgent(BaseAgent):

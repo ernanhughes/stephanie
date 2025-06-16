@@ -1,4 +1,4 @@
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.components.coding_strategy import SelfAdaptiveCoder
 from co_ai.components.search_policy import TreeSearchPolicy
 from co_ai.agents.judge import JudgeAgent

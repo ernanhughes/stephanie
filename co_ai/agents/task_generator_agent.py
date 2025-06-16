@@ -1,7 +1,7 @@
 # File: co_ai/agents/task_generator_agent.py
 
 from typing import Dict, Any, List, Optional
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.models.mrq_preference_pair import MRQPreferencePairORM
 from co_ai.models.mrq_memory_entry import MRQMemoryEntryORM
 import json

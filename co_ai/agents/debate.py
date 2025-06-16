@@ -1,5 +1,5 @@
 # co_ai/agents/debate.py
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 
 
 class OptimistDebater(BaseAgent):

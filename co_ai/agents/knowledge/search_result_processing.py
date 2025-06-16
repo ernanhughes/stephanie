@@ -1,13 +1,11 @@
 # co_ai/agents/search_result_processing.py
-from co_ai.agents.base import BaseAgent
-from co_ai.utils.prompt_loader import PromptLoader
+from co_ai.agents.base_agent import BaseAgent
 
 
 class SearchResultProcessingAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.strategy = cfg.get("strategy", "default")
-        self.prompt_loader = PromptLoader()
         self.output_key = cfg.get("output_key", "knowledge_base")
 
     async def run(self, context: dict) -> dict:

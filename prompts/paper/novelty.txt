@@ -1,0 +1,10 @@
+You are evaluating a research paper for its novelty.
+
+Paper title: {{ paper.title }}
+Paper summary: {{ paper.summary }}
+
+Does the paper introduce new concepts, architectures, or techniques that are not commonly found in existing work on reasoning, planning, or self-evaluation in AI?
+
+Rate from 1 (entirely derivative) to 5 (highly original or breakthrough-level idea).
+
+score: __

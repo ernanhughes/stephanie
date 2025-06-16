@@ -2,7 +2,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.analysis.score_analyzer import ScoreAnalyzer
 from co_ai.constants import PIPELINE_RUN_ID
 from co_ai.models import EvaluationORM

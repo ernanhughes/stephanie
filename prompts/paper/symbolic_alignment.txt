@@ -1,0 +1,10 @@
+In front of those sharp Music music music read it No ideaYou are evaluating how well this paper aligns with symbolic reasoning or agent-based planning architectures.
+
+Paper title: {{ paper.title }}
+Paper summary: {{ paper.summary }}
+
+Does the paper’s method involve explicit reasoning, goal decomposition, verifiable steps, or symbolic representations? Could it enhance the symbolic AI reasoning loop?
+
+Rate from 1 (entirely statistical or opaque) to 5 (deeply aligned with symbolic reasoning strategies).
+
+score: __

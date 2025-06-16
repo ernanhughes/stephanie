@@ -1,5 +1,5 @@
 # co_ai/agents/knowledge_loader.py
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.models import SearchResultORM
 
 

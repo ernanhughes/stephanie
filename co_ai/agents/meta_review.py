@@ -1,6 +1,6 @@
 # co_ai/agents/meta_review.py
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import (DATABASE_MATCHES, EVOLVED, HYPOTHESES, PROXIMITY,
                              RANKING, REFLECTION, REVIEW)
 

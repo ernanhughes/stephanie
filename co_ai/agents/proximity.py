@@ -3,7 +3,7 @@ import itertools
 
 import numpy as np
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import \
     ScoringMixin  # Adjust path if needed
 from co_ai.constants import (DATABASE_MATCHES, GOAL, GOAL_TEXT,

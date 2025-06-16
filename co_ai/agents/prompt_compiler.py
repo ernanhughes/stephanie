@@ -1,6 +1,6 @@
 import dspy
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.prompt_evolver_mixin import PromptEvolverMixin
 from co_ai.compiler.llm_compiler import LLMCompiler
 from co_ai.compiler.passes.strategy_mutation_pass import StrategyMutationPass

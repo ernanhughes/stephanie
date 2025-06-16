@@ -2,7 +2,7 @@
 
 import re
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL
 from co_ai.tools import WebSearchTool
 from co_ai.utils.file_utils import write_text_to_file

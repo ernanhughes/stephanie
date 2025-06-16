@@ -3,7 +3,7 @@ from collections import defaultdict
 from sqlalchemy.orm import joinedload
 from tabulate import tabulate
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from co_ai.constants import GOAL, PIPELINE_RUN_ID
 from co_ai.memory.symbolic_rule_store import SymbolicRuleStore

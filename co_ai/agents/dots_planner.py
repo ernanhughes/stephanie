@@ -1,4 +1,4 @@
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL, STRATEGY
 from co_ai.utils.goal_classifier import classify_goal_strategy  # See below
 

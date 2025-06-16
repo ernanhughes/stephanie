@@ -2,7 +2,7 @@
 import re
 from dataclasses import asdict
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL, PIPELINE
 from co_ai.models import LookaheadORM
 

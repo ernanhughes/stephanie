@@ -9,7 +9,7 @@ from dspy import (BootstrapFewShot, Example, InputField, OutputField, Predict,
 from dspy.signatures import InputField, OutputField
 
 from co_ai.agents import BaseAgent
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.agents.proximity import ProximityAgent
 from co_ai.agents.rule_tuner import RuleTunerAgent

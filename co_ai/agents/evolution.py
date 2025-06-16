@@ -4,7 +4,7 @@ import re
 
 import numpy as np
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import (EVOLVED, GOAL, HYPOTHESES, PIPELINE,
                              PIPELINE_RUN_ID, RANKING)
 from co_ai.models import HypothesisORM

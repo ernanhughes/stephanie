@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.evaluator.base import BaseEvaluator
 from co_ai.models import EvaluationORM, ScoreORM
 from co_ai.prompts import PromptLoader

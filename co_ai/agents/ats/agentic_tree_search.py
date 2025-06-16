@@ -2,7 +2,7 @@
 
 from typing import List, Optional, Tuple, Dict
 from co_ai.agents.ats.solution_node import SolutionNode
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 import time
 import random
 

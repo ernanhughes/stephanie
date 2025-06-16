@@ -1,4 +1,4 @@
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL, HYPOTHESES, PIPELINE, PIPELINE_RUN_ID
 from co_ai.models import HypothesisORM
 from co_ai.parsers import extract_hypotheses

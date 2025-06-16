@@ -1,7 +1,7 @@
 # co_ai/agents/ats/code_executor.py
 
 from typing import Optional, Dict, Any
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 
 
 class CodeExecutor:

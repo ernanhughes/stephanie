@@ -5,7 +5,7 @@ import uuid
 
 import requests
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.constants import GOAL
 from co_ai.utils.timing import time_function

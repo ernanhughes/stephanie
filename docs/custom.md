@@ -81,7 +81,7 @@ Every agent should inherit from `BaseAgent` and implement a `run()` method.
 ```python
 # co_ai/agents/my_generation.py
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 
 class MyGenerationAgent(BaseAgent):
     async def run(self, context: dict) -> dict:

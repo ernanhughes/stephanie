@@ -1,4 +1,4 @@
-from co_ai.agents import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.evaluator import MRQSelfEvaluator
 from co_ai.models import EvaluationORM
 

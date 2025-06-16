@@ -1,6 +1,6 @@
 from typing import Union
 
-from co_ai.agents import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL
 from co_ai.dataloaders import ARMDataLoader
 from co_ai.evaluator import ARMReasoningSelfEvaluator, LLMJudgeEvaluator

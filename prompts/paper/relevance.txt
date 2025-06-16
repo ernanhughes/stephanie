@@ -1,0 +1,10 @@
+You are evaluating a research paper for its relevance to improving a modular, self-improving AI system. 
+
+Paper title: {{ paper.title }}
+Paper summary: {{ paper.summary }}
+
+Does the paper introduce ideas, components, or techniques that could be used to help AI systems reason better, plan more effectively, or evaluate themselves more accurately?
+
+Please rate its relevance from 1 (completely unrelated) to 5 (highly aligned with self-improving AI goals).
+
+score: __

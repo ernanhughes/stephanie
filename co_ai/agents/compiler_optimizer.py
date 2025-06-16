@@ -1,7 +1,7 @@
 import statistics
 from collections import defaultdict
 
-from co_ai.agents.base import BaseAgent
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL, PIPELINE_RUN_ID
 
 
