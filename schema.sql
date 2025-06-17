@@ -639,3 +639,14 @@ CREATE TABLE IF NOT EXISTS document_scores (
     weight FLOAT,
     rationale TEXT
 );
+
+CREATE TABLE document_domains (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    domain TEXT NOT NULL,
+    score FLOAT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT unique_document_domain UNIQUE (document_id, domain)
+);

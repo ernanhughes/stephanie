@@ -3,8 +3,11 @@
 document_loader:
   name: document_loader
   enabled: true
+
+  top_k_domains: 3
   max_chars_for_summary: 16000
-  summarize_documents: I
+  summarize_documents: true
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
@@ -20,3 +23,20 @@ document_loader:
     - technical_precision
     - clarity
     - simplicity
+
+  domain_seeds:
+    symbolic:
+      - "Symbolic planning using language agents."
+      - "Neuro-symbolic reasoning for AI alignment."
+    alignment:
+      - "Scalable oversight and alignment strategies."
+      - "Training language models to be helpful and harmless."
+    planning:
+      - "Hierarchical reinforcement learning for agents."
+      - "Planning with tree search and transformers."
+    training:
+      - "Instruction tuning for LLMs."
+      - "DPO and reward modeling techniques."
+    reasoning:
+      - "Multi-step chain-of-thought reasoning."
+      - "Self-reflection and hypothesis verification."

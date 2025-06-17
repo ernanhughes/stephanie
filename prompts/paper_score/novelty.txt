@@ -5,6 +5,8 @@ Paper summary: {{ document.summary }}
 
 Does the paper introduce new concepts, architectures, or techniques that are not commonly found in existing work on reasoning, planning, or self-evaluation in AI?
 
-Rate from 1 (entirely derivative) to 5 (highly original or breakthrough-level idea).
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
 
-score: __
+rationale: <brief explanation>
+
+score: <0–100>

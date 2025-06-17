@@ -27,6 +27,7 @@ from co_ai.memory.search_result_store import SearchResultStore
 from co_ai.memory.sharpening_store import SharpeningStore
 from co_ai.memory.symbolic_rule_store import SymbolicRuleStore
 from co_ai.memory.document_store import DocumentStore
+from co_ai.memory.document_domain_store import DocumentDomainStore
 from co_ai.models.base import engine  # From your SQLAlchemy setup
 
 
@@ -75,6 +76,7 @@ class MemoryTool:
         self.register_store(PromptProgramStore(self.session, logger))
         self.register_store(ScoreStore(self.session, logger))
         self.register_store(DocumentStore(self.session, logger))
+        self.register_store(DocumentDomainStore(self.session, logger))
 
 
 

@@ -16,3 +16,6 @@ from .rule_application_store import RuleApplicationStore
 from .search_result_store import SearchResultStore
 from .sharpening_store import SharpeningStore
 from .symbolic_rule_store import SymbolicRuleStore
+from .document_domain_store import DocumentDomainStore
+from .document_store import DocumentStore
+
