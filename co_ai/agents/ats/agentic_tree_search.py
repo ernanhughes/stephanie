@@ -1,10 +1,12 @@
 # co_ai/agents/ats/agentic_tree_search.py
 
-from typing import List, Optional, Tuple, Dict
+import random
+import time
+from typing import Dict, List, Optional, Tuple
+
 from co_ai.agents.ats.solution_node import SolutionNode
 from co_ai.agents.base_agent import BaseAgent
-import time
-import random
+
 
 class AgenticTreeSearch:
     def __init__(

@@ -1,13 +1,14 @@
 from co_ai.agents.base_agent import BaseAgent
+from co_ai.agents.knowledge.automind_knowledge_collector import \
+    AutoMindKnowledgeCollector
 from co_ai.constants import GOAL
 from co_ai.tools import WebSearchTool
 from co_ai.tools.arxiv_tool import search_arxiv
 from co_ai.tools.cos_sim_tool import get_top_k_similar
-from co_ai.tools.huggingface_tool import search_huggingface_datasets
+from co_ai.tools.huggingface_tool import (recommend_similar_papers,
+                                          search_huggingface_datasets)
 from co_ai.tools.wikipedia_tool import WikipediaTool
-from co_ai.agents.knowledge.automind_knowledge_collector import AutoMindKnowledgeCollector
 
-from co_ai.tools.huggingface_tool import recommend_similar_papers
 
 class SearchOrchestratorAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

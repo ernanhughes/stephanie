@@ -1,6 +1,7 @@
 # co_ai/memory/document_store.py
 
 from sqlalchemy.orm import Session
+
 from co_ai.models.document import DocumentORM
 
 

@@ -26,6 +26,7 @@ from co_ai.constants import (GOAL, GOAL_TEXT, PIPELINE, PIPELINE_RUN_ID,
                              PROMPT_PATH, STRATEGY)
 from co_ai.models import HypothesisORM
 
+
 # DSPy signature for generating Chains of Thought
 class CoTGenerationSignature(Signature):
     question = InputField(desc="A scientific or reasoning question")

@@ -1,6 +1,6 @@
 # co_ai/tools/search_hit.py
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON
+from sqlalchemy import JSON, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from co_ai.models.base import Base

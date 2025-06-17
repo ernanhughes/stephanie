@@ -1,6 +1,7 @@
 # co_ai/agents/ats/plan_generator.py
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from co_ai.agents.base_agent import BaseAgent
 
 

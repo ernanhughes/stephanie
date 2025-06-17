@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy import Column, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
+
 from co_ai.models.base import Base
+
 
 class DocumentDomainORM(Base):
     __tablename__ = "document_domains"

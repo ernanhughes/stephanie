@@ -1,6 +1,8 @@
 """Memory management and embedding tools"""
 from .base import BaseStore
 from .context_store import ContextStore
+from .document_domain_store import DocumentDomainStore
+from .document_store import DocumentStore
 from .embedding_store import EmbeddingStore
 from .evaluation_store import EvaluationStore
 from .goal_store import GoalStore
@@ -16,6 +18,3 @@ from .rule_application_store import RuleApplicationStore
 from .search_result_store import SearchResultStore
 from .sharpening_store import SharpeningStore
 from .symbolic_rule_store import SymbolicRuleStore
-from .document_domain_store import DocumentDomainStore
-from .document_store import DocumentStore
-

@@ -2,6 +2,7 @@
 
 from co_ai.analysis.paper_score_evaluator import PaperScoreEvaluator
 
+
 class PaperScoringMixin:
     def score_paper(self, paper_doc: dict, context: dict = None) -> dict:
         context = context or {}

@@ -631,6 +631,7 @@ CREATE TABLE IF NOT EXISTS document_evaluations (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+
 CREATE TABLE IF NOT EXISTS document_scores (
     id SERIAL PRIMARY KEY,
     evaluation_id INTEGER NOT NULL REFERENCES document_evaluations(id) ON DELETE CASCADE,
@@ -640,13 +641,11 @@ CREATE TABLE IF NOT EXISTS document_scores (
     rationale TEXT
 );
 
-CREATE TABLE document_domains (
+CREATE TABLE IF NOT EXISTS document_sections (
     id SERIAL PRIMARY KEY,
     document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    domain TEXT NOT NULL,
-    score FLOAT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT unique_document_domain UNIQUE (document_id, domain)
+    section_name TEXT NOT NULL,
+    section_text TEXT NOT NULL,
+    source TEXT DEFAULT 'unstructured+llm',
+    UNIQUE(document_id, section_name)
 );

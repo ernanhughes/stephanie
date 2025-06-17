@@ -27,3 +27,10 @@ class ScoreORM(Base):
             "weight": self.weight,
             "rationale": self.rationale
         }
+
+    def __repr__(self):
+        return (
+            f"<ScoreORM(id={self.id}, eval_id={self.evaluation_id}, "
+            f"dim='{self.dimension}', score={self.score}, "
+            f"weight={self.weight}, rationale='{self.rationale[:40]}...')>"
+        )

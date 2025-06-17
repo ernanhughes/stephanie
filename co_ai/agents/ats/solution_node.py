@@ -1,7 +1,7 @@
 # co_ai/agents/ats/solution_node.py
 
-from typing import Optional, Dict, Any
 import time
+from typing import Any, Dict, Optional
 
 
 class SolutionNode:

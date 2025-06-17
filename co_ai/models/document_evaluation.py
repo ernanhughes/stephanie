@@ -1,10 +1,13 @@
 # models/document_evaluation.py
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, JSON
+
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text)
 from sqlalchemy.orm import relationship
 
 from co_ai.models.base import Base
+
 
 class DocumentEvaluationORM(Base):
     __tablename__ = "document_evaluations"

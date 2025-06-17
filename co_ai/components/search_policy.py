@@ -2,6 +2,7 @@
 
 import random
 
+
 class TreeSearchPolicy:
     def __init__(self, config):
         self.n_init = config.get("n_init", 3)

@@ -1,4 +1,5 @@
 import time
+
 from co_ai.agents.ats.solution_node import SolutionNode
 
 

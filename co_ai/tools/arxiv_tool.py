@@ -1,6 +1,8 @@
+import xml.etree.ElementTree as ET
+
 import arxiv
 import requests
-import xml.etree.ElementTree as ET
+
 
 def search_arxiv(queries: list[str], max_results: int = 5) -> list[dict]:
     results = []

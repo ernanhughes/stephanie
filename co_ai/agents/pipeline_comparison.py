@@ -1,14 +1,17 @@
+import csv
+import os
 from collections import defaultdict
-from co_ai.models import ScoreORM, EvaluationORM
+from datetime import datetime
+
+from sqlalchemy import func
+
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from co_ai.constants import PIPELINE_RUN_ID
-import csv
-import os
-from datetime import datetime
-from sqlalchemy import func
+from co_ai.models import EvaluationORM, ScoreORM
 from co_ai.models.comparison_preference import ComparisonPreferenceORM
+
 
 class PipelineComparisonAgent(ScoringMixin, BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -95,8 +98,10 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
 
         self.memory.session.commit()  # commit all preferences
         self._print_summary(results, tags)
-        from co_ai.models.mrq_memory_entry import MRQMemoryEntryORM  # adjust as needed
-        from co_ai.utils.time import now_timestamp  # or use datetime.now() directly
+        from co_ai.models.mrq_memory_entry import \
+            MRQMemoryEntryORM  # adjust as needed
+        from co_ai.utils.time import \
+            now_timestamp  # or use datetime.now() directly
 
         for r in results:
             if r["winner"] == "Tie":
@@ -197,8 +202,9 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
             return {}
 
 
-        from co_ai.models.score import ScoreORM  # avoid circular import
         from collections import defaultdict
+
+        from co_ai.models.score import ScoreORM  # avoid circular import
 
         dim_totals = defaultdict(list)
         for evaluation in latest_eval_ids:

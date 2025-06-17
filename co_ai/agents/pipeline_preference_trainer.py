@@ -1,11 +1,12 @@
 # co_ai/agents/pipeline_preference_trainer.py
 
 import joblib
-from co_ai.models.comparison_preference import ComparisonPreferenceORM
-from co_ai.models.goal import GoalORM
+import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-import numpy as np
+
+from co_ai.models.comparison_preference import ComparisonPreferenceORM
+from co_ai.models.goal import GoalORM
 
 
 class PipelinePreferenceTrainerAgent:

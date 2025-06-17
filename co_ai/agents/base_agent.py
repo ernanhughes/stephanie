@@ -12,9 +12,9 @@ from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                              OUTPUT_KEY, PROMPT_MATCH_RE, PROMPT_PATH,
                              SAVE_CONTEXT, SAVE_PROMPT, SOURCE, STRATEGY)
 from co_ai.logs import JSONLogger
+from co_ai.models import PromptORM
 from co_ai.prompts import PromptLoader
 from co_ai.rules import SymbolicRuleApplier
-from co_ai.models import PromptORM
 
 
 def remove_think_blocks(text: str) -> str:

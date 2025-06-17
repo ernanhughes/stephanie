@@ -1,10 +1,12 @@
 # co_ai/agents/paper_summarizer.py
-from typing import Dict, Any, Optional
+import re
+from typing import Any, Dict, Optional
+
+from dspy import Example, Predict
 from loguru import logger
-from dspy import Predict, Example
+
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.utils.prompt_loader import PromptLoader
-import re
 
 
 class PaperSummarizer(BaseAgent):

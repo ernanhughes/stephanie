@@ -2,7 +2,8 @@
 
 paper_score:
   name: paper_score
-  save_prompt: true
+  save_prompt: 
+  force_rescore: false
   use_memory_for_fast_prompts: false
   model:
     name: ollama_chat/qwen3

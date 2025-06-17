@@ -1,5 +1,6 @@
-from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
+
 from co_ai.models.document_domain import DocumentDomainORM
 
 

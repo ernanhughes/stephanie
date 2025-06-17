@@ -1,14 +1,15 @@
 # File: co_ai/agents/self_rewarding_agent.py
 
-from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.evaluator.base import BaseEvaluator
+from co_ai.memory import SymbolicRuleStore
 from co_ai.models import EvaluationORM, ScoreORM
 from co_ai.prompts import PromptLoader
-from co_ai.memory import SymbolicRuleStore
 from co_ai.utils import get_high_scoring_runs
-from datetime import datetime
 
 
 @dataclass

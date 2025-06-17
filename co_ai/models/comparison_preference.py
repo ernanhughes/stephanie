@@ -2,8 +2,7 @@
 # models/comparison_preference.py
 from datetime import datetime
 
-from sqlalchemy import (JSON, Column, DateTime, Float, Integer,
-                        String, Text)
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
 
 from co_ai.models.base import Base
 

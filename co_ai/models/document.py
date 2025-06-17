@@ -1,8 +1,9 @@
 # co_ai/models/document.py
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from co_ai.models.base import Base
 
 
@@ -20,6 +21,9 @@ class DocumentORM(Base):
     goal_id = Column(Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True)  # optional link
     date_added = Column(DateTime(timezone=True), server_default=func.now())
 
+    sections = relationship(
+        "DocumentSectionORM", back_populates="document", cascade="all, delete-orphan"
+    )
     domains = relationship("DocumentDomainORM", back_populates="document", cascade="all, delete-orphan")
 
     def to_dict(self):

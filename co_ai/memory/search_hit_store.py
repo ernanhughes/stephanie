@@ -1,6 +1,7 @@
 # memory/search_hit_store.py
 
 from sqlalchemy.orm import Session
+
 from co_ai.models.search_hit import SearchHitORM
 
 

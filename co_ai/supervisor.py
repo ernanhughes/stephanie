@@ -12,9 +12,10 @@ from co_ai.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID, PROMPT_DIR,
                              RUN_ID, SAVE_CONTEXT, SKIP_IF_COMPLETED, STAGE)
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
+from co_ai.registry import AgentRegistry
 from co_ai.reports import ReportFormatter
 from co_ai.rules.symbolic_rule_applier import SymbolicRuleApplier
-from co_ai.registry import AgentRegistry
+
 
 class PipelineStage:
     def __init__(self, name: str, config: dict, stage_dict: dict):

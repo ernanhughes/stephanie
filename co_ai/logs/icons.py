@@ -16,6 +16,15 @@ EVENT_ICONS = {
     "ContextAfterStage": "🗃️",
     "ContextYAMLDumpSaved": "📄",
     "debug": "🐞",
+    "ScoreSkipped": "📉⏭️",  # Scoring skipped due to existing score
+    "GoalDomainAssigned": "🎯📚",  # Domain assigned to goal
+    "DocumentsFiltered": "📑🔍",  # Documents filtered based on relevance
+    "SurveyAgentSkipped": "📋⏭️",  # Survey step skipped
+    "DocumentAlreadyExists": "📄✅",  # Document previously stored
+    "DomainAssigned": "🏷️📚",  # Domain label assigned to doc
+    "DomainUpserted": "📌🆕",  # Domain inserted or updated
+    "ScoringPaper": "📝📊",  # Paper being scored
+    "PaperScoreSavedToMemory": "💾📈",  # Score persisted to memory/db
     "NoHypothesesInContext": "🤷‍♂️",
     "SimilarHypothesesFound": "♻️💭",
     "StageContext": "🎯",
@@ -24,11 +33,11 @@ EVENT_ICONS = {
     "NodeSummary": "🪵📋",
     "CorDimensionEvaluated": "📐✅",
     "EvaluatorInit": "🧪",
-    "RuleApplicationUpdated": "🧩",      # Suggests a symbolic piece being modified
-    "MRQScoringComplete": "📈",          # Indicates successful scoring/completion
-    "NoSymbolicAgentRulesApplied": "🚫", # Signifies nothing matched/applied
-    "RuleApplicationsScored": "🎯",      # Represents target scoring of rule usage
-    "RuleApplicationCount": "🔢",        # Suggests counting or tracking quantity
+    "RuleApplicationUpdated": "🧩",  # Suggests a symbolic piece being modified
+    "MRQScoringComplete": "📈",  # Indicates successful scoring/completion
+    "NoSymbolicAgentRulesApplied": "🚫",  # Signifies nothing matched/applied
+    "RuleApplicationsScored": "🎯",  # Represents target scoring of rule usage
+    "RuleApplicationCount": "🔢",  # Suggests counting or tracking quantity
     # Pipeline Execution
     "StoreRegistered": "🛒",
     "SupervisorInit": "🧑‍🏫",
@@ -64,7 +73,6 @@ EVENT_ICONS = {
     "PipelineJudgeAgentEnd": "🛑⚖️",
     "PipelineScoreSummary": "📈🧮",
     "SymbolicPipelineSuggestion": "🧠💡",
-
     # Prompt Processing & Tuning
     "Prompt": "📜",
     "PromptGenerated": "📝",

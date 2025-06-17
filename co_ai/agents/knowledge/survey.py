@@ -1,7 +1,9 @@
 # co_ai/agents/survey.py
+import re
+
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL
-import re
+
 
 class SurveyAgent(BaseAgent):
     """

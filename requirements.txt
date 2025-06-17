@@ -8,6 +8,7 @@ dspy
 tabulate
 python_dotenv
 ollama
+unstructured
 
 # web search tools
 requests

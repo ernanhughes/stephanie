@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 
 from co_ai.models.base import Base
 
+
 class DocumentScoreORM(Base):
     __tablename__ = "document_scores"
 

@@ -1,13 +1,14 @@
 # File: co_ai/agents/task_generator_agent.py
 
-from typing import Dict, Any, List, Optional
-from co_ai.agents.base_agent import BaseAgent
-from co_ai.models.mrq_preference_pair import MRQPreferencePairORM
-from co_ai.models.mrq_memory_entry import MRQMemoryEntryORM
 import json
 import random
 import re
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from co_ai.agents.base_agent import BaseAgent
+from co_ai.models.mrq_memory_entry import MRQMemoryEntryORM
+from co_ai.models.mrq_preference_pair import MRQPreferencePairORM
 
 
 class TaskGeneratorAgent(BaseAgent):

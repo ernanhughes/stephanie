@@ -1,12 +1,12 @@
 # co_ai/agents/knowledge/automind_knowledge_collector.py
 
-from typing import List, Dict
+from typing import Dict, List
+
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.tools import WebSearchTool, WikipediaTool
 from co_ai.tools.arxiv_tool import search_arxiv
-from co_ai.tools.huggingface_tool import search_huggingface_datasets
 from co_ai.tools.cos_sim_tool import get_top_k_similar
-
+from co_ai.tools.huggingface_tool import search_huggingface_datasets
 
 LABEL_HIERARCHY = {
     "Computer Vision": ["Image Classification", "Object Detection", "Segmentation"],

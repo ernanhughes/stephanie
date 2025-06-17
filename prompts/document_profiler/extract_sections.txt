@@ -1,0 +1,11 @@
+You are reading a scientific or technical document.
+
+Return a **plain list** of section or subsection **headings** that appear in the document.
+These should be meaningful structure indicators like "Abstract", "Methods", "Results", "Conclusion".
+
+List only the section names, one per line.
+
+Document:
+=========
+{{ text }}
+=========

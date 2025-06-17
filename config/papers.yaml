@@ -9,6 +9,7 @@ defaults:
   - agents/paper_score
   - agents/literature
   - agents/literature_ranking
+  - agents/document_profiler
   - agents/generation
   - agents/paper_score
   - logging/json_logger
@@ -48,7 +49,8 @@ embeddings:
 
 pipeline:
   name: papers
-  description: "Default hypothesis generation and refinement pipeline"
+  tag: "huggingface_relatedHey Tom OK "
+  description: "Import papers score and save them"
   stages:
      - name: survey
        cls: co_ai.agents.knowledge.survey.SurveyAgent
@@ -62,7 +64,15 @@ pipeline:
        cls: co_ai.agents.knowledge.document_loader.DocumentLoaderAgent
        enabled: true
        iterations: 1
+     - name: document_profiler
+       cls: co_ai.agents.knowledge.document_profiler.DocumentProfilerAgent
+       enabled: true
+       iterations: 1
      - name: paper_score
        cls: co_ai.agents.knowledge.paper_score.PaperScoreAgent
+       enabled: true
+       iterations: 1
+     - name: knowledge_loader
+       cls: co_ai.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
        enabled: true
        iterations: 1

@@ -1,4 +1,7 @@
+import csv
+import os
 import re
+from datetime import datetime
 
 from tabulate import tabulate
 
@@ -7,9 +10,6 @@ from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.analysis.rule_analytics import RuleAnalytics
 from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from co_ai.constants import PIPELINE_RUN_ID
-import csv
-import os
-from datetime import datetime
 
 
 class PipelineJudgeAgent(ScoringMixin, BaseAgent):

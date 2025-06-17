@@ -11,13 +11,15 @@ ranking, or hypothesis generation.
 """
 
 import os
-import requests
-from co_ai.agents.base_agent import BaseAgent
-from co_ai.tools.pdf_tools import PDFConverter
-from co_ai.tools.arxiv_tool import fetch_arxiv_metadata
-from co_ai.constants import GOAL
-from sklearn.metrics.pairwise import cosine_similarity
+
 import numpy as np
+import requests
+from sklearn.metrics.pairwise import cosine_similarity
+
+from co_ai.agents.base_agent import BaseAgent
+from co_ai.constants import GOAL
+from co_ai.tools.arxiv_tool import fetch_arxiv_metadata
+from co_ai.tools.pdf_tools import PDFConverter
 
 
 def guess_title_from_text(text: str) -> str:
