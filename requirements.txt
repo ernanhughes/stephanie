@@ -9,6 +9,7 @@ tabulate
 python_dotenv
 ollama
 unstructured
+fuzzywuzzy
 
 # web search tools
 requests
@@ -19,6 +20,7 @@ beautifulsoup4
 
 # Hugging face tool
 huggingface_hub
+python-Levenshtein
 
 # analysis
 matplotlib

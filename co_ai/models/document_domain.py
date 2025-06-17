@@ -13,7 +13,7 @@ class DocumentDomainORM(Base):
     score = Column(Float, nullable=False)
 
     # Optional: relationship to document
-    document = relationship("DocumentORM", back_populates="domains")
+    document = relationship("DocumentORM", back_populates="domains_rel")
 
     def to_dict(self):
         return {

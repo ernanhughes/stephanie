@@ -3,7 +3,6 @@ import re
 from typing import Any, Dict, Optional
 
 from dspy import Example, Predict
-from loguru import logger
 
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.utils.prompt_loader import PromptLoader
@@ -36,7 +35,7 @@ class PaperSummarizer(BaseAgent):
         """
         full_text = paper_content.get("full_text", "")
         if not full_text:
-            logger.warning("No full_text provided for summarization.")
+            self.logger.log("SummarizeError", {"error": "No full_text provided for summarization."})
             return {}
 
         merged_context = {
@@ -51,7 +50,6 @@ class PaperSummarizer(BaseAgent):
         try:
             summary = self._parse_summary(response)
         except Exception as e:
-            logger.error(f"Failed to parse summary: {e}")
             summary = {"raw_response": response}
 
         # Save to memory if available
@@ -82,7 +80,7 @@ class PaperSummarizer(BaseAgent):
         match = re.search(pattern, text, re.DOTALL)
         return match.group(1).strip() if match else ""
 
-    def _extract_hypotheses(self, text: str) -> List[str]:
+    def _extract_hypotheses(self, text: str) -> list[str]:
         """
         Extracts hypothesis suggestions from the LLM output.
         """

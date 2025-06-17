@@ -75,6 +75,8 @@ EVENT_ICONS = {
     "PromptLoaded": "📝",
     "JudgementReceived": "🗣️",
     "ScoreSaved": "💾",
+    "SectionUpdated": "📝✨",
+    "DocumentProfiled": "📄📊",
     "PipelineJudgeAgentEnd": "🛑⚖️",
     "PipelineScoreSummary": "📈🧮",
     "SymbolicPipelineSuggestion": "🧠💡",

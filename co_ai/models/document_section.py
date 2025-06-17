@@ -1,24 +1,23 @@
 # models/document_section.py
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import Column, ForeignKey, Integer, String, Text, JSON, ARRAY
 from sqlalchemy.orm import relationship
-
 from co_ai.models.base import Base
-
 
 class DocumentSectionORM(Base):
     __tablename__ = "document_sections"
 
     id = Column(Integer, primary_key=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
-    section_name = Column(String, nullable=False)
-    section_text = Column(Text)
-    source = Column(Text)
+    
+    section_name = Column(String, nullable=False)      # e.g., "Introduction", "Method"
+    section_text = Column(Text, nullable=True)
+    source = Column(Text, nullable=True)               # e.g., original text or system
 
-    domain = Column(String)                # e.g., "co_ai.reasoning"
-    embedding = Column(JSON)               # optional vector embedding
-    summary = Column(Text)                 # optional LLM-generated summary
-    extra_data = Column(JSON)                # score details or LLM confidence
+    domains = Column(ARRAY(String))  
+    embedding = Column(JSON, nullable=True)            # vector embedding if used
+    summary = Column(Text, nullable=True)              # LLM-generated summary
+    extra_data = Column(JSON, nullable=True)           # MR.Q scores, confidences, etc.
 
     document = relationship("DocumentORM", back_populates="sections")
 
@@ -28,6 +27,9 @@ class DocumentSectionORM(Base):
             "document_id": self.document_id,
             "section_name": self.section_name,
             "section_text": self.section_text,
+            "domain": self.domain,
+            "summary": self.summary,
+            "extra_data": self.extra_data,
         }
 
     def __repr__(self):
