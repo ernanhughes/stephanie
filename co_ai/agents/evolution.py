@@ -5,9 +5,11 @@ import re
 import numpy as np
 
 from co_ai.agents.base_agent import BaseAgent
-from co_ai.constants import (EVOLVED, GOAL, HYPOTHESES, PIPELINE,
-                             PIPELINE_RUN_ID, RANKING)
-from co_ai.models import HypothesisORM
+from co_ai.constants import (
+    EVOLVED,
+    HYPOTHESES,
+    RANKING,
+)
 from co_ai.tools.embedding_tool import get_embedding
 
 
@@ -71,13 +73,7 @@ class EvolutionAgent(BaseAgent):
 
                 if refined_list:
                     for r in refined_list:
-                        goal = context.get(GOAL)
-                        hyp = HypothesisORM(
-                            goal=goal,
-                            text=h,
-                            pipeline_signature=context.get(PIPELINE),
-                            pipeline_run_id=context.get(PIPELINE_RUN_ID),
-                        )
+                        hyp = self.save_hypothesis({"text": r}, context=context)
                         self.memory.hypotheses.insert(hyp)
                         evolved.append(r)
                 else:
@@ -88,9 +84,7 @@ class EvolutionAgent(BaseAgent):
 
             except Exception as e:
                 print(f"❌ Exception: {type(e).__name__}: {e}")
-                self.logger.log(
-                    "EvolutionError", {"error": str(e), "hypotheses": h}
-                )
+                self.logger.log("EvolutionError", {"error": str(e), "hypotheses": h})
 
         context["evolved"] = evolved
         self.logger.log(

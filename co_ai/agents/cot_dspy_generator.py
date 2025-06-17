@@ -9,7 +9,7 @@ for later evaluation or training (e.g., via MR.Q or LLM-based scoring).
 Key features:
 - DSPy integration with structured signature (CoTGenerationSignature)
 - Local model inference via Ollama (e.g., qwen3)
-- Hypothesis logging and memory storage (via HypothesisORM)
+- Hypothesis logging and memory storage (via Hypothesis ORM)
 - Prompt metadata management and linking
 - Designed for use in self-improving Co AI pipelines
 
@@ -22,9 +22,7 @@ import dspy
 from dspy import InputField, OutputField, Signature
 
 from co_ai.agents.base_agent import BaseAgent
-from co_ai.constants import (GOAL, GOAL_TEXT, PIPELINE, PIPELINE_RUN_ID,
-                             PROMPT_PATH, STRATEGY)
-from co_ai.models import HypothesisORM
+from co_ai.constants import (GOAL, GOAL_TEXT)
 
 
 # DSPy signature for generating Chains of Thought
@@ -91,16 +89,13 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
 
         prompt_text = goal.get(GOAL_TEXT)
         prompt = self.get_or_save_prompt(prompt_text, context)
-        goal_id = self.get_goal_id(goal)
-        hyp = HypothesisORM(
-            goal_id=goal_id,
-            prompt_id=prompt.id,
-            text=cot,
-            features={"source": "cot_dspy"},
-            pipeline_signature=context.get(PIPELINE),
-            pipeline_run_id=context.get(PIPELINE_RUN_ID),
+        hyp = self.save_hypothesis(
+            {
+                "prompt_id": prompt.id,
+                "text": cot,
+                "features": {"source": "cot_dspy"},
+            },
+            context=context,
         )
-        self.memory.hypotheses.insert(hyp)
-
         context[self.output_key] = [hyp.to_dict()]
         return context

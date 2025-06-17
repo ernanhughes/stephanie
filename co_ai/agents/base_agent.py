@@ -10,7 +10,7 @@ import litellm
 from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                              GOAL, HYPOTHESES, INPUT_KEY, MODEL, NAME,
                              OUTPUT_KEY, PROMPT_MATCH_RE, PROMPT_PATH,
-                             SAVE_CONTEXT, SAVE_PROMPT, SOURCE, STRATEGY)
+                             SAVE_CONTEXT, SAVE_PROMPT, SOURCE, STRATEGY, PIPELINE, PIPELINE_RUN_ID)
 from co_ai.logs import JSONLogger
 from co_ai.models import PromptORM
 from co_ai.prompts import PromptLoader
@@ -300,3 +300,37 @@ class BaseAgent(ABC):
         
         print("\n⏱️ Performance Breakdown")
         print(tabulate(table, headers=["Function", "Avg Time", "Calls", "Max Time"]))
+
+
+
+    def save_hypothesis(self, hypothesis_dict:dict, context:dict):
+        """
+        Central method to save hypotheses and track document section links.
+        """
+        from co_ai.models.hypothesis import HypothesisORM
+        from co_ai.models.hypothesis_document_section import HypothesisDocumentSectionORM
+
+
+        # Ensure metadata is set if not already in the dict
+        goal = context.get(GOAL, {})
+        hypothesis_dict["goal_id"] = self.get_goal_id(goal)
+        hypothesis_dict["pipeline_signature"] = context.get(PIPELINE)
+        hypothesis_dict["pipeline_run_id"] = context.get(PIPELINE_RUN_ID)
+        hypothesis_dict["source"] = self.name
+        hypothesis_dict["strategy"] = self.strategy
+
+        hypothesis = HypothesisORM(hypothesis_dict)
+        self.memory.session.add(hypothesis)
+        self.memory.session.flush()  # ensures ID is available
+
+        # Link to document sections if provided
+        section_ids = context.get("used_document_section_ids", [])
+        for section_id in section_ids:
+            link = HypothesisDocumentSectionORM(
+                hypothesis_id=hypothesis.id,
+                document_section_id=section_id,
+            )
+            self.memory.session.add(link)
+
+        self.memory.session.commit()
+        return hypothesis

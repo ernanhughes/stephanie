@@ -1,13 +1,7 @@
-from itertools import combinations
-from typing import Optional
-
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.analysis.rubric_classifier import RubricClassifierMixin
-from co_ai.constants import GOAL, GOAL_TEXT, PIPELINE, PIPELINE_RUN_ID
-from co_ai.evaluator import LLMJudgeEvaluator, MRQSelfEvaluator
-from co_ai.models import EvaluationORM, HypothesisORM
-from co_ai.prompts import PromptLoader
+from co_ai.constants import GOAL, GOAL_TEXT
 
 
 class GeneralReasonerAgent(ScoringMixin, RubricClassifierMixin, BaseAgent):
@@ -78,24 +72,22 @@ class GeneralReasonerAgent(ScoringMixin, RubricClassifierMixin, BaseAgent):
         merged = {**context, "question": question}
 
         hypotheses = []
-        goal_id = self.get_goal_id(goal)
         for strategy in strategies:
             prompt = self.prompt_loader.from_file(
                 f"strategy_{strategy}.txt", self.cfg, merged
             )
             response = self.call_llm(prompt, merged)
-            hypothesis = HypothesisORM(
-                text=response,
-                goal_id=goal_id,
-                strategy=strategy,
-                features={"strategy": strategy},
-                source=self.name,
-                pipeline_signature=context.get(PIPELINE),
-                pipeline_run_id=context.get(PIPELINE_RUN_ID),
+            hypothesis = self.save_hypothesis(
+                {
+                    "text": response,
+                    "strategy": strategy,
+                    "features": {"strategy": strategy},
+                    "source": self.name,
+                },
+                context=context,
             )
-            self.memory.hypotheses.insert(hypothesis)
-            hypotheses.append(hypothesis.to_dict())
 
+            hypotheses.append(hypothesis.to_dict())
         return hypotheses
 
     def _summarize_pattern(self, pattern: dict):

@@ -1,12 +1,11 @@
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.analysis.rubric_classifier import RubricClassifierMixin
-from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
+from co_ai.constants import GOAL
 from co_ai.evaluator.llm_judge_evaluator import LLMJudgeEvaluator
 from co_ai.evaluator.mrq_self_evaluator import MRQSelfEvaluator
-from co_ai.models import HypothesisORM
 
 
-class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin): 
+class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.logger.log("AgentInit", {"agent": "ChainOfThoughtGeneratorAgent"})
@@ -38,10 +37,7 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         scores = {}
         for candidate in candidates[1:]:
             best, scores = self.evaluator.judge(
-                prompt=prompt_text,
-                output_a=best,
-                output_b=candidate, 
-                context=context
+                prompt=prompt_text, output_a=best, output_b=candidate, context=context
             )
         self.logger.log("EvaluationCompleted", {"best_output": best[:100], **scores})
 
@@ -56,15 +52,15 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         }
 
         prompt = self.get_or_save_prompt(prompt_text, context)
- 
-        best_orm = HypothesisORM(
-            goal_id=self.get_goal_id(goal),
-            text=best,
-            confidence=score,
-            features=features,
-            prompt_id=prompt.id,
-            pipeline_signature=context.get(PIPELINE),
-            pipeline_run_id=context.get(PIPELINE_RUN_ID),
+
+        best_orm = self.save_hypothesis(
+            {
+                "text": best,
+                "confidence": score,
+                "features": features,
+                "prompt_id": prompt.id,
+            },
+            context,
         )
         self.memory.hypotheses.insert(best_orm)
         self.logger.log("HypothesisStored", {"text": best[:100], "confidence": score})

@@ -6,7 +6,6 @@ from co_ai.compiler.llm_compiler import LLMCompiler
 from co_ai.compiler.passes.strategy_mutation_pass import StrategyMutationPass
 from co_ai.constants import GOAL
 from co_ai.evaluator.evaluator_loader import get_evaluator
-from co_ai.models import HypothesisORM
 
 
 class PromptCompilerAgent(BaseAgent, PromptEvolverMixin):
@@ -53,16 +52,14 @@ class PromptCompilerAgent(BaseAgent, PromptEvolverMixin):
                 "prompt": prompt[:100],
                 "hypothesis": hypothesis_text[:100]
             })
-            hyp = HypothesisORM(
-                goal_id=goal.get("id"),
-                prompt_id=prompt_id,
-                source=self.name,
-                text=hypothesis_text,
-                strategy=self.strategy,
-                features={"source": "compiled_prompt"},
-                pipeline_run_id=context.get("pipeline_run_id"),
+            hyp = self.save_hypothesis(
+                {
+                    "prompt_id": prompt_id,
+                    "text": hypothesis_text,
+                    "features": {"source": "compiled_prompt"},
+                },
+                context=context
             )
-            self.memory.hypotheses.insert(hyp)
             hypotheses.append(hyp.to_dict())
             score = self.score_prompt(
                 prompt=prompt,

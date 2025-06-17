@@ -1,8 +1,6 @@
-import json
 import math
 import re
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Union
 
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
@@ -11,8 +9,6 @@ from co_ai.agents.rule_tuner import RuleTunerAgent
 from co_ai.agents.unified_mrq import UnifiedMRQAgent
 from co_ai.analysis.symbolic_impact_analyzer import SymbolicImpactAnalyzer
 from co_ai.constants import GOAL, PIPELINE_RUN_ID
-from co_ai.models import EvaluationORM, HypothesisORM
-from co_ai.utils import compute_similarity_matrix
 from co_ai.utils.graph_tools import build_mermaid_graph, save_mermaid_to_file
 
 
@@ -128,24 +124,22 @@ class LATSAgent(ScoringMixin, BaseAgent):
         # Safely extract scores
         dimension_scores = best_child.get("dimension_scores", {})
 
-        # 4. Create final hypothesis
-        hypothesis = HypothesisORM(
-            goal_id=goal["id"],
-            prompt_id=prompt_id,
-            source=self.name,
-            text="\n".join(best_trace),
-            metadata={
-                "trace": best_trace,
-                "path": [n["id"] for n in best_trace],
-                "scores": {
-                    dim: data["score"] for dim, data in dimension_scores.items()
+        # 4. Create final hypothesis using save_hypothesis
+        hypothesis = self.save_hypothesis(
+            {
+                "prompt_id": prompt_id,
+                "text": "\n".join(best_trace),
+                "metadata": {
+                    "trace": best_trace,
+                    "path": [n["id"] for n in best_trace],
+                    "scores": {
+                        dim: data["score"] for dim, data in dimension_scores.items()
+                    },
+                    "score": best_child.get("score", 0.0),
                 },
-                "score": best_child.get("score", 0.0),
             },
-            pipeline_run_id=context.get(PIPELINE_RUN_ID),
+            context=context
         )
-
-        self.memory.hypotheses.insert(hypothesis)
         context.setdefault("lats_result", []).append(hypothesis.to_dict())
         context.setdefault("hypotheses", []).append(hypothesis.to_dict())
         # Refine system using analysis
@@ -241,15 +235,14 @@ class LATSAgent(ScoringMixin, BaseAgent):
             new_trace = node['trace'] + [comp]
             
             # Score hypothesis
-            hyp = HypothesisORM(
-                goal_id=context[GOAL]["id"],
-                prompt_id=prompt_id,
-                strategy="lats",
-                source=self.name,
-                text=comp,
-                pipeline_run_id=context.get(PIPELINE_RUN_ID),
+            hyp = self.save_hypothesis(
+                {
+                    "prompt_id": prompt_id,
+                    "strategy": "lats",
+                    "text": comp,
+                },
+                context=context
             )
-            self.memory.hypotheses.insert(hyp)
 
             hyp_dict = hyp.to_dict()
 

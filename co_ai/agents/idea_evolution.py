@@ -4,8 +4,7 @@ import itertools
 import numpy as np
 
 from co_ai.agents.base_agent import BaseAgent
-from co_ai.constants import EVOLVED, GOAL, HYPOTHESES, PIPELINE, RANKING
-from co_ai.models import HypothesisORM
+from co_ai.constants import EVOLVED, GOAL, HYPOTHESES, RANKING
 from co_ai.parsers import extract_hypotheses
 
 
@@ -164,22 +163,21 @@ class IdeaEvolutionAgent(BaseAgent):
 
     def _save_evolved(self, variants: list, context: dict):
         """
-        Save evolved hypotheses to database with lineage info
+        Save evolved hypotheses to database with lineage info using save_hypothesis().
         """
-        goal_text = self.extract_goal_text(context.get(GOAL))
-        pipeline_sig = context.get(PIPELINE)
-
+        results = []
         for v in variants:
-            hyp = HypothesisORM(
-                goal=goal_text,
-                text=v["text"],
-                pipeline_signature=pipeline_sig,
-                parent=context.get("current_hypothesis", None),
-                evolution_level=context.get("evolution_round", 0)
+            hyp = self.save_hypothesis(
+                {
+                    "text": v["text"],
+                    "parent_id": context.get("current_hypothesis", {}).get("id"),
+                    "evolution_level": context.get("evolution_round", 0),
+                },
+                context=context
             )
-            self.db.add(hyp)
-        self.db.commit()
-
+            results.append(hyp)
+        return results
+    
     def cosine_similarity(self, vec1, vec2):
         """Compute cosine similarity between two vectors."""
         v1 = np.array(vec1)

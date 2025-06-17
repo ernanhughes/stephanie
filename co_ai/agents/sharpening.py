@@ -5,7 +5,6 @@ from datetime import datetime
 from co_ai.agents import BaseAgent
 from co_ai.constants import GOAL, PIPELINE, PIPELINE_RUN_ID
 from co_ai.evaluator import MRQSelfEvaluator
-from co_ai.models import HypothesisORM
 from co_ai.models.sharpening_result import SharpeningResultORM
 
 
@@ -148,15 +147,13 @@ class SharpeningAgent(BaseAgent):
                     "prompt_text": prompt[:100],
                 },
             )
-            hyp = HypothesisORM(
-                goal=goal,
-                text=entry["sharpened_hypothesis"],
-                prompt=prompt,
-                pipeline_run_id=context.get(PIPELINE_RUN_ID),
-                pipeline_signature=entry.get(PIPELINE),
+            self.save_hypothesis(
+                {
+                    "text": entry["sharpened_hypothesis"],
+                    "prompt_id": new_prompt_id,
+                },
+                context=context
             )
-            # Save new hypothesis for that prompt
-            self.memory.hypotheses.insert(hyp)
 
             self.logger.log(
                 "SharpenedHypothesisSaved",

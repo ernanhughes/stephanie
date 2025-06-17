@@ -1,6 +1,5 @@
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL, HYPOTHESES, PIPELINE, PIPELINE_RUN_ID
-from co_ai.models import HypothesisORM
 from co_ai.parsers import extract_hypotheses
 
 
@@ -57,15 +56,19 @@ class RefinerAgent(BaseAgent):
                 "RefinerHypothesesExtracted", {"count": len(refined_hypotheses)}
             )
 
+            refined = []
             for h in refined_hypotheses:
-                hyp = HypothesisORM(
-                    goal=goal,
-                    text=h,
-                    prompt=refined_prompt,
-                    pipeline_run_id=context.get(PIPELINE_RUN_ID),
-                    pipeline_signature=context.get(PIPELINE)
+                hyp = self.save_hypothesis(
+                    {
+                        "goal": goal,
+                        "text": h,
+                        "prompt": refined_prompt,
+                        "pipeline_run_id": context.get(PIPELINE_RUN_ID),
+                        "pipeline_signature": context.get(PIPELINE),
+                    },
+                    context=context
                 )
-                self.memory.hypotheses.insert(hyp)
+                refined.append(hyp)
 
             info = {
                 "original_response": original_response,

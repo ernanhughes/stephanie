@@ -1,9 +1,8 @@
 # co_ai/agents/idea_sharpening.py
 
 from co_ai.agents.base_agent import BaseAgent
-from co_ai.constants import GOAL, HYPOTHESES, PIPELINE, PIPELINE_RUN_ID
+from co_ai.constants import GOAL, HYPOTHESES, PIPELINE
 from co_ai.evaluator import MRQSelfEvaluator
-from co_ai.models import HypothesisORM
 
 
 class IdeaSharpeningAgent(BaseAgent):
@@ -113,22 +112,20 @@ class IdeaSharpeningAgent(BaseAgent):
             return result
 
     def save_improved(self, goal: dict, original_idea: str, result: dict, context: dict):
-        if not result["improved"]:
+        if not result.get("improved"):
             return None
+
         sharpened = result["sharpened_hypothesis"]
         prompt_id = self.memory.prompt.get_id_from_response(sharpened)
 
-        # Save to HypothesisORM
-        hyp = HypothesisORM(
-            goal_id=goal.get("id"),
-            text=sharpened,
-            prompt_id=prompt_id,
-            pipeline_signature=context.get(PIPELINE),
-            pipeline_run_id=context.get(PIPELINE_RUN_ID),
-            source="idea_sharpening_agent",
-            confidence=result["score"]
+        hyp = self.save_hypothesis(
+            {
+                "text": sharpened,
+                "prompt_id": prompt_id,
+                "confidence": result.get("score"),
+            },
+            context=context,
         )
-        self.memory.hypotheses.insert(hyp)
 
         self.logger.log(
             "IdeaSharpenedAndSaved",

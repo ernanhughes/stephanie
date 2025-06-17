@@ -12,8 +12,6 @@ class GenerationAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
-        from co_ai.models import HypothesisORM
-
         goal = context.get(GOAL)
 
         self.logger.log("GenerationStart", {GOAL: goal})
@@ -39,14 +37,13 @@ class GenerationAgent(BaseAgent):
         hypotheses_saved = []
         prompt = self.memory.prompt.get_from_text(prompt_text)
         for h in hypotheses:
-            hyp = HypothesisORM(
-                goal_id=goal.get("id"),
-                text=h,
-                prompt_id=prompt.id,
-                pipeline_signature=context.get(PIPELINE),
-                pipeline_run_id=context.get(PIPELINE_RUN_ID),
+            hyp = self.save_hypothesis(
+                {
+                    "text": h,
+                    "prompt_id": prompt.id,
+                },
+                context=context,
             )
-            self.memory.hypotheses.insert(hyp)
             hypotheses_saved.append(hyp.to_dict())
 
         # Update context with new hypotheses
