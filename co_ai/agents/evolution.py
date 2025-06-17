@@ -11,6 +11,7 @@ from co_ai.constants import (
     RANKING,
 )
 from co_ai.tools.embedding_tool import get_embedding
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class EvolutionAgent(BaseAgent):
@@ -107,7 +108,7 @@ class EvolutionAgent(BaseAgent):
         for (i, h1), (j, h2) in itertools.combinations(enumerate(hypotheses), 2):
             if i in used or j in used:
                 continue
-            sim = self.cosine_similarity(embeddings[i], embeddings[j])
+            sim = cosine_similarity(embeddings[i], embeddings[j])
             if sim >= threshold:
                 self.logger.log(
                     "GraftingPair",
@@ -128,12 +129,6 @@ class EvolutionAgent(BaseAgent):
                 grafted.append(h)
 
         return grafted
-
-    def cosine_similarity(self, vec1, vec2):
-        """Compute cosine similarity between two vectors."""
-        v1 = np.array(vec1)
-        v2 = np.array(vec2)
-        return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
 
     def extract_hypothesis(self, text: str) -> list[str]:
         """

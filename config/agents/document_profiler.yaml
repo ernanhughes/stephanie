@@ -10,6 +10,8 @@ document_profiler:
   use_unstructured: true
   fallback_to_llm: true
   store_inline: true
+  domain_seed_config_path: "config/domain/seeds.yaml"
+  summary_prompt_file: "summarize.txt"
   output_sections:
     - title
     - abstract

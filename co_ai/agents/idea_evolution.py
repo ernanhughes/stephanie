@@ -6,6 +6,7 @@ import numpy as np
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import EVOLVED, GOAL, HYPOTHESES, RANKING
 from co_ai.parsers import extract_hypotheses
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class IdeaEvolutionAgent(BaseAgent):
@@ -117,7 +118,7 @@ class IdeaEvolutionAgent(BaseAgent):
             if i in used or j in used:
                 continue
 
-            sim = self.cosine_similarity(embeddings[i], embeddings[j])
+            sim = cosine_similarity(embeddings[i], embeddings[j])
             if sim >= threshold:
                 self.logger.log("GraftingPair", {
                     "similarity": sim,
@@ -177,10 +178,4 @@ class IdeaEvolutionAgent(BaseAgent):
             )
             results.append(hyp)
         return results
-    
-    def cosine_similarity(self, vec1, vec2):
-        """Compute cosine similarity between two vectors."""
-        v1 = np.array(vec1)
-        v2 = np.array(vec2)
-        return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
 

@@ -1,0 +1,91 @@
+domains:
+  symbolic:
+    description: "Symbolic reasoning, planning, and logic-guided AI."
+    seeds:
+      - "Symbolic planning using language agents."
+      - "Neuro-symbolic reasoning for AI alignment."
+      - "Inductive logic programming with LLMs."
+      - "Formal rule extraction from natural language."
+      - "Symbolic systems for concept generalization."
+
+  alignment:
+    description: "Scalable oversight, alignment, and control of AI behavior."
+    seeds:
+      - "Scalable oversight and alignment strategies."
+      - "Training language models to be helpful and harmless."
+      - "Preventing goal misgeneralization in agents."
+      - "Reward modeling for safety and usefulness."
+      - "Evaluating AI via human preference learning."
+
+  planning:
+    description: "Strategic action planning with language and decision models."
+    seeds:
+      - "Hierarchical reinforcement learning for agents."
+      - "Planning with tree search and transformers."
+      - "Goal decomposition and reasoning chains."
+      - "Language-driven policy generation."
+      - "Meta-planning and strategy selection in LLMs."
+
+  training:
+    description: "Supervised and reinforcement-based methods to improve LLMs."
+    seeds:
+      - "Instruction tuning for LLMs."
+      - "DPO and reward modeling techniques."
+      - "Contrastive preference learning for dialogue."
+      - "Finetuning models with demonstrations and feedback."
+      - "Scalable self-improvement with synthetic data."
+
+  reasoning:
+    description: "Structured and unstructured inference using language models."
+    seeds:
+      - "Multi-step chain-of-thought reasoning."
+      - "Self-reflection and hypothesis verification."
+      - "Automated scientific hypothesis generation."
+      - "CoT optimization with verifier feedback."
+      - "Evaluating reasoning quality in large models."
+
+  retrieval:
+    description: "Augmenting LLMs with external information or memory."
+    seeds:
+      - "RAG techniques for knowledge retrieval."
+      - "Memory-augmented transformers."
+      - "Indexing and embedding documents for inference."
+      - "Selective context injection for LLMs."
+      - "Sparse attention over long documents."
+
+  meta_reasoning:
+    description: "Reflective, self-aware, and dynamic adaptation techniques."
+    seeds:
+      - "Dynamic strategy selection for problem solving."
+      - "Evaluating and improving model behavior through reflection."
+      - "Pipeline self-awareness and repair."
+      - "Meta-learning from task outcomes."
+      - "Agent self-evaluation with internal scoring."
+
+  hypothesis:
+    description: "Scientific inquiry and hypothesis-driven learning."
+    seeds:
+      - "Generating testable hypotheses from goals."
+      - "Prioritizing hypotheses with limited information."
+      - "Evaluating hypothesis novelty and relevance."
+      - "Composing structured arguments from observations."
+      - "Hypothesis evolution via language agents."
+
+  evaluation:
+    description: "Scoring, ranking, and understanding model outputs."
+    seeds:
+      - "Rubric-based evaluation of language outputs."
+      - "Model preference alignment via pairwise scoring."
+      - "Automatic feedback generation."
+      - "Multi-dimensional quality evaluation (clarity, novelty, etc)."
+      - "Self-rewarding agents via reinforcement of good behavior."
+
+  agency:
+    description: "Capabilities related to agent autonomy, memory, and coordination."
+    seeds:
+      - "Agent collaboration and delegation."
+      - "Autonomous task planning and execution."
+      - "Persistent memory and goal tracking in agents."
+      - "Multi-agent negotiation with language."
+      - "Self-organizing agent systems."
+

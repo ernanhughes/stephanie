@@ -1,0 +1,6 @@
+You are a summarizer. Read the following research section and write a short, clear summary of its key idea.
+
+Section:
+{{ section_text }}
+
+Summary:

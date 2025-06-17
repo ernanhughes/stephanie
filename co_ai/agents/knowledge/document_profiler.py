@@ -2,17 +2,20 @@ import json
 import re
 
 from co_ai.agents.base_agent import BaseAgent
+from co_ai.analysis.domain_classifier import DomainClassifier
 
 DEFAULT_SECTIONS = ["title", "abstract", "methods", "results", "contributions"]
 
 class DocumentProfilerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
+        self.summary_prompt_file       = cfg.get("summary_prompt_file", "summarize.txt")
         self.use_unstructured   = cfg.get("use_unstructured", True)
         self.fallback_to_llm    = cfg.get("fallback_to_llm", True)
         self.store_inline       = cfg.get("store_inline", True)
         self.output_sections    = cfg.get("output_sections", DEFAULT_SECTIONS)
         self.min_chars_per_sec  = cfg.get("min_chars_per_section", 120)  # quality gate
+        self.domain_classifier = DomainClassifier(memory, logger, cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"))
 
     async def run(self, context: dict) -> dict:
         documents   = context.get(self.input_key, [])
@@ -36,6 +39,13 @@ class DocumentProfilerAgent(BaseAgent):
                 else:
                     chosen = unstruct_data
 
+                prompt = self.prompt_loader.from_file(self.summary_prompt_file, self.cfg, context)
+                generated_summary = self.call_llm(prompt, context)
+
+                # -- STEP 3 : Domain detection ---------------------------------
+                detected_domain = self.domain_classifier.classify(text)
+
+
                 # -- STEP 3 : Persist ------------------------------------------
                 for section, text in chosen.items():
                     self.memory.document_section.upsert(
@@ -44,6 +54,8 @@ class DocumentProfilerAgent(BaseAgent):
                             "section_name": section,
                             "section_text": text,
                             "source": "unstructured+llm",
+                            "domain": detected_domain,            # ← Add this dynamically
+                            "summary": generated_summary,
                         }
                     )
 

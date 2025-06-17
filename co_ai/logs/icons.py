@@ -16,6 +16,11 @@ EVENT_ICONS = {
     "ContextAfterStage": "🗃️",
     "ContextYAMLDumpSaved": "📄",
     "debug": "🐞",
+    "DocumentProfileFailed": "📉",         # Indicates profiling failed or dropped
+    "DomainClassifierInit": "🧠",          # Classifier startup — cognitive/init
+    "DomainConfigLoaded": "📚",            # YAML or config file loaded
+    "SeedEmbeddingsPrepared": "🧬",        # Indicates seeds were embedded — DNA/metaphor
+    "DocumentLoadFailed": "❌",            # General failure/loading error
     "ScoreSkipped": "📉⏭️",  # Scoring skipped due to existing score
     "GoalDomainAssigned": "🎯📚",  # Domain assigned to goal
     "DocumentsFiltered": "📑🔍",  # Documents filtered based on relevance
@@ -59,7 +64,7 @@ EVENT_ICONS = {
     "EarlyStopping": "⏹️⏳",
     "TrainingComplete": "🎉✅",
     "SymbolicAgentOverride": "🛠️",
-    "RuleApplicationLogged": "Roland who they are they are",
+    "RuleApplicationLogged": "⚖️📜",
     "ScoreParsed": "📊",
     "SymbolicRulesFound": "🧩",
     "DuplicateSymbolicRuleSkipped": "♻️",

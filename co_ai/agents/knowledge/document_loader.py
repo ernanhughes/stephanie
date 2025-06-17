@@ -20,7 +20,7 @@ from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL
 from co_ai.tools.arxiv_tool import fetch_arxiv_metadata
 from co_ai.tools.pdf_tools import PDFConverter
-
+from co_ai.analysis.domain_classifier import DomainClassifier
 
 def guess_title_from_text(text: str) -> str:
     lines = text.strip().split("\n")
@@ -36,6 +36,13 @@ class DocumentLoaderAgent(BaseAgent):
         self.summarize_documents = cfg.get("summarize_documents", False)
         self.domain_seeds = cfg.get("domain_seeds", {})
         self.top_k_domains = cfg.get("top_k_domains", 3)
+        self.domain_classifier = DomainClassifier(
+            memory=self.memory,
+            logger=self.logger,
+            config_path=cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
+        )
+
+
 
     async def run(self, context: dict) -> dict:
         search_results = context.get(self.input_key, [])
@@ -55,8 +62,28 @@ class DocumentLoaderAgent(BaseAgent):
                 existing = self.memory.document.get_by_url(url)
                 if existing:
                     self.logger.log("DocumentAlreadyExists", {"url": url})
-                    stored_documents.append(existing)
-                    self.label_top_k_domains([existing.to_dict()], existing.id, self.top_k_domains)
+                    stored_documents.append(existing.to_dict())
+                    if not self.memory.document_domains.get_domains(existing.id):
+                        text = existing.text or ""
+                        domain = self.domain_classifier.classify(text)
+                        document_domains.append({"document_id": existing.id, "domain": domain})
+
+                        self.memory.document_domains.insert(
+                            {
+                                "document_id": existing.id,
+                                "domain": domain,
+                                "score": 1.0,  # assume max score for existing match
+                            }
+                        )
+
+                        self.logger.log(
+                            "DomainAssigned",
+                            {
+                                "title": existing.title[:60],
+                                "domain": domain,
+                                "score": 1.0,
+                            },
+                        )
                     continue
 
                 # Download PDF
@@ -107,72 +134,38 @@ class DocumentLoaderAgent(BaseAgent):
 
                 # Save to DB
                 stored = self.memory.document.add_document(doc)
-                stored_documents.append(stored)
+                stored_documents.append(stored.to_dict())
 
                 # Assign + store domain
-                domain_info = self.label_top_k_domains([stored.to_dict()], stored.id, self.top_k_domains)
-                document_domains.extend(domain_info)
+                text = stored.text or ""
+                domain = self.domain_classifier.classify(text)
+                document_domains.append({"document_id": stored.id, "domain": domain})
+
+                self.memory.document_domains.insert(
+                    {
+                        "document_id": stored.id,
+                        "domain": domain,
+                        "score": 1.0,  # assuming single best match
+                    }
+                )
+
+                self.logger.log(
+                    "DomainAssigned",
+                    {
+                        "title": stored.title[:60],
+                        "domain": domain,
+                        "score": 1.0,
+                    },
+                )
+
 
             except Exception as e:
                 self.logger.log(
                     "DocumentLoadFailed", {"url": result.get("url"), "error": str(e)}
                 )
 
-        context["document_ids"] = [doc.id for doc in stored_documents]
+        context[self.output_key] = stored_documents
+        context["document_ids"] = [doc.get("id") for doc in stored_documents]
         context["document_domains"] = document_domains
-        context[self.output_key] = [doc.to_dict() for doc in stored_documents]
         return context
 
-    def label_top_k_domains(self, documents, document_id, top_k: int = 3):
-        """
-        Assigns top-K domains to a document and stores them in the DB.
-
-        Also returns the assigned domains for use in the pipeline context.
-        """
-        domain_vectors = {
-            domain: np.mean(
-                [self.memory.embedding.get_or_create(ex) for ex in examples], axis=0
-            )
-            for domain, examples in self.domain_seeds.items()
-        }
-
-        assigned_domains = []
-
-        for doc in documents:
-            text = doc.get("text") or doc.get("content") or ""
-            doc_vector = self.memory.embedding.get_or_create(text)
-
-            domain_scores = []
-            for domain, vec in domain_vectors.items():
-                score = float(cosine_similarity([doc_vector], [vec])[0][0])
-                domain_scores.append((domain, round(score, 4)))
-
-            top_domains = sorted(domain_scores, key=lambda x: x[1], reverse=True)[
-                :top_k
-            ]
-            doc["domains"] = top_domains
-            assigned_domains.append(
-                {
-                    "document_id": document_id,
-                    "domains": top_domains,
-                }
-            )
-
-            for domain, score in top_domains:
-                self.logger.log(
-                    "DomainAssigned",
-                    {
-                        "title": doc.get("title", "")[:60],
-                        "domain": domain,
-                        "score": score,
-                    },
-                )
-                self.memory.document_domains.insert(
-                    {
-                        "document_id": document_id,
-                        "domain": domain,
-                        "score": score,
-                    }
-                )
-
-        return assigned_domains

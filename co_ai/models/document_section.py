@@ -1,6 +1,6 @@
 # models/document_section.py
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import relationship
 
 from co_ai.models.base import Base
@@ -14,6 +14,11 @@ class DocumentSectionORM(Base):
     section_name = Column(String, nullable=False)
     section_text = Column(Text)
     source = Column(Text)
+
+    domain = Column(String)                # e.g., "co_ai.reasoning"
+    embedding = Column(JSON)               # optional vector embedding
+    summary = Column(Text)                 # optional LLM-generated summary
+    extra_data = Column(JSON)                # score details or LLM confidence
 
     document = relationship("DocumentORM", back_populates="sections")
 
