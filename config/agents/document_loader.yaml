@@ -4,10 +4,13 @@ document_loader:
   name: document_loader
   enabled: true
 
+  force_domain_update: true # will force update the document domains
   top_k_domains: 3
+  min_classification_score: 0.4
+  domain_seed_config_path: "config/domain/seeds.yaml"
+
   max_chars_for_summary: 16000
   summarize_documents: true
-  domain_seed_config_path: "config/domain/seeds.yaml"
 
   model:
     name: ollama/qwen3

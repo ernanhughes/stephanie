@@ -28,18 +28,28 @@ class DomainClassifier:
                 self.embeddings.append(embedding)
                 self.labels.append(domain)
         
-        self.logger.log("SeedEmbeddingsPrepared", {
-            "total_seeds": total_seeds,
-            "domains": list(self.domains.keys())
-        })
+        self.logger.log(
+            "SeedEmbeddingsPrepared",
+            {"total_seeds": total_seeds, "domains": list(self.domains.keys())},
+        )
 
     def classify(self, text: str, top_k: int = 3, min_score: float = 0.7):
         embedding = self.memory.embedding.get_or_create(text)
         scores = []
+
         for domain, seed_embedding in zip(self.labels, self.embeddings):
             score = float(cosine_similarity([embedding], [seed_embedding])[0][0])
-            if score >= min_score:
-                scores.append((domain, score))
+            scores.append((domain, score))
 
         sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)
-        return sorted_scores[:top_k]
+
+        top_matches = sorted_scores[:top_k]
+
+        # log warning if none meet the threshold
+        if all(score < min_score for _, score in top_matches):
+            self.logger.log(
+                "LowDomainScore",
+                {"text_snippet": text[:100], "top_scores": top_matches},
+            )
+
+        return top_matches

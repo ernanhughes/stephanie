@@ -32,7 +32,7 @@ EVENT_ICONS = {
     "PaperScoreSavedToMemory": "💾📈",  # Score persisted to memory/db
     "NoHypothesesInContext": "🤷‍♂️",
     "SimilarHypothesesFound": "♻️💭",
-    "StageContext": "🎯",
+    "StageContext": "🔧📝",
     "AgentInit": "🤖",
     "NodeDebug": "🌲🔍",
     "NodeSummary": "🪵📋",

@@ -22,6 +22,7 @@ from co_ai.tools.arxiv_tool import fetch_arxiv_metadata
 from co_ai.tools.pdf_tools import PDFConverter
 from co_ai.analysis.domain_classifier import DomainClassifier
 
+
 def guess_title_from_text(text: str) -> str:
     lines = text.strip().split("\n")
     lines = [line.strip() for line in lines if line.strip()]
@@ -35,14 +36,14 @@ class DocumentLoaderAgent(BaseAgent):
         self.max_chars_for_summary = cfg.get("max_chars_for_summary", 8000)
         self.summarize_documents = cfg.get("summarize_documents", False)
         self.domain_seeds = cfg.get("domain_seeds", {})
+        self.force_domain_update = cfg.get("force_domain_update", False)
         self.top_k_domains = cfg.get("top_k_domains", 3)
+        self.min_classification_score = cfg.get("min_classification_score", 0.6)
         self.domain_classifier = DomainClassifier(
             memory=self.memory,
             logger=self.logger,
             config_path=cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
         )
-
-
 
     async def run(self, context: dict) -> dict:
         search_results = context.get(self.input_key, [])
@@ -55,7 +56,9 @@ class DocumentLoaderAgent(BaseAgent):
         for result in search_results:
             try:
                 url = result.get("url")
-                external_id = result.get("title") # A quirk of the search we store the id as the title
+                external_id = result.get(
+                    "title"
+                )  # A quirk of the search we store the id as the title
                 title = result.get("title")
                 summary = result.get("summary")
 
@@ -63,35 +66,16 @@ class DocumentLoaderAgent(BaseAgent):
                 if existing:
                     self.logger.log("DocumentAlreadyExists", {"url": url})
                     stored_documents.append(existing.to_dict())
-                    if not self.memory.document_domains.get_domains(existing.id):
-                        text = existing.text or ""
-                        domain = self.domain_classifier.classify(text)
-                        document_domains.append({"document_id": existing.id, "domain": domain})
-
-                        self.memory.document_domains.insert(
-                            {
-                                "document_id": existing.id,
-                                "domain": domain,
-                                "score": 1.0,  # assume max score for existing match
-                            }
-                        )
-
-                        self.logger.log(
-                            "DomainAssigned",
-                            {
-                                "title": existing.title[:60],
-                                "domain": domain,
-                                "score": 1.0,
-                            },
-                        )
-                    continue
+                    if not self.memory.document_domains.get_domains(existing.id) or self.force_domain_update:
+                        self.assign_domains_to_document(existing)
+                        continue
 
                 # Download PDF
                 response = requests.get(url)
                 if response.status_code != 200:
                     self.logger.log(
                         "DocumentLoadFailed",
-                        {"url": url, "error": f"HTTP {response.status_code}"}
+                        {"url": url, "error": f"HTTP {response.status_code}"},
                     )
                     continue
 
@@ -137,27 +121,7 @@ class DocumentLoaderAgent(BaseAgent):
                 stored_documents.append(stored.to_dict())
 
                 # Assign + store domain
-                text = stored.text or ""
-                domain = self.domain_classifier.classify(text)
-                document_domains.append({"document_id": stored.id, "domain": domain})
-
-                self.memory.document_domains.insert(
-                    {
-                        "document_id": stored.id,
-                        "domain": domain,
-                        "score": 1.0,  # assuming single best match
-                    }
-                )
-
-                self.logger.log(
-                    "DomainAssigned",
-                    {
-                        "title": stored.title[:60],
-                        "domain": domain,
-                        "score": 1.0,
-                    },
-                )
-
+                self.assign_domains_to_document(stored)
 
             except Exception as e:
                 self.logger.log(
@@ -169,3 +133,26 @@ class DocumentLoaderAgent(BaseAgent):
         context["document_domains"] = document_domains
         return context
 
+    def assign_domains_to_document(self, document):
+        """
+        Classifies the document text into one or more domains,
+        and stores results in the document_domains table.
+        """
+        content = document.content
+        if content:
+            results = self.domain_classifier.classify(content, self.top_k_domains, self.min_classification_score)
+            for domain, score in results:
+                self.memory.document_domains.insert({
+                    "document_id": document.id,
+                    "domain": domain,
+                    "score": score,
+                })
+                self.logger.log("DomainAssigned", {
+                    "title": document.title[:60] if document.title else "",
+                    "domain": domain,
+                    "score": score,
+                })
+        else:
+            self.logger.log("DocumentNoContent", {
+                "document_id": document.id,
+                "title": document.title[:60] if document.title else "", })

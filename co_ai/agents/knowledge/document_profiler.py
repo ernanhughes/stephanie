@@ -4,7 +4,7 @@ from collections import defaultdict
 from fuzzywuzzy import process
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.analysis.domain_classifier import DomainClassifier
-from co_ai.utils.doc_parser import DocumentParserUtils
+from co_ai.utils.document_section_parser import DocumentSectionParser
 
 
 DEFAULT_SECTIONS = ["title", "abstract", "methods", "results", "contributions"]
@@ -23,7 +23,7 @@ class DocumentProfilerAgent(BaseAgent):
             logger,
             cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
         )
-        self.parser_utils = DocumentParserUtils(cfg, logger)
+        self.section_parser = DocumentSectionParser(cfg, logger)
 
     async def run(self, context: dict) -> dict:
         documents = context.get(self.input_key, [])
@@ -39,7 +39,7 @@ class DocumentProfilerAgent(BaseAgent):
                 # -- STEP 1 : Unstructured pass ---------------------------------
                 unstruct_data = {}
                 if self.use_unstructured:
-                    unstruct_data = self.extract_with_unstructured(text)
+                    unstruct_data = self.section_parser.parse(text)
 
                 # -- STEP 2 : Quality check & optional LLM fallback -------------
                 if self.fallback_to_llm and self.needs_fallback(unstruct_data):
@@ -56,11 +56,12 @@ class DocumentProfilerAgent(BaseAgent):
                 # -- STEP 3 : Domain detection ---------------------------------
                 detected_domain = self.domain_classifier.classify(text)
 
+                # no point in overwriting arxiv data
                 if title:
                     chosen["title"] = title
                 if summary:
                     chosen["abstract"] = (
-                        summary  # not any point in overwriting arxiv data
+                        summary  
                     )
 
                 # -- STEP 3 : Persist ------------------------------------------
@@ -104,20 +105,6 @@ class DocumentProfilerAgent(BaseAgent):
         context[self.output_key] = profiled
         return context
 
-    def extract_with_unstructured(self, text: str) -> dict:
-        from unstructured.partition.text import partition_text
-        from unstructured.staging.base import elements_to_json
-
-        elements = partition_text(text=text)
-        json_elems = elements_to_json(elements)
-        structure = self.parser_utils.parse_unstructured_elements(json.loads(json_elems))
-        cleaned = {
-            self.parser_utils.clean_section_heading(k): v for k, v in structure.items()
-        }
-        mapped = self.parser_utils.map_sections(cleaned)
-        final = self.parser_utils.trim_low_quality_sections(mapped)
-        return final
-
     async def extract_with_prompt(self, text: str, context: dict) -> dict:
         prompt_ctx = {
             "text": text[: self.cfg.get("llm_max_chars", 12000)],
@@ -130,7 +117,6 @@ class DocumentProfilerAgent(BaseAgent):
         # 🧠 Heuristic split of text into chunks between headings
         return self.split_text_by_headings(text, headings)
 
-    # ------------------------------------------------------------------ #
     def needs_fallback(self, data: dict) -> bool:
         """
         Simple heuristic:
@@ -223,19 +209,6 @@ class DocumentProfilerAgent(BaseAgent):
                 merged[sec] = f_txt
 
         return merged
-
-    def safe_json_parse(self, raw: str) -> dict:
-        try:
-            return json.loads(raw)
-        except Exception:
-            # Attempt crude line-by-line parse for '# section: text' pattern
-            data = {}
-            for line in raw.splitlines():
-                if ":" in line:
-                    k, v = line.split(":", 1)
-                    if k.strip().lower() in self.output_sections:
-                        data[k.strip().lower()] = v.strip()
-            return data
 
     def parse_headings_from_response(self, response: str) -> list[str]:
         """

@@ -41,6 +41,36 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
         context[self.output_key] = results
         return context
 
+    def assign_domains_to_document(self, document):
+        """
+        Classifies the document text into one or more domains,
+        and stores results in the document_domains table.
+        """
+        # Skip if already has domains
+        if self.memory.document_domains.get_domains(document.id):
+            return
+
+        text = document.text or ""
+        results = self.domain_classifier.classify(text)
+
+        for domain, score in results:
+            self.memory.document_domains.insert(
+                {
+                    "document_id": document.id,
+                    "domain": domain,
+                    "score": score,
+                }
+            )
+
+            self.logger.log(
+                "DomainAssigned",
+                {
+                    "title": document.title[:60] if document.title else "",
+                    "domain": domain,
+                    "score": score,
+                },
+            )
+
     def get_scores_by_document_id (self, document_id: int) -> list[ScoreORM]:
         evaluations = self.memory.session.query(EvaluationORM).filter_by(document_id=document_id).all()
         scores = []

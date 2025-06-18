@@ -16,14 +16,7 @@ defaults:
 
 goal:
   goal_text: "https://arxiv.org/pdf/2503.00735"
-  focus_area: "similar_papers"
   goal_type: "similar_papers"
-  goal_category: "ai_research"
-  strategy: "reasoning"
-  difficulty: "hard"
-  expected_formats:
-    - "tree_of_thought"
-    - "strategy_plan"
 
 post_judgment:
   name: pipeline_judge
@@ -49,7 +42,7 @@ embeddings:
 
 pipeline:
   name: papers
-  tag: "huggingface_relatedHey Tom OK "
+  tag: "huggingface_related_papers import"
   description: "Import papers score and save them"
   stages:
      - name: survey

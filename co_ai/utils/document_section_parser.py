@@ -1,40 +1,56 @@
-# co_ai/utils/doc_parser.py
+import json
 import re
+import yaml
+from pathlib import Path
 from fuzzywuzzy import process
 
-# Target schema for normalized paper sections
-TARGET_SECTIONS = {
-    "title": ["title"],
-    "abstract": ["abstract", "summary"],
-    "introduction": ["introduction", "intro"],
-    "related_work": ["related work", "background", "prior work", "literature review"],
-    "method": ["method", "methods", "methodology", "approach", "algorithm"],
-    "implementation": ["implementation", "code", "technical details"],
-    "results": ["results", "result", "evaluation", "performance"],
-    "discussion": ["discussion", "analysis", "interpretation"],
-    "conclusion": ["conclusion", "conclusions", "final remarks"],
-    "limitations": ["limitations", "drawbacks", "challenges"],
-    "future_work": ["future work", "next steps", "extensions"],
-    "references": ["references", "bibliography", "works cited"],
-}
-
-SECTION_TO_CATEGORY = {}
-for cat, synonyms in TARGET_SECTIONS.items():
-    for synonym in synonyms:
-        SECTION_TO_CATEGORY[synonym] = cat
-
-
-class DocumentParserUtils:
+class DocumentSectionParser:
     def __init__(self, cfg=None, logger=None):
         self.cfg = cfg or {}
-        self.logger = logger or print  # Default to print if no logger provided
+        self.logger = logger or print
         self.min_chars_per_sec = self.cfg.get("min_chars_per_sec", 20)
 
+        # Load target sections from YAML
+        self.config_path = self.cfg.get(
+            "target_sections_config",
+            "config/domain/target_sections.yaml"
+        )
+        self.TARGET_SECTIONS = self._load_target_sections()
+        self.SECTION_TO_CATEGORY = self._build_section_to_category()
+
+    def parse(self, text: str) -> dict:
+        from unstructured.partition.text import partition_text
+        from unstructured.staging.base import elements_to_json
+
+        elements = partition_text(text=text)
+        json_elems = elements_to_json(elements)
+        structure = self.parse_unstructured_elements(json.loads(json_elems))
+        cleaned = {self.clean_section_heading(k): v for k, v in structure.items()}
+        mapped = self.map_sections(cleaned)
+        final = self.trim_low_quality_sections(mapped)
+        return final
+
+    def _load_target_sections(self) -> dict:
+        """Load TARGET_SECTIONS from a YAML file"""
+        path = Path(self.config_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Target sections config not found: {path}")
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    def _build_section_to_category(self) -> dict:
+        """Build reverse lookup map from synonyms to categories"""
+        mapping = {}
+        for cat, synonyms in self.TARGET_SECTIONS.items():
+            for synonym in synonyms:
+                normalized = self._normalize(synonym)
+                mapping[normalized] = cat
+        return mapping
+
+    def _normalize(self, name: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", name.lower().strip())
+
     def parse_unstructured_elements(self, elements: list[dict]) -> dict[str, str]:
-        """
-        Parse unstructured.io JSON output into structured content.
-        Groups text under detected headings.
-        """
         current_section = None
         current_content = []
         structured = {}
@@ -61,46 +77,31 @@ class DocumentParserUtils:
         return structured
 
     def clean_section_heading(self, heading: str) -> str:
-        """
-        Clean up heading strings by removing numbers, bullets, and special chars.
-        """
         if not heading:
             return ""
-        # Remove leading numbers and dots
         heading = re.sub(r"^\s*[\d\.\s]+\s*", " ", heading)
-        # Remove common prefixes
         heading = re.sub(r"^(section|chapter|part)\s+\w+", "", heading, flags=re.IGNORECASE)
-        # Strip special characters
         heading = re.sub(r"[^\w\s]", "", heading)
         heading = re.sub(r"\s+", " ", heading).strip()
         return heading
 
     def map_sections(self, parsed_sections: dict[str, str]) -> dict[str, str]:
-        """
-        Map raw section names to standardized categories.
-        """
         mapped = {}
 
         for sec_name, content in parsed_sections.items():
             normalized = self._normalize(sec_name)
-            if normalized in SECTION_TO_CATEGORY:
-                category = SECTION_TO_CATEGORY[normalized]
+            if normalized in self.SECTION_TO_CATEGORY:
+                category = self.SECTION_TO_CATEGORY[normalized]
                 mapped[category] = content
             else:
-                best_match, score = process.extractOne(normalized, SECTION_TO_CATEGORY.keys())
+                best_match, score = process.extractOne(normalized, self.SECTION_TO_CATEGORY.keys())
                 if score > 75:
-                    category = SECTION_TO_CATEGORY[best_match]
+                    category = self.SECTION_TO_CATEGORY[best_match]
                     mapped[category] = content
 
         return mapped
 
-    def _normalize(self, name: str) -> str:
-        return re.sub(r"[^a-z0-9]", "", name.lower().strip())
-
     def is_valid_section(self, text: str) -> bool:
-        """
-        Heuristic filter to determine if a section has meaningful content.
-        """
         if not text or len(text.strip()) < 10:
             return False
 

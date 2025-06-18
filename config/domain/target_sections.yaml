@@ -1,0 +1,59 @@
+title:
+  - title
+
+abstract:
+  - abstract
+  - summary
+
+introduction:
+  - introduction
+  - intro
+
+related_work:
+  - related work
+  - background
+  - prior work
+  - literature review
+
+method:
+  - method
+  - methods
+  - methodology
+  - approach
+  - algorithm
+
+implementation:
+  - implementation
+  - code
+  - technical details
+
+results:
+  - results
+  - result
+  - evaluation
+  - performance
+
+discussion:
+  - discussion
+  - analysis
+  - interpretation
+
+conclusion:
+  - conclusion
+  - conclusions
+  - final remarks
+
+limitations:
+  - limitations
+  - drawbacks
+  - challenges
+
+future_work:
+  - future work
+  - next steps
+  - extensions
+
+references:
+  - references
+  - bibliography
+  - works cited
