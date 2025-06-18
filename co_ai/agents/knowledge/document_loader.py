@@ -37,6 +37,7 @@ class DocumentLoaderAgent(BaseAgent):
         self.summarize_documents = cfg.get("summarize_documents", False)
         self.force_domain_update = cfg.get("force_domain_update", False)
         self.top_k_domains = cfg.get("top_k_domains", 3)
+        self.download_directory = cfg.get("download_directory", "/tmp")
         self.min_classification_score = cfg.get("min_classification_score", 0.6)
         self.domain_classifier = DomainClassifier(
             memory=self.memory,
@@ -79,7 +80,7 @@ class DocumentLoaderAgent(BaseAgent):
                     continue
 
                 # Save to temporary file
-                pdf_path = f"/tmp/{title}.pdf"
+                pdf_path = f"{self.download_directory}/{title}.pdf"
                 with open(pdf_path, "wb") as f:
                     f.write(response.content)
 

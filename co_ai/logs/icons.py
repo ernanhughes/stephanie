@@ -29,6 +29,7 @@ EVENT_ICONS = {
     "DomainAssigned": "🏷️📚",  # Domain label assigned to doc
     "DomainUpserted": "📌🆕",  # Domain inserted or updated
     "ScoringPaper": "📝📊",  # Paper being scored
+    "SectionInserted": "📂➕",  # New section added
     "PaperScoreSavedToMemory": "💾📈",  # Score persisted to memory/db
     "NoHypothesesInContext": "🤷‍♂️",
     "SimilarHypothesesFound": "♻️💭",
