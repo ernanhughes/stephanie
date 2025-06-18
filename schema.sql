@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS goals (
     goal_type TEXT,                   -- e.g., 'research', 'forecast', 'writing'
     focus_area TEXT,                  -- e.g., 'AI', 'stock', 'healthcare'
     strategy TEXT,                    -- e.g., 'generation_reflect_review', 'cot_eval_refine'
+    difficulty TEXT,
+    goal_category TEXT,         
     llm_suggested_strategy TEXT,
     source TEXT DEFAULT 'user',       -- 'user', 'llm', or 'hybrid'
     created_at TIMESTAMP DEFAULT now()
@@ -18,18 +20,35 @@ CREATE TABLE IF NOT EXISTS goals (
 
 CREATE TABLE IF NOT EXISTS prompts (
     id SERIAL PRIMARY KEY,
+
+    -- Core Prompt Info
     agent_name TEXT NOT NULL,
-    prompt_key TEXT NOT NULL,         -- e.g., generation_goal_aligned.txt
+    prompt_key TEXT NOT NULL,
     prompt_text TEXT NOT NULL,
-    goal_id int REFERENCES goals(id) ON DELETE CASCADE, -- Goal this prompt is associated with;
     response_text TEXT,
-    source TEXT,                      -- e.g., manual, dsp_refinement, feedback_injection
-    version INT DEFAULT 1,
+    source TEXT,
+    version INTEGER DEFAULT 1,
     is_current BOOLEAN DEFAULT FALSE,
-    strategy TEXT,                    -- e.g., goal_aligned, out_of_the_box
-    extra_data JSONB DEFAULT '{}'::JSONB,
+    strategy TEXT,
+
+    -- Associations
+    goal_id INTEGER REFERENCES goals(id) ON DELETE NO ACTION,
+    pipeline_run_id INTEGER,
+
+    -- Metadata
+    extra_data JSONB DEFAULT '{}'::jsonb,
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Indexes for efficient lookup
+CREATE INDEX IF NOT EXISTS idx_prompt_agent
+    ON prompts (source ASC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_strategy
+    ON prompts (strategy ASC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_version
+    ON prompts (version ASC NULLS LAST);
 
 
 
@@ -81,6 +100,35 @@ CREATE TABLE IF NOT EXISTS hypotheses (
 -- CREATE INDEX idx_hypothesis_source ON hypotheses(source);
 -- CREATE INDEX idx_hypothesis_strategy ON hypotheses(strategy_used);
 
+
+CREATE TABLE IF NOT EXISTS evaluations (
+    id SERIAL PRIMARY KEY,
+
+    -- Core Evaluation Context
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+
+    -- Evaluator and Execution Info
+    agent_name TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    evaluator_name TEXT NOT NULL,
+    strategy TEXT,
+    reasoning_strategy TEXT,
+    run_id TEXT,
+
+    -- Evaluation Metadata
+    symbolic_rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE SET NULL,
+    rule_application_id INTEGER REFERENCES rule_applications(id) ON DELETE SET NULL,
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE SET NULL,
+
+    -- Scores and Extra Data
+    scores JSON DEFAULT '{}'::json,
+    extra_data JSONB DEFAULT '{}'::jsonb,
+
+    -- Timestamp
+    created_at TIMESTAMP DEFAULT NOW()
+);
 
 
 
@@ -509,7 +557,7 @@ CREATE TABLE IF NOT EXISTS symbolic_rules
     goal_category text,
     difficulty text,
     focus_area text,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
 )
 
@@ -535,14 +583,6 @@ CREATE TABLE IF NOT EXISTS rule_applications (
     rationale TEXT,                                         -- Why the rule was applied (optional)
     notes TEXT                                               -- Extra notes or observations
 );
-
-CREATE TABLE IF NOT EXISTS evaluation_rule_links (
-    id SERIAL PRIMARY KEY,
-    evaluation_id INTEGER NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
-    rule_application_id INTEGER NOT NULL REFERENCES rule_applications(id) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS prompt_programs (
     id TEXT PRIMARY KEY,
     goal TEXT NOT NULL,
@@ -611,13 +651,35 @@ CREATE TABLE IF NOT EXISTS comparison_preferences (
 
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
+
+    -- Metadata
     title TEXT NOT NULL,
     source TEXT NOT NULL,
     external_id TEXT,
     url TEXT,
     content TEXT,
-    date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    summary TEXT,
+    date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+Kenny
+    -- Relationships
+    goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+
+    -- Domain Classification
+    domain_label TEXT,
+    domains TEXT[]  -- Optional list of additional domain tags
 );
+I
+
+CREATE TABLE IF NOT EXISTS document_domains (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    domain TEXT NOT NULL,
+    score DOUBLE PRECISION NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (document_id, domain)
+);
+
 
 CREATE TABLE IF NOT EXISTS document_sections (
     id SERIAL PRIMARY KEY,
@@ -635,5 +697,49 @@ CREATE TABLE document_section_domains (
     score FLOAT NOT NULL,
     CONSTRAINT unique_document_section_domain UNIQUE (document_section_id, domain)
 );
+
+CREATE TABLE IF NOT EXISTS evaluations (
+    id SERIAL PRIMARY KEY,
+
+    -- Core Evaluation Context
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+
+    -- Evaluator and Execution Info
+    agent_name TEXT NOT NULL,
+    model_name TEXT NOT NULL,
+    evaluator_name TEXT NOT NULL,
+    strategy TEXT,
+    reasoning_strategy TEXT,
+    run_id TEXT,
+
+    -- Evaluation Metadata
+    symbolic_rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE SET NULL,
+    rule_application_id INTEGER REFERENCES rule_applications(id) ON DELETE SET NULL,
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE SET NULL,
+
+    -- Scores and Extra Data
+    scores JSON DEFAULT '{}'::json,
+    extra_data JSONB DEFAULT '{}'::jsonb,
+
+    -- Timestamp
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+CREATE TABLE IF NOT EXISTS evaluation_rule_links (
+    id SERIAL PRIMARY KEY,
+    evaluation_id INTEGER NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
+    rule_application_id INTEGER NOT NULL REFERENCES rule_applications(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+
+
+
+
+
 
 

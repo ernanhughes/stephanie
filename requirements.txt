@@ -17,6 +17,9 @@ wikipedia
 duckduckgo-search
 readability-lxml
 beautifulsoup4
+arxiv
+gradio_client
+torch
 
 # Hugging face tool
 huggingface_hub
