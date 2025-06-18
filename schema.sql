@@ -627,3 +627,13 @@ CREATE TABLE IF NOT EXISTS document_sections (
     source TEXT DEFAULT 'unstructured+llm',
     UNIQUE(document_id, section_name)
 );
+
+CREATE TABLE document_section_domains (
+    id SERIAL PRIMARY KEY,
+    document_section_id INTEGER NOT NULL REFERENCES document_sections(id) ON DELETE CASCADE,
+    domain TEXT NOT NULL,
+    score FLOAT NOT NULL,
+    CONSTRAINT unique_document_section_domain UNIQUE (document_section_id, domain)
+);
+
+

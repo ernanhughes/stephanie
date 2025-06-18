@@ -20,6 +20,8 @@ class DocumentSectionORM(Base):
     extra_data = Column(JSON, nullable=True)           # MR.Q scores, confidences, etc.
 
     document = relationship("DocumentORM", back_populates="sections")
+    domains = relationship("DocumentSectionDomainORM", back_populates="document_section", cascade="all, delete-orphan")
+
 
     def to_dict(self):
         return {
@@ -27,7 +29,6 @@ class DocumentSectionORM(Base):
             "document_id": self.document_id,
             "section_name": self.section_name,
             "section_text": self.section_text,
-            "domain": self.domain,
             "summary": self.summary,
             "extra_data": self.extra_data,
         }

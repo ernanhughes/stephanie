@@ -35,7 +35,6 @@ class DocumentLoaderAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.max_chars_for_summary = cfg.get("max_chars_for_summary", 8000)
         self.summarize_documents = cfg.get("summarize_documents", False)
-        self.domain_seeds = cfg.get("domain_seeds", {})
         self.force_domain_update = cfg.get("force_domain_update", False)
         self.top_k_domains = cfg.get("top_k_domains", 3)
         self.min_classification_score = cfg.get("min_classification_score", 0.6)

@@ -5,29 +5,14 @@ knowledge_loader:
   top_k: 10
   domain_threshold: 0.5
   include_full_text: false
-  strategy:
+  prefer_sections: true
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
+
   prompt_mode: file
   prompt_file: default.txt
   input_keys: ["goal"]
-  output_key: knowledge
 
-  domain_seeds:
-    symbolic:
-      - "Symbolic planning using language agents."
-      - "Neuro-symbolic reasoning for AI alignment."
-    alignment:
-      - "Scalable oversight and alignment strategies."
-      - "Training language models to be helpful and harmless."
-    planning:
-      - "Hierarchical reinforcement learning for agents."
-      - "Planning with tree search and transformers."
-    training:
-      - "Instruction tuning for LLMs."
-      - "DPO and reward modeling techniques."
-    reasoning:
-      - "Multi-step chain-of-thought reasoning."
-      - "Self-reflection and hypothesis verification."
+  output_key: knowledge

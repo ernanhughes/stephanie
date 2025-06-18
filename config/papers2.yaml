@@ -15,10 +15,9 @@ defaults:
   - logging/json_logger
 
 goal:
-  goal_text: "https://arxiv.org/pdf/2503.00735"
+  goal_text: "https://arxiv.org/pdf/2506.01369"
   goal_type: "similar_papers"
-  focus_area: "AI research"
-
+  focus_area: "similar_papers"
 
 post_judgment:
   name: pipeline_judge

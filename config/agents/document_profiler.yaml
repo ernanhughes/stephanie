@@ -4,14 +4,20 @@ document_profiler:
   name: document_profiler
   enabled: true
 
-  top_k_domains: 3
   max_chars_for_summary: 16000
+
   summarize_documents: true
   use_unstructured: true
   fallback_to_llm: false
   store_inline: true
+
+  force_domain_update: true # will force update the document domains
+  top_k_domains: 3
+  min_classification_score: 0.4
   domain_seed_config_path: "config/domain/seeds.yaml"
+
   summary_prompt_file: "summarize.txt"
+
   output_sections:
     - title
     - abstract

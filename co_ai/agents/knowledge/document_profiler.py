@@ -1,7 +1,4 @@
-import json
 import re
-from collections import defaultdict
-from fuzzywuzzy import process
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.analysis.domain_classifier import DomainClassifier
 from co_ai.utils.document_section_parser import DocumentSectionParser
@@ -17,7 +14,12 @@ class DocumentProfilerAgent(BaseAgent):
         self.fallback_to_llm = cfg.get("fallback_to_llm", False)
         self.store_inline = cfg.get("store_inline", True)
         self.output_sections = cfg.get("output_sections", DEFAULT_SECTIONS)
-        self.min_chars_per_sec = cfg.get("min_chars_per_section", 120)  # quality gate
+        self.min_chars_per_sec = cfg.get("min_chars_per_section", 120)  # quality 
+
+        self.force_domain_update = cfg.get("force_domain_update", False)
+        self.top_k_domains = cfg.get("top_k_domains", 3)
+        self.min_classification_score = cfg.get("min_classification_score", 0.6)
+
         self.domain_classifier = DomainClassifier(
             memory,
             logger,
@@ -53,9 +55,6 @@ class DocumentProfilerAgent(BaseAgent):
                 )
                 generated_summary = self.call_llm(prompt, context)
 
-                # -- STEP 3 : Domain detection ---------------------------------
-                detected_domain = self.domain_classifier.classify(text)
-
                 # no point in overwriting arxiv data
                 if title:
                     chosen["title"] = title
@@ -66,16 +65,29 @@ class DocumentProfilerAgent(BaseAgent):
 
                 # -- STEP 3 : Persist ------------------------------------------
                 for section, text in chosen.items():
-                    self.memory.document_section.upsert(
+                    existing = self.memory.document_section.upsert(
                         {
                             "document_id": doc_id,
                             "section_name": section,
                             "section_text": text,
                             "source": "unstructured+llm",
-                            "domain": detected_domain,  # ← Add this dynamically
                             "summary": generated_summary,
                         }
                     )
+
+                    # -- STEP 4 : Domain detection ---------------------------------
+                    # Classify domain for the section
+                    section_domains = self.domain_classifier.classify(text, self.top_k_domains, self.min_classification_score)
+
+                    # Insert classified domains for this section
+                    for domain, score in section_domains:
+                        self.memory.document_section_domains.insert(
+                            {
+                                "document_section_id": existing.id,
+                                "domain": domain,
+                                "score": float(score),
+                            }
+                        )
 
                 profiled.append(
                     {
