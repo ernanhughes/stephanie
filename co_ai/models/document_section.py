@@ -1,8 +1,10 @@
 # models/document_section.py
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, JSON, ARRAY
+from sqlalchemy import ARRAY, JSON, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from co_ai.models.base import Base
+
 
 class DocumentSectionORM(Base):
     __tablename__ = "document_sections"

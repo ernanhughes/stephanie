@@ -1,0 +1,29 @@
+<eval>
+You are reviewing a recently mutated rule designed to correct previous shortcomings. Carefully evaluate it using the provided rubric.
+
+## Original Rule
+- **Name**: {{ rule.name }}
+- **Description**: {{ rule.description }}
+- **Condition**: {{ rule.condition }}
+- **Action**: {{ rule.action }}
+
+## Feedback on Original Rule
+{{ feedback }}
+
+## Mutated Rule
+Clearly rewrite or adjust the rule below to directly address the identified feedback and improve performance:
+
+- **Name**:
+- **Description**:
+- **Condition**:
+- **Action**:
+
+## Evaluation Rubric
+Please explicitly answer each question:
+1. Does the mutated rule directly address the described failure mode? How?
+2. Is the logic of the mutated rule clearer and more actionable than before? Explain.
+3. Does the mutated rule maintain compatibility with existing systems? Justify.
+4. Does the mutated rule avoid introducing potential regressions or new issues? Explain.
+</eval>
+
+<answer>[[0]]</answer>

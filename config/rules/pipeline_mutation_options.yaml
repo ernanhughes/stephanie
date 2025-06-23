@@ -1,0 +1,9 @@
+pipeline_mutations:
+  - attribute: prompt_file
+    values: [cot.j2, self_edit.j2, plan_then_solve.j2]
+
+  - attribute: scorer
+    values: [mrq, svm, llm]
+
+  - attribute: agent
+    values: [ChainOfThoughtAgent, SelfEditAgent, ReflectAgent]

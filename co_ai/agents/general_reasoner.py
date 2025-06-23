@@ -25,9 +25,9 @@ class GeneralReasonerAgent(ScoringMixin, RubricClassifierMixin, BaseAgent):
         dimension_scores = []
         for hyp in hypotheses:
             scored = self.score_hypothesis(hyp, context, metrics="reasoning_cor")
-            hyp["final_score"] = scored["score"]
-            hyp["dimension_scores"] = scored["scores"]
-            dimension_scores.append(scored)
+            hyp["final_score"] = scored.aggregate()
+            hyp["dimension_scores"] = scored.to_dict()
+            dimension_scores.append(scored.to_dict())
         context["dimension_scores"] = dimension_scores
 
 

@@ -1,0 +1,68 @@
+# config/seal.yaml
+# This file is the pipeline file for the pipeline mutation process. 
+# It calls the co_ai.agents.seal.pipeline_mutation.PipelineMutationAgent using
+# configs/agents/pipeline_mutation.yaml
+# This will the mutate and learn from the mutated pipelines.
+# It is thinking AI
+
+defaults:
+  - _self_
+  - db: postgres
+  - agents/cot_dspy_generator
+  - agents/cot_generator
+  - agents/evolution
+  - agents/generation
+  - agents/judge
+  - agents/literature
+  - agents/literature_ranking
+  - agents/meta_review
+  - agents/pipeline_mutation
+  - agents/prompt_tuning
+  - agents/proximity
+  - agents/ranking
+  - agents/refiner
+  - agents/reflection
+  - agents/review
+  - agents/sharpening
+  - agents/supervisor
+  - logging/json_logger
+
+goal:
+  goal_text: Improve an AI system’s ability to diagnose its own reasoning failures in complex decision-making tasks. The system should be able to identify faulty assumptions, reflect on its process, and revise future behavior accordingly.
+  goal_type: "capability"
+  goal_category: "self_reflection"
+  focus_area: "ai_research"
+  strategy: "introspective_diagnostics"
+  difficulty: "medium"
+  expected_formats:
+    - "critique_chain"
+    - "reasoning_trace"
+    - "reflective_plan"
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: mutation
+  tag: "Pipeline for rule mutation"
+  description: "This will run mutated pipelines using the pipeline mutation agent"
+  stages:
+       - name: pipeline_mutation
+         cls: co_ai.agents.seal.pipeline_mutation.PipelineMutationAgent
+         enabled: true
+         iterations: 1
+ 

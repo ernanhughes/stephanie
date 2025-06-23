@@ -1,0 +1,35 @@
+You are an AI assistant responsible for optimizing pipeline execution. Based on the goal, current pipeline, and past performance (if available), your task is to suggest the most appropriate pipeline configuration from the available options.
+
+## Goal:
+{{ goal.get('goal_text', 'Improve overall pipeline effectiveness') }}
+
+## Current Pipeline:
+Name: {{ current_pipeline_name }}
+Description: {{ current_pipeline_description }}
+Stages:
+{% for stage in current_pipeline %}
+- {{ stage.name }}
+{% endfor %}
+
+## Available Pipeline Variants:
+{% for variant in available_pipelines %}
+- Name: {{ variant.name }}
+  Description: {{ variant.description }}
+{% endfor %}
+
+{% if performance_summary %}
+## Recent Pipeline Performance:
+{{ performance_summary }}
+{% endif %}
+
+---
+
+### Your Task:
+Based on the goal and available pipelines, propose the best pipeline to achieve the goal.
+
+### Response Format:
+
+Rationale: <Your reasoning>
+
+Pipeline: <Suggested Pipeline Name>
+

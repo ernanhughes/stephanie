@@ -1,0 +1,12 @@
+As an AI improving its internal understanding, generate questions you should ask yourself to clarify this task.
+
+Goal:
+{{ goal }}
+
+Context:
+{{ context }}
+
+Instructions:
+List questions that, if answered, would improve your reasoning or output quality.
+
+Questions:

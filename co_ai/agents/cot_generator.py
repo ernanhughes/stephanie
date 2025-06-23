@@ -18,7 +18,7 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
 
         if isinstance(self.evaluator, MRQSelfEvaluator):
             self.logger.log("MRQTraining", {"type": "MRQ"})
-            self.evaluator.train_from_database(goal=goal.goal_text, cfg=self.cfg)
+            self.evaluator.train_from_database(goal=goal.get("goal_text"), cfg=self.cfg)
 
         prompt_text = self.prompt_loader.load_prompt(self.cfg, context)
         self.logger.log("PromptGenerated", {"prompt": prompt_text[:200]})

@@ -1,0 +1,7 @@
+rules:
+  - target: "agent"
+    agent_name: "self_edit_generator"
+    focus_area: "ai_research"
+    attributes:
+      model.name: "ollama_chat/mistral"
+    rule_text: "Set llm model to mistral in SelfEditGenerator"

@@ -1,0 +1,45 @@
+# config/agents/self_edit_generator_rules.yaml
+
+self_edit_generator:
+  name: self_edit_generator
+
+  enabled: true
+
+  # Number of sample prompts to use in tuning
+  sample_size: 20
+  # How many prompts to generate once tuned
+  generate_count: 5
+
+  prompt_files:
+    - self_implication.txt
+    # - self_reframe.txt
+    # - self_debug.txt
+    # - self_questions.txt
+    # - self_upgrade.txt
+  num_edits_per_prompt: 2
+  temperature: 0.7
+  max_tokens: 512
+
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  judge: mrq
+  judge_prompt_file: evaluator.txt
+  judge_model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  output_key: "self_edits"  # change
+
+  prompt_mode: file
+  prompt_file: implication.txt
+
+  # A set of keys that will tune the prompts operation
+  preferences:
+    - goal_consistency
+    - factual
+    - reliable_source
+    - simplicity

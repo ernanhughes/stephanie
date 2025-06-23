@@ -1,0 +1,25 @@
+Rubric:
+- Does the mutated rule address the failure mode described?
+- Is the logic clearer and more actionable?
+- Does it maintain compatibility with existing systems?
+- Does it avoid introducing regressions?
+
+<eval>
+You are given:
+1. A rule that performed poorly in recent trials.
+2. Feedback about when and why it failed.
+3. Score deltas indicating impact.
+
+Original Rule:
+name: "{{ rule.name }}"
+description: "{{ rule.description }}"
+condition: "{{ rule.condition }}"
+action: "{{ rule.action }}"
+
+Feedback:
+{{ feedback }}
+
+Mutated Rule:
+</eval>
+
+<answer>[[0]]</answer>

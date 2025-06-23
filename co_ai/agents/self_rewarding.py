@@ -2,14 +2,13 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.evaluator.base import BaseEvaluator
 from co_ai.memory import SymbolicRuleStore
 from co_ai.models import EvaluationORM, ScoreORM
 from co_ai.prompts import PromptLoader
-from co_ai.utils import get_high_scoring_runs
 
 
 @dataclass
@@ -100,7 +99,7 @@ class SelfRewardingAgent(BaseAgent):
             score_orm = ScoreORM(
                 evaluation_id=evaluation.id,
                 dimension=dim,
-                value=score,
+                score=score,
                 source="self_rewarding"
             )
             self.memory.session.add(score_orm)

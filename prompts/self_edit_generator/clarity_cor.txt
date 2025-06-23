@@ -1,0 +1,37 @@
+{% if mode == "reflect" %}
+Rubric:
+- Does the reflection improve or explain the clarity of previous reasoning?
+- Are the insights or proposed changes communicated clearly?
+
+<eval>
+Evaluate the following reflection for clarity:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% else %}
+{# reason is the default mode for the template #}
+Rubric:
+- Is the hypothesis clearly and precisely stated?
+- Are ideas communicated in a coherent and readable way?
+- Are there confusing, vague, or redundant phrases?
+
+<eval>
+Evaluate the following hypothesis for clarity:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

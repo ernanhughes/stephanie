@@ -22,7 +22,9 @@ class MRQSelfEvaluator(BaseEvaluator):
             device=self.device,
         )
 
-    def judge(self, goal, prompt, output_a, output_b):
+    def judge(self, prompt, output_a, output_b, context=None):
+        if context is None:
+            context = {}
         prompt_emb = torch.tensor(
             self.memory.embedding.get_or_create(prompt), device=self.device
         ).unsqueeze(0)
@@ -45,7 +47,7 @@ class MRQSelfEvaluator(BaseEvaluator):
         if self.memory.mrq.log_evaluations():
             prediction = SharpeningPredictionORM(
                 id=None,
-                goal_id=-1,
+                goal_id=context.get("goal", {}).get("id"),
                 prompt_text=prompt,
                 output_a=output_a,
                 output_b=output_b,
@@ -56,7 +58,7 @@ class MRQSelfEvaluator(BaseEvaluator):
             )
 
             self.memory.sharpening.insert_sharpening_prediction(
-                prediction.to_dict(), goal
+                prediction.to_dict()
             )
 
         return preferred_output, scores

@@ -29,6 +29,7 @@ class PipelineRunORM(Base):
     prompts = relationship("PromptORM", back_populates="pipeline_run", cascade="all, delete-orphan")
     hypotheses = relationship("HypothesisORM", back_populates="pipeline_run")
     symbolic_rules = relationship("SymbolicRuleORM", back_populates="pipeline_run")
+    prompt_programs = relationship("PromptProgramORM", back_populates="pipeline_run")
 
     rule_applications = relationship(
         "RuleApplicationORM",

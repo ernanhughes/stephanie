@@ -23,7 +23,7 @@ class StructuredScoringEngine:
             except Exception as e:
                 score = 0.0
                 if self.logger:
-                    self.logger.log("ScoreParseError", {
+                    self.logger.log("StrctScoreParseError", {
                         "dimension": dim["name"],
                         "response": response,
                         "error": str(e)

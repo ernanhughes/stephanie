@@ -133,32 +133,32 @@ class RuleAnalytics:
             rank = self.compute_rule_rank(avg_score, len(scores), feedback_summary)
 
             rule = self.db.symbolic_rules.get_by_id(rule_id)
-            result = {
-                "rule_id": rule_id,
-                "rule_text": rule.rule_text,
-                "target": rule.target,
-                "attributes": rule.attributes,
-                "score_summary": {
-                    "average": avg_score,
-                    "count": len(scores),
-                    "min": min(scores) if scores else None,
-                    "max": max(scores) if scores else None,
-                },
-                "feedback_summary": dict(feedback_summary),
-                "rank_score": rank,
-            }
-            output.append(result)
-
-            table_rows.append([
-                rule_id,
-                rule.target or "—",
-                rule.rule_text[:30] + "…" if rule.rule_text and len(rule.rule_text) > 30 else rule.rule_text,
-                f"{avg_score:.2f}" if avg_score is not None else "—",
-                len(scores),
-                feedback_summary.get("positive", 0),
-                feedback_summary.get("negative", 0),
-                f"{rank:.2f}" if avg_score is not None else "—",
-            ])
+            if rule:
+                result = {
+                    "rule_id": rule_id,
+                    "rule_text": rule.rule_text,
+                    "target": rule.target,
+                    "attributes": rule.attributes,
+                    "score_summary": {
+                        "average": avg_score,
+                        "count": len(scores),
+                        "min": min(scores) if scores else None,
+                        "max": max(scores) if scores else None,
+                    },
+                    "feedback_summary": dict(feedback_summary),
+                    "rank_score": rank,
+                }
+                output.append(result)
+                table_rows.append([
+                    rule_id,
+                    rule.target or "—",
+                    rule.rule_text[:30] + "…" if rule.rule_text and len(rule.rule_text) > 30 else rule.rule_text,
+                    f"{avg_score:.2f}" if avg_score is not None else "—",
+                    len(scores),
+                    feedback_summary.get("positive", 0),
+                    feedback_summary.get("negative", 0),
+                    f"{rank:.2f}" if avg_score is not None else "—",
+                ])
 
         print(f"\n📊 Rule Analysis for Pipeline Run: {pipeline_run_id}")
         headers = [

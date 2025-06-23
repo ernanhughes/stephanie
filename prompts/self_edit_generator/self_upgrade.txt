@@ -1,0 +1,12 @@
+You are upgrading your own internal reasoning process. Based on the task and context below, suggest one or more upgrades to your strategy or prompt.
+
+Goal:
+{{ goal }}
+
+Context:
+{{ context }}
+
+Instructions:
+Suggest changes or additions to your reasoning process that would yield better results.
+
+Upgrades:

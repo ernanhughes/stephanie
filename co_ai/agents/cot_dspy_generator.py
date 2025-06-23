@@ -22,7 +22,7 @@ import dspy
 from dspy import InputField, OutputField, Signature
 
 from co_ai.agents.base_agent import BaseAgent
-from co_ai.constants import (GOAL, GOAL_TEXT)
+from co_ai.constants import GOAL, GOAL_TEXT
 
 
 # DSPy signature for generating Chains of Thought

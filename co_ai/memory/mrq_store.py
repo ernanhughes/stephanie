@@ -131,8 +131,8 @@ class MRQStore:
                     "goal_text": d.goal.goal_text,
                     "pipeline_a": a,
                     "pipeline_b": b,
-                    "score_a": score_a,
-                    "score_b": score_b,
+                    "value_a": score_a,
+                    "value_b": score_b,
                     "label": label,
                 }
             )
@@ -171,7 +171,7 @@ class MRQStore:
                         g.goal_text AS goal,
                         p.prompt_text,
                         h.text AS output_a,
-                        h.elo_rating AS rating_a
+                        h.elo_rating AS value_a
                     FROM prompts p
                     JOIN goals g ON p.goal_id = g.id
                     JOIN hypotheses h ON h.prompt_id = p.id
@@ -184,13 +184,12 @@ class MRQStore:
                     SELECT DISTINCT ON (p.id)
                         p.id AS prompt_id,
                         h.text AS output_b,
-                        h.elo_rating AS rating_b
+                        h.elo_rating AS value_b
                     FROM prompts p
                     JOIN hypotheses h ON h.prompt_id = p.id
                     JOIN goals g ON p.goal_id = g.id
                     WHERE h.enabled = TRUE
                     AND h.goal_id = g.id
-                    AND p.agent_name = :agent_name
                     ORDER BY p.id, h.elo_rating ASC
                 )
                 SELECT 
@@ -198,12 +197,12 @@ class MRQStore:
                     top_h.goal,
                     top_h.prompt_text,
                     top_h.output_a,
-                    top_h.rating_a,
+                    top_h.value_a,
                     bottom_h.output_b,
-                    bottom_h.rating_b
+                    bottom_h.value_b
                 FROM top_h
                 JOIN bottom_h ON top_h.prompt_id = bottom_h.prompt_id
-                WHERE top_h.rating_a != bottom_h.rating_b
+                WHERE top_h.value_a != bottom_h.value_b
                 LIMIT :limit;
             """)
 
@@ -218,8 +217,8 @@ class MRQStore:
                     "output_a": row[3],
                     "output_b": row[5],
                     "preferred": "a" if row[4] > row[6] else "b",
-                    "rating_a": row[4],
-                    "rating_b": row[6],
+                    "value_a": row[4],
+                    "value_b": row[6],
                 }
                 for row in rows
             ]
@@ -301,3 +300,90 @@ class MRQStore:
             )
         finally:
             self.db.close()
+
+    def get_training_pairs_by_dimension(self, goal: str = None, limit: int = 10000) -> dict:
+        """
+        Returns top and bottom scored prompt/response pairs per dimension,
+        suitable for MR.Q training.
+        """
+        query = text("""
+            WITH scored_prompts AS (
+                SELECT
+                    s.dimension,
+                    s.score,
+                    e.pipeline_run_id,
+                    p.id AS prompt_id,
+                    p.prompt_text,
+                    p.response_text,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY s.dimension, p.id ORDER BY s.score DESC
+                    ) AS rank_high,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY s.dimension, p.id ORDER BY s.score ASC
+                    ) AS rank_low
+                FROM scores s
+                JOIN evaluations e ON s.evaluation_id = e.id
+                JOIN prompts p ON e.pipeline_run_id = p.pipeline_run_id
+                WHERE s.score IS NOT NULL
+                {goal_filter}
+            )
+            SELECT
+                dimension,
+                prompt_text,
+                response_text,
+                score,
+                rank_type
+            FROM (
+                SELECT
+                    dimension,
+                    prompt_text,
+                    response_text,
+                    score,
+                    'top' AS rank_type,
+                    prompt_id
+                FROM scored_prompts
+                WHERE rank_high = 1
+                  AND prompt_text IS NOT NULL
+                  AND response_text IS NOT NULL
+                  AND prompt_text <> ''
+                  AND response_text  <> ''
+                  
+                UNION ALL
+
+                SELECT
+                    dimension,
+                    prompt_text,
+                    response_text,
+                    score,
+                    'bottom' AS rank_type,
+                    prompt_id
+                FROM scored_prompts
+                WHERE rank_low = 1
+            ) AS ranked_pairs
+            ORDER BY dimension, prompt_id
+            LIMIT :limit
+        """.replace("{goal_filter}", "AND p.goal_text = :goal" if goal else ""))
+
+        params = {"limit": limit}
+        if goal:
+            params["goal"] = goal
+
+        rows = self.db.execute(query, params).fetchall()
+
+        # Group into pairs (top + bottom) by dimension and prompt_id
+        from collections import defaultdict
+        grouped = defaultdict(dict)
+        for row in rows:
+            key = (row.dimension, row.prompt_text)
+            grouped[key][row.rank_type] = row
+            results_by_dimension = defaultdict(list)
+            for (dimension, prompt_text), data in grouped.items():
+                if "top" in data and "bottom" in data:
+                    results_by_dimension[dimension].append({
+                        "prompt": prompt_text,
+                        "output_a": data["top"].response_text,
+                        "output_b": data["bottom"].response_text,
+                        "value_a": data["top"].score,
+                        "value_b": data["bottom"].score,
+                    })
+        return dict(results_by_dimension)

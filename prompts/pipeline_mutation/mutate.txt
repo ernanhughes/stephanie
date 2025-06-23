@@ -1,0 +1,37 @@
+You are helping improve the performance of an AI system by tuning one of its symbolic rules.
+
+### Current Configuration
+**Target Behavior**: {{ target }}
+
+**Current Rule Attributes:**
+{% for attr, val in current_attributes.items() %}
+- **{{ attr }}**: {{ val }}
+{% endfor %}
+
+**Tunable Options:**
+{% for attr, options in available_options.items() %}
+- **{{ attr }}**: {{ options }}
+{% endfor %}
+
+{% if recent_performance %}
+### Recent Performance Insights:
+{{ recent_performance }}
+{% endif %}
+
+---
+
+### Your Task:
+Propose exactly **one change** to this symbolic rule that is likely to improve the system's performance on the target behavior. This change should be grounded in your understanding of the rule's role and the available options.
+
+### Response Format:
+```
+
+Rationale: <Your reasoning>
+
+Attribute to change: \<attribute\_name>
+New value: \<new\_value>
+
+```
+
+**Do not change more than one attribute. Be specific and actionable.**
+

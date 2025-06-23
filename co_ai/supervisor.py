@@ -46,6 +46,7 @@ class Supervisor:
         self.logger.log("SupervisorInit", {"cfg": cfg})
         self.rule_applier = SymbolicRuleApplier(cfg, self.memory, self.logger)
         # Parse pipeline stages from config
+        print(f"Parsing pipeline stages from config: {cfg.pipeline}")
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
 
     def _parse_pipeline_stages(
@@ -54,8 +55,8 @@ class Supervisor:
         """Parse and validate pipeline stages from config."""
         stages = []
         for stage_config in stage_configs:
-            name = stage_config.name
-            if not stage_config.enabled:
+            name = stage_config.get("name")
+            if not stage_config.get("enabled"):
                 print(f"Skipping disabled stage: {name}")
                 continue
             stage_dict = self.cfg.agents[name]
@@ -163,7 +164,14 @@ class Supervisor:
                 context = {**context, **saved_context}
                 continue
 
-            agent = cls(cfg=stage_dict, memory=self.memory, logger=self.logger)
+            agent_args = {
+                "cfg": stage_dict,
+                "memory": self.memory,
+                "logger": self.logger,
+            }
+            if "full_cfg" in cls.__init__.__code__.co_varnames:
+                agent_args["full_cfg"] = self.cfg
+            agent = cls(**agent_args)
 
             self.logger.log("PipelineStageStart", {STAGE: stage.name})
 
@@ -279,7 +287,7 @@ class Supervisor:
             self.logger.log("LookaheadStart", {"goal": goal})
             context[PIPELINE] = [stage.name for stage in self.pipeline_stages]
             context["agent_registry"] = OmegaConf.to_container(
-                OmegaConf.load("config/agent_registry.yaml")["agents"]
+                OmegaConf.load("config/registry/agent_registry.yaml")["agents"]
             )
             updated_context = await lookahead_agent.run(context)
 

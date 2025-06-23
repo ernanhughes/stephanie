@@ -1,0 +1,16 @@
+# self_edit_generator_rule_options.yaml
+self_edit_generator:
+  model.name:
+    choices:
+      - ollama_chat/qwen3
+      - ollama_chat/mistral
+      - ollama_chat/qwen0.5
+    description: "Select the LLM model used for this agent"
+
+  use_documents:
+    choices: [true, false]
+    description: "Whether to augment inputs with documents during inference"
+
+  mode:
+    choices: ["draft", "enhance", "extend"]
+    description: "Agent's operation mode when editing blog sections"

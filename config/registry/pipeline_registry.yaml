@@ -1,0 +1,24 @@
+pipeline_variants:
+  cot:
+    description: "Generates multiple chain-of-thought hypotheses using standard and DSPy agents, followed by ranking."
+    stages:
+      - name: cot_generator
+        cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
+        enabled: true
+        iterations: 1
+      - name: ranking
+        cls: co_ai.agents.ranking.RankingAgent
+        enabled: true
+        iterations: 1
+      - name: cot_dspy_generator
+        cls: co_ai.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
+        enabled: true
+        iterations: 1
+
+  minimal:
+    description: "A lightweight pipeline using a single generation agent for quick hypothesis output."
+    stages:
+      - name: generation
+        cls: co_ai.agents.generation.GenerationAgent
+        enabled: true
+        iterations: 1

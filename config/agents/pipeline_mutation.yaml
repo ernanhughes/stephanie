@@ -1,0 +1,45 @@
+# config/agents/pipeline_mutation.yaml
+
+pipeline_mutation:
+  name: pipeline_mutation
+  
+  # The base pipeline file we mutate
+  base_pipeline: cot
+
+  # The options file for the pipeline mutation agent allowed changes
+  mutation_rule_options: config/rules/pipeline_mutation_options.yaml
+
+  # the prompt we use to mutate the options
+  template_path: prompts/rule_mutation
+
+  rule_mutation_prompt: rule_mutation.txt
+
+  use_memory_for_fast_prompts: false
+
+  # the modelt eh agent will sue to run the prompts
+  model:
+    name: ollama_chat/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  symbolic:
+    enabled: true
+    rules_file: "config/rules/self_edit_generator_rules.yaml"
+    enable_db_rules: false # load rules from the database
+    match_priority:
+      - goal_id
+      - pipeline_run_id
+      - metadata
+    metadata_match_mode: partial   # options: exact, partial, off
+    allow_fallback: true           # if no ID matches, allow metadata fallback
+
+
+  # Required keys for the agent ot effectively process the context
+  required_keys: ["goal", "hypotheses"]   # add nodes
+  # Key that it will iterate over ot generate reflections
+  input_key: "hypotheses"
+  # Key that it store the results of those reflections
+  output_key: "mutations"
+
+  prompt_mode: file
+  prompt_file: mutate

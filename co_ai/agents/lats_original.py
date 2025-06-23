@@ -257,8 +257,8 @@ class LATSAgent(ScoringMixin, BaseAgent):
             
             # Create child node with metadata
             child = self.create_node(new_state, new_trace, parent=node)
-            child["score"] = score_result["score"]
-            child["dimension_scores"] = score_result["scores"]
+            child["score"] = score_result.aggregate()
+            child["dimension_scores"] = score_result.to_dict()
             child["action"] = comp
             
             children.append(child)
@@ -482,7 +482,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             metrics="lats_reflection",
         )
 
-        return score_result["score"] / 100  # Normalize
+        return score_result.aggregate() / 100  # Normalize
 
     def _log_progress(self, sim_num, best_score, best_trace):
         percent_complete = (sim_num + 1) / self.num_simulations * 100

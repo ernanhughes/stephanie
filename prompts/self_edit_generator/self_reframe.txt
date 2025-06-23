@@ -1,0 +1,12 @@
+You are an AI reflecting on your task design. Your goal is to reframe the task in a way that enhances clarity, generalization, or efficiency.
+
+Goal:
+{{ goal }}
+
+Context:
+{{ context }}
+
+Instructions:
+Propose one or more reframings of the task that would help a more intelligent or future version of yourself perform better.
+
+Reframed Tasks:

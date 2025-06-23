@@ -1,0 +1,12 @@
+As an AI working to improve its reasoning and decision-making, examine the following task.
+
+Goal:
+{{ goal }}
+
+Context:
+{{ context }}
+
+Instructions:
+List several implications or logical consequences of this task that might affect your future performance, understanding, or decisions.
+
+Implications:

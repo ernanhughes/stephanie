@@ -71,9 +71,26 @@ class ScoreStore:
             )
         except Exception as e:
             if self.logger:
-                self.logger.log("ScoreStoreError", {
+                self.logger.log("GetByEvaluationError", {
                     "method": "get_by_evaluation_ids",
                     "error": str(e),
                     "evaluation_ids": evaluation_ids,
                 })
             return []
+
+    def get_score_by_prompt_hash(self, prompt_hash: str) -> Optional[ScoreORM]:
+        try:
+            return (
+                self.session.query(ScoreORM)
+                .filter(ScoreORM.prompt_hash == prompt_hash)
+                .order_by(ScoreORM.id.desc())
+                .first()
+            )
+        except Exception as e:
+            if self.logger:
+                self.logger.log("GetScoreError", {
+                    "method": "get_score_by_prompt_hash",
+                    "error": str(e),
+                    "prompt_hash": prompt_hash,
+                })
+            return None

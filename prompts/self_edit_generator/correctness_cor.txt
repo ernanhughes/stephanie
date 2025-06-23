@@ -1,0 +1,37 @@
+{% if mode == "reflect" %}
+Rubric:
+- Does the reflection diagnose previous errors clearly?
+- Is the proposed correction or strategy actionable and insightful?
+
+<eval>
+Evaluate the following reflection:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% else %}
+{# reason is the default mode for the template #}
+Rubric:
+- Does the hypothesis directly address the goal?
+- Is the reasoning logically sound?
+- Are there factual inaccuracies or unsupported claims?
+
+<eval>
+Evaluate the following hypothesis:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

@@ -9,8 +9,9 @@ import litellm
 
 from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                              GOAL, HYPOTHESES, INPUT_KEY, MODEL, NAME,
-                             OUTPUT_KEY, PROMPT_MATCH_RE, PROMPT_PATH,
-                             SAVE_CONTEXT, SAVE_PROMPT, SOURCE, STRATEGY, PIPELINE, PIPELINE_RUN_ID)
+                             OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
+                             PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
+                             SAVE_PROMPT, SOURCE, STRATEGY)
 from co_ai.logs import JSONLogger
 from co_ai.models import PromptORM
 from co_ai.prompts import PromptLoader
@@ -64,8 +65,8 @@ class BaseAgent(ABC):
                     "MissingLLMConfig", {"agent": self.name, "missing_key": key}
                 )
         return {
-            NAME: model_cfg.get(NAME),
-            API_BASE: model_cfg.get(API_BASE),
+            NAME: model_cfg.get(NAME, "ollama/qwen3"),
+            API_BASE: model_cfg.get(API_BASE, "http://localhost:11434"),
             API_KEY: model_cfg.get(API_KEY),
         }
     
@@ -104,7 +105,7 @@ class BaseAgent(ABC):
         strategy = updated_cfg.get(STRATEGY, "")
         prompt_key = updated_cfg.get(PROMPT_PATH, "")
         use_memory_for_fast_prompts = updated_cfg.get(
-            "use_memory_for_fast_prompts", True
+            "use_memory_for_fast_prompts", False
         )
 
         # 🔁 Check cache
@@ -308,8 +309,8 @@ class BaseAgent(ABC):
         Central method to save hypotheses and track document section links.
         """
         from co_ai.models.hypothesis import HypothesisORM
-        from co_ai.models.hypothesis_document_section import HypothesisDocumentSectionORM
-
+        from co_ai.models.hypothesis_document_section import \
+            HypothesisDocumentSectionORM
 
         # Ensure metadata is set if not already in the dict
         goal = context.get(GOAL, {})
@@ -319,7 +320,7 @@ class BaseAgent(ABC):
         hypothesis_dict["source"] = self.name
         hypothesis_dict["strategy"] = self.strategy
 
-        hypothesis = HypothesisORM(hypothesis_dict)
+        hypothesis = HypothesisORM(**hypothesis_dict)
         self.memory.session.add(hypothesis)
         self.memory.session.flush()  # ensures ID is available
 

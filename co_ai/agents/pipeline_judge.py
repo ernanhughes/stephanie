@@ -36,8 +36,7 @@ class PipelineJudgeAgent(ScoringMixin, BaseAgent):
                 "HypothesisJudged",
                 {
                     "hypothesis_id": hypo.get("id"),
-                    "score": score_result.get("score"),
-                    "details": score_result.get("details", {})
+                    "score": score_result.to_dict()
                 }
             )
         self.report_rule_analytics(context)
@@ -50,7 +49,7 @@ class PipelineJudgeAgent(ScoringMixin, BaseAgent):
         analytics = RuleAnalytics(db=self.memory, logger=self.logger)
         results = analytics.analyze_rules_for_run(context.get(PIPELINE_RUN_ID))
 
-        if isinstance(results, list) and self.print_results:
+        if results and isinstance(results, list) and self.print_results:
             print("\n=== Rule Analytics Summary ===")
             print(f"{'Rule ID':<10}{'Applications':<15}{'Avg Score':<12}")
             print("-" * 40)

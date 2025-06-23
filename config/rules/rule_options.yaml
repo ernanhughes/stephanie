@@ -1,0 +1,32 @@
+# rule_options.yaml
+
+agent:
+  model.name:
+    choices:
+      - ollama_chat/qwen3
+      - ollama_chat/mistral
+      - ollama_chat/qwen0.5
+    description: "Select the LLM model used for this agent"
+
+  use_documents:
+    choices: [true, false]
+    description: "Whether to augment inputs with documents during inference"
+
+  mode:
+    choices: ["draft", "enhance", "extend"]
+    description: "Agent's operation mode when editing blog sections"
+
+prompt:
+  temperature:
+    choices: [0.2, 0.5, 0.8]
+    description: "Sampling temperature for prompt-based generation"
+
+  format:
+    choices: ["instruction", "cot", "rubric"]
+    description: "Prompting format for reasoning or generation"
+
+pipeline:
+  scoring_strategy:
+    choices: ["mrq", "llm", "svm"]
+    description: "Scoring strategy used to evaluate pipeline outputs"
+

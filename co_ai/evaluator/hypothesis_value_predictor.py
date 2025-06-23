@@ -12,4 +12,5 @@ class HypothesisValuePredictor(nn.Module):
         )
 
     def forward(self, zsa_embedding):
+        assert len(zsa_embedding.shape) == 2, f"Expected 2D input, got {zsa_embedding.shape}"
         return self.value_net(zsa_embedding)

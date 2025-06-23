@@ -1,0 +1,12 @@
+You are debugging your own task understanding. Your goal is to identify any flaws, ambiguities, or assumptions that could lead to poor performance or misunderstanding.
+
+Goal:
+{{ goal }}
+
+Context:
+{{ context }}
+
+Instructions:
+List possible failure modes or weaknesses in how this task is framed.
+
+Weaknesses:

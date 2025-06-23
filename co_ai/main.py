@@ -64,6 +64,8 @@ def save_yaml_result(log_path: str, result: dict):
 def default_serializer(obj):
     if isinstance(obj, datetime):
         return obj.isoformat()
+    if isinstance(obj, set):
+        return list(obj)
     raise TypeError(f"Type {type(obj)} not serializable")
 
 def save_json_result(log_path: str, result: dict):

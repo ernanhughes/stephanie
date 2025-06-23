@@ -2,11 +2,11 @@
 import itertools
 
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import EVOLVED, GOAL, HYPOTHESES, RANKING
 from co_ai.parsers import extract_hypotheses
-from sklearn.metrics.pairwise import cosine_similarity
 
 
 class IdeaEvolutionAgent(BaseAgent):

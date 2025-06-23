@@ -1,8 +1,8 @@
 import re
+
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.analysis.domain_classifier import DomainClassifier
 from co_ai.utils.document_section_parser import DocumentSectionParser
-
 
 DEFAULT_SECTIONS = ["title", "abstract", "methods", "results", "contributions"]
 

@@ -1,0 +1,35 @@
+{% if mode == "reflect" %}
+Rubric:
+- Does the reflection suggest a new and unexplored direction?
+- Is it clearly a departure from prior attempts?
+
+<eval>
+Evaluate the following reflection for novelty:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% if mode == "reason" %}
+Rubric:
+- Does the hypothesis introduce a new angle, technique, or insight?
+- Has this idea not been commonly explored before?
+
+<eval>
+Evaluate the following hypothesis for novelty:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

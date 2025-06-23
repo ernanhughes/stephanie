@@ -50,7 +50,6 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
         runs_by_tag = {tag: self.memory.pipeline_runs.find({"tag": tag}) for tag in tags}
 
         # Index runs by goal_id
-        from collections import defaultdict
         runs_by_goal = defaultdict(dict)
         for tag, runs in runs_by_tag.items():
             for run in runs:
@@ -98,10 +97,6 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
 
         self.memory.session.commit()  # commit all preferences
         self._print_summary(results, tags)
-        from co_ai.models.mrq_memory_entry import \
-            MRQMemoryEntryORM  # adjust as needed
-        from co_ai.utils.time import \
-            now_timestamp  # or use datetime.now() directly
 
         for r in results:
             if r["winner"] == "Tie":
@@ -225,7 +220,6 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
         return averaged
 
     def _save_comparison_preference(self, goal_id, preferred_tag, rejected_tag, tag_run_map, avg_scores, score_map):
-        from co_ai.models.comparison_preference import ComparisonPreferenceORM
 
         preferred_run_id = tag_run_map[preferred_tag].run_id
         rejected_run_id = tag_run_map[rejected_tag].run_id

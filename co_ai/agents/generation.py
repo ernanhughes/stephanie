@@ -1,10 +1,8 @@
 # co_ai/agents/generation.py
 
 from co_ai.agents.base_agent import BaseAgent
-from co_ai.constants import (FEEDBACK, GOAL, GOAL_TEXT, HYPOTHESES, LITERATURE,
-                             PIPELINE, PIPELINE_RUN_ID)
+from co_ai.constants import FEEDBACK, GOAL, GOAL_TEXT, HYPOTHESES, LITERATURE
 from co_ai.parsers import extract_hypotheses
-from co_ai.tools.huggingface_tool import recommend_similar_papers
 
 
 class GenerationAgent(BaseAgent):
@@ -40,7 +38,7 @@ class GenerationAgent(BaseAgent):
             hyp = self.save_hypothesis(
                 {
                     "text": h,
-                    "prompt_id": prompt.id,
+                     **({"prompt_id": prompt.id} if prompt else {}),
                 },
                 context=context,
             )

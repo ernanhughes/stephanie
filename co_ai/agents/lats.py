@@ -106,8 +106,8 @@ class LATSAgent(ScoringMixin, BaseAgent):
             score_result = self._score_hypothesis(hyp, {"goal": {"goal_text": goal_text}}, metrics="lats_node")
             
             child = self.create_node(new_state, new_trace, parent=node)
-            child.score = score_result["score"]
-            child.dimension_scores = score_result["scores"]
+            child.score = score_result.aggregate()
+            child.dimension_scores = score_result.to_dict()
             child.action = comp["action"]
             children.append(child)
         
@@ -260,7 +260,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             {"goal": {"goal_text": goal_text}},
             metrics="lats_reflection"
         )
-        return score_result["score"] / 100  # Normalize
+        return score_result.aggregate() / 100  # Normalize
 
     @time_function(logger=None)
     def _build_prompt(self, node, context:dict, mode="reason"):
@@ -345,8 +345,8 @@ class LATSAgent(ScoringMixin, BaseAgent):
             )
             
             child = self.create_node(new_state, new_trace, parent=node)
-            child.score = score_result.get("score", 0.0)
-            child.dimension_scores = score_result.get("scores", {})
+            child.score = score_result.aggregate()
+            child.dimension_scores = score_result.
             child.reward = child.score  # Initialize reward
             node.children.append(child)
 

@@ -5,15 +5,16 @@ from collections import defaultdict
 import dspy
 from dspy import (BootstrapFewShot, Example, InputField, OutputField, Predict,
                   Signature)
+
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.agents.proximity import ProximityAgent
 from co_ai.agents.rule_tuner import RuleTunerAgent
 from co_ai.agents.unified_mrq import UnifiedMRQAgent
 from co_ai.constants import GOAL
-from co_ai.utils.graph_tools import (build_mermaid_graph,
-                                     compare_graphs, save_mermaid_to_file)
-
+from co_ai.utils.graph_tools import (build_mermaid_graph, compare_graphs,
+                                     save_mermaid_to_file)
+from co_ai.scoring.score_bundle import ScoreBundle
 
 class TraceStep(Signature):
     """
@@ -390,8 +391,8 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
 
             # Create child node with metadata
             child = self.create_node(state=new_state, trace=new_trace, parent=node)
-            child["score"] = score_result["score"]
-            child["dimension_scores"] = score_result["scores"]
+            child["score"] = score_result.aggregate()
+            child["dimension_scores"] = score_result.to_dict()
             child["action"] = comp
 
             children.append(child)
@@ -450,7 +451,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         }
 
         score_result = self.score_hypothesis(hyp, context, metrics="lats_reflection")
-        return score_result["score"] / 100, score_result
+        return score_result.aggregate() / 100, score_result
 
     def backpropagate(self, node, reward, trace_data=None):
         """Update node statistics up the tree"""
@@ -581,7 +582,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             metrics="lats_reflection",
         )
 
-        return score_result["score"] / 100  # Normalize
+        return score_result.aggregate() / 100  # Normalize
 
     def resolve_node(self, node):
         """Converts node ID or string to full node dict"""
@@ -648,7 +649,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
 
         # Score across dimensions
         score_result = self.score_hypothesis(hyp, {}, metrics="lats_reflection")
-        return score_result["score"] / 100  # Normalize
+        return score_result.aggregate() / 100  # Normalize
 
     def _train_on_traces(self, traces):
         """Train DSPy module on high-quality traces"""
@@ -677,9 +678,9 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
     def _dimension_aware_metric(self, example, pred):
         """Use dimensional scores for training metric"""
         scores = self._get_dimension_scores(pred.trace)
-        return sum(s["score"] * s.get("weight", 1.0) for s in scores.values())
+        return scores.aggregate()
 
-    def _get_dimension_scores(self, trace):
+    def _get_dimension_scores(self, trace) -> ScoreBundle:
         """Get scores across all dimensions"""
         hyp = {"text": "\n".join(trace)}
         return self.score_hypothesis(hyp, {}, metrics="lats_node")

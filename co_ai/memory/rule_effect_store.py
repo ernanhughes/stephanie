@@ -65,7 +65,7 @@ class RuleEffectStore:
         """Get the most recent rule applications."""
         return (
             self.db.query(RuleApplicationORM)
-            .order_by(RuleApplicationORM.created_at.desc())
+            .order_by(RuleApplicationORM.applied_at.desc())
             .limit(limit)
             .all()
         )
@@ -125,9 +125,45 @@ class RuleEffectStore:
 
         except Exception as e:
             if self.logger:
-                self.logger.log("RuleApplicationFetchError", {
-                    "error": str(e),
-                    "run_id": run_id,
-                    "goal_id": goal_id
-                })
+                self.logger.log(
+                    "RuleApplicationFetchError",
+                    {"error": str(e), "run_id": run_id, "goal_id": goal_id},
+                )
+            return []
+
+    def get_recent_performance(self, rule_id: int, limit: int = 10) -> List[Dict]:
+        """
+        Retrieve recent performance entries for a given rule.
+
+        Args:
+            rule_id (int): The ID of the rule.
+            limit (int): How many recent entries to return.
+
+        Returns:
+            List[Dict]: Recent performance data with score, timestamp, and optional metadata.
+        """
+        try:
+            entries = (
+                self.db.query(RuleApplicationORM)
+                .filter(RuleApplicationORM.rule_id == rule_id)
+                .order_by(RuleApplicationORM.applied_at.desc())
+                .limit(limit)
+                .all()
+            )
+
+            return [
+                {
+                    "score": e.post_score,
+                    "applied_at": e.applied_at.isoformat() if e.applied_at else None,
+                    "agent": e.agent_name,
+                    "change_type": e.change_type,
+                    "context_hash": e.context_hash,
+                    "details": e.details,
+                }
+                for e in entries
+            ]
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log("RecentPerformanceError", {"error": str(e), "rule_id": rule_id})
             return []

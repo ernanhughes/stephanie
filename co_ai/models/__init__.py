@@ -1,6 +1,8 @@
 from .base import Base
 from .comparison_preference import ComparisonPreferenceORM
 from .context_state import ContextStateORM
+from .document_section import DocumentSectionORM
+from .document_section_domain import DocumentSectionDomainORM
 from .evaluation import EvaluationORM
 from .evaluation_rule_link import EvaluationRuleLinkORM
 from .goal import GoalORM
@@ -13,7 +15,7 @@ from .mrq_preference_pair import MRQPreferencePairORM
 from .node_orm import NodeORM
 from .pattern_stat import PatternStatORM
 from .pipeline_run import PipelineRunORM
-from .prompt import PromptORM
+from .prompt import PromptORM, PromptProgramORM
 from .reflection_delta import ReflectionDeltaORM
 from .rule_application import RuleApplicationORM
 from .score import ScoreORM
@@ -24,5 +26,3 @@ from .sharpening_prediction import SharpeningPredictionORM
 from .sharpening_result import SharpeningResultORM
 from .symbolic_rule import SymbolicRuleORM
 from .unified_mrq import UnifiedMRQModelORM
-from .document_section import DocumentSectionORM
-from .document_section_domain import DocumentSectionDomainORM

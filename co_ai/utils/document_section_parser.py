@@ -1,8 +1,10 @@
 import json
 import re
-import yaml
 from pathlib import Path
+
+import yaml
 from fuzzywuzzy import process
+
 
 class DocumentSectionParser:
     def __init__(self, cfg=None, logger=None):

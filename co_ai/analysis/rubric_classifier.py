@@ -61,7 +61,6 @@ class RubricClassifierMixin:
             cfg=cfg,
             logger=logger,
         )
-
         goal = context.get(GOAL)
         summarized = self._summarize_pattern(pattern)
 

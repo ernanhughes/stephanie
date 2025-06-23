@@ -1,0 +1,37 @@
+{% if mode == "reflect" %}
+Rubric:
+- Does the reflection offer a meaningful new perspective or realization?
+- Does it demonstrate understanding or synthesis of key points?
+- Does it go beyond surface-level observations?
+
+<eval>
+Evaluate the following reflection for insightfulness:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% else %}
+Rubric:
+- Does the hypothesis provide a non-obvious or valuable insight about the goal?
+- Does it reveal relationships, principles, or ideas not immediately apparent?
+- Does it deepen understanding of the problem or solution space?
+
+<eval>
+Evaluate the following hypothesis for insightfulness:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

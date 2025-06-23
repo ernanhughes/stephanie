@@ -1,0 +1,36 @@
+{% if mode == "reason" %}
+Rubric:
+- Does the hypothesis show original thought or novel connections?
+- Does it go beyond restating common knowledge?
+
+<eval>
+Evaluate the following hypothesis for originality:
+Goal: {{ goal.goal_text }}
+Hypothesis: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% else %}
+{# reason is the default mode for the template #}
+Rubric:
+- Does the reflection introduce a more creative or unexpected insight?
+- Is it clearly distinguishable from prior iterations?
+
+<eval>
+Evaluate the following reflection for originality:
+Goal: {{ goal.goal_text }}
+Reflection: {{ hypothesis.text }}
+</eval>
+
+Return your review in the exact structured format below:
+
+rationale: <brief explanation>
+
+<answer>[[<0–100>]]</answer>
+
+{% endif %}

@@ -15,6 +15,17 @@ EVENT_ICONS = {
     "ContextSaved": "💾",
     "ContextAfterStage": "🗃️",
     "ContextYAMLDumpSaved": "📄",
+    "MRQTrainerTrainingComplete": "🏁",
+    "MRQTrainerStart": "🚀" ,
+    "MRQScoreBoundsUpdated": "📈", 
+    "HypothesisJudged": "⚖️",  # Hypothesis judged
+    "MRQModelInitializing": "🧠",  # Indicates model initialization
+    "MRQDimensionEvaluated": "📏",  # Indicates dimension evaluation
+    "HypothesisScored": "🏆",  # Hypothesis scored
+    "EditGenerated": "✍️",  # Edit generated for hypothesis
+    "TrainingDataProgress": "📊",
+    "SymbolicAgentNewKey" : "🔑", 
+    "ScoreDelta": "📈",  # Score delta calculated
     "debug": "🐞",
     "DocumentProfileFailed": "📉",         # Indicates profiling failed or dropped
     "DomainClassifierInit": "🧠",          # Classifier startup — cognitive/init
@@ -36,10 +47,13 @@ EVENT_ICONS = {
     "SectionDomainUpserted": "📂🏷️",  # Domain classification for section
     "StageContext": "🔧📝",
     "TrimmingSection": "✂️",
+    "NoSymbolicPromptRulesApplied": "⏭️",
     "AgentInit": "🤖",
+    "InvalidRuleMutation": "❌🧩",  # Indicates an invalid rule mutation attempt
     "NodeDebug": "🌲🔍",
     "NodeSummary": "🪵📋",
     "CorDimensionEvaluated": "📐✅",
+    "PipelineMutationAgentInitialized": "🛠️🤖",  # Indicates a mutation agent is initialized
     "EvaluatorInit": "🧪",
     "RuleApplicationUpdated": "🧩",  # Suggests a symbolic piece being modified
     "MRQScoringComplete": "📈",  # Indicates successful scoring/completion
@@ -106,7 +120,7 @@ EVENT_ICONS = {
     "ComparisonPromptConstructed": "🛠️",
     "ComparisonResponseReceived": "📩",
     "LLMCacheHit": "✅",
-    "MRQTrainingStart": "So it's very",
+    "MRQTrainingStart": "🚀",
     "MRQTrainingEpoch": "📈",
     "MRQTrainingComplete": "🏁",
     "MRQTraining": "📊🛠️",

@@ -5,8 +5,8 @@ from co_ai.scoring.base_evaluator import BaseEvaluator
 
 
 class ProximityHeuristicEvaluator(BaseEvaluator):
-    def evaluate(self, hypothesis: dict, context: dict = {}) -> dict:
-        analysis = hypothesis.get("proximity_analysis")
+    def evaluate(self, prompt:str, response: str) -> dict:
+        analysis = response
         if not analysis:
             return {
                 "score": 0.0,

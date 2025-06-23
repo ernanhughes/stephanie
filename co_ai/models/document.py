@@ -7,6 +7,7 @@ from sqlalchemy.sql import func
 
 from co_ai.models.base import Base
 
+
 class DocumentORM(Base):
     __tablename__ = "documents"
 

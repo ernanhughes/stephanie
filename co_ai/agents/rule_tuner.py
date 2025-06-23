@@ -7,9 +7,7 @@ from co_ai.agents.base_agent import BaseAgent
 from co_ai.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from co_ai.constants import GOAL, PIPELINE_RUN_ID
 from co_ai.memory.symbolic_rule_store import SymbolicRuleStore
-from co_ai.models import (EvaluationORM, PipelineRunORM, RuleApplicationORM,
-                          SymbolicRuleORM)
-from co_ai.models.score import ScoreORM
+from co_ai.models import SymbolicRuleORM
 from co_ai.rules import RuleTuner
 from co_ai.utils.high_score_selector import get_high_scoring_runs
 

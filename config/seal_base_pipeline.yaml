@@ -1,0 +1,69 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/survey
+  - agents/search_orchestrator
+  - agents/generation
+  - agents/sharpening
+  - agents/judge
+  - agents/cot_generator
+  - agents/cot_dspy_generator
+  - agents/supervisor
+  - agents/paper_score
+  - logging/json_logger
+
+goal:
+  goal_text: Improve an AI system’s ability to diagnose its own reasoning failures in complex decision-making tasks. The system should be able to identify faulty assumptions, reflect on its process, and revise future behavior accordingly.
+  goal_type: "capability"
+  goal_category: "self_reflection"
+  focus_area: "ai_research"
+  strategy: "introspective_diagnostics"
+  difficulty: "medium"
+  expected_formats:
+    - "critique_chain"
+    - "reasoning_trace"
+    - "reflective_plan"
+
+symbolic:
+  enabled: false
+  rules_file: "config/rules/self_edit_generator_rules.yaml"
+  enable_db_rules: false # load rules from the database
+  match_priority:
+    - goal_id
+    - pipeline_run_id
+    - metadata
+  metadata_match_mode: partial   # options: exact, partial, off
+  allow_fallback: true           # if no ID matches, allow metadata fallback
+
+
+post_judgment:
+  name: pipeline_judge
+  enabled: true
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: base_papeline
+  description: "Base pipeline for self-edit generation and introspective diagnostics"
+  tag: "huggingface_related_papers import"
+  stages:
+    - name: generation
+      cls: co_ai.agents.gereration.GenerationAgent
+      enabled: true
+      iterations: 1

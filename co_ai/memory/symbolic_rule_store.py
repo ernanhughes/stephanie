@@ -197,3 +197,40 @@ class SymbolicRuleStore:
         Checks if a symbolic rule exists by its signature hash.
         """
         return self.session.query(SymbolicRuleORM).filter_by(context_hash=signature).first() is not None
+
+    def exists_similar(self, rule: SymbolicRuleORM, attr: str, new_val) -> bool:
+        """
+        Returns True if a rule already exists with the same target, attribute, and value.
+        This prevents redundant mutations.
+        """
+        try:
+            # Get all candidate rules with same agent, target, and optional goal
+            query = self.session.query(SymbolicRuleORM).filter(
+                SymbolicRuleORM.agent_name == rule.agent_name,
+                SymbolicRuleORM.target == rule.target,
+            )
+
+            if rule.goal_id:
+                query = query.filter(SymbolicRuleORM.goal_id == rule.goal_id)
+
+            all_matches = query.all()
+
+            # Check for exact match in attributes
+            for existing_rule in all_matches:
+                if (
+                    existing_rule.attributes
+                    and attr in existing_rule.attributes
+                    and existing_rule.attributes[attr] == new_val
+                ):
+                    return True
+
+            return False
+        except Exception as e:
+            if self.logger:
+                self.logger.log("SymbolicRuleExistsSimilarError", {
+                    "error": str(e),
+                    "agent_name": rule.agent_name,
+                    "attribute": attr,
+                    "value": new_val,
+                })
+            return False

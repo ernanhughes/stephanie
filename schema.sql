@@ -668,7 +668,6 @@ Kenny
     domain_label TEXT,
     domains TEXT[]  -- Optional list of additional domain tags
 );
-I
 
 CREATE TABLE IF NOT EXISTS document_domains (
     id SERIAL PRIMARY KEY,
@@ -687,6 +686,10 @@ CREATE TABLE IF NOT EXISTS document_sections (
     section_name TEXT NOT NULL,
     section_text TEXT NOT NULL,
     source TEXT DEFAULT 'unstructured+llm',
+    summary TEXT,
+    embedding json,
+    extra_data json,
+    domains text[],
     UNIQUE(document_id, section_name)
 );
 

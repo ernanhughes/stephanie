@@ -93,7 +93,7 @@ class ProximityAgent(ScoringMixin, BaseAgent):
             hypothesis={"text": summary_output, "proximity_analysis": summary_output},
             context=context,
             metrics="proximity",  # Must match your config key: `proximity_score_config`
-            evaluator=ProximityHeuristicEvaluator(),
+            scorer=ProximityHeuristicEvaluator(),
         )
         score = score_result["score"]
 

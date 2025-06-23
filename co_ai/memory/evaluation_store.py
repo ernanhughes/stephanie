@@ -165,3 +165,11 @@ class EvaluationStore:
                     "hypothesis_ids": hypothesis_ids,
                 })
             return []
+        
+    def get_latest_score(self, hypothesis_id, stage=None):
+        query = self.session.query(EvaluationORM).filter_by(hypothesis_id=hypothesis_id)
+        query = query.order_by(EvaluationORM.created_at.desc())
+        latest = query.first()
+        if latest and latest.scores:
+            return latest.scores.get("final_score")
+        return None

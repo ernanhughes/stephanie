@@ -18,12 +18,7 @@ class PatternStatStore:
 
             if self.logger:
                 self.logger.log("PatternStatsStored", {
-                    "goal_id": stats[0].goal_id,
-                    "hypothesis_id": stats[0].hypothesis_id,
-                    "agent": stats[0].agent_name,
-                    "model": stats[0].model_name,
-                    "count": len(stats),
-                    "timestamp": datetime.utcnow().isoformat()
+                    "stats": stats
                 })
 
         except Exception as e:

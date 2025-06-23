@@ -2,8 +2,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from co_ai.models.prompt_program import \
-    PromptProgramORM  # adjust if path differs
+from co_ai.models.prompt import PromptProgramORM
 
 
 class PromptProgramStore:
@@ -12,6 +11,14 @@ class PromptProgramStore:
         self.logger = logger
         self.name = "prompt_programs"
         self.table_name = "prompt_programs"
+
+    def insert(self, prompt_dict: dict) -> PromptProgramORM:
+        prompt = PromptProgramORM(**prompt_dict)    
+        self.session.add(prompt)
+        self.session.commit()
+        self.session.refresh(prompt)
+        return prompt
+
 
     def add_prompt(self, prompt: PromptProgramORM) -> PromptProgramORM:
         self.session.add(prompt)

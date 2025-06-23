@@ -14,10 +14,12 @@ class SymbolicRuleApplier:
         self.memory = memory
         self.logger = logger
         self.enabled = cfg.get("symbolic", {}).get("enabled", False)
-        if self.enabled:
-            self.rules = self._load_rules()
+        self._rules = self._load_rules() if self.enabled else []
 
-
+    @property
+    def rules(self) -> list:
+        return self._rules
+    
     def apply(self, context: dict) -> dict:
         if not self.enabled:
             return context
@@ -288,15 +290,26 @@ class SymbolicRuleApplier:
                     return False
         return True
 
-
     def track_pipeline_stage(self, stage_dict: dict, context: dict):
         self.memory.symbolic_rules.track_pipeline_stage(stage_dict, context)
+
+    def get_nested_value(d, key_path: str):
+        keys = key_path.split(".")
+        for key in keys:
+            d = d.get(key, {})
+        return d if d else None
+
+    def set_nested_value(d, key_path: str, value):
+        keys = key_path.split(".")
+        for key in keys[:-1]:
+            d = d.setdefault(key, {})
+        d[keys[-1]] = value
 
     def _load_rules(self):
         rules = []
         symbolic_dict = self.cfg.get("symbolic", {})
         if symbolic_dict.get("rules_file"):
-            rules += self._load_rules_from_yaml(symbolic_dict.rules_file)
+            rules += self._load_rules_from_yaml(symbolic_dict.get("rules_file"))
         if symbolic_dict.get("enable_db_rules", True):
             rules += self.memory.symbolic_rules.get_all_rules()
         return rules

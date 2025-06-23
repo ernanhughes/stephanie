@@ -17,10 +17,10 @@ import requests
 from sklearn.metrics.pairwise import cosine_similarity
 
 from co_ai.agents.base_agent import BaseAgent
+from co_ai.analysis.domain_classifier import DomainClassifier
 from co_ai.constants import GOAL
 from co_ai.tools.arxiv_tool import fetch_arxiv_metadata
 from co_ai.tools.pdf_tools import PDFConverter
-from co_ai.analysis.domain_classifier import DomainClassifier
 
 
 def guess_title_from_text(text: str) -> str:
