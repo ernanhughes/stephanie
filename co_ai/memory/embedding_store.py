@@ -88,13 +88,99 @@ class EmbeddingStore(BaseStore):
             return results
         except Exception as e:
             if self.logger:
-                self.logger.log("HypothesesSearchFailed", {
-                    "error": str(e),
-                    "query": query
-                })
+                self.logger.log(
+                    "HypothesesSearchFailed", {"error": str(e), "query": query}
+                )
             else:
                 print(f"[VectorMemory] Search failed: {e}")
             return []
 
+    def search_similar_prompts_with_scores(self, query: str, top_k: int = 5) -> list:
+        """
+        Embedding-based search for similar prompts and their scores.
+        Returns:
+            A list of dicts: [{prompt, score, pipeline_run_id, step_index, dimension_scores}, ...]
+        """
+        embedding = get_embedding(query, self.cfg)
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 
+                        p.prompt_text AS prompt,
+                        p.pipeline_run_id,
+                        s.score,
+                        s.dimension,
+                        s.source 
+                    FROM prompts p
+                    JOIN embeddings x
+                        ON x.id = p.embedding_id
+                    JOIN evaluations e
+                        ON e.pipeline_run_id = p.pipeline_run_id
+                    JOIN scores s 
+                        ON s.evaluation_id = e.id
+                    WHERE x.embedding IS NOT NULL
+                    ORDER BY x.embedding <-> %s::vector
+                    LIMIT %s;
+                    """,
+                    (embedding, top_k),
+                )
+                rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                results.append(
+                    {
+                        "prompt": row[0],
+                        "pipeline_run_id": row[1],
+                        "score": float(row[2]) if row[2] is not None else 0.0,
+                        "dimension": row[3],
+                        "source": row[4]
+                    }
+                )
+
+            if self.logger:
+                self.logger.log(
+                    "PromptSimilaritySearch",
+                    {
+                        "query": query,
+                        "top_k": top_k,
+                        "returned": len(results),
+                    },
+                )
+
+            return results
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PromptSearchFailed", {"query": query, "error": str(e)})
+            else:
+                print(f"[PromptSearchFailed] {e}")
+            return []
+
     def get_text_hash(self, text: str) -> str:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def backfill_prompt_embeddings(self):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, prompt_text FROM prompts WHERE embedding_id IS NULL"
+            )
+            rows = cur.fetchall()
+
+        for prompt_id, prompt_text in rows:
+            embedding = self.get_or_create(prompt_text)
+            text_hash = self.get_text_hash(prompt_text)
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM embeddings WHERE text_hash = %s", (text_hash,)
+                )
+                embedding_row = cur.fetchone()
+                if embedding_row:
+                    embedding_id = embedding_row[0]
+                    with self.conn.cursor() as cur2:
+                        cur2.execute(
+                            "UPDATE prompts SET embedding_id = %s WHERE id = %s",
+                            (embedding_id, prompt_id),
+                        )

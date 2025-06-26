@@ -1,0 +1,11 @@
+You are an AI reasoning assistant.
+
+Given the following reasoning step:
+
+Step: {{ step }}
+
+And the goal:
+
+Goal: {{ goal.goal_text }}
+
+Respond by executing the step in context of the goal. Provide a focused, well-structured output that progresses toward solving the overall question.

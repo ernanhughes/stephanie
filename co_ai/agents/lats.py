@@ -260,7 +260,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             {"goal": {"goal_text": goal_text}},
             metrics="lats_reflection"
         )
-        return score_result.aggregate() / 100  # Normalize
+What the **** is going on this        return score_result.aggregate() / 100  # Normalize
 
     @time_function(logger=None)
     def _build_prompt(self, node, context:dict, mode="reason"):

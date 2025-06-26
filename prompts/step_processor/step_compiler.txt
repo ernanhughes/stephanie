@@ -1,0 +1,38 @@
+You are a reasoning assistant helping to design a thoughtful, step-by-step plan for tackling complex AI research questions.
+
+Your task is to break the following research goal into a series of clear, reusable reasoning steps:
+
+**Goal**: "{{ goal.goal_text }}"
+
+Each step should:
+- Represent meaningful progress toward solving the problem.
+- Be **explainable**: include a short justification for why the step matters.
+- Be **generalizable**: framed in a way that could apply to similar tasks.
+- Be focused, actionable, and **suitable for independent evaluation**.
+
+{% if goal.goal_type %}
+This is a **{{ goal.goal_type }}** type question.
+{% endif %}
+{% if goal.focus_area %}
+The topic area is **{{ goal.focus_area }}**.
+{% endif %}
+{% if goal.strategy %}
+Use a **{{ goal.strategy }}** approach to break it down.
+{% endif %}
+{% if memory.shared %}
+Here are a few helpful prior examples of stepwise reasoning plans:
+{% for item in memory.shared %}
+---
+**Prior Goal**: {{ item.goal_text }}
+**Steps**:
+{{ item.response }}
+{% endfor %}
+---
+{% endif %}
+
+Now return a list of high-quality reasoning steps for the target goal.
+
+### Output Format
+
+1. [Step Name] - Explanation of purpose and relevance.
+2. ...

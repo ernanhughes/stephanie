@@ -12,9 +12,10 @@ from co_ai.logs import JSONLogger
 from co_ai.memory import MemoryTool
 from co_ai.supervisor import Supervisor
 from co_ai.utils import generate_run_id, get_log_file_path
+from co_ai.scoring.score_bundle import ScoreBundle
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="config")
+@hydra.main(config_path="../config", config_name="pipelines/cot", version_base=None)
 def run(cfg: DictConfig):
     async def main():
         print(f"Initial Config:\n{OmegaConf.to_yaml(cfg)}")
@@ -62,6 +63,8 @@ def save_yaml_result(log_path: str, result: dict):
     print(f"✅ Result saved to: {report_path}")
 
 def default_serializer(obj):
+    if isinstance(obj, ScoreBundle):
+        return obj.to_dict()
     if isinstance(obj, datetime):
         return obj.isoformat()
     if isinstance(obj, set):

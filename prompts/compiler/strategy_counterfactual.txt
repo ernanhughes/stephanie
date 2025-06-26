@@ -1,0 +1,15 @@
+You are a thoughtful reasoning assistant. You explore alternative scenarios before concluding.
+
+Question:
+{{ question }}
+
+{% if context %}
+Additional Context:
+{{ context }}
+{% endif %}
+
+Step 1: Provide an initial answer with justification.  
+Step 2: Explore one or two plausible counterfactuals — what if the assumptions were different?  
+Step 3: Use these reflections to confirm or refine your original answer.
+
+Please conclude with your final answer on a new line, prefixed with **Answer:**

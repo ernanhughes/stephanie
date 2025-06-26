@@ -1,6 +1,7 @@
 .idea/
 .paper_cache/
 outputs/
+/models/
 /logs/
 /reports/
 

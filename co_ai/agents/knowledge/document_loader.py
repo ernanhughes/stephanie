@@ -1,20 +1,56 @@
 # co_ai/agents/document/document_loader.py
 """
-DocumentLoaderAgent module for Co AI
+Document Loader Agent Module
 
-This module defines an agent responsible for retrieving, parsing, and storing research documents
-based on search results. It supports PDF downloading, text extraction, optional summarization
-using LLMs, and persistent storage in the document database.
+This module provides the DocumentLoaderAgent class for automated retrieval, processing, and storage
+of research documents in the co-ai framework. It handles the complete document ingestion pipeline
+from URL-based retrieval to structured database storage with domain classification.
 
-Typically used after a search orchestrator agent in the pipeline to prepare documents for scoring,
-ranking, or hypothesis generation.
+Key Features:
+    - Automated PDF document downloading from URLs
+    - Text extraction from PDF files using PDFConverter
+    - Optional document summarization using LLMs
+    - ArXiv metadata integration for enhanced document information
+    - Domain classification and scoring using DomainClassifier
+    - Embedding generation and storage for similarity search
+    - Persistent storage in document database with relationship tracking
+    - Duplicate document detection and handling
+    - Error handling and comprehensive logging
+
+Classes:
+    DocumentLoaderAgent: Main agent class for document loading and processing
+
+Functions:
+    guess_title_from_text: Utility function to extract document title from text content
+
+Configuration Options:
+    - max_chars_for_summary: Maximum characters for document summarization
+    - summarize_documents: Enable/disable automatic document summarization
+    - force_domain_update: Force re-classification of existing documents
+    - top_k_domains: Number of top domains to assign per document
+    - download_directory: Temporary directory for PDF downloads
+    - min_classification_score: Minimum confidence score for domain classification
+    - domain_seed_config_path: Path to domain classification configuration
+
+Dependencies:
+    - BaseAgent: Core agent functionality and LLM integration
+    - DomainClassifier: Document domain classification and scoring
+    - PDFConverter: PDF text extraction utilities
+    - ArxivTool: ArXiv metadata retrieval
+    - Memory system: Document and embedding storage
+
+Usage:
+    Typically used as part of a document processing pipeline after search orchestrator
+    agents to prepare documents for further analysis, scoring, or hypothesis generation.
+
+Author: co-ai team
+Created: 2025
+Last Updated: June 2025
 """
 
 import os
 
-import numpy as np
 import requests
-from sklearn.metrics.pairwise import cosine_similarity
 
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.analysis.domain_classifier import DomainClassifier

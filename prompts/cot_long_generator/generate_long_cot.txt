@@ -1,0 +1,38 @@
+You are solving the following problem using careful, explicit chain-of-thought reasoning.
+
+Problem:
+{{ goal.goal_text }}
+
+{% if literature %}
+📚 Relevant reference material:
+{% for ref in literature %}
+- {{ ref }}
+{% endfor %}
+{% endif %}
+
+{% if preferences %}
+🧭 Please follow these preferences in your reasoning:
+{% for key, value in preferences.items() %}
+- {{ key|capitalize }}: {{ value }}
+{% endfor %}
+{% endif %}
+
+🧠 Begin detailed step-by-step reasoning:
+
+Step 1: Understand the problem and its requirements.
+{{ gen step_1_understanding }}
+
+Step 2: Identify key concepts, facts, or methods that apply.
+{{ gen step_2_concepts }}
+
+Step 3: Apply these concepts to the current problem.
+{{ gen step_3_application }}
+
+Step 4: Evaluate and verify each logical step.
+{{ gen step_4_verification }}
+
+Step 5: Reflect on the reasoning – is it complete, correct, and creative?
+{{ gen step_5_reflection }}
+
+📝 Final Answer:
+{{ gen final_answer }}

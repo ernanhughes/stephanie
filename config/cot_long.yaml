@@ -1,0 +1,74 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/literature
+  - agents/literature_ranking
+  - agents/prompt_tuning
+  - agents/generation
+  - agents/refiner
+  - agents/review
+  - agents/reflection
+  - agents/ranking
+  - agents/evolution
+  - agents/meta_review
+  - agents/proximity
+  - agents/sharpening
+  - agents/judge
+  - agents/cot_long_generator
+  - agents/cot_dspy_generator
+  - agents/pipeline_judge
+  - agents/supervisor
+  - logging/json_logger
+
+goal:
+  goal_text: Develop a reasoning transfer framework where an AI system trained on high-quality reasoning in one scientific domain can apply and adapt those strategies to new, unseen domains using symbolic prompts, scoring dimensions, and MR.Q-guided tuning. How can this transfer loop be optimized for generalization and self-improvement?
+  goal_type: "strategic"
+  goal_category: "ai_transfer_learning"
+  focus_area: "reasoning"
+  strategy: "symbolic_transfer"
+  difficulty: "hard"
+  expected_formats:
+    - "symbolic_prompt_program"
+    - "multi_dimensional_score_map"
+    - "cross_domain_transfer_loop"
+
+post_judgment:
+  name: pipeline_judge
+  enabled: true
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: long_cot_pipeline
+  version: "1.0"
+  description: "Long COT Pipeline demonstrating X-REASONER integration with CoT agents."
+  stages:
+    - name: cot_long_generator
+      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
+      enabled: true
+      iterations: 1
+    - name: ranking
+      cls: co_ai.agents.ranking.RankingAgent
+      enabled: true
+      iterations: 1
+    - name: cot_dspy_generator
+      cls: co_ai.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
+      enabled: true
+      iterations: 1

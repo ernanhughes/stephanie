@@ -1,0 +1,44 @@
+# configs/agents/dspy_assembler.yaml
+
+dspy_assembler:
+  name: dspy_assembler
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+  use_memory_for_fast_prompts: false
+  max_included: 15
+
+
+  evaluator: llm         #(mrq or llm)  may not be enough items fo mrq
+  evaluator_prompt_file: evaluation.txt
+  evaluator_model:
+    name: ollama/phi3
+    api_base: http://localhost:11434
+    api_key: null
+
+  analysis_model:
+    name: ollama/llama3.2
+    api_base: http://localhost:11434
+    api_key: null
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  input_key: hypotheses   # add nodes
+  output_key: hypotheses
+  prompt_mode: file
+  prompt_file: assembler.txt
+  pattern_prompt_file: cot_pattern.txt
+
+  remove_think: false # we require "thinking" part of the prompt
+
+  device: cpu # How many epochs to wait after no improvement
+  limit: 1000 # max training data
+  epochs: 20  # how much to train
+  patience: 3  # How many epochs to wait after no improvement
+  min_delta: 0.0001  # Minimum change in loss to qualify as improvement
+  log_results: true # save results to database
+  save_improved: true # save improved prompts and hypotheses

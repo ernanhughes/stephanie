@@ -1,6 +1,5 @@
 # co_ai/agents/lookahead.py
 import re
-from dataclasses import asdict
 
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL, PIPELINE

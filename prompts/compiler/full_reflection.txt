@@ -1,0 +1,59 @@
+You are an expert evaluator of scientific and technical hypotheses.
+Your task is to assess whether the following hypothesis logically supports the stated goal,
+regardless of domain (biomedicine, AI, policy, finance, etc.)
+
+Hypothesis:
+{{ hypothesis.text }}
+
+Goal:
+{{ goal.goal_text }}
+
+{% if preferences %}
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+Instructions:
+1. Analyze whether the hypothesis follows from available data and reasoning
+2. Evaluate internal consistency, clarity, and alignment with the goal
+3. Identify potential weaknesses, unsupported assumptions, or missing context
+4. Score based on correctness, novelty, and feasibility (each from 1–5)
+   - Correctness: Does it follow from available data?
+   - Novelty: Is it original or derivative?
+   - Feasibility: Can it be tested or implemented now?
+5. Provide a final self-reward score between 0 and 100
+6. Suggest refinements that improve alignment with the preferences
+7. Return only the structured output below — no extra explanation
+
+# Full Reflection Summary
+[Summary of overall logical credibility and relevance to the goal]
+
+# Strengths
+- [Strength 1]
+- [Strength 2]
+
+# Weaknesses
+- [Weakness 1]
+- [Weakness 2]
+
+# Correctness Assessment
+Score: [1–5]
+Reasoning: [Brief justification]
+
+# Novelty Assessment
+Score: [1–5]
+Reasoning: [Brief justification]
+
+# Feasibility Assessment
+Score: [1–5]
+Reasoning: [Brief justification]
+
+# Self-Reward Score
+Score [0-100]
+
+# Recommended Refinements
+- [Refinement 1]
+- [Refinement 2]
+

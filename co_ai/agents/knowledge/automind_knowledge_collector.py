@@ -1,12 +1,36 @@
 # co_ai/agents/knowledge/automind_knowledge_collector.py
+"""
+AutoMind Knowledge Collector Module
+
+This module provides the AutoMindKnowledgeCollector class for intelligent knowledge acquisition
+and processing in the co-ai framework. It specializes in collecting, labeling, and ranking
+research papers and Kaggle solutions based on task descriptions.
+
+Key Features:
+    - Automated research paper collection from various sources
+    - Kaggle competition solution gathering
+    - Intelligent document labeling using hierarchical classification
+    - Similarity-based filtering and ranking
+    - Label-priority based re-ranking for relevance optimization
+
+Classes:
+    AutoMindKnowledgeCollector: Main class for knowledge collection and processing
+
+Constants:
+    LABEL_HIERARCHY: Hierarchical mapping of ML/AI domains to specific tasks
+
+Dependencies:
+    - BaseAgent: Core agent functionality
+    - WebSearchTool, WikipediaTool: Web-based information retrieval
+    - ArxivTool: Academic paper search
+    - CosineSimilarityTool: Document similarity computation
+    - HuggingFaceTool: Dataset search capabilities
+"""
 
 from typing import Dict, List
 
 from co_ai.agents.base_agent import BaseAgent
-from co_ai.tools import WebSearchTool, WikipediaTool
-from co_ai.tools.arxiv_tool import search_arxiv
 from co_ai.tools.cos_sim_tool import get_top_k_similar
-from co_ai.tools.huggingface_tool import search_huggingface_datasets
 
 LABEL_HIERARCHY = {
     "Computer Vision": ["Image Classification", "Object Detection", "Segmentation"],

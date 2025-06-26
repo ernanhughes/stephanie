@@ -1,0 +1,58 @@
+stage: reasoning
+output_format: cor
+dimensions:
+
+  # - name: correctness
+  #   file: correctness.txt
+  #   weight: 1.2
+  #   extra_data: { parser: numeric }
+  #   # Is the step factually accurate and logically sound?
+
+  - name: relevance
+    file: relevance.txt
+    weight: 1.1
+    extra_data: { parser: numeric }
+    # Is the step directly addressing the goal or problem?
+
+  - name: generalizability
+    file: generalizability.txt
+    weight: 1.0
+    extra_data: { parser: numeric }
+    # Could the reasoning apply to similar problems or broader cases?
+
+  - name: originality
+    file: originality.txt
+    weight: 1.0
+    extra_data: { parser: numeric }
+    # Does the step contribute a novel or non-obvious idea?
+
+  - name: clarity
+    file: clarity.txt
+    weight: 0.9
+    extra_data: { parser: numeric }
+    # Is the reasoning step expressed clearly and understandably?
+
+  - name: completeness
+    file: completeness.txt
+    weight: 0.8
+    extra_data: { parser: numeric }
+    # Does the step fully address its subgoal, without missing pieces?
+
+  # - name: curiosity
+  #   file: curiosity.txt
+  #   weight: 1.0
+  #   extra_data: { parser: numeric }
+  #   # Especially relevant for self-improving AI: does the step raise a useful follow-up question or reflection?
+
+  # - name: symbolic_alignment
+  #   file: symbolic_alignment.txt
+  #   weight: 1.0
+  #   extra_data: { parser: numeric }
+  #   # Is this step well-aligned with the symbolic structure or tags assigned to it?
+
+  - name: feasibility
+    file: feasibility.txt
+    weight: 1.0
+    extra_data: { parser: numeric }
+    # Could this step be implemented or tested in practice?
+

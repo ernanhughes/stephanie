@@ -3,11 +3,8 @@ from dspy import BootstrapFewShot, Example, Predict
 
 from co_ai.compiler.llm_compiler import LLMCompiler
 from co_ai.compiler.passes.strategy_mutation_pass import StrategyMutationPass
-from co_ai.compiler.prompt_evaluator import EvaluationResult
-from co_ai.compiler.prompt_mutator import PromptMutator
 from co_ai.compiler.prompt_tuning_signature import PromptTuningSignature
 from co_ai.evaluator.evaluator_loader import get_evaluator
-from co_ai.models.prompt_program import PromptProgramORM
 
 
 class PromptEvolver:
@@ -93,5 +90,24 @@ class PromptEvolver:
 
         return refined_prompts
 
-    def score_prompt(self, prompt: str, reference_output: str = "", context:dict={}) -> float:
+    def score_prompt(
+        self, prompt: str, reference_output: str = "", context: dict = {}
+    ) -> float:
         return self.evaluator.score_single(prompt, reference_output, context)
+
+    def score_prompt_only(self, prompt: str, goal: str = "", context: dict = {}) -> float:
+        """
+        Score a prompt independently of any output. Returns a numeric score.
+        Requires the evaluator to support prompt-only scoring.
+        """
+        if not self.evaluator:
+            if self.logger:
+                self.logger.log("PromptScoreFailed", {"error": "Evaluator not initialized"})
+            return -1.0
+
+        try:
+            return self.evaluator.score_single(prompt, goal=goal, context=context)
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PromptScoreFailed", {"error": str(e), "prompt": prompt})
+            return -1.0

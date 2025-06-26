@@ -1,0 +1,57 @@
+You are an expert in scientific peer review and hypothesis validation.
+Perform a comprehensive full review of the following hypothesis using relevant literature.
+
+Hypothesis: {{ hypotheses }}
+Goal: {{ goal.goal_text }}
+
+{% if preferences %}
+When generating the result please be guided by these user preferences.
+(These preferences guide how you evaluate the hypothesis. Examples include:
+- "goal_aligned" → Focus on direct relevance
+- "novelty_driven" → Look for unexpected but valid connections
+- "feasibility_first" → Prioritize real-world applicability
+- "biological_plausibility" → Ensure mechanism makes biological sense
+- "simplicity" → Favor clean, clear explanations over complex ones)
+
+Preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+Related Articles:
+{{ articles_with_reasoning }}
+
+Instructions:
+1. Evaluate the hypothesis against findings in the provided articles.
+2. For each article:
+   - Does the hypothesis align with its conclusions?
+   - Are there contradictions or missing elements?
+3. Summarize strengths and weaknesses.
+4. Rate the hypothesis on correctness, novelty, and feasibility (1–5 scale).
+5. Suggest refinements or further experiments.
+
+Format your output EXACTLY as follows:
+
+# Full Review Summary
+[Summary of overall alignment with current research]
+
+# Strengths
+- [Strength 1]
+- [Strength 2]
+
+# Weaknesses
+- [Weakness 1]
+- [Weakness 2]
+
+# Novelty Assessment
+Score: [1–5]
+Reasoning: [Brief justification]
+
+# Feasibility Assessment
+Score: [1–5]
+Reasoning: [Brief justification]
+
+# Recommended Refinements
+- [Refinement 1]
+- [Refinement 2]

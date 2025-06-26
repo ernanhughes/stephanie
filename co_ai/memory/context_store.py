@@ -36,6 +36,8 @@ class ContextStore:
 
             # Create new context state
             db_context = ContextStateORM(
+                pipeline_run_id=context.get("pipeline_run_id"), 
+                goal_id=context.get("goal", {}).get("id"), 
                 run_id=run_id,
                 stage_name=stage,
                 version=new_version,
@@ -60,6 +62,7 @@ class ContextStore:
                     "timestamp": db_context.timestamp.isoformat(),
                     "is_current": True
                 })
+            self.session.commit()
 
         except Exception as e:
             self.session.rollback()
@@ -68,23 +71,23 @@ class ContextStore:
                 self.logger.log("ContextSaveFailed", {"error": str(e)})
             raise
 
-    def has_completed(self, run_id: str, stage_name: str) -> bool:
+    def has_completed(self, goal_id:int, stage_name: str) -> bool:
         """Check if this stage has already been run"""
         count = (
             self.session.query(ContextStateORM)
-            .filter_by(run_id=run_id, stage_name=stage_name)
+            .filter_by(stage_name=stage_name, goal_id=goal_id)
             .count()
         )
         return count > 0
 
-    def load(self, run_id: str, stage: Optional[str] = None) -> dict:
+    def load(self, goal_id:int, stage: Optional[str] = None) -> dict:
         try:
             session = self.session if self.session.is_active else self.sessionmaker()
 
             if stage:
                 states = (
                     session.query(ContextStateORM)
-                    .filter_by(run_id=run_id, stage_name=stage)
+                    .filter_by(stage_name=stage, goal_id=goal_id)
                     .order_by(ContextStateORM.timestamp.asc())
                     .all()
                 )

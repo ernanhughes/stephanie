@@ -3,8 +3,7 @@ import re
 from collections import defaultdict
 
 import dspy
-from dspy import (BootstrapFewShot, Example, InputField, OutputField, Predict,
-                  Signature)
+from dspy import BootstrapFewShot, Example, InputField, OutputField, Predict, Signature
 
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.mixins.scoring_mixin import ScoringMixin
@@ -12,9 +11,15 @@ from co_ai.agents.proximity import ProximityAgent
 from co_ai.agents.rule_tuner import RuleTunerAgent
 from co_ai.agents.unified_mrq import UnifiedMRQAgent
 from co_ai.constants import GOAL
-from co_ai.utils.graph_tools import (build_mermaid_graph, compare_graphs,
-                                     save_mermaid_to_file)
+from co_ai.utils.graph_tools import (
+    build_mermaid_graph,
+    compare_graphs,
+    save_mermaid_to_file,
+)
 from co_ai.scoring.score_bundle import ScoreBundle
+from co_ai.scoring.mrq_scorer import MRQScorer
+from co_ai.scoring.svm_scorer import SVMScorer
+
 
 class TraceStep(Signature):
     """
@@ -146,6 +151,35 @@ class LATSProgram(dspy.Module):
         return child_trace, child_score
 
 
+class SymbolicImpactAnalyzer:
+    """
+    Analyzes structural overlap and divergence between two graph representations (e.g., symbolic vs. LATS)
+    and attributes score delta to divergent paths.
+    """
+
+    def __init__(self, score_lookup_fn):
+        self.score_lookup_fn = (
+            score_lookup_fn  # Function to get scores for a given node or trace
+        )
+
+    def analyze(self, graph1, graph2):
+        matches, only_1, only_2 = compare_graphs(graph1, graph2)
+        results = []
+
+        for node in matches:
+            score_1 = self.score_lookup_fn(node, source="graph1")
+            score_2 = self.score_lookup_fn(node, source="graph2")
+            results.append(
+                {"node": node, "type": "converged", "delta": score_2 - score_1}
+            )
+
+        for node in only_1 + only_2:
+            score = self.score_lookup_fn(node, source="graph1")
+            results.append({"node": node, "type": "diverged", "score": score})
+
+        return results
+
+
 class LATSDSPyAgent(ScoringMixin, BaseAgent):
     """
     Enhanced LATS agent with:
@@ -195,6 +229,16 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
 
         # Symbolic impact analyzer
         self.impact_analyzer = SymbolicImpactAnalyzer(self._get_score)
+        self.score_map = {}
+        self.completed_nodes = 0
+        self.total_estimated_nodes = 1  # Start with 1 to avoid division by zero
+        self.dimensions = self.get_dimensions("lats_reflection")
+        self.scorer = MRQScorer(
+            self.cfg, memory=self.memory, logger=self.logger, dimensions=self.dimensions
+        )
+        # self.scorer.train_from_database(cfg=self.cfg)
+        # self.scorer.save_models()
+        self.scorer.load_models()
 
     async def run(self, context: dict) -> dict:
         """Main LATS search loop"""
@@ -281,7 +325,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
                     "score": best_child.get("score", 0.0),
                 },
             },
-            context=context
+            context=context,
         )
         context.setdefault("lats_result", []).append(hypothesis.to_dict())
         context.setdefault("hypotheses", []).append(hypothesis.to_dict())
@@ -386,8 +430,12 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             hyp = {"text": comp, "goal_id": context[GOAL]["id"]}
 
             score_result = self.score_hypothesis(
-                hyp, scoring_context, metrics="lats_node"
+                hyp, scoring_context, metrics="lats_node", scorer=self.scorer
             )
+            node_path = self.build_node_path(node)
+            aggregated_result = score_result.aggregate()
+            print(f"Scoring result for {node_path}: {aggregated_result}")
+            self.score_map[node_path] = aggregated_result
 
             # Create child node with metadata
             child = self.create_node(state=new_state, trace=new_trace, parent=node)
@@ -397,6 +445,12 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
 
             children.append(child)
             self._log_node(child, level="debug")
+            self.completed_nodes += 1
+            self.total_estimated_nodes = max(
+                self.total_estimated_nodes,
+                self.completed_nodes + len(refined_completions),
+            )  # or open_nodes
+            self._log_progress()
 
         # Store children
         self.children[id(node)] = children
@@ -406,6 +460,21 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             self._log_node(child, level="info")  # ← Add here
 
         return children[0] if children else node
+
+    def _log_progress(self):
+        pct = (self.completed_nodes / self.total_estimated_nodes) * 100
+        print(
+            f"🔁 Progress: {self.completed_nodes}/{self.total_estimated_nodes} nodes completed ({pct:.2f}%)"
+        )
+
+    def build_node_path(self, node):
+        path = []
+        while node:
+            path.append(
+                str(node["id"])
+            )  # or node.name, or whatever identifies the node
+            node = node.get("parent")  # assumes each node has a 'parent' reference
+        return " → ".join(reversed(path))
 
     def simulate_and_evaluate(self, node, context):
         """Simulate until terminal state and return final reward"""
@@ -450,7 +519,9 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             "goal_id": node["state"].get("goal_id"),
         }
 
-        score_result = self.score_hypothesis(hyp, context, metrics="lats_reflection")
+        score_result = self.score_hypothesis(
+            hyp, context, metrics="lats_reflection", scorer=self.scorer
+        )
         return score_result.aggregate() / 100, score_result
 
     def backpropagate(self, node, reward, trace_data=None):
@@ -566,6 +637,9 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         elif not isinstance(trace, list):
             trace = []
 
+        if not len(trace):
+            return 0.0
+
         # Safely extract state (ensure dict)
         state = resolved.get("state", {})  # ✅ Fallback to empty dict
         goal_text = state.get("goal", "Unknown goal")
@@ -580,6 +654,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             hyp,
             {"goal": {"goal_text": goal_text}},  # Always a dict
             metrics="lats_reflection",
+            scorer=self.scorer,
         )
 
         return score_result.aggregate() / 100  # Normalize
@@ -648,7 +723,9 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         hyp = {"text": "\n".join(trace), "id": f"hyp_{len(self.nodes)}"}
 
         # Score across dimensions
-        score_result = self.score_hypothesis(hyp, {}, metrics="lats_reflection")
+        score_result = self.score_hypothesis(
+            hyp, {"goal": {"goal_text": trace["goal"]}}, metrics="lats_reflection", scorer=self.scorer
+        )
         return score_result.aggregate() / 100  # Normalize
 
     def _train_on_traces(self, traces):
@@ -683,7 +760,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
     def _get_dimension_scores(self, trace) -> ScoreBundle:
         """Get scores across all dimensions"""
         hyp = {"text": "\n".join(trace)}
-        return self.score_hypothesis(hyp, {}, metrics="lats_node")
+        return self.score_hypothesis(hyp, {}, metrics="lats_node", scorer=self.scorer)
 
     def _generate_reflection(self, node):
         """Generate reflection for failed trajectory"""
@@ -743,6 +820,12 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
                 "depth": len(node["trace"]),
             },
         )
+
+    def _get_best_score(self, root):
+        """Get best score from a graph representation"""
+        best_node_id = max(self.score_map, key=lambda k: self.score_map[k])
+        best_score = self.score_map[best_node_id]
+        return {best_node_id, best_score}
 
     def _log_node(self, node, level="debug"):
         """
@@ -824,32 +907,3 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         return " ".join(
             f"{dim}={data['score']}" for dim, data in dimension_scores.items()
         )
-
-
-class SymbolicImpactAnalyzer:
-    """
-    Analyzes structural overlap and divergence between two graph representations (e.g., symbolic vs. LATS)
-    and attributes score delta to divergent paths.
-    """
-
-    def __init__(self, score_lookup_fn):
-        self.score_lookup_fn = (
-            score_lookup_fn  # Function to get scores for a given node or trace
-        )
-
-    def analyze(self, graph1, graph2):
-        matches, only_1, only_2 = compare_graphs(graph1, graph2)
-        results = []
-
-        for node in matches:
-            score_1 = self.score_lookup_fn(node, source="graph1")
-            score_2 = self.score_lookup_fn(node, source="graph2")
-            results.append(
-                {"node": node, "type": "converged", "delta": score_2 - score_1}
-            )
-
-        for node in only_1 + only_2:
-            score = self.score_lookup_fn(node, source="graph1")
-            results.append({"node": node, "type": "diverged", "score": score})
-
-        return results

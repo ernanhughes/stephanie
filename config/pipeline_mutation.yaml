@@ -62,7 +62,7 @@ pipeline:
   description: "This will run mutated pipelines using the pipeline mutation agent"
   stages:
        - name: pipeline_mutation
-         cls: co_ai.agents.seal.pipeline_mutation.PipelineMutationAgent
+         cls: co_ai.agents.pipeline.pipeline_mutation.PipelineMutationAgent
          enabled: true
          iterations: 1
  

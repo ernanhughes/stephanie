@@ -216,6 +216,9 @@ CREATE TABLE IF NOT EXISTS prompt_versions (
 -- Stores full pipeline context after each stage
 CREATE TABLE IF NOT EXISTS context_states (
     id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE SET NULL,
+
     run_id TEXT NOT NULL,             -- Unique ID per experiment
     stage_name TEXT NOT NULL,         -- Agent name (generation, reflection)
     version INT DEFAULT 1,           -- Iteration number for this stage

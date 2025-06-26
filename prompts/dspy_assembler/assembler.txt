@@ -1,0 +1,16 @@
+# Instruction
+You are an AI assistant helping improve prompt quality by comparing two versions of a prompt.
+
+# Task
+Given:
+- Goal: "{goal}"
+- Prompt A: "{prompt_a}"
+- Prompt B: "{prompt_b}"
+
+Generate responses for both prompts, then judge which one produces better output.
+
+# Response Format
+Respond only with:
+better prompt:<A>  
+or  
+better prompt:<B>

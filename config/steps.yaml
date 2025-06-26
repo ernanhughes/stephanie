@@ -1,0 +1,59 @@
+# config/steps.yaml
+defaults:
+  - _self_
+  - logging/json_logger
+  - db: postgres
+  - agents/step_compiler
+  - agents/step_processor
+  - agents/prompt_tuning
+  - agents/dspy_assembler
+
+goal:
+  goal_text: I want to build an AI that can teach itself to solve complex problems better over time.
+  goal_type: "tactical"
+  goal_category: "meta_learning"
+  focus_area: "self_improvement"
+  strategy: "stepwise_decomposition"
+  difficulty: "medium-high"
+  expected_formats:
+    - "symbolic_prompt_plan"
+    - "stepwise_reasoning_trace"
+    - "annotated_score_vector"
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: default_pipeline
+  description: "Default hypothesis generation and refinement pipeline"
+  stages:
+    - name: step_compiler
+      description: "Generates steps from initial goal"
+      cls: co_ai.agents.compiler.step_compiler.StepCompilerAgent
+      enabled: true
+      iterations: 1
+    - name: step_processor
+      description: "Processes each step to generate and score the outputs"
+      cls: co_ai.agents.compiler.step_processor.StepProcessorAgent 
+      enabled: true
+      iterations: 1
+    - name: prompt_tuning
+      description: "Tunes prompts in the previous step(s) for better performance"
+      cls: co_ai.agents.compiler.prompt_tuning.PromptTuningAgent
+      enabled: true
+      iterations: 1
+    - name: dspy_assembler
+      description: "Assembles the prompts using the scores into a single good prompt"
+      cls: co_ai.agents.compiler.dspy_assembler.DSPyAssemblerAgent
+      enabled: true
+      iterations: 1
+    

@@ -198,7 +198,13 @@ class PromptStore:
             return re.sub(r"\s+", " ", text.strip().lower())
 
         text_a = normalize(prompt_text or "")
-        query = self.session.query(PromptORM).filter_by(agent_name=agent_name)
+
+        query = self.session.query(PromptORM).filter(
+            PromptORM.agent_name == agent_name,
+            PromptORM.response_text.isnot(None),
+            PromptORM.response_text != ""
+        )
+
         if strategy:
             query = query.filter_by(strategy=strategy)
 

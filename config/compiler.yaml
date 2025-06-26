@@ -2,29 +2,21 @@
 defaults:
   - _self_
   - db: postgres
-  - agents/generation
-  - agents/reflection
-  - agents/review
-  - agents/ranking
-  - agents/proximity
+  - agents/compiler
   - agents/pipeline_judge
-  - agents/mrq_scoring
-  - agents/symbolic_optimizer
-  - agents/rule_tuner
-  - agents/cot_dspy_generator
-  - agents/pipeline_judge
-  - agents/prompt_compiler
   - logging/json_logger
 
 goal:
-  goal_text: "If I was to develop a self improving process what would be the steps needed?"
-  goal_type: "theoretical"
-  goal_category: "ai_research"
-  strategy: "reasoning"
+  goal_text: Break down the question "How can AI systems become better at asking questions?" into a step-by-step reasoning plan using symbolic prompts that reflect dimensions like curiosity, relevance, and generalization. Each step should be explainable, reusable, and scored individually.
+  goal_type: "tactical"
+  goal_category: "meta_reasoning"
+  focus_area: "question_generation"
+  strategy: "stepwise_decomposition"
   difficulty: "medium"
   expected_formats:
-    - "short_cot"
-    - "code"
+    - "symbolic_prompt_plan"
+    - "stepwise_reasoning_trace"
+    - "annotated_score_vector"
 
 symbolic:
   enabled: false
@@ -36,18 +28,6 @@ symbolic:
     - metadata
   metadata_match_mode: partial   # options: exact, partial, off
   allow_fallback: true           # if no ID matches, allow metadata fallback
-
-planner:
-  name: planner
-  enabled: true
-  cls: co_ai.agents.planner.PipelinePlannerAgent
-  dots_enabled: true
-  lookahead_enabled: true
-
-dynamic:
-  name: lookahead
-  enabled: true
-  cls: co_ai.agents.lookahead.LookaheadAgent
 
 post_judgment:
   name: pipeline_judge
@@ -72,26 +52,10 @@ embeddings:
   endpoint: "http://localhost:11434/api/embeddings"
 
 pipeline:
-  name: default_pipeline
-  description: "Default hypothesis generation and refinement pipeline"
+  name: compiler_pipeline
+  description: "Compile generate good answers in one domain to build reusable reasoning structures that can transfer to new, unfamiliar tasks"
   stages:
-     - name: prompt_compiler
-       cls: co_ai.agents.prompt_compiler.PromptCompilerAgent
-       enabled: true
-       iterations: 1
-     - name: reflection
-       cls: co_ai.agents.reflection.ReflectionAgent
-       enabled: true
-       iterations: 1
-     - name: review
-       cls: co_ai.agents.review.ReviewAgent
-       enabled: true
-       iterations: 1
-     - name: proximity
-       cls: co_ai.agents.proximity.ProximityAgent
-       enabled: false
-       iterations: 1
-     - name: ranking
-       cls: co_ai.agents.ranking.RankingAgent
+     - name: compiler
+       cls: co_ai.agents.compiler.compiler.CompilerAgent
        enabled: true
        iterations: 1

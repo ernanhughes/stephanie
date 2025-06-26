@@ -10,7 +10,9 @@ from co_ai.scoring.base_scorer import BaseScorer
 from co_ai.scoring.score_bundle import ScoreBundle
 from co_ai.scoring.score_result import ScoreResult
 from co_ai.scoring.transforms.regression_tuner import RegressionTuner
-
+import os
+import json
+import torch
 
 class SVMScorer(BaseScorer):
     def __init__(self, cfg: dict, memory, logger, dimensions=None):
@@ -80,7 +82,7 @@ class SVMScorer(BaseScorer):
 
         return vec
 
-    def train_from_database(self):
+    def train_from_database(self, cfg:dict):
         pair_samples = self.memory.mrq.get_training_pairs_by_dimension()
         samples_by_dim = self.convert_mrq_pairs_to_supervised_examples(pair_samples)
 
@@ -260,3 +262,25 @@ class SVMScorer(BaseScorer):
         self.models[dim].fit(X_scaled, y)
         self.trained[dim] = True
         self.logger.log("SVMTrained", {"dimension": dim, "samples": len(X)})
+
+    def save_models(self):
+        base_dir = self.cfg.get("scoring", {}).get("model_dir", "models/mrq/")
+        os.makedirs(base_dir, exist_ok=True)
+
+        for dim, (encoder, predictor) in self.models.items():
+            dim_dir = os.path.join(base_dir, dim)
+            os.makedirs(dim_dir, exist_ok=True)
+
+            torch.save(encoder.state_dict(), os.path.join(dim_dir, "encoder.pt"))
+            torch.save(predictor.state_dict(), os.path.join(dim_dir, "predictor.pt"))
+
+            # Save tuner weights
+            self.regression_tuners[dim].save(os.path.join(dim_dir, "tuner.json"))
+
+            # Save metadata
+            meta = {
+                "min_score": self.min_score_by_dim[dim],
+                "max_score": self.max_score_by_dim[dim],
+            }
+            with open(os.path.join(dim_dir, "meta.json"), "w") as f:
+                json.dump(meta, f)

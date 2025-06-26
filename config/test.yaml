@@ -70,14 +70,14 @@ pipeline:
         cls: co_ai.agents.generation.GenerationAgent
         enabled: true
         iterations: 1
-      - name: review
-        cls: co_ai.agents.review.ReviewAgent
-        enabled: true
-        iterations: 1
-      - name: unified_mrq
-        cls: co_ai.agents.unified_mrq.UnifiedMRQAgent
-        enabled: true
-        iterations: 1
+      # - name: review
+      #   cls: co_ai.agents.review.ReviewAgent
+      #   enabled: true
+      #   iterations: 1
+      # - name: unified_mrq
+      #   cls: co_ai.agents.unified_mrq.UnifiedMRQAgent
+      #   enabled: true
+      #   iterations: 1
     #  - name: proximity
     #    cls: co_ai.agents.proximity.ProximityAgent
     #    enabled: true

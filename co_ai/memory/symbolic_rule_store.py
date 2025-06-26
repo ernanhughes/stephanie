@@ -4,7 +4,6 @@ import yaml
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from co_ai.constants import PIPELINE
 from co_ai.models.evaluation import EvaluationORM
 from co_ai.models.symbolic_rule import SymbolicRuleORM
 

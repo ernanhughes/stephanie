@@ -47,6 +47,19 @@ class ScoringMixin:
                 memory=self.memory
             )
         return self._scorers[stage]
+    
+    def get_dimensions(self, stage: str) -> list:
+        """
+        Get the list of dimensions for a given scoring stage.
+        
+        Args:
+            stage (str): The scoring stage (e.g., "review", "reasoning", "reflection").
+        
+        Returns:
+            list: List of dimension names for the specified stage.
+        """
+        scorer = self.get_scorer(stage)
+        return scorer.get_dimensions()
 
     def score_hypothesis(
         self,

@@ -1,0 +1,15 @@
+Evaluate the alignment of the following hypothesis.
+
+### Goal
+{{ goal.goal_text }}
+
+### Hypothesis
+{{ hypothesis.text }}
+
+How well does the hypothesis align with the goal and any stated preferences?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

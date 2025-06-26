@@ -1,0 +1,15 @@
+Evaluate the risks or gaps of the following hypothesis.
+
+### Goal
+{{ goal.goal_text }}
+
+### Hypothesis
+{{ hypothesis.text }}
+
+Does the hypothesis contain major assumptions or missing elements?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

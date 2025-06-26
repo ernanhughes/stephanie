@@ -12,7 +12,9 @@ class ScoreBundle:
         self.calculator = WeightedAverageCalculator()
 
     def aggregate(self):
-        return self.calculator.calculate(self)
+        result = self.calculator.calculate(self) 
+        print(f"ScoreBundle: Aggregated score: {result}")
+        return result
 
     def to_dict(self) -> dict:
         return {k: v.to_dict() for k, v in self.results.items()}

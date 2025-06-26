@@ -118,11 +118,12 @@ class ScoringManager:
     @staticmethod
     def extract_score_from_last_line(response: str) -> float:
         """
-        Looks for a line ending with 'score: <number>' (case-insensitive).
+        Extracts a numeric score from any line containing 'score: <number>' (case-insensitive),
+        scanning in reverse for the most recent score mention.
         """
         lines = response.strip().splitlines()
         for line in reversed(lines):
-            match = re.search(r"score:\s*(\d+(\.\d+)?)", line.strip(), re.IGNORECASE)
+            match = re.search(r"\bscore:\s*(\d+(?:\.\d+)?)", line, re.IGNORECASE)
             if match:
                 return float(match.group(1))
         return 0.0
@@ -130,19 +131,23 @@ class ScoringManager:
     @staticmethod
     def parse_numeric_cor(response: str) -> float:
         """
-        Extracts a numeric score from within <answer> tags, supporting [[X]], [X], or bare numbers.
-        Example: <answer>[[3]]</answer> → 3.0
+        Extracts a numeric score from a <answer> block or a line containing 'score: <number>'.
         """
+        # Try CoR-style first
         match = re.search(
             r"<answer>\s*\[*\s*(\d+(?:\.\d+)?)\s*\]*\s*</answer>",
             response,
             re.IGNORECASE,
         )
-        if not match:
-            raise ValueError(
-                f"Could not extract numeric score from CoR-style answer: {response}"
-            )
-        return float(match.group(1))
+        if match:
+            return float(match.group(1))
+
+        # Fallback to score: X
+        match = re.search(r"\bscore:\s*(\d+(?:\.\d+)?)", response, re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+
+        raise ValueError(f"Could not extract numeric score from response: {response}")
 
     def evaluate(self, hypothesis: dict, context: dict = {}, llm_fn=None):
         if self.output_format == "cor":
@@ -160,6 +165,7 @@ class ScoringManager:
         dimensions_to_use = self.filter_dimensions(hypothesis, context)
 
         for dim in dimensions_to_use:
+            print(f"Evaluating dimension: {dim['name']}")
             prompt = self.prompt_renderer.render(
                 dim, {"hypothesis": hypothesis, **context}
             )
@@ -168,7 +174,7 @@ class ScoringManager:
             cached_result = self.memory.scores.get_score_by_prompt_hash(prompt_hash)
             if cached_result:
                 self.logger.log("ScoreCacheHit", {"dimension": dim["name"]})
-                result = ScoreResult.from_dict(cached_result)
+                result = cached_result
                 results.append(result)
                 continue
 

@@ -78,7 +78,7 @@ class LLMJudgeEvaluator(BaseEvaluator):
         Args:
             prompt (str): The name or identifier for the evaluation prompt.
             output_a (str): First hypothesis/output to compare.
-            output_b (str): Second hypothesis/output to compare.
+            No Iron man like Apple **** that I make a mouth I know I'm not output_b (str): Second hypothesis/output to compare.
             context (dict): Execution context with additional variables.
 
         Returns:

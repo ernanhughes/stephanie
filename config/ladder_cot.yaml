@@ -8,15 +8,16 @@ defaults:
   - logging/json_logger
 
 goal:
-  goal_text: Design a system in which an autonomous AI lab can improve its scientific hypotheses over time by analyzing failures, updating symbolic reasoning strategies, and using internal evaluation feedback (e.g., multi-dimensional self-judgment). How should such a lab structure its iterative improvement loop?
+  goal_text: Develop a reasoning transfer framework where an AI system trained on high-quality reasoning in one scientific domain can apply and adapt those strategies to new, unseen domains using symbolic prompts, scoring dimensions, and MR.Q-guided tuning. How can this transfer loop be optimized for generalization and self-improvement?
   goal_type: "strategic"
-  goal_category: "ai_research"
-  strategy: "reasoning"
+  goal_category: "ai_transfer_learning"
+  focus_area: "reasoning"
+  strategy: "symbolic_transfer"
   difficulty: "hard"
   expected_formats:
-    - "tree_of_thought"
-    - "strategy_plan"
-    - "symbolic_pipeline"
+    - "symbolic_prompt_program"
+    - "multi_dimensional_score_map"
+    - "cross_domain_transfer_loop"
 
 post_judgment:
   name: pipeline_judge

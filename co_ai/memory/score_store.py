@@ -38,7 +38,9 @@ class ScoreStore:
             .all()
         )
 
-    def get_scores_by_dimension(self, dimension: str, top_k: int = 100) -> List[ScoreORM]:
+    def get_scores_by_dimension(
+        self, dimension: str, top_k: int = 100
+    ) -> List[ScoreORM]:
         return (
             self.session.query(ScoreORM)
             .filter_by(dimension=dimension)
@@ -71,26 +73,32 @@ class ScoreStore:
             )
         except Exception as e:
             if self.logger:
-                self.logger.log("GetByEvaluationError", {
-                    "method": "get_by_evaluation_ids",
-                    "error": str(e),
-                    "evaluation_ids": evaluation_ids,
-                })
+                self.logger.log(
+                    "GetByEvaluationError",
+                    {
+                        "method": "get_by_evaluation_ids",
+                        "error": str(e),
+                        "evaluation_ids": evaluation_ids,
+                    },
+                )
             return []
 
     def get_score_by_prompt_hash(self, prompt_hash: str) -> Optional[ScoreORM]:
         try:
             return (
                 self.session.query(ScoreORM)
-                .filter(ScoreORM.prompt_hash == prompt_hash)
+                .filter(ScoreORM.prompt_hash == prompt_hash, ScoreORM.score > 0)
                 .order_by(ScoreORM.id.desc())
                 .first()
             )
         except Exception as e:
             if self.logger:
-                self.logger.log("GetScoreError", {
-                    "method": "get_score_by_prompt_hash",
-                    "error": str(e),
-                    "prompt_hash": prompt_hash,
-                })
+                self.logger.log(
+                    "GetScoreError",
+                    {
+                        "method": "get_score_by_prompt_hash",
+                        "error": str(e),
+                        "prompt_hash": prompt_hash,
+                    },
+                )
             return None

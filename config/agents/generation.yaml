@@ -3,8 +3,8 @@
 generation:
   name: generation
   enabled: true
-  save_context: false
-  skip_if_completed: false
+  save_context: true
+  skip_if_completed: true
   strategy : default
   model:
     name: ollama_chat/qwen3

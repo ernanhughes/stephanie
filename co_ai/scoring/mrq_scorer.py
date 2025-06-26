@@ -11,6 +11,9 @@ from co_ai.scoring.score_bundle import ScoreBundle
 from co_ai.scoring.score_result import ScoreResult
 from co_ai.scoring.scoring_manager import ScoringManager
 from co_ai.scoring.transforms.regression_tuner import RegressionTuner
+import os
+import json
+import torch
 
 
 class MRQScorer(BaseScorer):
@@ -130,7 +133,7 @@ class MRQScorer(BaseScorer):
         Finds the top_k LLM scores for hypotheses most similar to the given one.
         """
         query_emb = self.memory.embedding.get_or_create(hypothesis_text)
-        similar_items = self.memory.embedding.similarity_search(query_emb, top_k)
+        similar_items = self.memory.embedding.search_similar_prompts_with_scores(query_emb, top_k)
 
         scores = []
         for item in similar_items:
@@ -343,3 +346,120 @@ class MRQScorer(BaseScorer):
                         mrq_score=mrq_score.results[dimension].score,
                         llm_score=llm_score,
                     )
+
+    def save_models(self):
+        base_dir = self.cfg.get("scoring", {}).get("model_dir", "models/mrq/")
+        os.makedirs(base_dir, exist_ok=True)
+
+        for dim, (encoder, predictor) in self.models.items():
+            dim_dir = os.path.join(base_dir, dim)
+            os.makedirs(dim_dir, exist_ok=True)
+
+            torch.save(encoder.state_dict(), os.path.join(dim_dir, "encoder.pt"))
+            torch.save(predictor.state_dict(), os.path.join(dim_dir, "predictor.pt"))
+
+            # Save tuner weights
+            self.regression_tuners[dim].save(os.path.join(dim_dir, "tuner.json"))
+
+            # Save metadata
+            meta = {
+                "min_score": self.min_score_by_dim[dim],
+                "max_score": self.max_score_by_dim[dim],
+            }
+            with open(os.path.join(dim_dir, "meta.json"), "w") as f:
+                json.dump(meta, f)
+
+
+    def load_models(self):
+        base_dir = self.cfg.get("scoring", {}).get("model_dir", "models/mrq/")
+
+        for dim in self.dimensions:
+            dim_dir = os.path.join(base_dir, dim)
+            if not os.path.exists(dim_dir):
+                self.logger.log("MRQLoadMissing", {"dimension": dim})
+                continue
+
+            encoder, predictor = self.models[dim]
+
+            encoder.load_state_dict(torch.load(os.path.join(dim_dir, "encoder.pt")))
+            predictor.load_state_dict(torch.load(os.path.join(dim_dir, "predictor.pt")))
+
+            self.regression_tuners[dim].load(os.path.join(dim_dir, "tuner.json"))
+
+            with open(os.path.join(dim_dir, "meta.json")) as f:
+                meta = json.load(f)
+                self.min_score_by_dim[dim] = meta["min_score"]
+                self.max_score_by_dim[dim] = meta["max_score"]
+
+            self.logger.log("MRQModelLoaded", {"dimension": dim})
+
+    def predict_score_from_prompt(
+        self, prompt: str, dimension: str = "mrq", top_k: int = 5
+    ) -> float:
+        """
+        Predicts a score for a new prompt using MR.Q-style reverse scoring.
+        Works with flattened row data: one (score, dimension, source) per row.
+        """
+        try:
+            nearest = self.memory.embedding.search_similar_prompts_with_scores(
+                prompt, top_k=top_k
+            )
+
+            llm_scores = []
+            mrq_scores = []
+
+            for item in nearest:
+                if item.get("dimension") != dimension:
+                    continue
+
+                score = item.get("score")
+                source = item.get("source")
+
+                if score is None:
+                    continue
+
+                if source == "llm":
+                    llm_scores.append(score)
+                elif source == "mrq":
+                    mrq_scores.append(score)
+
+            if not llm_scores:
+                if self.logger:
+                    self.logger.log(
+                        "MRQPromptScorerNoLLMScoresFound",
+                        {"prompt": prompt[:100], "dimension": dimension},
+                    )
+                return 0.5
+
+            avg_llm = sum(llm_scores) / len(llm_scores)
+
+            # Apply regression tuner to MR.Q estimates if available
+            if mrq_scores and dimension in self.regression_tuners:
+                avg_mrq = sum(mrq_scores) / len(mrq_scores)
+                aligned_score = self.regression_tuners[dimension].transform(avg_mrq)
+            else:
+                aligned_score = avg_llm
+
+            final_score = max(0.0, min(1.0, aligned_score))
+
+            if self.logger:
+                self.logger.log(
+                    "MRQPromptScorePredicted",
+                    {
+                        "prompt": prompt[:100],
+                        "score": final_score,
+                        "dimension": dimension,
+                        "neighbors_found": len(nearest),
+                        "used_alignment": bool(mrq_scores),
+                    },
+                )
+
+            return final_score
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log(
+                    "MRQPromptScoreError",
+                    {"error": str(e), "prompt": prompt[:100], "dimension": dimension}
+                )
+            return 0.5

@@ -1,0 +1,18 @@
+Evaluate the dependency alignment of the following reasoning step.
+
+### Step
+{{ step.description }}
+
+### Prior Steps
+{% for prior in prior_steps %}
+- {{ prior.description }}
+{% endfor %}
+
+Does this step logically depend on, build from, or follow naturally from the prior steps? Consider whether it introduces new concepts prematurely or repeats prior reasoning.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>
+Sometimes the Gary

@@ -1,0 +1,15 @@
+You are a careful reasoning assistant. Always verify facts and logic before you answer.
+
+Question:
+{{ question }}
+
+{% if context %}
+Additional Context:
+{{ context }}
+{% endif %}
+
+Step 1: Generate an initial answer with supporting reasoning.  
+Step 2: Critically verify your answer by checking against facts or principles.  
+Step 3: If needed, revise your answer and explain why.
+
+Please conclude with your final answer on a new line, prefixed with **Answer:**

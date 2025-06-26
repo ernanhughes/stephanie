@@ -2,7 +2,7 @@
 
 import numpy as np
 from sklearn.linear_model import LinearRegression
-
+import json
 
 class RegressionTuner:
     """
@@ -54,3 +54,30 @@ class RegressionTuner:
         if self.model:
             return float(self.model.predict(np.array([[score]]))[0])
         return score
+
+    def save(self, path):
+        if not self.model:
+            raise ValueError("Model has not been trained yet — nothing to save.")
+        
+        data = {
+            "dimension": self.dimension,
+            "samples": list(zip(self.x, self.y)),
+            "coef": float(self.model.coef_[0]),
+            "intercept": float(self.model.intercept_),
+        }
+
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    
+    def load(self, path):
+        with open(path, "r") as f:
+            data = json.load(f)
+
+        self.dimension = data["dimension"]
+        self.x, self.y = zip(*data["samples"]) if data["samples"] else ([], [])
+        self.x = list(self.x)
+        self.y = list(self.y)
+
+        if self.x and len(self.x) >= self.min_samples:
+            self._fit()

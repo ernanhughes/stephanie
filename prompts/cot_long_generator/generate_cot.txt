@@ -1,0 +1,20 @@
+You are solving the following problem using careful chain-of-thought reasoning.
+
+Problem:
+{{ goal.goal_text }}
+
+{% if literature %}
+Here is some relevant reference material:
+{% for ref in literature %}
+- {{ ref }}
+{% endfor %}
+{% endif %}
+
+{% if preferences %}
+Please follow these preferences when reasoning:
+{% for key, value in preferences.items() %}
+- {{ key|capitalize }}: {{ value }}
+{% endfor %}
+{% endif %}
+
+Begin your reasoning step-by-step:
