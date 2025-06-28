@@ -1,7 +1,7 @@
 # co_ai/scoring/paper_score_evaluator.py
 from textwrap import wrap
 
-from co_ai.models import EvaluationORM, ScoreORM
+from co_ai.scoring.score_bundle import ScoreBundle
 from co_ai.scoring.scoring_manager import ScoringManager
 
 
@@ -17,16 +17,16 @@ class PaperScoreEvaluator(ScoringManager):
             context["document"] = document
             chunk_context = {**context, "paper_score": temp_paper}
 
-            if self.output_format == "cor":
-                result = super()._evaluate_cor(temp_paper, chunk_context, llm_fn)
-            else:
-                result = super()._evaluate_simple(temp_paper, chunk_context, llm_fn)
+            result = super().evaluate(temp_paper, chunk_context, llm_fn, True)
 
             scores_accumulator.append(result)
 
+        dicts = [bundle.to_dict() for bundle in scores_accumulator]
+
         # Aggregate across chunks
-        final_scores = self.aggregate_scores(scores_accumulator)
-        ScoringManager.save_score_to_memory(final_scores, document, context)
+        final_scores = self.aggregate_scores(dicts)
+        final_bundle = ScoreBundle.from_dict(final_scores)
+        ScoringManager.save_document_score_to_memory(final_bundle, document, context, self.cfg, self.memory, self.logger)
         return final_scores
 
 
@@ -41,20 +41,39 @@ class PaperScoreEvaluator(ScoringManager):
     def aggregate_scores(self, chunk_results: list[dict]) -> dict:
         """
         Average scores and concatenate rationales across chunks.
+        Each input in `chunk_results` is a dict mapping dimension -> {score, rationale, weight}.
         """
         combined = {}
-        count = len(chunk_results)
 
         for dim in self.dimensions:
             name = dim["name"]
-            scores = [r[name]["score"] for r in chunk_results if name in r]
-            rationales = [r[name]["rationale"] for r in chunk_results if name in r]
+            weight = dim.get("weight", 1.0)
 
-            avg_score = sum(scores) / max(len(scores), 1)
+            scores = []
+            rationales = []
+
+            for result in chunk_results:
+                data = result.get(name)
+                if data:
+                    try:
+                        score = float(data.get("score", 0))
+                        scores.append(score)
+                    except (TypeError, ValueError):
+                        continue
+
+                    rationale = data.get("rationale")
+                    if rationale:
+                        rationales.append(rationale.strip())
+
+            if scores:
+                avg_score = sum(scores) / len(scores)
+            else:
+                avg_score = 0.0  # or None, depending on how you want to handle it
+
             combined[name] = {
-                "score": avg_score,
-                "rationale": "\n---\n".join(rationales[:3]),  # limit rationale bloat
-                "weight": dim["weight"],
+                "score": round(avg_score, 4),
+                "rationale": "\n---\n".join(rationales[:3]),  # cap rationale size
+                "weight": weight,
             }
 
         return combined

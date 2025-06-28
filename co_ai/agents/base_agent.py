@@ -7,11 +7,27 @@ from datetime import datetime, timezone
 
 import litellm
 
-from co_ai.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
-                             GOAL, HYPOTHESES, INPUT_KEY, MODEL, NAME,
-                             OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
-                             PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
-                             SAVE_PROMPT, SOURCE, STRATEGY)
+from co_ai.constants import (
+    AGENT,
+    API_BASE,
+    API_KEY,
+    BATCH_SIZE,
+    CONTEXT,
+    GOAL,
+    HYPOTHESES,
+    INPUT_KEY,
+    MODEL,
+    NAME,
+    OUTPUT_KEY,
+    PIPELINE,
+    PIPELINE_RUN_ID,
+    PROMPT_MATCH_RE,
+    PROMPT_PATH,
+    SAVE_CONTEXT,
+    SAVE_PROMPT,
+    SOURCE,
+    STRATEGY,
+)
 from co_ai.logs import JSONLogger
 from co_ai.models import PromptORM
 from co_ai.prompts import PromptLoader
@@ -69,8 +85,8 @@ class BaseAgent(ABC):
             API_BASE: model_cfg.get(API_BASE, "http://localhost:11434"),
             API_KEY: model_cfg.get(API_KEY),
         }
-    
-    def get_or_save_prompt(self, prompt_text: str, context:dict) -> PromptORM:
+
+    def get_or_save_prompt(self, prompt_text: str, context: dict) -> PromptORM:
         prompt = self.memory.prompt.get_from_text(prompt_text)
         if prompt is None:
             self.memory.prompt.save(
@@ -111,7 +127,10 @@ class BaseAgent(ABC):
         # 🔁 Check cache
         if self.memory and use_memory_for_fast_prompts:
             previous = self.memory.prompt.find_similar_prompt(
-                agent_name=agent_name, prompt_text=prompt, strategy=strategy, similarity_threshold=0.8
+                agent_name=agent_name,
+                prompt_text=prompt,
+                strategy=strategy,
+                similarity_threshold=0.8,
             )
             if previous:
                 chosen = random.choice(previous)
@@ -234,6 +253,21 @@ class BaseAgent(ABC):
     def extract_goal_text(goal):
         return goal.get("goal_text") if isinstance(goal, dict) else goal
 
+    def execute_prompt(self, merged_context: dict, prompt_file: str = None):
+        if prompt_file:
+            prompt = self.prompt_loader.from_file(prompt_file, self.cfg, merged_context)
+        else:
+            prompt = self.prompt_loader.load_prompt(self.cfg, merged_context)
+        response = self.call_llm(prompt, context=merged_context)
+        self.logger.log(
+            "PromptExecuted",
+            {
+                "prompt_text": prompt[:200],
+                "response_snippet": response[:200],
+                "prompt_file": prompt_file,
+            },
+        )
+
     def get_goal_id(self, goal: dict):
         if not isinstance(goal, dict):
             raise ValueError(
@@ -258,59 +292,58 @@ class BaseAgent(ABC):
         self._hypothesis_id_cache[text] = (hypothesis.id, hypothesis)
         return hypothesis.id
 
-
     def _log_timing_diagram(self):
         """Log timing breakdown as Mermaid diagram"""
         timing_data = self.logger.get_logs_by_type("FunctionTiming")
         function_times = defaultdict(float)
-        
+
         for log in timing_data:
             key = f"{log['class']}.{log['function']}"
             function_times[key] += log["duration_ms"]
 
         mermaid = ["```mermaid\ngraph TD"]
         total = sum(function_times.values())
-        
+
         for func, duration in function_times.items():
             percent = (duration / total) * 100
             mermaid.append(f"A{func.replace('.', '_')}[{func} | {percent:.1f}%]")
-        
+
         mermaid.append("```")
         self.logger.log("TimingBreakdown", {"diagram": "\n".join(mermaid)})
-
 
     def _analyze_performance(self):
         """Print performance summary"""
         from tabulate import tabulate
-        
+
         timing_logs = self.logger.get_logs_by_type("FunctionTiming")
         function_times = defaultdict(list)
         for log in timing_logs:
             data = log["data"]
             key = f"{data['class']}.{data['function']}"
             function_times[key].append(data["duration_ms"])
-        
+
         table = []
         for key, durations in function_times.items():
-            table.append([
-                key,
-                f"{sum(durations)/len(durations):.2f}ms",
-                len(durations),
-                f"{max(durations):.2f}ms"
-            ])
-        
+            table.append(
+                [
+                    key,
+                    f"{sum(durations) / len(durations):.2f}ms",
+                    len(durations),
+                    f"{max(durations):.2f}ms",
+                ]
+            )
+
         print("\n⏱️ Performance Breakdown")
         print(tabulate(table, headers=["Function", "Avg Time", "Calls", "Max Time"]))
 
-
-
-    def save_hypothesis(self, hypothesis_dict:dict, context:dict):
+    def save_hypothesis(self, hypothesis_dict: dict, context: dict):
         """
         Central method to save hypotheses and track document section links.
         """
         from co_ai.models.hypothesis import HypothesisORM
-        from co_ai.models.hypothesis_document_section import \
-            HypothesisDocumentSectionORM
+        from co_ai.models.hypothesis_document_section import (
+            HypothesisDocumentSectionORM,
+        )
 
         # Ensure metadata is set if not already in the dict
         goal = context.get(GOAL, {})

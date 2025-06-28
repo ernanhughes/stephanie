@@ -52,7 +52,7 @@ class ContextStore:
             self.session.flush()  # To get ID immediately
 
             if self.dump_dir:
-                self._dump_to_yaml(run_id, stage, context)
+                self._dump_to_yaml(stage, context)
 
             if self.logger:
                 self.logger.log("ContextSaved", {
@@ -107,10 +107,10 @@ class ContextStore:
                 self.logger.log("ContextLoadFailed", {"error": str(e)})
             return {}
 
-    def _dump_to_yaml(self, run_id: str, stage: str, context: dict):
+    def _dump_to_yaml(self, stage: str, context: dict):
         os.makedirs(self.dump_dir, exist_ok=True)
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-        filename = f"{run_id}_{stage}_{timestamp}.yaml"
+        filename = f"{stage}_{timestamp}.yaml"
         path = os.path.join(self.dump_dir, filename)
 
         try:

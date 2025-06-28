@@ -1,0 +1,61 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/master
+  - agents/pupil
+  - agents/trainer
+  - agents/evaluator
+  - agents/trainer
+  - agents/unified_mrq
+  - logging/json_logger
+
+# The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
+# This is a placeholder and should be replaced with the actual goal.
+goal:
+  goal_text: "If I was to develop a self improving process what would be the steps needed?"
+  goal_type: "research"
+  focus_area: "ai_research"
+  strategy: "reasoning"
+  difficulty: "medium"
+  expected_formats:
+    - "short_cot"
+    - "code"
+
+post_judgment:
+  name: pipeline_judge
+  enabled: false
+  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: master_pupil
+  description: "This pipeline demonstrates a master-pupil architecture where the master agent guides hypotheses the pupil generates."
+  stages:
+    - name: master
+      description: "Master agent that guides the pupil agent."
+      cls: co_ai.agents.master_pupil.master.MasterAgent
+      enabled: true
+      iterations: 1
+    - name: pupil
+      description: "Pupil agent smaller model we need to inform."
+      cls: co_ai.agents.master_pupil.pupil.PupilAgent
+      enabled: true
+      iterations: 1
+    - name: evaluator
+      description: "Pupil agent smaller model we need to inform."
+      cls: co_ai.agents.master_pupil.evaluator.EvaluatorAgent
+      enabled: true
+      iterations: 1

@@ -15,7 +15,7 @@ defaults:
   - logging/json_logger
 
 goal:
-  goal_text: "https://arxiv.org/pdf/2506.10943"
+  goal_text: "https://arxiv.org/pdf/2506.05070"
   goal_type: "similar_papers"
   focus_area: "AI research"
 

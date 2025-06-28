@@ -49,3 +49,24 @@ class ScoreBundle:
 
     def __str__(self):
         return json.dumps(self.to_dict(), indent=2)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ScoreBundle":
+        """
+        Reconstruct a ScoreBundle from a dict where each value is a ScoreResult-like dict.
+        """
+        from co_ai.scoring.score_result import ScoreResult
+
+        results = {
+            dim: ScoreResult(
+                dimension=dim,
+                score=entry.get("score"),
+                weight=entry.get("weight", 1.0),
+                rationale=entry.get("rationale", ""),
+                source=entry.get("source", "from_dict"),
+            )
+            for dim, entry in data.items()
+            if isinstance(entry, dict)  # Defensive: skip bad formats
+        }
+
+        return cls(results)

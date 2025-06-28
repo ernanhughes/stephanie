@@ -12,7 +12,7 @@ from co_ai.utils.similarity_utils import compute_similarity_matrix
 
 class UnifiedMRQAgent(BaseAgent):
     """
-    Unified Multidimensional MR.Q Agent
+    Unified Multidimensional MR.Q Agent Right sure Much yep and a man get there Yeah yeah I'd love it but I can't guess
     - Collects scores across all pipelines and dimensions.
     - Builds contrastive training pairs.
     - Trains a multidimensional preference model.

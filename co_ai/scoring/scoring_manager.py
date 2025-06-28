@@ -149,13 +149,13 @@ class ScoringManager:
 
         raise ValueError(f"Could not extract numeric score from response: {response}")
 
-    def evaluate(self, hypothesis: dict, context: dict = {}, llm_fn=None):
+    def evaluate(self, hypothesis: dict, context: dict = {}, llm_fn=None, is_document=False):
         if self.output_format == "cor":
-            return self._evaluate(hypothesis, context, llm_fn, format="cor")
+            return self._evaluate(hypothesis, context, llm_fn, format="cor", is_document=is_document)
         else:
-            return self._evaluate(hypothesis, context, llm_fn, format="simple")
+            return self._evaluate(hypothesis, context, llm_fn, format="simple", is_document=is_document)
 
-    def _evaluate(self, hypothesis: dict, context: dict, llm_fn, format="simple"):
+    def _evaluate(self, hypothesis: dict, context: dict, llm_fn, format="simple", is_document=False):
         if llm_fn is None:
             raise ValueError("You must pass a call_llm function to evaluate")
 
@@ -209,7 +209,10 @@ class ScoringManager:
             )
 
         bundle = ScoreBundle(results={r.dimension: r for r in results})
-        self.save_score_to_memory(bundle, hypothesis, context, self.cfg, self.memory, self.logger)
+        if is_document:
+            self.save_document_score_to_memory(bundle, hypothesis, context, self.cfg, self.memory, self.logger)
+        else:
+            self.save_score_to_memory(bundle, hypothesis, context, self.cfg, self.memory, self.logger)
         return bundle
 
     def handle_score_error(self, dim, response, error):
@@ -270,5 +273,62 @@ class ScoringManager:
         )
         ScoreDeltaCalculator(cfg, memory, logger).log_score_delta(
             hypothesis_id, weighted_score, goal.get("id")
+        )
+        ScoreDisplay.show(bundle.to_dict(), weighted_score)
+
+
+    @staticmethod
+    def save_document_score_to_memory(bundle, document, context, cfg, memory, logger, source="DocumentEvaluator"):
+        
+        goal = context.get("goal")
+        pipeline_run_id = context.get("pipeline_run_id")
+        document_id = document.get("id")
+        weighted_score = bundle.calculator.calculate(bundle)
+
+        scores_json = {
+            "stage": cfg.get("stage", "review"),
+            "dimensions": bundle.to_dict(),
+            "final_score": round(weighted_score, 2),
+        }
+
+        eval_orm = EvaluationORM(
+            goal_id=goal.get("id"),
+            pipeline_run_id=pipeline_run_id,
+            document_id=document_id,
+            agent_name=cfg.get("name"),
+            model_name=cfg.get("model", {}).get("name"),
+            evaluator_name=cfg.get("evaluator", "ScoreEvaluator"),
+            strategy=cfg.get("strategy"),
+            reasoning_strategy=cfg.get("reasoning_strategy"),
+            scores=scores_json,
+            extra_data={"source": source},
+        )
+        memory.session.add(eval_orm)
+        memory.session.flush()
+
+        for result in bundle.results:
+            score_result = bundle.results[result]
+            score = ScoreORM(
+                evaluation_id=eval_orm.id,
+                dimension=score_result.dimension,
+                score=score_result.score,
+                weight=score_result.weight,
+                rationale=score_result.rationale,
+                prompt_hash=score_result.prompt_hash,
+            )
+            memory.session.add(score)
+
+        memory.session.commit()
+
+        logger.log(
+            "ScoreSavedToMemory",
+            {
+                "goal_id": goal.get("id"),
+                "hypothesis_id": document_id,
+                "scores": scores_json,
+            },
+        )
+        ScoreDeltaCalculator(cfg, memory, logger).log_score_delta(
+            document_id, weighted_score, goal.get("id")
         )
         ScoreDisplay.show(bundle.to_dict(), weighted_score)

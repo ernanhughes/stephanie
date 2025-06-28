@@ -1,7 +1,6 @@
 import yaml
 from sklearn.metrics.pairwise import cosine_similarity
 
-
 class DomainClassifier:
     def __init__(self, memory, logger, config_path="config/domain/seeds.yaml"):
         self.memory = memory

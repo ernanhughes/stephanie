@@ -1,0 +1,20 @@
+{# prompts/pupil/pupil.txt #}
+
+You are a helpful assistant
+
+Answer this question:
+{{ goal.goal_text }}
+
+{% if preferences %}
+Use these preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+{% if instructions %}
+Additional instructions: 
+{% for i in instructions %}
+- {{ i }}
+{% endfor %}
+{% endif %}
