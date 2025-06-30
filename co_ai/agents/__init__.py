@@ -13,7 +13,6 @@ Agents responsible for core reasoning steps:
 - refiner
 """
 from .base_agent import BaseAgent
-from .debate import DebateAgent
 from .dots_planner import DOTSPlannerAgent
 from .evolution import EvolutionAgent
 from .generation import GenerationAgent

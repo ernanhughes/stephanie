@@ -12,7 +12,7 @@
             "module": "co_ai.main",
             "python": "${workspaceFolder}\\venv\\Scripts\\python",   // Linux/macOS
             "args": [
-                "--config-name", "papers",
+                "--config-name", "rivals",
             ]
         }
     ]

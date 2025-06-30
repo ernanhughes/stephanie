@@ -1,8 +1,10 @@
 # co_ai/scoring/transforms/regression_tuner.py
 
+import json
+
 import numpy as np
 from sklearn.linear_model import LinearRegression
-import json
+
 
 class RegressionTuner:
     """

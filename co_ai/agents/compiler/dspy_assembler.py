@@ -1,18 +1,12 @@
 import dspy
-from dspy import (
-    BootstrapFewShot,
-    Example,
-    InputField,
-    OutputField,
-    Signature,
-    ChainOfThought,
-)
+from dspy import (BootstrapFewShot, ChainOfThought, Example, InputField,
+                  OutputField, Signature)
 
 from co_ai.agents.base_agent import BaseAgent
+from co_ai.agents.mixins.memory_aware_mixin import MemoryAwareMixin
+from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.constants import GOAL
 from co_ai.scoring.mrq_scorer import MRQScorer
-from co_ai.agents.mixins.scoring_mixin import ScoringMixin
-from co_ai.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 
 
 # DSPy signature for merging multiple high-quality prompts into a coherent prompt

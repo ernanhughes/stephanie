@@ -1,7 +1,8 @@
 # co_ai/agents/mixins/memory_aware_mixin.py
 
-from typing import Dict, List, Optional
 from dataclasses import dataclass
+from typing import Dict, List, Optional
+
 from co_ai.utils.hashing import hash_dict
 
 

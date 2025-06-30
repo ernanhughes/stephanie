@@ -9,6 +9,7 @@ from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL
 from co_ai.scoring.mrq_scorer import MRQScorer
 
+
 # DSPy signature for prompt refinement: defines input/output fields for tuning
 class PromptTuningSignature(Signature):
     goal = InputField(desc="Scientific research goal or question")

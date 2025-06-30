@@ -1,9 +1,10 @@
-from co_ai.agents.base_agent import BaseAgent
-from co_ai.agents.master_pupil.trainer import TrainerAgent
+import torch
 from sklearn.metrics.pairwise import cosine_similarity
+
+from co_ai.agents.base_agent import BaseAgent
 from co_ai.agents.master_pupil.master import MasterAgent
 from co_ai.agents.master_pupil.pupil import PupilAgent
-import torch
+from co_ai.agents.master_pupil.trainer import TrainerAgent
 
 
 class EvaluatorAgent(BaseAgent):

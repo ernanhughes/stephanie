@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from gradio_client import Client
+from huggingface_hub import HfApi
 
 CACHE_DIR = Path(".paper_cache")
 CACHE_DIR.mkdir(exist_ok=True)

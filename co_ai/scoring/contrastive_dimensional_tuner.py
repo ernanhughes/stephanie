@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
+
 class ContrastiveDimensionalTuner:
     """
     Learns weights for each scoring dimension using contrastive learning.

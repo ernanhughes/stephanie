@@ -43,12 +43,10 @@ Usage:
     Typically used as part of a document processing pipeline after search orchestrator
     agents to prepare documents for further analysis, scoring, or hypothesis generation.
 
-Author: co-ai team
-Created: 2025
-Last Updated: June 2025
 """
 
 import os
+import re
 
 import requests
 
@@ -107,25 +105,37 @@ class DocumentLoaderAgent(BaseAgent):
                         continue
 
                 # Download PDF
-                response = requests.get(url)
+                response = requests.get(url, stream=True)
                 if response.status_code != 200:
                     self.logger.log(
-                        "DocumentLoadFailed",
+                        "DocumentRequestFailed",
                         {"url": url, "error": f"HTTP {response.status_code}"},
                     )
                     continue
 
+                file_name = result.get("pid") or result.get("arxiv_id")
+                if not file_name:
+                    file_name = self.sanitize_filename(title) or "document"        
                 # Save to temporary file
-                pdf_path = f"{self.download_directory}/{title}.pdf"
+                pdf_path = f"{self.download_directory}/{file_name}.pdf"
                 with open(pdf_path, "wb") as f:
-                    f.write(response.content)
-
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
                 # Extract text
+                if not PDFConverter.validate_pdf(pdf_path):
+                    self.logger.log(
+                        "DocumentLoadFailed",
+                        {"url": url, "error": "Invalid PDF format 0x00 byte found"},
+                    )
+                    os.remove(pdf_path)
+                    continue
                 text = PDFConverter.pdf_to_text(pdf_path)
                 os.remove(pdf_path)
 
+                pid = result.get("pid") or result.get("arxiv_id")
                 if self.summarize_documents:
-                    meta_data = fetch_arxiv_metadata(title)
+                    meta_data = fetch_arxiv_metadata(pid)
                     if meta_data:
                         title = meta_data["title"]
                         summary = meta_data["summary"]
@@ -168,6 +178,10 @@ class DocumentLoaderAgent(BaseAgent):
         context["document_ids"] = [doc.get("id") for doc in stored_documents]
         context["document_domains"] = document_domains
         return context
+
+
+    def sanitize_filename(self, title: str) -> str:
+        return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", title)[:100]  # truncate to 100 chars
 
     def assign_domains_to_document(self, document):
         """

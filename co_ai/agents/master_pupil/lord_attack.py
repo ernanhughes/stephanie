@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Optional
 
+
 class LordAttackModule:
     def __init__(
         self,

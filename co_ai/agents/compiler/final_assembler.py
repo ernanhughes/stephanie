@@ -1,7 +1,7 @@
 from co_ai.agents.base_agent import BaseAgent
 from co_ai.constants import GOAL
-from co_ai.scoring.mrq_scorer import MRQScorer
 from co_ai.models.tokenizer import TokenCounter
+from co_ai.scoring.mrq_scorer import MRQScorer
 from co_ai.utils.llm import call_llm
 from co_ai.utils.memory_manager import SharedMemoryManager
 

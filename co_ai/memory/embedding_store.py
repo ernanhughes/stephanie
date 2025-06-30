@@ -184,3 +184,68 @@ class EmbeddingStore(BaseStore):
                             "UPDATE prompts SET embedding_id = %s WHERE id = %s",
                             (embedding_id, prompt_id),
                         )
+
+
+    def search_similar_documents_with_scores(self, document: str, top_k: int = 5) -> list:
+        """
+        Embedding-based search for similar prompts and their scores.
+        Returns:
+            A list of dicts: [{prompt, score, pipeline_run_id, step_index, dimension_scores}, ...]
+        """
+        embedding = get_embedding(document, self.cfg)
+
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 
+                        p.prompt_text AS prompt,
+                        p.pipeline_run_id,
+                        s.score,
+                        s.dimension,
+                        s.source 
+                    FROM prompts p
+                    JOIN embeddings x
+                        ON x.id = p.embedding_id
+                    JOIN evaluations e
+                        ON e.pipeline_run_id = p.pipeline_run_id
+                    JOIN scores s 
+                        ON s.evaluation_id = e.id
+                    WHERE x.embedding IS NOT NULL
+                    ORDER BY x.embedding <-> %s::vector
+                    LIMIT %s;
+                    """,
+                    (embedding, top_k),
+                )
+                rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                results.append(
+                    {
+                        "prompt": row[0],
+                        "pipeline_run_id": row[1],
+                        "score": float(row[2]) if row[2] is not None else 0.0,
+                        "dimension": row[3],
+                        "source": row[4]
+                    }
+                )
+
+            if self.logger:
+                self.logger.log(
+                    "PromptSimilaritySearch",
+                    {
+                        "query": document,
+                        "top_k": top_k,
+                        "returned": len(results),
+                    },
+                )
+
+            return results
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PromptSearchFailed", {"query": document, "error": str(e)})
+            else:
+                print(f"[PromptSearchFailed] {e}")
+            return []

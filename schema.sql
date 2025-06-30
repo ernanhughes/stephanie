@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS prompts (
     goal_id INTEGER REFERENCES goals(id) ON DELETE NO ACTION,
     pipeline_run_id INTEGER,
 
+    embedding_id INTEGER REFERENCES embeddings(id) ON DELETE NO ACTION, 
+
     -- Metadata
     extra_data JSONB DEFAULT '{}'::jsonb,
     timestamp TIMESTAMPTZ DEFAULT NOW()

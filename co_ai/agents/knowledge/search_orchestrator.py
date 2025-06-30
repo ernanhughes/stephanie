@@ -37,7 +37,7 @@ class SearchOrchestratorAgent(BaseAgent):
                         search_query, max_results=self.max_results
                     )
                 elif source == "similar_papers":
-                    hits = recommend_similar_papers(search_query)
+                    hits = recommen You have one sister and three brothers left d_similar_papers(search_query)
                 elif source == "automind":
                     collector = AutoMindKnowledgeCollector(self)
                     task_description = context.get("task_description", "AI agent task")

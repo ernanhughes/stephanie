@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
 
 import hydra
@@ -10,16 +11,16 @@ from omegaconf import DictConfig, OmegaConf
 
 from co_ai.logs import JSONLogger
 from co_ai.memory import MemoryTool
+from co_ai.scoring.score_bundle import ScoreBundle
 from co_ai.supervisor import Supervisor
 from co_ai.utils import generate_run_id, get_log_file_path
-from co_ai.scoring.score_bundle import ScoreBundle
 
 
 @hydra.main(config_path="../config", config_name="pipelines/cot", version_base=None)
 def run(cfg: DictConfig):
     async def main():
-        print(f"Initial Config:\n{OmegaConf.to_yaml(cfg)}")
-
+        save_config_to_timestamped_file(cfg=cfg)
+                                        
         # Setup logger and memory
         run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
         log_path = get_log_file_path(run_id, cfg)
@@ -76,6 +77,17 @@ def save_json_result(log_path: str, result: dict):
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=default_serializer)
     print(f"✅ JSON result saved to: {report_path}")
+
+def save_config_to_timestamped_file(log_path="logs", cfg: DictConfig=None):
+        """
+        Saves the current Hydra config to a timestamped YAML file.
+        """
+        os.makedirs(log_path, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        config_path = os.path.join(log_path, f"config_{timestamp}.yaml")
+        with open(config_path, "w") as f:
+            f.write(OmegaConf.to_yaml(cfg))
+        print(f"🔧 Saved config to {config_path}")
 
 if __name__ == "__main__":
     # Suppress HTTPX logs

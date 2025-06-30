@@ -1,8 +1,10 @@
-import numpy as np
-from co_ai.agents.master_pupil.finetuner import PupilFineTuner
-from co_ai.agents.base_agent import BaseAgent
-import torch
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
+from co_ai.agents.base_agent import BaseAgent
+from co_ai.agents.master_pupil.finetuner import PupilFineTuner
+
 
 class TrainerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None, master=None, pupil=None):

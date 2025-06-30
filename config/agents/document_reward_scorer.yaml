@@ -1,0 +1,23 @@
+document_reward_scorer:
+  name: document_reward_scorer
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+  model_save_path: "${hydra:runtime.cwd}/models/documents"
+  model_prefix: "document_rm_"
+
+  dimensions:
+    - implementability
+    - novelty
+    - relevance
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  output_key: document_reward_scorer
+  prompt_mode: file
+  prompt_file: document_reward_scorer.txt

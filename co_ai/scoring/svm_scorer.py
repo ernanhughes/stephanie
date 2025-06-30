@@ -1,8 +1,11 @@
 # co_ai/scoring/svm_scorer.py
 
+import json
+import os
 from collections import defaultdict
 
 import numpy as np
+import torch
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVR
 
@@ -10,9 +13,7 @@ from co_ai.scoring.base_scorer import BaseScorer
 from co_ai.scoring.score_bundle import ScoreBundle
 from co_ai.scoring.score_result import ScoreResult
 from co_ai.scoring.transforms.regression_tuner import RegressionTuner
-import os
-import json
-import torch
+
 
 class SVMScorer(BaseScorer):
     def __init__(self, cfg: dict, memory, logger, dimensions=None):

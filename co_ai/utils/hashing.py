@@ -4,6 +4,7 @@ import hashlib
 import json
 from typing import Any
 
+
 def hash_dict(data: dict[str, Any], sort_keys: bool = True, exclude_keys: list = None) -> str:
     """
     Generate a SHA-256 hash of a dictionary.

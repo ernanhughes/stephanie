@@ -1,3 +1,5 @@
+import json
+import os
 from collections import defaultdict
 
 import torch
@@ -11,9 +13,6 @@ from co_ai.scoring.score_bundle import ScoreBundle
 from co_ai.scoring.score_result import ScoreResult
 from co_ai.scoring.scoring_manager import ScoringManager
 from co_ai.scoring.transforms.regression_tuner import RegressionTuner
-import os
-import json
-import torch
 
 
 class MRQScorer(BaseScorer):

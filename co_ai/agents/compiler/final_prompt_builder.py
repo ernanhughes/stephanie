@@ -1,6 +1,7 @@
 # co_ai/compiler/final_prompt_builder.py
 from co_ai.agents.compiler.reasoning_trace import ReasoningNode
 
+
 class FinalPromptBuilder:
     def build_prompt(self, path: list[ReasoningNode]) -> str:
         prompt = f"Goal: {path[0].goal}\n\n"

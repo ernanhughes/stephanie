@@ -1,7 +1,8 @@
 # co_ai/compiler/scorer.py
-from co_ai.agents.mixins.scoring_mixin import ScoringMixin
-from co_ai.agents.compiler.reasoning_trace import ReasoningNode
 from co_ai.agents.base_agent import BaseAgent
+from co_ai.agents.compiler.reasoning_trace import ReasoningNode
+from co_ai.agents.mixins.scoring_mixin import ScoringMixin
+
 
 class ReasoningNodeScorer(ScoringMixin, BaseAgent):
     def __init__(self, cfg, memory, logger):

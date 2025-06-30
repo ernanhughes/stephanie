@@ -1,7 +1,8 @@
+import logging
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -1,6 +1,8 @@
 # co_ai/compiler/step_selector.py
-from co_ai.agents.compiler.reasoning_trace import ReasoningTree, ReasoningNode
 from operator import attrgetter
+
+from co_ai.agents.compiler.reasoning_trace import ReasoningNode, ReasoningTree
+
 
 class StepSelector:
     def select_next_steps(self, tree: ReasoningTree, top_k: int = 3) -> list[dict]:

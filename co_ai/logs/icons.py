@@ -27,11 +27,26 @@ EVENT_ICONS = {
     "SymbolicAgentNewKey" : "🔑", 
     "ScoreDelta": "📈",  # Score delta calculated
     "debug": "🐞",
+    "DocumentMRQModelMissing": "📄❌",  # Indicates missing model for MRQ scoring
+    "DocumentMRQTunedScore": "📄🔧",  # Indicates tuned score for MRQ
+    "DocumentMRQTunerMissing": "📄❌",  # Indicates missing tuner for MRQ
+    "TunerSaved": "💾🛠️",  # Indicates tuner saved
+    "ModelSaved": "💾📦",  # Indicates model saved
+    "ArxivSearchStart": "🔍📚",  # Indicates start of Arxiv search
+    "RegressionTunerFitted": "📈🛠️",  # Indicates regression tuner fitted
+    "RegressionTunerTrainSingle": "🏋️‍♂️",  # Indicates single training of regression tuner
+    "DocumentTrainingComplete": "🎉✅",  # Indicates document training completion
+    "DocumentPairBuilderComplete": "📑✅",  # Indicates document pair builder completion
+    "DocumentMRQTrainerEpoch": "📈",  # Indicates MRQ trainer epoch
+    "DocumentMRQTrainingStart": "🚀📊",  # Indicates MRQ training start
+    "DocumentTrainingProgress": "🔁📊",  # Indicates document training progress
+    "DocumentMRQTrainDimension": "🧩📊",  # Indicates training of a specific dimension
+    "DocumentPairBuilderProgress": "📊📄",  # Indicates progress in building document pairs
     "DocumentProfileFailed": "📉",         # Indicates profiling failed or dropped
     "DomainClassifierInit": "🧠",          # Classifier startup — cognitive/init
     "DomainConfigLoaded": "📚",            # YAML or config file loaded
     "SeedEmbeddingsPrepared": "🧬",        # Indicates seeds were embedded — DNA/metaphor
-    "DocumentLoadFailed": "❌",            # General failure/loading error
+    "DocumentLoadFailed": "❌",            # General failure/loading errortted
     "ScoreSkipped": "📉⏭️",  # Scoring skipped due to existing score
     "GoalDomainAssigned": "🎯📚",  # Domain assigned to goal
     "DocumentsFiltered": "📑🔍",  # Documents filtered based on relevance

@@ -1,7 +1,8 @@
 # co_ai/agents/compiler/reasoning_trace.py
-from typing import List, Dict, Optional, Union
 from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Union
 from uuid import uuid4
+
 
 @dataclass
 class ReasoningNode:

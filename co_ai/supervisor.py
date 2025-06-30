@@ -10,9 +10,15 @@ from omegaconf import DictConfig, OmegaConf
 
 from co_ai.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID, PROMPT_DIR,
                              RUN_ID, SAVE_CONTEXT, SKIP_IF_COMPLETED, STAGE)
+from co_ai.engine.cycle_watcher import CycleWatcher
+from co_ai.engine.meta_confidence import MetaConfidenceTracker
+from co_ai.engine.self_validation import SelfValidationEngine
+from co_ai.engine.state_tracker import StateTracker
+from co_ai.engine.training_controller import TrainingController
 from co_ai.logs.json_logger import JSONLogger
 from co_ai.memory import MemoryTool
 from co_ai.registry import AgentRegistry
+from co_ai.registry.registry import register
 from co_ai.reports import ReportFormatter
 from co_ai.rules.symbolic_rule_applier import SymbolicRuleApplier
 
@@ -46,9 +52,53 @@ class Supervisor:
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
         self.logger.log("SupervisorInit", {"cfg": cfg})
         self.rule_applier = SymbolicRuleApplier(cfg, self.memory, self.logger)
-        # Parse pipeline stages from config
         print(f"Parsing pipeline stages from config: {cfg.pipeline}")
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
+
+        # Initialize and register core components
+        state_tracker = StateTracker(cfg, self.memory, self.logger)
+        confidence_tracker = MetaConfidenceTracker(cfg, self.memory, self.logger)
+        cycle_watcher = CycleWatcher(cfg, self.memory, self.logger)
+
+        # Stub judgment and reward model evaluators
+        def reward_model_fn(goal, doc_a, doc_b):
+            return "a" if len(doc_a) >= len(doc_b) else "b"
+
+        def llm_judge_fn(goal, doc_a, doc_b):
+            return "a"  # Placeholder logic
+
+        validator = SelfValidationEngine(
+            cfg=cfg,
+            memory=self.memory,
+            logger=self.logger,
+            reward_model=reward_model_fn,
+            llm_judge=llm_judge_fn,
+        )
+
+        def trainer_fn(goal, dimension):
+            print(f"[TRAIN] Training RM for goal: {goal}, dimension: {dimension}")
+            # Insert actual training logic here
+
+        training_controller = TrainingController(
+            cfg=cfg,
+            memory=self.memory,
+            logger=self.logger,
+            validator=validator,
+            tracker=confidence_tracker,
+            trainer_fn=trainer_fn,
+        )
+
+        register("state_tracker", state_tracker)
+        register("confidence_tracker", confidence_tracker)
+        register("cycle_watcher", cycle_watcher)
+        register("training_controller", training_controller)
+        register("self_validation", validator)
+        self.logger.log("SupervisorComponentsRegistered", {
+            "state_tracker": state_tracker,
+            "confidence_tracker": confidence_tracker,
+            "cycle_watcher": cycle_watcher,
+            "training_controller": training_controller,
+        })
 
     def _parse_pipeline_stages(
         self, stage_configs: list[dict[str, any]]
@@ -378,3 +428,4 @@ class Supervisor:
                     })
                 merged[key] = value
         return merged
+

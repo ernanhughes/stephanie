@@ -1,12 +1,16 @@
-import os
 from pathlib import Path
+from jinja2 import Template
 
-TEMPLATE_AGENT_CODE = '''from co_ai.base_agent import BaseAgent
+TEMPLATE_AGENT_CODE = '''from co_ai.agents.base_agent import BaseAgent
 
-class {{ agent_name | capitalize }}(BaseAgent):
-    def run(self, goal, **kwargs):
+
+class {{ agent_name|capitalize }}(BaseAgent):
+    def __init__(self, cfg, memory=None, logger=None):
+        super().__init__(cfg, memory, logger)
+
+    async def run(self, context: dict) -> dict:
         # Implement agent logic here
-        return {"{{ agent_name }}": "output from {{ agent_name }}"}
+        return context
 '''
 
 TEMPLATE_CONFIG = '''{{ agent_name }}:
@@ -47,7 +51,7 @@ Additional instructions:
 
 def create_agent_files(agent_name):
     agent_file = Path(f"co_ai/agents/{agent_name}.py")
-    config_file = Path(f"configs/agents/{agent_name}.yaml")
+    config_file = Path(f"config/agents/{agent_name}.yaml")
     prompt_dir = Path(f"prompts/{agent_name}")
     prompt_file = prompt_dir / f"{agent_name}.txt"
 
@@ -56,10 +60,10 @@ def create_agent_files(agent_name):
     config_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_dir.mkdir(parents=True, exist_ok=True)
 
-    # Fill templates
-    agent_code = TEMPLATE_AGENT_CODE.replace("{{ agent_name }}", agent_name)
-    config_code = TEMPLATE_CONFIG.replace("{{ agent_name }}", agent_name)
-    prompt_code = TEMPLATE_PROMPT
+    # Use Jinja2 to render templates
+    agent_code = Template(TEMPLATE_AGENT_CODE).render(agent_name=agent_name)
+    config_code = Template(TEMPLATE_CONFIG).render(agent_name=agent_name)
+    prompt_code = TEMPLATE_PROMPT  # This one is Jinja2 syntax by design
 
     # Write files
     agent_file.write_text(agent_code)

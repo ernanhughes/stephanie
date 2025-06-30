@@ -1,6 +1,6 @@
 from co_ai.agents.base_agent import BaseAgent
-from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.agents.mixins.memory_aware_mixin import MemoryAwareMixin
+from co_ai.agents.mixins.scoring_mixin import ScoringMixin
 from co_ai.scoring.mrq_scorer import MRQScorer
 
 
