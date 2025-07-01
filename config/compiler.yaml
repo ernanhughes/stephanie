@@ -32,7 +32,7 @@ symbolic:
 post_judgment:
   name: pipeline_judge
   enabled: true
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -56,6 +56,6 @@ pipeline:
   description: "Compile generate good answers in one domain to build reusable reasoning structures that can transfer to new, unfamiliar tasks"
   stages:
      - name: compiler
-       cls: co_ai.agents.compiler.compiler.CompilerAgent
+       cls: stephanie.agents.compiler.compiler.CompilerAgent
        enabled: true
        iterations: 1

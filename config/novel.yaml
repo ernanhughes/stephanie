@@ -30,12 +30,12 @@ goal:
 dynamic:
   name: lookahead
   enabled: false
-  cls: co_ai.agents.lookahead.LookaheadAgent
+  cls: stephanie.agents.lookahead.LookaheadAgent
 
 planner:
   name: planner
   enabled: false
-  cls: co_ai.agents.planner.PipelinePlannerAgent
+  cls: stephanie.agents.planner.PipelinePlannerAgent
   dots_enabled: true
   lookahead_enabled: true
 
@@ -43,7 +43,7 @@ planner:
 post_judgment:
   name: pipeline_judge
   enabled: false
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 
 paths:
@@ -68,38 +68,38 @@ pipeline:
   description: "NOVELSEEK pipeline for exploring the question: 'Will AI ever be able to reprogram itself?'"
   stages:
      - name: survey
-       cls: co_ai.agents.survey.SurveyAgent
+       cls: stephanie.agents.survey.SurveyAgent
        enabled: true
        iterations: 1
      - name: search_orchestrator
-       cls: co_ai.agents.search_orchestrator.SearchOrchestratorAgent
+       cls: stephanie.agents.search_orchestrator.SearchOrchestratorAgent
        enabled: false
        iterations: 1
      - name: knowledge_loader
-       cls: co_ai.agents.knowledge_loader.KnowledgeLoaderAgent
+       cls: stephanie.agents.knowledge_loader.KnowledgeLoaderAgent
        enabled: true
        iterations: 1
      - name: idea_innovation
-       cls: co_ai.agents.idea_innovation.IdeaInnovationAgent
+       cls: stephanie.agents.idea_innovation.IdeaInnovationAgent
        enabled: true
        iterations: 1
      - name: idea_sharpening
-       cls: co_ai.agents.idea_sharpening.IdeaSharpeningAgent
+       cls: stephanie.agents.idea_sharpening.IdeaSharpeningAgent
        enabled: true
        iterations: 1
      - name: ranking
-       cls: co_ai.agents.ranking.RankingAgent
+       cls: stephanie.agents.ranking.RankingAgent
        enabled: true
        iterations: 1
      - name: idea_evaluator
-       cls: co_ai.agents.idea_evaluator.IdeaEvaluatorAgent
+       cls: stephanie.agents.idea_evaluator.IdeaEvaluatorAgent
        enabled: true
        iterations: 1
      - name: idea_evolution
-       cls: co_ai.agents.idea_evolution.IdeaEvolutionAgent
+       cls: stephanie.agents.idea_evolution.IdeaEvolutionAgent
        enabled: true
        iterations: 3
      - name: method_planner
-       cls: co_ai.agents.method_planner.MethodPlannerAgent
+       cls: stephanie.agents.method_planner.MethodPlannerAgent
        enabled: true
        iterations: 1

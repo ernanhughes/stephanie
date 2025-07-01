@@ -38,22 +38,22 @@ pipeline:
   stages:
     - name: step_compiler
       description: "Generates steps from initial goal"
-      cls: co_ai.agents.compiler.step_compiler.StepCompilerAgent
+      cls: stephanie.agents.compiler.step_compiler.StepCompilerAgent
       enabled: true
       iterations: 1
     - name: step_processor
       description: "Processes each step to generate and score the outputs"
-      cls: co_ai.agents.compiler.step_processor.StepProcessorAgent 
+      cls: stephanie.agents.compiler.step_processor.StepProcessorAgent 
       enabled: true
       iterations: 1
     - name: prompt_tuning
       description: "Tunes prompts in the previous step(s) for better performance"
-      cls: co_ai.agents.compiler.prompt_tuning.PromptTuningAgent
+      cls: stephanie.agents.compiler.prompt_tuning.PromptTuningAgent
       enabled: true
       iterations: 1
     - name: dspy_assembler
       description: "Assembles the prompts using the scores into a single good prompt"
-      cls: co_ai.agents.compiler.dspy_assembler.DSPyAssemblerAgent
+      cls: stephanie.agents.compiler.dspy_assembler.DSPyAssemblerAgent
       enabled: true
       iterations: 1
     

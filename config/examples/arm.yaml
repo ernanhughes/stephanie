@@ -40,10 +40,10 @@ pipeline:
   description: "ARM: Adaptive Reasoning Mode - 2505.20258 implementation"
   stages:
     - name: adaptive_reasoner
-      cls: co_ai.agents.adaptive_reasoner.AdaptiveReasonerAgent
+      cls: stephanie.agents.adaptive_reasoner.AdaptiveReasonerAgent
       enabled: true
       iterations: 1
     - name: adaptive_reasoner_llm
-      cls: co_ai.agents.adaptive_reasoner.AdaptiveReasonerAgent
+      cls: stephanie.agents.adaptive_reasoner.AdaptiveReasonerAgent
       enabled: true
       iterations: 1

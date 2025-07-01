@@ -32,19 +32,19 @@ symbolic:
 planner:
   name: planner
   enabled: false
-  cls: co_ai.agents.planner.PipelinePlannerAgent
+  cls: stephanie.agents.planner.PipelinePlannerAgent
   dots_enabled: true
   lookahead_enabled: true
 
 dynamic:
   name: lookahead
   enabled: false
-  cls: co_ai.agents.lookahead.LookaheadAgent
+  cls: stephanie.agents.lookahead.LookaheadAgent
 
 post_judgment:
   name: pipeline_judge
   enabled: false
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -68,10 +68,10 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
      - name: survey
-       cls: co_ai.agents.survey.SurveyAgent
+       cls: stephanie.agents.survey.SurveyAgent
        enabled: true
        iterations: 1
      - name: search_orchestrator
-       cls: co_ai.agents.search_orchestrator.SearchOrchestratorAgent
+       cls: stephanie.agents.search_orchestrator.SearchOrchestratorAgent
        enabled: true
        iterations: 1

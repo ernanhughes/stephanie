@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from co_ai.models import ScoreORM, EvaluationORM
+from stephanie.models import ScoreORM, EvaluationORM
 
 def prune_zero_scores_and_orphan_evaluations(session: Session, document_id: int, logger=None):
     # Step 1: Find and delete zero scores

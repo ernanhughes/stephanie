@@ -21,14 +21,14 @@ def bundle_package(output_zip:str=None):
         output_zip: Output ZIP filename
     """
     try:
-        resource_dir = "co_ai/resources"
+        resource_dir = "stephanie/resources"
         if not os.path.exists(resource_dir):
             os.makedirs(resource_dir)
         logger.info(f"Creating resource directory at {resource_dir}...")
         logger.info(f"Starting resource bundling. Writing to {resource_dir}/{output_zip}...")
 
         # Ensure output path is valid
-        output_zip = output_zip or f"{resource_dir}/co_ai_assets.zip"
+        output_zip = output_zip or f"{resource_dir}/stephanie_assets.zip"
         output_path = Path(output_zip).resolve()
         logger.info(f"Output zip: {output_path}")
 

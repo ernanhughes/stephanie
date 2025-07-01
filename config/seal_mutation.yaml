@@ -42,7 +42,7 @@ symbolic:
 post_judgment:
   name: pipeline_judge
   enabled: false
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -67,30 +67,30 @@ pipeline:
   description: "Import papers score and save them"
   stages:
        - name: rule_mutation
-         cls: co_ai.agents.seal.rule_mutation.RuleMutationAgent
+         cls: stephanie.agents.seal.rule_mutation.RuleMutationAgent
          enabled: true
          iterations: 1
     #  - name: survey
-    #    cls: co_ai.agents.knowledge.survey.SurveyAgent
+    #    cls: stephanie.agents.knowledge.survey.SurveyAgent
     #    enabled: true
     #    iterations: 1
     #  - name: search_orchestrator
-    #    cls: co_ai.agents.knowledge.search_orchestrator.SearchOrchestratorAgent
+    #    cls: stephanie.agents.knowledge.search_orchestrator.SearchOrchestratorAgent
     #    enabled: true
     #    iterations: 1
     #  - name: document_loader
-    #    cls: co_ai.agents.knowledge.document_loader.DocumentLoaderAgent
+    #    cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
     #    enabled: true
     #    iterations: 1
     #  - name: document_profiler
-    #    cls: co_ai.agents.knowledge.document_profiler.DocumentProfilerAgent
+    #    cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
     #    enabled: true
     #    iterations: 1
     #  - name: paper_score
-    #    cls: co_ai.agents.knowledge.paper_score.PaperScoreAgent
+    #    cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
     #    enabled: true
     #    iterations: 1
     #  - name: knowledge_loader
-    #    cls: co_ai.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
+    #    cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
     #    enabled: true
     #    iterations: 1

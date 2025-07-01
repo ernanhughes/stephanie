@@ -27,7 +27,7 @@ goal:
 post_judgment:
   name: pipeline_judge
   enabled: true
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -53,36 +53,36 @@ pipeline:
   stages:
      - name: arxiv_search
        description: "Search Arxiv for papers related to the goal" 
-       cls: co_ai.agents.knowledge.arxiv_search.ArxivSearchAgent
+       cls: stephanie.agents.knowledge.arxiv_search.ArxivSearchAgent
        enabled: true
        iterations: 1
      - name: document_loader
        description: "Load documents from the search results and summarize them"
-       cls: co_ai.agents.knowledge.document_loader.DocumentLoaderAgent
+       cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
        enabled: true
        iterations: 1
      - name: document_profiler
        description: "Profile the loaded documents to extract key sections"
-       cls: co_ai.agents.knowledge.document_profiler.DocumentProfilerAgent
+       cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
        enabled: true
        iterations: 1
      - name: paper_score
        description: "Score the papers based on their relevance and quality"
-       cls: co_ai.agents.knowledge.paper_score.PaperScoreAgent
+       cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
        enabled: true
        iterations: 1
      - name: knowledge_loader
        description: "Load knowledge from the scored papers into the system"
-       cls: co_ai.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
+       cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
        enabled: true
        iterations: 1
      - name: document_trainer
        description: "Build document pairs for training and evaluation" 
-       cls: co_ai.agents.knowledge.document_trainer.DocumentTrainerAgent 
+       cls: stephanie.agents.knowledge.document_trainer.DocumentTrainerAgent 
        enabled: true
        iterations: 1
      - name: document_reward_scorer
        description: "Score the documents based on their relevance and quality"
-       cls: co_ai.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
+       cls: stephanie.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
        enabled: true
        iterations: 1

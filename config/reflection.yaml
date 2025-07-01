@@ -20,19 +20,19 @@ goal:
 dynamic:
   name: lookahead
   enabled: false
-  cls: co_ai.agents.lookahead.LookaheadAgent
+  cls: stephanie.agents.lookahead.LookaheadAgent
 
 planner:
   name: planner
   enabled: false
-  cls: co_ai.agents.planner.PipelinePlannerAgent
+  cls: stephanie.agents.planner.PipelinePlannerAgent
   dots_enabled: true
   lookahead_enabled: true
 
 post_judgment:
   name: pipeline_judge
   enabled: false
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 
 paths:
@@ -57,10 +57,10 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
      - name: generation
-       cls: co_ai.agents.generation.GenerationAgent
+       cls: stephanie.agents.generation.GenerationAgent
        enabled: true
        iterations: 1
      - name: reflection
-       cls: co_ai.agents.reflection.ReflectionAgent
+       cls: stephanie.agents.reflection.ReflectionAgent
        enabled: true
        iterations: 1

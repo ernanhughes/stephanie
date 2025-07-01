@@ -1,6 +1,6 @@
 # 🧰 Tools
 
-`co_ai` ships with a suite of modular tools that agents can access via injection. These tools wrap shared functionality such as embeddings, prompt loading, logging, search, and evaluation.
+`stephanie` ships with a suite of modular tools that agents can access via injection. These tools wrap shared functionality such as embeddings, prompt loading, logging, search, and evaluation.
 
 ---
 
@@ -117,7 +117,7 @@ You can add custom stores via config:
 
 ```yaml
 extra_stores:
-  - co_ai.memory.MyCustomStore
+  - stephanie.memory.MyCustomStore
 ```
 
 Register them via:

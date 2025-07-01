@@ -1,5 +1,5 @@
-from co_ai.utils.loaders import get_memory, get_logger, get_config
-from co_ai.scoring.batch import score_unscored_hypotheses
+from stephanie.utils.loaders import get_memory, get_logger, get_config
+from stephanie.scoring.batch import score_unscored_hypotheses
 
 if __name__ == "__main__":
     memory = get_memory()

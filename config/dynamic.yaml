@@ -31,7 +31,7 @@ goal:
 dynamic:
   name: lookahead
   enabled: true
-  cls: co_ai.agents.lookahead.LookaheadAgent
+  cls: stephanie.agents.lookahead.LookaheadAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -55,6 +55,6 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
      - name: generation
-       cls: co_ai.agents.generation.GenerationAgent
+       cls: stephanie.agents.generation.GenerationAgent
        enabled: true
        iterations: 1

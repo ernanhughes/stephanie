@@ -21,7 +21,7 @@ goal:
 post_judgment:
   name: pipeline_judge
   enabled: false
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -46,6 +46,6 @@ pipeline:
   description: "Pipeline for generating hypotheses using a generation agent"
   stages:
      - name: pipeline_comparison
-       cls: co_ai.agents.pipeline_comparison.PipelineComparisonAgent
+       cls: stephanie.agents.pipeline_comparison.PipelineComparisonAgent
        enabled: true
        iterations: 1

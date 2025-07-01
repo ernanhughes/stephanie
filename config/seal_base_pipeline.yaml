@@ -40,7 +40,7 @@ symbolic:
 post_judgment:
   name: pipeline_judge
   enabled: true
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -64,6 +64,6 @@ pipeline:
   tag: "huggingface_related_papers import"
   stages:
     - name: generation
-      cls: co_ai.agents.gereration.GenerationAgent
+      cls: stephanie.agents.gereration.GenerationAgent
       enabled: true
       iterations: 1

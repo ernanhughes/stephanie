@@ -1,6 +1,6 @@
 # 🧠 Memory System
 
-The `MemoryTool` in `co_ai` serves as the shared memory backbone for the entire pipeline. It manages embeddings, hypotheses, reviews, prompt versions, logs, and more—all stored in a PostgreSQL database with pgvector support.
+The `MemoryTool` in `stephanie` serves as the shared memory backbone for the entire pipeline. It manages embeddings, hypotheses, reviews, prompt versions, logs, and more—all stored in a PostgreSQL database with pgvector support.
 
 ---
 
@@ -150,7 +150,7 @@ Hydra config fragment:
 db:
   host: localhost
   port: 5432
-  database: co_ai
+  database: stephanie
   user: postgres
   password: yourpassword
 ```

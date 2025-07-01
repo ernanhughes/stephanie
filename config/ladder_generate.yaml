@@ -20,7 +20,7 @@ goal:
 post_judgment:
   name: pipeline_judge
   enabled: true
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -45,6 +45,6 @@ pipeline:
   description: "Pipeline for generating hypotheses using a generation agent"
   stages:
      - name: generation
-       cls: co_ai.agents.generation.GenerationAgent
+       cls: stephanie.agents.generation.GenerationAgent
        enabled: true
        iterations: 1

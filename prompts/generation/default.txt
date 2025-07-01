@@ -24,7 +24,7 @@ Prioritize queries that explore novel angles or unresolved challenges related to
 
 Guidelines:
 - Ensure each query aligns with at least one preference (e.g., factual accuracy, reliable sources).
-- Favor queries that can lead to actionable insights for improving the co_ai framework or building self-improving agents.
+- Favor queries that can lead to actionable insights for improving the stephanie framework or building self-improving agents.
 - Include both broad and targeted queries to cover foundational and cutting-edge knowledge.
 
 Return only the list of queries, one per line.

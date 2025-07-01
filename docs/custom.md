@@ -1,6 +1,6 @@
 # Building a Custom AI Pipeline with Minimal Configuration
 
-How to build a custom scientific hypothesis generation pipeline using the `co_ai` framework with the **minimum required configuration**. This chapter assumes you’re familiar with Python and basic YAML syntax.
+How to build a custom scientific hypothesis generation pipeline using the `stephanie` framework with the **minimum required configuration**. This chapter assumes you’re familiar with Python and basic YAML syntax.
 
 ---
 
@@ -54,11 +54,11 @@ db:
   port: 5432
   user: postgres
   password: postgres
-  database: co_ai
+  database: stephanie
 
 stages:
   - name: generate
-    cls: co_ai.agents.my_agent.MyGenerationAgent
+    cls: stephanie.agents.my_agent.MyGenerationAgent
     enabled: true
     strategy: default
     prompt_file: default
@@ -79,9 +79,9 @@ Each stage requires:
 Every agent should inherit from `BaseAgent` and implement a `run()` method.
 
 ```python
-# co_ai/agents/my_generation.py
+# stephanie/agents/my_generation.py
 
-from co_ai.agents.base_agent import BaseAgent
+from stephanie.agents.base_agent import BaseAgent
 
 class MyGenerationAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
@@ -115,7 +115,7 @@ Generate 3 hypotheses for the goal: {{ goal }}
 Use the `main.py` launcher provided in the framework:
 
 ```bash
-python co_ai/main.py goal="The USA may default on its debt"
+python stephanie/main.py goal="The USA may default on its debt"
 ```
 
 This will:
@@ -149,4 +149,4 @@ Each addition is just a YAML node and a Python class away.
 | `Prompt template` | Guides model output              |
 | `main.py`         | Launches the configured pipeline |
 
-By following this chapter, you've built a reusable, testable AI pipeline using `co_ai` with the bare essentials. From here, you can scale out to review, reflect, evolve, and rank your hypotheses in modular stages.
+By following this chapter, you've built a reusable, testable AI pipeline using `stephanie` with the bare essentials. From here, you can scale out to review, reflect, evolve, and rank your hypotheses in modular stages.

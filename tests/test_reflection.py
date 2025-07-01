@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock
-from co_ai.agents.reflection import ReflectionAgent
+from stephanie.agents.reflection import ReflectionAgent
 
 @pytest.mark.asyncio
 async def test_reflection_agent_returns_reviews():

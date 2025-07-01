@@ -36,12 +36,12 @@ goal:
 dynamic:
   name: lookahead
   enabled: false
-  cls: co_ai.agents.lookahead.LookaheadAgent
+  cls: stephanie.agents.lookahead.LookaheadAgent
 
 post_judgment:
   name: pipeline_judge
   enabled: true
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 
 paths:
@@ -66,58 +66,58 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
     - name: literature
-      cls: co_ai.agents.literature.LiteratureAgent
+      cls: stephanie.agents.literature.LiteratureAgent
       enabled: false
       iterations: 1
     - name: literature_ranking
-      cls: co_ai.agents.generic.GenericAgent
+      cls: stephanie.agents.generic.GenericAgent
       enabled: false
       iterations: 1
     - name: generation
-      cls: co_ai.agents.generation.GenerationAgent
+      cls: stephanie.agents.generation.GenerationAgent
       enabled: true
       iterations: 1
     - name: cot_generator
-      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
+      cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
       enabled: true
       iterations: 1
     - name: review
-      cls: co_ai.agents.review.ReviewAgent
+      cls: stephanie.agents.review.ReviewAgent
       enabled: true
       iterations: 1
     - name: reflection
-      cls: co_ai.agents.reflection.ReflectionAgent
+      cls: stephanie.agents.reflection.ReflectionAgent
       enabled: true
       iterations: 1
     - name: proximity
-      cls: co_ai.agents.proximity.ProximityAgent
+      cls: stephanie.agents.proximity.ProximityAgent
       enabled: true
       iterations: 1
     - name: ranking
-      cls: co_ai.agents.ranking.RankingAgent
+      cls: stephanie.agents.ranking.RankingAgent
       enabled: true
       iterations: 1
     - name: evolution
-      cls: co_ai.agents.evolution.EvolutionAgent
+      cls: stephanie.agents.evolution.EvolutionAgent
       enabled: true
       iterations: 1
     - name: meta_review
-      cls: co_ai.agents.meta_review.MetaReviewAgent
+      cls: stephanie.agents.meta_review.MetaReviewAgent
       enabled: true
       iterations: 1
     - name: prompt_tuning
-      cls: co_ai.agents.prompt_tuning.PromptTuningAgent
+      cls: stephanie.agents.prompt_tuning.PromptTuningAgent
       enabled: true
       iterations: 1
     - name: sharpening
-      cls: co_ai.agents.sharpening.SharpeningAgent
+      cls: stephanie.agents.sharpening.SharpeningAgent
       enabled: true
       iterations: 1
     - name: reflection_delta
-      cls: co_ai.agents.reflection_delta.ReflectionDeltaAgent
+      cls: stephanie.agents.reflection_delta.ReflectionDeltaAgent
       enabled: true
       iterations: 1
     - name: mrq_strategy
-      cls: co_ai.agents.mrq_strategy.MRQStrategyAgent
+      cls: stephanie.agents.mrq_strategy.MRQStrategyAgent
       enabled: true
       iterations: 1

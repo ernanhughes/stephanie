@@ -1,6 +1,6 @@
 # ⚙️ Configuration
 
-`co_ai` uses **Hydra** for flexible and hierarchical configuration. Each agent, tool, and subsystem loads settings from a structured YAML config. This allows you to dynamically switch models, pipelines, memory backends, and more.
+`stephanie` uses **Hydra** for flexible and hierarchical configuration. Each agent, tool, and subsystem loads settings from a structured YAML config. This allows you to dynamically switch models, pipelines, memory backends, and more.
 
 ---
 
@@ -32,7 +32,7 @@ Example for a PostgreSQL database with `pgvector`:
 ```yaml
 host: localhost
 port: 5432
-database: co_ai
+database: stephanie
 user: postgres
 password: yourpassword
 
@@ -117,7 +117,7 @@ PROMPT_DIR: "prompts"
 You can override any value from the CLI:
 
 ```bash
-python co_ai/main.py goal="Can AI assist scientific discovery?" logging.logger.log_path=run_logs
+python stephanie/main.py goal="Can AI assist scientific discovery?" logging.logger.log_path=run_logs
 ```
 
 Or define a full run config:

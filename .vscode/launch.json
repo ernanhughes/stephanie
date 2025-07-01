@@ -9,7 +9,7 @@
             "type": "debugpy",
             "request": "launch",
             "console": "integratedTerminal",
-            "module": "co_ai.main",
+            "module": "stephanie.main",
             "python": "${workspaceFolder}\\venv\\Scripts\\python",   // Linux/macOS
             "args": [
                 "--config-name", "rivals",

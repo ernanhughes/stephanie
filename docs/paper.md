@@ -1,6 +1,6 @@
-# 🧠 SAGE Paper vs `co_ai` Implementation Checkpoint
+# 🧠 SAGE Paper vs `stephanie` Implementation Checkpoint
 
-This page summarizes how the `co_ai` implementation maps directly to the concepts and structure proposed in the SAGE paper ([arXiv:2502.18864](https://arxiv.org/abs/2502.18864)).
+This page summarizes how the `stephanie` implementation maps directly to the concepts and structure proposed in the SAGE paper ([arXiv:2502.18864](https://arxiv.org/abs/2502.18864)).
 
 ## ✅ Goal
 
@@ -121,7 +121,7 @@ Automate and assist scientific hypothesis generation, ranking, refinement, and e
 
 ## 🎉 Summary
 
-The `co_ai` project faithfully implements the key components of the SAGE framework and enhances it with:
+The `stephanie` project faithfully implements the key components of the SAGE framework and enhances it with:
 
 * Fine-grained logging
 * Prompt tuning loops

@@ -1,6 +1,6 @@
 # 🛠️ Installation Guide
 
-This guide walks you through setting up and running the `co_ai` framework locally.
+This guide walks you through setting up and running the `stephanie` framework locally.
 
 ---
 
@@ -110,13 +110,13 @@ Make sure `Ollama` is running on `http://localhost:11434`.
 ## ⚙️ 6. Run the App
 
 ```bash
-python co_ai/main.py goal="The USA is on the verge of defaulting on its debt"
+python stephanie/main.py goal="The USA is on the verge of defaulting on its debt"
 ```
 
 Or with CLI args:
 
 ```bash
-python co_ai/main.py --config-name=config goal="My research goal here"
+python stephanie/main.py --config-name=config goal="My research goal here"
 ```
 
 ---

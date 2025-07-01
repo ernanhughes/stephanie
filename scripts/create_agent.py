@@ -1,7 +1,7 @@
 from pathlib import Path
 from jinja2 import Template
 
-TEMPLATE_AGENT_CODE = '''from co_ai.agents.base_agent import BaseAgent
+TEMPLATE_AGENT_CODE = '''from stephanie.agents.base_agent import BaseAgent
 
 
 class {{ agent_name|capitalize }}(BaseAgent):
@@ -50,7 +50,7 @@ Additional instructions:
 '''
 
 def create_agent_files(agent_name):
-    agent_file = Path(f"co_ai/agents/{agent_name}.py")
+    agent_file = Path(f"stephanie/agents/{agent_name}.py")
     config_file = Path(f"config/agents/{agent_name}.yaml")
     prompt_dir = Path(f"prompts/{agent_name}")
     prompt_file = prompt_dir / f"{agent_name}.txt"

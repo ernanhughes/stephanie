@@ -1,12 +1,12 @@
-# co_ai: Collaborative AI Hypothesis Engine
+# stephanie: Collaborative AI Hypothesis Engine
 
-Welcome to the documentation for **co_ai**, a modular LLM-powered framework designed to assist in scientific hypothesis generation, evaluation, and refinement. This project is inspired by the SAGE architecture proposed in [arXiv:2502.18864](https://arxiv.org/abs/2502.18864) and aims to simulate a collaborative AI research team.
+Welcome to the documentation for **stephanie**, a modular LLM-powered framework designed to assist in scientific hypothesis generation, evaluation, and refinement. This project is inspired by the SAGE architecture proposed in [arXiv:2502.18864](https://arxiv.org/abs/2502.18864) and aims to simulate a collaborative AI research team.
 
 ---
 
-## 🔍 What is `co_ai`?
+## 🔍 What is `stephanie`?
 
-`co_ai` is an extensible agent-based pipeline framework built around a central Supervisor and a suite of intelligent agents. Each agent performs a distinct role — such as generating hypotheses, ranking them, reflecting on their quality, or evolving better ones — all while sharing state through a common memory and logging system.
+`stephanie` is an extensible agent-based pipeline framework built around a central Supervisor and a suite of intelligent agents. Each agent performs a distinct role — such as generating hypotheses, ranking them, reflecting on their quality, or evolving better ones — all while sharing state through a common memory and logging system.
 
 The system is designed to:
 
@@ -30,7 +30,7 @@ The system is designed to:
 
 ## 🚀 Example Use Case
 
-You define a research goal (e.g., *"The USA is on the verge of defaulting on its debt"*). `co_ai` spins up a pipeline to:
+You define a research goal (e.g., *"The USA is on the verge of defaulting on its debt"*). `stephanie` spins up a pipeline to:
 
 1. Generate multiple hypotheses
 2. Reflect on their quality
@@ -45,7 +45,7 @@ Everything is modular and can be extended with custom agents, tools, and storage
 ## 📦 Project Structure
 
 ```bash
-co_ai/
+stephanie/
 ├── agents/           # Agent classes (generation, reflection, etc.)
 ├── memory/           # Memory and store definitions
 ├── logs/             # Structured logging system
@@ -72,7 +72,7 @@ prompts/
 
 ## 👨‍🔬 Why Use This?
 
-`co_ai` isn’t just another LLM wrapper — it’s a framework designed to **amplify human creativity and reasoning** through a configurable, extensible AI assistant team. Whether you're testing theories, validating hypotheses, or generating structured research output, `co_ai` turns prompts into pipelines, and pipelines into progress.
+`stephanie` isn’t just another LLM wrapper — it’s a framework designed to **amplify human creativity and reasoning** through a configurable, extensible AI assistant team. Whether you're testing theories, validating hypotheses, or generating structured research output, `stephanie` turns prompts into pipelines, and pipelines into progress.
 
 ```
 

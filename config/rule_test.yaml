@@ -33,7 +33,7 @@ symbolic:
 planner:
   name: planner
   enabled: false
-  cls: co_ai.agents.planner.PipelinePlannerAgent
+  cls: stephanie.agents.planner.PipelinePlannerAgent
   dots_enabled: true
   lookahead_enabled: true
 
@@ -41,7 +41,7 @@ planner:
 post_judgment:
   name: pipeline_judge
   enabled: true
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 
 paths:
@@ -66,18 +66,18 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
       - name: generation
-        cls: co_ai.agents.generation.GenerationAgent
+        cls: stephanie.agents.generation.GenerationAgent
         enabled: true
         iterations: 1
       - name: symbolic_optimizer
-        cls: co_ai.agents.symbolic_optimizer.SymbolicOptimizerAgent
+        cls: stephanie.agents.symbolic_optimizer.SymbolicOptimizerAgent
         enabled: true
         iterations: 1
       - name: rule_tuner
-        cls: co_ai.agents.rule_tuner.RuleTunerAgent
+        cls: stephanie.agents.rule_tuner.RuleTunerAgent
         enabled: true
         iterations: 1
       - name: mrq_scoring
-        cls: co_ai.agents.mrq_scoring.MRQScoringAgent
+        cls: stephanie.agents.mrq_scoring.MRQScoringAgent
         enabled: true
         iterations: 1

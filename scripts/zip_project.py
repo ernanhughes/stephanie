@@ -9,7 +9,7 @@ def should_exclude(path):
     parts = path.split(os.sep)
     return any(part in EXCLUDE_DIRS or part.endswith(EXCLUDE_SUFFIXES) for part in parts)
 
-def zip_project_directory(source_dir: str, output_filename: str = "co_ai.zip"):
+def zip_project_directory(source_dir: str, output_filename: str = "stephanie.zip"):
     with zipfile.ZipFile(output_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(source_dir):
             # Remove excluded directories from the walk

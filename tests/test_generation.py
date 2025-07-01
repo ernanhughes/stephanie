@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock
-from co_ai.agents.generation import GenerationAgent
+from stephanie.agents.generation import GenerationAgent
 
 @pytest.mark.asyncio
 async def test_generation_agent_returns_hypotheses():

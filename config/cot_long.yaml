@@ -36,7 +36,7 @@ goal:
 post_judgment:
   name: pipeline_judge
   enabled: true
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -61,14 +61,14 @@ pipeline:
   description: "Long COT Pipeline demonstrating X-REASONER integration with CoT agents."
   stages:
     - name: cot_long_generator
-      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
+      cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
       enabled: true
       iterations: 1
     - name: ranking
-      cls: co_ai.agents.ranking.RankingAgent
+      cls: stephanie.agents.ranking.RankingAgent
       enabled: true
       iterations: 1
     - name: cot_dspy_generator
-      cls: co_ai.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
+      cls: stephanie.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
       enabled: true
       iterations: 1

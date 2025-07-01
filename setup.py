@@ -2,12 +2,12 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="co_ai",
+    name="stephanie",
     version="0.1.0",
     packages=find_packages(),
     include_package_data=True,
     package_data={
-        "co_ai": ["config/**/*.yaml",
+        "stephanie": ["config/**/*.yaml",
         "prompts/**/*.txt",   # all prompt templates
         "schema.sql",  # your schema
         "docker-compose.yml",  # your schema
@@ -22,7 +22,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "co_ai=main:main"
+            "stephanie=main:main"
         ]
     }
 )

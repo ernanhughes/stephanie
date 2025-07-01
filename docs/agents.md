@@ -1,6 +1,6 @@
 # 🧠 Agents Overview
 
-`co_ai` is a modular, agent-based framework inspired by the SAGE architecture. Each agent is a specialized module that performs a distinct role in the scientific hypothesis lifecycle.
+`stephanie` is a modular, agent-based framework inspired by the SAGE architecture. Each agent is a specialized module that performs a distinct role in the scientific hypothesis lifecycle.
 
 ---
 
@@ -10,9 +10,9 @@ Each agent inherits from a `BaseAgent` class and is configured via Hydra. Agents
 
 ```yaml
 pipeline:
-  - cls: co_ai.agents.generation.GenerationAgent
+  - cls: stephanie.agents.generation.GenerationAgent
     ...
-  - cls: co_ai.agents.review.ReviewAgent
+  - cls: stephanie.agents.review.ReviewAgent
     ...
 ````
 

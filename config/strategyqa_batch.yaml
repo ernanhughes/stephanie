@@ -52,10 +52,10 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
     - name: general_reasoner
-      cls: co_ai.agents.general_reasoner.GeneralReasonerAgent
+      cls: stephanie.agents.general_reasoner.GeneralReasonerAgent
       enabled: true
       iterations: 1
     # - name: ranking
-    #   cls: co_ai.agents.ranking.RankingAgent
+    #   cls: stephanie.agents.ranking.RankingAgent
     #   enabled: true
     #   iterations: 1

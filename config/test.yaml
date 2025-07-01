@@ -25,12 +25,12 @@ symbolic:
 #dynamic:
 #  name: lookahead
 #  enabled: false
-#  cls: co_ai.agents.lookahead.LookaheadAgent
+#  cls: stephanie.agents.lookahead.LookaheadAgent
 
 planner:
   name: planner
   enabled: false
-  cls: co_ai.agents.planner.PipelinePlannerAgent
+  cls: stephanie.agents.planner.PipelinePlannerAgent
   dots_enabled: true
   lookahead_enabled: true
 
@@ -38,7 +38,7 @@ planner:
 post_judgment:
   name: pipeline_judge
   enabled: false
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 
 paths:
@@ -63,30 +63,30 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
 #    - name: cot_generator
-#      cls: co_ai.agents.cot_generator.ChainOfThoughtGeneratorAgent
+#      cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
 #      enabled: true
 #      iterations: 1
       - name: generation
-        cls: co_ai.agents.generation.GenerationAgent
+        cls: stephanie.agents.generation.GenerationAgent
         enabled: true
         iterations: 1
       # - name: review
-      #   cls: co_ai.agents.review.ReviewAgent
+      #   cls: stephanie.agents.review.ReviewAgent
       #   enabled: true
       #   iterations: 1
       # - name: unified_mrq
-      #   cls: co_ai.agents.unified_mrq.UnifiedMRQAgent
+      #   cls: stephanie.agents.unified_mrq.UnifiedMRQAgent
       #   enabled: true
       #   iterations: 1
     #  - name: proximity
-    #    cls: co_ai.agents.proximity.ProximityAgent
+    #    cls: stephanie.agents.proximity.ProximityAgent
     #    enabled: true
     #    iterations: 1
     #  - name: review
-    #    cls: co_ai.agents.review.ReviewAgent
+    #    cls: stephanie.agents.review.ReviewAgent
     #    enabled: true
     #    iterations: 1
     #  - name: scorer
-    #    cls: co_ai.agents.scorer.ScorerAgent
+    #    cls: stephanie.agents.scorer.ScorerAgent
     #    enabled: true
     #    iterations: 1

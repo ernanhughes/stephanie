@@ -25,7 +25,7 @@ goal:
 post_judgment:
   name: pipeline_judge
   enabled: false
-  cls: co_ai.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -46,16 +46,16 @@ pipeline:
   stages:
     - name: master
       description: "Master agent that guides the pupil agent."
-      cls: co_ai.agents.master_pupil.master.MasterAgent
+      cls: stephanie.agents.master_pupil.master.MasterAgent
       enabled: true
       iterations: 1
     - name: pupil
       description: "Pupil agent smaller model we need to inform."
-      cls: co_ai.agents.master_pupil.pupil.PupilAgent
+      cls: stephanie.agents.master_pupil.pupil.PupilAgent
       enabled: true
       iterations: 1
     - name: evaluator
       description: "Pupil agent smaller model we need to inform."
-      cls: co_ai.agents.master_pupil.evaluator.EvaluatorAgent
+      cls: stephanie.agents.master_pupil.evaluator.EvaluatorAgent
       enabled: true
       iterations: 1

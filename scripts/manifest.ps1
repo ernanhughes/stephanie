@@ -1,9 +1,9 @@
 # PowerShell version of the manifest generator
-# This script walks through a folder (default: ./co_ai), finds .py files,
+# This script walks through a folder (default: ./stephanie), finds .py files,
 # adds a module docstring at the top if missing, and generates a manifest markdown file
 
-$RootDir = "./co_ai"
-$ManifestPath = "./co_ai_manifest.md" hey What's going on yeah No Ronald And that's right
+$RootDir = "./stephanie"
+$ManifestPath = "./stephanie_manifest.md" hey What's going on yeah No Ronald And that's right
 $ManifestContent = "# Co AI Manifest`n`n"
 
 # Recursively find all .py files, excluding __pycache__, .git, and __init__.py

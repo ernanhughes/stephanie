@@ -1,5 +1,5 @@
 import pytest
-from co_ai.agents.ranking import RankingAgent
+from stephanie.agents.ranking import RankingAgent
 
 @pytest.mark.asyncio
 async def test_ranking_agent_returns_sorted():

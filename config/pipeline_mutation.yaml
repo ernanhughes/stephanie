@@ -1,6 +1,6 @@
 # config/seal.yaml
 # This file is the pipeline file for the pipeline mutation process. 
-# It calls the co_ai.agents.seal.pipeline_mutation.PipelineMutationAgent using
+# It calls the stephanie.agents.seal.pipeline_mutation.PipelineMutationAgent using
 # configs/agents/pipeline_mutation.yaml
 # This will the mutate and learn from the mutated pipelines.
 # It is thinking AI
@@ -62,7 +62,7 @@ pipeline:
   description: "This will run mutated pipelines using the pipeline mutation agent"
   stages:
        - name: pipeline_mutation
-         cls: co_ai.agents.pipeline.pipeline_mutation.PipelineMutationAgent
+         cls: stephanie.agents.pipeline.pipeline_mutation.PipelineMutationAgent
          enabled: true
          iterations: 1
  
