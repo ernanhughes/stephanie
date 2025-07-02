@@ -75,7 +75,39 @@ class ICLAgent(BaseAgent):
         response = self.simulate_llm(full_prompt)
 
         self.helper.add_example(input_text, response, task_type)
-        return response
+
+
+            # 1. Run original prompt
+        original_response = self.simulate_llm(input_text)
+
+        # 2. Generate ICL-augmented prompt
+        icl_context = self.helper.to_prompt_context(task_type)
+        if icl_context:
+            alt_prompt = f"{icl_context}\n\nNow, {input_text}"
+            icl_response = self.simulate_llm(alt_prompt)
+        else:
+            icl_response = None
+
+        # 3. Score both
+        if self.cfg.get("use_scorer") and self.memory and hasattr(self.memory, "svm_scorer"):
+            scorer = self.memory.svm_scorer
+            goal = {"goal_text": input_text}
+            original_score = scorer.score(goal, {"text": original_response}, ["alignment"]).aggregate()
+            icl_score = scorer.score(goal, {"text": icl_response}, ["alignment"]).aggregate() if icl_response else 0
+        else:
+            original_score, icl_score = 0.5, 0.5  # fallback
+
+        # 4. Choose best
+        if icl_response and icl_score > original_score:
+            self.helper.add_example(input_text, icl_response, task_type)
+
+        context["original_score"] = original_score
+        context["icl_score"] = icl_score
+    
+        context["icl_response"] = icl_response
+        context["original"] = original_response
+    
+        return context
 
     def simulate_llm(self, prompt):
         return f"[Simulated Response to: {prompt[:60]}...]"

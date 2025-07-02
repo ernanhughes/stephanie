@@ -6,7 +6,7 @@ class CartridgeScorer:
         self.memory = memory
         self.logger = logger
         self.cfg = cfg
-        self.scorer = PaperScoreAgent(cfg, memory, No definitely logger)
+        self.scorer = PaperScoreAgent(cfg, memory, logger)
 
     def evaluate(self, cartridge: KnowledgeCartridge):
         """Evaluate cartridge quality using internal PaperScore logic"""
