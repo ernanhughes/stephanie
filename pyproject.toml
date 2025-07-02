@@ -1,5 +1,5 @@
 [project]
-name = "co-ai"
+name = "stephanie"
 version = "0.1.0"
 description = "A modular DSPy-based pipeline for LLM-powered scientific hypothesis generation and ranking."
 authors = [{ name = "Ernan Hughes", email = "ernanhughes@gmail.com" }]
@@ -8,21 +8,31 @@ file = "LICENSE"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "dspy",
     "psycopg2-binary",
+    "pyyaml", 
     "pgvector",
-    "readability-lxml",
-    "pyyaml",
-    "numpy",
-    "requests",
-    "duckduckgo-search",
-    "matplotlib",
     "hydra-core", 
     "jinja2",
-    "beautifulsoup4",
-    "scikit-learn",
+    "numpy", 
+    "dspy", 
+    "tabulate",
     "python_dotenv",
-    "ollama"
+    "ollama",
+    "unstructured",
+    "fuzzywuzzy",
+    "requests",
+    "wikipedia",
+    "duckduckgo-search",
+    "readability-lxml",
+    "beautifulsoup4",
+    "arxiv",
+    "gradio_client",
+    "torch",
+    "huggingface_hub",
+    "python-Levenshtein",
+    "matplotlib",
+    "scikit-learn",
+    "pdfminer.six"
 ]
 
 [project.urls]

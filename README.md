@@ -1,72 +1,87 @@
-# 🤖 AI Co-Scientist
+# 🤖 Stephanie
 
-**Turn research papers into runnable pipelines with AI.**
+> Self-Tuning Epistemic Framework for Autonomous Navigation and Inference Engineering
 
-This project is a working implementation of ideas inspired by *[AI as a Co-Scientist](https://arxiv.org/abs/2502.18864)*. It builds a multi-agent reasoning system capable of generating, critiquing, ranking, and evolving scientific hypotheses — all using local tools like [DSPy](https://github.com/stanfordnlp/dspy), [pgvector](https://github.com/pgvector/pgvector), and [Ollama](https://ollama.com/).
-
-It’s not just a demo — it’s a template for using AI to understand and implement research papers.
+Absolutely — here's a rewritten, cleaner, and more compelling version of your README that keeps the core ideas while improving structure, flow, and clarity. I've added subtle touches to emphasize functionality, architecture, and ease of extensibility.
 
 ---
 
-## 📐 Architecture
+# 🧪 Stephanie: A Self-Evolving AI Research Assistant
+
+**Turn research papers into executable reasoning pipelines using local AI.**
+
+Stephanie is a working system inspired by [AI as a Co-Scientist (arXiv:2502.18864)](https://arxiv.org/abs/2502.18864). It combines hypothesis generation, critique, ranking, and evolution — all orchestrated through a modular, local-first multi-agent architecture.
+
+You can think of it as **an autonomous lab partner** — one that reads, thinks, reflects, and iteratively improves its own ideas.
+
+---
+
+## 🧬 Key Features
+
+✅ Local-first: built for Ollama + pgvector
+✅ Full scientific loop: generation → reflection → evolution
+✅ Grafting & ranking mechanisms to refine ideas
+✅ Signature-based DSPy agents for modular control
+✅ PostgreSQL memory for tracking hypothesis evolution
+✅ Web search grounding (optional)
+
+---
+
+## ⚙️ Pipeline Overview
 
 ```
-Goal → Generation → Reflection → Ranking → Evolution → Meta-Review → Output
+Goal
+  ↓
+Literature Search → Generation → Reflection → Ranking
+                                        ↓
+                           Grafting & Evolution
+                                        ↓
+                                Meta-Review
+                                        ↓
+                                  Output
 ```
 
-Each step is handled by a specialized DSPy agent.
+Each stage is powered by a specialized DSPy agent. Agents pass hypotheses, critiques, and scores forward in a zero-shot feedback loop, allowing the system to explore and refine its own scientific thinking.
 
-| Agent        | Description                                         |
-| ------------ | --------------------------------------------------- |
-| `Literature` | Generates information from a web search of the goal |
-| `Generation` | Generates hypotheses from the research goal         |
-| `Reflection` | Reviews each hypothesis for novelty and clarity     |
-| `Ranking`    | Uses Elo-style comparisons to rank top ideas        |
-| `Evolution`  | Evolves or grafts high-quality hypotheses           |
-| `MetaReview` | Synthesizes the top-ranked outputs into a summary   |
-
----
-
-## 🧠 Features
-
-* 🧩 Modular agent system 
-* 🧪 Hypothesis generation, critique, ranking, and evolution
-* 🌱 **New: Grafting mechanism** for merging hypotheses
-* 🧠 **New: DSPy agent chaining with signature-based modules**
-* 💾 Memory via **PostgreSQL + pgvector**
-* 🔍 Optional web search grounding (DuckDuckGo)
-* 🛠 Built for local use (Ollama LLM + Embedding)
+| Agent        | Role                                                       |
+| ------------ | ---------------------------------------------------------- |
+| `Literature` | Gathers background from the web or local memory            |
+| `Generation` | Produces hypotheses from the research goal                 |
+| `Reflection` | Critiques hypotheses for novelty, clarity, and utility     |
+| `Ranking`    | Scores and ranks outputs using Elo-style comparisons       |
+| `Evolution`  | Improves, mutates, or merges ideas based on top performers |
+| `MetaReview` | Synthesizes the highest-quality results into a report      |
 
 ---
 
-## 🚀 Quickstart
+## 🚀 Getting Started
 
-1. **Install dependencies**
+### 1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. **Set up PostgreSQL with pgvector**
+### 2. Set up PostgreSQL + pgvector
 
 ```bash
 psql -f schema.sql
 ```
 
-3. **Start Ollama**
+### 3. Start Ollama (required models)
 
 ```bash
 ollama run llama3
 ollama run nomic-embed-text
 ```
 
-4. **Run the pipeline**
+### 4. Run a full reasoning pipeline
 
 ```bash
 python run_pipeline.py --config pipeline.yaml
 ```
 
-### Example `pipeline.yaml`:
+### 🔧 Example `pipeline.yaml`
 
 ```yaml
 pipeline:
@@ -77,22 +92,22 @@ pipeline:
 
 ---
 
-## 📦 File Structure
+## 📂 Project Structure
 
 ```
-ai_co_scientist/
-├── agents/          # Generation, Reflection, Ranking, Evolution, MetaReview
-├── memory/          # Vector DB interfaces & schema
-├── tools/           # CLI tools for debugging/ranking
-├── configs/         # Hydra-compatible pipeline configs
-├── run_pipeline.py  # Entry point
-├── supervisor.py    # Task runner / coordinator
-├── test_pipeline.py # Basic test script
+stephanie/
+├── agents/           # Modular DSPy agents (generation, ranking, etc.)
+├── memory/           # pgvector-based vector store and ORM schema
+├── tools/            # CLI tools for manual testing and output inspection
+├── configs/          # YAML configs for pipeline settings
+├── run_pipeline.py   # Pipeline entry point
+├── supervisor.py     # Execution orchestrator
+├── test_pipeline.py  # Basic test cases
 ```
 
 ---
 
-## 📤 Sample Output
+## 🧠 Example Output
 
 ```json
 {
@@ -102,30 +117,41 @@ ai_co_scientist/
 
 ---
 
+## 🧱 Extensions Beyond the Paper
+
+Stephanie includes several novel additions not found in the original research:
+
+| Feature                  | Description                                             |
+| ------------------------ | ------------------------------------------------------- |
+| **Grafting Agent**       | Combines and mutates ideas for deeper synthesis         |
+| **pgvector Memory**      | Embedding + recall layer for scientific reasoning       |
+| **Prompt Signatures**    | DSPy modules support composable, type-safe logic blocks |
+| **Web Search Grounding** | Fetch and condense real-world info per hypothesis       |
+
+---
+
 ## 📚 Based On
 
-Shen, Y., Song, H., Halu, A., Mrowca, D., & Singh, A. (2024). *AI as a Co-Scientist: A Scalable Framework for Automated Scientific Discovery*. [arXiv:2404.12345](https://arxiv.org/abs/2404.12345)
+> Shen, Y., Song, H., Halu, A., Mrowca, D., & Singh, A. (2024).
+> *AI as a Co-Scientist: A Scalable Framework for Automated Scientific Discovery*.
+> [arXiv:2404.12345](https://arxiv.org/abs/2404.12345)
 
 ---
 
-## 💡 Contributing Ideas
+## ✍️ Full Walkthrough
 
-This repo introduces a few original extensions not in the paper:
+Want to understand how and why it was built this way?
 
-* **Grafting Agent**: Merges top-ranked hypotheses before evolution.
-* **Vector Memory Layer**: With retrieval + reuse support via pgvector.
-* **DSPy Agent Signatures**: Enables modular experimentation.
-* **Web Context Search**: Auto-summarizes public info for each goal.
+👉 [**Read the blog post: Self-Improving AI: A System That Learns, Validates, and Retrains Itself**](https://programmer.ie/post/rivals/)
+👉 [**Teaching Tiny Models to Think Big: Distilling Intelligence Across Devices**](https://programmer.ie/post/pupil/)
+👉 [**Read the blog post: Compiling Thought: Building a Prompt Compiler for Self-Improving AI**](https://programmer.ie/post/compiler/)
+👉 [**Read the blog post: Thoughts of Algorithms**](https://programmer.ie/post/thoughts/)
+👉 [**Read the blog post: Document Intelligence: Turning Documents into Structured Knowledge**](https://programmer.ie/post/docs/)
+👉 [**Read the blog post: Learning to Learn: A LATS-Based Framework for Self-Aware AI Pipelines**](https://programmer.ie/post/lats/)
 
 ---
 
-## 📂 License
+## 📖 License
 
-MIT License.
+MIT License
 
-
-### ✍️ Read the Full Walkthrough
-
-For a full behind-the-scenes build with implementation details, narrative, and the reasoning behind each decision, check out the accompanying blog post:
-
-👉 [**Building an AI Co-Scientist**](https://programmer.ie/post/co/)
