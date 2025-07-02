@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import relationship
 
-from .base import Base
+from stephanie.models.base import Base
 
 
 class GoalORM(Base):

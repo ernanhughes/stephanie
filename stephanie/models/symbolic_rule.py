@@ -6,7 +6,7 @@ from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
                         String, Text)
 from sqlalchemy.orm import relationship
 
-from .base import Base
+from stephanie.models.base import Base
 
 
 class SymbolicRuleORM(Base):

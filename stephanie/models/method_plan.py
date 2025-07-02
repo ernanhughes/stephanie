@@ -5,7 +5,7 @@ from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
                         Integer, String)
 from sqlalchemy.orm import relationship
 
-from .base import Base
+from stephanie.models.base import Base
 
 
 class MethodPlanORM(Base):

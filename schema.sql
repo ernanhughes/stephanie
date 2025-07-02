@@ -708,33 +708,22 @@ CREATE TABLE document_section_domains (
 
 CREATE TABLE IF NOT EXISTS evaluations (
     id SERIAL PRIMARY KEY,
-
-    -- Core Evaluation Context
     goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
     hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
     document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
-
-    -- Evaluator and Execution Info
     agent_name TEXT NOT NULL,
     model_name TEXT NOT NULL,
     evaluator_name TEXT NOT NULL,
     strategy TEXT,
     reasoning_strategy TEXT,
     run_id TEXT,
-
-    -- Evaluation Metadata
     symbolic_rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE SET NULL,
     rule_application_id INTEGER REFERENCES rule_applications(id) ON DELETE SET NULL,
     pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE SET NULL,
-
-    -- Scores and Extra Data
     scores JSON DEFAULT '{}'::json,
     extra_data JSONB DEFAULT '{}'::jsonb,
-
-    -- Timestamp
     created_at TIMESTAMP DEFAULT NOW()
 );
-
 
 CREATE TABLE IF NOT EXISTS evaluation_rule_links (
     id SERIAL PRIMARY KEY,
@@ -743,8 +732,16 @@ CREATE TABLE IF NOT EXISTS evaluation_rule_links (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-
-
+CREATE TABLE IF NOT EXISTS worldviews (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    goal TEXT,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now(),
+    metadata TEXT,
+    db_path TEXT
+);
 
 
 

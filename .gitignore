@@ -4,6 +4,8 @@ outputs/
 /models/
 /logs/
 /reports/
+/worldviews/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

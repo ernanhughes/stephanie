@@ -2,10 +2,10 @@
 import re
 from typing import Any, Dict, Optional
 
-from dspy import Example, Predict
+from dspy import Predict
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.utils.prompt_loader import PromptLoader
+from stephanie.prompts.prompt_loader import PromptLoader
 
 
 class PaperSummarizer(BaseAgent):

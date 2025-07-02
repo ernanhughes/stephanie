@@ -2,7 +2,6 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, REAL
 
 from stephanie.models.base import Base
 
@@ -18,7 +17,7 @@ class MRQMemoryEntryORM(Base):
     reward = Column(Float, nullable=False)
 
     # Optional: Use these if storing embeddings
-    embedding = Column(ARRAY(REAL))  # Or use pgvector.ARRAY(Float)
+    embedding = Column(JSON)  # Or use pgvector.ARRAY(Float)
     features = Column(JSON)   # Additional extracted features
 
     source = Column(String)   # e.g., manual, agent, refinement

@@ -1,4 +1,3 @@
-import pytest
 from stephanie.agents.ranking import RankingAgent
 
 @pytest.mark.asyncio

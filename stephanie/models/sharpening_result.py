@@ -2,8 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, String, Text
 
-from stephanie.models.base import \
-    Base  # Adjust this import to match your actual Base
+from stephanie.models.base import Base
 
 
 class SharpeningResultORM(Base):

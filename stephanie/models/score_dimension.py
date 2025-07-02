@@ -2,7 +2,7 @@
 from sqlalchemy import JSON, Column, Float, Integer, String, Text
 from sqlalchemy.orm import declarative_base, relationship
 
-Base = declarative_base()
+from stephanie.models.base import Base
 
 class ScoreDimensionORM(Base):
     __tablename__ = "score_dimensions"

@@ -1,10 +1,10 @@
 # models/search_result.py
 from datetime import datetime, timezone
 
-from sqlalchemy import (ARRAY, JSON, Column, DateTime, ForeignKey, Integer,
+from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer,
                         String, Text)
 
-from .base import Base
+from stephanie.models.base import Base
 
 
 class SearchResultORM(Base):
@@ -19,7 +19,7 @@ class SearchResultORM(Base):
     url = Column(Text)
     author = Column(String)
     published_at = Column(DateTime)
-    tags = Column(ARRAY(String))
+    tags = Column(JSON)
     goal_id = Column(Integer, ForeignKey("goals.id"))
     parent_goal = Column(Text)
     strategy = Column(String)
@@ -28,18 +28,14 @@ class SearchResultORM(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     # 🔍 New Fields Below — For Knowledge Refinement & Idea Linking
-    key_concepts = Column(ARRAY(String))
-    technical_insights = Column(ARRAY(String))
+    key_concepts = Column(JSON)
+    technical_insights = Column(JSON)
     relevance_score = Column(Integer)  # 1–10 score for how relevant this is to the goal
     novelty_score = Column(Integer)  # Estimated novelty vs. prior knowledge
-    related_ideas = Column(ARRAY(String))  # List of idea IDs or descriptions
+    related_ideas = Column(JSON)  # List of idea IDs or descriptions
     refined_summary = Column(Text)  # A concise, processed summary for downstream agents
-    extracted_methods = Column(
-        ARRAY(String)
-    )  # Techniques or methods described in the result
-    domain_knowledge_tags = Column(
-        ARRAY(String)
-    )  # e.g., "self-modifying", "graph transformer"
+    extracted_methods = Column(JSON)  # Techniques or methods described in the result
+    domain_knowledge_tags = Column(JSON)  # e.g., "self-modifying", "graph transformer"
     critique_notes = Column(Text)  # Feedback from evaluator agent (Mr Q), if any
 
     def to_dict(self, include_relationships: bool = False) -> dict:

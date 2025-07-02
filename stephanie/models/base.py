@@ -5,3 +5,4 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 engine = create_engine("postgresql://co:co@localhost:5432/co")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+WorldviewBase = declarative_base()
