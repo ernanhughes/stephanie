@@ -1,8 +1,7 @@
 import re
-from urllib.parse import quote_plus
 
 import arxiv
-
+from datetime import datetime, timedelta
 from stephanie.agents.base_agent import BaseAgent
 
 
@@ -14,6 +13,7 @@ class ArxivSearchAgent(BaseAgent):
         self.category = cfg.get("category", "cs.AI")
         self.max_results = cfg.get("max_results", 50)
         self.return_top_n = cfg.get("top_n", 10)
+        self.date_filter = cfg.get("date_filter", "")
 
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {}).get("goal_text", "")
@@ -36,7 +36,9 @@ class ArxivSearchAgent(BaseAgent):
         results = []
         # Step 3: Fetch raw papers
         try:
-            results = self.fetch_arxiv_results(context, query, max_results=self.max_results)
+            results = self.fetch_arxiv_results(
+                context, query, max_results=self.max_results
+            )
             context["raw_arxiv_results"] = results
             self.logger.log(
                 "ArxivSearchComplete",
@@ -81,27 +83,54 @@ class ArxivSearchAgent(BaseAgent):
         category: str = None,
     ) -> str:
         """
-        Builds a plain arXiv query string from goal metadata and keywords.
+        Builds a plain arXiv query string from goal metadata and keywords,
+        supporting 'today', 'week', 'month', or 'year' filtering.
         """
         keyword_filter = " OR ".join(f'"{kw.strip()}"' for kw in keywords if kw.strip())
+        filters = [f"({keyword_filter})"]
 
-        date_filter = ""
-        if year_start or year_end:
+        date_filter_mode = self.cfg.get("date_filter", "").lower()
+        now = datetime.utcnow()
+
+        if date_filter_mode == "today":
+            day = now.strftime("%Y%m%d")
+            filters.append(f"submittedDate:[{day} TO {day}]")
+        elif date_filter_mode == "week":
+            start = (now - timedelta(days=7)).strftime("%Y%m%d")
+            end = now.strftime("%Y%m%d")
+            filters.append(f"submittedDate:[{start} TO {end}]")
+        elif date_filter_mode == "month":
+            start = (now - timedelta(days=30)).strftime("%Y%m%d")
+            end = now.strftime("%Y%m%d")
+            filters.append(f"submittedDate:[{start} TO {end}]")
+        elif date_filter_mode == "year":
+            start = (now - timedelta(days=365)).strftime("%Y%m%d")
+            end = now.strftime("%Y%m%d")
+            filters.append(f"submittedDate:[{start} TO {end}]")
+        elif year_start or year_end:
             start = f"{year_start}0101" if year_start else "00000101"
             end = f"{year_end}1231" if year_end else "99991231"
-            date_filter = f"submittedDate:[{start} TO {end}]"
+            filters.append(f"submittedDate:[{start} TO {end}]")
 
-        category_filter = f"cat:{category}" if category else ""
+        self.logger.log(
+            "ArxivQueryFilters",
+            {
+                "keyword_filter": keyword_filter,
+                "date_filter": date_filter_mode,
+                "year_start": year_start,
+                "year_end": year_end,
+                "category": category,
+            },
+        )
 
-        filters = [f"({keyword_filter})"]
-        if date_filter:
-            filters.append(date_filter)
-        if category_filter:
-            filters.append(category_filter)
+        if category:
+            filters.append(f"cat:{category}")
 
         return " AND ".join(filters)
 
-    def fetch_arxiv_results(self, context:dict, query: str, max_results: int = 50) -> list[dict]:
+    def fetch_arxiv_results(
+        self, context: dict, query: str, max_results: int = 50
+    ) -> list[dict]:
         """
         Executes a search on the arXiv API using the given query string.
 
@@ -121,13 +150,13 @@ class ArxivSearchAgent(BaseAgent):
 
         results = []
         goal = context.get("goal", {})
-        goal_id = goal.get("id", "") 
+        goal_id = goal.get("id", "")
         parent_goal = goal.get("goal_text")
         strategy = goal.get("strategy")
         focus_area = goal.get("focus_area")
         for result in search.results():
-            arxiv_url = result.entry_id 
-            pid = arxiv_url.split('/')[-1]     
+            arxiv_url = result.entry_id
+            pid = arxiv_url.split("/")[-1]
             results.append(
                 {
                     "query": query,
@@ -135,7 +164,7 @@ class ArxivSearchAgent(BaseAgent):
                     "result_type": "paper",
                     "title": result.title.strip(),
                     "summary": result.summary.strip(),
-                    "url": f'https://arxiv.org/pdf/{pid}.pdf',
+                    "url": f"https://arxiv.org/pdf/{pid}.pdf",
                     "goal_id": goal_id,
                     "parent_goal": parent_goal,
                     "strategy": strategy,

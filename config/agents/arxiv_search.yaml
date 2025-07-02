@@ -5,6 +5,7 @@ arxiv_search:
   save_context: true
   skip_if_completed: true
   
+  date_filter: "today"  # Filter papers from this date onwards
   year_start: 2024
   year_end: 2025
   category: cs.AI
