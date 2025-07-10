@@ -4,7 +4,7 @@ from jinja2 import Template
 TEMPLATE_AGENT_CODE = '''from stephanie.agents.base_agent import BaseAgent
 
 
-class {{ agent_name|capitalize }}(BaseAgent):
+class {{ agent_name|capitalize }}Agent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
 
@@ -24,6 +24,7 @@ TEMPLATE_CONFIG = '''{{ agent_name }}:
     api_base: http://localhost:11434
     api_key: null
   input_keys: ["goal", "hypotheses"]
+  input_key: documents
   output_key: {{ agent_name }}
   prompt_mode: file
   prompt_file: {{ agent_name }}.txt

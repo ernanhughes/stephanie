@@ -1,0 +1,67 @@
+{% if target_type == "triple" %}
+
+You are scoring a single knowledge triplet for **composability** with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Triplet
+({{ triplet.subject }}, {{ triplet.predicate }}, {{ triplet.object }})
+
+## Instructions
+
+Composability means the triplet can be easily used alongside others to support planning, reasoning, or broader goal achievement. It should be generalizable, modular, and logically well-formed.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "cartridge" %}
+
+Evaluate the **composability** of the data cartridge with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+### Data cartridge
+Title: {{ cartridge.title }}
+Summary: {{ cartridge.summary }}
+Sections:
+{% for section in cartridge.sections %}
+---
+{{ section }}
+{% endfor %}
+
+Composability means the cartridge's content can be modularly combined with other cartridges or units of knowledge to support multi-step reasoning, action planning, or structured decision-making. Avoid overly specific, tangled, or standalone information.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "theorem" %}
+
+Evaluate the **composability** of the following theorem with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Theorem
+{{ theorem.statement }}
+
+{% if theorem.proof %}
+## Proof
+{{ theorem.proof }}
+{% endif %}
+
+Composability refers to whether this theorem can be used in conjunction with other theorems, facts, or logic blocks to build up more complex arguments or solutions. Prefer general, well-structured, and reusable theorems over narrow or overly technical ones.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% else %}
+Invalid target type: {{ target_type }}
+{% endif %}

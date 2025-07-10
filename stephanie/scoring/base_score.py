@@ -34,7 +34,8 @@ class BaseScore(ABC):
 
             s = EvaluationORM(
                 goal_id=hypothesis.get("goal_id"),
-                hypothesis_id=hypothesis.get("id"),
+                target_type="hypothesis",
+                target_id=hypothesis.get("id"),
                 agent_name=self.agent_name,
                 model_name=self.model_name,
                 evaluator_name=self.evaluator_name,

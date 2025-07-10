@@ -1,0 +1,66 @@
+{% if target_type == "triple" %}
+You are scoring a single knowledge triplet for **novelty** in relation to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Triplet
+({{ triplet.subject }}, {{ triplet.predicate }}, {{ triplet.object }})
+
+## Instructions
+
+Novelty means how unexpected, original, or non-obvious the information is, relative to commonly known facts or standard formulations within the domain of the goal. Highly novel triplets provide surprising or uniquely insightful relationships.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "cartridge" %}
+
+Evaluate the **novelty** of the following data cartridge in relation to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+### Data cartridge
+Title: {{ cartridge.title }}
+Summary: {{ cartridge.summary }}
+Sections:
+{% for section in cartridge.sections %}
+---
+{{ section }}
+{% endfor %}
+
+Novelty refers to how much new, original, or non-obvious information the cartridge offers in relation to typical knowledge around the goal. Prefer content that introduces fresh perspectives, counterintuitive results, or emerging insights.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "theorem" %}
+
+Evaluate the **novelty** of the following theorem in relation to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Theorem
+{{ theorem.statement }}
+
+{% if theorem.proof %}
+## Proof
+{{ theorem.proof }}
+{% endif %}
+
+Novelty means how original, insightful, or non-trivial the theorem is—especially in the context of what is already known or expected within the goal's domain. Consider whether the result extends prior work, connects ideas in new ways, or introduces surprising implications.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% else %}
+Invalid target type: {{ target_type }}
+{% endif %}

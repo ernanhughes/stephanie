@@ -1,10 +1,10 @@
 # File: stephanie/agents/self_rewarding_agent.py
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.evaluator.base import BaseEvaluator
 from stephanie.memory import SymbolicRuleStore
 from stephanie.models import EvaluationORM, ScoreORM
@@ -70,7 +70,7 @@ class SelfRewardingAgent(BaseAgent):
 
         # Step 3: Store evaluation in DB
         if self.cfg.log_to_db:
-            eval_id = self._log_evaluation(hypothesis, scores)
+            eval_id = self._log_evaluation(hypothesis, scores, context)
 
         # Step 4: Rule tuning (optional)
         if self.cfg.update_rules and self.cfg.rule_store:
@@ -84,13 +84,16 @@ class SelfRewardingAgent(BaseAgent):
         self.logger.log("SelfRewardingDone", {"score": scores.get("total", 0)})
         return context
 
-    def _log_evaluation(self, hypothesis, scores):
+    def _log_evaluation(self, hypothesis, scores, context: dict) -> int:
         """Log hypothesis and scores to database"""
         evaluation = EvaluationORM(
-            hypothesis=str(hypothesis),
-            goal=hypothesis.get("goal"),
-            model_used=self.cfg.get("model", "unknown"),
-            timestamp=datetime.now(),
+            goal_id=hypothesis.get("goal_id"),
+            target_type="hypothesis",
+            hypothesis_id=hypothesis.get("id"),
+            agent_name=self.name,
+            model_name=self.model_name,
+            evaluator_name=self.name,
+            pipeline_run_id=context.get(PIPELINE_RUN_ID),
         )
         self.memory.session.add(evaluation)
         self.memory.session.commit()

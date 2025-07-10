@@ -7,6 +7,8 @@ from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import GOAL
 from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 
 
 # DSPy signature for merging multiple high-quality prompts into a coherent prompt
@@ -101,9 +103,13 @@ class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
 
         # 5. Score merged result
         try:
-            hypothesis = self.call_llm(merged_prompt, context)
-            score_bundle = self.score_hypothesis(
-                {"text": hypothesis}, context, metrics="compiler", scorer=self.scorer
+            response = self.call_llm(merged_prompt, context)
+            scorable = Scorable(
+                text=response,
+                target_type=TargetType.RESPONSE,
+            )
+            score_bundle = self.score_item(
+                scorable, context, metrics="compiler", scorer=self.scorer
             )
             final_score = score_bundle.aggregate()
         except Exception as e:
@@ -125,9 +131,13 @@ class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
         """Evaluation metric using MR.Q scorer"""
         try:
             merged_prompt = pred.merged_prompt
-            hypothesis = self.call_llm(merged_prompt, context=context)
-            score_bundle = self.score_hypothesis(
-                {"text": hypothesis}, context, metrics="compiler", scorer=self.scorer
+            response = self.call_llm(merged_prompt, context)
+            scorable = Scorable(
+                text=response,
+                target_type=TargetType.RESPONSE,
+            )
+            score_bundle = self.score_item(
+                scorable, context, metrics="compiler", scorer=self.scorer
             )
             aggregate_score = score_bundle.aggregate()
             normalized_score = aggregate_score / 100.0  # Normalize to [0, 1]

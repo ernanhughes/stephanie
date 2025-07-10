@@ -7,9 +7,11 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import \
     ScoringMixin  # Adjust path if needed
 from stephanie.constants import (DATABASE_MATCHES, GOAL, GOAL_TEXT,
-                             PIPELINE_RUN_ID, TEXT)
+                                 PIPELINE_RUN_ID, TEXT)
 from stephanie.models import EvaluationORM
-from stephanie.scoring.proximity import ProximityHeuristicEvaluator
+from stephanie.scoring.proximity_scorer import ProximityScorer
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 from stephanie.utils import compute_similarity_matrix
 
 
@@ -89,11 +91,12 @@ class ProximityAgent(ScoringMixin, BaseAgent):
         summary_output = self.call_llm(summary_prompt, merged)
         context["proximity_summary"] = summary_output
 
-        score_result = self.score_hypothesis(
-            hypothesis={"text": summary_output, "proximity_analysis": summary_output},
+        scorable = Scorable(text=summary_output, target_type=TargetType.HYPOTHESIS)
+        score_result = self.score_item(
+            scorable=scorable,
             context=context,
             metrics="proximity",  # Must match your config key: `proximity_score_config`
-            scorer=ProximityHeuristicEvaluator(),
+            scorer=ProximityScorer(self.cfg, self.memory, self.logger, self.call_llm),
         )
         score = score_result["score"]
 
@@ -153,10 +156,11 @@ class ProximityAgent(ScoringMixin, BaseAgent):
         # Save per-hypothesis score
         for hypothesis in current_hypotheses:
             score_obj = EvaluationORM(
+                goal_id=goal.get("goal_id"),
+                target_type="hypothesis",
+                target_id=hypothesis.get("id"),
                 agent_name=self.name,
                 model_name=self.model_name,
-                goal_id=goal.get("goal_id"),
-                hypothesis_id=hypothesis.get("id"),
                 evaluator_name=self.name,
                 extra_data={"summary": summary_output},
                 scores=structured_scores, 

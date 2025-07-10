@@ -1,9 +1,11 @@
 # stephanie/core/knowledge_cartridge.py
 
-from stephanie.agents.knowledge import KnowledgePackage
-from hashlib import sha256
-from datetime import datetime
 import json
+from datetime import datetime
+from hashlib import sha256
+
+from stephanie.agents.knowledge import KnowledgePackage
+
 
 class KnowledgeCartridge(KnowledgePackage):
     def __init__(self, goal, generation=0, parent_hash=None):

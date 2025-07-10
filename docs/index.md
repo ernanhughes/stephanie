@@ -63,7 +63,7 @@ prompts/
 
 ## 🔗 Resources
 
-* [GitHub Repository](https://github.com/ernanhughes/co-ai)
+* [GitHub Repository](https://github.com/ernanhughes/stephanie)
 * [The SAGE Paper (arXiv)](https://arxiv.org/abs/2502.18864)
 * [Prompt Tuning Overview](prompt_tuning.md)
 * [Configuration Guide](configuration.md)

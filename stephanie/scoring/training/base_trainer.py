@@ -1,7 +1,8 @@
+from collections import defaultdict
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
-from collections import defaultdict
 
 
 class BaseTrainer:

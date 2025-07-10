@@ -1,5 +1,8 @@
 from typing import Any, Dict
 
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
+
 
 class ResearchEnv:
     """
@@ -44,19 +47,13 @@ class ResearchEnv:
             }
         """
         # Simulate a hypothesis ORM object
-        fake_hyp = {
-            "text": hypothesis,
-            "id": "hyp_simulated",
-            "goal_id": "goal_simulated"
-        }
-
-        # Score the hypothesis using your scoring system
         from stephanie.agents.mixins.scoring_mixin import ScoringMixin
         class DummyAgent(ScoringMixin): pass
 
         dummy_agent = DummyAgent({})
-        score_result = dummy_agent.score_hypothesis(
-            fake_hyp, {"goal": {"goal_text": self.current_goal}}, metrics="reason"
+        scorable = Scorable(text=hypothesis, target_type=TargetType.HYPOTHESIS)
+        score_result = dummy_agent.score_item(
+            scorable, {"goal": {"goal_text": self.current_goal}}, metrics="reason"
         )
 
         # Build simulated feedback

@@ -1,5 +1,6 @@
 import re
 
+
 def simple_slugify(text: str) -> str:
     # Lowercase the text
     text = text.lower()

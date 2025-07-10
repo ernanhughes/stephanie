@@ -1,0 +1,67 @@
+{% if target_type == "triple" %}
+
+You are scoring a single knowledge triplet for **confidence** with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Triplet
+({{ triplet.subject }}, {{ triplet.predicate }}, {{ triplet.object }})
+
+## Instructions
+
+Confidence means how certain you are that the triplet is factually correct, logically coherent, and relevant to the goal. Consider whether the relationship expressed is accurate, complete, and unambiguous.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "cartridge" %}
+
+Evaluate your **confidence** in the following data cartridge with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+### Data cartridge
+Title: {{ cartridge.title }}
+Summary: {{ cartridge.summary }}
+Sections:
+{% for section in cartridge.sections %}
+---
+{{ section }}
+{% endfor %}
+
+Confidence means how certain you are that the cartridge is factually correct, internally consistent, and appropriately aligned with the goal. Consider the presence of citations, precision of statements, and lack of contradictions.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "theorem" %}
+
+Evaluate your **confidence** in the following theorem with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Theorem
+{{ theorem.statement }}
+
+{% if theorem.proof %}
+## Proof
+{{ theorem.proof }}
+{% endif %}
+
+Confidence refers to how certain you are that the theorem is correct and applicable. Consider whether the logic is sound, if it aligns with known facts, and whether the proof (if provided) is valid and rigorous.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% else %}
+Invalid target type: {{ target_type }}
+{% endif %}

@@ -249,3 +249,79 @@ class EmbeddingStore(BaseStore):
             else:
                 print(f"[PromptSearchFailed] {e}")
             return []
+
+    def get_id_for_text(self, text: str) -> int | None:
+        """
+        Retrieves the embedding ID for the given text if it exists in the database.
+        Returns:
+            The embedding ID (int) if found, otherwise None.
+        """
+        text_hash = self.get_text_hash(text)
+
+        # First check the cache to avoid unnecessary DB hit
+        cached = self._cache.get(text_hash)
+        if cached:
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute("SELECT id FROM embeddings WHERE text_hash = %s", (text_hash,))
+                    row = cur.fetchone()
+                    return row[0] if row else None
+            except Exception as e:
+                if self.logger:
+                    self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
+                return None
+        else:
+            # No cache, still check DB
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute("SELECT id FROM embeddings WHERE text_hash = %s", (text_hash,))
+                    row = cur.fetchone()
+                    return row[0] if row else None
+            except Exception as e:
+                if self.logger:
+                    self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
+                return None
+
+    def search_related_documents(self, query: str, top_k: int = 10):
+        try:
+            embedding = self.get_or_create(query)
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 
+                        d.id,
+                        d.title,
+                        d.summary,
+                        d.content,
+                        d.embedding_id,
+                        1 - (e.embedding <-> %s::vector) AS score  -- cosine similarity proxy
+                    FROM documents d
+                    JOIN embeddings e ON d.embedding_id = e.id
+                    WHERE d.embedding_id IS NOT NULL
+                    ORDER BY e.embedding <-> %s::vector
+                    LIMIT %s;
+                    """,
+                    (embedding, embedding, top_k)
+                )
+                results = cur.fetchall()
+
+            return [
+                {
+                    "id": row[0],
+                    "title": row[1],
+                    "summary": row[2],
+                    "content": row[3],
+                    "embedding_id": row[4],
+                    "score": float(row[5]),
+                    "text": row[2] or row[3],  # Default to summary, fallback to content
+                    "source": "document",
+                }
+                for row in results
+            ]
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log("DocumentSearchFailed", {"error": str(e), "query": query})
+            else:
+                print(f"[VectorMemory] Document search failed: {e}")
+            return []

@@ -1,7 +1,9 @@
-from stephanie.models import BeliefTuneLogORM, BeliefORM, WorldviewORM
-from sqlalchemy.orm import Session
 import matplotlib.pyplot as plt
 import pandas as pd
+from sqlalchemy.orm import Session
+
+from stephanie.models import BeliefORM, BeliefTuneLogORM, WorldviewORM
+
 
 class WorldviewAuditAgent:
     def __init__(self, db: Session, logger=None):

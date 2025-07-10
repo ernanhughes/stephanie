@@ -1,4 +1,6 @@
-stage: reasoning
+scoring_profile: step_reasoning
+prompt_dir: prompts/step_reasoning  
+scorer: llm
 output_format: cor
 dimensions:
 

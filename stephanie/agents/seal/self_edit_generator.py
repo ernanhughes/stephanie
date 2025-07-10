@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 
 
 @dataclass
@@ -65,7 +67,14 @@ class SelfEditGeneratorAgent(ScoringMixin, BaseAgent):
             context.setdefault("hypotheses", []).append(hypothesis_dict)
             context["prompt"]= prompt_text # we use thie to score in the evaluator
 
-            score = self.score_hypothesis(hypothesis_dict, context, metrics="seal", scorer=mrq_scorer)
+            scorable = Scorable(
+                text=hypothesis.text,
+                id=hypothesis.id,
+                target_type=TargetType.HYPOTHESIS,
+            )
+            score = self.score_item(
+                scorable, context, metrics="compiler", scorer=self.scorer
+            )
             all_edits.append({
                 "edit": response,
                 "strategy": strategy,

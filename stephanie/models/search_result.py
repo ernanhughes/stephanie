@@ -1,8 +1,8 @@
 # models/search_result.py
 from datetime import datetime, timezone
 
-from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer,
-                        String, Text)
+from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer, String,
+                        Text)
 
 from stephanie.models.base import Base
 

@@ -1,0 +1,29 @@
+scoring_profile: document
+scorer: llm
+prompt_dir: prompts/inferance
+output_format: simple  # or: simple, json, etc.
+dimensions:
+  - name: alignment
+    file: alignment.txt
+    weight: 1.2
+    extra_data: { parser: numeric }
+
+  - name: clarity
+    file: clarity.txt
+    weight: 1.1
+    extra_data: { parser: numeric }
+
+  - name: implementability
+    file: implementability.txt
+    weight: 1.3
+    extra_data: { parser: numeric }
+
+  - name: novelty
+    file: novelty.txt
+    weight: 1.0
+    extra_data: { parser: numeric }
+
+  - name: relevance 
+    file: relevance.txt
+    weight: 0.8
+    extra_data: { parser: numeric }

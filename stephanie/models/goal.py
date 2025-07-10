@@ -41,6 +41,9 @@ class GoalORM(Base):
     search_hits = relationship(
         "SearchHitORM", back_populates="goal", cascade="all, delete-orphan"
     )
+    cartridges = relationship(
+        "CartridgeORM", back_populates="goal", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<GoalORM(id={self.id}, goal_text='{self.goal_text[:50]}')>"

@@ -11,7 +11,7 @@ ranking:
   max_comparisons: 6  # if using database will change
 
 
-  save_context: false
+  save_context: true
   skip_if_completed: false
 
   # model

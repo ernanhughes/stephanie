@@ -1,13 +1,12 @@
-import json
 import math
 import re
 import uuid
 
-import requests
-
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import GOAL
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 from stephanie.utils.timing import time_function
 
 
@@ -222,7 +221,12 @@ class LATSAgent(ScoringMixin, BaseAgent):
     @time_function(logger=None)
     def _score_hypothesis(self, hypothesis: dict, context: dict, metrics: str = "lats_node"):
         """Use dimensional scoring system"""
-        return super().score_hypothesis(hypothesis, context, metrics)
+        scorable = Scorable(
+            id=hypothesis.get("id", ""),
+            text=hypothesis.get("text", ""),
+            target_type=TargetType.HYPOTHESIS
+        )
+        return super().score_hypothesis(scorable, context, metrics)
 
     @time_function(logger=None)
     def _simulate(self, node: LATSNode, context: dict):
@@ -260,7 +264,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             {"goal": {"goal_text": goal_text}},
             metrics="lats_reflection"
         )
-What the **** is going on this        return score_result.aggregate() / 100  # Normalize
+        return score_result.aggregate() / 100  # Normalize
 
     @time_function(logger=None)
     def _build_prompt(self, node, context:dict, mode="reason"):

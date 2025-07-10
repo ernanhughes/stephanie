@@ -7,11 +7,16 @@ world_create:
 
   base_directory: ${hydra:runtime.cwd}/worldviews
   
+  pipelines:
+    - search_arxiv
+
+
 
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
+  
   input_keys: ["goal", "hypotheses"]
   output_key: world_create
   prompt_mode: file

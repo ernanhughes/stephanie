@@ -1,6 +1,8 @@
-from stephanie.models.belief import BeliefORM
-from sqlalchemy.orm import Session
 from datetime import datetime
+
+from sqlalchemy.orm import Session
+
+from stephanie.models.belief import BeliefORM
 
 
 class BeliefTunerAgent:

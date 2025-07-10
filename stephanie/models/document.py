@@ -24,6 +24,9 @@ class DocumentORM(Base):
 
     domains = Column(ARRAY(String), nullable=True)
 
+    embedding_id = Column(Integer, ForeignKey("embeddings.id", ondelete="SET NULL"), nullable=True)
+    embedding = relationship("EmbeddingORM", foreign_keys=[embedding_id])
+
     sections = relationship(
         "DocumentSectionORM",
         back_populates="document",
@@ -46,6 +49,7 @@ class DocumentORM(Base):
             "summary": self.summary,
             "content": self.content,
             "goal_id": self.goal_id,
+            "embedding_id": self.embedding_id,
             "domains": self.domains,
             "date_added": self.date_added.isoformat() if self.date_added else None,
         }

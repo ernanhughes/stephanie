@@ -10,6 +10,8 @@ from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.analysis.rule_analytics import RuleAnalytics
 from stephanie.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 
 
 class PipelineJudgeAgent(ScoringMixin, BaseAgent):
@@ -18,27 +20,59 @@ class PipelineJudgeAgent(ScoringMixin, BaseAgent):
         self.print_results = cfg.get("print_results", True)
 
     async def run(self, context: dict) -> dict:
-        self.logger.log("PipelineJudgeAgentStart", {PIPELINE_RUN_ID: context.get(PIPELINE_RUN_ID)})
-        hypotheses = context.get("scored_hypotheses", []) or context.get("hypotheses", [])
+        self.logger.log(
+            "PipelineJudgeAgentStart", {PIPELINE_RUN_ID: context.get(PIPELINE_RUN_ID)}
+        )
+        hypotheses = context.get("scored_hypotheses", []) or context.get(
+            "hypotheses", []
+        )
+        documents = context.get("documents", [])
 
-        self.logger.log("HypothesesReceived", {
-            "count": len(hypotheses),
-            "source": "scored_hypotheses" if context.get("scored_hypotheses") else "hypotheses"
-        })
+        self.logger.log(
+            "DocumentsToJudge",
+            {
+                "Hypotheses": {
+                    "count": len(hypotheses),
+                    "source": "scored_hypotheses"
+                    if context.get("scored_hypotheses")
+                    else "hypotheses",
+                },
+                "Documents": {"count": len(hypotheses), "source": "documents"},
+            },
+        )
 
-        for hypo in hypotheses:
-            score_result = self.score_hypothesis(
-                hypothesis=hypo,
+        for doc in documents:
+            scorable = Scorable(
+                id=doc.get("id"),
+                text=doc.get("summary", ""),
+                target_type=TargetType.DOCUMENT,
+            )
+            score_result = self.score_item(
+                scorable=scorable,
                 context=context,
                 metrics="pipeline_judge",
             )
             self.logger.log(
                 "HypothesisJudged",
-                {
-                    "hypothesis_id": hypo.get("id"),
-                    "score": score_result.to_dict()
-                }
+                {"hypothesis_id": doc.get("id"), "score": score_result.to_dict()},
             )
+
+        for hypo in hypotheses:
+            scorable = Scorable(
+                id=hypo.get("id"),
+                text=hypo.get("text", ""),
+                target_type=TargetType.HYPOTHESIS,
+            )
+            score_result = self.score_item(
+                scorable=scorable,
+                context=context,
+                metrics="pipeline_judge",
+            )
+            self.logger.log(
+                "HypothesisJudged",
+                {"hypothesis_id": hypo.get("id"), "score": score_result.to_dict()},
+            )
+
         self.report_rule_analytics(context)
         self.run_rule_effects_evaluation(context)
 
@@ -72,15 +106,17 @@ class PipelineJudgeAgent(ScoringMixin, BaseAgent):
         # Prepare CSV rows
         rows = []
         for rule_id, data in top_rules:
-            rows.append([
-                rule_id,
-                f"{data['avg_score']:.2f}",
-                data["count"],
-                data["min"],
-                data["max"],
-                f"{data['std']:.2f}",
-                f"{data['success_rate']:.2%}",
-            ])
+            rows.append(
+                [
+                    rule_id,
+                    f"{data['avg_score']:.2f}",
+                    data["count"],
+                    data["min"],
+                    data["max"],
+                    f"{data['std']:.2f}",
+                    f"{data['success_rate']:.2%}",
+                ]
+            )
 
         # Define headers
         headers = [
@@ -115,6 +151,7 @@ class PipelineJudgeAgent(ScoringMixin, BaseAgent):
 
     def run_rule_effects_evaluation_console(self, context: dict):
         from tabulate import tabulate
+
         analyzer = RuleEffectAnalyzer(session=self.memory.session, logger=self.logger)
         summary = analyzer.analyze(context.get(PIPELINE_RUN_ID))
 

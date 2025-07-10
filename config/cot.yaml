@@ -19,11 +19,12 @@ defaults:
   - agents/cot_dspy_generator
   - agents/supervisor
   - logging/json_logger
+  - pipeline/cot
 
 # The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
 # This is a placeholder and should be replaced with the actual goal.
 goal: 
-  goal_text: "Will AI ever be able to reprogram itself?"
+  goal_text: "How would I og about building a self improving AI?"
   goal_type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
 
 paths:
@@ -43,19 +44,3 @@ embeddings:
   dimension: 1024
   endpoint: "http://localhost:11434/api/embeddings"
 
-pipeline:
-  name: default_pipeline
-  description: "Default hypothesis generation and refinement pipeline"
-  stages:
-    - name: cot_generator
-      cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
-      enabled: true
-      iterations: 1
-    - name: ranking
-      cls: stephanie.agents.ranking.RankingAgent
-      enabled: true
-      iterations: 1
-    - name: cot_dspy_generator
-      cls: stephanie.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
-      enabled: true
-      iterations: 1

@@ -2,7 +2,8 @@ import dspy
 from dspy import BootstrapFewShot, Example, Predict
 
 from stephanie.compiler.llm_compiler import LLMCompiler
-from stephanie.compiler.passes.strategy_mutation_pass import StrategyMutationPass
+from stephanie.compiler.passes.strategy_mutation_pass import \
+    StrategyMutationPass
 from stephanie.compiler.prompt_tuning_signature import PromptTuningSignature
 from stephanie.evaluator.evaluator_loader import get_evaluator
 

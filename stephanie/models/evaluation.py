@@ -1,11 +1,12 @@
 # models/score.py
 from datetime import datetime, timezone
 
-from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+from sqlalchemy import (JSON, Column, DateTime, Enum, ForeignKey, Integer,
                         String, Text)
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
+from stephanie.scoring.scorable_factory import TargetType
 
 
 class EvaluationORM(Base):
@@ -13,10 +14,17 @@ class EvaluationORM(Base):
 
     id = Column(Integer, primary_key=True)
     goal_id = Column(Integer, ForeignKey("goals.id"))
+
+    # Polymorphic target reference
+    target_type = Column(Enum(TargetType), nullable=False)
+    target_id = Column(Integer, nullable=False)
+
     hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"))
     document_id = Column(
         Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
     )
+
+
 
     symbolic_rule_id = Column(Integer, ForeignKey("symbolic_rules.id"), nullable=True)
     pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"), nullable=True)

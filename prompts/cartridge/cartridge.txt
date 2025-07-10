@@ -1,0 +1,44 @@
+You are a precision AI system tasked with extracting **goal-relevant, reusable knowledge** from documents.
+
+## Goal
+{{ goal.goal_text }}
+
+## Document
+{{ text }}
+
+{% if preferences %}
+## Preferences
+The following preferences should be respected:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+{% if instructions %}
+## Additional Instructions
+Please also follow these additional instructions:
+{% for i in instructions %}
+- {{ i }}
+{% endfor %}
+{% endif %}
+
+---
+
+## Output Format (Markdown)
+
+Please extract bullet-pointed knowledge aligned with the goal. Do **not summarize** — instead, extract **structured, reusable facts**, insights, or methods. Each point should be complete and understandable in isolation.
+
+### Extracted Knowledge
+
+- [Fact or insight #1, complete sentence, aligned with the goal]
+- [Fact or insight #2...]
+- ...
+
+### Post-Extraction Self-Review
+
+Review the extracted points. For each:
+- Check that it aligns with the goal.
+- Check that it’s not vague or generic.
+- Check that it could be reused on its own in a new context.
+
+If any point fails these checks, revise the output. Repeat until the list is sharp and relevant.

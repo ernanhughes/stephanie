@@ -1,0 +1,65 @@
+{% if target_type == "triple" %}
+You are scoring a single knowledge triplet for **clarity** with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Triplet
+({{ triplet.subject }}, {{ triplet.predicate }}, {{ triplet.object }})
+
+## Instructions
+
+Clarity means the triplet should be precise, grammatically coherent, and unambiguous. The subject, predicate, and object should be logically and semantically well-formed. It should be easy to interpret in the context of the goal.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "cartridge" %}
+Evaluate the **clarity** of the following data cartridge with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+### Data cartridge
+Title: {{ cartridge.title }}
+Summary: {{ cartridge.summary }}
+Sections:
+{% for section in cartridge.sections %}
+---
+{{ section }}
+{% endfor %}
+
+Clarity refers to how clearly and coherently the cartridge conveys its knowledge. Sentences should be well-structured, language should be accessible, and the meaning should be unambiguous with respect to the goal.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "theorem" %}
+Evaluate the **clarity** of the following theorem with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Theorem
+{{ theorem.statement }}
+
+{% if theorem.proof %}
+## Proof
+{{ theorem.proof }}
+{% endif %}
+
+Clarity means the theorem should be stated in a precise and understandable way. The mathematical or logical structure should be complete and unambiguous. If a proof is present, it should follow clearly and be readable without unnecessary complexity.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% else %}
+Invalid target type: {{ target_type }}
+{% endif %}
+Yeah

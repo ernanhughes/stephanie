@@ -7,6 +7,7 @@ from sqlalchemy.ext.declarative import declarative_base
 
 from stephanie.models.base import Base
 
+
 class NodeORM(Base):
     __tablename__ = "nodes"
 

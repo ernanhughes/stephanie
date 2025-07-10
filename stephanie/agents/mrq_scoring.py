@@ -46,14 +46,15 @@ class MRQScoringAgent(BaseAgent):
 
             score_obj = EvaluationORM(
                 goal_id=hypothesis.goal_id,
-                hypothesis_id=hypothesis.id,
+                target_type="hypothesis",
+                target_id=hypothesis.id,
                 agent_name=self.name,
                 model_name=self.model_name,
                 evaluator_name="MRQScoringAgent",
                 scores=result,
                 pipeline_run_id=context.get("pipeline_run_id"),
                 extra_data=self.cfg,
-                dimensions=dimensions  # 🔥 store rich sub-scores
+                dimensions=dimensions
             )
 
             self.memory.evaluations.insert(score_obj)

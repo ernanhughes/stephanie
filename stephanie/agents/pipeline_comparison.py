@@ -39,7 +39,8 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
     
 
     def compare_runs(self, tags: list[str], goal_id: int = None):
-        from stephanie.models.comparison_preference import ComparisonPreferenceORM
+        from stephanie.models.comparison_preference import \
+            ComparisonPreferenceORM
         """
         Compare multiple sets of pipeline runs by tag across the same goals.
         Store MR.Q-style preferences when there's a clear winner.
@@ -180,32 +181,34 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
     def get_multidimensional_score(self, pipeline_run_id: int) -> dict:
         """
         Fetch and average all score values for a given pipeline run via its evaluations.
+        Updated to support normalized target_type/target_id.
         """
-         # Step 1: Get latest evaluation per hypothesis
+
+        # Step 1: Get latest evaluation per unique target
         subquery = (
             self.memory.session.query(
-                EvaluationORM.hypothesis_id,
+                EvaluationORM.target_type,
+                EvaluationORM.target_id,
                 func.max(EvaluationORM.id).label("latest_eval_id")
             )
             .filter(EvaluationORM.pipeline_run_id == pipeline_run_id)
-            .group_by(EvaluationORM.hypothesis_id)
+            .group_by(EvaluationORM.target_type, EvaluationORM.target_id)
             .subquery()
         )
 
-        latest_eval_ids = [row.latest_eval_id for row in self.memory.session.query(subquery).all()]
+        # Step 2: Get those evaluation IDs
+        latest_eval_ids = [
+            row.latest_eval_id for row in self.memory.session.query(subquery).all()
+        ]
         if not latest_eval_ids:
             return {}
 
-
-        from collections import defaultdict
-
-        from stephanie.models.score import ScoreORM  # avoid circular import
-
+        # Step 3: Fetch scores and average by dimension
         dim_totals = defaultdict(list)
-        for evaluation in latest_eval_ids:
+        for evaluation_id in latest_eval_ids:
             scores = (
                 self.memory.session.query(ScoreORM)
-                .filter(ScoreORM.evaluation_id == evaluation)
+                .filter(ScoreORM.evaluation_id == evaluation_id)
                 .all()
             )
             for s in scores:

@@ -3,7 +3,8 @@ import dspy
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.prompt_evolver_mixin import PromptEvolverMixin
 from stephanie.compiler.llm_compiler import LLMCompiler
-from stephanie.compiler.passes.strategy_mutation_pass import StrategyMutationPass
+from stephanie.compiler.passes.strategy_mutation_pass import \
+    StrategyMutationPass
 from stephanie.constants import GOAL
 from stephanie.evaluator.evaluator_loader import get_evaluator
 

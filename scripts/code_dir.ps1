@@ -11,7 +11,9 @@ $OutputPath = Join-Path $SubdirPath $OutputFile
 "<!-- Merged Python Code Files -->`n" | Out-File -FilePath $OutputPath -Encoding utf8
 
 # Get all .py files recursively
-$files = Get-ChildItem -Path $SubdirPath -Recurse -Filter *.py | Sort-Object FullName
+$files = Get-ChildItem -Path $SubdirPath -Recurse -File | Where-Object {
+    $_.Extension -in '.py' # O, '.yaml', '.yml'
+} | Sort-Object FullName
 
 foreach ($file in $files) {
     $relativePath = $file.FullName.Replace($SubdirPath, "").TrimStart("\","/")

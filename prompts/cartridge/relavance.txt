@@ -1,0 +1,64 @@
+{% if target_type == "triple" %}
+You are scoring a single knowledge triplet for **relevance** to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Triplet
+({{ triplet.subject }}, {{ triplet.predicate }}, {{ triplet.object }})
+
+## Instructions
+
+Relevance refers to how closely the content supports, contributes to, or informs the stated goal.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "cartridge" %}
+Evaluate the **relevance** of the following data cartridge to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+### Data cartridge
+Title: {{ cartridge.title }}
+Summary: {{ cartridge.summary }}
+Sections:
+{% for section in cartridge.sections %}
+---
+{{ section }}
+{% endfor %}
+
+Relevance refers to how closely the content supports, contributes to, or informs the stated goal.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "theorem" %}
+Evaluate the **relevance** of the following theorem in relation to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Theorem
+{{ theorem.statement }}
+
+{% if theorem.proof %}
+## Proof
+{{ theorem.proof }}
+{% endif %}
+
+Relevance refers to how much this theorem helps answer, justify, or conceptually support the goal — either directly or indirectly.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% else %}
+Invalid target type: {{ target_type }}
+{% endif %}

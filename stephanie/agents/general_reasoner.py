@@ -2,6 +2,8 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.analysis.rubric_classifier import RubricClassifierMixin
 from stephanie.constants import GOAL, GOAL_TEXT
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 
 
 class GeneralReasonerAgent(ScoringMixin, RubricClassifierMixin, BaseAgent):
@@ -24,7 +26,8 @@ class GeneralReasonerAgent(ScoringMixin, RubricClassifierMixin, BaseAgent):
 
         dimension_scores = []
         for hyp in hypotheses:
-            scored = self.score_hypothesis(hyp, context, metrics="reasoning_cor")
+            scorable = Scorable(id=hyp.get("id"), text=hyp.get("text"), target_type=TargetType.HYPOTHESIS)
+            scored = self.score_item(scorable, context, metrics="reasoning_cor")
             hyp["final_score"] = scored.aggregate()
             hyp["dimension_scores"] = scored.to_dict()
             dimension_scores.append(scored.to_dict())

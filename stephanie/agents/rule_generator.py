@@ -3,8 +3,8 @@ from collections import defaultdict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.models import (EvaluationORM, PipelineRunORM, RuleApplicationORM,
-                          SymbolicRuleORM)
+from stephanie.models import (EvaluationORM, PipelineRunORM,
+                              RuleApplicationORM, SymbolicRuleORM)
 
 
 class RuleGeneratorAgent(BaseAgent):

@@ -1,0 +1,6 @@
+model_trainer:
+  name: model_trainer
+  enabled: true
+
+  model_path: "${hydra:runtime.cwd}/models"
+

@@ -11,7 +11,7 @@ class ReasoningNodeScorer(ScoringMixin, BaseAgent):
     def score(self, node: ReasoningNode, context: dict) -> dict:
         hypothesis = {"text": node.response}
         # You can change 'metrics' to 'compiler' or a list like ['correctness', 'clarity']
-        return self.score_hypothesis(hypothesis, context, metrics="compiler")
+        return self.score_item(hypothesis, context, metrics="compiler")
 
     async def run(self, context):
         pass

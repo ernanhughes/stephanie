@@ -1,4 +1,8 @@
 # config/scoring/review.yaml
+scoring_profile: review
+prompt_dir: prompts/review
+output_format: simple
+scorer: llm
 dimensions:
   - name: correctness
     file: correctness

@@ -4,7 +4,7 @@ from tabulate import tabulate
 
 class ScoreDisplay:
     @staticmethod
-    def show(results, weighted_score):
+    def show(scorable, results, weighted_score):
         table_data = [
             [
                 dim_name,
@@ -16,7 +16,7 @@ class ScoreDisplay:
         ]
         table_data.append(["FINAL", f"{weighted_score:.2f}", "-", "Weighted average"])
 
-        print("\n📊 Dimension Scores Summary")
+        print(f"\n📊 Dimension Scores {scorable.target_type}:{scorable.id} Summary")
         print(tabulate(
             table_data,
             headers=["Dimension", "Score", "Weight", "Rationale (preview)"],

@@ -123,6 +123,7 @@ class DocumentMRQTrainer:
             "epochs_trained": epoch + 1,
             "final_loss": round(avg_loss, 5)
         })
+
     def train_multidimensional_model(self, contrast_pairs: List[dict], cfg=None):
         by_dimension = defaultdict(list)
         for pair in contrast_pairs:
@@ -130,24 +131,25 @@ class DocumentMRQTrainer:
             by_dimension[dim].append(pair)
 
         trained_models = {}
+        trained_encoders = {}
         regression_tuners = {}
 
         for dim, samples in by_dimension.items():
             if not samples:
-                self.logger.log("DocumentMRQSkipDimension", {"dimension": dim})
                 continue
 
-            self.logger.log("DocumentMRQTrainDimension", {
-                "dimension": dim,
-                "num_samples": len(samples)
-            })
+            # Create fresh encoder and predictor for this dimension
+            encoder = TextEncoder().to(self.device)
+            predictor = DocumentValuePredictor(512, 1024).to(self.device)
 
             tuner = RegressionTuner(dimension=dim, logger=self.logger)
             regression_tuners[dim] = tuner
 
             dataloader = self.prepare_training_data(samples)
             self.train(dataloader, cfg or {})
-            trained_models[dim] = self.value_predictor.state_dict()
+
+            trained_models[dim] = predictor.state_dict()
+            trained_encoders[dim] = encoder.state_dict()
 
             # Train regression tuner
             for pair in samples:
@@ -156,7 +158,6 @@ class DocumentMRQTrainer:
                     doc_text = pair[f"output_{side}"]
                     context_text = pair.get("title", "")
 
-                    # Compute MRQ score from model
                     context_emb = torch.tensor(self.memory.embedding.get_or_create(context_text)).unsqueeze(0).to(self.device)
                     doc_emb = torch.tensor(self.memory.embedding.get_or_create(doc_text)).unsqueeze(0).to(self.device)
 
@@ -166,8 +167,8 @@ class DocumentMRQTrainer:
 
                     tuner.train_single(mrq_score, llm_score)
 
-        return trained_models, regression_tuners
-
+        return trained_encoders, trained_models, regression_tuners
+    
     def align_to_best_llm_neighbour(self, goal, hypothesis, dimension):
         """
         Fetch similar hypotheses that already have high LLM scores.

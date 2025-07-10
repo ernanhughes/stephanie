@@ -1,9 +1,11 @@
 from datetime import datetime
-from stephanie.agents.world.worldview_pipeline_runner import WorldviewPipelineRunner
-from stephanie.agents.world.worldview_evaluator import WorldviewEvaluatorAgent
+
 from stephanie.agents.world.belief_tuner import BeliefTunerAgent
-from stephanie.agents.world.worldview_merger import WorldviewMergerAgent
 from stephanie.agents.world.worldview_audit import WorldviewAuditAgent
+from stephanie.agents.world.worldview_evaluator import WorldviewEvaluatorAgent
+from stephanie.agents.world.worldview_merger import WorldviewMergerAgent
+from stephanie.agents.world.worldview_pipeline_runner import \
+    WorldviewPipelineRunner
 from stephanie.core.knowledge_cartridge import KnowledgeCartridge
 
 

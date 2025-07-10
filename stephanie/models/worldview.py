@@ -1,9 +1,11 @@
 # stephanie/models/worldview.py
 
-from sqlalchemy import Column, Integer, Text, Boolean, JSON, DateTime
 from datetime import datetime
 
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, Text
+
 from stephanie.models.base import Base
+
 
 class WorldviewORM(Base):
     __tablename__ = "worldviews"

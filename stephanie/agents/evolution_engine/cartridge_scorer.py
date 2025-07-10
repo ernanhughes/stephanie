@@ -1,6 +1,7 @@
 from stephanie.agents.knowledge.paper_score import PaperScoreAgent
 from stephanie.core.knowledge_cartridge import KnowledgeCartridge
 
+
 class CartridgeScorer:
     def __init__(self, cfg, memory=None, logger=None):
         self.memory = memory

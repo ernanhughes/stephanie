@@ -35,7 +35,7 @@ class StepCompilerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
         context["step_plan"] = steps
 
         # Optional: Score the overall plan
-        score_result = self.score_hypothesis(
+        score_result = self.score_item(
             {"text": response}, context, metrics="step_reasoning", scorer=self.scorer,
         )
         context["step_plan_score"] = score_result.aggregate()

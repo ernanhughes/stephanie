@@ -7,7 +7,7 @@ evolution:
   use_grafting: true
   save_prompt: true
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
   model:
     name: ollama_chat/qwen3
     api_base: http://localhost:11434

@@ -1,0 +1,13 @@
+### Goal
+{{ goal.goal_text }}
+
+### Text
+{{ input_text }}
+
+In the context of the goal, does this text clearly take responsibility for its claims, actions, or implications? Is it attributable, traceable, or auditable?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+and change it to better open right now

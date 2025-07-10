@@ -1,18 +1,21 @@
 import json
 import os
-from collections import defaultdict
 
 import torch
 
-from stephanie.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
+from stephanie.evaluator.hypothesis_value_predictor import \
+    HypothesisValuePredictor
 from stephanie.evaluator.mrq_trainer import MRQTrainer
 from stephanie.evaluator.text_encoder import TextEncoder
 from stephanie.models.sharpening_prediction import SharpeningPredictionORM
 from stephanie.scoring.base_scorer import BaseScorer
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.scoring.score_result import ScoreResult
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
+import re 
+from stephanie.scoring.model.mrq_model import MRQModel
 
 
 class MRQScorer(BaseScorer):
@@ -48,30 +51,35 @@ class MRQScorer(BaseScorer):
             self.min_score_by_dim[dim] = 0.0
             self.max_score_by_dim[dim] = 1.0
 
-    def score(self, goal: dict, hypothesis: dict, dimensions: list[str]) -> ScoreBundle:
+    @property
+    def name(self) -> str:
+        return "mrq"
+
+    def score(self, goal: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
         """
         Predicts scores for given dimensions using MR.Q and applies tuning if available.
         """
         results = []
-        for dim in dimensions:
-            score = self._estimate_score(goal, hypothesis, dim)
-            rationale = f"MRQ estimated score for {dim}."
+        for dimension_name in dimensions:
+            score = self._estimate_score(goal, scorable, dimension_name)
+            rationale = f"MRQ estimated score for {dimension_name}."
             self.logger.log(
                 "MRQDimensionEvaluated",
-                {"dimension": dim, "score": score, "rationale": rationale},
+                {"dimension": dimension_name, "score": score, "rationale": rationale},
             )
             results.append(
                 ScoreResult(
-                    dimension=dim,
+                    dimension=dimension_name,
                     score=score,
                     rationale=rationale,
                     weight=1.0,
                     source="mrq",
+                    target_type=scorable.target_type,  # Default target for MR.Q scores
                 )
             )
         return ScoreBundle(results={r.dimension: r for r in results})
 
-    def _estimate_score(self, goal, hypothesis, dimension):
+    def _estimate_score(self, goal:dict, scorable: Scorable, dimension: str) -> float:
         """
         Core logic: compute embeddings, run prediction, apply optional regression tuner.
         """
@@ -79,24 +87,21 @@ class MRQScorer(BaseScorer):
         if dimension not in self.models:
             self._initialize_dimension(dimension)
 
-        prompt_emb = torch.tensor(
-            self.memory.embedding.get_or_create(goal.get("goal_text")),
-            device=self.device,
-        ).unsqueeze(0)
-        response_emb = torch.tensor(
-            self.memory.embedding.get_or_create(hypothesis.get("text")),
-            device=self.device,
-        ).unsqueeze(0)
+        raw_score = self.models[dimension].predict(
+            goal.get("goal_text"),
+            scorable.text,
+            embedding_store=self.memory.embedding,
+        )
 
-        encoder, predictor = self.models[dimension]
-        zsa = encoder(prompt_emb, response_emb)
-        raw_score = predictor(zsa).item()
         norm_score = self.normalize_score(raw_score, dimension)
 
         # Optionally apply tuner
         tuner = self.regression_tuners.get(dimension)
         if tuner:
             tuned = tuner.transform(norm_score)
+            min_score = self.min_score_by_dim.get(dimension, 0.0)
+            max_score = self.max_score_by_dim.get(dimension, 100.0)
+            tuned = max(min_score, min(max_score, tuned))  # clamp to [0, 100]
             self.logger.log(
                 "MRQTunedScore",
                 {"dimension": dimension, "raw": norm_score, "tuned": tuned},
@@ -111,9 +116,9 @@ class MRQScorer(BaseScorer):
         self.trainers[dimension] = MRQTrainer(
             memory=self.memory, logger=self.logger, value_predictor=self.value_predictor, encoder=self.encoder, device=self.device
         )
-        self.models[dimension] = (self.encoder, self.value_predictor)
+        self.models[dimension] = MRQModel(self.encoder, self.value_predictor, device=self.device)
         self.min_score_by_dim[dimension] = 0.0
-        self.max_score_by_dim[dimension] = 1.0
+        self.max_score_by_dim[dimension] = 100.0
         self.logger.log("MRQModelInitializing", {"dimension": dimension})
 
     def align_to_best_llm_neighbour(self, goal, hypothesis, dimension):
@@ -203,9 +208,7 @@ class MRQScorer(BaseScorer):
         return bundle
 
     def normalize_score(self, raw, dim):
-        min_ = self.min_score_by_dim.get(dim, 0.0)
-        max_ = self.max_score_by_dim.get(dim, 1.0)
-        return round(100 * (raw - min_) / (max_ - min_ or 1.0), 2)
+        return round(raw, 2)
 
     def judge(self, goal, prompt, output_a, output_b):
         """
@@ -324,7 +327,7 @@ class MRQScorer(BaseScorer):
 
                 # Predict MRQ score dynamically
                 mrq_score = self.score(
-                    {"goal_text": prompt}, {"text": hyp}, [dimension]
+                    {"goal_text": prompt}, Scorable(text=hyp), [dimension]
                 )
 
                 # Log the alignment
@@ -354,10 +357,11 @@ class MRQScorer(BaseScorer):
             dim_dir = os.path.join(base_dir, dim)
             os.makedirs(dim_dir, exist_ok=True)
 
+            # Save encoder and predictor
             torch.save(encoder.state_dict(), os.path.join(dim_dir, "encoder.pt"))
             torch.save(predictor.state_dict(), os.path.join(dim_dir, "predictor.pt"))
 
-            # Save tuner weights
+            # Save tuner
             self.regression_tuners[dim].save(os.path.join(dim_dir, "tuner.json"))
 
             # Save metadata
@@ -368,8 +372,71 @@ class MRQScorer(BaseScorer):
             with open(os.path.join(dim_dir, "meta.json"), "w") as f:
                 json.dump(meta, f)
 
+            self.logger.log("MRQModelSaved", {"dimension": dim, "path": dim_dir})
+
+    def get_available_mrq_dimensions_flat(self, model_dir: str, prefix="document_rm_") -> list[str]:
+        dimensions = set()
+        pattern = re.compile(fr"{re.escape(prefix)}(.+?)\.(pt|json)")
+        for filename in os.listdir(model_dir):
+            match = pattern.match(filename)
+            if match:
+                dimensions.add(match.group(1).replace("_tuner", ""))  # normalize tuner file
+        return sorted(dimensions)
 
     def load_models(self):
+        base_dir = self.cfg.get("scoring", {}).get("model_dir", "models/mrq/")
+
+        if not os.path.exists(base_dir):
+            self.logger.log("MRQModelDirNotFound", {"path": base_dir})
+            return
+
+        # Get all subdirectories as dimensions
+        self.dimensions = [
+            d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))
+        ]
+
+        for dim in self.dimensions:
+            dim_dir = os.path.join(base_dir, dim)
+
+            # Ensure dimension is initialized
+            if dim not in self.models:
+                self._initialize_dimension(dim)
+            
+            encoder, predictor = self.models[dim]
+
+            try:
+                # Load encoder and predictor
+                encoder_path = os.path.join(dim_dir, "encoder.pt")
+                predictor_path = os.path.join(dim_dir, "predictor.pt")
+                if not os.path.exists(encoder_path) or not os.path.exists(predictor_path):
+                    self.logger.log("MRQModelFilesMissing", {"dimension": dim})
+                    continue
+
+                encoder.load_state_dict(torch.load(encoder_path, map_location=self.device))
+                predictor.load_state_dict(torch.load(predictor_path, map_location=self.device))
+
+                # Load tuner
+                tuner_path = os.path.join(dim_dir, "tuner.json")
+                if os.path.exists(tuner_path):
+                    self.regression_tuners[dim].load(tuner_path)
+
+                # Load metadata
+                meta_path = os.path.join(dim_dir, "meta.json")
+                if os.path.exists(meta_path):
+                    with open(meta_path) as f:
+                        meta = json.load(f)
+                        self.min_score_by_dim[dim] = meta.get("min_score", 0.0)
+                        self.max_score_by_dim[dim] = meta.get("max_score", 100.0)
+
+                self.logger.log("MRQModelLoaded", {"dimension": dim})
+
+            except Exception as e:
+                self.logger.log("MRQModelLoadError", {
+                    "dimension": dim,
+                    "error": str(e)
+                })
+
+    def load_models_with_path(self):
         base_dir = self.cfg.get("scoring", {}).get("model_dir", "models/mrq/")
 
         for dim in self.dimensions:
@@ -462,3 +529,14 @@ class MRQScorer(BaseScorer):
                     {"error": str(e), "prompt": prompt[:100], "dimension": dimension}
                 )
             return 0.5
+
+    def save_metadata(self, base_dir):
+        for dim in self.dimensions:
+            dim_dir = os.path.join(base_dir, dim)
+            os.makedirs(dim_dir, exist_ok=True)
+            meta_path = os.path.join(dim_dir, "meta.json")
+            with open(meta_path, "w") as f:
+                json.dump({
+                    "min_score": self.min_score_by_dim.get(dim, 0.0),
+                    "max_score": self.max_score_by_dim.get(dim, 1.0),
+                }, f)

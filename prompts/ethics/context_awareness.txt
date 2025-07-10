@@ -1,0 +1,12 @@
+### Goal
+{{ goal.goal_text }}
+
+### Text
+{{ input_text }}
+
+Considering the goal, does this text show awareness of the situational, cultural, or domain-specific context in which it operates?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>

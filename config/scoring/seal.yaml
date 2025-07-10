@@ -1,5 +1,6 @@
-# /config/scoring/lats.yaml
-stage: lats
+# /config/scoring/seal.yaml
+scoring_profile: seal
+prompt_dir: prompts/seal
 output_format: cor
 dimensions:
   - name: alignment
@@ -7,28 +8,28 @@ dimensions:
     weight: 1.2
     extra_data:
       parser: numeric_cor
-  # - name: clarity
-  #   file: clarity_cor.txt
-  #   weight: 1.2
-  #   extra_data:
-  #     parser: numeric_cor
-  # - name: completeness
-  #   file: completeness_cor.txt
-  #   weight: 1.2
-  #   extra_data:
-  #     parser: numeric_cor
-  # - name: correctness
-  #   file: correctness_cor.txt
-  #   weight: 1.2
-  #   extra_data:
-  #     parser: numeric_cor
-  # - name: feasibility
-  #   file: feasibility_cor.txt
-  #   weight: 1.1
-  #   extra_data:
-  #     parser: numeric_cor
-  # - name: insightfulness
-  #   file: insightfulness_cor.txt
-  #   weight: 1.3
-  #   extra_data:
-  #     parser: numeric_cor
+  - name: clarity
+    file: clarity_cor.txt
+    weight: 1.2
+    extra_data:
+      parser: numeric_cor
+  - name: completeness
+    file: completeness_cor.txt
+    weight: 1.2
+    extra_data:
+      parser: numeric_cor
+  - name: correctness
+    file: correctness_cor.txt
+    weight: 1.2
+    extra_data:
+      parser: numeric_cor
+  - name: feasibility
+    file: feasibility_cor.txt
+    weight: 1.1
+    extra_data:
+      parser: numeric_cor
+  - name: insightfulness
+    file: insightfulness_cor.txt
+    weight: 1.3
+    extra_data:
+      parser: numeric_cor

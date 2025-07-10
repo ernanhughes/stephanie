@@ -13,7 +13,7 @@ sharpening:
   save_improved: true # save improved prompts and hypotheses
 
   enabled: true
-  save_context: false
+  save_context: true
   skip_if_completed: false
   model:
     name: ollama_chat/qwen3

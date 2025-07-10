@@ -1,0 +1,12 @@
+### Goal
+{{ goal.goal_text }}
+
+### Text
+{{ input_text }}
+
+Does this text align with the goal's intent and the system's broader values (e.g. accuracy, fairness, constructive purpose)?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>

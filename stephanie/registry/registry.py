@@ -8,8 +8,8 @@ def register(key: str, instance):
     Registers a shared component (tracker, controller, agent, etc.) under a key.
     Raises an error if the key already exists to avoid silent overwrites.
     """
-    if key in _registry:
-        raise KeyError(f"Key '{key}' is already registered.")
+    # if key in _registry:
+    #     raise KeyError(f"Key '{key}' is already registered.")
     _registry[key] = instance
 
 

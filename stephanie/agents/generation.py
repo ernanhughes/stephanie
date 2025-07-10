@@ -1,7 +1,8 @@
 # stephanie/agents/generation.py
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import FEEDBACK, GOAL, GOAL_TEXT, HYPOTHESES, LITERATURE
+from stephanie.constants import (FEEDBACK, GOAL, GOAL_TEXT, HYPOTHESES,
+                                 LITERATURE)
 from stephanie.parsers import extract_hypotheses
 
 

@@ -1,7 +1,9 @@
-import arxiv
 import json
+
+import arxiv
 from knowledge_cartridge import KnowledgeCartridge
 from openai import OpenAI
+
 
 class ResearchSlave:
     def __init__(self, api_key, instruction, generation, parent_signature=None):

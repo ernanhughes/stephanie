@@ -6,7 +6,7 @@ reflection_delta:
   source: database  # database or context
   batch_size: 10
 
-  save_context: false
+  save_context: true
   skip_if_completed: false
 
   model:

@@ -4,7 +4,7 @@ debate:
   name: debate
   enabled: true
   save_prompt: true
-  save_context: false
+  save_context: true
   skip_if_completed: false
   model:
     name: ollama/qwen3

@@ -5,6 +5,7 @@ from collections import defaultdict
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.paper_scoring_mixin import PaperScoringMixin
 from stephanie.models import EvaluationORM, ScoreORM
+from stephanie.scoring.scorable_factory import TargetType
 
 
 class PaperScoreAgent(BaseAgent, PaperScoringMixin):
@@ -71,8 +72,13 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
                 },
             )
 
-    def get_scores_by_document_id (self, document_id: int) -> list[ScoreORM]:
-        evaluations = self.memory.session.query(EvaluationORM).filter_by(document_id=document_id).all()
+    def get_scores_by_document_id(self, document_id: int) -> list[ScoreORM]:
+        evaluations = (
+            self.memory.session.query(EvaluationORM)
+            .filter_by(target_type=TargetType.DOCUMENT, target_id=document_id)
+            .all()
+        )
+
         scores = []
         for evaluation in evaluations:
             scores.extend(

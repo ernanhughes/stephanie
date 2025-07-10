@@ -4,8 +4,8 @@ prompt_tuning:
   name: prompt_tuning
   enabled: true
   save_context: true
-  skip_if_completed: true
-
+  skip_if_completed: false
+  
   # Number of sample prompts to use in tuning
   sample_size: 20
   # How many prompts to generate once tuned

@@ -1,6 +1,8 @@
+from collections import defaultdict
+
 import matplotlib.pyplot as plt
 import networkx as nx
-from collections import defaultdict
+
 from stephanie.core.knowledge_cartridge import KnowledgeCartridge
 
 

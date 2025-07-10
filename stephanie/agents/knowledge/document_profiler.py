@@ -5,6 +5,7 @@ from stephanie.analysis.domain_classifier import DomainClassifier
 from stephanie.utils.document_section_parser import DocumentSectionParser
 
 DEFAULT_SECTIONS = ["title", "abstract", "methods", "results", "contributions"]
+REQUIRED_SECTIONS = ["title", "summary"]
 
 class DocumentProfilerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -14,6 +15,7 @@ class DocumentProfilerAgent(BaseAgent):
         self.fallback_to_llm = cfg.get("fallback_to_llm", False)
         self.store_inline = cfg.get("store_inline", True)
         self.output_sections = cfg.get("output_sections", DEFAULT_SECTIONS)
+        self.required_sections = cfg.get("required_sections", REQUIRED_SECTIONS)
         self.min_chars_per_sec = cfg.get("min_chars_per_section", 120)  # quality 
 
         self.force_domain_update = cfg.get("force_domain_update", False)
@@ -34,6 +36,16 @@ class DocumentProfilerAgent(BaseAgent):
         for doc in documents:
             try:
                 doc_id = doc["id"]
+
+                existing_sections = self.memory.document_section.get_by_document(doc_id)
+                if existing_sections and not self.force_domain_update:
+                    # If we already have sections and not forcing update, skip
+                    self.logger.log(
+                        "DocumentAlreadyProfiled",
+                        {"doc_id": doc_id, "title": doc.get("title", "")},
+                    )
+                    continue
+
                 title = doc.get("title")
                 summary = doc.get("summary")
                 text = doc.get("content", doc.get("text", ""))
@@ -50,18 +62,17 @@ class DocumentProfilerAgent(BaseAgent):
                 else:
                     chosen = unstruct_data
 
-                prompt = self.prompt_loader.from_file(
-                    self.summary_prompt_file, self.cfg, context
-                )
-                generated_summary = self.call_llm(prompt, context)
-
                 # no point in overwriting arxiv data
                 if title:
                     chosen["title"] = title
                 if summary:
-                    chosen["abstract"] = (
-                        summary  
+                    chosen["summary"] = summary 
+                else:
+                    prompt = self.prompt_loader.from_file(
+                        self.summary_prompt_file, self.cfg, context
                     )
+                    chosen["summary"] = self.call_llm(prompt, context)
+
 
                 # -- STEP 3 : Persist ------------------------------------------
                 for section, text in chosen.items():
@@ -71,7 +82,7 @@ class DocumentProfilerAgent(BaseAgent):
                             "section_name": section,
                             "section_text": text,
                             "source": "unstructured+llm",
-                            "summary": generated_summary,
+                            "summary": summary,
                         }
                     )
 
@@ -133,14 +144,16 @@ class DocumentProfilerAgent(BaseAgent):
         """
         Simple heuristic:
             • Missing any requested section
-            • OR any section shorter than min_chars
+            • OR any section (except 'title') shorter than min_chars
         """
         if not data:
             return True
-        for sec in self.output_sections:
+        for sec in self.required_sections:
             if sec not in data:
+                print(f"[FALLBACK NEEDED] Missing section: {sec}")
                 return True
-            if len(data[sec]) < self.min_chars_per_sec:
+            if sec != "title" and len(data[sec]) < self.min_chars_per_sec:
+                print(f"[FALLBACK NEEDED] section too small: {sec}")
                 return True
         return False
 

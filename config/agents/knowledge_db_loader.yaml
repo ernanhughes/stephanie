@@ -1,0 +1,15 @@
+knowledge_db_loader:
+  name: knowledge_db_loader
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: goal
+  output_key: documents
+  prompt_mode: file
+  prompt_file: knowledge_db_loader.txt

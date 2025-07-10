@@ -1,11 +1,14 @@
 # stephanie/worldview/db/locator.py
 
-import os
 import hashlib
-from stephanie.utils.slug import slugify_with_max_length
+import os
+
 from sqlalchemy import create_engine
+
 from stephanie.models.base import WorldviewBase
 from stephanie.models.worldview import WorldviewORM
+from stephanie.utils.slug import slugify_with_max_length
+
 
 class WorldviewDBLocator:
     def __init__(self, base_dir: str = "worldviews"):

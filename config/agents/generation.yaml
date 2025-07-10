@@ -4,7 +4,7 @@ generation:
   name: generation
   enabled: true
   save_context: true
-  skip_if_completed: true
+  skip_if_completed: false
   strategy : default
   model:
     name: ollama_chat/qwen3

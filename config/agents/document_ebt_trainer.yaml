@@ -1,0 +1,12 @@
+document_ebt_trainer:
+  name: document_ebt_trainer
+  model_path: "${hydra:runtime.cwd}/models"
+  model_type: "ebt"
+  target_type: "document"
+  dimensions: 
+    - "alignment"
+    - "clarity"
+    - "implementability"
+    - "novelty"
+    - "relevance"
+

@@ -8,8 +8,9 @@ from uuid import uuid4
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID, PROMPT_DIR,
-                             RUN_ID, SAVE_CONTEXT, SKIP_IF_COMPLETED, STAGE)
+from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
+                                 PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
+                                 SKIP_IF_COMPLETED, STAGE)
 from stephanie.engine.cycle_watcher import CycleWatcher
 from stephanie.engine.meta_confidence import MetaConfidenceTracker
 from stephanie.engine.self_validation import SelfValidationEngine
@@ -17,11 +18,14 @@ from stephanie.engine.state_tracker import StateTracker
 from stephanie.engine.training_controller import TrainingController
 from stephanie.logs.json_logger import JSONLogger
 from stephanie.memory import MemoryTool
-from stephanie.registry import AgentRegistry
+from stephanie.registry.agent_registry import AgentRegistry
 from stephanie.registry.registry import register
 from stephanie.reports import ReportFormatter
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
 
+from stephanie.utils.timing import time_function
+
+from stephanie.utils import timing
 
 class PipelineStage:
     def __init__(self, name: str, config: dict, stage_dict: dict):
@@ -193,71 +197,55 @@ class Supervisor:
             if name in self.cfg.agents
         ]
 
+    @time_function(logger=None)
     async def _run_pipeline_stages(self, context: dict) -> dict:
         for stage in self.pipeline_stages:
-            if not stage.enabled:
-                self.logger.log(
-                    "PipelineStageSkipped",
-                    {STAGE: stage.name, "reason": "disabled_in_config"},
-                )
-                continue
+            context = await self._run_single_stage(stage, context)
 
-            cls = hydra.utils.get_class(stage.cls)
-            stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
-            self.rule_applier.apply_to_agent(stage_dict, context)
-
-            saved_context = self.load_context(stage_dict, goal_id=context.get(GOAL).get("id"))
-            if saved_context:
-                self.logger.log(
-                    "PipelineStageSkipped",
-                    {STAGE: stage.name, "reason": "context_loaded"},
-                )
-                context = {**context, **saved_context}
-                continue
-
-            agent_args = {
-                "cfg": stage_dict,
-                "memory": self.memory,
-                "logger": self.logger,
-            }
-            if "full_cfg" in cls.__init__.__code__.co_varnames:
-                agent_args["full_cfg"] = self.cfg
-            agent = cls(**agent_args)
-
-            self.logger.log("PipelineStageStart", {STAGE: stage.name})
-
-            for i in range(stage.iterations): 
-                self.logger.log(
-                    "PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1}
-                )
-                context = await agent.run(context)
-                if self.rule_applier.rules:
-                    self.rule_applier.track_pipeline_stage(stage_dict, context)
-                self.logger.log(
-                    "PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1}
-                )
-
-            self.save_context(stage_dict, context)
-            self.logger.log("PipelineStageEnd", {STAGE: stage.name})
-            self.logger.log(
-                "ContextAfterStage",
-                {STAGE: stage.name, "context_keys": list(context.keys())},
-            )
-
-            # After final stage
+            # Post-judgment hook
             if self.cfg.get("post_judgment", {}).get("enabled", False):
-                judge_cfg = OmegaConf.to_container(self.cfg.post_judgment, resolve=True)
-                stage_dict = OmegaConf.to_container(
-                    self.cfg.agents.pipeline_judge, resolve=True
-                )
-                judge_cls = hydra.utils.get_class(judge_cfg["cls"])
-                judge_agent = judge_cls(
-                    cfg=stage_dict, memory=self.memory, logger=self.logger
-                )
-                context = await judge_agent.run(context)
-                self.rule_applier.track_pipeline_stage(stage_dict, context)
+                context = await self._maybe_run_pipeline_judge(context)
 
         return context
+
+    @time_function(logger=None)
+    async def _run_single_stage(self, stage: PipelineStage, context: dict) -> dict:
+        if not stage.enabled:
+            self.logger.log("PipelineStageSkipped", {STAGE: stage.name, "reason": "disabled_in_config"})
+            return context
+
+        cls = hydra.utils.get_class(stage.cls)
+        stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
+        self.rule_applier.apply_to_agent(stage_dict, context)
+
+        saved_context = self.load_context(stage_dict, goal_id=context.get(GOAL).get("id"))
+        if saved_context:
+            self.logger.log("PipelineStageSkipped", {STAGE: stage.name, "reason": "context_loaded"})
+            return {**context, **saved_context}
+
+        agent_args = {
+            "cfg": stage_dict,
+            "memory": self.memory,
+            "logger": self.logger,
+        }
+        if "full_cfg" in cls.__init__.__code__.co_varnames:
+            agent_args["full_cfg"] = self.cfg
+
+        agent = cls(**agent_args)
+
+        self.logger.log("PipelineStageStart", {STAGE: stage.name})
+        for i in range(stage.iterations or 1):
+            self.logger.log("PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1})
+            context = await agent.run(context)
+            if self.rule_applier.rules:
+                self.rule_applier.track_pipeline_stage(stage_dict, context)
+            self.logger.log("PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1})
+
+        self.save_context(stage_dict, context)
+        self.logger.log("PipelineStageEnd", {STAGE: stage.name})
+        self.logger.log("ContextAfterStage", {STAGE: stage.name, "context_keys": list(context.keys())})
+        return context
+
 
     def generate_report(self, context: dict[str, any], run_id: str) -> str:
         """Generate a report based on the pipeline context."""
@@ -271,8 +259,9 @@ class Supervisor:
         )
         return report
 
+    @time_function(logger=None)
     def save_context(self, cfg: DictConfig, context: dict):
-        if self.memory and cfg.get(SAVE_CONTEXT, False):
+        if self.memory and cfg.get(SAVE_CONTEXT, True):
             run_id = context.get(RUN_ID)
             name = cfg.get(NAME, "NoAgentNameInConfig")
             self.memory.context.save(run_id, name, context, cfg)

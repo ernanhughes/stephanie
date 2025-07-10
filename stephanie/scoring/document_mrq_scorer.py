@@ -1,10 +1,12 @@
 # stephanie/scoring/document_mrq_scorer.py
 
+import os
+
 import torch
+
 from stephanie.evaluator.text_encoder import TextEncoder
 from stephanie.scoring.document_value_predictor import DocumentValuePredictor
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
-import os
 
 
 class DocumentMRQScorer:

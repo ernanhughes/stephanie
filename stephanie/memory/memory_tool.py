@@ -6,6 +6,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from stephanie.logs import JSONLogger
+from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
+from stephanie.memory.cartridge_store import CartridgeStore
+from stephanie.memory.cartridge_triple_store import CartridgeTripleStore
 from stephanie.memory.context_store import ContextStore
 from stephanie.memory.document_domain_section_store import \
     DocumentSectionDomainStore
@@ -45,19 +48,19 @@ class MemoryTool:
         self.session: Session = self.session_maker()
 
         # Create connection
-        conn = psycopg2.connect(
+        self.conn = psycopg2.connect(
             dbname=self.cfg.get("db").get("name"),
             user=self.cfg.get("db").get("user"),
             password=self.cfg.get("db").get("password"),
             host=self.cfg.get("db").get("host"),
             port=self.cfg.get("db").get("port"),
         )
-        conn.autocommit = True
-        register_vector(conn)  # Register pgvector extension
+        self.conn.autocommit = True
+        register_vector(self.conn)  # Register pgvector extension
 
         # Register stores
         self.register_store(GoalStore(self.session, logger))
-        embedding_store = EmbeddingStore(self.cfg, conn, self.session, logger)
+        embedding_store = EmbeddingStore(self.cfg, self.conn, self.session, logger)
         self.register_store(embedding_store)
         self.register_store(HypothesisStore(self.session, logger, embedding_store))
         self.register_store(PromptStore(self.session, logger))
@@ -81,6 +84,9 @@ class MemoryTool:
         self.register_store(DocumentDomainStore(self.session, logger))
         self.register_store(DocumentSectionStore(self.session, logger))
         self.register_store(DocumentSectionDomainStore(self.session, logger))
+        self.register_store(CartridgeDomainStore(self.session, logger))
+        self.register_store(CartridgeStore(self.session, logger))
+        self.register_store(CartridgeTripleStore(self.session, logger))
 
 
 

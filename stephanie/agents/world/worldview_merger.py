@@ -1,11 +1,13 @@
-from stephanie.models.world_view import WorldviewORM
-from stephanie.models.belief import BeliefORM
-from stephanie.models.icl_example import ICLExampleORM
-from stephanie.models.cartridge import CartridgeORM
-
-from datetime import datetime
-from sqlalchemy.orm import Session
 import uuid
+from datetime import datetime
+
+from sqlalchemy.orm import Session
+
+from stephanie.models.belief import BeliefORM
+from stephanie.models.cartridge import CartridgeORM
+from stephanie.models.icl_example import ICLExampleORM
+from stephanie.models.world_view import WorldviewORM
+
 
 class WorldviewMergerAgent:
     def __init__(self, db: Session, embedding, logger=None):

@@ -31,7 +31,7 @@ class StepProcessorAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
             output = self.call_llm(prompt, context=step_context)
 
             # Score (optional)
-            score_result = self.score_hypothesis(
+            score_result = self.score_item(
                 {"text": output}, context, metrics="step_quality", scorer=self.scorer
             )
             total_score = score_result.aggregate()

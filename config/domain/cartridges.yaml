@@ -1,0 +1,137 @@
+domains:
+  epistemology:
+    description: "Understanding, structuring, and validating knowledge."
+    seeds:
+      - "What constitutes valid knowledge in AI?"
+      - "Methods for verifying factual consistency."
+      - "Epistemic uncertainty in language models."
+      - "Hierarchical structuring of learned knowledge."
+      - "Building belief graphs from language outputs."
+
+  synthesis:
+    description: "Combining diverse inputs into coherent insights."
+    seeds:
+      - "Multi-document synthesis using LLMs."
+      - "Merging hypothesis and evidence into new ideas."
+      - "Graph-based fusion of research findings."
+      - "Constructing coherent narratives from fragments."
+      - "Topic-level summarization and unification."
+
+  ontology:
+    description: "Organizing knowledge hierarchically or relationally."
+    seeds:
+      - "Ontological representation of concepts in LLMs."
+      - "Taxonomy generation from unstructured text."
+      - "Building and maintaining concept graphs."
+      - "Category discovery using embedding clusters."
+      - "Context-aware labeling of knowledge units."
+
+  provenance:
+    description: "Tracking the origins and trustworthiness of knowledge."
+    seeds:
+      - "Citing source documents in language outputs."
+      - "Encoding source confidence in knowledge units."
+      - "Metadata and audit trails for belief justification."
+      - "Document-to-belief traceability in pipelines."
+      - "Provenance scoring for cartridge trust."
+
+  modularity:
+    description: "Designing knowledge to be reusable and composable."
+    seeds:
+      - "Reusable knowledge components for LLMs."
+      - "Knowledge cartridges as modular inference units."
+      - "Embedding modularity for belief fusion."
+      - "Prompt construction from modular sources."
+      - "Isolating reusable beliefs from complex documents."
+
+  coherence:
+    description: "Ensuring consistency and clarity across belief sets."
+    seeds:
+      - "Detecting contradiction across knowledge units."
+      - "Improving internal coherence of belief trees."
+      - "Thematic grouping of belief cartridges."
+      - "Scoring structural and semantic alignment."
+      - "Merging overlapping ideas without redundancy."
+
+  actionability:
+    description: "Judging whether knowledge supports decisions or action."
+    seeds:
+      - "From belief to action: guiding next steps."
+      - "Prioritizing actionable insights from documents."
+      - "Evaluating decision relevance of a cartridge."
+      - "Extracting strategies from unstructured content."
+      - "Linking beliefs to executable plans."
+
+  evaluation:
+    description: "Scoring the usefulness and alignment of knowledge units."
+    seeds:
+      - "Scoring cartridges across multiple dimensions."
+      - "LLM feedback for quality and clarity."
+      - "Belief usefulness relative to a goal."
+      - "Ethical alignment of extracted information."
+      - "Crowdsourced vs model-based belief scoring."
+
+  refinement:
+    description: "Improving knowledge quality through self-critique and feedback."
+    seeds:
+      - "Iterative improvement of belief content."
+      - "LLM self-reflection on beliefs."
+      - "Prompt tuning for clearer knowledge extraction."
+      - "Evaluating impact of belief evolution."
+      - "Rewriting beliefs based on better evidence."
+
+  graph_reasoning:
+    description: "Using knowledge graphs or belief trees for inference."
+    seeds:
+      - "Monte Carlo search over belief trees."
+      - "Selecting optimal paths for context building."
+      - "Inference over semantically linked beliefs."
+      - "Expanding a knowledge graph with new facts."
+      - "Compositional reasoning using tree nodes."
+
+  knowledge_retrieval:
+    description: "Finding relevant knowledge from large belief bases."  
+    seeds:
+      - "Retrieving beliefs based on semantic similarity."
+      - "Contextual search over belief cartridges."
+      - "Embedding-based knowledge retrieval."
+      - "Dynamic context injection from belief graphs."
+      - "Sparse attention for long-term knowledge access."
+
+  knowledge_generation:
+    description: "Creating new knowledge from existing beliefs."  
+    seeds:
+      - "Generating hypotheses from belief trees."
+      - "Synthesizing new insights from existing knowledge."
+      - "Language models as knowledge generators."
+      - "Transforming beliefs into structured outputs."
+      - "Novelty detection in generated knowledge."
+
+  knowledge_validation:
+    description: "Assessing the correctness and reliability of knowledge."  
+    seeds:
+      - "Fact-checking generated beliefs."
+      - "Evaluating knowledge consistency with sources."
+      - "Scoring belief reliability based on provenance."
+      - "Cross-referencing beliefs against trusted data."
+      - "Automated validation of knowledge claims."
+
+  knowledge_synthesis:
+    description: "Combining diverse knowledge sources into coherent insights."  
+    seeds:
+      - "Multi-source synthesis using LLMs."
+      - "Merging hypotheses and evidence into new ideas."
+      - "Graph-based fusion of research findings."
+      - "Constructing coherent narratives from fragments."
+      - "Topic-level summarization and unification."
+
+  knowledge_modularity:
+    description: "Designing knowledge to be reusable and composable."  
+    seeds:
+      - "Reusable knowledge components for LLMs."
+      - "Knowledge cartridges as modular inference units."
+      - "Embedding modularity for belief fusion."
+      - "Prompt construction from modular sources."
+      - "Isolating reusable beliefs from complex documents."  
+
+

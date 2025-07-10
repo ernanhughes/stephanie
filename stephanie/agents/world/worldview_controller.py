@@ -1,5 +1,6 @@
 from stephanie.agents.base_agent import BaseAgent
 
+
 class WorldviewControllerAgent(BaseAgent):
     def __init__(self, cfg, memory, logger, tools, pipelines):
         super().__init__(cfg, memory=memory, logger=logger)
@@ -10,6 +11,7 @@ class WorldviewControllerAgent(BaseAgent):
     def load_or_create_worldview(self, goal: dict):
         """Load an existing worldview aligned with the goal, or create a new one."""
         from stephanie.models.world_view import WorldviewORM
+
         # Use domain + goal hash or embedding similarity
         matched = WorldviewORM.find_nearest(goal)
         if matched:

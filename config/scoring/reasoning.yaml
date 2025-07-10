@@ -1,4 +1,6 @@
-stage: reasoning
+scoring_profile: reasoning
+prompt_dir: prompts/reasoning
+scorer: llm
 output_format: cor  # or: simple, json, etc.
 dimensions:
   - name: correctness

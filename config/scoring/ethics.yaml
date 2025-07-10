@@ -1,0 +1,44 @@
+scoring_profile: ethics
+description: "Ethics scoring profile for evaluating documents based on ethical dimensions"
+scorer: llm
+dimensions:
+  - name: harm_avoidance
+    file: harm_avoidance
+    weight: 1.2
+    extra_data: { parser: numeric }
+
+  - name: transparency
+    file: transparency
+    weight: 1.0
+    extra_data: { parser: numeric }
+
+  - name: alignment
+    file: alignment
+    weight: 1.0
+    extra_data: { parser: numeric }
+
+  - name: context_awareness
+    file: context_awareness
+    weight: 0.9
+    extra_data: { parser: numeric }
+
+  - name: fairness
+    file: fairness
+    weight: 1.0
+    extra_data: { parser: numeric }
+
+# Optional ethics dimensions (toggle on per goal/domain)
+  - name: accountability
+    file: accountability
+    weight: 0.8
+    extra_data: { parser: numeric }
+
+  - name: respect_for_autonomy
+    file: autonomy
+    weight: 0.7
+    extra_data: { parser: numeric }
+
+  - name: honesty
+    file: honesty
+    weight: 0.8
+    extra_data: { parser: numeric }

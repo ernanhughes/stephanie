@@ -1,5 +1,8 @@
 # config/scoring/paper_review.yaml
+scoring_profile: paper
+prompt_dir: prompts/paper
 output_format: simple
+scorer: mrq
 
 dimensions:
   - name: relevance

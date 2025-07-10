@@ -1,0 +1,15 @@
+name: default_pipeline
+description: "Default hypothesis generation and refinement pipeline"
+stages:
+  - name: cot_generator
+    cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
+    enabled: true
+    iterations: 1
+  - name: ranking
+    cls: stephanie.agents.ranking.RankingAgent
+    enabled: true
+    iterations: 1
+  - name: cot_dspy_generator
+    cls: stephanie.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
+    enabled: true
+    iterations: 1

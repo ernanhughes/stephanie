@@ -1,0 +1,66 @@
+{% if target_type == "triple" %}
+You are scoring a single knowledge triplet for **specificity** with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Triplet
+({{ triplet.subject }}, {{ triplet.predicate }}, {{ triplet.object }})
+
+## Instructions
+
+Specificity refers to how detailed, concrete, and narrowly focused the triplet is in addressing the goal. Vague or general statements should receive lower scores.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "cartridge" %}
+
+Evaluate the **specificity** of the data cartridge with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+### Data cartridge
+Title: {{ cartridge.title }}
+Summary: {{ cartridge.summary }}
+Sections:
+{% for section in cartridge.sections %}
+---
+{{ section }}
+{% endfor %}
+
+Specificity refers to how detailed and narrowly focused the cartridge is in addressing the goal. Favor precise, concrete statements and well-scoped claims over vague or generic ones.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "theorem" %}
+
+Evaluate the **specificity** of the following theorem with reference to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Theorem
+{{ theorem.statement }}
+
+{% if theorem.proof %}
+## Proof
+{{ theorem.proof }}
+{% endif %}
+
+Specificity means the theorem clearly applies to a well-defined case, condition, or mathematical structure relevant to the goal. More precise, scoped, and practically usable formulations should be rated higher.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% else %}
+Invalid target type: {{ target_type }}
+{% endif %}

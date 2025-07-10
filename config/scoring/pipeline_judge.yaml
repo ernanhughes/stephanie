@@ -1,4 +1,7 @@
 # config/scoring/pipeline_judge.yaml
+scoring_profile: pipeline_judge
+prompt_dir: prompts/pipeline_judge
+scorer: llm
 dimensions:
   - name: correctness
     file: correctness

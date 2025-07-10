@@ -1,7 +1,8 @@
 import re
+from datetime import datetime, timedelta
 
 import arxiv
-from datetime import datetime, timedelta
+
 from stephanie.agents.base_agent import BaseAgent
 
 

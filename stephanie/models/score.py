@@ -1,9 +1,12 @@
 # models/score.py
 
+import hashlib
+
 from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
+from stephanie.scoring.scorable import Scorable
 
 
 class ScoreORM(Base):
@@ -37,3 +40,12 @@ class ScoreORM(Base):
             f"dim='{self.dimension}', score={self.score}, "
             f"weight={self.weight}, rationale='{self.rationale[:40]}...')>"
         )
+
+    @staticmethod
+    def compute_prompt_hash(prompt: str, scorable: Scorable) -> str:
+        """
+        Compute a deterministic hash for a prompt, including scorable's id and target_type.
+        This avoids collisions across different entity types that might share IDs or prompts.
+        """
+        raw = f"{prompt}|{scorable.id}|{scorable.target_type}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()

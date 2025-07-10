@@ -1,4 +1,8 @@
 # config/scoring/reflection.yaml
+scoring_profile: reflection
+prompt_dir: prompts/reflection
+output_format: simple
+scorer: llm
 dimensions:
   - name: correctness
     file: correctness

@@ -1,0 +1,24 @@
+cartridge:
+  name: cartridge
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+  cartridge_score_config: ${hydra:runtime.cwd}/config/scoring/cartridge.yaml
+  use_memory_for_fast_prompts: false
+  triplets_file: triplet.txt
+  score_cartridges: true
+  score_triplets: true
+
+  theorem_extraction_prompt: ${hydra:runtime.cwd}/prompts/theorem/theorem_extraction.txt
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: cartridge
+  prompt_mode: file
+  prompt_file: cartridge.txt

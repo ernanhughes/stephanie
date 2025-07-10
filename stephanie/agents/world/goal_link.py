@@ -1,6 +1,8 @@
-from stephanie.models.world_view import WorldviewORM
-from stephanie.models.goal import GoalORM
 from sklearn.metrics.pairwise import cosine_similarity
+
+from stephanie.models.goal import GoalORM
+from stephanie.models.world_view import WorldviewORM
+
 
 class GoalLinkingAgent:
     def __init__(self, embedding_manager, memory, logger):

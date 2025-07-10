@@ -1,8 +1,10 @@
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, JSON
-from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
+from sqlalchemy.ext.declarative import declarative_base
+
 from stephanie.models.base import Base
+
 
 class WorldviewORM(Base):
     __tablename__ = "worldviews"

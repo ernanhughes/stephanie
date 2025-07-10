@@ -1,8 +1,10 @@
 from .base import Base
+from .cartridge_domain import CartridgeDomainORM
 from .comparison_preference import ComparisonPreferenceORM
 from .context_state import ContextStateORM
 from .document_section import DocumentSectionORM
 from .document_section_domain import DocumentSectionDomainORM
+from .embedding import EmbeddingORM
 from .evaluation import EvaluationORM
 from .evaluation_rule_link import EvaluationRuleLinkORM
 from .goal import GoalORM
@@ -25,4 +27,5 @@ from .search_result import SearchResultORM
 from .sharpening_prediction import SharpeningPredictionORM
 from .sharpening_result import SharpeningResultORM
 from .symbolic_rule import SymbolicRuleORM
+from .theorem import CartridgeORM, TheoremORM
 from .unified_mrq import UnifiedMRQModelORM

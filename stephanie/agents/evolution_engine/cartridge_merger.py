@@ -1,6 +1,8 @@
-from sklearn.cluster import DBSCAN
 import numpy as np
+from sklearn.cluster import DBSCAN
+
 from stephanie.core.knowledge_cartridge import KnowledgeCartridge
+
 
 class CartridgeMerger:
     def __init__(self, cfg, memory, logger=None):

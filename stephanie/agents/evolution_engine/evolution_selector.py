@@ -1,5 +1,6 @@
 import random
 
+
 class EvolutionarySelector:
     def __init__(self, elite_size=0.3, mutation_rate=0.2):
         self.elite_size = elite_size

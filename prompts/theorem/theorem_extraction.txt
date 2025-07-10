@@ -1,0 +1,28 @@
+You are a scientific assistant helping to extract theorem-like statements from technical text.
+
+Text:
+{{section_text}}
+
+---
+
+Your task:
+Extract statements that are general, rule-like, or resemble formal theorems, such as:
+- Statements of the form “If ..., then ...”
+- General properties that apply across cases, like “Every X satisfies Y”
+- Explicit declarations like “Theorem: ...”, “Principle: ...”, or “In all cases, ...”
+
+Be flexible: extract the *core idea*, even if the statement is not perfectly formal.
+
+Respond with each extracted statement on its own line. Do not include bullet points, numbers, or explanations.
+
+Return nothing if no such statements can be found.
+
+### Example
+**Input text:**
+A function is said to be continuous if, for every ε > 0, there exists a δ > 0 such that ...
+
+It is known that continuous functions on a closed interval are bounded and attain their maximum.
+
+**Output:**
+If a function is continuous, then for every ε > 0 there exists a δ > 0 such that ...
+Continuous functions on closed intervals are bounded and attain their maximum.

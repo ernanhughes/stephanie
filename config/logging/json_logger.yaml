@@ -5,3 +5,8 @@ logger:
   log_path: ${hydra:runtime.cwd}/logs/
 #  log_file: ${hydra:job.name}/logs/pipeline_log.jsonl if you need to set the log file name
   
+logging:
+  logger:
+    type: JSONLogger
+    use_event_table: true
+    log_path: ${hydra:runtime.cwd}/logs/

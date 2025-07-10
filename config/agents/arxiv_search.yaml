@@ -1,16 +1,17 @@
 arxiv_search:
   name: arxiv_search
+  description: "Search Arxiv for papers related to a goal"
   enabled: true
   save_prompt: true
   save_context: true
   skip_if_completed: true
   
-  date_filter: "today"  # Filter papers from this date onwards
+  date_filter: "year"  # Filter papers from this date onwards
   year_start: 2024
   year_end: 2025
   category: cs.AI
-  max_results: 50
-  top_n: 10
+  max_results: 10
+  top_n: 5
 
   model:
     name: ollama/qwen3

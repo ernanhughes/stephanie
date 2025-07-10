@@ -1,9 +1,10 @@
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.scoring.training.base_trainer import BaseTrainer
+from stephanie.evaluator.hypothesis_value_predictor import \
+    HypothesisValuePredictor
 from stephanie.evaluator.text_encoder import TextEncoder
-from stephanie.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
+from stephanie.scoring.training.base_trainer import BaseTrainer
 
 
 class HypothesisTrainer(BaseTrainer):

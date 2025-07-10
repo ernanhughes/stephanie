@@ -1,33 +1,34 @@
 # /config/scoring/proximity.yaml
-stage: proximity
+scoring_profile: proximity
+prompt_dir: prompts/proximity
+scorer: llm
 output_format: simple
 dimensions:
   - name: proximity_usefulness
     parser: proximity_heuristic
     weight: 1.0
 
- - name: cluster_count
-   prompt_template: null
-   parser: numeric
-   weight: 0.5
+  - name: cluster_count
+    prompt_template: null
+    parser: numeric
+    weight: 0.5
 
- - name: avg_similarity_top_k
-   prompt_template: null
-   parser: numeric
-   weight: 0.8
+  - name: avg_similarity_top_k
+    prompt_template: null
+    parser: numeric
+    weight: 0.8
 
- - name: graft_pair_count
-   prompt_template: null
-   parser: numeric
-   weight: 0.7
+  - name: graft_pair_count
+    prompt_template: null
+    parser: numeric
+    weight: 0.7
 
- - name: theme_diversity
-   prompt_template: null
-   parser: numeric
-   weight: 0.4
+  - name: theme_diversity
+    prompt_template: null
+    parser: numeric
+    weight: 0.4
 
- # Optional LLM-based
- - name: relevance_to_goal
-   file: proximity_relevance.txt
-   parser: numeric_cor
-   weight: 1.0
+  - name: relevance_to_goal
+    file: proximity_relevance.txt
+    parser: numeric_cor
+    weight: 1.0

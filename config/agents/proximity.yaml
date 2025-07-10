@@ -13,7 +13,7 @@ proximity:
 
   proximity_score_config: config/scoring/proximity.yaml
 
-  save_context: false
+  save_context: true
   skip_if_completed: false
 
   model:

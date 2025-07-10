@@ -1,5 +1,6 @@
-stage: lats_reflection
+scoring_profile: lats_reflection
 output_format: cor
+scorer: llm
 dimensions:
   - name: alignment
     file: alignment_cor.txt

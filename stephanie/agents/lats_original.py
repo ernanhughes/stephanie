@@ -8,8 +8,11 @@ from stephanie.agents.proximity import ProximityAgent
 from stephanie.agents.rule_tuner import RuleTunerAgent
 from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.analysis.symbolic_impact_analyzer import SymbolicImpactAnalyzer
-from stephanie.constants import GOAL, PIPELINE_RUN_ID
-from stephanie.utils.graph_tools import build_mermaid_graph, save_mermaid_to_file
+from stephanie.constants import GOAL
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
+from stephanie.utils.graph_tools import (build_mermaid_graph,
+                                         save_mermaid_to_file)
 
 
 class LATSAgent(ScoringMixin, BaseAgent):
@@ -22,7 +25,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
     - Rule tuning
     - Mermaid visualization
     """
-    
+
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
 
@@ -62,12 +65,12 @@ class LATSAgent(ScoringMixin, BaseAgent):
         root_state = {
             "goal": goal["goal_text"],
             "current": goal["goal_text"],
-            "trace": []
+            "trace": [],
         }
-        
+
         # Initialize root node
         root = self.create_node(state=root_state, trace=[], parent=None)
-        
+
         # Run MCTS simulations
         best_scores = []
         for sim_num in range(self.num_simulations):
@@ -79,23 +82,26 @@ class LATSAgent(ScoringMixin, BaseAgent):
                 node = await self.expand(node, context)
             reward = self.simulate(node)
             self.backpropagate(node, reward)
-            
+
             # Track progress
             current_best = self._get_best_score(root)
             best_scores.append(current_best)
-            
+
             # ✅ Log Mermaid graph after each simulation
             if sim_num % 5 == 0:  # Every 5 simulations
                 percent_complete = (sim_num + 1) / self.num_simulations * 100
-                self.logger.log("Progress", {
-                    "simulation": sim_num + 1,
-                    "percent_complete": f"{percent_complete:.1f}%",
-                    "best_score": self._get_best_score(root)
-                })
+                self.logger.log(
+                    "Progress",
+                    {
+                        "simulation": sim_num + 1,
+                        "percent_complete": f"{percent_complete:.1f}%",
+                        "best_score": self._get_best_score(root),
+                    },
+                )
                 mermaid_lines = build_mermaid_graph(root, max_depth=3)
                 mermaid_diagram = "\n".join(mermaid_lines)
                 self.logger.log("SearchTree", {"diagram": mermaid_diagram})
-    
+
             # Optional: Periodic refinement
             if sim_num % 10 == 0:
                 await self._refine_system(context)
@@ -138,13 +144,13 @@ class LATSAgent(ScoringMixin, BaseAgent):
                     "score": best_child.get("score", 0.0),
                 },
             },
-            context=context
+            context=context,
         )
         context.setdefault("lats_result", []).append(hypothesis.to_dict())
         context.setdefault("hypotheses", []).append(hypothesis.to_dict())
         # Refine system using analysis
         await self._refine_system(context)
-        
+
         return context
 
     def create_node(self, state, trace, parent=None):
@@ -205,13 +211,13 @@ class LATSAgent(ScoringMixin, BaseAgent):
             **context,
             "state": node["state"]["current"],
             "trace": node["trace"],
-            "mode": "reason"
+            "mode": "reason",
         }
-        
+
         # Get similar hypotheses
         proximity_context = await self._run_proximity(context)
         merged["similar_hypotheses"] = proximity_context.get("most_similar", "")
-        
+
         # Load prompt
         prompt_text = self.prompt_loader.load_prompt(self.cfg, merged)
         response = self.call_llm(prompt_text, context=merged)
@@ -219,21 +225,25 @@ class LATSAgent(ScoringMixin, BaseAgent):
         prompt = self.memory.prompt.get_from_text(prompt_text)
         if not prompt:
             goal = context.get("goal")
-            prompt_id = self.memory.prompt.save(goal, self.name, self.name, prompt_text, response)
+            prompt_id = self.memory.prompt.save(
+                goal, self.name, self.name, prompt_text, response
+            )
         else:
             prompt_id = prompt.id
         # Parse completions
         completions = self._parse_completions(response)
         if not completions:
-            self.logger.log("NoCompletions", {"prompt": prompt_text, "response": response})
+            self.logger.log(
+                "NoCompletions", {"prompt": prompt_text, "response": response}
+            )
             return node
 
         # Create child nodes
         children = []
         for comp in completions:
-            new_state = self._update_state(node['state'], comp)
-            new_trace = node['trace'] + [comp]
-            
+            new_state = self._update_state(node["state"], comp)
+            new_trace = node["trace"] + [comp]
+
             # Score hypothesis
             hyp = self.save_hypothesis(
                 {
@@ -241,26 +251,24 @@ class LATSAgent(ScoringMixin, BaseAgent):
                     "strategy": "lats",
                     "text": comp,
                 },
-                context=context
+                context=context,
             )
 
-            hyp_dict = hyp.to_dict()
-
             # Add mode to context
-            score_context = {
-                **context,
-                "mode": "reason"
-            }
-            context.setdefault("hypotheses", []).append(hyp_dict)
+            score_context = {**context, "mode": "reason"}
+            context.setdefault("hypotheses", []).append(hyp.to_dict())
             # Score using dimensional scorers
-            score_result = self.score_hypothesis(hyp_dict, score_context, metrics="lats_node")
-            
+            scorable = Scorable(
+                text=hyp.text, id=hyp.id, target_type=TargetType.HYPOTHESIS
+            )
+            score_result = self.score_item(scorable, score_context, metrics="lats_node")
+
             # Create child node with metadata
             child = self.create_node(new_state, new_trace, parent=node)
             child["score"] = score_result.aggregate()
             child["dimension_scores"] = score_result.to_dict()
             child["action"] = comp
-            
+
             children.append(child)
 
         # Store children
@@ -283,12 +291,12 @@ class LATSAgent(ScoringMixin, BaseAgent):
         """
         thought_pattern = r"(?:[Tt]hought\s*\d+|[Aa]ction\s*\d+|[-•])\s*(.*?)(?=\n(?:[Tt]hought\s*\d+|[Aa]ction\s*\d+|[-•])\s|\Z)"
         matches = re.findall(thought_pattern, response.strip(), re.DOTALL)
-        
+
         if not matches:
             return [response.strip()]
-            
+
         completions = [match.strip() for match in matches if match.strip()]
-        return completions[:self.branching_factor]
+        return completions[: self.branching_factor]
 
     def _update_state(self, state_dict, action: str) -> dict:
         """
@@ -322,20 +330,20 @@ class LATSAgent(ScoringMixin, BaseAgent):
         Simulate until terminal state
         """
         current = node
-        while not self.is_terminal(current) and len(current['trace']) < self.max_depth:
+        while not self.is_terminal(current) and len(current["trace"]) < self.max_depth:
             prompt = self._build_prompt(current, mode="simulate", context=current)
             response = self.call_llm(prompt, context=current)
             completions = self._parse_completions(response)
-            
+
             if not completions:
                 break
-                
+
             action = completions[0]  # Take first completion
             new_state = self._update_state(current["state"], action)
             current = self.create_node(
                 new_state, current["trace"] + [action], parent=current
             )
-        
+
         # Evaluate final node
         return self._get_value(current)
 
@@ -347,7 +355,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             **context,
             "state": node["state"]["current"],
             "trace": node["trace"],
-            "mode": mode
+            "mode": mode,
         }
         prompt_text = self.prompt_loader.load_prompt(self.cfg, merged)
         return prompt_text
@@ -377,45 +385,44 @@ class LATSAgent(ScoringMixin, BaseAgent):
         response = self.call_llm(prompt, {})
         return response.strip()
 
-
     def _get_value(self, node):
         """
         Hybrid value function: LLM score + self-consistency
         """
         # Use LLM-powered scorer
         score_result = self._evaluate_node(node)
-        
+
         # Self-consistency check
         sc_score = self._self_consistency(node)
-        
-        return self.lambda_weight * score_result["score"] + (1 - self.lambda_weight) * sc_score
+
+        return (
+            self.lambda_weight * score_result["score"]
+            + (1 - self.lambda_weight) * sc_score
+        )
 
     def _evaluate_node(self, node):
         """
         Evaluate node using dimensional scorers
         """
-        hyp = {
-            "text": "\n".join(node["trace"]),
-            "id": f"hyp_{node['id']}"
-        }
-        return self.score_hypothesis(
-            hyp,
+        scorable = Scorable(text="\n".join(node["trace"]))
+        return self.score_item(
+            scorable,
             {"goal": {"goal_text": node["state"]["goal"]}},
-            metrics="lats_reflection"
+            metrics="lats_reflection",
         )
 
     def _self_consistency(self, node):
         """
         Calculate self-consistency score
         """
-        prompt = self.prompt_loader.load_prompt("self_consistency", {
-            "trace": node["trace"],
-            "state": node["state"]["current"]
-        })
+        prompt = self.prompt_loader.load_prompt(
+            "self_consistency",
+            {"trace": node["trace"], "state": node["state"]["current"]},
+        )
         response = self.call_llm(prompt, {})
-        
+
         # Parse numerical score
-        score_match = re.search(r'(\d+)', response)
+        score_match = re.search(r"(\d+)", response)
         return int(score_match.group(1)) / 100 if score_match else 0.5
 
     def backpropagate(self, node, reward):
@@ -423,37 +430,34 @@ class LATSAgent(ScoringMixin, BaseAgent):
         Update node statistics up the tree
         """
         while node:
-            node['visits'] += 1
-            node['reward'] += reward
-            
+            node["visits"] += 1
+            node["reward"] += reward
+
             # Store trace data for analysis
             if "history" not in node:
                 node["history"] = []
-            node["history"].append({
-                "visits": node["visits"],
-                "reward": reward
-            })
-            
-            node = node['parent']
+            node["history"].append({"visits": node["visits"], "reward": reward})
+
+            node = node["parent"]
 
     async def _refine_system(self, context):
         if len(self.nodes) > 1:
             # Pass full node dicts to analyzer
             analysis = self.impact_analyzer.analyze(
-                self.nodes[:len(self.nodes)//2],  # First half of nodes
-                self.nodes[len(self.nodes)//2:]  # Second half
+                self.nodes[: len(self.nodes) // 2],  # First half of nodes
+                self.nodes[len(self.nodes) // 2 :],  # Second half
             )
             context["graph_analysis"] = analysis
-        
+
         # Train MR.Q on high-quality traces
         high_scoring = [n for n in self.nodes if n.get("score", 0) > 0.8]
         if high_scoring:
             await self.mrq_agent.run({"traces": high_scoring})
-        
+
         # Tune rules based on analysis
         if context.get("graph_analysis"):
             await self.rule_tuner.run(context)
-        
+
         return context
 
     def _get_score(self, node, source="graph1"):
@@ -465,7 +469,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             trace = trace.split("\n")
         elif not isinstance(trace, list):
             trace = []
-        
+
         hyp = {
             "text": "\n".join(trace),
             "goal_id": node["state"]["goal_id"]
@@ -476,8 +480,9 @@ class LATSAgent(ScoringMixin, BaseAgent):
         goal_text = (
             node["state"]["goal"] if isinstance(node["state"], dict) else node["state"]
         )
-        score_result = self.score_hypothesis(
-            hyp,
+        scorable = Scorable(text=hyp["text"])
+        score_result = self.score_item(
+            scorable,
             {"goal": {"goal_text": goal_text}},  # Always a dict
             metrics="lats_reflection",
         )
@@ -562,15 +567,17 @@ class LATSAgent(ScoringMixin, BaseAgent):
 
         # Log based on level
         if level == "debug":
-            self.logger.log("NodeDebug", {
-                "node_id": node.get("id"),
-                "node_info": node_info
-            })
+            self.logger.log(
+                "NodeDebug", {"node_id": node.get("id"), "node_info": node_info}
+            )
         elif level == "info":
-            self.logger.log("NodeSummary", {
-                "node_id": node.get("id"),
-                "summary": self._format_node_summary(node_info)
-            })
+            self.logger.log(
+                "NodeSummary",
+                {
+                    "node_id": node.get("id"),
+                    "summary": self._format_node_summary(node_info),
+                },
+            )
         return node_info
 
     def _apply_reflection_to_prompt(self, prompt, reflection):
@@ -579,12 +586,11 @@ class LATSAgent(ScoringMixin, BaseAgent):
         """
         if not reflection:
             return prompt
-            
-        reflection_prompt = self.prompt_loader.load_prompt("reflection_injection", {
-            "prompt": prompt,
-            "reflection": reflection
-        })
-        
+
+        reflection_prompt = self.prompt_loader.load_prompt(
+            "reflection_injection", {"prompt": prompt, "reflection": reflection}
+        )
+
         return self.call_llm(reflection_prompt, {})
 
     def _train_on_traces(self, traces):
@@ -595,17 +601,16 @@ class LATSAgent(ScoringMixin, BaseAgent):
             {
                 "state": trace["state"],
                 "trace": trace["trace"],
-                "next_step": trace["last_action"]
+                "next_step": trace["last_action"],
             }
             for trace in traces
         ]
-        
+
         # Use dimensional scores as weights
         weighted_examples = [
-            example for example in examples
-            if self._is_high_quality(example)
+            example for example in examples if self._is_high_quality(example)
         ]
-        
+
         if not weighted_examples:
             return
 
@@ -624,4 +629,3 @@ class LATSAgent(ScoringMixin, BaseAgent):
         """
         # Implement your own training logic here
         pass
-        

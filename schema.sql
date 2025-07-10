@@ -723,6 +723,9 @@ CREATE TABLE IF NOT EXISTS evaluations (
     scores JSON DEFAULT '{}'::json,
     extra_data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP DEFAULT NOW()
+
+     -- Add unique constraint here
+    CONSTRAINT unique_source_type_uri UNIQUE (source_type, source_uri)
 );
 
 CREATE TABLE IF NOT EXISTS evaluation_rule_links (
@@ -743,8 +746,121 @@ CREATE TABLE IF NOT EXISTS worldviews (
     db_path TEXT
 );
 
+CREATE TABLE IF NOT EXISTS cartridges (
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+    source_type TEXT NOT NULL,
+    source_uri TEXT,
+    markdown_content TEXT NOT NULL,
+    embedding_id INTEGER REFERENCES embeddings(id) ON DELETE SET NULL,
+    title TEXT,
+    summary TEXT,
+    sections JSONB,
+    triples JSONB,
+    domain_tags JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 
+CREATE TABLE IF NOT EXISTS cartridge_domains (
+    id SERIAL PRIMARY KEY,
+    cartridge_id INTEGER NOT NULL,
+    domain VARCHAR NOT NULL,
+    score FLOAT NOT NULL,
+    FOREIGN KEY (cartridge_id) REFERENCES cartridges(id) ON DELETE CASCADE,
+    UNIQUE (cartridge_id, domain)
+);
+
+CREATE TABLE IF NOT EXISTS cartridge_triples (
+    id SERIAL PRIMARY KEY,
+    cartridge_id INTEGER NOT NULL REFERENCES cartridges(id) ON DELETE CASCADE,
+    subject TEXT NOT NULL,
+    predicate TEXT NOT NULL,
+    object TEXT NOT NULL,
+    confidence FLOAT DEFAULT 1.0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (cartridge_id, subject, predicate, object)
+);
 
 
+CREATE TABLE IF NOT EXISTS theorems (
+	id SERIAL PRIMARY KEY,
+    statement TEXT NOT NULL,
+    proof TEXT,
+    embedding_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (embedding_id) REFERENCES embeddings(id)
+);
 
+CREATE TABLE IF NOT EXISTS theorem_cartridges (
+    theorem_id INTEGER NOT NULL,
+    cartridge_id INTEGER NOT NULL,
+    PRIMARY KEY (theorem_id, cartridge_id),
+    FOREIGN KEY (theorem_id) REFERENCES theorems(id),
+    FOREIGN KEY (cartridge_id) REFERENCES cartridges(id)
+);
+
+CREATE INDEX idx_theorem_cartridges_theorem_id ON theorem_cartridges(theorem_id);
+CREATE INDEX idx_theorem_cartridges_cartridge_id ON theorem_cartridges(cartridge_id);
+
+-- Create measurements table
+CREATE TABLE IF NOT EXISTS  measurements (
+    id SERIAL PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    metric_name TEXT NOT NULL,
+    value JSONB NOT NULL,  -- Storing metrics as JSONB for efficient querying
+    context JSONB,         -- Optional context metadata
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Index for common lookup patterns
+CREATE INDEX idx_measurements_entity_metric 
+ON measurements (entity_type, entity_id, metric_name);
+
+-- Index for time-based queries
+CREATE INDEX idx_measurements_created_at 
+ON measurements (created_at);
+
+-- Optional: GIN index for searching within JSONB values
+CREATE INDEX idx_measurements_value_gin 
+ON measurements USING GIN (value);
+
+
+CREATE TABLE IF NOT EXISTS model_versions (
+    id SERIAL PRIMARY KEY,
+    model_type TEXT NOT NULL,          -- e.g., "mrq", "svm", "ebt"
+    target_type TEXT NOT NULL,        -- e.g., "document", "cartridge"
+    dimension TEXT NOT NULL,           -- e.g., "ethics", "clarity"
+    version TEXT NOT NULL,             -- e.g., "v1", "v2", "auto_20240315"
+    trained_on JSONB,                 -- IDs of training examples used
+    performance JSONB,                -- e.g., {"loss": 0.12, "accuracy": 0.89}
+    created_at TIMESTAMP DEFAULT NOW(),
+    active BOOLEAN DEFAULT TRUE,       -- current active version for inference
+    extra_data JSONB,                     -- extra info (e.g., training config)
+    model_path TEXT,
+    encoder_path TEXT,
+    tuner_path TEXT,
+    scaler_path TEXT,
+    meta_path TEXT,
+    description TEXT,
+    source TEXT DEFAULT 'user'          -- e.g., 'user', 'auto', 'llm'
+);
+
+
+CREATE TABLE IF NOT EXISTS scoring_history (
+    id SERIAL PRIMARY KEY,
+    model_version_id INTEGER REFERENCES model_versions(id),
+    goal_id INTEGER,                  -- optional: link to goal context
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE SET NULL,
+    model_type(TEXT),
+    target_id INTEGER NOT NULL,       -- e.g., document_id, cartridge_id
+    target_type TEXT NOT NULL,         -- e.g., "document", "cartridge"
+    dimension TEXT NOT NULL,            -- e.g., "relevance"
+    raw_score FLOAT,                  -- uncalibrated model output
+    transformed_score FLOAT,          -- post-processed score (e.g., tuned)
+    uncertainty_score FLOAT,          -- confidence measure (e.g., energy)
+    method TEXT NOT NULL,             -- e.g., "ebt", "mrq", "llm"
+    source TEXT,                      -- e.g., "gpt-4", "human"
+    created_at TIMESTAMP DEFAULT NOW()
+);

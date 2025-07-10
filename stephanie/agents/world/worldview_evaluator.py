@@ -1,12 +1,13 @@
-from stephanie.models.world_view import WorldviewORM
+from datetime import datetime
+
+from sqlalchemy.orm import Session
+
 from stephanie.models.belief import BeliefORM
 from stephanie.models.cartridge import CartridgeORM
 from stephanie.models.icl_example import ICLExampleORM
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.models.world_view import WorldviewORM
 from stephanie.scoring.score_bundle import ScoreBundle
-
-from datetime import datetime
-from sqlalchemy.orm import Session
+from stephanie.scoring.svm_scorer import SVMScorer
 
 
 class WorldviewEvaluatorAgent:

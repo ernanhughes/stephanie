@@ -1,10 +1,13 @@
 # stephanie/agents/knowledge/document_reward_scorer.py
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.svm_scorer import SVMScorer
-from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.models.score import ScoreORM
 from stephanie.models.evaluation import EvaluationORM
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.scoring.svm_scorer import SVMScorer
+
+DEFAULT_DIMENSIONS = ["alignment", "implementability", "clarity", "relevance"]
 
 
 class DocumentRewardScorerAgent(BaseAgent):
@@ -15,7 +18,8 @@ class DocumentRewardScorerAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, logger=None, scorer: SVMScorer = None):
         super().__init__(cfg, memory, logger)
-        self.scorer = scorer or SVMScorer(cfg, memory=memory, logger=logger)
+        self.dimensions = cfg.get("dimensions", DEFAULT_DIMENSIONS)
+        self.scorer = scorer or SVMScorer(cfg, memory=memory, logger=logger, dimensions=self.dimensions)
 
     async def run(self, context: dict) -> dict:
         documents = context.get(self.input_key, [])
@@ -23,13 +27,14 @@ class DocumentRewardScorerAgent(BaseAgent):
 
         for doc in documents:
             doc_id = doc["id"]
-            goal = {"goal_text": context.get("goal", "")}
-            hypothesis = {"text": doc.get("summary") or doc.get("text", "")}
+            goal = context.get("goal", "")
+            text = doc.get("summary") or doc.get("content", "")
+            scorable = Scorable(text=text, target_type=TargetType.DOCUMENT, id=doc_id)
 
             score_bundle: ScoreBundle = self.scorer.score(
                 goal=goal,
-                hypothesis=hypothesis,
-                dimensions=["alignment", "actionability", "clarity"]
+                scorable=scorable,
+                dimensions=self.dimensions,
             )
 
             if self.logger:
@@ -40,7 +45,7 @@ class DocumentRewardScorerAgent(BaseAgent):
                 })
 
             # Persist results
-            evaluation_id = self._store_evaluation(doc_id, context)
+            evaluation_id = self._store_evaluation(scorable, context)
             self._store_scores(score_bundle, evaluation_id)
 
             results.append({
@@ -52,11 +57,17 @@ class DocumentRewardScorerAgent(BaseAgent):
         context[self.output_key] = results
         return context
 
-    def _store_evaluation(self, document_id, context) -> int:
+    def _store_evaluation(self, scorable, context) -> int:
         evaluation = EvaluationORM(
-            document_id=document_id,
-            goal_text=context.get("goal", ""),
-            metadata={"source": "reward_scorer"}
+            target_id=scorable.id,
+            target_type=scorable.target_type,
+            goal_id=context.get("goal", {}).get("id"),
+            metadata={"source": "reward_scorer"},
+            pipeline_run_id=context.get("pipeline_run_id"),
+            agent_name=self.name,
+            model_name=self.model_name,
+            evaluator_name=self.scorer.name,
+            strategy=self.strategy,
         )
         self.memory.session.add(evaluation)
         self.memory.session.commit()

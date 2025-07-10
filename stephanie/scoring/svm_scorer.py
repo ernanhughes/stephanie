@@ -9,7 +9,10 @@ import torch
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVR
 
+from stephanie.models.score import ScoreORM
 from stephanie.scoring.base_scorer import BaseScorer
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.scoring.score_result import ScoreResult
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
@@ -20,13 +23,18 @@ class SVMScorer(BaseScorer):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.dimensions = dimensions or ["alignment"]
+        self.dimensions = dimensions or ["alignment", "clarity", "actionability", "relevance"]
         self.models = {dim: SVR() for dim in self.dimensions}
         self.scalers = {dim: StandardScaler() for dim in self.dimensions}
-        self.trained = {dim: False for dim in self.dimensions}
+        self.trained = dict.fromkeys(self.dimensions, False)
+        self.force_rescore = cfg.get("force_rescore", False)
         self.regression_tuners = {}  
         for dim in self.dimensions:
             self._initialize_dimension(dim)
+
+    @property
+    def name(self) -> str:
+        return "svm"
 
     def _initialize_dimension(self, dim):
         self.models[dim] = SVR()
@@ -64,26 +72,7 @@ class SVMScorer(BaseScorer):
                 "score_max": float(np.max(y)),
             })
 
-    def _build_feature_vector(self, goal: dict, hypothesis: dict):
-        """
-        Basic feature vector: concat prompt + hypothesis embeddings + MRQ raw score (if available)
-        """
-        emb_goal = self.memory.embedding.get_or_create(goal["goal_text"])
-        emb_hyp = self.memory.embedding.get_or_create(hypothesis["text"])
-        vec = emb_goal + emb_hyp
-
-        # Optional MRQ bridge feature
-        mrq = self.memory.score.find_by_text_and_dimension(
-            hypothesis["text"], dimension="alignment", source="mrq"
-        )
-        if mrq:
-            vec.append(mrq.score / 100.0)  # normalized to [0,1]
-        else:
-            vec.append(0.5)  # neutral if no MRQ score
-
-        return vec
-
-    def train_from_database(self, cfg:dict):
+    def train_from_database(self, cfg: dict):
         pair_samples = self.memory.mrq.get_training_pairs_by_dimension()
         samples_by_dim = self.convert_mrq_pairs_to_supervised_examples(pair_samples)
 
@@ -143,10 +132,20 @@ class SVMScorer(BaseScorer):
             "num_samples": len(y)
         })
 
-    def score(self, goal: dict, hypothesis: dict, dimensions: list[str]) -> ScoreBundle:
+    def score(self, goal: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
         results = {}
         for dim in dimensions:
-            vec = self._build_feature_vector(goal, hypothesis)
+            if not self.force_rescore:
+                prompt_hash = ScoreORM.compute_prompt_hash(goal.get("goal_text"), scorable)
+                cached_result = self.memory.scores.get_score_by_prompt_hash(prompt_hash)
+                if cached_result:
+                    self.logger.log("ScoreCacheHit", {"dimension": dim["name"]})
+                    result = cached_result
+                    results.append(result)
+                    continue
+
+
+            vec = self._build_feature_vector(goal, scorable)
 
             # Dynamic training if needed
             if not self.trained[dim]:
@@ -165,7 +164,7 @@ class SVMScorer(BaseScorer):
             self.logger.log("SVMScoreComputed", {
                 "dimension": dim,
                 "score": score,
-                "hypothesis": hypothesis.get("text"),
+                "hypothesis": scorable.text,
             })
 
             results[dim] = ScoreResult(
@@ -192,10 +191,11 @@ class SVMScorer(BaseScorer):
                 hypothesis = s[f"output_{side}"]
                 llm_score = s.get(f"value_{side}")
                 if prompt and hypothesis and llm_score is not None:
-                    vec = self._build_feature_vector({"goal_text": prompt}, {"text": hypothesis})
+                    scorable = Scorable(text=hypothesis, target_type=TargetType.TRAINING)
+                    vec = self._build_feature_vector({"goal_text": prompt}, scorable)
                     X.append(vec)
                     y.append(llm_score)
-                    self.regression_tuners[dim].add_example(llm_score, llm_score)  # no-op, self-alignment fallback
+                    self.regression_tuners[dim].train_single(llm_score, llm_score)  # no-op, self-alignment fallback
 
         if not X:
             return
@@ -220,8 +220,8 @@ class SVMScorer(BaseScorer):
                 llm_score = s.get(f"value_{side}")
                 if llm_score is None:
                     continue
-
-                vec = self._build_feature_vector({"goal_text": prompt}, {"text": hypothesis})
+                scorable = Scorable(text=hypothesis, target_type=TargetType.TRAINING)
+                vec = self._build_feature_vector({"goal_text": prompt}, scorable)
                 x = self.scalers[dim].transform([vec])
                 raw_score = self.models[dim].predict(x)[0]
 

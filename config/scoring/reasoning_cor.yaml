@@ -1,5 +1,7 @@
 # config/scoring/reasoning_cor.yaml
-stage: reasoning
+scoring_profile: reasoning
+prompt_dir: prompts/reasoning
+scorer: llm
 output_format: cor
 
 dimensions:

@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.evaluator.hypothesis_value_predictor import HypothesisValuePredictor
+from stephanie.evaluator.hypothesis_value_predictor import \
+    HypothesisValuePredictor
 from stephanie.evaluator.text_encoder import TextEncoder
 
 

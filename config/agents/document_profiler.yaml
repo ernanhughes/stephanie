@@ -12,7 +12,7 @@ document_profiler:
   use_unstructured: true
   fallback_to_llm: false
   store_inline: true
-  force_domain_update: true # will force update the document domains
+  force_domain_update: false # will force update the document domains
   top_k_domains: 3
   min_classification_score: 0.4
   domain_seed_config_path: "config/domain/seeds.yaml"
@@ -24,6 +24,9 @@ document_profiler:
     - methods
     - results
     - contributions
+  required_sections:
+    - title
+    - summary
 
   model:
     name: ollama/qwen3

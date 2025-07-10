@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from stephanie.scoring.scorable_factory import TargetType
+
 
 @dataclass
 class ScoreResult:
@@ -13,6 +15,7 @@ class ScoreResult:
     weight: float
     rationale: str
     source: str
+    target_type: str = "custom"
     prompt_hash: Optional[str] = None
     parser_error: Optional[str] = None
 
@@ -28,6 +31,7 @@ class ScoreResult:
             "prompt_hash": self.prompt_hash,
             "source": self.source,
             "parser_error": self.parser_error,
+            "target_type": self.target_type.value if isinstance(self.target_type, TargetType) else self.target_type,
         }
 
     @classmethod
@@ -40,4 +44,5 @@ class ScoreResult:
             source=data.get("source", ""),
             prompt_hash=data.get("prompt_hash", ""),
             parser_error=data.get("parser_error", None),
+            target_type=data.get("target_type", "custom"),    
         )

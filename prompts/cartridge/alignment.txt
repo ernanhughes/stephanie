@@ -1,0 +1,64 @@
+{% if target_type == "triple" %}
+You are scoring a single knowledge triplet for **alignment** to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Triplet
+({{ triplet.subject }}, {{ triplet.predicate }}, {{ triplet.object }})
+
+## Instructions
+
+Alignment refers to how well the triplet reflects, reinforces, or correctly interprets the intention and framing of the goal — not just relevance, but correctness and philosophical or conceptual agreement.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "cartridge" %}
+Evaluate the **alignment** of the following data cartridge to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+### Data cartridge
+Title: {{ cartridge.title }}
+Summary: {{ cartridge.summary }}
+Sections:
+{% for section in cartridge.sections %}
+---
+{{ section }}
+{% endfor %}
+
+Alignment means the cartridge should not only be relevant, but should accurately represent the goal’s assumptions, intent, or desired framing.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "theorem" %}
+Evaluate the **alignment** of the following theorem in relation to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Theorem
+{{ theorem.statement }}
+
+{% if theorem.proof %}
+## Proof
+{{ theorem.proof }}
+{% endif %}
+
+Alignment means the theorem's assumptions, framing, and implications should be in conceptual agreement with the goal. Consider not just factual utility but whether the logic or values expressed are aligned with the goal's spirit.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% else %}
+Invalid target type: {{ target_type }}
+{% endif %}

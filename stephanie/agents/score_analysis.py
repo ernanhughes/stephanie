@@ -1,10 +1,7 @@
 # stephanie/agents/score_analysis_agent.py
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.models import EvaluationORM
 from stephanie.scoring.score_analyzer import ScoreAnalyzer
 
 

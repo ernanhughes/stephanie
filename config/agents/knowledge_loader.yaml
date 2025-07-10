@@ -2,10 +2,17 @@
 
 knowledge_loader:
   name: knowledge_loader
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+
   top_k: 10
   domain_threshold: 0.5
   include_full_text: false
   prefer_sections: true
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434

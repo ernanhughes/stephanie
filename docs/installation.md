@@ -17,7 +17,7 @@ This guide walks you through setting up and running the `stephanie` framework lo
 ## 🔧 1. Clone the Repository
 
 ```bash
-git clone https://github.com/ernanhughes/co-ai.git
+git clone https://github.com/ernanhughes/stephanie.git
 cd co-ai
 ````
 

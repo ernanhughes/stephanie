@@ -7,10 +7,11 @@ defaults:
   - agents/document_profiler
   - agents/paper_score
   - agents/knowledge_loader
-  - agents/document_trainer
+  - agents/document_mrq_trainer
   - agents/document_reward_scorer
   - agents/pipeline_judge
   - agents/world_create
+  - agents/worldview_pipeline_runner
   - logging/json_logger
 
 goal:
@@ -48,13 +49,18 @@ embeddings:
   endpoint: "http://localhost:11434/api/embeddings"
 
 pipeline:
-  name: rivals
+  name: world
   tag: "search_arxiv"
   description: "Search Arxiv for papers related to a goal"
   stages:
     - name: world_create
       description: "Create a worldview based on the goal"
       cls: stephanie.agents.world.worldview_create.WorldViewCeate
+      enabled: true
+      iterations: 1
+    - name: worldview_pipeline_runner
+      description: "Run the worldview pipeline to gather knowledge"
+      cls: stephanie.agents.world.worldview_pipeline_runner.WorldviewPipelineRunner
       enabled: true
       iterations: 1
     #  - name: arxiv_search
@@ -82,9 +88,9 @@ pipeline:
     #    cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
     #    enabled: true
     #    iterations: 1
-    #  - name: document_trainer
+    #  - name: document_mrq_trainer
     #    description: "Build document pairs for training and evaluation" 
-    #    cls: stephanie.agents.knowledge.document_trainer.DocumentTrainerAgent 
+    #    cls: stephanie.agents.maintenance.document_mrq_trainer.DocumentMRQTrainerAgent 
     #    enabled: true
     #    iterations: 1
     #  - name: document_reward_scorer

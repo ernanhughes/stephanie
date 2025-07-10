@@ -1,4 +1,6 @@
-stage: step_quality
+scoring_profile: step_quality
+prompt_dir: prompts/step_quality
+scorer: llm
 output_format: cor
 dimensions:
   - name: correctness

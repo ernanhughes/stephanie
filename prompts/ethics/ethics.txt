@@ -1,0 +1,41 @@
+Based upon this goal:
+
+Goal: {{ goal.goal_text }}
+
+You are provided with a set of pre-scored ethical evaluations for multiple documents related to this goal. Each document has been assessed across several ethical dimensions including:
+
+- **Honesty**: Is the information truthful and free of intentional deception?
+- **Fairness**: Is the content unbiased, inclusive, and equitable?
+- **Harm Avoidance**: Does the content minimize the risk of physical, psychological, or societal harm?
+- **Respect for Autonomy**: Does the content respect individual freedom, consent, and decision-making?
+- **Accountability**: Is responsibility traceable and transparent?
+
+Each document was scored from 0 to 100 per dimension, with accompanying rationales. You do **not** have access to the full document text, only the goal and the summary of ethical scores.
+
+---
+
+### TASK
+
+1. **Analyze the ethical score summaries** in the context of the goal.
+2. **Identify any ethical risks** or concerns raised by the scores or rationales.
+3. Make an **overall ethics recommendation** for this set of documents and their alignment with the goal.
+
+---
+
+### OUTPUT FORMAT
+
+Return only the following fields in plain text. No markdown, no additional commentary.
+
+```
+
+summary: <short ethical summary of strengths or concerns>
+recommendation: \<one of: 'approved', 'caution', 'warning'>
+rationale: <brief justification for the recommendation>
+
+```
+
+Use "warning" if any documents show clear ethical violations or risks.
+Use "caution" if there are notable concerns but not severe.
+Use "approved" if the content appears ethically sound overall.
+```
+

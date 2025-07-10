@@ -16,7 +16,7 @@ from stephanie.supervisor import Supervisor
 from stephanie.utils import generate_run_id, get_log_file_path
 
 
-@hydra.main(config_path="../config", config_name="pipelines/cot", version_base=None)
+@hydra.main(config_path="../config", config_name="config", version_base=None)
 def run(cfg: DictConfig):
     async def main():
         save_config_to_timestamped_file(cfg=cfg)

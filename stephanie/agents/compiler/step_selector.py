@@ -1,7 +1,8 @@
 # stephanie/compiler/step_selector.py
 from operator import attrgetter
 
-from stephanie.agents.compiler.reasoning_trace import ReasoningNode, ReasoningTree
+from stephanie.agents.compiler.reasoning_trace import (ReasoningNode,
+                                                       ReasoningTree)
 
 
 class StepSelector:

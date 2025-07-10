@@ -1,8 +1,8 @@
 # stephanie/db/orm/score_dimension.py
 from sqlalchemy import JSON, Column, Float, Integer, String, Text
-from sqlalchemy.orm import declarative_base, relationship
 
 from stephanie.models.base import Base
+
 
 class ScoreDimensionORM(Base):
     __tablename__ = "score_dimensions"
@@ -17,15 +17,6 @@ class ScoreDimensionORM(Base):
     notes = Column(Text, nullable=True)
     extra_data = Column(JSON, nullable=True)  # Flexible config extension
 
-    # def to_score_dimension(self, parser_fn):
-    #     from mrq.scoring import ScoreDimension
-    #     return ScoreDimension(
-    #         name=self.name,
-    #         prompt_template=self.prompt_template,
-    #         weight=self.weight,
-    #         parser=parser_fn,
-    #     )
-    
     def to_dict(self):
         return {
             "id": self.id,
