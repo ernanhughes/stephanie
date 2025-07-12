@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_prompt_version
 
 
 
-CREATE TABLE pipeline_runs (
+CREATE TABLE IF NOT EXISTS pipeline_runs (
     id SERIAL PRIMARY KEY,
     goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
     run_id TEXT UNIQUE NOT NULL, -- UUID or generated string
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
 
 
 
-CREATE TABLE elo_ranking_log (
+CREATE TABLE IF NOT EXISTS elo_ranking_log (
     id SERIAL PRIMARY KEY,
     run_id TEXT,
     hypothesis TEXT,
@@ -151,7 +151,7 @@ CREATE TABLE summaries (
 );
 
 
-CREATE TABLE ranking_trace (
+CREATE TABLE IF NOT EXISTS ranking_trace (
     id SERIAL PRIMARY KEY,
     run_id TEXT,
     prompt_version INT,
@@ -334,7 +334,7 @@ CREATE TABLE IF NOT EXISTS sharpening_results (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE cot_pattern_stats (
+CREATE TABLE IF NOT EXISTS cot_pattern_stats (
     id SERIAL PRIMARY KEY,
     goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
     hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
@@ -389,6 +389,8 @@ CREATE TABLE IF NOT EXISTS lookaheads (
     run_id TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+
 CREATE TABLE IF NOT EXISTS reflection_deltas (
     id SERIAL PRIMARY KEY,
     goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
@@ -563,8 +565,8 @@ CREATE TABLE IF NOT EXISTS symbolic_rules
     difficulty text,
     focus_area text,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-)
+    updated_at TIMESTAMP DEFAULT NOW()
+);
 
 
 CREATE TABLE IF NOT EXISTS rule_applications (
@@ -665,7 +667,7 @@ CREATE TABLE IF NOT EXISTS documents (
     content TEXT,
     summary TEXT,
     date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-Kenny
+
     -- Relationships
     goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
 
@@ -698,7 +700,7 @@ CREATE TABLE IF NOT EXISTS document_sections (
     UNIQUE(document_id, section_name)
 );
 
-CREATE TABLE document_section_domains (
+CREATE TABLE IF NOT EXISTS document_section_domains (
     id SERIAL PRIMARY KEY,
     document_section_id INTEGER NOT NULL REFERENCES document_sections(id) ON DELETE CASCADE,
     domain TEXT NOT NULL,
@@ -725,7 +727,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     created_at TIMESTAMP DEFAULT NOW()
 
      -- Add unique constraint here
-    CONSTRAINT unique_source_type_uri UNIQUE (source_type, source_uri)
+  ---  CONSTRAINT unique_source_type_uri UNIQUE (source_type, source_uri)
 );
 
 CREATE TABLE IF NOT EXISTS evaluation_rule_links (
@@ -853,7 +855,7 @@ CREATE TABLE IF NOT EXISTS scoring_history (
     model_version_id INTEGER REFERENCES model_versions(id),
     goal_id INTEGER,                  -- optional: link to goal context
     pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE SET NULL,
-    model_type(TEXT),
+    model_type TEXT,
     target_id INTEGER NOT NULL,       -- e.g., document_id, cartridge_id
     target_type TEXT NOT NULL,         -- e.g., "document", "cartridge"
     dimension TEXT NOT NULL,            -- e.g., "relevance"
@@ -863,4 +865,4 @@ CREATE TABLE IF NOT EXISTS scoring_history (
     method TEXT NOT NULL,             -- e.g., "ebt", "mrq", "llm"
     source TEXT,                      -- e.g., "gpt-4", "human"
     created_at TIMESTAMP DEFAULT NOW()
-);
+); 

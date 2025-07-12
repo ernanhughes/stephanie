@@ -1,0 +1,10 @@
+# config/memcube/medical.yaml
+memcube:
+  enabled: true
+  policies:
+    - {"dimension": "safety", "threshold": 0.95, "action": "refine"}
+    - {"dimension": "reliability", "threshold": 0.9, "action": "fallback_to_llm"}
+  sensitivity: "confidential"
+  lifecycle:
+    ttl: 7  # Auto-archive after 7 days
+    decay_rate: 0.01  # Score decays over time
