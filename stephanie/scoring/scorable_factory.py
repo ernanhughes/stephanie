@@ -1,11 +1,12 @@
+# stephanie/scoring/scorable_factory.py
 from enum import Enum as PyEnum
 
-from stephanie.models.prompt import PromptORM
-from stephanie.models.theorem import CartridgeORM
 from stephanie.models.cartridge_triple import CartridgeTripleORM
-from stephanie.models.theorem import TheoremORM
 from stephanie.models.document import DocumentORM
+from stephanie.models.prompt import PromptORM
+from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.scorable import Scorable
+
 
 # Enum defining all the supported types of scoreable targets
 class TargetType(PyEnum):
@@ -21,10 +22,11 @@ class TargetType(PyEnum):
     THEOREM = "theorem"
     SYMBOLIC_RULE = "symbolic_rule"
     CUSTOM = "custom"
+    REFINEMENT = "refinement"  # For SRFT-style usage
 
 
 class ScorableFactory:
-    """
+    """ Why am I hitting the cash It shouldn't be slamming the cash by now
     Factory for turning various content types into unified Scorable objects.
     """
 
@@ -38,22 +40,18 @@ class ScorableFactory:
             return ScorableFactory.from_prompt_pair(obj, mode)
         elif isinstance(obj, CartridgeORM):
             return Scorable(
-                id=obj.id,
-                text=obj.markdown_content,
-                target_type=TargetType.CARTRIDGE
+                id=obj.id, text=obj.markdown_content, target_type=TargetType.CARTRIDGE
             )
         elif isinstance(obj, CartridgeTripleORM):
             # For a triple, we concatenate subject, relation, and object as a textual representation
             return Scorable(
                 id=obj.id,
                 text=f"{obj.subject} {obj.relation} {obj.object}",
-                target_type=TargetType.TRIPLE
+                target_type=TargetType.TRIPLE,
             )
         elif isinstance(obj, TheoremORM):
             return Scorable(
-                id=obj.id,
-                text=obj.statement,
-                target_type=TargetType.THEOREM
+                id=obj.id, text=obj.statement, target_type=TargetType.THEOREM
             )
         elif isinstance(obj, DocumentORM):
             title = obj.title or ""
@@ -67,11 +65,7 @@ class ScorableFactory:
             else:
                 text = title or summary  # fallback if only one exists
 
-            return Scorable(
-                id=obj.id,
-                text=text,
-                target_type=TargetType.DOCUMENT
-            )
+            return Scorable(id=obj.id, text=text, target_type=TargetType.DOCUMENT)
         else:
             raise ValueError(f"Unsupported ORM type for scoring: {type(obj)}")
 
@@ -100,11 +94,15 @@ class ScorableFactory:
         return Scorable(id=obj.id, text=text, target_type=target_type)
 
     @staticmethod
-    def from_dict(data: dict, target_type: TargetType) -> Scorable:
+    def from_dict(data: dict, target_type: TargetType = None) -> Scorable:
         """
         Converts a plain dictionary into a Scorable, using optional fields like
         title, summary, and content for DOCUMENT types.
         """
+        if target_type is None:
+            target_type = data.get("target_type", "document")
+        if "text" in data: # If text is provided, use it directly
+            return Scorable(id=data.get("id", ""), text=data["text"], target_type=target_type)
         if target_type == TargetType.DOCUMENT:
             title = data.get("title", "")
             summary = data.get("summary", "")
@@ -116,12 +114,19 @@ class ScorableFactory:
             else:
                 text = title or summary
         elif target_type == TargetType.TRIPLE:
-            text=f'{data.get("subject")} {data.get("relation")} {data.get("object")}',
+            text = (
+                f"{data.get('subject')} {data.get('relation')} {data.get('object')}",
+            )
         else:
             text = data.get("text", "")
 
-        return Scorable(
-            id=data.get("id"),
-            text=text,
-            target_type=target_type
-        )
+        return Scorable(id=data.get("id"), text=text, target_type=target_type)
+
+
+    @staticmethod
+    def from_text(text: str, target_type: TargetType) -> Scorable:
+        """
+        Converts a plain dictionary into a Scorable, using optional fields like
+        title, summary, and content for DOCUMENT types.
+        """
+        return Scorable(id="", text=text, target_type=target_type)

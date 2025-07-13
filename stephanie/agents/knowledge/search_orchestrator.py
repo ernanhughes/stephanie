@@ -1,3 +1,4 @@
+# stephanie/agents/knowledge/search_orchestrator.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.automind_knowledge_collector import \
     AutoMindKnowledgeCollector
@@ -59,21 +60,21 @@ class SearchOrchestratorAgent(BaseAgent):
                         "parent_goal": goal.get("goal_text"),
                         "strategy": goal.get("strategy"),
                         "focus_area": goal.get("focus_area"),
-                        "extra_data": {
-                            "source_specific": hit
-                        }
+                        "extra_data": {"source_specific": hit},
                     }
                     for hit in hits
                 ]
 
                 # Store results in DB
-                stored_results = self.memory.search_results.bulk_add_results(enriched_hits)
+                stored_results = self.memory.search_results.bulk_add_results(
+                    enriched_hits
+                )
                 results.extend(stored_results)
 
             except Exception as e:
                 self.logger.log(
                     "SearchToolFailed",
-                    {"query": search_query, "tool": source, "error": str(e)}
+                    {"query": search_query, "tool": source, "error": str(e)},
                 )
 
         # Save result IDs or ORM objects back to context
@@ -107,7 +108,9 @@ class SearchOrchestratorAgent(BaseAgent):
             return "huggingface"
         if goal_type == "model_review" or "model" in query_lower:
             return "arxiv"
-        if goal_type == "background" or any(k in query_lower for k in ["overview", "definition"]):
+        if goal_type == "background" or any(
+            k in query_lower for k in ["overview", "definition"]
+        ):
             return "wikipedia"
         if focus_area in ["nlp", "cv", "graph learning"] and "baseline" in query_lower:
             return "arxiv"
@@ -116,13 +119,21 @@ class SearchOrchestratorAgent(BaseAgent):
 
     def semantic_fallback_routing(self, query: str) -> str:
         intent_map = {
-            "arxiv": ["find research paper_score", "latest ML study", "scientific method"],
+            "arxiv": [
+                "find research paper_score",
+                "latest ML study",
+                "scientific method",
+            ],
             "huggingface": ["find dataset", "huggingface model", "nlp corpus"],
             "wikipedia": ["define concept", "what is", "overview of topic"],
-            "web": ["general info", "random search", "link to resource"]
+            "web": ["general info", "random search", "link to resource"],
         }
 
-        candidates = [(intent, phrase) for intent, phrases in intent_map.items() for phrase in phrases]
+        candidates = [
+            (intent, phrase)
+            for intent, phrases in intent_map.items()
+            for phrase in phrases
+        ]
         phrases = [p for _, p in candidates]
 
         top = get_top_k_similar(query, phrases, self.memory, top_k=1)

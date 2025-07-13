@@ -1,3 +1,4 @@
+# stephanie/rules/symbolic_node.py
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 

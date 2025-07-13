@@ -1,3 +1,4 @@
+# stephanie/models/__init__.py
 from .base import Base
 from .cartridge_domain import CartridgeDomainORM
 from .comparison_preference import ComparisonPreferenceORM

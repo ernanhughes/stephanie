@@ -1,4 +1,6 @@
+# stephanie/evaluator/agreement_checker.py
 # evaluators/agreement_checker.py
+
 
 class EvaluatorAgreementChecker:
     def __init__(self, logger):
@@ -13,13 +15,16 @@ class EvaluatorAgreementChecker:
 
         agreement = mrq_preference == llm_judgement
 
-        self.logger.log("JudgementAgreement", {
-            "mrq_preference": mrq_preference,
-            "llm_preference": llm_judgement,
-            "agreement": agreement,
-            "value_a": round(mrq_scores["value_a"], 4),
-            "value_b": round(mrq_scores["value_b"], 4),
-            "context": context or {}
-        })
+        self.logger.log(
+            "JudgementAgreement",
+            {
+                "mrq_preference": mrq_preference,
+                "llm_preference": llm_judgement,
+                "agreement": agreement,
+                "value_a": round(mrq_scores["value_a"], 4),
+                "value_b": round(mrq_scores["value_b"], 4),
+                "context": context or {},
+            },
+        )
 
         return agreement

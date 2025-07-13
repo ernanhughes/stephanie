@@ -1,3 +1,4 @@
+# stephanie/agents/knowledge/adaptive_reasoner.py
 from typing import Union
 
 from stephanie.agents.base_agent import BaseAgent
@@ -18,8 +19,7 @@ class AdaptiveReasonerAgent(BaseAgent):
         self.judge = self._init_judge()
 
     async def run(self, context: dict):
-        goal = context.get(GOAL) 
-
+        goal = context.get(GOAL)
 
         self.judge.train_from_database(goal.get("goal_text"), self.cfg)
 
@@ -48,7 +48,7 @@ class AdaptiveReasonerAgent(BaseAgent):
             "format_used": ARMDataLoader.detect_format(response) or fmt,
         }
 
-    def _run_consensus_mode(self, context:dict):
+    def _run_consensus_mode(self, context: dict):
         outputs = {}
         for fmt in ["direct", "short_cot", "code"]:
             outputs[fmt] = self._generate_with_format(fmt, context)["response"]
@@ -71,7 +71,9 @@ class AdaptiveReasonerAgent(BaseAgent):
                 "fallback_reason": "no_consensus",
             }
 
-    def _run_adaptive_mode(self, prompt:str, context:dict) -> dict[str, Union[str, float]]:
+    def _run_adaptive_mode(
+        self, prompt: str, context: dict
+    ) -> dict[str, Union[str, float]]:
         prioritized_formats = ["direct", "short_cot", "code", "long_cot"]
 
         scores = {}
@@ -112,7 +114,7 @@ class AdaptiveReasonerAgent(BaseAgent):
         else:
             return "long_cot"
 
-    def _get_prioritized_formats(self, context:dict):
+    def _get_prioritized_formats(self, context: dict):
         if "preferred_format" in context:
             return [context["preferred_format"]]
 
@@ -136,4 +138,3 @@ class AdaptiveReasonerAgent(BaseAgent):
         else:
             self.logger.log("EvaluatorInit", {"strategy": "ARM"})
             return ARMReasoningSelfEvaluator(self.cfg, self.memory, self.logger)
-

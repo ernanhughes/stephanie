@@ -1,3 +1,4 @@
+# stephanie/agents/symbolic_tuner.py
 # --- agents/symbolic_tuner_agent.py ---
 
 import json
@@ -28,7 +29,7 @@ class SymbolicTunerAgent:
             rule = {
                 "config": json.loads(config_str),
                 "mean_score": round(avg_metric, 4),
-                "count": len(metrics)
+                "count": len(metrics),
             }
             symbolic_rules.append(rule)
 

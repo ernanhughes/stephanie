@@ -1,3 +1,4 @@
+# stephanie/scoring/contrastive_dimensional_tuner.py
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
@@ -29,9 +30,7 @@ class ContrastiveDimensionalTuner:
             scores_b (dict): Scores for option B, keyed by dimension.
             preferred (str): "A" or "B", indicating which output was preferred.
         """
-        delta = np.array([
-            scores_a[dim] - scores_b[dim] for dim in self.dimensions
-        ])
+        delta = np.array([scores_a[dim] - scores_b[dim] for dim in self.dimensions])
 
         # If B is preferred, invert the delta
         if preferred.upper() == "B":
@@ -44,10 +43,10 @@ class ContrastiveDimensionalTuner:
         self.y.append(label)
 
         if self.logger:
-            self.logger.log("ContrastiveTrainingPairAdded", {
-                "delta": delta.tolist(),
-                "preferred": preferred
-            })
+            self.logger.log(
+                "ContrastiveTrainingPairAdded",
+                {"delta": delta.tolist(), "preferred": preferred},
+            )
 
     def train(self):
         """
@@ -55,10 +54,10 @@ class ContrastiveDimensionalTuner:
         """
         if len(self.X) < 3:
             if self.logger:
-                self.logger.log("ContrastiveTrainingSkipped", {
-                    "reason": "Not enough data",
-                    "num_examples": len(self.X)
-                })
+                self.logger.log(
+                    "ContrastiveTrainingSkipped",
+                    {"reason": "Not enough data", "num_examples": len(self.X)},
+                )
             return
 
         X_array = np.array(self.X)
@@ -68,9 +67,9 @@ class ContrastiveDimensionalTuner:
         self.model.fit(X_array, y_array)
 
         if self.logger:
-            self.logger.log("ContrastiveModelTrained", {
-                "coefficients": self.get_weights()
-            })
+            self.logger.log(
+                "ContrastiveModelTrained", {"coefficients": self.get_weights()}
+            )
 
     def get_weights(self) -> dict:
         """
@@ -83,9 +82,7 @@ class ContrastiveDimensionalTuner:
             return {dim: 1.0 for dim in self.dimensions}  # fallback: equal weights
 
         weights = self.model.coef_[0]
-        return {
-            dim: round(float(w), 4) for dim, w in zip(self.dimensions, weights)
-        }
+        return {dim: round(float(w), 4) for dim, w in zip(self.dimensions, weights)}
 
     def score(self, dimension_scores: dict) -> float:
         """
@@ -98,5 +95,7 @@ class ContrastiveDimensionalTuner:
             float: Weighted total score.
         """
         weights = self.get_weights()
-        total = sum(dimension_scores[dim] * weights.get(dim, 1.0) for dim in self.dimensions)
+        total = sum(
+            dimension_scores[dim] * weights.get(dim, 1.0) for dim in self.dimensions
+        )
         return round(total, 4)

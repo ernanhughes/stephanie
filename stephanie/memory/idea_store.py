@@ -1,3 +1,4 @@
+# stephanie/memory/idea_store.py
 # stores/idea_store.py
 from stephanie.memory import BaseStore
 from stephanie.models.idea import IdeaORM
@@ -42,19 +43,27 @@ class IdeaStore(BaseStore):
         (This assumes you have a scoring system stored in extra_data or another table)
         """
         # Example: Filter by novelty + feasibility scores from extra_data
-        return self.db.query(IdeaORM).order_by(
-            IdeaORM.extra_data["novelty_score"].desc(),
-            IdeaORM.extra_data["feasibility_score"].desc()
-        ).limit(limit).all()
+        return (
+            self.db.query(IdeaORM)
+            .order_by(
+                IdeaORM.extra_data["novelty_score"].desc(),
+                IdeaORM.extra_data["feasibility_score"].desc(),
+            )
+            .limit(limit)
+            .all()
+        )
 
-    def get_by_focus_area_and_strategy(self, focus_area: str, strategy: str) -> list[IdeaORM]:
+    def get_by_focus_area_and_strategy(
+        self, focus_area: str, strategy: str
+    ) -> list[IdeaORM]:
         """
         Retrieve ideas filtered by domain and strategy.
         """
-        return self.db.query(IdeaORM).filter(
-            IdeaORM.focus_area == focus_area,
-            IdeaORM.strategy == strategy
-        ).all()
+        return (
+            self.db.query(IdeaORM)
+            .filter(IdeaORM.focus_area == focus_area, IdeaORM.strategy == strategy)
+            .all()
+        )
 
     def get_by_source(self, source: str) -> list[IdeaORM]:
         """

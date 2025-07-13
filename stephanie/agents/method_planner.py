@@ -168,7 +168,9 @@ class MethodPlannerAgent(BaseAgent):
             evolution_level=0,  # Initial plan
         )
 
-        self.memory.method_plans.add_method_plan(plan.to_dict())  # Or plan.to_dict() if needed
+        self.memory.method_plans.add_method_plan(
+            plan.to_dict()
+        )  # Or plan.to_dict() if needed
         return plan
 
     def _refine_plan(self, plan: dict, feedback: dict) -> dict:

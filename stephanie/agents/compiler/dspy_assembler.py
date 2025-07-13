@@ -1,3 +1,4 @@
+# stephanie/agents/compiler/dspy_assembler.py
 import dspy
 from dspy import (BootstrapFewShot, ChainOfThought, Example, InputField,
                   OutputField, Signature)
@@ -6,7 +7,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import GOAL
-from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.mrq.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 
@@ -27,7 +28,9 @@ class PromptMerger(dspy.Module):
         self.merger = ChainOfThought(PromptMergeSignature)
 
     def forward(self, goal: str, prompts: list[str]) -> dspy.Prediction:
-        prompt_text = "\n\n---\n\n".join([f"Prompt {i+1}:\n{p}" for i, p in enumerate(prompts)])
+        prompt_text = "\n\n---\n\n".join(
+            [f"Prompt {i + 1}:\n{p}" for i, p in enumerate(prompts)]
+        )
         return self.merger(goal=goal, prompts=prompt_text)
 
 
@@ -71,7 +74,7 @@ class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
 
         top_prompts = [
             step.get("refined_prompt") or step.get("prompt")
-            for step in ranked_prompts[:self.max_included]
+            for step in ranked_prompts[: self.max_included]
         ]
         top_prompts = [p.strip() for p in top_prompts if p]
 

@@ -9,20 +9,26 @@ class TheoremExtractor:
         self.prompt_loader = prompt_loader
         self.logger = logger
         self.call_llm = call_llm
-        self.prompt_template = cfg.get("theorem_extraction_prompt", "theorem_extraction_prompt.txt")
+        self.prompt_template = cfg.get(
+            "theorem_extraction_prompt", "theorem_extraction_prompt.txt"
+        )
 
     def extract(self, sections, context):
         extracted_theorems = []
         for count, section in enumerate(sections):
             if count >= self.cfg.get("max_sections", 2):
-                self.logger.log("MaxSectionsReached", {"max_sections": self.cfg.get("max_sections")})
+                self.logger.log(
+                    "MaxSectionsReached", {"max_sections": self.cfg.get("max_sections")}
+                )
                 break
             merged_context = {"section_text": section, **context}
-            prompt = self.prompt_loader.from_file(self.prompt_template, self.cfg, merged_context)
-            
+            prompt = self.prompt_loader.from_file(
+                self.prompt_template, self.cfg, merged_context
+            )
+
             response = self.call_llm(prompt, context=context)
             theorem_statements = self.parse_llm_response(response)
-            
+
             for statement in theorem_statements:
                 theorem = TheoremORM(statement=statement)
                 extracted_theorems.append(theorem)

@@ -23,17 +23,19 @@ class StructuredScoringEngine:
             except Exception as e:
                 score = 0.0
                 if self.logger:
-                    self.logger.log("StrctScoreParseError", {
-                        "dimension": dim["name"],
-                        "response": response,
-                        "error": str(e)
-                    })
+                    self.logger.log(
+                        "StrctScoreParseError",
+                        {
+                            "dimension": dim["name"],
+                            "response": response,
+                            "error": str(e),
+                        },
+                    )
             if self.logger:
-                self.logger.log("StructuredDimensionEvaluated", {
-                    "dimension": dim["name"],
-                    "score": score,
-                    "response": response
-                })
+                self.logger.log(
+                    "StructuredDimensionEvaluated",
+                    {"dimension": dim["name"], "score": score, "response": response},
+                )
             results[dim["name"]] = {
                 "score": score,
                 "rationale": response,
@@ -46,7 +48,9 @@ class StructuredScoringEngine:
     def _render_prompt(self, dim: dict, hypothesis: dict, context: dict) -> str:
         ctx = {"hypothesis": hypothesis, **context}
         if self.prompt_loader and dim.get("file"):
-            return self.prompt_loader.from_file(file_name=dim["file"], config=self.cfg, context=ctx)
+            return self.prompt_loader.from_file(
+                file_name=dim["file"], config=self.cfg, context=ctx
+            )
         else:
             return Template(dim["prompt_template"]).substitute(ctx)
 
@@ -71,9 +75,13 @@ class StructuredScoringEngine:
 
     @staticmethod
     def parse_numeric_cor(response: str) -> float:
-        match = re.search(r"<answer>\s*\[\[(\d+(?:\.\d+)?)\]\]\s*</answer>", response, re.IGNORECASE)
+        match = re.search(
+            r"<answer>\s*\[\[(\d+(?:\.\d+)?)\]\]\s*</answer>", response, re.IGNORECASE
+        )
         if not match:
-            raise ValueError(f"Could not extract numeric score from CoR-style answer: {response}")
+            raise ValueError(
+                f"Could not extract numeric score from CoR-style answer: {response}"
+            )
         return float(match.group(1))
 
     @staticmethod

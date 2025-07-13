@@ -1,3 +1,4 @@
+# stephanie/agents/world/worldview_visualizer.py
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
@@ -52,7 +53,7 @@ class WorldviewVisualizer:
             values = [r["new_score"] for r in records]
 
             plt.figure(figsize=(8, 3))
-            plt.plot(timestamps, values, marker='o')
+            plt.plot(timestamps, values, marker="o")
             plt.title(f"Tuning History for Belief {belief_id}")
             plt.xlabel("Time")
             plt.ylabel("Score")
@@ -87,9 +88,9 @@ class WorldviewVisualizer:
 
         colors = []
         for n in G.nodes(data=True):
-            if n[1]['type'] == "goal":
+            if n[1]["type"] == "goal":
                 colors.append("lightblue")
-            elif n[1]['type'] == "cartridge":
+            elif n[1]["type"] == "cartridge":
                 colors.append("lightgreen")
             else:
                 colors.append("lightcoral")
@@ -100,5 +101,7 @@ class WorldviewVisualizer:
 
     def _default_logger(self):
         class DummyLogger:
-            def log(self, tag, payload): print(f"[{tag}] {payload}")
+            def log(self, tag, payload):
+                print(f"[{tag}] {payload}")
+
         return DummyLogger()

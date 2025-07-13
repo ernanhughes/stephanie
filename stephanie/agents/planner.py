@@ -1,3 +1,4 @@
+# stephanie/agents/planner.py
 from stephanie.agents import DOTSPlannerAgent, LookaheadAgent
 
 
@@ -15,7 +16,6 @@ class PipelinePlannerAgent:
             self.dots = DOTSPlannerAgent(cfg, memory, logger)
         if self.lookahead_enabled:
             self.lookahead = LookaheadAgent(cfg, memory, logger)
-
 
     async def run(self, context):
         if self.dots:

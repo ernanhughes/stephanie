@@ -1,3 +1,4 @@
+# stephanie/scoring/proximity_scorer.py
 import re
 
 from sklearn.preprocessing import StandardScaler
@@ -53,21 +54,21 @@ class ProximityScorer(BaseScorer):
                     score=min(100.0, themes_score),
                     weight=0.3,
                     rationale=f"{len(themes)} theme(s) identified",
-                    source="proximity"
+                    source="proximity",
                 ),
                 "proximity_grafts": ScoreResult(
                     dimension="proximity_grafts",
                     score=min(100.0, grafts_score),
                     weight=0.3,
                     rationale=f"{len(grafts)} grafting suggestion(s)",
-                    source="proximity"
+                    source="proximity",
                 ),
                 "proximity_directions": ScoreResult(
                     dimension="proximity_directions",
                     score=min(100.0, directions_score),
                     weight=0.4,
                     rationale=f"{len(directions)} strategic direction(s)",
-                    source="proximity"
+                    source="proximity",
                 ),
             }
 
@@ -86,9 +87,15 @@ class ProximityScorer(BaseScorer):
 
     def _fallback(self, message: str) -> ScoreBundle:
         results = {
-            "proximity_themes": ScoreResult("proximity_themes", 0.0, message, 0.3, source="proximity"),
-            "proximity_grafts": ScoreResult("proximity_grafts", 0.0, message, 0.3, source="proximity"),
-            "proximity_directions": ScoreResult("proximity_directions", 0.0, message, 0.4, source="proximity"),
+            "proximity_themes": ScoreResult(
+                "proximity_themes", 0.0, message, 0.3, source="proximity"
+            ),
+            "proximity_grafts": ScoreResult(
+                "proximity_grafts", 0.0, message, 0.3, source="proximity"
+            ),
+            "proximity_directions": ScoreResult(
+                "proximity_directions", 0.0, message, 0.4, source="proximity"
+            ),
         }
         return ScoreBundle(results=results)
 
@@ -117,7 +124,9 @@ class ProximityScorer(BaseScorer):
         text_vec = self.memory.embedding.get_or_create(scorable.text)
         return [g - t for g, t in zip(goal_vec, text_vec)]
 
-    def score(self, goal: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
+    def score(
+        self, goal: dict, scorable: Scorable, dimensions: list[str]
+    ) -> ScoreBundle:
         results = {}
 
         for dim in dimensions:
@@ -136,13 +145,23 @@ class ProximityScorer(BaseScorer):
                 rationale = f"SVM predicted and aligned score for {dim}"
 
             # Lookup weight from config
-            weight = next((d.get("weight", 1.0) for d in self.dimensions_config if d["name"] == dim), 1.0)
+            weight = next(
+                (
+                    d.get("weight", 1.0)
+                    for d in self.dimensions_config
+                    if d["name"] == dim
+                ),
+                1.0,
+            )
 
-            self.logger.log("ProximityScoreComputed", {
-                "dimension": dim,
-                "score": score,
-                "hypothesis": scorable.text,
-            })
+            self.logger.log(
+                "ProximityScoreComputed",
+                {
+                    "dimension": dim,
+                    "score": score,
+                    "hypothesis": scorable.text,
+                },
+            )
 
             results[dim] = ScoreResult(
                 dimension=dim,

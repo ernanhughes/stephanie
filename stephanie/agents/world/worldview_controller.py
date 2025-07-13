@@ -1,10 +1,13 @@
+# stephanie/agents/world/worldview_controller.py
 from stephanie.agents.base_agent import BaseAgent
 
 
 class WorldviewControllerAgent(BaseAgent):
     def __init__(self, cfg, memory, logger, tools, pipelines):
         super().__init__(cfg, memory=memory, logger=logger)
-        self.tools = tools  # e.g. { "arxiv": ArxivSearcher(), "profiler": ProfilerAgent(), ... }
+        self.tools = (
+            tools  # e.g. { "arxiv": ArxivSearcher(), "profiler": ProfilerAgent(), ... }
+        )
         self.pipelines = pipelines  # Callable pipeline configs
         self.active_worldview = None
 
@@ -25,7 +28,9 @@ class WorldviewControllerAgent(BaseAgent):
         """Run the worldview through a full processing/evaluation cycle."""
         self.load_or_create_worldview(goal)
 
-        for step in self.cfg.get("worldview_steps", ["search", "profile", "score", "ingest", "evaluate"]):
+        for step in self.cfg.get(
+            "worldview_steps", ["search", "profile", "score", "ingest", "evaluate"]
+        ):
             if step == "search":
                 self._search_and_add_sources(goal)
             elif step == "profile":
@@ -45,11 +50,15 @@ class WorldviewControllerAgent(BaseAgent):
 
     def _profile_documents(self):
         profiler = self.tools["profiler"]
-        self.active_worldview.profiled_docs = profiler.process(self.active_worldview.sources)
+        self.active_worldview.profiled_docs = profiler.process(
+            self.active_worldview.sources
+        )
 
     def _score_candidates(self):
         scorer = self.tools["scorer"]
-        self.active_worldview.scored_docs = scorer.score_all(self.active_worldview.profiled_docs)
+        self.active_worldview.scored_docs = scorer.score_all(
+            self.active_worldview.profiled_docs
+        )
 
     def _ingest_beliefs(self):
         ingestor = self.tools["belief_ingest"]
@@ -73,6 +82,7 @@ class WorldviewControllerAgent(BaseAgent):
         """Optionally let worldview self-run repeatedly (e.g. daily update)"""
         if self.cfg.get("autonomous", False):
             import time
+
             interval = self.cfg.get("autonomous_interval", 86400)  # default 24h
             while True:
                 self.run_pipeline(self.active_worldview.goal)

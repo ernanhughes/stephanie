@@ -1,3 +1,4 @@
+# stephanie/memory/document_domain_store.py
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -46,7 +47,9 @@ class DocumentDomainStore:
         )
 
     def delete_domains(self, document_id: int):
-        self.session.query(DocumentDomainORM).filter_by(document_id=document_id).delete()
+        self.session.query(DocumentDomainORM).filter_by(
+            document_id=document_id
+        ).delete()
         self.session.commit()
         if self.logger:
             self.logger.log("DomainsDeleted", {"document_id": document_id})
@@ -58,8 +61,10 @@ class DocumentDomainStore:
         """
         self.delete_domains(document_id)
         for domain, score in domains:
-            self.insert({
-                "document_id": document_id,
-                "domain": domain,
-                "score": float(score),
-            })
+            self.insert(
+                {
+                    "document_id": document_id,
+                    "domain": domain,
+                    "score": float(score),
+                }
+            )

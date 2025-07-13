@@ -19,24 +19,24 @@ class DocumentORM(Base):
     url = Column(String, nullable=True)
     summary = Column(Text, nullable=True)
     content = Column(Text, nullable=True)
-    goal_id = Column(Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True)
+    goal_id = Column(
+        Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True
+    )
     date_added = Column(DateTime(timezone=True), server_default=func.now())
 
     domains = Column(ARRAY(String), nullable=True)
 
-    embedding_id = Column(Integer, ForeignKey("embeddings.id", ondelete="SET NULL"), nullable=True)
+    embedding_id = Column(
+        Integer, ForeignKey("embeddings.id", ondelete="SET NULL"), nullable=True
+    )
     embedding = relationship("EmbeddingORM", foreign_keys=[embedding_id])
 
     sections = relationship(
-        "DocumentSectionORM",
-        back_populates="document",
-        cascade="all, delete-orphan"
+        "DocumentSectionORM", back_populates="document", cascade="all, delete-orphan"
     )
 
     domains_rel = relationship(
-        "DocumentDomainORM",
-        back_populates="document",
-        cascade="all, delete-orphan"
+        "DocumentDomainORM", back_populates="document", cascade="all, delete-orphan"
     )
 
     def to_dict(self):

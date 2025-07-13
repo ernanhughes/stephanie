@@ -13,7 +13,6 @@ class CartridgeStore:
         self.name = "cartridges"
 
     def add_cartridge(self, data: dict) -> CartridgeORM:
-
         existing = (
             self.session.query(CartridgeORM)
             .filter_by(source_type=data["source_type"], source_uri=data["source_uri"])
@@ -22,7 +21,9 @@ class CartridgeStore:
 
         if existing:
             # Optionally update content
-            existing.markdown_content = data.get("markdown_content", existing.markdown_content)
+            existing.markdown_content = data.get(
+                "markdown_content", existing.markdown_content
+            )
             existing.title = data.get("title", existing.title)
             existing.summary = data.get("summary", existing.summary)
             existing.sections = data.get("sections", existing.sections)
@@ -61,7 +62,11 @@ class CartridgeStore:
         return self.session.query(CartridgeORM).filter_by(id=cartridge_id).first()
 
     def get_by_source_uri(self, uri: str, source_type: str) -> CartridgeORM | None:
-        return self.session.query(CartridgeORM).filter_by(source_uri=uri, source_type=source_type).first()
+        return (
+            self.session.query(CartridgeORM)
+            .filter_by(source_uri=uri, source_type=source_type)
+            .first()
+        )
 
     def get_all(self, limit=100) -> list[CartridgeORM]:
         return self.session.query(CartridgeORM).limit(limit).all()

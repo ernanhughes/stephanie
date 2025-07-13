@@ -1,3 +1,4 @@
+# stephanie/agents/master_pupil/trainer.py
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -14,13 +15,12 @@ class TrainerAgent(BaseAgent):
         self.embedding_store = memory.embedding
         self.finetuner = PupilFineTuner(
             input_dim=1024,  # embedding dim of pupil
-            output_dim=1024  # embedding dim of master
+            output_dim=1024,  # embedding dim of master
         )
 
     async def run(self, context: dict) -> dict:
         """Pipeline entrypoint (unused in this agent directly)."""
         return context
-
 
     def align_response(self, question, context=None, epochs=25, plot=True):
         master_answer = self.master.answer(question, context)
@@ -28,8 +28,12 @@ class TrainerAgent(BaseAgent):
         pupil_answer = self.pupil.answer(question, context)
         self.logger.log("PupilAnswer", {"pupil_answer": pupil_answer})
 
-        master_emb = torch.tensor(self.embedding_store.get_or_create(master_answer), dtype=torch.float32)
-        pupil_emb = torch.tensor(self.embedding_store.get_or_create(pupil_answer), dtype=torch.float32)
+        master_emb = torch.tensor(
+            self.embedding_store.get_or_create(master_answer), dtype=torch.float32
+        )
+        pupil_emb = torch.tensor(
+            self.embedding_store.get_or_create(pupil_answer), dtype=torch.float32
+        )
 
         losses = []
         print(f"Initial pupil answer:\n{pupil_answer}\n")
@@ -37,7 +41,7 @@ class TrainerAgent(BaseAgent):
         for i in range(epochs):
             loss = self.finetuner.train_step(pupil_emb, master_emb)
             losses.append(loss)
-            print(f"Epoch {i+1} Loss: {loss:.4f}")
+            print(f"Epoch {i + 1} Loss: {loss:.4f}")
 
         if plot:
             self.plot_training_curve(losses)
@@ -59,7 +63,7 @@ class TrainerAgent(BaseAgent):
 
     def plot_training_curve(self, losses):
         plt.figure(figsize=(8, 4))
-        plt.plot(range(1, len(losses)+1), losses, marker='o', linestyle='-')
+        plt.plot(range(1, len(losses) + 1), losses, marker="o", linestyle="-")
         plt.title("Training Loss Over Epochs")
         plt.xlabel("Epoch")
         plt.ylabel("Loss")

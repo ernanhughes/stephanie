@@ -1,3 +1,4 @@
+# stephanie/models/symbolic_rule.py
 import hashlib
 import json
 from datetime import datetime
@@ -20,11 +21,14 @@ class SymbolicRuleORM(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # New design: generalized rules
-    target = Column(String, nullable=False)  # e.g., 'goal', 'agent', 'prompt', 'pipeline', 'hypothesis'
+    target = Column(
+        String, nullable=False
+    )  # e.g., 'goal', 'agent', 'prompt', 'pipeline', 'hypothesis'
     attributes = Column(JSON)  # What to apply, e.g., {"difficulty": "hard"}
-    filter = Column(JSON)  # How to match, e.g., {"goal_type": "research", "strategy": "reasoning"}
+    filter = Column(
+        JSON
+    )  # How to match, e.g., {"goal_type": "research", "strategy": "reasoning"}
     context_hash = Column(String, index=True)  # Hash of (filters + attributes)
-
 
     goal_type = Column(String)
     goal_category = Column(String)
@@ -43,7 +47,9 @@ class SymbolicRuleORM(Base):
 
     # Relationships
     goal = relationship("GoalORM", back_populates="symbolic_rules", lazy="joined")
-    pipeline_run = relationship("PipelineRunORM", back_populates="symbolic_rules", lazy="joined")
+    pipeline_run = relationship(
+        "PipelineRunORM", back_populates="symbolic_rules", lazy="joined"
+    )
     prompt = relationship("PromptORM", back_populates="symbolic_rules", lazy="joined")
     scores = relationship("EvaluationORM", back_populates="symbolic_rule")
     applications = relationship(

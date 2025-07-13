@@ -1,3 +1,4 @@
+# stephanie/models/sharpening_result.py
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, String, Text
@@ -6,7 +7,7 @@ from stephanie.models.base import Base
 
 
 class SharpeningResultORM(Base):
-    __tablename__ = 'sharpening_results'
+    __tablename__ = "sharpening_results"
 
     id = Column(String, primary_key=True)  # Optional: Add UUID or auto-increment ID
     goal = Column(Text, nullable=False)

@@ -1,4 +1,4 @@
-# File: stephanie/pipeline/registry.py
+# stephanie/registry/pipeline.py
 
 import copy
 from pathlib import Path
@@ -18,10 +18,14 @@ class PipelineRegistry:
     - Validate pipeline structure
     """
 
-    def __init__(self, registry_path: Union[str, Path] = "config/registry/pipelines.yaml"):
+    def __init__(
+        self, registry_path: Union[str, Path] = "config/registry/pipelines.yaml"
+    ):
         self.registry_path = Path(registry_path)
         if not self.registry_path.exists():
-            raise FileNotFoundError(f"Pipeline registry file not found: {registry_path}")
+            raise FileNotFoundError(
+                f"Pipeline registry file not found: {registry_path}"
+            )
 
         with open(self.registry_path, "r") as f:
             self.raw_data = yaml.safe_load(f)
@@ -92,10 +96,7 @@ class PipelineRegistry:
             list[dict]: List of {name, description}
         """
         return [
-            {
-                "name": name,
-                "description": self.get_description(name)
-            }
+            {"name": name, "description": self.get_description(name)}
             for name in self.pipeline_variants.keys()
         ]
 
@@ -105,7 +106,9 @@ class PipelineRegistry:
     def get_metadata(self, name: str) -> dict:
         return self.raw_data.get("metadata", {}).get(name, {})
 
-    def inject_into_config(self, config: dict, name: str = None, tag: str = "default") -> dict:
+    def inject_into_config(
+        self, config: dict, name: str = None, tag: str = "default"
+    ) -> dict:
         """
         Inject a pipeline into a full config dict.
         Useful for dynamically creating configs during mutation/testing.
@@ -113,10 +116,7 @@ class PipelineRegistry:
         pipeline_def = self.get_pipeline(name)
 
         updated_config = copy.deepcopy(config)
-        updated_config["pipeline"] = {
-            "tag": tag,
-            "stages": pipeline_def
-        }
+        updated_config["pipeline"] = {"tag": tag, "stages": pipeline_def}
 
         updated_config.setdefault("agents", {})
         for stage in pipeline_def:

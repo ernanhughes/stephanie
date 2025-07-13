@@ -1,3 +1,4 @@
+# stephanie/scoring/base_score.py
 from abc import ABC, abstractmethod
 
 from stephanie.models import EvaluationORM
@@ -15,7 +16,7 @@ class BaseScore(ABC):
         self.evaluator_name = evaluator_name or self.name
 
     @abstractmethod
-    def compute(self, hypothesis: dict, context:dict) -> float:
+    def compute(self, hypothesis: dict, context: dict) -> float:
         pass
 
     def get_score(self, hypothesis: dict, context: dict) -> float:
@@ -51,10 +52,9 @@ class BaseScore(ABC):
                 self.logger.log("ScoreInsertFailed", {"error": str(e)})
 
         # 4. Log
-        self.logger.log("ScoreComputed", {
-            "type": self.name,
-            "score": score,
-            "hypothesis_id": hypothesis.get("id")
-        })
+        self.logger.log(
+            "ScoreComputed",
+            {"type": self.name, "score": score, "hypothesis_id": hypothesis.get("id")},
+        )
 
         return score

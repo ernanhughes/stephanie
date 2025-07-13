@@ -1,3 +1,4 @@
+# stephanie/agents/lats.py
 import math
 import re
 import uuid

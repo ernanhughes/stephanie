@@ -1,3 +1,4 @@
+# stephanie/agents/seal/rule_mutation.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models import SymbolicRuleORM
 from stephanie.rules.rule_options_config import RuleOptionsConfig
@@ -22,9 +23,7 @@ class RuleMutationAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         # Load relevant symbolic rules based on goal and agent
         applicable_rules = [
-            r
-            for r in self.rule_applier.rules
-            if r.agent_name == self.target_agent
+            r for r in self.rule_applier.rules if r.agent_name == self.target_agent
         ]
 
         if not applicable_rules:
@@ -46,13 +45,15 @@ class RuleMutationAgent(BaseAgent):
             recent_perf = self.memory.rule_effects.get_recent_performance(rule.id)
 
             merged = {
-                "current_attributes":current_attributes,
-                "available_options":available_options,
-                "recent_performance":recent_perf,
+                "current_attributes": current_attributes,
+                "available_options": available_options,
+                "recent_performance": recent_perf,
                 **context,
             }
 
-            mutation_prompt = self.prompt_loader.from_file(self.rule_mutation_prompt, self.cfg, merged)
+            mutation_prompt = self.prompt_loader.from_file(
+                self.rule_mutation_prompt, self.cfg, merged
+            )
             response = self.call_llm(mutation_prompt, context)
             parsed = RuleTuner.parse_mutation_response(response)
 

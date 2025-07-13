@@ -1,3 +1,4 @@
+# stephanie/memory/prompt_program_store.py
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -13,12 +14,11 @@ class PromptProgramStore:
         self.table_name = "prompt_programs"
 
     def insert(self, prompt_dict: dict) -> PromptProgramORM:
-        prompt = PromptProgramORM(**prompt_dict)    
+        prompt = PromptProgramORM(**prompt_dict)
         self.session.add(prompt)
         self.session.commit()
         self.session.refresh(prompt)
         return prompt
-
 
     def add_prompt(self, prompt: PromptProgramORM) -> PromptProgramORM:
         self.session.add(prompt)
@@ -30,7 +30,11 @@ class PromptProgramStore:
         return self.session.query(PromptProgramORM).filter_by(id=prompt_id).first()
 
     def get_all_prompts(self) -> List[PromptProgramORM]:
-        return self.session.query(PromptProgramORM).order_by(PromptProgramORM.version.desc()).all()
+        return (
+            self.session.query(PromptProgramORM)
+            .order_by(PromptProgramORM.version.desc())
+            .all()
+        )
 
     def get_prompts_for_goal(self, goal_text: str) -> List[PromptProgramORM]:
         return (
@@ -40,7 +44,9 @@ class PromptProgramStore:
             .all()
         )
 
-    def get_top_prompts(self, goal_text: str, min_score: float = 0.0, top_k: int = 5) -> List[PromptProgramORM]:
+    def get_top_prompts(
+        self, goal_text: str, min_score: float = 0.0, top_k: int = 5
+    ) -> List[PromptProgramORM]:
         return (
             self.session.query(PromptProgramORM)
             .filter(

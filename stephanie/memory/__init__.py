@@ -1,4 +1,6 @@
+# stephanie/memory/__init__.py
 """Memory management and embedding tools"""
+
 from .base import BaseStore
 from .cartridge_domain_store import CartridgeDomainStore
 from .cartridge_store import CartridgeStore
@@ -12,6 +14,7 @@ from .goal_store import GoalStore
 from .hypothesis_store import HypothesisStore
 from .idea_store import IdeaStore
 from .lookahead_store import LookaheadStore
+from .memcube_store import MemcubeStore
 from .memory_tool import MemoryTool
 from .pattern_store import PatternStatStore
 from .pipeline_run_store import PipelineRunStore

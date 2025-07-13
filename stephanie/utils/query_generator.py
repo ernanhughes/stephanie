@@ -1,3 +1,4 @@
+# stephanie/utils/query_generator.py
 class GoalQueryGenerator:
     def generate_queries(self, goal: dict, strategy: str) -> list[str]:
         desc = goal.get("goal_text", goal.get("description", ""))

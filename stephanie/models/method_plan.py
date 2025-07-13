@@ -1,3 +1,4 @@
+# stephanie/models/method_plan.py
 # models/method_plan.py
 from datetime import datetime, timezone
 
@@ -78,7 +79,7 @@ class MethodPlanORM(Base):
             "evolution_level": self.evolution_level,
             "parent_plan_id": self.parent_plan_id,
             "is_refinement": self.is_refinement,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
         if include_relationships and self.goal:

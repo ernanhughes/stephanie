@@ -19,7 +19,9 @@ class DocumentRewardScorerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None, scorer: SVMScorer = None):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", DEFAULT_DIMENSIONS)
-        self.scorer = scorer or SVMScorer(cfg, memory=memory, logger=logger, dimensions=self.dimensions)
+        self.scorer = scorer or SVMScorer(
+            cfg, memory=memory, logger=logger, dimensions=self.dimensions
+        )
 
     async def run(self, context: dict) -> dict:
         documents = context.get(self.input_key, [])
@@ -38,21 +40,26 @@ class DocumentRewardScorerAgent(BaseAgent):
             )
 
             if self.logger:
-                self.logger.log("DocumentScored", {
-                    "document_id": doc_id,
-                    "title": doc.get("title"),
-                    "scores": score_bundle.to_dict()
-                })
+                self.logger.log(
+                    "DocumentScored",
+                    {
+                        "document_id": doc_id,
+                        "title": doc.get("title"),
+                        "scores": score_bundle.to_dict(),
+                    },
+                )
 
             # Persist results
             evaluation_id = self._store_evaluation(scorable, context)
             self._store_scores(score_bundle, evaluation_id)
 
-            results.append({
-                "document_id": doc_id,
-                "title": doc.get("title"),
-                "scores": score_bundle.to_dict()
-            })
+            results.append(
+                {
+                    "document_id": doc_id,
+                    "title": doc.get("title"),
+                    "scores": score_bundle.to_dict(),
+                }
+            )
 
         context[self.output_key] = results
         return context

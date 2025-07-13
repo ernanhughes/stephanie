@@ -1,3 +1,4 @@
+# stephanie/envs/research_env.py
 from typing import Any, Dict
 
 from stephanie.scoring.scorable import Scorable
@@ -22,11 +23,9 @@ class ResearchEnv:
         return {
             "Arthur’s Magazine": {
                 "started": 1846,
-                "merged_into": "Godey’s Lady’s Book"
+                "merged_into": "Godey’s Lady’s Book",
             },
-            "First for Women": {
-                "started": 1989
-            }
+            "First for Women": {"started": 1989},
         }
 
     def reset(self, goal: str) -> str:
@@ -48,7 +47,9 @@ class ResearchEnv:
         """
         # Simulate a hypothesis ORM object
         from stephanie.agents.mixins.scoring_mixin import ScoringMixin
-        class DummyAgent(ScoringMixin): pass
+
+        class DummyAgent(ScoringMixin):
+            pass
 
         dummy_agent = DummyAgent({})
         scorable = Scorable(text=hypothesis, target_type=TargetType.HYPOTHESIS)
@@ -63,7 +64,7 @@ class ResearchEnv:
             "score": score_result,
             "dimensions": score_result["scores"],
             "reward": score_result["score"] / 100,
-            "success": success
+            "success": success,
         }
 
         return feedback

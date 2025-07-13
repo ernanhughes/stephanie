@@ -1,4 +1,4 @@
-# stephanie/compiler/symbol_mapper.py
+# stephanie/agents/compiler/symbol_mapper.py
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
 

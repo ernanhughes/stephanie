@@ -1,3 +1,4 @@
+# stephanie/models/prompt.py
 # models/prompt.py
 import uuid
 from datetime import datetime, timezone
@@ -16,7 +17,9 @@ class PromptORM(Base):
 
     # Agent and prompt metadata
     goal_id = Column(Integer, ForeignKey("goals.id"))
-    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id", ondelete="SET NULL"), nullable=True)
+    pipeline_run_id = Column(
+        Integer, ForeignKey("pipeline_runs.id", ondelete="SET NULL"), nullable=True
+    )
     agent_name = Column(String, nullable=False)
     prompt_key = Column(String, nullable=False)  # e.g., generation_goal_aligned.txt
     prompt_text = Column(Text, nullable=False)
@@ -52,7 +55,9 @@ class PromptORM(Base):
 
         if include_relationships:
             data["goal"] = self.goal.to_dict() if self.goal else None
-            data["hypotheses"] = [h.to_dict() for h in self.hypotheses] if self.hypotheses else []
+            data["hypotheses"] = (
+                [h.to_dict() for h in self.hypotheses] if self.hypotheses else []
+            )
 
         return data
 
@@ -60,12 +65,17 @@ class PromptORM(Base):
 def generate_uuid():
     return str(uuid.uuid4())
 
+
 class PromptProgramORM(Base):
     __tablename__ = "prompt_programs"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id", ondelete="SET NULL"), nullable=True)
-    prompt_id = Column(Integer, ForeignKey("prompts.id", ondelete="SET NULL"), nullable=True)
+    pipeline_run_id = Column(
+        Integer, ForeignKey("pipeline_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    prompt_id = Column(
+        Integer, ForeignKey("prompts.id", ondelete="SET NULL"), nullable=True
+    )
     goal = Column(Text, nullable=False)
     template = Column(Text, nullable=False)
     inputs = Column(JSON, default={})
@@ -80,7 +90,6 @@ class PromptProgramORM(Base):
     execution_trace = Column(Text, nullable=True)
     extra_data = Column(JSON, default={})
 
- 
     parent = relationship("PromptProgramORM", remote_side=[id], backref="children")
     prompt = relationship("PromptORM", back_populates="program")
     pipeline_run = relationship("PipelineRunORM", back_populates="prompt_programs")

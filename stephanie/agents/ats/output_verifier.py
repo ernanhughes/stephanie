@@ -14,7 +14,7 @@ class OutputVerifier:
             "is_overfitting": is_overfitting,
             "has_csv_submission": has_submission_file,
             "metric": metric,
-            "summary": self.summarize(output)
+            "summary": self.summarize(output),
         }
 
     def extract_metric(self, output: str) -> Optional[float]:

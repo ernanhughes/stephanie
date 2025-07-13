@@ -1,3 +1,4 @@
+# stephanie/memory/document_section_store.py
 from stephanie.models.document_section import DocumentSectionORM
 
 
@@ -6,7 +7,6 @@ class DocumentSectionStore:
         self.session = session
         self.logger = logger
         self.name = "document_section"
-
 
     def insert(self, section_dict):
         section = DocumentSectionORM(**section_dict)
@@ -46,7 +46,6 @@ class DocumentSectionStore:
 
         return existing
 
-
     def get_by_document(self, document_id):
         return (
             self.session.query(DocumentSectionORM)
@@ -56,5 +55,7 @@ class DocumentSectionStore:
         )
 
     def delete_by_document(self, document_id):
-        self.session.query(DocumentSectionORM).filter_by(document_id=document_id).delete()
+        self.session.query(DocumentSectionORM).filter_by(
+            document_id=document_id
+        ).delete()
         self.session.commit()

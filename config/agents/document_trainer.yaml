@@ -1,5 +1,5 @@
-document_mrq_trainer:
-  name: document_mrq_trainer
+mrq_trainer:
+  name: mrq_trainer
   enabled: true
   save_prompt: true
   save_context: true
@@ -14,6 +14,6 @@ document_mrq_trainer:
     api_key: null
 
   input_keys: ["goal", "hypotheses"]
-  output_key: document_mrq_trainer
+  output_key: mrq_trainer
   prompt_mode: file
-  prompt_file: document_mrq_trainer.txt
+  prompt_file: mrq_trainer.txt

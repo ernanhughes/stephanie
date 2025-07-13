@@ -1,3 +1,4 @@
+# stephanie/agents/compiler_optimizer.py
 import statistics
 from collections import defaultdict
 
@@ -39,26 +40,33 @@ class CompilerOptimizerAgent(BaseAgent):
             count = len(raw_scores)
             high_score_rate = sum(s >= self.score_threshold for s in raw_scores) / count
 
-            summary.append({
-                "prompt_id": prompt_id,
-                "prompt_text": prompt.prompt_text[:100] if prompt else "<unknown>",
-                "avg_score": avg,
-                "std_dev": std,
-                "count": count,
-                "high_score_rate": round(high_score_rate * 100, 2)
-            })
+            summary.append(
+                {
+                    "prompt_id": prompt_id,
+                    "prompt_text": prompt.prompt_text[:100] if prompt else "<unknown>",
+                    "avg_score": avg,
+                    "std_dev": std,
+                    "count": count,
+                    "high_score_rate": round(high_score_rate * 100, 2),
+                }
+            )
 
         # Step 3: Log or save insights
         top_prompts = sorted(summary, key=lambda x: x["avg_score"], reverse=True)[:5]
-        self.logger.log("CompilerOptimizerSummary", {
-            "goal": goal.get("goal_text"),
-            "top_prompts": top_prompts,
-            "pipeline_run_id": pipeline_run_id
-        })
+        self.logger.log(
+            "CompilerOptimizerSummary",
+            {
+                "goal": goal.get("goal_text"),
+                "top_prompts": top_prompts,
+                "pipeline_run_id": pipeline_run_id,
+            },
+        )
 
         print("\n=== Top Performing Compiled Prompts ===")
         for i, p in enumerate(top_prompts):
-            print(f"[{i+1}] Avg Score: {p['avg_score']:.2f} | Used {p['count']}x | Prompt: {p['prompt_text']}")
+            print(
+                f"[{i + 1}] Avg Score: {p['avg_score']:.2f} | Used {p['count']}x | Prompt: {p['prompt_text']}"
+            )
 
         # Step 4 (future): Update strategy weights, rules, DSPy prior preferences
 

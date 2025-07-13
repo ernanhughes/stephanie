@@ -1,3 +1,4 @@
+# stephanie/agents/icl/icl_cartridge.py
 from datetime import datetime
 
 import numpy as np
@@ -15,7 +16,7 @@ class ICLExample:
         self.response = response
         self.task_type = task_type
         self.timestamp = datetime.utcnow().isoformat()
-        self.embedding = embedding  
+        self.embedding = embedding
         self.score = score  # Score for relevance or quality, default to 0.5
 
     def to_dict(self):
@@ -25,14 +26,14 @@ class ICLExample:
             "task_type": self.task_type,
             "timestamp": self.timestamp,
             "embedding": self.embedding,
-            "score": self.score, 
+            "score": self.score,
         }
 
 
 class ICLHelper:
     def __init__(self, embedding_fn=None):
-        self.examples = [] 
-        self.embedding_fn = embedding_fn  
+        self.examples = []
+        self.embedding_fn = embedding_fn
 
     def add_example(self, prompt, response, task_type):
         self.examples.append(ICLExample(prompt, response, task_type))
@@ -41,12 +42,18 @@ class ICLHelper:
         self.examples.append(ICLExample(prompt, response, task_type, embedding))
 
     def get_top_k_similar(self, query, task_type, k=5):
-        filtered = [ex for ex in self.examples if ex.task_type == task_type and ex.embedding is not None]
+        filtered = [
+            ex
+            for ex in self.examples
+            if ex.task_type == task_type and ex.embedding is not None
+        ]
         if not filtered or not self.embedding_fn:
             return [ex.to_dict() for ex in filtered[:k]]
 
         query_emb = self.embedding_fn([query])[0]
-        scores = [cosine_similarity([query_emb], [ex.embedding])[0][0] for ex in filtered]
+        scores = [
+            cosine_similarity([query_emb], [ex.embedding])[0][0] for ex in filtered
+        ]
         top_indices = np.argsort(scores)[-k:][::-1]
         return [filtered[i].to_dict() for i in top_indices]
 
@@ -58,7 +65,9 @@ class ICLHelper:
             relevant = self.get_top_k_similar(query, task_type, k=top_k)
         else:
             relevant = self.get_examples_by_type(task_type)[:top_k]
-        return "\n\n".join([f"Q: {ex['prompt']}\nA: {ex['response']}" for ex in relevant])
+        return "\n\n".join(
+            [f"Q: {ex['prompt']}\nA: {ex['response']}" for ex in relevant]
+        )
 
 
 class ICLAgent(BaseAgent):
@@ -68,7 +77,7 @@ class ICLAgent(BaseAgent):
         self.logger = logger
         self.helper = ICLHelper()
 
-    async def run(self, context:dict):
+    async def run(self, context: dict):
         input_text = context.get(self.input_key, "")
         task_type = self.cfg.get("task_type", "default")
         context = self.helper.to_prompt_context(task_type, query=input_text)
@@ -79,8 +88,7 @@ class ICLAgent(BaseAgent):
 
         self.helper.add_example(input_text, response, task_type)
 
-
-            # 1. Run original prompt
+        # 1. Run original prompt
         original_response = self.simulate_llm(input_text)
 
         # 2. Generate ICL-augmented prompt
@@ -92,11 +100,21 @@ class ICLAgent(BaseAgent):
             icl_response = None
 
         # 3. Score both
-        if self.cfg.get("use_scorer") and self.memory and hasattr(self.memory, "svm_scorer"):
+        if (
+            self.cfg.get("use_scorer")
+            and self.memory
+            and hasattr(self.memory, "svm_scorer")
+        ):
             scorer = self.memory.svm_scorer
             goal = {"goal_text": input_text}
-            original_score = scorer.score(goal, {"text": original_response}, ["alignment"]).aggregate()
-            icl_score = scorer.score(goal, {"text": icl_response}, ["alignment"]).aggregate() if icl_response else 0
+            original_score = scorer.score(
+                goal, {"text": original_response}, ["alignment"]
+            ).aggregate()
+            icl_score = (
+                scorer.score(goal, {"text": icl_response}, ["alignment"]).aggregate()
+                if icl_response
+                else 0
+            )
         else:
             original_score, icl_score = 0.5, 0.5  # fallback
 
@@ -106,10 +124,10 @@ class ICLAgent(BaseAgent):
 
         context["original_score"] = original_score
         context["icl_score"] = icl_score
-    
+
         context["icl_response"] = icl_response
         context["original"] = original_response
-    
+
         return context
 
     def simulate_llm(self, prompt):
@@ -145,7 +163,9 @@ class ICLPromptEngineeringAgent:
 
     def _add_task_instructions(self, task_context: dict):
         """Add task-specific instructions"""
-        instruction = task_context.get("instruction", "Follow the examples to complete the task.")
+        instruction = task_context.get(
+            "instruction", "Follow the examples to complete the task."
+        )
         self.prompt_builder.add_instruction(instruction)
 
     def _add_examples(self, examples: list[dict]):
@@ -155,12 +175,11 @@ class ICLPromptEngineeringAgent:
                 self.prompt_builder.add_cot_example(
                     input_text=example["input"],
                     thought_process=example["metadata"].get("thought_process", ""),
-                    output_text=example["output"]
+                    output_text=example["output"],
                 )
             else:
                 self.prompt_builder.add_example(
-                    input_text=example["input"],
-                    output_text=example["output"]
+                    input_text=example["input"], output_text=example["output"]
                 )
 
     def _add_constraints_and_format(self, task_context: dict):
@@ -183,7 +202,9 @@ class ICLSelfEditorAgent:
         self.llm_call_fn = llm_call_fn
         self.logger = logger
 
-    def improve_prompt(self, original_prompt: str, initial_response: str, goal: str) -> str:
+    def improve_prompt(
+        self, original_prompt: str, initial_response: str, goal: str
+    ) -> str:
         critique_prompt = f"""
         The goal is: {goal}
 
@@ -198,7 +219,9 @@ class ICLSelfEditorAgent:
         """
         improved = self.llm_call_fn(critique_prompt)
         if self.logger:
-            self.logger.log("PromptEdited", {"before": original_prompt, "after": improved})
+            self.logger.log(
+                "PromptEdited", {"before": original_prompt, "after": improved}
+            )
         return improved
 
 
@@ -211,21 +234,24 @@ class PromptEditorAgent:
         self.llm_call_fn = llm_call_fn
         self.logger = logger
 
-    def edit_and_select(self, prompt: str, variations: list[str], goal: dict, task_type: str) -> str:
+    def edit_and_select(
+        self, prompt: str, variations: list[str], goal: dict, task_type: str
+    ) -> str:
         """Try multiple prompt variations and return the highest scoring result"""
         best_score = -1.0
         best_output = None
         for variant in variations:
             full_prompt = f"{variant}\n\nNow, {prompt}"
             output = self.llm_call_fn(full_prompt)
-            score_bundle = self.scorer.score(goal, {"text": output}, dimensions=["alignment"])
+            score_bundle = self.scorer.score(
+                goal, {"text": output}, dimensions=["alignment"]
+            )
             score = score_bundle.aggregate()
 
-            self.logger.log("PromptVariantScored", {
-                "variant": variant,
-                "score": score,
-                "output": output
-            })
+            self.logger.log(
+                "PromptVariantScored",
+                {"variant": variant, "score": score, "output": output},
+            )
 
             if score > best_score:
                 best_score = score

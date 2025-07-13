@@ -14,7 +14,7 @@ class SolutionNode:
         summary: Optional[str] = None,
         parent_id: Optional[str] = None,
         is_buggy: bool = False,
-        timestamp: float = None
+        timestamp: float = None,
     ):
         self.id = hash(self)
         self.plan = plan
@@ -36,11 +36,9 @@ class SolutionNode:
             "summary": self.summary,
             "parent_id": self.parent_id,
             "is_buggy": self.is_buggy,
-            "timestamp": self.timestamp
+            "timestamp": self.timestamp,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "SolutionNode":
         return cls(**data)
-
-

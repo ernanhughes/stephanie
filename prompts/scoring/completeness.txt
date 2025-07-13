@@ -1,0 +1,15 @@
+Evaluate the completeness of the following Document.
+
+### Goal
+{{ goal.goal_text }}
+
+### Document
+{{ scorable.text }}
+
+Does the Document cover all necessary components to support the goal?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

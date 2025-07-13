@@ -1,3 +1,4 @@
+# stephanie/agents/unified_mrq.py
 import os
 import pickle
 from collections import defaultdict
@@ -43,7 +44,7 @@ class UnifiedMRQAgent(BaseAgent):
         evaluations = self.memory.evaluations.get_by_hypothesis_ids(hypothesis_ids)
         evaluation_ids = [e.id for e in evaluations]
         scores = self.memory.scores.get_by_evaluation_ids(evaluation_ids)
-        
+
         # Step 2: Embed and index hypotheses
         embedded = self._index_embeddings(hypotheses)
 
@@ -121,7 +122,9 @@ class UnifiedMRQAgent(BaseAgent):
                 grouped[hypothesis_id][s.dimension] = s.score
         return grouped
 
-    def _generate_contrast_pairs(self, embedded: dict, score_map: dict, context: dict) -> list[dict]:
+    def _generate_contrast_pairs(
+        self, embedded: dict, score_map: dict, context: dict
+    ) -> list[dict]:
         """
         Given a map of hypothesis_id -> (hypothesis_dict, embedding), and a score_map,
         return all valid contrast pairs where two hypotheses have scores for the same dimensions.
@@ -174,7 +177,9 @@ class UnifiedMRQAgent(BaseAgent):
                     preferred = "a" if score_a > score_b else "b"
                     pair = {
                         "dimension": dim,
-                        "prompt": context.get("goal").get("goal_text"),  # Optional: use goal or reasoning task if desired
+                        "prompt": context.get("goal").get(
+                            "goal_text"
+                        ),  # Optional: use goal or reasoning task if desired
                         "output_a": embedded[id_a][0]["text"],
                         "output_b": embedded[id_b][0]["text"],
                         "preferred": preferred,

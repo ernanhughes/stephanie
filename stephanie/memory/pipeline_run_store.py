@@ -1,3 +1,4 @@
+# stephanie/memory/pipeline_run_store.py
 # stores/pipeline_run_store.py
 import json
 from datetime import datetime
@@ -17,7 +18,7 @@ class PipelineRunStore:
     def insert(self, run_dict: dict) -> int:
         """
         Inserts a new pipeline run record into the database.
-        
+
         :param run_dict: Dictionary containing fields like run_id, goal_id, pipeline, etc.
         :return: The inserted record's ID
         """
@@ -43,14 +44,17 @@ class PipelineRunStore:
             run_id = db_run.id
 
             if self.logger:
-                self.logger.log("PipelineRunInserted", {
-                    "run_id": db_run.run_id,
-                    "goal_id": db_run.goal_id,
-                    "pipeline": db_run.pipeline,
-                    "strategy": db_run.strategy,
-                    "model": db_run.model_name,
-                    "timestamp": db_run.created_at if db_run.created_at else None
-                })
+                self.logger.log(
+                    "PipelineRunInserted",
+                    {
+                        "run_id": db_run.run_id,
+                        "goal_id": db_run.goal_id,
+                        "pipeline": db_run.pipeline,
+                        "strategy": db_run.strategy,
+                        "model": db_run.model_name,
+                        "timestamp": db_run.created_at if db_run.created_at else None,
+                    },
+                )
 
             return run_id
 
@@ -64,20 +68,33 @@ class PipelineRunStore:
         """
         Fetches a single pipeline run by its unique run_id.
         """
-        result = self.session.query(PipelineRunORM).filter(PipelineRunORM.run_id == run_id).first()
+        result = (
+            self.session.query(PipelineRunORM)
+            .filter(PipelineRunORM.run_id == run_id)
+            .first()
+        )
         return result
 
     def get_by_goal_id(self, goal_id: int) -> list[PipelineRunORM]:
         """
         Fetches all pipeline runs associated with a given goal.
         """
-        return self.session.query(PipelineRunORM).filter(PipelineRunORM.goal_id == goal_id).all()
+        return (
+            self.session.query(PipelineRunORM)
+            .filter(PipelineRunORM.goal_id == goal_id)
+            .all()
+        )
 
     def get_all(self, limit: int = 100) -> list[PipelineRunORM]:
         """
         Returns the most recent pipeline runs up to a limit.
         """
-        return self.session.query(PipelineRunORM).order_by(PipelineRunORM.created_at.desc()).limit(limit).all()
+        return (
+            self.session.query(PipelineRunORM)
+            .order_by(PipelineRunORM.created_at.desc())
+            .limit(limit)
+            .all()
+        )
 
     def find(self, filters: dict) -> list[PipelineRunORM]:
         """

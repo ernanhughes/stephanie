@@ -52,7 +52,11 @@ class IdeaInnovationAgent(BaseAgent):
         summaries = []
         for r in results[:5]:  # limit to top 5 for brevity
             title = r.get("title", "")
-            summary = r.get("summary", "")[:200] + "..." if len(r.get("summary", "")) > 200 else ""
+            summary = (
+                r.get("summary", "")[:200] + "..."
+                if len(r.get("summary", "")) > 200
+                else ""
+            )
             url = r.get("url", "")
             summaries.append(f"- {title}: {summary} ({url})")
         return "\n".join(summaries)
@@ -63,14 +67,16 @@ class IdeaInnovationAgent(BaseAgent):
         ideas = []
 
         for line in lines:
-            ideas.append({
-                "idea_text": line,
-                "parent_goal": goal.get("goal_text"),
-                "focus_area": goal.get("focus_area"),
-                "strategy": goal.get("strategy"),
-                "source": "generated_by_IdeaInnovationAgent",
-                "origin": "llm",
-                "extra_data": {}
-            })
+            ideas.append(
+                {
+                    "idea_text": line,
+                    "parent_goal": goal.get("goal_text"),
+                    "focus_area": goal.get("focus_area"),
+                    "strategy": goal.get("strategy"),
+                    "source": "generated_by_IdeaInnovationAgent",
+                    "origin": "llm",
+                    "extra_data": {},
+                }
+            )
 
         return ideas

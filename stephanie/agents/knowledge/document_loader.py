@@ -1,4 +1,4 @@
-# stephanie/agents/document/document_loader.py
+# stephanie/agents/knowledge/document_loader.py
 """
 Document Loader Agent Module
 
@@ -100,7 +100,10 @@ class DocumentLoaderAgent(BaseAgent):
                 if existing:
                     self.logger.log("DocumentAlreadyExists", {"url": url})
                     stored_documents.append(existing.to_dict())
-                    if not self.memory.document_domains.get_domains(existing.id) or self.force_domain_update:
+                    if (
+                        not self.memory.document_domains.get_domains(existing.id)
+                        or self.force_domain_update
+                    ):
                         self.assign_domains_to_document(existing)
                         continue
 
@@ -115,7 +118,7 @@ class DocumentLoaderAgent(BaseAgent):
 
                 file_name = result.get("pid") or result.get("arxiv_id")
                 if not file_name:
-                    file_name = self.sanitize_filename(title) or "document"        
+                    file_name = self.sanitize_filename(title) or "document"
                 # Save to temporary file
                 pdf_path = f"{self.download_directory}/{file_name}.pdf"
                 with open(pdf_path, "wb") as f:
@@ -179,9 +182,10 @@ class DocumentLoaderAgent(BaseAgent):
         context["document_domains"] = document_domains
         return context
 
-
     def sanitize_filename(self, title: str) -> str:
-        return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", title)[:100]  # truncate to 100 chars
+        return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", title)[
+            :100
+        ]  # truncate to 100 chars
 
     def assign_domains_to_document(self, document):
         """
@@ -190,19 +194,30 @@ class DocumentLoaderAgent(BaseAgent):
         """
         content = document.content
         if content:
-            results = self.domain_classifier.classify(content, self.top_k_domains, self.min_classification_score)
+            results = self.domain_classifier.classify(
+                content, self.top_k_domains, self.min_classification_score
+            )
             for domain, score in results:
-                self.memory.document_domains.insert({
-                    "document_id": document.id,
-                    "domain": domain,
-                    "score": score,
-                })
-                self.logger.log("DomainAssigned", {
-                    "title": document.title[:60] if document.title else "",
-                    "domain": domain,
-                    "score": score,
-                })
+                self.memory.document_domains.insert(
+                    {
+                        "document_id": document.id,
+                        "domain": domain,
+                        "score": score,
+                    }
+                )
+                self.logger.log(
+                    "DomainAssigned",
+                    {
+                        "title": document.title[:60] if document.title else "",
+                        "domain": domain,
+                        "score": score,
+                    },
+                )
         else:
-            self.logger.log("DocumentNoContent", {
-                "document_id": document.id,
-                "title": document.title[:60] if document.title else "", })
+            self.logger.log(
+                "DocumentNoContent",
+                {
+                    "document_id": document.id,
+                    "title": document.title[:60] if document.title else "",
+                },
+            )

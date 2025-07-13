@@ -1,4 +1,4 @@
-# stephanie/tools/search_hit.py
+# stephanie/models/search_hit.py
 
 from sqlalchemy import JSON, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship

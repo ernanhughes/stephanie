@@ -1,3 +1,4 @@
+# stephanie/agents/master_pupil/lord_attack.py
 import logging
 from typing import Any, Optional
 
@@ -7,7 +8,7 @@ class LordAttackModule:
         self,
         cfg: dict[str, Any],
         memory: callable,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
     ):
         """
         A modular class for implementing LoRD-based model extraction attacks.
@@ -34,7 +35,9 @@ class LordAttackModule:
         # Load config parameters
         self.victim_model = cfg.get("lord", {}).get("victim_model", "qwen3")
         self.student_model = cfg.get("lord", {}).get("student_model", "phi3")
-        self.embedding_model = cfg.get("embeddings", {}).get("model", "mxbai-embed-large")
+        self.embedding_model = cfg.get("embeddings", {}).get(
+            "model", "mxbai-embed-large"
+        )
         self.temperature = cfg.get("lord", {}).get("temperature", 0.7)
         self.max_tokens = cfg.get("lord", {}).get("max_tokens", 256)
         self.log_frequency = cfg.get("lord", {}).get("log_frequency", 1)
@@ -49,7 +52,7 @@ class LordAttackModule:
         log_data = {
             "event": event_type,
             "module": self.__class__.__name__,
-            "message": message
+            "message": message,
         }
         if self.logger:
             if level == "debug":
@@ -73,18 +76,23 @@ class LordAttackModule:
             "prompt": prompt,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "stream": False
+            "stream": False,
         }
 
         try:
             import requests
+
             response = requests.post(url, json=payload)
             response.raise_for_status()
             result = response.json().get("response", "")
             self.log_event("OllamaQuerySuccess", f"Queried {model_name} successfully.")
             return result
         except Exception as e:
-            self.log_event("OllamaQueryFailed", f"Failed to query {model_name}: {str(e)}", level="error")
+            self.log_event(
+                "OllamaQueryFailed",
+                f"Failed to query {model_name}: {str(e)}",
+                level="error",
+            )
             return ""
 
     def get_embedding(self, text: str) -> list:
@@ -94,7 +102,9 @@ class LordAttackModule:
         try:
             return self.embedding_store.get_or_create(text)
         except Exception as e:
-            self.log_event("EmbeddingFailed", f"Failed to embed text: {str(e)}", level="error")
+            self.log_event(
+                "EmbeddingFailed", f"Failed to embed text: {str(e)}", level="error"
+            )
             return []
 
     def train_step(self, prompt: str, step: int):
@@ -120,7 +130,10 @@ class LordAttackModule:
 
         # Step 5: Log results
         if step % self.log_frequency == 0:
-            self.log_event("TrainingStepResult", f"Step {step}, Loss: {loss:.4f}, Similarity: {similarity_score:.4f}")
+            self.log_event(
+                "TrainingStepResult",
+                f"Step {step}, Loss: {loss:.4f}, Similarity: {similarity_score:.4f}",
+            )
 
         return loss
 
@@ -129,6 +142,7 @@ class LordAttackModule:
         Compute cosine similarity between two vectors.
         """
         import numpy as np
+
         vec1 = np.array(vec1)
         vec2 = np.array(vec2)
         dot_product = np.dot(vec1, vec2)
@@ -136,7 +150,9 @@ class LordAttackModule:
         norm2 = np.linalg.norm(vec2)
         return dot_product / (norm1 * norm2) if norm1 and norm2 else 0.0
 
-    def run_attack(self, prompt_base: str = "Explain quantum computing.", epochs: int = 10):
+    def run_attack(
+        self, prompt_base: str = "Explain quantum computing.", epochs: int = 10
+    ):
         """
         Run full LoRD attack loop.
         """
@@ -147,10 +163,8 @@ class LordAttackModule:
             loss = self.train_step(full_prompt, step)
 
             # Optional: Save prompt and result to memory
-            self.prompt_store.save_prompt({
-                "prompt": full_prompt,
-                "loss": loss,
-                "step": step
-            })
+            self.prompt_store.save_prompt(
+                {"prompt": full_prompt, "loss": loss, "step": step}
+            )
 
         self.log_event("AttackFinished", "LoRD attack completed.")

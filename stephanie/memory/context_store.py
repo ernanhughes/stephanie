@@ -1,3 +1,4 @@
+# stephanie/memory/context_store.py
 # stores/context_store.py
 import json
 import os
@@ -19,14 +20,25 @@ class ContextStore:
         if self.dump_dir:
             self.dump_dir = os.path.dirname(self.dump_dir)
 
-    def save(self, run_id: str, stage: str, context: dict, preferences: dict = None, extra_data: dict = None):
+    def save(
+        self,
+        run_id: str,
+        stage: str,
+        context: dict,
+        preferences: dict = None,
+        extra_data: dict = None,
+    ):
         """
         Saves the current pipeline context to database and optionally to disk.
         Increments version and marks it as current for this stage/run.
         """
         try:
             # Deactivate previous versions
-            prev_versions = self.session.query(ContextStateORM).filter_by(run_id=run_id, stage_name=stage).all()
+            prev_versions = (
+                self.session.query(ContextStateORM)
+                .filter_by(run_id=run_id, stage_name=stage)
+                .all()
+            )
             for state in prev_versions:
                 state.is_current = False
 
@@ -36,8 +48,8 @@ class ContextStore:
 
             # Create new context state
             db_context = ContextStateORM(
-                pipeline_run_id=context.get("pipeline_run_id"), 
-                goal_id=context.get("goal", {}).get("id"), 
+                pipeline_run_id=context.get("pipeline_run_id"),
+                goal_id=context.get("goal", {}).get("id"),
                 run_id=run_id,
                 stage_name=stage,
                 version=new_version,
@@ -45,7 +57,7 @@ class ContextStore:
                 context=json.dumps(context),
                 preferences=json.dumps(preferences) if preferences else None,
                 extra_data=json.dumps(extra_data or {}),
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
             )
 
             self.session.add(db_context)
@@ -55,13 +67,16 @@ class ContextStore:
                 self._dump_to_yaml(stage, context)
 
             if self.logger:
-                self.logger.log("ContextSaved", {
-                    "run_id": run_id,
-                    "stage": stage,
-                    "version": new_version,
-                    "timestamp": db_context.timestamp.isoformat(),
-                    "is_current": True
-                })
+                self.logger.log(
+                    "ContextSaved",
+                    {
+                        "run_id": run_id,
+                        "stage": stage,
+                        "version": new_version,
+                        "timestamp": db_context.timestamp.isoformat(),
+                        "is_current": True,
+                    },
+                )
             self.session.commit()
 
         except Exception as e:
@@ -71,7 +86,7 @@ class ContextStore:
                 self.logger.log("ContextSaveFailed", {"error": str(e)})
             raise
 
-    def has_completed(self, goal_id:int, stage_name: str) -> bool:
+    def has_completed(self, goal_id: int, stage_name: str) -> bool:
         """Check if this stage has already been run"""
         count = (
             self.session.query(ContextStateORM)
@@ -80,7 +95,7 @@ class ContextStore:
         )
         return count > 0
 
-    def load(self, goal_id:int, stage: Optional[str] = None) -> dict:
+    def load(self, goal_id: int, stage: Optional[str] = None) -> dict:
         try:
             session = self.session if self.session.is_active else self.sessionmaker()
 

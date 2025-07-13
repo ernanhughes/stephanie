@@ -36,7 +36,7 @@ LABEL_HIERARCHY = {
     "Computer Vision": ["Image Classification", "Object Detection", "Segmentation"],
     "NLP": ["Text Classification", "NER", "Summarization"],
     "Tabular Data": ["Classification", "Regression", "Anomaly Detection"],
-    "Graph Learning": ["Node Classification", "Link Prediction"]
+    "Graph Learning": ["Node Classification", "Link Prediction"],
 }
 
 
@@ -52,9 +52,9 @@ class AutoMindKnowledgeCollector:
             "goal": {
                 "id": "paper_search",
                 "goal_text": query,
-                "goal_type": "model_review"
+                "goal_type": "model_review",
             },
-            "search_queries": [{"goal_text": query}]
+            "search_queries": [{"goal_text": query}],
         }
         result = await self.agent.run(context)
         return result.get("search_results", [])
@@ -65,9 +65,9 @@ class AutoMindKnowledgeCollector:
             "goal": {
                 "id": "kaggle_search",
                 "goal_text": query,
-                "goal_type": "data_search"
+                "goal_type": "data_search",
             },
-            "search_queries": [{"goal_text": query}]
+            "search_queries": [{"goal_text": query}],
         }
         result = await self.agent.run(context)
         return result.get("search_results", [])
@@ -97,7 +97,10 @@ class AutoMindKnowledgeCollector:
         all_docs = papers + kaggle_tricks
 
         labeled_docs = [
-            {**doc, "labels": self.assign_labels_to_document(doc["title"], doc["summary"])}
+            {
+                **doc,
+                "labels": self.assign_labels_to_document(doc["title"], doc["summary"]),
+            }
             for doc in all_docs
         ]
 
@@ -111,7 +114,9 @@ class AutoMindKnowledgeCollector:
 
     def filter_by_similarity(self, query: str, docs: List[Dict]) -> List[Dict]:
         titles_and_summaries = [f"{doc['title']} {doc['summary']}" for doc in docs]
-        scores = get_top_k_similar(query, titles_and_summaries, self.memory, top_k=len(docs))
+        scores = get_top_k_similar(
+            query, titles_and_summaries, self.memory, top_k=len(docs)
+        )
         ranked_indices = [i for i, _ in scores]
         return [docs[i] for i in ranked_indices]
 
@@ -122,7 +127,7 @@ class AutoMindKnowledgeCollector:
             "Tabular Data": 4,
             "Image Classification": 3,
             "Text Classification": 3,
-            "Classification": 2
+            "Classification": 2,
         }
 
         def score_doc(doc):

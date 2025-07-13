@@ -1,3 +1,4 @@
+# stephanie/agents/self_aware_planner.py
 # --- agents/self_aware_planner_agent.py ---
 
 import copy

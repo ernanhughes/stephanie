@@ -1,5 +1,6 @@
 # stephanie/utils/graph_tools.py
 
+
 def build_mermaid_graph(node, depth=0, max_depth=5, visited=None):
     """
     Recursively builds a Mermaid graph from a reasoning tree node.
@@ -7,7 +8,7 @@ def build_mermaid_graph(node, depth=0, max_depth=5, visited=None):
     """
     if visited is None:
         visited = set()
-    
+
     if depth > max_depth or id(node) in visited:
         return []
 
@@ -64,11 +65,13 @@ def build_mermaid_graph(node, depth=0, max_depth=5, visited=None):
 
     return mermaid
 
+
 def save_mermaid_to_file(diagram, filename="search_tree.mmd"):
     with open(filename, "w") as f:
         f.write("```mermaid\ngraph TD\n")
         f.write(diagram + "\n")
         f.write("```\n")
+
 
 def compare_graphs(graph1, graph2):
     """
@@ -90,6 +93,7 @@ def compare_graphs(graph1, graph2):
 
     return matches, only_1, only_2
 
+
 def analyze_graph_impact(graph1, graph2, score_lookup_fn):
     """
     Returns a list of dictionaries summarizing overlap and score delta.
@@ -100,24 +104,24 @@ def analyze_graph_impact(graph1, graph2, score_lookup_fn):
     for node in matches:
         score1 = score_lookup_fn(node, source="graph1")
         score2 = score_lookup_fn(node, source="graph2")
-        results.append({
-            "node": node,
-            "type": "match",
-            "delta": score2 - score1
-        })
+        results.append({"node": node, "type": "match", "delta": score2 - score1})
 
     for node in only_1:
-        results.append({
-            "node": node,
-            "type": "only_graph1",
-            "score": score_lookup_fn(node, source="graph1")
-        })
+        results.append(
+            {
+                "node": node,
+                "type": "only_graph1",
+                "score": score_lookup_fn(node, source="graph1"),
+            }
+        )
 
     for node in only_2:
-        results.append({
-            "node": node,
-            "type": "only_graph2",
-            "score": score_lookup_fn(node, source="graph2")
-        })
+        results.append(
+            {
+                "node": node,
+                "type": "only_graph2",
+                "score": score_lookup_fn(node, source="graph2"),
+            }
+        )
 
     return results

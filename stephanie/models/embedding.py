@@ -1,3 +1,4 @@
+# stephanie/models/embedding.py
 # models/embedding.py
 
 from pgvector.sqlalchemy import Vector
@@ -8,7 +9,7 @@ from stephanie.models.base import Base
 
 
 class EmbeddingORM(Base):
-    __tablename__ = 'embeddings'
+    __tablename__ = "embeddings"
 
     id = Column(Integer, primary_key=True)
     text = Column(Text, nullable=True)

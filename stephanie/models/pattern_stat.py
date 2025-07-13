@@ -1,3 +1,4 @@
+# stephanie/models/pattern_stat.py
 # models/pattern_stat.py
 from datetime import datetime, timezone
 
@@ -21,8 +22,8 @@ class PatternStatORM(Base):
 
     # Rubric Dimension + Label
     dimension = Column(String, nullable=False)  # e.g., "Inference Style"
-    label = Column(String, nullable=False)      # e.g., "Deductive"
-    confidence_score = Column(Float)           # Optional numeric score
+    label = Column(String, nullable=False)  # e.g., "Deductive"
+    confidence_score = Column(Float)  # Optional numeric score
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.now(timezone.utc))

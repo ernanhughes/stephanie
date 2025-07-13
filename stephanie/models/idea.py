@@ -1,3 +1,4 @@
+# stephanie/models/idea.py
 # models/idea.py
 from datetime import datetime
 
@@ -35,5 +36,5 @@ class IdeaORM(Base):
             "origin": self.origin,
             "extra_data": self.extra_data or {},  # Avoid NoneType issues
             "goal_id": self.goal_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }

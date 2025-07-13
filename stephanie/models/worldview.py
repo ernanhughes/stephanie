@@ -16,7 +16,7 @@ class WorldviewORM(Base):
     goal = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    extra_data = Column(JSON) 
+    extra_data = Column(JSON)
     db_path = Column(Text)
     active = Column(Boolean, default=True)
 
@@ -27,5 +27,5 @@ class WorldviewORM(Base):
             "name": self.name,
             "db_path": self.db_path,
             "created_at": self.created_at.isoformat(),
-            "active": self.active
+            "active": self.active,
         }

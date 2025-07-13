@@ -1,3 +1,4 @@
+# stephanie/agents/world/worldview_merger.py
 import uuid
 from datetime import datetime
 
@@ -33,18 +34,23 @@ class WorldviewMergerAgent:
             self._merge_cartridges(src_id, target_id)
 
             if self.logger:
-                self.logger.log("WorldviewMerged", {
-                    "source": src_id,
-                    "target": target_id,
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+                self.logger.log(
+                    "WorldviewMerged",
+                    {
+                        "source": src_id,
+                        "target": target_id,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    },
+                )
 
         self.db.commit()
         return target_id
 
     def _merge_beliefs(self, source_id, target_id):
         beliefs = self.db.query(BeliefORM).filter_by(worldview_id=source_id).all()
-        target_beliefs = self.db.query(BeliefORM).filter_by(worldview_id=target_id).all()
+        target_beliefs = (
+            self.db.query(BeliefORM).filter_by(worldview_id=target_id).all()
+        )
 
         existing_summaries = set(b.summary for b in target_beliefs)
 
@@ -58,7 +64,7 @@ class WorldviewMergerAgent:
                     novelty_score=b.novelty_score,
                     domain=b.domain,
                     status="active",
-                    created_at=datetime.utcnow()
+                    created_at=datetime.utcnow(),
                 )
                 self.db.add(merged)
 
@@ -71,7 +77,7 @@ class WorldviewMergerAgent:
                 response=e.response,
                 task_type=e.task_type,
                 source=f"Merged from {source_id}",
-                created_at=datetime.utcnow()
+                created_at=datetime.utcnow(),
             )
             self.db.add(new_e)
 
@@ -84,6 +90,6 @@ class WorldviewMergerAgent:
                 generation=c.generation,
                 schema=c.schema,
                 created_at=datetime.utcnow(),
-                source=f"Merged from worldview {source_id}"
+                source=f"Merged from worldview {source_id}",
             )
             self.db.add(merged_cart)

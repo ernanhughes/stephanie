@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS elo_ranking_log (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE summaries (
+CREATE TABLE IF NOT EXISTS  summaries (
     id SERIAL PRIMARY KEY,
     text TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
@@ -294,9 +294,9 @@ CREATE TABLE IF NOT EXISTS model_performance (
 );
 
 -- Indexes
-CREATE INDEX idx_model_name ON model_performance(model_name);
-CREATE INDEX idx_task_type ON model_performance(task_type);
-CREATE INDEX idx_preference_used ON model_performance USING GIN(preference_used);
+CREATE INDEX IF NOT EXISTS idx_model_name ON model_performance(model_name);
+CREATE INDEX IF NOT EXISTS idx_task_type ON model_performance(task_type);
+CREATE INDEX IF NOT EXISTS idx_preference_used ON model_performance USING GIN(preference_used);
 
 CREATE TABLE IF NOT EXISTS mrq_evaluations (
     id SERIAL PRIMARY KEY,
@@ -312,8 +312,8 @@ CREATE TABLE IF NOT EXISTS mrq_evaluations (
 );
 
 -- Indexes
-CREATE INDEX idx_mrq_goal ON mrq_evaluations(goal);
-CREATE INDEX idx_mrq_winner ON mrq_evaluations(winner);
+CREATE INDEX IF NOT EXISTS idx_mrq_goal ON mrq_evaluations(goal);
+CREATE INDEX IF NOT EXISTS idx_mrq_winner ON mrq_evaluations(winner);
 
 CREATE TABLE IF NOT EXISTS sharpening_results (
     id SERIAL PRIMARY KEY,
@@ -346,9 +346,9 @@ CREATE TABLE IF NOT EXISTS cot_pattern_stats (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_cot_pattern_goal ON cot_pattern_stats (goal_id);
-CREATE INDEX idx_cot_pattern_model ON cot_pattern_stats (model_name);
-CREATE INDEX idx_cot_pattern_dimension ON cot_pattern_stats (dimension);
+CREATE INDEX IF NOT EXISTS idx_cot_pattern_goal ON cot_pattern_stats (goal_id);
+CREATE INDEX IF NOT EXISTS idx_cot_pattern_model ON cot_pattern_stats (model_name);
+CREATE INDEX IF NOT EXISTS idx_cot_pattern_dimension ON cot_pattern_stats (dimension);
 
 
 CREATE TABLE IF NOT EXISTS scores (
@@ -500,12 +500,12 @@ CREATE TABLE IF NOT EXISTS method_plans (
 );
 
 -- Indexes for faster querying
-CREATE INDEX idx_idea_text ON method_plans USING GIN (to_tsvector('english', idea_text));
-CREATE INDEX idx_research_objective ON method_plans USING GIN (to_tsvector('english', research_objective));
-CREATE INDEX idx_focus_area ON method_plans (focus_area);
-CREATE INDEX idx_evolution_level ON method_plans (evolution_level);
-CREATE INDEX idx_goal_id ON method_plans (goal_id);
-CREATE INDEX idx_parent_plan_id ON method_plans (parent_plan_id);
+CREATE INDEX IF NOT EXISTS idx_idea_text ON method_plans USING GIN (to_tsvector('english', idea_text));
+CREATE INDEX IF NOT EXISTS idx_research_objective ON method_plans USING GIN (to_tsvector('english', research_objective));
+CREATE INDEX IF NOT EXISTS idx_focus_area ON method_plans (focus_area);
+CREATE INDEX IF NOT EXISTS idx_evolution_level ON method_plans (evolution_level);
+CREATE INDEX IF NOT EXISTS idx_goal_id ON method_plans (goal_id);
+CREATE INDEX IF NOT EXISTS idx_parent_plan_id ON method_plans (parent_plan_id);
 
 
 -- Create table for storing preference pairs used in ARM/MrQ training
@@ -865,4 +865,124 @@ CREATE TABLE IF NOT EXISTS scoring_history (
     method TEXT NOT NULL,             -- e.g., "ebt", "mrq", "llm"
     source TEXT,                      -- e.g., "gpt-4", "human"
     created_at TIMESTAMP DEFAULT NOW()
-); 
+);
+
+CREATE TABLE IF NOT EXISTS scoring_events (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL,
+    goal_text TEXT NOT NULL,
+    original_text TEXT,
+    refined_text TEXT,
+    final_source TEXT NOT NULL, -- "mrq", "ebt", or "llm"
+    used_refinement BOOLEAN DEFAULT FALSE,
+    refinement_steps INTEGER,
+    used_llm_fallback BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS scoring_dimensions (
+    event_id INTEGER REFERENCES scoring_events(id),
+    dimension TEXT,
+    mrq_score FLOAT,
+    ebt_energy FLOAT,
+    uncertainty_score FLOAT,
+    final_score FLOAT,
+    PRIMARY KEY (event_id, dimension)
+);
+
+CREATE TABLE IF NOT EXISTS scores (
+    id SERIAL PRIMARY KEY,
+    evaluation_id INTEGER REFERENCES evaluations(id),
+    target_type TEXT NOT NULL,         -- e.g., "document", "triplet"
+    target_id INTEGER NOT NULL,        -- refers to document.id, etc.
+    dimension TEXT NOT NULL,
+
+    score FLOAT NOT NULL,
+    energy FLOAT,                      -- nullable: only present if EBT was used
+    uncertainty FLOAT,                 -- sigmoid(energy), optional
+
+    weight FLOAT DEFAULT 1.0,
+    rationale TEXT,
+    source TEXT,                       -- "mrq", "llm", "ebt", etc.
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Table for storing refinement history
+CREATE TABLE IF NOT EXISTS refinement_events (
+    id SERIAL PRIMARY KEY,
+    context TEXT NOT NULL,
+    original TEXT NOT NULL,
+    refined TEXT NOT NULL,
+    context_hash TEXT NOT NULL,
+    original_hash TEXT NOT NULL,
+    refined_hash TEXT NOT NULL,
+    original_score FLOAT,
+    refined_score FLOAT,
+    dimension TEXT NOT NULL,
+    improvement FLOAT,
+    energy_before FLOAT,
+    energy_after FLOAT,
+    steps_used INTEGER,
+    source TEXT DEFAULT 'auto',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS memcubes (
+    id TEXT PRIMARY KEY,  -- hash-based ID + version
+    scorable_id bigint NOT NULL,  -- Foreign key to Scorable
+    scorable_type TEXT NOT NULL,   -- e.g., document, theorem, triple
+    content TEXT NOT NULL,        -- Raw text from Scorable
+    dimension TEXT,               -- e.g., relevance, clarity, ethics
+    original_score FLOAT,         -- Original score before any transformations
+    refined_score FLOAT,          -- Post-processed score (e.g., tuned)
+    refined_content TEXT,          -- Optional: text after refinement
+    version TEXT NOT NULL,        -- v1, v2, etc.
+    source TEXT,                -- e.g., user_input, inference_engine
+    model TEXT,                 -- e.g., gpt-4, llama3
+    priority INT DEFAULT 5,     -- 1–10 scale
+    sensitivity TEXT DEFAULT 'public',  -- security tag
+    ttl INT,                    -- Time-to-live in days
+    usage_count INT DEFAULT 0,
+    extra_data JSONB, 
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_modified TIMESTAMP DEFAULT NOW()
+);
+
+
+
+
+-- Track transformations between memory types
+CREATE TABLE memcube_transformations (
+    id SERIAL PRIMARY KEY,
+    source_cube_id TEXT NOT NULL,
+    target_cube_id TEXT NOT NULL,
+    transformation_type TEXT,
+    confidence FLOAT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Track belief graph versions
+CREATE TABLE belief_graph_versions (
+    id SERIAL PRIMARY KEY,
+    goal TEXT NOT NULL,
+    node_count INT,
+    edge_count INT,
+    avg_strength FLOAT,
+    avg_relevance FLOAT,
+    contradictions INT,
+    theorems INT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    model_path TEXT
+);
+
+-- Track theorem applications
+CREATE TABLE theorem_applications (
+    id SERIAL PRIMARY KEY,
+    theorem_id TEXT NOT NULL,
+    context TEXT,
+    result TEXT,
+    success BOOLEAN,
+    energy FLOAT,
+    uncertainty FLOAT,
+    applied_at TIMESTAMP DEFAULT NOW()
+);

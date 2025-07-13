@@ -1,3 +1,4 @@
+# stephanie/agents/world/belief_injest.py
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -11,13 +12,17 @@ from stephanie.utils.summarizer import summarize_text
 
 
 class BeliefIngestAgent:
-    def __init__(self, db: Session, scorer: SVMScorer, embedding: EmbeddingManager, logger=None):
+    def __init__(
+        self, db: Session, scorer: SVMScorer, embedding: EmbeddingManager, logger=None
+    ):
         self.db = db
         self.scorer = scorer
         self.embedding = embedding
         self.logger = logger
 
-    def ingest_document(self, text: str, worldview_id: int, goal_id: int = None, source_uri: str = None):
+    def ingest_document(
+        self, text: str, worldview_id: int, goal_id: int = None, source_uri: str = None
+    ):
         """
         Extracts belief(s) from a document and stores them.
         """
@@ -29,7 +34,7 @@ class BeliefIngestAgent:
         score_bundle = self.scorer.score(
             goal={"goal_text": goal_text},
             hypothesis={"text": summary},
-            dimensions=["alignment", "novelty"]
+            dimensions=["alignment", "novelty"],
         )
         alignment_score = score_bundle.results["alignment"].score
         novelty_score = score_bundle.results["novelty"].score
@@ -44,19 +49,22 @@ class BeliefIngestAgent:
             novelty_score=novelty_score,
             domain=self._infer_domain(summary),
             status="active",
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
         )
 
         self.db.add(belief)
         self.db.commit()
 
         if self.logger:
-            self.logger.log("BeliefIngested", {
-                "summary": summary,
-                "alignment": alignment_score,
-                "novelty": novelty_score,
-                "worldview_id": worldview_id
-            })
+            self.logger.log(
+                "BeliefIngested",
+                {
+                    "summary": summary,
+                    "alignment": alignment_score,
+                    "novelty": novelty_score,
+                    "worldview_id": worldview_id,
+                },
+            )
 
         return belief
 

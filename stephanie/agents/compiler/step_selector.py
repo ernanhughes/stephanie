@@ -1,4 +1,4 @@
-# stephanie/compiler/step_selector.py
+# stephanie/agents/compiler/step_selector.py
 from operator import attrgetter
 
 from stephanie.agents.compiler.reasoning_trace import (ReasoningNode,
@@ -16,15 +16,19 @@ class StepSelector:
         # 3. Create dummy next steps based on top thoughts (can use a better prompt later)
         steps = []
         for leaf in top_leafs:
-            steps.append({
-                "parent_id": leaf.id,
-                "thought": f"Refine step from: {leaf.thought}",
-                "action": f"Expand on: {leaf.action}",
-            })
+            steps.append(
+                {
+                    "parent_id": leaf.id,
+                    "thought": f"Refine step from: {leaf.thought}",
+                    "action": f"Expand on: {leaf.action}",
+                }
+            )
 
         return steps
 
-    def rank_paths(self, tree: ReasoningTree, metric="score") -> list[list[ReasoningNode]]:
+    def rank_paths(
+        self, tree: ReasoningTree, metric="score"
+    ) -> list[list[ReasoningNode]]:
         def dfs(node: ReasoningNode, path: list, all_paths: list):
             path.append(node)
             if not node.children:
@@ -41,5 +45,9 @@ class StepSelector:
             dfs(root, [], all_paths)
 
         # Sort paths by cumulative score
-        ranked = sorted(all_paths, key=lambda path: sum(getattr(n, metric, 0.0) for n in path), reverse=True)
+        ranked = sorted(
+            all_paths,
+            key=lambda path: sum(getattr(n, metric, 0.0) for n in path),
+            reverse=True,
+        )
         return ranked

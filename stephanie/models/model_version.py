@@ -1,8 +1,12 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, Text, JSON, TIMESTAMP, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
+# stephanie/models/model_version.py
 from datetime import datetime
 
+from sqlalchemy import (JSON, TIMESTAMP, Boolean, Column, Float, ForeignKey,
+                        Integer, String, Text)
+from sqlalchemy.ext.declarative import declarative_base
+
 from stephanie.models.base import Base
+
 
 class ModelVersionORM(Base):
     __tablename__ = "model_versions"
@@ -25,7 +29,6 @@ class ModelVersionORM(Base):
     description = Column(Text, nullable=True)
     source = Column(Text, nullable=True)
 
-
     def __repr__(self):
         return f"<ModelVersionORM(model_type={self.model_type}, target_type={self.target_type}, dimension={self.dimension}, version={self.version})>"
 
@@ -47,5 +50,5 @@ class ModelVersionORM(Base):
             "scaler_path": self.scaler_path,
             "meta_path": self.meta_path,
             "description": self.description,
-            "source": self.source
+            "source": self.source,
         }

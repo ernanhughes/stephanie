@@ -1,3 +1,4 @@
+# stephanie/utils/run_utils.py
 import os
 import re
 import uuid
@@ -8,12 +9,12 @@ from omegaconf import DictConfig
 
 def generate_run_id(goal: str) -> str:
     # Extract keywords from goal
-    keywords = re.findall(r'\b\w{5,}\b', goal.lower())  # words with 5+ letters
-    keywords = keywords[:2] if keywords else ['run']
+    keywords = re.findall(r"\b\w{5,}\b", goal.lower())  # words with 5+ letters
+    keywords = keywords[:2] if keywords else ["run"]
 
     # Sanitize and slugify
     slug = "_".join(keywords)
-    slug = re.sub(r'[^a-z0-9_]+', '', slug)
+    slug = re.sub(r"[^a-z0-9_]+", "", slug)
 
     # Add timestamp and short UUID
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
@@ -21,12 +22,13 @@ def generate_run_id(goal: str) -> str:
 
     return f"{slug}_{timestamp}_{short_uuid}"
 
-def get_log_file_path(run_id:str, cfg: DictConfig) -> str:
+
+def get_log_file_path(run_id: str, cfg: DictConfig) -> str:
     # Get the path to the log file
     if cfg.logging.logger.get("log_file", None):
         print(f"Log file path: {cfg.logging.logger.log_file}")
         return cfg.logging.logger.log_file
-    
+
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     safe_run_id = re.sub(r"[\\W_]+", "_", run_id)  # remove/replace unsafe chars
     log_filename = f"{safe_run_id}_{timestamp}.jsonl"
@@ -34,4 +36,3 @@ def get_log_file_path(run_id:str, cfg: DictConfig) -> str:
     log_file_path = os.path.join(cfg.logging.logger.log_path, log_filename)
     print(f"Log file path: {log_file_path}")
     return log_file_path
-

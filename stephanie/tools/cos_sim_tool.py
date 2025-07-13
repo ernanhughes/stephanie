@@ -1,3 +1,4 @@
+# stephanie/tools/cos_sim_tool.py
 from typing import List, Tuple
 
 import numpy as np
@@ -12,20 +13,17 @@ def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
 
 
 def get_top_k_similar(
-    query: str,
-    documents: List[str],
-    memory,
-    top_k: int = 5
+    query: str, documents: List[str], memory, top_k: int = 5
 ) -> List[Tuple[str, float]]:
     """
     Compute similarity between query and each document, return top_k most similar.
-    
+
     Args:
         query: The input query text.
         documents: A list of document strings.
         get_embedding: Callable that takes a string and returns a vector (np.ndarray).
         top_k: Number of top results to return.
-    
+
     Returns:
         List of (document, similarity_score) tuples.
     """

@@ -1,3 +1,4 @@
+# stephanie/memory/prompt_store.py
 # stores/prompt_store.py
 import json
 import re
@@ -18,9 +19,14 @@ class PromptStore:
         self.logger = logger
         self.name = "prompt"
 
-    def get_or_create_goal(self, goal_text: str, goal_type: str = None,
-                           focus_area: str = None, strategy: str = None,
-                           source: str = "user") -> GoalORM:
+    def get_or_create_goal(
+        self,
+        goal_text: str,
+        goal_type: str = None,
+        focus_area: str = None,
+        strategy: str = None,
+        source: str = "user",
+    ) -> GoalORM:
         """
         Returns existing goal or creates a new one.
         """
@@ -35,17 +41,20 @@ class PromptStore:
                     focus_area=focus_area,
                     strategy=strategy,
                     llm_suggested_strategy=None,
-                    source=source
+                    source=source,
                 )
                 self.session.add(goal)
                 self.session.flush()  # Get ID before commit
 
                 if self.logger:
-                    self.logger.log("GoalCreated", {
-                        "goal_id": goal.id,
-                        "goal_text": goal_text[:100],
-                        "source": source
-                    })
+                    self.logger.log(
+                        "GoalCreated",
+                        {
+                            "goal_id": goal.id,
+                            "goal_text": goal_text[:100],
+                            "source": source,
+                        },
+                    )
 
             return goal
 
@@ -55,22 +64,30 @@ class PromptStore:
                 self.logger.log("GoalGetOrCreateFailed", {"error": str(e)})
             raise
 
-    def save(self, goal: dict, agent_name: str, prompt_key: str, prompt_text: str,
-             response: Optional[str] = None, strategy: str = "default", pipeline_run_id: Optional[int] = None,
-             extra_data: dict = None, version: int = 1):
+    def save(
+        self,
+        goal: dict,
+        agent_name: str,
+        prompt_key: str,
+        prompt_text: str,
+        response: Optional[str] = None,
+        strategy: str = "default",
+        pipeline_run_id: Optional[int] = None,
+        extra_data: dict = None,
+        version: int = 1,
+    ):
         """
         Saves a prompt to the database and marks it as current for its key/agent.
         """
         try:
             goal_text = goal.get("goal_text", "")
-            goal_type=goal.get("goal_type")
+            goal_type = goal.get("goal_type")
             # Get or create the associated goal
             goal_orm = self.get_or_create_goal(goal_text=goal_text, goal_type=goal_type)
 
             # Deactivate previous versions of this prompt key/agent combo
             self.session.query(PromptORM).filter_by(
-                agent_name=agent_name,
-                prompt_key=prompt_key
+                agent_name=agent_name, prompt_key=prompt_key
             ).update({"is_current": False})
 
             # Build ORM object
@@ -83,22 +100,25 @@ class PromptStore:
                 response_text=response,
                 strategy=strategy,
                 version=version,
-                extra_data=json.dumps(extra_data or {})
+                extra_data=json.dumps(extra_data or {}),
             )
 
             self.session.add(db_prompt)
             self.session.flush()  # Get ID immediately
 
             if self.logger:
-                self.logger.log("PromptStored", {
-                    "prompt_id": db_prompt.id,
-                    "prompt_key": prompt_key,
-                    "goal_id": goal_orm.id,
-                    "agent": agent_name,
-                    "strategy": strategy,
-                    "length": len(prompt_text),
-                    "timestamp": db_prompt.timestamp.isoformat()
-                })
+                self.logger.log(
+                    "PromptStored",
+                    {
+                        "prompt_id": db_prompt.id,
+                        "prompt_key": prompt_key,
+                        "goal_id": goal_orm.id,
+                        "agent": agent_name,
+                        "strategy": strategy,
+                        "length": len(prompt_text),
+                        "timestamp": db_prompt.timestamp.isoformat(),
+                    },
+                )
 
             return db_prompt.id
 
@@ -110,10 +130,7 @@ class PromptStore:
                 )
             raise
 
-    def get_from_text(
-        self,
-        prompt_text: str
-    ) -> Optional[PromptORM]:
+    def get_from_text(self, prompt_text: str) -> Optional[PromptORM]:
         """
         Retrieve a prompt from the DB based on its exact prompt_text.
         Optionally filter by agent_name and/or strategy.
@@ -145,10 +162,7 @@ class PromptStore:
                 )
             return None
 
-    def get_id_from_response(
-        self,
-        response_text: str
-    ) -> Optional[PromptORM]:
+    def get_id_from_response(self, response_text: str) -> Optional[PromptORM]:
         """
         Retrieve a prompt from the DB based on its exact prompt_text.
         Optionally filter by agent_name and/or strategy.
@@ -202,7 +216,7 @@ class PromptStore:
         query = self.session.query(PromptORM).filter(
             PromptORM.agent_name == agent_name,
             PromptORM.response_text.isnot(None),
-            PromptORM.response_text != ""
+            PromptORM.response_text != "",
         )
 
         if strategy:
@@ -248,12 +262,13 @@ class PromptStore:
                 LIMIT :limit
             """)
             print("\n🔍 Final SQL Query:")
-            print(sql.compile(dialect=dialect(), compile_kwargs={"literal_binds": True}).string)
+            print(
+                sql.compile(
+                    dialect=dialect(), compile_kwargs={"literal_binds": True}
+                ).string
+            )
 
-            result = self.session.execute(sql, {
-                'goal': goal,
-                'limit': limit
-            })
+            result = self.session.execute(sql, {"goal": goal, "limit": limit})
 
             rows = result.fetchall()
             return [
@@ -273,8 +288,7 @@ class PromptStore:
         except Exception as e:
             self.session.rollback()
             if self.logger:
-                self.logger.log("GetLatestPromptsFailed", {
-                    "error": str(e),
-                    "goal": goal
-                })
+                self.logger.log(
+                    "GetLatestPromptsFailed", {"error": str(e), "goal": goal}
+                )
             return []

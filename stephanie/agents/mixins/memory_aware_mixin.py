@@ -11,6 +11,7 @@ class MemoryFilterContext:
     """
     Encapsulates dynamic memory filtering rules derived from symbolic rules or configs.
     """
+
     tags: Optional[List[str]] = None
     dimension: Optional[str] = None
     skill: Optional[str] = None
@@ -43,17 +44,25 @@ class MemoryAwareMixin:
             memory_skill="multi-hop"
         """
         # Parse filter context from symbolic rules or config overrides
-        filter_ctx = self._build_filter_context(context.get("symbolic_rules", {}), **overrides)
+        filter_ctx = self._build_filter_context(
+            context.get("symbolic_rules", {}), **overrides
+        )
 
         # Retrieve from shared memory (short-term)
         shared_traces = self._get_shared_memory_traces(filter_ctx)
 
         # Retrieve from episodic memory (long-term)
-        episodic_traces = self._get_episodic_memory_traces(goal, filter_ctx, context=context)
+        episodic_traces = self._get_episodic_memory_traces(
+            goal, filter_ctx, context=context
+        )
 
         # Deduplicate by content hash
-        filtered_shared = [t for t in shared_traces if self._hash_trace(t) not in self.seen_hashes]
-        filtered_episodic = [t for t in episodic_traces if self._hash_trace(t) not in self.seen_hashes]
+        filtered_shared = [
+            t for t in shared_traces if self._hash_trace(t) not in self.seen_hashes
+        ]
+        filtered_episodic = [
+            t for t in episodic_traces if self._hash_trace(t) not in self.seen_hashes
+        ]
 
         # Log filter usage
         self._log_memory_filter_used(filter_ctx)
@@ -68,9 +77,9 @@ class MemoryAwareMixin:
             "memory": {
                 "shared": filtered_shared,
                 "episodic": filtered_episodic,
-                "filter": filter_ctx.__dict__
+                "filter": filter_ctx.__dict__,
             },
-            "goal": goal
+            "goal": goal,
         }
 
         return updated_context
@@ -90,7 +99,9 @@ class MemoryAwareMixin:
         shared_memory.sort(key=lambda x: x.get("score", 0.0), reverse=True)
         state[self.shared_memory_key] = shared_memory
 
-    def _build_filter_context(self, symbolic_rules: dict, **overrides) -> MemoryFilterContext:
+    def _build_filter_context(
+        self, symbolic_rules: dict, **overrides
+    ) -> MemoryFilterContext:
         """
         Build a memory filter context using symbolic rules and manual overrides.
         """
@@ -118,7 +129,9 @@ class MemoryAwareMixin:
         shared_memory = getattr(self, self.shared_memory_key, [])
         return self._filter_traces(shared_memory, filter_ctx)
 
-    def _get_episodic_memory_traces(self, goal: str, filter_ctx: MemoryFilterContext, context: dict) -> List[Dict]:
+    def _get_episodic_memory_traces(
+        self, goal: str, filter_ctx: MemoryFilterContext, context: dict
+    ) -> List[Dict]:
         """
         Retrieve similar traces from episodic memory based on current goal.
         """
@@ -135,7 +148,9 @@ class MemoryAwareMixin:
                 self.logger.log("EpisodicMemoryRetrievalError", {"error": str(e)})
             return []
 
-    def _filter_traces(self, traces: List[Dict], filter_ctx: MemoryFilterContext) -> List[Dict]:
+    def _filter_traces(
+        self, traces: List[Dict], filter_ctx: MemoryFilterContext
+    ) -> List[Dict]:
         """
         Filter traces by tags, dimension, skill, and score threshold.
         """
@@ -147,26 +162,31 @@ class MemoryAwareMixin:
         # Filter by tags
         if filter_ctx.tags:
             filtered = [
-                t for t in filtered
+                t
+                for t in filtered
                 if any(tag in t.get("tags", []) for tag in filter_ctx.tags)
             ]
 
         # Filter by dimension score
         if filter_ctx.dimension:
             filtered = [
-                t for t in filtered
-                if t.get("dimension_scores", {}).get(filter_ctx.dimension, 0.0) >= filter_ctx.threshold
+                t
+                for t in filtered
+                if t.get("dimension_scores", {}).get(filter_ctx.dimension, 0.0)
+                >= filter_ctx.threshold
             ]
 
         # Sort by dimension score if specified
         if filter_ctx.dimension:
             filtered.sort(
-                key=lambda x: x.get("dimension_scores", {}).get(filter_ctx.dimension, 0.0),
-                reverse=True
+                key=lambda x: x.get("dimension_scores", {}).get(
+                    filter_ctx.dimension, 0.0
+                ),
+                reverse=True,
             )
 
         # Take top-K
-        return filtered[:filter_ctx.top_k]
+        return filtered[: filter_ctx.top_k]
 
     def _hash_trace(self, context: dict) -> str:
         """
@@ -180,11 +200,14 @@ class MemoryAwareMixin:
         Log which memory filters were applied during this run.
         """
         if self.logger:
-            self.logger.log("MemoryFilterUsed", {
-                "event": "memory_filter",
-                "memory_dimension": filter_ctx.dimension,
-                "memory_tags": filter_ctx.tags,
-                "memory_skill": filter_ctx.skill,
-                "memory_top_k": filter_ctx.top_k,
-                "memory_threshold": filter_ctx.threshold
-            })
+            self.logger.log(
+                "MemoryFilterUsed",
+                {
+                    "event": "memory_filter",
+                    "memory_dimension": filter_ctx.dimension,
+                    "memory_tags": filter_ctx.tags,
+                    "memory_skill": filter_ctx.skill,
+                    "memory_top_k": filter_ctx.top_k,
+                    "memory_threshold": filter_ctx.threshold,
+                },
+            )

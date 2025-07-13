@@ -1,4 +1,6 @@
+# stephanie/components/solution_tree.py
 # --- components/solution_tree.py ---
+
 
 class SolutionNode:
     def __init__(self, plan, code, metric, output, valid):
@@ -7,6 +9,7 @@ class SolutionNode:
         self.metric = metric
         self.output = output
         self.valid = valid
+
 
 class SolutionTree:
     def __init__(self):
@@ -28,5 +31,3 @@ class SolutionTree:
 
     def get_valid(self):
         return [n for n in self.nodes if n.valid]
-
-

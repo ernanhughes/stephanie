@@ -1,3 +1,4 @@
+# stephanie/agents/knowledge/__init__.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 
@@ -22,7 +23,9 @@ class KnowledgeDBLoaderAgent(BaseAgent):
 
         # Step 2: Search in the database for similar documents or sections
         if self.search_method == "section":
-            matches = self.memory.embedding.search_similar_documents_with_scores(goal_text, top_k=self.top_k)
+            matches = self.memory.embedding.search_similar_documents_with_scores(
+                goal_text, top_k=self.top_k
+            )
         else:
             matches = self.memory.embedding.search_related(goal_text, top_k=self.top_k)
 
@@ -40,6 +43,9 @@ class KnowledgeDBLoaderAgent(BaseAgent):
 
         context[self.output_key] = results
         context["retrieved_ids"] = [r["id"] for r in results if r.get("id")]
-        self.logger.log("KnowledgeDBLoaded", {"count": len(results), "search_method": self.search_method})
+        self.logger.log(
+            "KnowledgeDBLoaded",
+            {"count": len(results), "search_method": self.search_method},
+        )
 
         return context

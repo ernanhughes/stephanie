@@ -1,3 +1,4 @@
+# stephanie/agents/lats_dspy.py
 import math
 import re
 from collections import defaultdict
@@ -12,10 +13,9 @@ from stephanie.agents.proximity import ProximityAgent
 from stephanie.agents.rule_tuner import RuleTunerAgent
 from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.constants import GOAL
-from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.mrq.scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.scoring.svm_scorer import SVMScorer
 from stephanie.utils.graph_tools import (build_mermaid_graph, compare_graphs,
                                          save_mermaid_to_file)
 

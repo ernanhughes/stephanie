@@ -1,3 +1,4 @@
+# stephanie/models/mrq_memory_entry.py
 # models/mrq_memory_entry.py
 from datetime import datetime, timezone
 
@@ -18,9 +19,9 @@ class MRQMemoryEntryORM(Base):
 
     # Optional: Use these if storing embeddings
     embedding = Column(JSON)  # Or use pgvector.ARRAY(Float)
-    features = Column(JSON)   # Additional extracted features
+    features = Column(JSON)  # Additional extracted features
 
-    source = Column(String)   # e.g., manual, agent, refinement
+    source = Column(String)  # e.g., manual, agent, refinement
     run_id = Column(String)
     metadata_ = Column("metadata", JSON)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))

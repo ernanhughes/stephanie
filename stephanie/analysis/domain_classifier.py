@@ -1,3 +1,4 @@
+# stephanie/analysis/domain_classifier.py
 import yaml
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -10,10 +11,10 @@ class DomainClassifier:
 
         with open(config_path, "r") as f:
             self.domain_config = yaml.safe_load(f)
-        
+
         self.domains = self.domain_config.get("domains", {})
         self.logger.log("DomainConfigLoaded", {"num_domains": len(self.domains)})
-        
+
         self._prepare_seed_embeddings()
 
     def _prepare_seed_embeddings(self):
@@ -28,7 +29,7 @@ class DomainClassifier:
                 embedding = self.memory.embedding.get_or_create(seed)
                 self.embeddings.append(embedding)
                 self.labels.append(domain)
-        
+
         self.logger.log(
             "SeedEmbeddingsPrepared",
             {"total_seeds": total_seeds, "domains": list(self.domains.keys())},

@@ -1,3 +1,4 @@
+# stephanie/reports/formatter.py
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +19,7 @@ class ReportFormatter:
             goal = item.get("goal_text", "Error No Goal")
 
         safe_goal = sanitize_goal_for_filename(goal)
-        file_name = f'{safe_goal}_{timestamp}_report.md'
+        file_name = f"{safe_goal}_{timestamp}_report.md"
         file_path = self.output_dir / file_name
 
         content = f"""# 🧪 AI Co-Research Summary Report
@@ -97,14 +98,13 @@ OK so
         return "\n\n".join(formatted)
 
 
-
-def sanitize_goal_for_filename(goal: str, length:int=40) -> str:
+def sanitize_goal_for_filename(goal: str, length: int = 40) -> str:
     """
     Converts a goal string into a safe filename:
     - Replaces non-alphanumeric characters with underscores
     - Truncates to 100 characters
     - Appends a UTC timestamp
     """
-    safe = re.sub(r'[^a-zA-Z0-9]', '_', goal)  # Replace non-alphanumeric
-    safe = safe[:length]                                       # Limit to (len) characters
+    safe = re.sub(r"[^a-zA-Z0-9]", "_", goal)  # Replace non-alphanumeric
+    safe = safe[:length]  # Limit to (len) characters
     return safe

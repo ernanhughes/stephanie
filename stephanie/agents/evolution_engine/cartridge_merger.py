@@ -1,3 +1,4 @@
+# stephanie/agents/evolution_engine/cartridge_merger.py
 import numpy as np
 from sklearn.cluster import DBSCAN
 
@@ -7,7 +8,9 @@ from stephanie.core.knowledge_cartridge import KnowledgeCartridge
 class CartridgeMerger:
     def __init__(self, cfg, memory, logger=None):
         self.cfg = cfg
-        self.memory = memory  # Assumed to expose `.embed(texts: list[str]) -> list[np.array]`
+        self.memory = (
+            memory  # Assumed to expose `.embed(texts: list[str]) -> list[np.array]`
+        )
         self.logger = logger
         self.similarity_threshold = getattr(cfg, "similarity_threshold", 0.85)
 
@@ -18,7 +21,7 @@ class CartridgeMerger:
 
         master = KnowledgeCartridge(
             goal=cartridges[0].goal,
-            generation=max(c.generation for c in cartridges) + 1
+            generation=max(c.generation for c in cartridges) + 1,
         )
 
         # Merge core thesis (could be improved with attention over top hypotheses)
@@ -39,15 +42,18 @@ class CartridgeMerger:
                     category=category,
                     content=best_item["content"],
                     source=f"Merged from {len(cluster)} sources",
-                    confidence=best_item["confidence"]
+                    confidence=best_item["confidence"],
                 )
 
         if self.logger:
-            self.logger.log("CartridgeMerger", {
-                "merged_goal": master.goal,
-                "num_sources": len(cartridges),
-                "num_clusters": sum(len(c) for c in clusters)
-            })
+            self.logger.log(
+                "CartridgeMerger",
+                {
+                    "merged_goal": master.goal,
+                    "num_sources": len(cartridges),
+                    "num_clusters": sum(len(c) for c in clusters),
+                },
+            )
 
         return master
 

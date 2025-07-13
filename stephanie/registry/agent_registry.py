@@ -1,4 +1,4 @@
-# --- stephanie/registry/agent_registry.py ---
+# stephanie/registry/agent_registry.py
 
 from stephanie.agents.automind import AutoMindAgent
 from stephanie.agents.self_aware_planner import SelfAwarePlannerAgent

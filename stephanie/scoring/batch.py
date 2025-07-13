@@ -1,3 +1,4 @@
+# stephanie/scoring/batch.py
 from stephanie.agents.pipeline_judge import PipelineJudgeAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID, RUN_ID
 from stephanie.models import EvaluationORM, HypothesisORM, RuleApplicationORM
@@ -12,6 +13,7 @@ def get_unscored_hypotheses(session, run_id: str = None):
         query = query.filter(HypothesisORM.pipeline_run_id == run_id)
 
     return query.all()
+
 
 async def score_unscored_hypotheses(memory, logger, config, run_id=None):
     session = memory.session
@@ -30,10 +32,13 @@ async def score_unscored_hypotheses(memory, logger, config, run_id=None):
             "rule_applications": [ra.to_dict() for ra in rule_apps],
         }
 
-        logger.log("ScoringUnscoredHypothesis", {
-            "hypothesis_id": hypo.id,
-            "goal_id": goal.id,
-            "rule_count": len(rule_apps),
-        })
+        logger.log(
+            "ScoringUnscoredHypothesis",
+            {
+                "hypothesis_id": hypo.id,
+                "goal_id": goal.id,
+                "rule_count": len(rule_apps),
+            },
+        )
 
         await agent.run(context)

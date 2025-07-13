@@ -1,3 +1,4 @@
+# stephanie/agents/world/goal_link.py
 from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.models.goal import GoalORM
@@ -14,7 +15,7 @@ class GoalLinkingAgent:
         """Given a new goal, find the best matching worldview (or create a new one)."""
         goal_embedding = self.embedding.get_or_create(goal["description"])
         candidates = WorldviewORM.load_all()
-        
+
         best_match = None
         best_score = 0.0
         for candidate in candidates:
@@ -24,19 +25,22 @@ class GoalLinkingAgent:
                 best_match = candidate
 
         if best_score >= threshold:
-            self.logger.log("GoalLinkedToWorldview", {
-                "goal": goal["description"],
-                "worldview_id": best_match.id,
-                "similarity": best_score
-            })
+            self.logger.log(
+                "GoalLinkedToWorldview",
+                {
+                    "goal": goal["description"],
+                    "worldview_id": best_match.id,
+                    "similarity": best_score,
+                },
+            )
             return best_match
         else:
             # Create new worldview
             new_view = WorldviewORM.create_from_goal(goal)
-            self.logger.log("NewWorldviewCreatedFromGoal", {
-                "goal": goal["description"],
-                "worldview_id": new_view.id
-            })
+            self.logger.log(
+                "NewWorldviewCreatedFromGoal",
+                {"goal": goal["description"], "worldview_id": new_view.id},
+            )
             return new_view
 
     def relate_to_belief_systems(self, goal: dict):

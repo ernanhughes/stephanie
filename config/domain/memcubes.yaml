@@ -1,0 +1,15 @@
+# config/memcubes.yaml
+memcubes:
+  enabled: true
+  default_sensitivity: "public"
+  versioning:
+    strategy: "auto"  # auto, manual, or timestamp
+    min_delta: 0.1    # Minimum improvement to trigger version update
+  governance:
+    default_policies:
+      read: ["admin", "researcher"]
+      write: ["admin"]
+      refine: ["researcher", "engineer"]
+  lifecycle:
+    archive_after_days: 30
+    warn_before_expiration: 5

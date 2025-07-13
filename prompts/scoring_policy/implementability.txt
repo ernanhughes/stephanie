@@ -1,0 +1,15 @@
+Evaluate the implementability of the following document.
+
+### Goal
+{{ goal.goal_text }}
+
+### Document
+{{ scorable.text }}
+
+How feasible is it to implement or test this document in practice? Consider the level of abstraction, availability of required data/tools, and potential obstacles.
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

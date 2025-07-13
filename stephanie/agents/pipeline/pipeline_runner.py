@@ -1,3 +1,4 @@
+# stephanie/agents/pipeline/pipeline_runner.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.utils.pipeline_runner import PipelineRunner
 
@@ -17,7 +18,7 @@ class PipelineRunnerAgent(BaseAgent):
         result = await self.runner.run(
             pipeline_def=pipeline_def,
             context=context,
-            tag=context.get("tag", "runtime")
+            tag=context.get("tag", "runtime"),
         )
 
         return result

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
-from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.mrq.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 
@@ -36,7 +36,6 @@ class SelfEditGeneratorAgent(ScoringMixin, BaseAgent):
         mrq_scorer = MRQScorer(self.cfg, memory=self.memory, logger=self.logger)
         mrq_scorer.train_from_database(cfg=self.cfg)
 
-
         for prompt_file in self.prompt_files:
             prompt_text = self.prompt_loader.from_file(
                 prompt_file, config=self.cfg, context=context
@@ -61,11 +60,11 @@ class SelfEditGeneratorAgent(ScoringMixin, BaseAgent):
                     "text": response,
                     "features": {"prompt_file": prompt_file, "strategy": strategy},
                 },
-                context=context
+                context=context,
             )
             hypothesis_dict = hypothesis.to_dict()
             context.setdefault("hypotheses", []).append(hypothesis_dict)
-            context["prompt"]= prompt_text # we use thie to score in the evaluator
+            context["prompt"] = prompt_text  # we use thie to score in the evaluator
 
             scorable = Scorable(
                 text=hypothesis.text,
@@ -75,12 +74,13 @@ class SelfEditGeneratorAgent(ScoringMixin, BaseAgent):
             score = self.score_item(
                 scorable, context, metrics="compiler", scorer=self.scorer
             )
-            all_edits.append({
-                "edit": response,
-                "strategy": strategy,
-                "score": score.to_dict()
-            })
-            self.logger.log("EditGenerated", {"edit": response[:100], "strategy": strategy, "score": score})
+            all_edits.append(
+                {"edit": response, "strategy": strategy, "score": score.to_dict()}
+            )
+            self.logger.log(
+                "EditGenerated",
+                {"edit": response[:100], "strategy": strategy, "score": score},
+            )
 
         context["self_edits"] = all_edits
         return context

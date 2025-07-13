@@ -1,3 +1,4 @@
+# stephanie/agents/reflection.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.scoring.scorable import Scorable

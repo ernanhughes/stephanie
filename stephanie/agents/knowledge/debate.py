@@ -1,4 +1,4 @@
-# stephanie/agents/debate.py
+# stephanie/agents/knowledge/debate.py
 from stephanie.agents.base_agent import BaseAgent
 
 
@@ -21,6 +21,7 @@ class OptimistDebater(BaseAgent):
 
         return {"reviews": reviews}
 
+
 class SkepticDebater(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
@@ -40,6 +41,7 @@ class SkepticDebater(BaseAgent):
 
         return {"reviews": reviews}
 
+
 class BalancedDebater(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
@@ -58,7 +60,8 @@ class BalancedDebater(BaseAgent):
             reviews.append({"hypotheses": h, "review": review, "persona": "Balanced"})
 
         return {"reviews": reviews}
-    
+
+
 class DebateAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
@@ -75,6 +78,5 @@ class DebateAgent(BaseAgent):
         return {
             "optimist_reviews": optimist_reviews,
             "skeptic_reviews": skeptic_reviews,
-            "balanced_reviews": balanced_reviews
+            "balanced_reviews": balanced_reviews,
         }
-    

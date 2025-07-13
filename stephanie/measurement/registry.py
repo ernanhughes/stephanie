@@ -14,9 +14,10 @@ class MeasurementStrategy:
     def get_strategies_for_entity(self, entity_type: str) -> Dict[str, Callable]:
         """Get all strategies for an entity type"""
         return {
-            key.split(".")[1]: func 
+            key.split(".")[1]: func
             for key, func in self._strategies.items()
             if key.startswith(f"{entity_type}.")
         }
+
 
 measurement_registry = MeasurementStrategy()

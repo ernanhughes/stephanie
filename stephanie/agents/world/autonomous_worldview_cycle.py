@@ -1,3 +1,4 @@
+# stephanie/agents/world/autonomous_worldview_cycle.py
 from datetime import datetime
 
 from stephanie.agents.world.belief_tuner import BeliefTunerAgent
@@ -37,7 +38,9 @@ class AutonomousWorldviewCycleAgent:
         """
         goal = self._select_goal()
         if not goal:
-            self.logger.log("NoGoalAvailable", {"timestamp": datetime.utcnow().isoformat()})
+            self.logger.log(
+                "NoGoalAvailable", {"timestamp": datetime.utcnow().isoformat()}
+            )
             return
 
         self.logger.log("CycleStarted", {"goal_id": goal["id"]})
@@ -49,14 +52,18 @@ class AutonomousWorldviewCycleAgent:
         self.worldview.add_cartridge(cartridge)
         self.audit.record_cycle(goal, cartridge)
 
-        self.logger.log("CycleCompleted", {
-            "goal_id": goal["id"],
-            "score": evaluation.aggregate(),
-            "timestamp": datetime.utcnow().isoformat()
-        })
+        self.logger.log(
+            "CycleCompleted",
+            {
+                "goal_id": goal["id"],
+                "score": evaluation.aggregate(),
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        )
 
     def run_forever(self, interval_sec=3600):
         import time
+
         while True:
             self.cycle_once()
             time.sleep(interval_sec)
@@ -83,5 +90,7 @@ class AutonomousWorldviewCycleAgent:
 
     def _default_logger(self):
         class DummyLogger:
-            def log(self, tag, payload): print(f"[{tag}] {payload}")
+            def log(self, tag, payload):
+                print(f"[{tag}] {payload}")
+
         return DummyLogger()

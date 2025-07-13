@@ -1,3 +1,4 @@
+# stephanie/memory/document_domain_section_store.py
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -32,7 +33,9 @@ class DocumentSectionDomainStore:
 
         return (
             self.session.query(DocumentSectionDomainORM)
-            .filter_by(document_section_id=data["document_section_id"], domain=data["domain"])
+            .filter_by(
+                document_section_id=data["document_section_id"], domain=data["domain"]
+            )
             .first()
         )
 
@@ -45,11 +48,15 @@ class DocumentSectionDomainStore:
         )
 
     def delete_domains(self, document_section_id: int):
-        self.session.query(DocumentSectionDomainORM).filter_by(document_section_id=document_section_id).delete()
+        self.session.query(DocumentSectionDomainORM).filter_by(
+            document_section_id=document_section_id
+        ).delete()
         self.session.commit()
 
         if self.logger:
-            self.logger.log("SectionDomainsDeleted", {"document_section_id": document_section_id})
+            self.logger.log(
+                "SectionDomainsDeleted", {"document_section_id": document_section_id}
+            )
 
     def set_domains(self, document_section_id: int, domains: list[tuple[str, float]]):
         """
@@ -59,8 +66,10 @@ class DocumentSectionDomainStore:
         """
         self.delete_domains(document_section_id)
         for domain, score in domains:
-            self.insert({
-                "document_section_id": document_section_id,
-                "domain": domain,
-                "score": float(score),
-            })
+            self.insert(
+                {
+                    "document_section_id": document_section_id,
+                    "domain": domain,
+                    "score": float(score),
+                }
+            )

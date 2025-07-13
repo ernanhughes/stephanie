@@ -1,14 +1,17 @@
+# stephanie/scoring/training/hypothesis_trainer.py
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
-from stephanie.evaluator.text_encoder import TextEncoder
+from stephanie.scoring.mrq.encoder import TextEncoder
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
 
 class HypothesisTrainer(BaseTrainer):
-    def __init__(self, memory, logger, encoder=None, value_predictor=None, device="cpu"):
+    def __init__(
+        self, memory, logger, encoder=None, value_predictor=None, device="cpu"
+    ):
         encoder = encoder or TextEncoder()
         value_predictor = value_predictor or HypothesisValuePredictor(512, 1024)
         super().__init__(memory, logger, encoder, value_predictor, device)
@@ -38,9 +41,14 @@ class HypothesisTrainer(BaseTrainer):
             labels.append(torch.tensor([1.0], device=self.device))
 
             if (idx + 1) % 100 == 0 or (idx + 1) == total:
-                self.logger.log("HypothesisTrainerProgress", {
-                    "current": idx + 1, "total": total, "percent": round((idx + 1) / total * 100, 2)
-                })
+                self.logger.log(
+                    "HypothesisTrainerProgress",
+                    {
+                        "current": idx + 1,
+                        "total": total,
+                        "percent": round((idx + 1) / total * 100, 2),
+                    },
+                )
 
         dataset = TensorDataset(torch.stack(inputs), torch.stack(labels))
         return DataLoader(dataset, batch_size=16, shuffle=True)

@@ -1,4 +1,4 @@
-# File: stephanie/agents/self_rewarding_agent.py
+# stephanie/agents/self_rewarding.py
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -40,17 +40,23 @@ class SelfRewardingAgent(BaseAgent):
         scorer_type = self.cfg.scorer_agent
         if scorer_type == "MRQScoringAgent":
             from stephanie.evaluator import MRQSelfEvaluator
-            return MRQSelfEvaluator(cfg=self.cfg, memory=self.memory, logger=self.logger)
+
+            return MRQSelfEvaluator(
+                cfg=self.cfg, memory=self.memory, logger=self.logger
+            )
         elif scorer_type == "LLMJudgeEvaluator":
             from stephanie.evaluator import LLMJudgeEvaluator
-            return LLMJudgeEvaluator(cfg=self.cfg, memory=self.memory, logger=self.logger)
+
+            return LLMJudgeEvaluator(
+                cfg=self.cfg, memory=self.memory, logger=self.logger
+            )
         else:
             raise ValueError(f"Unsupported scorer type: {scorer_type}")
 
     def _init_inner_agent(self):
         agent_class = self.cfg.inner_agent
         try:
-            module_name, class_name = agent_class.rsplit('.', 1)
+            module_name, class_name = agent_class.rsplit(".", 1)
             module = __import__(module_name, fromlist=[class_name])
             cls = getattr(module, class_name)
             return cls(cfg=self.cfg, memory=self.memory, logger=self.logger)
@@ -103,13 +109,15 @@ class SelfRewardingAgent(BaseAgent):
                 evaluation_id=evaluation.id,
                 dimension=dim,
                 score=score,
-                source="self_rewarding"
+                source="self_rewarding",
             )
             self.memory.session.add(score_orm)
         self.memory.session.commit()
         return evaluation.id
 
-    def _select_best_hypothesis(self, hypotheses: List[dict], scores: dict[str, float]) -> Dict:
+    def _select_best_hypothesis(
+        self, hypotheses: List[dict], scores: dict[str, float]
+    ) -> Dict:
         """Select hypothesis with highest composite score"""
         # For simplicity, just return the one scored above
-        return hypotheses[0] 
+        return hypotheses[0]

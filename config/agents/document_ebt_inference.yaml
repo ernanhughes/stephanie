@@ -4,11 +4,19 @@ document_ebt_inference:
   model_type: "ebt"
   evaluator: "ebt"
   target_type: "document"
+
+  use_llm_refinement: true
+  optimization:
+    steps: 15
+    step_size: 0.05
+    uncertainty_threshold: 0.8
+    
   dimensions: 
     - "alignment"
     - "clarity"
     - "implementability"
     - "novelty"
     - "relevance"
+
   input_key: "documents"
   output_key: "document_ebt_inference"

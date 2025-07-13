@@ -14,7 +14,9 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
         from stephanie.models.document import DocumentORM
 
         # Step 1: Find documents missing embedding_id
-        documents = session.query(DocumentORM).filter(DocumentORM.embedding_id == None).all()
+        documents = (
+            session.query(DocumentORM).filter(DocumentORM.embedding_id == None).all()
+        )
         updated = 0
 
         for doc in documents:

@@ -18,14 +18,11 @@ class CartridgeTripleStore:
 
         Expected dict keys: cartridge_id, subject, predicate, object, (optional) confidence
         """
-        query = (
-            self.session.query(CartridgeTripleORM)
-            .filter_by(
-                cartridge_id=data["cartridge_id"],
-                subject=data["subject"],
-                predicate=data["predicate"],
-                object=data["object"],
-            )
+        query = self.session.query(CartridgeTripleORM).filter_by(
+            cartridge_id=data["cartridge_id"],
+            subject=data["subject"],
+            predicate=data["predicate"],
+            object=data["object"],
         )
 
         existing = query.first()
@@ -57,25 +54,36 @@ class CartridgeTripleStore:
         )
 
     def delete_triples(self, cartridge_id: int):
-        self.session.query(CartridgeTripleORM).filter_by(cartridge_id=cartridge_id).delete()
+        self.session.query(CartridgeTripleORM).filter_by(
+            cartridge_id=cartridge_id
+        ).delete()
         self.session.commit()
         if self.logger:
             self.logger.log("TriplesDeleted", {"cartridge_id": cartridge_id})
 
     def has_triples(self, cartridge_id: int) -> bool:
-        return self.session.query(CartridgeTripleORM).filter_by(cartridge_id=cartridge_id).first() is not None
+        return (
+            self.session.query(CartridgeTripleORM)
+            .filter_by(cartridge_id=cartridge_id)
+            .first()
+            is not None
+        )
 
-    def set_triples(self, cartridge_id: int, triples: list[tuple[str, str, str, float]]):
+    def set_triples(
+        self, cartridge_id: int, triples: list[tuple[str, str, str, float]]
+    ):
         """
         Clear and re-add triples for a cartridge.
         Each triple is a tuple: (subject, predicate, object, confidence)
         """
         self.delete_triples(cartridge_id)
         for subj, pred, obj, conf in triples:
-            self.insert({
-                "cartridge_id": cartridge_id,
-                "subject": subj,
-                "predicate": pred,
-                "object": obj,
-                "confidence": float(conf),
-            })
+            self.insert(
+                {
+                    "cartridge_id": cartridge_id,
+                    "subject": subj,
+                    "predicate": pred,
+                    "object": obj,
+                    "confidence": float(conf),
+                }
+            )

@@ -15,7 +15,9 @@ class PromptPreferencePairBuilder:
         self.db = db
         self.logger = logger
 
-    def get_training_pairs_by_dimension(self, goal: str = None, limit: int = 10000) -> dict:
+    def get_training_pairs_by_dimension(
+        self, goal: str = None, limit: int = 10000
+    ) -> dict:
         """
         Returns a dictionary of training pairs grouped by dimension.
 
@@ -34,7 +36,8 @@ class PromptPreferencePairBuilder:
             ...
         }
         """
-        query = text("""
+        query = text(
+            """
             WITH scored_prompts AS (
                 SELECT
                     s.dimension,
@@ -91,7 +94,8 @@ class PromptPreferencePairBuilder:
             ) AS ranked_pairs
             ORDER BY dimension, prompt_id
             LIMIT :limit
-        """.replace("{goal_filter}", "AND p.goal_text = :goal" if goal else ""))
+        """.replace("{goal_filter}", "AND p.goal_text = :goal" if goal else "")
+        )
 
         params = {"limit": limit}
         if goal:
@@ -101,7 +105,9 @@ class PromptPreferencePairBuilder:
             rows = self.db.execute(query, params).fetchall()
         except Exception as e:
             if self.logger:
-                self.logger.error("Failed to get training pairs", extra={"error": str(e)})
+                self.logger.error(
+                    "Failed to get training pairs", extra={"error": str(e)}
+                )
             return {}
 
         grouped = defaultdict(dict)
@@ -113,12 +119,14 @@ class PromptPreferencePairBuilder:
 
         for (dimension, _), data in grouped.items():
             if "top" in data and "bottom" in data:
-                results_by_dimension[dimension].append({
-                    "prompt": data["top"].prompt_text,
-                    "output_a": data["top"].response_text,
-                    "output_b": data["bottom"].response_text,
-                    "value_a": float(data["top"].score),
-                    "value_b": float(data["bottom"].score)
-                })
+                results_by_dimension[dimension].append(
+                    {
+                        "prompt": data["top"].prompt_text,
+                        "output_a": data["top"].response_text,
+                        "output_b": data["bottom"].response_text,
+                        "value_a": float(data["top"].score),
+                        "value_b": float(data["bottom"].score),
+                    }
+                )
 
         return dict(results_by_dimension)

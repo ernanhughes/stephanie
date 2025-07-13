@@ -1,4 +1,4 @@
-# stephanie/agents/score_analysis_agent.py
+# stephanie/agents/score_analysis.py
 import pandas as pd
 
 from stephanie.agents.base_agent import BaseAgent
@@ -53,9 +53,12 @@ class ScoreAnalysisAgent(BaseAgent):
         # Plot
         analyzer.plot_pca_clusters(n_clusters=3)
 
-        self.logger.log("ScoreAnalysisCompleted", {
-            "pipeline_run_id": pipeline_run_id,
-            "pca_variance_ratio": variance_ratio.tolist(),
-        })
+        self.logger.log(
+            "ScoreAnalysisCompleted",
+            {
+                "pipeline_run_id": pipeline_run_id,
+                "pca_variance_ratio": variance_ratio.tolist(),
+            },
+        )
 
         return context

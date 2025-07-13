@@ -11,11 +11,13 @@ def measurement():
     """Measurement management commands"""
     pass  # No code here, just the group definition
 
+
 @measurement.command()
 def list_metrics():
     """List all available metrics"""
     for key in measurement_registry._strategies.keys():
         click.echo(key)
+
 
 # Keep your backfill command below
 @measurement.command()
@@ -27,11 +29,13 @@ def backfill(entity_type, metric_name):
     # Implement backfill logic
     click.echo(f"Backfilling {metric_name} for {entity_type}")
 
+
 @measurement.command()
 def list_metrics():
     """List all available metrics"""
     # Show registered metrics from registry
     pass
+
 
 if __name__ == "__main__":
     measurement()

@@ -7,7 +7,7 @@ defaults:
   - agents/document_profiler
   - agents/paper_score
   - agents/knowledge_loader
-  - agents/document_mrq_trainer
+  - agents/mrq_trainer
   - agents/document_reward_scorer
   - agents/pipeline_judge
   - agents/world_create
@@ -88,9 +88,9 @@ pipeline:
     #    cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
     #    enabled: true
     #    iterations: 1
-    #  - name: document_mrq_trainer
+    #  - name: mrq_trainer
     #    description: "Build document pairs for training and evaluation" 
-    #    cls: stephanie.agents.maintenance.document_mrq_trainer.DocumentMRQTrainerAgent 
+    #    cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent 
     #    enabled: true
     #    iterations: 1
     #  - name: document_reward_scorer

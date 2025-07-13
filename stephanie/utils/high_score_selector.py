@@ -1,3 +1,4 @@
+# stephanie/utils/high_score_selector.py
 import json
 from collections import defaultdict
 
@@ -9,7 +10,9 @@ from stephanie.models.rule_application import RuleApplicationORM
 from stephanie.models.score import ScoreORM
 
 
-def get_high_scoring_runs(session, dimension: str, threshold: float, min_repeat_count: int = 2):
+def get_high_scoring_runs(
+    session, dimension: str, threshold: float, min_repeat_count: int = 2
+):
     """
     Returns a dict of {signature: list of (evaluation, run)} for all runs that score above the threshold
     on a given dimension.

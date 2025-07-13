@@ -8,12 +8,7 @@ class GoalMonitorAgent:
     Integrates validation, confidence, cycles, and state to make safe decisions.
     """
 
-    def __init__(
-        self,
-        cfg,
-        memory,
-        logger
-    ):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
@@ -41,12 +36,15 @@ class GoalMonitorAgent:
 
         # Detect frozen or degraded goals
         if confidence < self.freeze_threshold and cycle_status == "oscillating":
-            self.logger.warning("Freezing goal due to instability", extra={
-                "goal": goal,
-                "dimension": dimension,
-                "confidence": confidence,
-                "status": cycle_status
-            })
+            self.logger.warning(
+                "Freezing goal due to instability",
+                extra={
+                    "goal": goal,
+                    "dimension": dimension,
+                    "confidence": confidence,
+                    "status": cycle_status,
+                },
+            )
             self.state_tracker.update_event(goal, dimension, event_type="frozen")
             return "frozen"
 
@@ -58,5 +56,5 @@ class GoalMonitorAgent:
             "status": "active",
             "confidence": confidence,
             "cycle": cycle_status,
-            "retrain_count": state.get("retrain_count", 0)
+            "retrain_count": state.get("retrain_count", 0),
         }

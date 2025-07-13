@@ -1,3 +1,4 @@
+# stephanie/models/search_result.py
 # models/search_result.py
 from datetime import datetime, timezone
 

@@ -1,3 +1,4 @@
+# stephanie/memory/memory_tool.py
 from typing import Any, Optional
 
 import psycopg2
@@ -35,6 +36,7 @@ from stephanie.memory.search_result_store import SearchResultStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
+from stephanie.memory.memcube_store import MemcubeStore
 
 
 class MemoryTool:
@@ -87,8 +89,7 @@ class MemoryTool:
         self.register_store(CartridgeDomainStore(self.session, logger))
         self.register_store(CartridgeStore(self.session, logger))
         self.register_store(CartridgeTripleStore(self.session, logger))
-
-
+        self.register_store(MemcubeStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):
@@ -143,4 +144,6 @@ class MemoryTool:
         finally:
             self.session = self.session_maker()
             if self.logger:
-                self.logger.log("SessionRefreshed", {"new_session_id": id(self.session)})
+                self.logger.log(
+                    "SessionRefreshed", {"new_session_id": id(self.session)}
+                )

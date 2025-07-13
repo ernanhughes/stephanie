@@ -1,4 +1,4 @@
-# stephanie/agents/paper_summarizer.py
+# stephanie/agents/knowledge/paper_summarizer.py
 import re
 from typing import Any, Dict, Optional
 
@@ -35,7 +35,9 @@ class PaperSummarizer(BaseAgent):
         """
         full_text = paper_content.get("full_text", "")
         if not full_text:
-            self.logger.log("SummarizeError", {"error": "No full_text provided for summarization."})
+            self.logger.log(
+                "SummarizeError", {"error": "No full_text provided for summarization."}
+            )
             return {}
 
         merged_context = {

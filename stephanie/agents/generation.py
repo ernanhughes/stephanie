@@ -39,7 +39,7 @@ class GenerationAgent(BaseAgent):
             hyp = self.save_hypothesis(
                 {
                     "text": h,
-                     **({"prompt_id": prompt.id} if prompt else {}),
+                    **({"prompt_id": prompt.id} if prompt else {}),
                 },
                 context=context,
             )

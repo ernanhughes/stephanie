@@ -5,8 +5,11 @@ from string import Template
 
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.score_result import ScoreResult
 from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.scoring.score_result import ScoreResult
+from stephanie.models.score import ScoreORM
+from stephanie.scoring.scoring_manager import ScoringManager
+from stephanie.utils.timing import time_function
 
 
 class LLMScorer(BaseScorer):
@@ -20,14 +23,15 @@ class LLMScorer(BaseScorer):
         self.memory = memory
         self.logger = logger
         self.prompt_loader = prompt_loader
-        self.llm_fn = llm_fn 
+        self.llm_fn = llm_fn
+        self.force_rescore = cfg.get("force_rescore", False)    
 
     @property
     def name(self) -> str:
         return "llm"
 
-
-    def score(self, goal, scorable: Scorable, dimensions: list[dict]) -> ScoreBundle:
+    @time_function()
+    def score(self, context:dict, scorable: Scorable, dimensions: list[dict]) -> ScoreBundle:
         """
         Scores a Scorable across multiple dimensions using an LLM.
         Returns a ScoreBundle object.
@@ -38,8 +42,18 @@ class LLMScorer(BaseScorer):
         results = []
 
         for dim in dimensions:
-            prompt = self._render_prompt(dim, goal, scorable)
-            response = self.llm_fn(prompt, {"goal": goal})
+            prompt = self._render_prompt(context, scorable, dim)
+            prompt_hash = ScoreORM.compute_prompt_hash(prompt, scorable)
+
+            if not self.force_rescore:
+                cached_result = self.memory.scores.get_score_by_prompt_hash(prompt_hash)
+                if cached_result:
+                    self.logger.log("ScoreCacheHit", {"dimension": dim["name"]})
+                    result = cached_result
+                    results.append(result)
+                    continue
+
+            response = self.llm_fn(prompt, context)
 
             try:
                 parser = dim.get("parser") or self._get_parser(dim)
@@ -66,30 +80,43 @@ class LLMScorer(BaseScorer):
                     },
                 )
 
-            results.append(
-                ScoreResult(
-                    dimension=dim["name"],
-                    score=score,
-                    rationale=response,
-                    weight=dim.get("weight", 1.0),
-                    source="llm",
-                    target_type=scorable.target_type,
-                )
+            result = ScoreResult(
+                dimension=dim["name"],
+                score=score,
+                rationale=response,
+                weight=dim.get("weight", 1.0),
+                source="llm",
+                target_type=scorable.target_type,
+                prompt_hash=prompt_hash,
             )
 
-        return ScoreBundle(results={r.dimension: r for r in results})
+            results.append(result)
 
-    def _render_prompt(self, dim: dict, goal: dict, scorable: Scorable) -> str:
-        context = {
-            "goal": goal,
+        # Aggregate scores across dimensions
+        bundle = ScoreBundle(results={r.dimension: r for r in results})
+        ScoringManager.save_score_to_memory(
+            bundle,
+            scorable,
+            context,
+            self.cfg,
+            self.memory,
+            self.logger,
+            source="llm",
+        )
+        return bundle
+
+
+    def _render_prompt(self, context: dict, scorable: Scorable, dim: dict) -> str:
+        merged_context = {
             "scorable": scorable,
+            **context
         }
         if self.prompt_loader and dim.get("file"):
-            return self.prompt_loader.from_file(
-                file_name=dim["file"], config=self.cfg, context=context
+            return self.prompt_loader.score_prompt(
+                file_name=dim["file"], config=self.cfg, context=merged_context
             )
         else:
-            return Template(dim["prompt_template"]).substitute(context)
+            return Template(dim["prompt_template"]).substitute(merged_context)
 
     def _default_prompt(self, dimension):
         return (

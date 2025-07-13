@@ -1,3 +1,4 @@
+# stephanie/logs/json_logger.py
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,16 +34,16 @@ class JSONLogger:
     def get_logs_by_type(self, event_type: str) -> list:
         """
         Retrieve all logs of a specific type from the log file
-        
+
         Args:
             event_type: The type of event to filter by
-            
+
         Returns:
             List of matching log entries
         """
         if not self.log_path.exists():
             return []
-            
+
         logs = []
         try:
             with self.log_path.open("r", encoding="utf-8") as f:
@@ -56,19 +57,19 @@ class JSONLogger:
         except Exception as e:
             print(f"❌ [Logger] Failed to read logs: {str(e)}")
             return []
-            
+
         return logs
 
     def get_all_logs(self) -> list:
         """
         Retrieve all logs from the file
-        
+
         Returns:
             List of all log entries
         """
         if not self.log_path.exists():
             return []
-            
+
         logs = []
         try:
             with self.log_path.open("r", encoding="utf-8") as f:
@@ -81,5 +82,5 @@ class JSONLogger:
         except Exception as e:
             print(f"❌ [Logger] Failed to read logs: {str(e)}")
             return []
-            
+
         return logs

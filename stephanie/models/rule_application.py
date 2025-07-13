@@ -1,3 +1,4 @@
+# stephanie/models/rule_application.py
 # models/rule_application.py
 
 from datetime import datetime, timezone
@@ -15,14 +16,16 @@ class RuleApplicationORM(Base):
     id = Column(Integer, primary_key=True)
     rule_id = Column(Integer, ForeignKey("symbolic_rules.id", ondelete="CASCADE"))
     goal_id = Column(Integer, ForeignKey("goals.id", ondelete="CASCADE"))
-    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"))
+    pipeline_run_id = Column(
+        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE")
+    )
     hypothesis_id = Column(Integer, ForeignKey("hypotheses.id"), nullable=True)
     context_hash = Column(String, index=True)
 
     applied_at = Column(DateTime, default=datetime.now(timezone.utc))
     agent_name = Column(String, nullable=True)
     change_type = Column(String, nullable=True)  # e.g., pipeline_override, hint, etc.
-    details = Column(JSON, nullable=True)        # Can store {old:..., new:...}
+    details = Column(JSON, nullable=True)  # Can store {old:..., new:...}
     stage_details = Column(JSON, nullable=True)
 
     post_score = Column(Float, nullable=True)
@@ -37,7 +40,6 @@ class RuleApplicationORM(Base):
     rule = relationship("SymbolicRuleORM", back_populates="applications")
     pipeline_run = relationship("PipelineRunORM", back_populates="rule_applications")
     hypothesis = relationship("HypothesisORM", back_populates="rule_applications")
-
 
     def to_dict(self) -> dict:
         return {
@@ -55,5 +57,5 @@ class RuleApplicationORM(Base):
             "delta_score": self.delta_score,
             "evaluator_name": self.evaluator_name,
             "rationale": self.rationale,
-            "notes": self.notes
+            "notes": self.notes,
         }

@@ -1,3 +1,4 @@
+# stephanie/agents/symbolic_optimizer.py
 from collections import defaultdict
 
 from stephanie.agents import BaseAgent
@@ -42,11 +43,14 @@ class SymbolicOptimizerAgent(BaseAgent):
                     self.memory.symbolic_rules.insert(new_rule)
                     self.logger.log("SymbolicRuleAutoCreated", rule_dict)
 
-            self.logger.log("SymbolicPipelineSuggestion", {
-                "goal_type": goal_type,
-                "suggested_pipeline": best_pipeline,
-                "score_type": self.score_target
-            })
+            self.logger.log(
+                "SymbolicPipelineSuggestion",
+                {
+                    "goal_type": goal_type,
+                    "suggested_pipeline": best_pipeline,
+                    "score_type": self.score_target,
+                },
+            )
 
         return context
 
@@ -79,7 +83,7 @@ class SymbolicOptimizerAgent(BaseAgent):
                 "score_type": self.score_target,
                 "pipeline_scores": {
                     pipe: round(avg, 4) for pipe, avg in pipeline_scores.items()
-                }
+                },
             },
         )
 

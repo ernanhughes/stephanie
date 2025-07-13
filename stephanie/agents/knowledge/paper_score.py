@@ -1,4 +1,4 @@
-# stephanie/agents/knowledge/paper_scoring_adapter.py
+# stephanie/agents/knowledge/paper_score.py
 
 from collections import defaultdict
 
@@ -9,7 +9,6 @@ from stephanie.scoring.scorable_factory import TargetType
 
 
 class PaperScoreAgent(BaseAgent, PaperScoringMixin):
-
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.force_rescore = cfg.get("force_rescore", False)
@@ -28,17 +27,19 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
                 results.append(
                     {
                         "title": document.get("title"),
-                        "scores": self.aggregate_scores_by_dimension(existing_scores)
+                        "scores": self.aggregate_scores_by_dimension(existing_scores),
                     }
                 )
                 continue
 
             self.logger.log("ScoringPaper", {"title": document.get("title")})
             score_result = self.score_paper(document, context=context)
-            results.append({
-                "title": document.get("title"),
-                "scores": score_result,
-            })
+            results.append(
+                {
+                    "title": document.get("title"),
+                    "scores": score_result,
+                }
+            )
         context[self.output_key] = results
         return context
 

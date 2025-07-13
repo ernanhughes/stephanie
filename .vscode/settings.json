@@ -1,3 +1,4 @@
 {
-  "python.defaultInterpreterPath": "${workspaceFolder}\\venv\\Scripts\\python.exe"
+  "python.defaultInterpreterPath": "${workspaceFolder}\\venv\\Scripts\\python.exe",
+  "ruff.lineLength": 79
 }

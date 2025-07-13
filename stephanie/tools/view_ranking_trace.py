@@ -1,3 +1,4 @@
+# stephanie/tools/view_ranking_trace.py
 # tools/view_ranking_trace.py
 from collections import defaultdict
 
@@ -5,23 +6,22 @@ import matplotlib.pyplot as plt
 import psycopg2
 from tabulate import tabulate
 
-DB_CONFIG = dict(
-    dbname="co",
-    user="co",
-    password="co",
-    host="localhost"
-)
+DB_CONFIG = dict(dbname="co", user="co", password="co", host="localhost")
+
 
 def fetch_ranking_trace(run_id=None):
     with psycopg2.connect(**DB_CONFIG) as conn:
         with conn.cursor() as cur:
             if run_id:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT winner, loser, explanation, created_at
                     FROM ranking_trace
                     WHERE run_id = %s
                     ORDER BY created_at
-                """, (run_id,))
+                """,
+                    (run_id,),
+                )
             else:
                 cur.execute("""
                     SELECT winner, loser, explanation, created_at
@@ -30,16 +30,20 @@ def fetch_ranking_trace(run_id=None):
                 """)
             return cur.fetchall()
 
+
 def fetch_elo_scores(run_id=None):
     with psycopg2.connect(**DB_CONFIG) as conn:
         with conn.cursor() as cur:
             if run_id:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT hypothesis, score, created_at
                     FROM elo_ranking_log
                     WHERE run_id = %s
                     ORDER BY created_at
-                """, (run_id,))
+                """,
+                    (run_id,),
+                )
             else:
                 cur.execute("""
                     SELECT hypothesis, score, created_at
@@ -47,6 +51,7 @@ def fetch_elo_scores(run_id=None):
                     ORDER BY created_at DESC LIMIT 50
                 """)
             return cur.fetchall()
+
 
 def display_top_ranked(run_id=None):
     scores = fetch_elo_scores(run_id)
@@ -56,6 +61,7 @@ def display_top_ranked(run_id=None):
     sorted_scores = sorted(latest_scores.items(), key=lambda x: x[1], reverse=True)
     print("\nTop-Ranked Hypotheses:\n")
     print(tabulate(sorted_scores, headers=["hypotheses", "ELO Score"], tablefmt="grid"))
+
 
 def plot_elo_evolution(run_id=None):
     scores = fetch_elo_scores(run_id)
@@ -76,17 +82,23 @@ def plot_elo_evolution(run_id=None):
     plt.xticks(rotation=45)
     plt.show()
 
+
 def main():
     run_id = input("Enter run_id (or leave blank for latest): ").strip() or None
     print("\n--- Ranking Trace ---")
     rows = fetch_ranking_trace(run_id)
-    print(tabulate(rows, headers=["Winner", "Loser", "Explanation", "Time"], tablefmt="grid"))
+    print(
+        tabulate(
+            rows, headers=["Winner", "Loser", "Explanation", "Time"], tablefmt="grid"
+        )
+    )
 
     print("\n--- Top-Ranked Hypotheses ---")
     display_top_ranked(run_id)
 
     print("\n--- Plotting ELO Evolution ---")
     plot_elo_evolution(run_id)
+
 
 if __name__ == "__main__":
     main()

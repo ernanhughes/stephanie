@@ -1,5 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, Text, JSON, TIMESTAMP, ForeignKey
+# stephanie/models/scoring_history.py
 from datetime import datetime
+
+from sqlalchemy import (JSON, TIMESTAMP, Boolean, Column, Float, ForeignKey,
+                        Integer, String, Text)
 
 from stephanie.models.base import Base
 
@@ -19,4 +22,3 @@ class ScoringHistoryORM(Base):
     method = Column(Text, nullable=False)
     source = Column(Text)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    

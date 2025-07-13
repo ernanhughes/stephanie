@@ -1,3 +1,4 @@
+# stephanie/memory/rule_effect_store.py
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -83,8 +84,9 @@ class RuleEffectStore:
                 summary[label] = summary.get(label, 0) + 1
         return summary
 
-
-    def get_by_run_and_goal(self, run_id: int, goal_id: int) -> List[RuleApplicationORM]:
+    def get_by_run_and_goal(
+        self, run_id: int, goal_id: int
+    ) -> List[RuleApplicationORM]:
         """
         Retrieve all rule applications for a specific pipeline run and goal.
 
@@ -97,11 +99,14 @@ class RuleEffectStore:
         """
         if not run_id or not goal_id:
             if self.logger:
-                self.logger.log("InvalidInputForRuleFetch", {
-                    "reason": "Missing run_id or goal_id",
-                    "run_id": run_id,
-                    "goal_id": goal_id
-                })
+                self.logger.log(
+                    "InvalidInputForRuleFetch",
+                    {
+                        "reason": "Missing run_id or goal_id",
+                        "run_id": run_id,
+                        "goal_id": goal_id,
+                    },
+                )
             return []
 
         try:
@@ -109,17 +114,16 @@ class RuleEffectStore:
                 self.db.query(RuleApplicationORM)
                 .filter(
                     RuleApplicationORM.pipeline_run_id == int(run_id),
-                    RuleApplicationORM.goal_id == int(goal_id)
+                    RuleApplicationORM.goal_id == int(goal_id),
                 )
                 .all()
             )
 
             if self.logger and len(applications) > 0:
-                self.logger.log("RuleApplicationsFetched", {
-                    "run_id": run_id,
-                    "goal_id": goal_id,
-                    "count": len(applications)
-                })
+                self.logger.log(
+                    "RuleApplicationsFetched",
+                    {"run_id": run_id, "goal_id": goal_id, "count": len(applications)},
+                )
 
             return applications
 
@@ -165,5 +169,7 @@ class RuleEffectStore:
 
         except Exception as e:
             if self.logger:
-                self.logger.log("RecentPerformanceError", {"error": str(e), "rule_id": rule_id})
+                self.logger.log(
+                    "RecentPerformanceError", {"error": str(e), "rule_id": rule_id}
+                )
             return []

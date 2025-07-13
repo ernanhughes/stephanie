@@ -16,7 +16,6 @@ All right let's stay away for a bit mine
 Intended for use in the scoring pipeline to support adaptive tuning and fair comparisons.
 """
 
-
 from stephanie.scoring.calculations.base_calculator import BaseCalculator
 
 
@@ -33,7 +32,9 @@ class MRQNormalizerCalculator(BaseCalculator):
 
         for dim, val in results.items():
             raw = val["score"]
-            norm = (raw - self.expected_min) / max((self.expected_max - self.expected_min), 1e-6)
+            norm = (raw - self.expected_min) / max(
+                (self.expected_max - self.expected_min), 1e-6
+            )
 
             if self.clip:
                 norm = max(0.0, min(norm, 1.0))

@@ -1,11 +1,11 @@
+# stephanie/tools/ddgs_web_search.py
 import asyncio
 
 from duckduckgo_search import DDGS
 
 
 class DDGSWebSearchTool:
-
-    def search(self, query: str, max_results: int =5):
+    def search(self, query: str, max_results: int = 5):
         return DDGS().text(query, max_results=max_results)
 
     async def search2(self, query: str, max_results: int = 5) -> list[str]:

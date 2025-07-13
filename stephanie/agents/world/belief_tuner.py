@@ -1,3 +1,4 @@
+# stephanie/agents/world/belief_tuner.py
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -16,7 +17,7 @@ class BeliefTunerAgent:
         delta: float,
         source: str,
         rationale: str = None,
-        override_score: float = None
+        override_score: float = None,
     ):
         """Adjust or override belief trust score"""
         belief = self.db.query(BeliefORM).get(belief_id)
@@ -36,23 +37,30 @@ class BeliefTunerAgent:
 
         self.db.commit()
 
-        self.logger.log("BeliefTuned", {
-            "belief_id": belief.id,
-            "old_score": old_score,
-            "new_score": belief.score,
-            "source": source,
-            "rationale": rationale
-        })
+        self.logger.log(
+            "BeliefTuned",
+            {
+                "belief_id": belief.id,
+                "old_score": old_score,
+                "new_score": belief.score,
+                "source": source,
+                "rationale": rationale,
+            },
+        )
 
         return belief
 
     def tune_by_external_signal(self, belief_text: str, signal: dict):
         """Find belief by text match and tune it based on external input"""
-        matches = self.db.query(BeliefORM).filter(BeliefORM.summary.ilike(f"%{belief_text}%")).all()
+        matches = (
+            self.db.query(BeliefORM)
+            .filter(BeliefORM.summary.ilike(f"%{belief_text}%"))
+            .all()
+        )
         for belief in matches:
             self.tune_belief(
                 belief_id=belief.id,
                 delta=signal.get("delta", -0.2),
                 source=signal.get("source", "external"),
-                rationale=signal.get("rationale")
+                rationale=signal.get("rationale"),
             )

@@ -26,26 +26,30 @@ class StateTracker:
             self.state[key]["last_validated_at"] = now
         elif event_type == "trained":
             self.state[key]["last_trained_at"] = now
-            self.state[key]["retrain_count"] = self.state[key].get("retrain_count", 0) + 1
+            self.state[key]["retrain_count"] = (
+                self.state[key].get("retrain_count", 0) + 1
+            )
         elif event_type == "frozen":
             self.state[key]["status"] = "frozen"
         elif event_type == "active":
             self.state[key]["status"] = "active"
 
         if self.logger:
-            self.logger.info("GoalStateUpdated", extra={
-                "goal": goal,
-                "dimension": dimension,
-                "event": event_type,
-                "timestamp": now
-            })
+            self.logger.info(
+                "GoalStateUpdated",
+                extra={
+                    "goal": goal,
+                    "dimension": dimension,
+                    "event": event_type,
+                    "timestamp": now,
+                },
+            )
 
         if self.memory:
-            self.memory.save("state_tracker", {
-                "goal": goal,
-                "dimension": dimension,
-                "state": self.state[key]
-            })
+            self.memory.save(
+                "state_tracker",
+                {"goal": goal, "dimension": dimension, "state": self.state[key]},
+            )
 
     def get_state(self, goal: str, dimension: str) -> dict:
         return self.state.get((goal, dimension), {})

@@ -1,4 +1,4 @@
-# stephanie/agents/base.py
+# stephanie/agents/base_agent.py
 import random
 import re
 from abc import ABC, abstractmethod

@@ -1,4 +1,4 @@
-# File: stephanie/agents/task_generator_agent.py
+# stephanie/agents/task_generator_agent.py
 
 import json
 import random
@@ -62,7 +62,7 @@ class TaskGeneratorAgent(BaseAgent):
         # Combine subproblems
         prompt = f"""
         Combine these subproblems into a composite {task_type} problem:
-        {" ".join([f"Subproblem {i+1}: {p}" for i, p in enumerate(subproblems)])}
+        {" ".join([f"Subproblem {i + 1}: {p}" for i, p in enumerate(subproblems)])}
         Output only the final problem statement.
         """
         composite_problem = await self.llm(prompt)
@@ -74,16 +74,16 @@ class TaskGeneratorAgent(BaseAgent):
             "math": [
                 "Solve for x: {eq}",
                 "What is the value of ∫{expr} dx from {a} to {b}?",
-                "Find the roots of {poly}"
+                "Find the roots of {poly}",
             ],
             "logic": [
                 "Given premises: {premises}, what conclusion follows?",
-                "If A implies B and B implies C, does A imply C?"
+                "If A implies B and B implies C, does A imply C?",
             ],
             "coding": [
                 "Write a Python function to {task}",
-                "Debug this code: {code_snippet}"
-            ]
+                "Debug this code: {code_snippet}",
+            ],
         }
 
         template = random.choice(templates.get(task_type, templates["math"]))
@@ -95,31 +95,23 @@ class TaskGeneratorAgent(BaseAgent):
                 b=random.randint(11, 20),
                 poly=self._generate_polynomial(),
                 task="reverse a linked list",
-                code_snippet="def buggy_func(x): return x + '2'"
+                code_snippet="def buggy_func(x): return x + '2'",
             )
         return template
 
     def _generate_math_expression(self) -> str:
         """Helper: generate random math expressions"""
-        return random.choice([
-            "sin(x)^2 + cos(x)^2",
-            "e^(ix)",
-            "lim_{x→0} (sin x)/x"
-        ])
+        return random.choice(["sin(x)^2 + cos(x)^2", "e^(ix)", "lim_{x→0} (sin x)/x"])
 
     def _generate_polynomial(self) -> str:
         """Helper: generate random polynomials"""
-        return random.choice([
-            "x^3 - 6x^2 + 11x - 6",
-            "2x^2 + 3x + 1",
-            "x^4 - 1"
-        ])
+        return random.choice(["x^3 - 6x^2 + 11x - 6", "2x^2 + 3x + 1", "x^4 - 1"])
 
     async def solve_problem(self, problem: str, context: dict) -> str:
         """Use inner agent to solve the problem"""
         solver_name = self.cfg.get("solver_agent", "ChainOfThoughtAgent")
         try:
-            module_name, class_name = solver_name.rsplit('.', 1)
+            module_name, class_name = solver_name.rsplit(".", 1)
             module = __import__(module_name, fromlist=[class_name])
             solver_cls = getattr(module, class_name)
             solver = solver_cls(cfg=self.cfg, memory=self.memory, logger=self.logger)
@@ -138,15 +130,13 @@ class TaskGeneratorAgent(BaseAgent):
         llm_scores = await self._llm_judge(problem, solution)
 
         # Combine scores
-        return {
-            "mrq_similarity": mrq_score,
-            **llm_scores
-        }
+        return {"mrq_similarity": mrq_score, **llm_scores}
 
     def _mrq_judge(self, problem: str, solution: str) -> float:
         """Use MR.Q to compute embedding similarity"""
         try:
             from stephanie.evaluator.mrq_self_evaluator import MRQSelfEvaluator
+
             evaluator = MRQSelfEvaluator(memory=self.memory, logger=self.logger)
             result = evaluator.score_single(problem, solution, context={})
             return result.get("overall", 0.0)
@@ -158,7 +148,10 @@ class TaskGeneratorAgent(BaseAgent):
         """Use structured rubric-based LLM judge"""
         try:
             from stephanie.evaluator.pipeline_judge import PipelineJudgeAgent
-            judge = PipelineJudgeAgent(cfg=self.cfg, memory=self.memory, logger=self.logger)
+
+            judge = PipelineJudgeAgent(
+                cfg=self.cfg, memory=self.memory, logger=self.logger
+            )
             _, scores = await judge.compare_outputs(problem, solution, solution)
             return scores
         except Exception as e:
@@ -174,11 +167,8 @@ class TaskGeneratorAgent(BaseAgent):
                 prompt=problem,
                 response=solution,
                 reward=scores.get("mrq_similarity", 0.0),
-                metadata_=json.dumps({
-                    "scores": scores,
-                    "source": "task_generator"
-                }),
-                created_at=datetime.now(timezone.utc)
+                metadata_=json.dumps({"scores": scores, "source": "task_generator"}),
+                created_at=datetime.now(timezone.utc),
             )
             self.session.add(entry)
             self.session.commit()

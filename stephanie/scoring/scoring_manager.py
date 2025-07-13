@@ -1,3 +1,4 @@
+# stephanie/scoring/scoring_manager.py
 import re
 from pathlib import Path
 
@@ -102,7 +103,16 @@ class ScoringManager:
         return [d["name"] for d in self.dimensions]
 
     @classmethod
-    def from_file(cls, filepath: str, prompt_loader, cfg, logger, memory, scoring_profile=None, llm_fn=None):
+    def from_file(
+        cls,
+        filepath: str,
+        prompt_loader,
+        cfg,
+        logger,
+        memory,
+        scoring_profile=None,
+        llm_fn=None,
+    ):
         with open(Path(filepath), "r") as f:
             data = yaml.safe_load(f)
 
@@ -128,7 +138,7 @@ class ScoringManager:
         cfg["output_format"] = output_format
 
         from stephanie.scoring.llm_scorer import LLMScorer
-        from stephanie.scoring.mrq_scorer import MRQScorer
+        from stephanie.scoring.mrq.mrq_scorer import MRQScorer
         from stephanie.scoring.svm_scorer import SVMScorer
 
         if data["scorer"] == "mrq":
@@ -138,10 +148,12 @@ class ScoringManager:
         elif data["scorer"] == "svm":
             # Use SVM scoring profile if specified
             scorer = SVMScorer(cfg, memory, logger)
-            scorer.load_models()   
+            scorer.load_models()
         else:
             # Default to LLM scoring profile
-            scorer = LLMScorer(cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=llm_fn)
+            scorer = LLMScorer(
+                cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=llm_fn
+            )
 
         return cls(
             dimensions=dimensions,
@@ -198,19 +210,17 @@ class ScoringManager:
         raise ValueError(f"Could not extract numeric score from response: {response}")
 
     def evaluate(self, scorable: Scorable, context: dict = {}, llm_fn=None):
-
-
         try:
-            score = self.scorer.score(context.get("goal"), scorable, self.dimension_names(), llm_fn=llm_fn)        
+            score = self.scorer.score(
+                context.get("goal"), scorable, self.dimension_names(), llm_fn=llm_fn
+            )
         except Exception as e:
             self.logger.log(
                 "MgrScoreParseError",
                 {"scorable": scorable, "error": str(e)},
             )
             score = self.evaluate_llm(scorable, context, llm_fn)
-        log_key = (
-            "CorDimensionEvaluated" if format == "cor" else "DimensionEvaluated"
-        )
+        log_key = "CorDimensionEvaluated" if format == "cor" else "DimensionEvaluated"
         self.logger.log(
             log_key,
             {"ScoreCompleted": score.to_dict()},
@@ -234,8 +244,8 @@ class ScoringManager:
                 dim, {"hypothesis": scorable, **context}
             )
 
+            prompt_hash = ScoreORM.compute_prompt_hash(prompt, scorable)
             if not force_rescore:
-                prompt_hash = ScoreORM.compute_prompt_hash(prompt, scorable)
                 cached_result = self.memory.scores.get_score_by_prompt_hash(prompt_hash)
                 if cached_result:
                     self.logger.log("ScoreCacheHit", {"dimension": dim["name"]})
@@ -262,6 +272,7 @@ class ScoringManager:
                 rationale=response,
                 prompt_hash=prompt_hash,
                 source="llm",
+                target_type=scorable.target_type,
             )
             results.append(result)
 
@@ -286,7 +297,14 @@ class ScoringManager:
 
     @staticmethod
     def save_score_to_memory(
-        bundle, scorable, context, cfg, memory, logger, source="ScoreEvaluator", model_name=None
+        bundle: ScoreBundle,
+        scorable: Scorable,
+        context: dict,
+        cfg: dict,
+        memory,
+        logger,
+        source="ScoreEvaluator",
+        model_name=None,
     ):
         goal = context.get("goal")
         pipeline_run_id = context.get("pipeline_run_id")
@@ -357,7 +375,9 @@ class ScoringManager:
         weighted_score = bundle.calculator.calculate(bundle)
 
         soring_text = ScoringManager.get_scoring_text(document)
-        scorable = Scorable(text=soring_text, target_type=TargetType.DOCUMENT, id=document_id)
+        scorable = Scorable(
+            text=soring_text, target_type=TargetType.DOCUMENT, id=document_id
+        )
 
         scores_json = {
             "stage": cfg.get("stage", "review"),

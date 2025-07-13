@@ -1,4 +1,4 @@
-# stephanie/agents/knowledge_loader.py
+# stephanie/agents/knowledge/knowledge_loader.py
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -21,13 +21,17 @@ class KnowledgeLoaderAgent(BaseAgent):
         documents = context.get("documents", [])
 
         if not goal_text or not documents:
-            self.logger.log("DocumentFilterSkipped", {"reason": "Missing goal or documents"})
+            self.logger.log(
+                "DocumentFilterSkipped", {"reason": "Missing goal or documents"}
+            )
             return context
 
         # Step 1: Assign domain to the goal
         goal_vector = self.memory.embedding.get_or_create(goal_text)
         domain_vectors = {
-            domain: np.mean([self.memory.embedding.get_or_create(ex) for ex in examples], axis=0)
+            domain: np.mean(
+                [self.memory.embedding.get_or_create(ex) for ex in examples], axis=0
+            )
             for domain, examples in self.domain_seeds.items()
         }
 
@@ -44,7 +48,9 @@ class KnowledgeLoaderAgent(BaseAgent):
 
         context["goal_domain"] = goal_domain
         context["goal_domain_score"] = goal_domain_score
-        self.logger.log("GoalDomainAssigned", {"domain": goal_domain, "score": goal_domain_score})
+        self.logger.log(
+            "GoalDomainAssigned", {"domain": goal_domain, "score": goal_domain_score}
+        )
 
         # Step 2: Filter documents and/or sections
         filtered = []
@@ -58,17 +64,21 @@ class KnowledgeLoaderAgent(BaseAgent):
             doc_domains = self.memory.document_domains.get_domains(doc_id)
 
             # Check whole document first
-            for dom in doc_domains[:self.top_k]:
+            for dom in doc_domains[: self.top_k]:
                 if dom.domain == goal_domain and dom.score >= self.threshold:
-                    selected_content = doc_text if self.include_full_text else doc_summary
-                    filtered.append({
-                        "id": doc_id,
-                        "title": doc_title,
-                        "domain": dom.domain,
-                        "score": dom.score,
-                        "content": selected_content,
-                        "source": "document"
-                    })
+                    selected_content = (
+                        doc_text if self.include_full_text else doc_summary
+                    )
+                    filtered.append(
+                        {
+                            "id": doc_id,
+                            "title": doc_title,
+                            "domain": dom.domain,
+                            "score": dom.score,
+                            "content": selected_content,
+                            "source": "document",
+                        }
+                    )
                     break  # stop at first matching doc-level domain
 
             # Now check sections if present
@@ -79,18 +89,25 @@ class KnowledgeLoaderAgent(BaseAgent):
                 section_summary = section.get("summary", "")
 
                 section_domains = self.memory.section_domains.get_domains(section_id)
-                for sec_dom in section_domains[:self.top_k]:
-                    if sec_dom.domain == goal_domain and sec_dom.score >= self.threshold:
-                        selected_content = section_text if self.include_full_text else section_summary
-                        filtered.append({
-                            "id": doc_id,
-                            "section_id": section_id,
-                            "title": f"{doc_title} - {section_name}",
-                            "domain": sec_dom.domain,
-                            "score": sec_dom.score,
-                            "content": selected_content,
-                            "source": "section",
-                        })
+                for sec_dom in section_domains[: self.top_k]:
+                    if (
+                        sec_dom.domain == goal_domain
+                        and sec_dom.score >= self.threshold
+                    ):
+                        selected_content = (
+                            section_text if self.include_full_text else section_summary
+                        )
+                        filtered.append(
+                            {
+                                "id": doc_id,
+                                "section_id": section_id,
+                                "title": f"{doc_title} - {section_name}",
+                                "domain": sec_dom.domain,
+                                "score": sec_dom.score,
+                                "content": selected_content,
+                                "source": "section",
+                            }
+                        )
                         break  # stop at first matching section domain
 
         context[self.output_key] = filtered

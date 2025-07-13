@@ -1,3 +1,4 @@
+# stephanie/agents/judge.py
 import re
 
 from stephanie.agents.base_agent import BaseAgent
@@ -12,7 +13,9 @@ class JudgeAgent(BaseAgent):
         goal = self.extract_goal_text(context.get(GOAL))
         hypotheses = self.get_hypotheses(context)
 
-        self.logger.log("JudgeRunStarted", {"goal": goal[:100], "hypothesis_count": len(hypotheses)})
+        self.logger.log(
+            "JudgeRunStarted", {"goal": goal[:100], "hypothesis_count": len(hypotheses)}
+        )
 
         if len(hypotheses) < 2:
             self.logger.log("NotEnoughHypotheses", {"count": len(hypotheses)})
@@ -40,7 +43,10 @@ class JudgeAgent(BaseAgent):
         context["best_hypothesis"] = hypotheses[best_idx]
         context[self.output_key] = rankings
 
-        self.logger.log("JudgeRunCompleted", {"best_index": best_idx, "best_score": rankings[best_idx]["score"]})
+        self.logger.log(
+            "JudgeRunCompleted",
+            {"best_index": best_idx, "best_score": rankings[best_idx]["score"]},
+        )
 
         return context
 
@@ -157,9 +163,7 @@ class JudgeAgent(BaseAgent):
         }
         merged = {**context, **to_merge}
 
-        prompt = self.prompt_loader.load_prompt(
-            self.cfg, merged
-        )
+        prompt = self.prompt_loader.load_prompt(self.cfg, merged)
         response = self.call_llm(prompt, context)
 
         winner_match = re.search(r"better hypothesis:<([AB])>", response, re.IGNORECASE)

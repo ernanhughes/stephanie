@@ -1,5 +1,6 @@
 # stephanie/compiler/prompt_mutator.py
 
+
 class PromptMutator:
     """
     A utility class to generate mutated versions of a prompt using symbolic or structural transformations.
@@ -25,7 +26,9 @@ class PromptMutator:
         """
         return self.mutate_with_strategies(base_prompt)
 
-    def mutate_with_templates(self, base_prompt: str, template_list: list[str]) -> list[str]:
+    def mutate_with_templates(
+        self, base_prompt: str, template_list: list[str]
+    ) -> list[str]:
         """
         Apply a custom list of templates where `{prompt}` is replaced with the base prompt.
         """

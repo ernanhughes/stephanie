@@ -1,4 +1,4 @@
-# stephanie/agents/builders/triplet_extractor.py
+# stephanie/builders/triplet_extractor.py
 
 import re
 
@@ -16,12 +16,10 @@ class TripletExtractor:
         """
         Extract triplets from a list of section points using an LLM prompt.
         """
-        merged_context = {
-            "points": points,
-            "goal": context.get("goal"),
-            **context
-        }
-        prompt = self.prompt_loader.from_file(self.triplets_file, self.cfg, merged_context)
+        merged_context = {"points": points, "goal": context.get("goal"), **context}
+        prompt = self.prompt_loader.from_file(
+            self.triplets_file, self.cfg, merged_context
+        )
         response = self.call_llm(prompt, context=merged_context)
         return self.parse_triplets(response)
 
@@ -32,4 +30,6 @@ class TripletExtractor:
         """
         pattern = re.compile(r"-\s*\(\s*([^,]+?)\s*,\s*([^,]+?)\s*,\s*(.+?)\s*\)")
         matches = pattern.findall(markdown_text)
-        return [(subj.strip(), pred.strip(), obj.strip()) for subj, pred, obj in matches]
+        return [
+            (subj.strip(), pred.strip(), obj.strip()) for subj, pred, obj in matches
+        ]

@@ -1,3 +1,4 @@
+# stephanie/prompts/strategy_resolver.py
 import os
 
 from stephanie.constants import GOAL
@@ -32,6 +33,8 @@ class StrategyResolver:
         full_path = os.path.join(self.base_prompt_dir, filename)
 
         if not os.path.isfile(full_path):
-            raise FileNotFoundError(f"Prompt template not found for strategy '{strategy}': {full_path}")
+            raise FileNotFoundError(
+                f"Prompt template not found for strategy '{strategy}': {full_path}"
+            )
 
         return strategy, full_path

@@ -7,6 +7,7 @@ from sklearn.linear_model import LinearRegression
 
 logger = logging.getLogger(__name__)
 
+
 class LiveMRQAligner:
     def __init__(self):
         self.mrq_scores: List[float] = []

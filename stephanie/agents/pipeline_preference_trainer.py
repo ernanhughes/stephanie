@@ -30,8 +30,12 @@ class PipelinePreferenceTrainerAgent:
                 continue
 
             # Extract features from preferred and rejected runs
-            feat_pref = self._extract_features(goal, pref.preferred_tag, pref.dimension_scores.get(pref.preferred_tag))
-            feat_rej = self._extract_features(goal, pref.rejected_tag, pref.dimension_scores.get(pref.rejected_tag))
+            feat_pref = self._extract_features(
+                goal, pref.preferred_tag, pref.dimension_scores.get(pref.preferred_tag)
+            )
+            feat_rej = self._extract_features(
+                goal, pref.rejected_tag, pref.dimension_scores.get(pref.rejected_tag)
+            )
             if feat_pref is None or feat_rej is None:
                 continue
 

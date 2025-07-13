@@ -1,3 +1,4 @@
+# stephanie/memory/search_result_store.py
 # stores/search_result_store.py
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -30,7 +31,7 @@ class SearchResultStore(BaseStore):
         parent_goal: Optional[str] = None,
         strategy: Optional[str] = None,
         focus_area: Optional[str] = None,
-        extra_data: Optional[Dict] = None
+        extra_data: Optional[Dict] = None,
     ) -> SearchResultORM:
         """
         Add a single search result to the database.
@@ -49,7 +50,7 @@ class SearchResultStore(BaseStore):
             parent_goal=parent_goal,
             strategy=strategy,
             focus_area=focus_area,
-            extra_data=extra_data
+            extra_data=extra_data,
         )
         self.session.add(result)
         self.session.commit()
@@ -70,27 +71,41 @@ class SearchResultStore(BaseStore):
         """
         Retrieve all search results associated with a specific goal.
         """
-        return self.db.query(SearchResultORM).filter(
-            SearchResultORM.goal_id == goal_id
-        ).all()
+        return (
+            self.db.query(SearchResultORM)
+            .filter(SearchResultORM.goal_id == goal_id)
+            .all()
+        )
 
-    def get_by_strategy_and_focus(self, strategy: str, focus_area: str) -> List[SearchResultORM]:
+    def get_by_strategy_and_focus(
+        self, strategy: str, focus_area: str
+    ) -> List[SearchResultORM]:
         """
         Get results filtered by strategy and focus area.
         """
-        return self.db.query(SearchResultORM).filter(
-            SearchResultORM.strategy == strategy,
-            SearchResultORM.focus_area == focus_area
-        ).all()
+        return (
+            self.db.query(SearchResultORM)
+            .filter(
+                SearchResultORM.strategy == strategy,
+                SearchResultORM.focus_area == focus_area,
+            )
+            .all()
+        )
 
-    def get_by_source_and_type(self, source: str, result_type: str) -> List[SearchResultORM]:
+    def get_by_source_and_type(
+        self, source: str, result_type: str
+    ) -> List[SearchResultORM]:
         """
         Get results filtered by source and type (e.g., arxiv/paper_score).
         """
-        return self.db.query(SearchResultORM).filter(
-            SearchResultORM.source == source,
-            SearchResultORM.result_type == result_type
-        ).all()
+        return (
+            self.db.query(SearchResultORM)
+            .filter(
+                SearchResultORM.source == source,
+                SearchResultORM.result_type == result_type,
+            )
+            .all()
+        )
 
     def delete_by_goal_id(self, goal_id: int) -> None:
         """

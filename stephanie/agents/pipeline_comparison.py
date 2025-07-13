@@ -1,3 +1,4 @@
+# stephanie/agents/pipeline_comparison.py
 import csv
 import os
 from collections import defaultdict
@@ -18,29 +19,37 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
         super().__init__(cfg, memory, logger)
         self.print_results = cfg.get("print_results", True)
         self.tags = cfg.get("tags", [])
-        self.analyzer = RuleEffectAnalyzer(session=self.memory.session, logger=self.logger)
-
+        self.analyzer = RuleEffectAnalyzer(
+            session=self.memory.session, logger=self.logger
+        )
 
     async def run(self, context: dict) -> dict:
-        self.logger.log("PipelineComparisonAgentStart", {PIPELINE_RUN_ID: context.get(PIPELINE_RUN_ID)})
+        self.logger.log(
+            "PipelineComparisonAgentStart",
+            {PIPELINE_RUN_ID: context.get(PIPELINE_RUN_ID)},
+        )
 
         if not self.tags:
-            raise ValueError("No tags provided for comparison. Please specify tags in the configuration.")
+            raise ValueError(
+                "No tags provided for comparison. Please specify tags in the configuration."
+            )
 
         results = self.compare_runs(self.tags, goal_id=context.get("goal_id"))
 
         if self.print_results:
             print("\n=== Pipeline Comparison Results ===")
             for result in results:
-                print(f"Goal ID: {result['goal_id']}, Winner: {result['winner']}, Scores: {result['avg_scores']}")
+                print(
+                    f"Goal ID: {result['goal_id']}, Winner: {result['winner']}, Scores: {result['avg_scores']}"
+                )
 
         self.logger.log("PipelineComparisonAgentEnd", {"output_key": self.output_key})
         return context
-    
 
     def compare_runs(self, tags: list[str], goal_id: int = None):
         from stephanie.models.comparison_preference import \
             ComparisonPreferenceORM
+
         """
         Compare multiple sets of pipeline runs by tag across the same goals.
         Store MR.Q-style preferences when there's a clear winner.
@@ -48,7 +57,9 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
         print(f"\n🔍 Comparing Pipelines: {tags}\n")
 
         # Fetch all runs for each tag
-        runs_by_tag = {tag: self.memory.pipeline_runs.find({"tag": tag}) for tag in tags}
+        runs_by_tag = {
+            tag: self.memory.pipeline_runs.find({"tag": tag}) for tag in tags
+        }
 
         # Index runs by goal_id
         runs_by_goal = defaultdict(dict)
@@ -67,7 +78,9 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
             for tag, run in tag_run_map.items():
                 score_map[tag] = self.get_multidimensional_score(run.id)
 
-            avg_scores = {tag: scores.get("overall", 0.0) for tag, scores in score_map.items()}
+            avg_scores = {
+                tag: scores.get("overall", 0.0) for tag, scores in score_map.items()
+            }
             best_tag = max(avg_scores, key=avg_scores.get)
             is_tie = list(avg_scores.values()).count(avg_scores[best_tag]) > 1
             winner = "Tie" if is_tie else best_tag
@@ -86,15 +99,19 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
                     reason=f"{winner} outperformed {loser} on score {avg_scores[winner]:.2f} > {avg_scores[loser]:.2f}",
                 )
                 self.memory.session.add(preference)
-                self._save_comparison_preference(goal, winner, loser, tag_run_map, avg_scores, score_map)
+                self._save_comparison_preference(
+                    goal, winner, loser, tag_run_map, avg_scores, score_map
+                )
 
-            results.append({
-                "goal_id": goal,
-                "avg_scores": avg_scores,
-                "winner": winner,
-                "run_ids": {tag: tag_run_map[tag].run_id for tag in tag_run_map},
-                "dimensions": score_map
-            })
+            results.append(
+                {
+                    "goal_id": goal,
+                    "avg_scores": avg_scores,
+                    "winner": winner,
+                    "run_ids": {tag: tag_run_map[tag].run_id for tag in tag_run_map},
+                    "dimensions": score_map,
+                }
+            )
 
         self.memory.session.commit()  # commit all preferences
         self._print_summary(results, tags)
@@ -122,11 +139,9 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
                 source="pipeline_comparison",
             )
 
-
-
         self.export_to_csv(results, tags)
         return results
-    
+
     def _get_avg_score(self, run_id: str) -> float:
         scores = (
             self.memory.session.query(ScoreORM)
@@ -144,13 +159,19 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
         table_data = []
 
         for r in results:
-            row = [r["goal_id"]] + [f"{r['avg_scores'].get(tag, 0.0):.2f}" for tag in tags] + [r["winner"]]
+            row = (
+                [r["goal_id"]]
+                + [f"{r['avg_scores'].get(tag, 0.0):.2f}" for tag in tags]
+                + [r["winner"]]
+            )
             table_data.append(row)
 
         print(tabulate(table_data, headers=headers, tablefmt="fancy_grid"))
 
         total = len(results)
-        win_counts = {tag: sum(1 for r in results if r["winner"] == tag) for tag in tags}
+        win_counts = {
+            tag: sum(1 for r in results if r["winner"] == tag) for tag in tags
+        }
         ties = sum(1 for r in results if r["winner"] == "Tie")
 
         print("\n✅ Summary:")
@@ -162,7 +183,10 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
         """
         Exports the comparison results to a CSV file.
         """
-        filename = filename or f"pipeline_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        filename = (
+            filename
+            or f"pipeline_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        )
         filepath = os.path.join("reports", filename)
 
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
@@ -173,7 +197,11 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
             writer.writerow(headers)
 
             for r in results:
-                row = [r["goal_id"]] + [r["avg_scores"].get(tag, 0.0) for tag in tags] + [r["winner"]]
+                row = (
+                    [r["goal_id"]]
+                    + [r["avg_scores"].get(tag, 0.0) for tag in tags]
+                    + [r["winner"]]
+                )
                 writer.writerow(row)
 
         print(f"\n📄 Exported comparison to {filepath}")
@@ -189,7 +217,7 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
             self.memory.session.query(
                 EvaluationORM.target_type,
                 EvaluationORM.target_id,
-                func.max(EvaluationORM.id).label("latest_eval_id")
+                func.max(EvaluationORM.id).label("latest_eval_id"),
             )
             .filter(EvaluationORM.pipeline_run_id == pipeline_run_id)
             .group_by(EvaluationORM.target_type, EvaluationORM.target_id)
@@ -214,16 +242,15 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
             for s in scores:
                 dim_totals[s.dimension].append(s.score)
 
-        averaged = {
-            dim: sum(vals) / len(vals) for dim, vals in dim_totals.items()
-        }
+        averaged = {dim: sum(vals) / len(vals) for dim, vals in dim_totals.items()}
         if averaged:
             averaged["overall"] = sum(averaged.values()) / len(averaged)
 
         return averaged
 
-    def _save_comparison_preference(self, goal_id, preferred_tag, rejected_tag, tag_run_map, avg_scores, score_map):
-
+    def _save_comparison_preference(
+        self, goal_id, preferred_tag, rejected_tag, tag_run_map, avg_scores, score_map
+    ):
         preferred_run_id = tag_run_map[preferred_tag].run_id
         rejected_run_id = tag_run_map[rejected_tag].run_id
 
@@ -233,7 +260,7 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
                 goal_id=goal_id,
                 preferred_run_id=preferred_run_id,
                 rejected_run_id=rejected_run_id,
-                source="pipeline_comparison"
+                source="pipeline_comparison",
             )
             .first()
         )
@@ -248,7 +275,7 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
             "rejected_score": avg_scores[rejected_tag],
             "dimension_scores": score_map,
             "reason": f"{preferred_tag} outperformed {rejected_tag} ({avg_scores[preferred_tag]:.2f} > {avg_scores[rejected_tag]:.2f})",
-            "source": "pipeline_comparison"
+            "source": "pipeline_comparison",
         }
 
         if existing:

@@ -1,4 +1,4 @@
-# stephanie/agents/literature.py
+# stephanie/agents/knowledge/literature.py
 
 import re
 
@@ -16,11 +16,14 @@ class LiteratureAgent(BaseAgent):
         self.max_results = cfg.get("max_results", 5)
         self.web_search_tool = WebSearchTool(cfg.get("web_search", {}), self.logger)
 
-        self.logger.log("LiteratureAgentInit", {
-            "strategy": self.strategy,
-            "preferences": self.preferences,
-            "max_results": self.max_results,
-        })
+        self.logger.log(
+            "LiteratureAgentInit",
+            {
+                "strategy": self.strategy,
+                "preferences": self.preferences,
+                "max_results": self.max_results,
+            },
+        )
 
     async def run(self, context: dict) -> dict:
         self.logger.log("LiteratureQuery", {"context": context})
@@ -40,10 +43,13 @@ class LiteratureAgent(BaseAgent):
         )
 
         if not results:
-            self.logger.log("NoResultsFromWebSearch", {
-                "goal_snippet": goal[:60],
-                "search_query": search_query,
-            })
+            self.logger.log(
+                "NoResultsFromWebSearch",
+                {
+                    "goal_snippet": goal[:60],
+                    "search_query": search_query,
+                },
+            )
             return context
 
         self.logger.log("SearchResult", {"results": results})
@@ -69,11 +75,14 @@ class LiteratureAgent(BaseAgent):
                     Summary: {summary}
                 """)
 
-        self.logger.log("LiteratureSearchCompleted", {
-            "total_results": len(parsed_results),
-            "goal": goal,
-            "search_query": search_query,
-        })
+        self.logger.log(
+            "LiteratureSearchCompleted",
+            {
+                "total_results": len(parsed_results),
+                "goal": goal,
+                "search_query": search_query,
+            },
+        )
 
         context["literature"] = parsed_results
 
@@ -82,10 +91,14 @@ class LiteratureAgent(BaseAgent):
     def _generate_search_query(self, context: dict) -> str:
         try:
             prompt = self.prompt_loader.load_prompt(self.cfg, context)
-            self.logger.log("LLMPromptGenerated_SearchQuery", {"prompt_snippet": prompt[:200]})
+            self.logger.log(
+                "LLMPromptGenerated_SearchQuery", {"prompt_snippet": prompt[:200]}
+            )
 
             response = self.call_llm(prompt, context)
-            self.logger.log("LLMResponseReceived_SearchQuery", {"response_snippet": response[:200]})
+            self.logger.log(
+                "LLMResponseReceived_SearchQuery", {"response_snippet": response[:200]}
+            )
 
             # Structured format
             match = re.search(r"search query:<([^>]+)>", response, re.IGNORECASE)
@@ -93,7 +106,9 @@ class LiteratureAgent(BaseAgent):
                 return match.group(1).strip()
 
             # Fallback format
-            match = re.search(r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE)
+            match = re.search(
+                r"(?:query|search)[:\s]+\"([^\"]+)\"", response, re.IGNORECASE
+            )
             if match:
                 query = match.group(1).strip()
                 self.logger.log("SearchQuery", {"Search Query": query})
@@ -114,16 +129,19 @@ class LiteratureAgent(BaseAgent):
             prompt = self.prompt_loader.from_file(
                 self.cfg.get("parse_prompt", "parse.txt"), self.cfg, context
             )
-            self.logger.log("LLMPromptGenerated_Summarize", {
-                "title": context.get("title", ""),
-                "prompt_snippet": prompt[:200]
-            })
+            self.logger.log(
+                "LLMPromptGenerated_Summarize",
+                {"title": context.get("title", ""), "prompt_snippet": prompt[:200]},
+            )
 
             raw_summary = self.call_llm(prompt, context)
-            self.logger.log("LLMResponseReceived_Summarize", {
-                "title": context.get("title", ""),
-                "response_snippet": raw_summary[:200]
-            })
+            self.logger.log(
+                "LLMResponseReceived_Summarize",
+                {
+                    "title": context.get("title", ""),
+                    "response_snippet": raw_summary[:200],
+                },
+            )
 
             # Try extracting "Summary" section
             summary_match = re.search(

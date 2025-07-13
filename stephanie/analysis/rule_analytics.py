@@ -1,3 +1,4 @@
+# stephanie/analysis/rule_analytics.py
 from collections import defaultdict
 from typing import Dict, List, Optional
 
@@ -41,10 +42,7 @@ class RuleAnalytics:
         return dict(summary)
 
     def compute_rule_rank(
-        self,
-        score_avg: Optional[float],
-        usage_count: int,
-        feedback: Dict[str, int]
+        self, score_avg: Optional[float], usage_count: int, feedback: Dict[str, int]
     ) -> float:
         """Compute a basic rule quality score. Can be replaced with DPO/MRQ later."""
         if score_avg is None:
@@ -61,7 +59,9 @@ class RuleAnalytics:
             score_summary = self.get_score_summary(rule.id)
             feedback_summary = self.get_feedback_summary(rule.id)
             rank = self.compute_rule_rank(
-                score_summary.get("average"), score_summary.get("count"), feedback_summary
+                score_summary.get("average"),
+                score_summary.get("count"),
+                feedback_summary,
             )
             result = {
                 "rule_id": rule.id,
@@ -80,16 +80,20 @@ class RuleAnalytics:
             neg_feedback = feedback_summary.get("negative", 0)
 
             # Prepare a table row summary for printout
-            table_rows.append([
-                rule.id,
-                rule.target or "—",
-                rule.rule_text[:30] + "…" if rule.rule_text and len(rule.rule_text) > 30 else rule.rule_text,
-                f"{avg_score:.2f}",
-                score_count,
-                pos_feedback,
-                neg_feedback,
-                f"{rank:.2f}",
-                ])
+            table_rows.append(
+                [
+                    rule.id,
+                    rule.target or "—",
+                    rule.rule_text[:30] + "…"
+                    if rule.rule_text and len(rule.rule_text) > 30
+                    else rule.rule_text,
+                    f"{avg_score:.2f}",
+                    score_count,
+                    pos_feedback,
+                    neg_feedback,
+                    f"{rank:.2f}",
+                ]
+            )
             output.append(result)
 
         # Print final table
@@ -122,7 +126,9 @@ class RuleAnalytics:
         output = []
         table_rows = []
         for rule_id, applications in rules_by_id.items():
-            scores = [app.post_score for app in applications if app.post_score is not None]
+            scores = [
+                app.post_score for app in applications if app.post_score is not None
+            ]
             changes = [app.change_type for app in applications if app.change_type]
 
             feedback_summary = defaultdict(int)
@@ -149,21 +155,31 @@ class RuleAnalytics:
                     "rank_score": rank,
                 }
                 output.append(result)
-                table_rows.append([
-                    rule_id,
-                    rule.target or "—",
-                    rule.rule_text[:30] + "…" if rule.rule_text and len(rule.rule_text) > 30 else rule.rule_text,
-                    f"{avg_score:.2f}" if avg_score is not None else "—",
-                    len(scores),
-                    feedback_summary.get("positive", 0),
-                    feedback_summary.get("negative", 0),
-                    f"{rank:.2f}" if avg_score is not None else "—",
-                ])
+                table_rows.append(
+                    [
+                        rule_id,
+                        rule.target or "—",
+                        rule.rule_text[:30] + "…"
+                        if rule.rule_text and len(rule.rule_text) > 30
+                        else rule.rule_text,
+                        f"{avg_score:.2f}" if avg_score is not None else "—",
+                        len(scores),
+                        feedback_summary.get("positive", 0),
+                        feedback_summary.get("negative", 0),
+                        f"{rank:.2f}" if avg_score is not None else "—",
+                    ]
+                )
 
         print(f"\n📊 Rule Analysis for Pipeline Run: {pipeline_run_id}")
         headers = [
-            "Rule ID", "Target", "Rule Text", "Avg Score", "Score Count",
-            "👍 Feedback", "👎 Feedback", "Rank Score",
+            "Rule ID",
+            "Target",
+            "Rule Text",
+            "Avg Score",
+            "Score Count",
+            "👍 Feedback",
+            "👎 Feedback",
+            "Rank Score",
         ]
         print(tabulate(table_rows, headers=headers, tablefmt="fancy_grid"))
 

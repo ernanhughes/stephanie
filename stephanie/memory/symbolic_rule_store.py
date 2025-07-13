@@ -1,3 +1,4 @@
+# stephanie/memory/symbolic_rule_store.py
 from typing import List
 
 import yaml
@@ -174,7 +175,11 @@ class SymbolicRuleStore:
 
     def get_all(self) -> list[SymbolicRuleORM]:
         try:
-            rules = self.session.query(SymbolicRuleORM).order_by(SymbolicRuleORM.created_at.desc()).all()
+            rules = (
+                self.session.query(SymbolicRuleORM)
+                .order_by(SymbolicRuleORM.created_at.desc())
+                .all()
+            )
             if self.logger:
                 self.logger.log("SymbolicRulesFetched", {"count": len(rules)})
             return rules
@@ -188,14 +193,21 @@ class SymbolicRuleStore:
             return self.session.query(SymbolicRuleORM).filter_by(id=rule_id).first()
         except Exception as e:
             if self.logger:
-                self.logger.log("SymbolicRuleGetByIdError", {"rule_id": rule_id, "error": str(e)})
+                self.logger.log(
+                    "SymbolicRuleGetByIdError", {"rule_id": rule_id, "error": str(e)}
+                )
             return None
-    
+
     def exists_by_signature(self, signature: str) -> bool:
         """
         Checks if a symbolic rule exists by its signature hash.
         """
-        return self.session.query(SymbolicRuleORM).filter_by(context_hash=signature).first() is not None
+        return (
+            self.session.query(SymbolicRuleORM)
+            .filter_by(context_hash=signature)
+            .first()
+            is not None
+        )
 
     def exists_similar(self, rule: SymbolicRuleORM, attr: str, new_val) -> bool:
         """
@@ -226,10 +238,13 @@ class SymbolicRuleStore:
             return False
         except Exception as e:
             if self.logger:
-                self.logger.log("SymbolicRuleExistsSimilarError", {
-                    "error": str(e),
-                    "agent_name": rule.agent_name,
-                    "attribute": attr,
-                    "value": new_val,
-                })
+                self.logger.log(
+                    "SymbolicRuleExistsSimilarError",
+                    {
+                        "error": str(e),
+                        "agent_name": rule.agent_name,
+                        "attribute": attr,
+                        "value": new_val,
+                    },
+                )
             return False

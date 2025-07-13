@@ -1,3 +1,4 @@
+# stephanie/models/node_orm.py
 # models/node_orm.py ---
 
 from datetime import datetime
@@ -33,4 +34,3 @@ class NodeORM(Base):
             "valid": self.valid,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
-    

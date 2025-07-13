@@ -14,7 +14,6 @@ class IdeaSharpeningAgent(BaseAgent):
         self.templates = cfg.get("templates", ["critic"])
         self.save_count = cfg.get("save_count", 3)
 
-
     async def run(self, context: dict) -> dict:
         """
         Main execution loop for IdeaSharpeningAgent.
@@ -39,7 +38,9 @@ class IdeaSharpeningAgent(BaseAgent):
         sharpened_results.sort(key=lambda x: x["score"], reverse=True)
 
         # Update context
-        context["sharpened_ideas"] = [r["sharpened_hypothesis"] for r in sharpened_results]
+        context["sharpened_ideas"] = [
+            r["sharpened_hypothesis"] for r in sharpened_results
+        ]
         context["scored_ideas"] = sharpened_results
         best_idea = sharpened_results[0]["sharpened_hypothesis"]
         context["top_idea"] = best_idea
@@ -52,7 +53,7 @@ class IdeaSharpeningAgent(BaseAgent):
             )
 
             # Keep only the top hypothesis
-            context[HYPOTHESES] = sorted_hyps[:self.save_count]
+            context[HYPOTHESES] = sorted_hyps[: self.save_count]
             # For scoring later
             context["baseline_hypotheses"] = sorted_hyps[-1]
 
@@ -111,7 +112,9 @@ class IdeaSharpeningAgent(BaseAgent):
                 context.setdefault(HYPOTHESES, []).append(saved_hyp.to_dict())
             return result
 
-    def save_improved(self, goal: dict, original_idea: str, result: dict, context: dict):
+    def save_improved(
+        self, goal: dict, original_idea: str, result: dict, context: dict
+    ):
         if not result.get("improved"):
             return None
 

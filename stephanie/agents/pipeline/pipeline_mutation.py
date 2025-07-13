@@ -1,3 +1,4 @@
+# stephanie/agents/pipeline/pipeline_mutation.py
 import copy
 import datetime
 
@@ -32,20 +33,20 @@ class PipelineMutationAgent(BaseAgent):
         self.mutation_prompt_template = cfg["rule_mutation_prompt"]
         self.max_runs = cfg.get("max_runs", 5)
 
-
         # Load base pipeline
         self.base_pipeline_key = cfg.get("base_pipeline", "minimal")
-        self.pipeline_registry_path = cfg.get("pipeline_registry", "config/registry/pipeline_registry.yaml")
+        self.pipeline_registry_path = cfg.get(
+            "pipeline_registry", "config/registry/pipeline_registry.yaml"
+        )
         self.pipeline_registry = PipelineRegistry(self.pipeline_registry_path)
 
-        self.rule_options_file = cfg.get("mutation_rule_options", "config/rules/pipeline_mutation_options.yaml")
+        self.rule_options_file = cfg.get(
+            "mutation_rule_options", "config/rules/pipeline_mutation_options.yaml"
+        )
         self.options_config = RuleOptionsConfig.from_yaml(self.rule_options_file)
         self.rule_tuner = RuleTuner(memory, logger)
 
-        self.logger.log(
-            "PipelineMutationAgentInitialized",
-            {"conf": self.cfg}
-        )
+        self.logger.log("PipelineMutationAgentInitialized", {"conf": self.cfg})
 
     async def run(self, context: dict) -> dict:
         # Step 1: Generate pipeline config mutations
@@ -55,8 +56,7 @@ class PipelineMutationAgent(BaseAgent):
             context["status"] = "pipeline_not_found"
             return context
 
-        _, pipeline = self._generate_pipeline_mutations(self.base_pipeline_key, context) 
-
+        _, pipeline = self._generate_pipeline_mutations(self.base_pipeline_key, context)
 
         # Step 2: Generate symbolic rule mutations
         applicable_rules = self._get_applicable_rules(pipeline)
@@ -70,7 +70,9 @@ class PipelineMutationAgent(BaseAgent):
         pipeline_to_mutate_def = self.pipeline_registry.get_pipeline(pipeline)
 
         # Step 4: Apply and evaluate pipeline mutations
-        pipeline_results = await self._apply_pipeline_mutations(pipeline_to_mutate_def, symbolic_results, context)
+        pipeline_results = await self._apply_pipeline_mutations(
+            pipeline_to_mutate_def, symbolic_results, context
+        )
 
         # Step 5: Log all results
         context["mutated_symbolic_rules"] = [r.to_dict() for r in symbolic_results]
@@ -86,11 +88,14 @@ class PipelineMutationAgent(BaseAgent):
 
         # Filter rules where the rule's agent matches any in the pipeline
         return [
-            r for r in self.memory.symbolic_rules.get_all()
+            r
+            for r in self.memory.symbolic_rules.get_all()
             if r.agent_name in agent_names
         ]
 
-    def _generate_rule_mutations(self, rule: SymbolicRuleORM, context: dict) -> list[dict]:
+    def _generate_rule_mutations(
+        self, rule: SymbolicRuleORM, context: dict
+    ) -> list[dict]:
         """Use LLM to generate one or more valid mutations for this rule."""
         current_attrs = rule.attributes or {}
         available_options = self.options_config.get_options_for(rule.agent_name)
@@ -100,26 +105,36 @@ class PipelineMutationAgent(BaseAgent):
             "current_attributes": current_attrs,
             "available_options": available_options,
             "recent_performance": recent_perf,
-            **context
+            **context,
         }
 
-        prompt = self.prompt_loader.from_file(self.mutation_prompt_template, self.cfg, merged)
+        prompt = self.prompt_loader.from_file(
+            self.mutation_prompt_template, self.cfg, merged
+        )
         response = self.call_llm(prompt, context)
         parsed = RuleTuner.parse_mutation_response(response)
 
         if not parsed.get("attribute") or not parsed.get("new_value"):
-            self.logger.log("MutationParseError", {"rule_id": rule.id, "response": response})
+            self.logger.log(
+                "MutationParseError", {"rule_id": rule.id, "response": response}
+            )
             return []
 
         attr = parsed["attribute"]
         new_val = parsed["new_value"]
 
         if not self.options_config.is_valid_change(rule.agent_name, attr, new_val):
-            self.logger.log("InvalidRuleMutation", {"rule_id": rule.id, "attribute": attr, "value": new_val})
+            self.logger.log(
+                "InvalidRuleMutation",
+                {"rule_id": rule.id, "attribute": attr, "value": new_val},
+            )
             return []
 
         if self.memory.symbolic_rules.exists_similar(rule, attr, new_val):
-            self.logger.log("RuleMutationDuplicateSkipped", {"rule_id": rule.id, "attribute": attr, "value": new_val})
+            self.logger.log(
+                "RuleMutationDuplicateSkipped",
+                {"rule_id": rule.id, "attribute": attr, "value": new_val},
+            )
             return []
 
         mutated_attrs = dict(current_attrs)
@@ -135,7 +150,10 @@ class PipelineMutationAgent(BaseAgent):
             source="mutation",
         )
         self.memory.symbolic_rules.insert(new_rule)
-        self.logger.log("RuleMutat I ionApplied", {"original_rule_id": rule.id, "new_rule": new_rule.to_dict()})
+        self.logger.log(
+            "RuleMutat I ionApplied",
+            {"original_rule_id": rule.id, "new_rule": new_rule.to_dict()},
+        )
         return [new_rule]
 
     def _generate_pipeline_mutations(self, pipeline_name, context):
@@ -144,25 +162,28 @@ class PipelineMutationAgent(BaseAgent):
         merged_context = {
             # From pipeline definition
             "current_pipeline_name": pipeline_name,
-            "current_pipeline_description": self.pipeline_registry.get_description(pipeline_name),
-            "current_pipeline": self.pipeline_registry.get_pipeline(pipeline_name),  # handles if it's a full pipeline block
-
+            "current_pipeline_description": self.pipeline_registry.get_description(
+                pipeline_name
+            ),
+            "current_pipeline": self.pipeline_registry.get_pipeline(
+                pipeline_name
+            ),  # handles if it's a full pipeline block
             # From context (goal and performance)
-            "goal_text": context.get("goal", {}).get("goal_text", "Improve pipeline performance"),
+            "goal_text": context.get("goal", {}).get(
+                "goal_text", "Improve pipeline performance"
+            ),
             "goal_id": context.get("goal", {}).get("id"),
-            #TODO
+            # TODO
             # "recent_performance": self.memory.rule_effects.get_recent_performance_summary(),
-
             # Optionally, inject available options for better prompting
             "available_pipelines": self.pipeline_registry.list_variants_with_descriptions(),  # e.g., [{"name": ..., "description": ...}, ...]
-
             # Pass original context for compatibility
             **context,
         }
 
         prompt = self.prompt_loader.from_file("pipeline", self.cfg, merged_context)
         response = self.call_llm(prompt, context)
-        rationale, pipeline  = self._parse_pipeline_mutation(response)
+        rationale, pipeline = self._parse_pipeline_mutation(response)
 
         if not pipeline:
             self.logger.log("PipelineMutationParseError", {"response": response})
@@ -172,6 +193,7 @@ class PipelineMutationAgent(BaseAgent):
 
     def _parse_pipeline_mutation(self, response: str):
         import re
+
         """Parse LLM response into a pipeline mutation"""
         pattern = r"""
         (?:[*#`]*\s*)?            # Optional formatting characters before the header
@@ -187,9 +209,11 @@ class PipelineMutationAgent(BaseAgent):
         if match:
             rationale = match.group("rationale").strip()
             pipeline = match.group("pipeline").strip()
-        return rationale, pipeline    
-            
-    async def _apply_and_evaluate(self, mutations: list[SymbolicRuleORM], context: dict) -> list[SymbolicRuleORM]:
+        return rationale, pipeline
+
+    async def _apply_and_evaluate(
+        self, mutations: list[SymbolicRuleORM], context: dict
+    ) -> list[SymbolicRuleORM]:
         """Apply each symbolic mutation and evaluate its effect."""
         results = []
 
@@ -197,7 +221,9 @@ class PipelineMutationAgent(BaseAgent):
             new_config = self._apply_symbolic_rule(rule)
             mutated_context = self._update_context_with_config(context, new_config)
 
-            supervisor = Supervisor(self.full_cfg, memory=self.memory, logger=self.logger)
+            supervisor = Supervisor(
+                self.full_cfg, memory=self.memory, logger=self.logger
+            )
             result = await supervisor.run_pipeline_config(mutated_context)
 
             score = self._evaluate_result(result)
@@ -219,28 +245,40 @@ class PipelineMutationAgent(BaseAgent):
         ctx_copy.update(config_update)
         return ctx_copy
 
-    async def _apply_pipeline_mutations(self, pipeline_def, mutations: list, context: dict) -> list:
+    async def _apply_pipeline_mutations(
+        self, pipeline_def, mutations: list, context: dict
+    ) -> list:
         """Apply pipeline mutations and run through supervisor"""
         results = []
 
         for i, mutation in enumerate(mutations):
             if i >= self.max_runs:
-                self.logger.log("PipelineMutationLimitReached", {"limit": self.max_runs})
+                self.logger.log(
+                    "PipelineMutationLimitReached", {"limit": self.max_runs}
+                )
                 break
 
             mutated_pipeline = self.apply_mutation(pipeline_def, mutation)
-            mutated_cfg = self.inject_pipeline_config(mutated_pipeline, tag=f"mutated_{i}")
+            mutated_cfg = self.inject_pipeline_config(
+                mutated_pipeline, tag=f"mutated_{i}"
+            )
 
             full_mutated_cfg = OmegaConf.merge(mutated_cfg, self.full_cfg)
-            supervisor = Supervisor(full_mutated_cfg, memory=self.memory, logger=self.logger)
+            supervisor = Supervisor(
+                full_mutated_cfg, memory=self.memory, logger=self.logger
+            )
 
             try:
                 mutated_run = await supervisor.run_pipeline_config(context)
                 summary = self.summarize(mutated_run)
-                self.logger.log("PipelineMutationRun", {"mutation": mutation, "summary": summary})
+                self.logger.log(
+                    "PipelineMutationRun", {"mutation": mutation, "summary": summary}
+                )
                 results.append({"mutation": mutation, "result": mutated_run})
             except Exception as e:
-                self.logger.log("PipelineMutationError", {"mutation": mutation, "error": str(e)})
+                self.logger.log(
+                    "PipelineMutationError", {"mutation": mutation, "error": str(e)}
+                )
 
         return results
 
@@ -270,11 +308,13 @@ class PipelineMutationAgent(BaseAgent):
 
     def _log_evaluation(self, rule: SymbolicRuleORM, score: float):
         """Log mutation and evaluation result"""
-        self.memory.scorer.score_db.append({
-            "rule_id": rule.id,
-            "score": score,
-            "timestamp": datetime.now(),
-        })
+        self.memory.scorer.score_db.append(
+            {
+                "rule_id": rule.id,
+                "score": score,
+                "timestamp": datetime.now(),
+            }
+        )
 
     def summarize(self, result: dict) -> dict:
         """Return short summary for logging"""
@@ -287,4 +327,3 @@ class PipelineMutationAgent(BaseAgent):
     def _load_pipeline_registry(self):
         with open(self.pipeline_registry_path, "r") as f:
             return yaml.safe_load(f)
-

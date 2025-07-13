@@ -1,4 +1,4 @@
-# models/score.py
+# stephanie/models/score.py
 
 import hashlib
 
@@ -13,13 +13,18 @@ class ScoreORM(Base):
     __tablename__ = "scores"
 
     id = Column(Integer, primary_key=True)
-    evaluation_id = Column(Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False)
+    evaluation_id = Column(
+        Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False
+    )
     dimension = Column(String, nullable=False)
     score = Column(Float)
+    energy = Column(Float)     
+    uncertainty = Column(Float) 
     weight = Column(Float)
+
     rationale = Column(Text)
     prompt_hash = Column(Text)
-    source = Column(Text, default="llm")    
+    source = Column(Text, default="llm")
 
     evaluation = relationship("EvaluationORM", back_populates="dimension_scores")
 
@@ -31,7 +36,7 @@ class ScoreORM(Base):
             "score": self.score,
             "source": self.source,
             "weight": self.weight,
-            "rationale": self.rationale
+            "rationale": self.rationale,
         }
 
     def __repr__(self):

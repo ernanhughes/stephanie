@@ -2,7 +2,7 @@
 
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.llm_scorer import LLMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer  # formerly MRQEvaluator
+from stephanie.scoring.mrq.mrq_scorer import MRQScorer  # formerly MRQEvaluator
 
 
 class MetaReviewScorer(BaseScorer):
@@ -25,10 +25,10 @@ class MetaReviewScorer(BaseScorer):
         mrq_scores = self.mrq_scorer.score(goal, hypothesis, dimensions)
 
         if self._needs_llm_fallback(mrq_scores, dimensions):
-            self.logger.log("MetaReviewFallbackTriggered", {
-                "reason": "Missing or low-confidence MRQ scores",
-                "fallback": "llm"
-            })
+            self.logger.log(
+                "MetaReviewFallbackTriggered",
+                {"reason": "Missing or low-confidence MRQ scores", "fallback": "llm"},
+            )
             llm_scores = self.llm_scorer.score(goal, hypothesis, dimensions)
             return self._combine_scores(mrq_scores, llm_scores)
         else:
@@ -57,9 +57,8 @@ class MetaReviewScorer(BaseScorer):
             if dim in mrq_scores and mrq_scores[dim]["score"] > 0.0:
                 combined[dim] = mrq_scores[dim]
             else:
-                combined[dim] = llm_scores.get(dim, {
-                    "score": 0.0,
-                    "rationale": "No fallback available",
-                    "weight": 1.0
-                })
+                combined[dim] = llm_scores.get(
+                    dim,
+                    {"score": 0.0, "rationale": "No fallback available", "weight": 1.0},
+                )
         return combined

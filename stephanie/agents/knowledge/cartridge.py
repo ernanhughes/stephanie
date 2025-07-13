@@ -1,4 +1,4 @@
-# stephanie/agents/cartridge_agent.py
+# stephanie/agents/knowledge/cartridge.py
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
@@ -125,7 +125,7 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                                 target_type=TargetType.TRIPLE,
                                 text=triplet_text,
                                 context=context,
-                                scoring_profile="cartridge"
+                                scoring_profile="cartridge",
                             )
                             context.setdefault("triplet_scores", []).append(score)
                 self.logger.log("TripletsInserted", {"cartridge_id": cartridge.id})
@@ -140,7 +140,9 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
 
                 for theorem in theorems:
                     self.memory.embedding.get_or_create(theorem.statement)
-                    theorem.embedding_id = self.memory.embedding.get_id_for_text(theorem.statement)
+                    theorem.embedding_id = self.memory.embedding.get_id_for_text(
+                        theorem.statement
+                    )
                     theorem.cartridges.append(cartridge)
                     self.memory.session.add(theorem)
 
@@ -148,7 +150,7 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                         "theorem": theorem.to_dict(),
                         "cartridge_title": cartridge.title,
                         "cartridge_id": cartridge.id,
-                        **context
+                        **context,
                     }
 
                     # Score theorem immediately
@@ -157,7 +159,7 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                         target_type=TargetType.THEOREM,
                         text=theorem.statement,
                         context=merged_context,
-                        scoring_profile="cartridge"
+                        scoring_profile="cartridge",
                     )
                     context.setdefault("theorem_scores", []).append(theorem_score)
                 self.memory.session.commit()
@@ -170,7 +172,7 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                         target_type=TargetType.CARTRIDGE,
                         text=cartridge.markdown_content,
                         context=context,
-                        scoring_profile="cartridge"
+                        scoring_profile="cartridge",
                     )
                     context.setdefault("cartridge_scores", []).append(score)
                     self.logger.log("CartridgeScored", {"cartridge_id": cartridge.id})
@@ -213,15 +215,17 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
         """Classify and log domains for the cartridge."""
         if not cartridge.markdown_content:
             return
-        
+
         existing = self.memory.cartridge_domains.get_domains(cartridge.id)
         if existing:
             self.logger.log(
                 "DomainAssignmentSkipped",
-                {"cartridge_id": cartridge.id, "existing_domains": [e.domain for e in existing]},
+                {
+                    "cartridge_id": cartridge.id,
+                    "existing_domains": [e.domain for e in existing],
+                },
             )
             return
-
 
         results = self.domain_classifier.classify(
             cartridge.markdown_content,

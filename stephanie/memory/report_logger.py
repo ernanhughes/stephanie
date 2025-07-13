@@ -1,3 +1,4 @@
+# stephanie/memory/report_logger.py
 from stephanie.memory import BaseStore
 
 
@@ -20,7 +21,7 @@ class ReportLogger(BaseStore):
                     INSERT INTO reports (run_id, goal, summary, path)
                     VALUES (%s, %s, %s, %s)
                     """,
-                    (run_id, goal, summary, path)
+                    (run_id, goal, summary, path),
                 )
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")

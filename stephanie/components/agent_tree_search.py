@@ -1,3 +1,4 @@
+# stephanie/components/agent_tree_search.py
 import time
 
 from stephanie.agents.ats.solution_node import SolutionNode
@@ -13,7 +14,10 @@ class AgenticTreeSearch:
 
     async def run(self, context):
         start_time = time.time()
-        while self.iteration < self.max_iterations and (time.time() - start_time) < self.time_limit:
+        while (
+            self.iteration < self.max_iterations
+            and (time.time() - start_time) < self.time_limit
+        ):
             action, parent_node = self.select_action()
             new_plan = await self.generate_plan(parent_node, action)
             new_code = self.generate_code(new_plan)
@@ -26,7 +30,7 @@ class AgenticTreeSearch:
                 code=new_code,
                 metric=verification["metric"],
                 output=result,
-                summary=verification["summary"]
+                summary=verification["summary"],
             )
             self.tree.append(new_node)
             self.iteration += 1

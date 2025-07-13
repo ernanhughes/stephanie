@@ -1,3 +1,4 @@
+# stephanie/agents/mrq_strategy.py
 from omegaconf import OmegaConf
 
 from stephanie.agents.base_agent import BaseAgent
@@ -9,8 +10,9 @@ DEFAULT_PIPELINES = [
     ["cot_generator", "reviewer", "judge"],
     ["retriever", "generation", "judge"],
     ["retriever", "cot_generator", "judge"],
-    ["retriever", "generation", "verifier", "judge"]
+    ["retriever", "generation", "verifier", "judge"],
 ]
+
 
 class MRQStrategyAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -30,7 +32,6 @@ class MRQStrategyAgent(BaseAgent):
 
         # Attempt training (will be partial if data is incomplete)
         self.train_from_reflection_deltas()
-
 
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {})
@@ -70,14 +71,16 @@ class MRQStrategyAgent(BaseAgent):
                 continue
 
             label = "b" if score_b > score_a else "a"
-            examples.append({
-                "goal_text": d.get("goal_text"),
-                "pipeline_a": a,
-                "pipeline_b": b,
-                "score_a": score_a,
-                "score_b": score_b,
-                "label": label
-            })
+            examples.append(
+                {
+                    "goal_text": d.get("goal_text"),
+                    "pipeline_a": a,
+                    "pipeline_b": b,
+                    "score_a": score_a,
+                    "score_b": score_b,
+                    "label": label,
+                }
+            )
 
         self.training_data = examples
         self.logger.log("MRQTrainingDataLoaded", {"count": len(examples)})
@@ -90,6 +93,7 @@ class MRQStrategyAgent(BaseAgent):
         Simple ranker that scores pipelines based on symbolic features.
         Prefers longer pipelines and known strong agents.
         """
+
         def score(pipeline):
             return (
                 len(pipeline)
@@ -98,4 +102,5 @@ class MRQStrategyAgent(BaseAgent):
                 + 1.0 * ("retriever" in pipeline)
                 + 0.8 * ("cot_generator" in pipeline)
             )
+
         return score

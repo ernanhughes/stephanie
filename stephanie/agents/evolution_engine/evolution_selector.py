@@ -1,3 +1,4 @@
+# stephanie/agents/evolution_engine/evolution_selector.py
 import random
 
 
@@ -10,18 +11,20 @@ class EvolutionarySelector:
             "change_research_method",
             "shift_perspective",
             "increase_specificity",
-            "add_cross_domain"
+            "add_cross_domain",
         ]
 
     def next_generation(self, cartridges, num_outputs):
         """Select and evolve cartridges for next generation"""
         # Rank cartridges by quality
-        ranked = sorted(cartridges, key=lambda c: c.quality_metrics["overall_score"], reverse=True)
-        
+        ranked = sorted(
+            cartridges, key=lambda c: c.quality_metrics["overall_score"], reverse=True
+        )
+
         # Select elite cartridges
         num_elites = max(1, int(self.elite_size * len(ranked)))
         elites = ranked[:num_elites]
-        
+
         # Create next generation
         next_gen = []
         for i in range(num_outputs):
@@ -33,21 +36,22 @@ class EvolutionarySelector:
                 base = random.choice(elites)
                 variant = self.create_variant(base)
                 next_gen.append(variant)
-                
+
         return next_gen
 
     def create_variant(self, base_cartridge):
         """Create mutated variant of a cartridge"""
         import copy
+
         variant = copy.deepcopy(base_cartridge)
         variant.generation += 1
         variant.parent_hash = base_cartridge.signature
-        
+
         # Apply mutations to instruction
         if random.random() < self.mutation_rate:
             mutation = random.choice(self.mutation_strategies)
             variant.goal = self.mutate_instruction(variant.goal, mutation)
-            
+
         return variant
 
     def mutate_instruction(self, instruction, strategy):
@@ -61,10 +65,10 @@ class EvolutionarySelector:
             ),
             # Other strategies...
         }
-        
+
         prompt = prompts.get(strategy, "").format(instruction=instruction)
         if not prompt:
             return instruction
-            
+
         # Use LLM to implement mutation (implementation similar to InstructionEngine)
         return instruction + " [Mutated]"

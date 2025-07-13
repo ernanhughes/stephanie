@@ -1,3 +1,4 @@
+# stephanie/components/lats_component.py
 import math
 import random
 import uuid
@@ -26,7 +27,7 @@ class LATSComponent:
         expand_fn: Callable[[LATSNode, Dict[str, Any]], List[Dict]],
         score_fn: Callable[[LATSNode, Dict[str, Any]], Dict[str, Any]],
         is_terminal_fn: Optional[Callable[[LATSNode], bool]] = None,
-        memory = None,
+        memory=None,
         logger: Optional[Any] = None,
         max_steps: int = 10,
         exploration_weight: float = 1.4,
@@ -45,8 +46,10 @@ class LATSComponent:
 
     def uct_score(self, parent_visits, child):
         if child.visits == 0:
-            return float('inf')
-        return child.reward / child.visits + self.exploration_weight * math.sqrt(math.log(parent_visits) / child.visits)
+            return float("inf")
+        return child.reward / child.visits + self.exploration_weight * math.sqrt(
+            math.log(parent_visits) / child.visits
+        )
 
     def select_best_child(self, node):
         return max(node.children, key=lambda c: self.uct_score(node.visits, c))
@@ -63,12 +66,14 @@ class LATSComponent:
 
         children = self.expand_fn(node, context)
         for child_info in children:
-            child_node = self.create_node(child_info['state'], child_info['trace'], parent=node)
+            child_node = self.create_node(
+                child_info["state"], child_info["trace"], parent=node
+            )
             node.children.append(child_node)
 
             score_result = self.score_fn(child_node, context)
-            child_node.score = score_result.get('score', 0.0)
-            child_node.dimension_scores = score_result.get('dimension_scores', {})
+            child_node.score = score_result.get("score", 0.0)
+            child_node.dimension_scores = score_result.get("dimension_scores", {})
             reward = child_node.score or 0.0
 
             self.backpropagate(child_node, reward)
@@ -82,5 +87,8 @@ class LATSComponent:
                 node = self.select_best_child(node)
             self.simulate(node, context)
 
-        best = max(self.root.children, key=lambda c: c.reward / c.visits if c.visits > 0 else -1)
+        best = max(
+            self.root.children,
+            key=lambda c: c.reward / c.visits if c.visits > 0 else -1,
+        )
         return best.trace, best.score, best.dimension_scores

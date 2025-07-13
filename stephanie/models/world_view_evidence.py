@@ -1,3 +1,4 @@
+# stephanie/models/world_view_evidence.py
 from datetime import datetime
 
 from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
@@ -16,4 +17,4 @@ class WorldViewEvidenceORM(Base):
     evidence_text = Column(Text)
     confidence = Column(Float)
     evidence_type = Column(String)  # "support" or "contradiction"
-    source_id = Column(String)      # reference to knowledge source
+    source_id = Column(String)  # reference to knowledge source

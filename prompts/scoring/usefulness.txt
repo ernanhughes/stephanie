@@ -1,0 +1,12 @@
+Assess the usefulness of this paper for developing self-improving AI systems.
+
+Title: {{ document.title }}
+Abstract: {{ document.summary }}
+
+Does this work offer tools, insights, or frameworks that can improve adaptive reasoning or learning?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

@@ -14,6 +14,7 @@ class RankingAgent(BaseAgent):
     From the paper_score:
     > 'The Ranking agent employs an Elo-based tournament to assess and prioritize generated hypotheses'
     """
+
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.elo_scores = {}
@@ -22,7 +23,7 @@ class RankingAgent(BaseAgent):
         self.initial_elo_score = cfg.get("initial_elo_score", 750)
         self.win_history = []
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
-        self.elo_scores = {}         # map: hypothesis ID → score
+        self.elo_scores = {}  # map: hypothesis ID → score
         self.hypothesis_lookup = {}  # map: hypothesis ID → full dict
 
     async def run(self, context: dict) -> dict:
@@ -38,10 +39,10 @@ class RankingAgent(BaseAgent):
         hypotheses = self.get_hypotheses(context)
 
         if len(hypotheses) < 2:
-            self.logger.log("NotEnoughHypothesesForRanking", {
-                "count": len(hypotheses),
-                "reason": "less than 2 hypotheses"
-            })
+            self.logger.log(
+                "NotEnoughHypothesesForRanking",
+                {"count": len(hypotheses), "reason": "less than 2 hypotheses"},
+            )
             context[self.output_key] = [(h, 1000) for h in hypotheses]
             return context
 
@@ -99,7 +100,9 @@ class RankingAgent(BaseAgent):
             },
         )
 
-    def _conduct_multi_turn_debate(self, context:dict, hyp1:str, hyp2:str, turns:int=3):
+    def _conduct_multi_turn_debate(
+        self, context: dict, hyp1: str, hyp2: str, turns: int = 3
+    ):
         """Simulate multi-turn scientific debate between hypotheses"""
         for i in range(turns):
             prompt = self._build_ranking_prompt(hyp1, hyp2, context=context)
@@ -109,7 +112,6 @@ class RankingAgent(BaseAgent):
                 self._update_elo(hyp1, hyp2, winner)
             else:
                 break
-
 
     def _generate_pairwise_comparisons(self, hypotheses):
         """Generate combinations of hypothesis pairs for ranking"""
@@ -131,14 +133,11 @@ class RankingAgent(BaseAgent):
 
         return {
             "top_performers": [
-                {
-                    "hypothesis": self.hypothesis_lookup[h],
-                    "wins": w
-                }
+                {"hypothesis": self.hypothesis_lookup[h], "wins": w}
                 for h, w in sorted(win_counts.items(), key=lambda x: x[1], reverse=True)
             ],
             "total_matches": len(self.win_history),
-            "preferences_used": self.preferences
+            "preferences_used": self.preferences,
         }
 
     def _rank_pairwise(self, reviewed, context):
@@ -147,7 +146,9 @@ class RankingAgent(BaseAgent):
             return
 
         # Limit number of comparisons per round
-        comparisons = random.sample(pairs, k=min(self.cfg.get("max_comparisons", 6), len(pairs)))
+        comparisons = random.sample(
+            pairs, k=min(self.cfg.get("max_comparisons", 6), len(pairs))
+        )
 
         for item1, item2 in comparisons:
             hyp1 = item1["hypotheses"]
@@ -155,10 +156,9 @@ class RankingAgent(BaseAgent):
 
             merged = {**self.cfg, **{"hypothesis_a": hyp1, "hypothesis_b": hyp2}}
 
-
             prompt = self.prompt_loader.load_prompt(merged, context=context)
 
-            self.logger.log("RankingCompare", {"hyp1": hyp1[:60],  "hyp2":hyp2[:60]})
+            self.logger.log("RankingCompare", {"hyp1": hyp1[:60], "hyp2": hyp2[:60]})
 
             try:
                 response = self.call_llm(prompt, context)
@@ -167,10 +167,13 @@ class RankingAgent(BaseAgent):
                 if winner:
                     self._update_elo(hyp1, hyp2, winner)
                 else:
-                    self.logger.log("ComparisonParseFailed", {
-                        "prompt_snippet": prompt[:200],
-                        "response_snippet": response[:300]
-                    })
+                    self.logger.log(
+                        "ComparisonParseFailed",
+                        {
+                            "prompt_snippet": prompt[:200],
+                            "response_snippet": response[:300],
+                        },
+                    )
             except Exception as e:
                 self.logger.log(
                     "ComparisonError",
@@ -217,26 +220,34 @@ class RankingAgent(BaseAgent):
             'A' or 'B' based on comparison
         """
         # Try matching structured formats first
-        structured_match = re.search(r"better[\s_]?hypothesis[^\w]*([AB12])", response, re.IGNORECASE)
+        structured_match = re.search(
+            r"better[\s_]?hypothesis[^\w]*([AB12])", response, re.IGNORECASE
+        )
         if structured_match:
             winner_key = structured_match.group(1).upper()
             return "A" if winner_key in ("A", "1") else "B"
 
         # Try matching natural language statements
-        lang_match = re.search(r"(?:prefer|choose|recommend|select)(\s+idea|\s+hypothesis)?[:\s]+([AB12])", response, re.IGNORECASE)
+        lang_match = re.search(
+            r"(?:prefer|choose|recommend|select)(\s+idea|\s+hypothesis)?[:\s]+([AB12])",
+            response,
+            re.IGNORECASE,
+        )
         if lang_match:
             winner_key = lang_match.group(2).upper()
             return "A" if winner_key in ("A", "1") else "B"
 
         # Try matching conclusion phrases
-        conclusion_match = re.search(r"conclude[d]?\s+with\s+better[\s_]idea:\s*(\d)", response, re.IGNORECASE)
+        conclusion_match = re.search(
+            r"conclude[d]?\s+with\s+better[\s_]idea:\s*(\d)", response, re.IGNORECASE
+        )
         if conclusion_match:
             winner_key = conclusion_match.group(1)
             return "A" if winner_key == "1" else "B"
 
         # Default fallback logic
-        self.logger.log("ParseError", {
-                    "error": "Could not extract winner from response",
-                    "response": response
-                })
+        self.logger.log(
+            "ParseError",
+            {"error": "Could not extract winner from response", "response": response},
+        )
         return response

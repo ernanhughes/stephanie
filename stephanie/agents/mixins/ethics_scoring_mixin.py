@@ -17,6 +17,11 @@ class EthicsScoringMixin:
             cfg=self.cfg,
             logger=self.logger,
             memory=self.memory,
-        ) 
+        )
 
-        return evaluator.evaluate(document=doc, context=context, llm_fn=self.call_llm, text_to_evaluate="summary")
+        return evaluator.evaluate(
+            document=doc,
+            context=context,
+            llm_fn=self.call_llm,
+            text_to_evaluate="summary",
+        )

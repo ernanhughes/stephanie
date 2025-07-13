@@ -1,3 +1,4 @@
+# stephanie/agents/evolution_engine/instruction_engine.py
 import random
 
 
@@ -11,7 +12,7 @@ class InstructionEngine:
             "Emphasize theoretical foundations",
             "Include cross-disciplinary perspective",
             "Prioritize quantitative over qualitative analysis",
-            "Focus on controversial aspects"
+            "Focus on controversial aspects",
         ]
 
     def generate_variants(self, num_variants=20, temperature=0.7):
@@ -28,18 +29,16 @@ class InstructionEngine:
             2. Implements the variation strategy
             3. Is clear and actionable for research AI
             """
-            
+
             response = self.client.chat.completions.create(
                 model="gpt-4-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,
-                max_tokens=150
+                max_tokens=150,
             )
-            
+
             variant = response.choices[0].message.content.strip()
-            variants.append({
-                "id": f"variant_{i+1}",
-                "instruction": variant,
-                "strategy": strategy
-            })
+            variants.append(
+                {"id": f"variant_{i + 1}", "instruction": variant, "strategy": strategy}
+            )
         return variants

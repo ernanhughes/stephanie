@@ -1,4 +1,4 @@
-# stephanie/agents/generic_agent.py
+# stephanie/agents/generic.py
 import re
 
 from stephanie.agents.base_agent import BaseAgent
@@ -39,24 +39,30 @@ class GenericAgent(BaseAgent):
                 "title": self.name,
                 "content": result,
                 "prompt_used": prompt[:300],
-                "strategy": self.strategy
+                "strategy": self.strategy,
             }
 
-            self.logger.log("AgentRanSuccessfully", {
-                "agent": self.name,
-                "input_key": self.input_key,
-                "output_key": self.output_key,
-                "prompt_snippet": prompt[:200],
-                "response_snippet": result[:300]
-            })
+            self.logger.log(
+                "AgentRanSuccessfully",
+                {
+                    "agent": self.name,
+                    "input_key": self.input_key,
+                    "output_key": self.output_key,
+                    "prompt_snippet": prompt[:200],
+                    "response_snippet": result[:300],
+                },
+            )
 
             return context
 
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")
-            self.logger.log("AgentFailed", {
-                "agent": self.name,
-                "error": str(e),
-                "context_snapshot": {k: len(str(v)) for k, v in context.items()}
-            })
+            self.logger.log(
+                "AgentFailed",
+                {
+                    "agent": self.name,
+                    "error": str(e),
+                    "context_snapshot": {k: len(str(v)) for k, v in context.items()},
+                },
+            )
             return context

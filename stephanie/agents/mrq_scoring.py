@@ -1,3 +1,4 @@
+# stephanie/agents/mrq_scoring.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.evaluator import MRQSelfEvaluator
 from stephanie.models import EvaluationORM
@@ -27,8 +28,7 @@ class MRQScoringAgent(BaseAgent):
 
             # Run evaluator
             result = self.evaluator.score_single(
-                prompt=hypothesis.prompt.prompt_text,
-                output=hypothesis.text
+                prompt=hypothesis.prompt.prompt_text, output=hypothesis.text
             )
 
             # Handle result: could be float or dict of dimensions
@@ -54,7 +54,7 @@ class MRQScoringAgent(BaseAgent):
                 scores=result,
                 pipeline_run_id=context.get("pipeline_run_id"),
                 extra_data=self.cfg,
-                dimensions=dimensions
+                dimensions=dimensions,
             )
 
             self.memory.evaluations.insert(score_obj)

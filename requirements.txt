@@ -10,12 +10,13 @@ python_dotenv
 ollama
 unstructured
 fuzzywuzzy
+lxml 
 
 # web search tools
 requests
 wikipedia
 duckduckgo-search
-readability-lxml
+git+https://github.com/buriy/python-readability
 beautifulsoup4
 arxiv
 gradio_client

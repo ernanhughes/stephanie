@@ -1,4 +1,4 @@
-# stephanie/agents/evolution.py
+# stephanie/agents/idea_evolution.py
 import itertools
 
 from sklearn.metrics.pairwise import cosine_similarity
@@ -41,12 +41,18 @@ class IdeaEvolutionAgent(BaseAgent):
         current_round = context.get("evolution_round", 0)
 
         if not ranked_hypotheses and not fallback_hypotheses:
-            self.logger.log("NoHypothesesToEvolve", {"reason": "no_ranked_or_unranked_input"})
+            self.logger.log(
+                "NoHypothesesToEvolve", {"reason": "no_ranked_or_unranked_input"}
+            )
             context[EVOLVED] = []
             return context
 
         # Decide which hypotheses to evolve
-        top_texts = [h.get("text") for h, _ in ranked_hypotheses[:3]] if ranked_hypotheses else fallback_hypotheses
+        top_texts = (
+            [h.get("text") for h, _ in ranked_hypotheses[:3]]
+            if ranked_hypotheses
+            else fallback_hypotheses
+        )
 
         # Run evolution strategies
         all_variants = await self._mutate_all(top_texts, context, preferences)
@@ -57,7 +63,7 @@ class IdeaEvolutionAgent(BaseAgent):
 
         # Score and select top K
         scored_variants = self._score_variants(all_variants, context)
-        top_variants = scored_variants[:self.selection_top_k]
+        top_variants = scored_variants[: self.selection_top_k]
 
         # Save to DB
         self._save_evolved(top_variants, context)
@@ -72,13 +78,15 @@ class IdeaEvolutionAgent(BaseAgent):
             {
                 "evolved_count": len(top_variants),
                 "preferences": preferences,
-                "round": current_round + 1
-            }
+                "round": current_round + 1,
+            },
         )
 
         return context
 
-    async def _mutate_all(self, hypotheses: list, context: dict, preferences: list) -> list:
+    async def _mutate_all(
+        self, hypotheses: list, context: dict, preferences: list
+    ) -> list:
         """Generate multiple variants for each hypothesis"""
         all_mutants = []
 
@@ -88,17 +96,16 @@ class IdeaEvolutionAgent(BaseAgent):
                 "literature_summary": context.get("knowledge_base_summaries", []),
                 "critique": context.get("scores", {}),
                 "focus_area": context.get(GOAL, {}).get("focus_area"),
-                "preferences": ", ".join(preferences)
+                "preferences": ", ".join(preferences),
             }
 
             prompt = self.prompt_loader.load_prompt(self.cfg, prompt_context)
             raw_output = self.call_llm(prompt, context)
 
             mutants = extract_hypotheses(raw_output)
-            self.logger.log("HypothesisMutated", {
-                "original": h[:60],
-                "mutations": mutants[:2]
-            })
+            self.logger.log(
+                "HypothesisMutated", {"original": h[:60], "mutations": mutants[:2]}
+            )
 
             all_mutants.extend(mutants)
 
@@ -109,7 +116,9 @@ class IdeaEvolutionAgent(BaseAgent):
         Graft pairs of highly similar hypotheses into unified versions.
         """
         hypotheses = self.get_hypotheses(context)
-        embeddings = [await self.memory.embedding.get_or_create(h.get("text")) for h in hypotheses]
+        embeddings = [
+            await self.memory.embedding.get_or_create(h.get("text")) for h in hypotheses
+        ]
         used = set()
         grafted = []
 
@@ -119,14 +128,13 @@ class IdeaEvolutionAgent(BaseAgent):
 
             sim = cosine_similarity(embeddings[i], embeddings[j])
             if sim >= threshold:
-                self.logger.log("GraftingPair", {
-                    "similarity": sim,
-                    "h1": h1[:60] + "...",
-                    "h2": h2[:60] + "..."
-                })
+                self.logger.log(
+                    "GraftingPair",
+                    {"similarity": sim, "h1": h1[:60] + "...", "h2": h2[:60] + "..."},
+                )
                 prompt = (
                     f"Combine the following hypotheses into a clearer, more innovative statement:\n\n"
-                    f'A: {h1.get("text")}\nB: {h2.get("text")}'
+                    f"A: {h1.get('text')}\nB: {h2.get('text')}"
                 )
                 try:
                     response = self.call_llm(prompt, context)
@@ -173,8 +181,7 @@ class IdeaEvolutionAgent(BaseAgent):
                     "parent_id": context.get("current_hypothesis", {}).get("id"),
                     "evolution_level": context.get("evolution_round", 0),
                 },
-                context=context
+                context=context,
             )
             results.append(hyp)
         return results
-

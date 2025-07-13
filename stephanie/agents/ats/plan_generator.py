@@ -23,7 +23,9 @@ class PlanGenerator:
         response = await self.agent.llm(prompt)
         return response.strip()
 
-    async def improve_plan(self, previous_plan: str, feedback: str, knowledge: list) -> str:
+    async def improve_plan(
+        self, previous_plan: str, feedback: str, knowledge: list
+    ) -> str:
         prompt = f"""
         Improve this ML solution plan:
         {previous_plan}

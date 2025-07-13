@@ -1,8 +1,7 @@
+# stephanie/agents/compiler/final_assembler.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.models.tokenizer import TokenCounter
-from stephanie.scoring.mrq_scorer import MRQScorer
-from stephanie.utils.llm import call_llm
+from stephanie.scoring.mrq.mrq_scorer import MRQScorer
 from stephanie.utils.memory_manager import SharedMemoryManager
 
 
@@ -22,10 +21,9 @@ class FinalAssemblerAgent(BaseAgent):
             self.logger.log("FinalAssemblySkipped", {"reason": "no_steps"})
             return context
 
-        self.logger.log("FinalAssemblyStart", {
-            "step_count": len(steps),
-            "goal_snippet": goal[:100]
-        })
+        self.logger.log(
+            "FinalAssemblyStart", {"step_count": len(steps), "goal_snippet": goal[:100]}
+        )
 
         # 1. Score & Sort Steps (by quality + relevance)
         scored_steps = self._score_and_sort_steps(steps, goal)
@@ -37,7 +35,9 @@ class FinalAssemblerAgent(BaseAgent):
         final_score = None
         try:
             output = call_llm(final_prompt, context={"goal": goal})
-            score_obj = self.scorer.score(hypothesis={"text": output}, context={"goal": goal})
+            score_obj = self.scorer.score(
+                hypothesis={"text": output}, context={"goal": goal}
+            )
             final_score = score_obj.aggregate()
         except Exception as e:
             self.logger.log("FinalPromptScoringFailed", {"error": str(e)})
@@ -48,7 +48,7 @@ class FinalAssemblerAgent(BaseAgent):
             prompt=final_prompt,
             score=final_score,
             used_indices=used_indices,
-            steps_used=[steps[i] for i in used_indices]
+            steps_used=[steps[i] for i in used_indices],
         )
 
         # 5. Update context
@@ -63,11 +63,14 @@ class FinalAssemblerAgent(BaseAgent):
             for idx in used_indices
         ]
 
-        self.logger.log("FinalAssemblyComplete", {
-            "final_score": final_score,
-            "assembled_prompt_snippet": final_prompt[:200],
-            "token_count": self.token_counter.count_tokens(final_prompt),
-        })
+        self.logger.log(
+            "FinalAssemblyComplete",
+            {
+                "final_score": final_score,
+                "assembled_prompt_snippet": final_prompt[:200],
+                "token_count": self.token_counter.count_tokens(final_prompt),
+            },
+        )
 
         return context
 
@@ -83,19 +86,20 @@ class FinalAssemblerAgent(BaseAgent):
 
             # Estimate goal alignment (using MR.Q-style embedding match)
             goal_alignment = self.scorer.predict_score_from_prompt(
-                prompt=f"Step: {step_text}\nGoal: {goal}",
-                dimension="relevance"
+                prompt=f"Step: {step_text}\nGoal: {goal}", dimension="relevance"
             )
 
             combined_score = (original_score * 0.6) + (goal_alignment * 0.4)
 
-            scored_steps.append({
-                "index": i,
-                "step": step_text,
-                "original_score": original_score,
-                "goal_alignment": goal_alignment,
-                "combined_score": combined_score
-            })
+            scored_steps.append(
+                {
+                    "index": i,
+                    "step": step_text,
+                    "original_score": original_score,
+                    "goal_alignment": goal_alignment,
+                    "combined_score": combined_score,
+                }
+            )
 
         # Sort by combined score descending
         scored_steps.sort(key=lambda x: x["combined_score"], reverse=True)
@@ -123,11 +127,14 @@ class FinalAssemblerAgent(BaseAgent):
             tokens = self.token_counter.count_tokens(candidate_prompt)
 
             if tokens > self.token_limit:
-                self.logger.log("FinalAssemblyTokenLimitReached", {
-                    "step_index": index,
-                    "tokens": tokens,
-                    "step_snippet": step_text[:100]
-                })
+                self.logger.log(
+                    "FinalAssemblyTokenLimitReached",
+                    {
+                        "step_index": index,
+                        "tokens": tokens,
+                        "step_snippet": step_text[:100],
+                    },
+                )
                 break
 
             final_prompt = candidate_prompt.strip()

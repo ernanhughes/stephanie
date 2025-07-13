@@ -8,11 +8,12 @@ class ScoreBundle:
     def __init__(self, results: dict[str, ScoreResult]):
         from stephanie.scoring.calculations.weighted_average import \
             WeightedAverageCalculator
+
         self.results = results
         self.calculator = WeightedAverageCalculator()
 
     def aggregate(self):
-        result = self.calculator.calculate(self) 
+        result = self.calculator.calculate(self)
         print(f"ScoreBundle: Aggregated score: {result}")
         return result
 
@@ -29,6 +30,7 @@ class ScoreBundle:
 
     def to_orm(self, evaluation_id: int):
         from stephanie.models.score import ScoreORM
+
         return [
             ScoreORM(
                 evaluation_id=evaluation_id,
@@ -37,14 +39,15 @@ class ScoreBundle:
                 weight=r.weight,
                 rationale=r.rationale,
                 source=r.source,
+                target_type=r.target_type,
+                prompt_hash=r.prompt_hash,
+
             )
             for r in self.results.values()
-        ] 
+        ]
 
     def __repr__(self):
-        summary = ", ".join(
-            f"{dim}: {res.score}" for dim, res in self.results.items()
-        )
+        summary = ", ".join(f"{dim}: {res.score}" for dim, res in self.results.items())
         return f"<ScoreBundle({summary})>"
 
     def __str__(self):
@@ -64,6 +67,9 @@ class ScoreBundle:
                 weight=entry.get("weight", 1.0),
                 rationale=entry.get("rationale", ""),
                 source=entry.get("source", "from_dict"),
+                target_type=entry.get("target_type", "unknown"),
+                prompt_hash=entry.get("prompt_hash", ""),
+                
             )
             for dim, entry in data.items()
             if isinstance(entry, dict)  # Defensive: skip bad formats

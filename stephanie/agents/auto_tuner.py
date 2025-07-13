@@ -1,3 +1,4 @@
+# stephanie/agents/auto_tuner.py
 from datetime import datetime
 
 from stephanie.agents.base_agent import BaseAgent
@@ -20,30 +21,39 @@ class AutoTunerAgent(BaseAgent):
         summary = analyzer.analyze(context.get(PIPELINE_RUN_ID))
 
         underperforming_rules = [
-            (rule_id, data) for rule_id, data in summary.items()
+            (rule_id, data)
+            for rule_id, data in summary.items()
             if data.get("avg_score", 100) < self.eval_threshold
         ]
-        underperforming_rules = sorted(underperforming_rules, key=lambda x: x[1]["avg_score"])[:self.max_rules]
+        underperforming_rules = sorted(
+            underperforming_rules, key=lambda x: x[1]["avg_score"]
+        )[: self.max_rules]
 
         for rule_id, data in underperforming_rules:
             rule = self.memory.symbolic_rules.get_by_id(rule_id)
             if not rule:
                 continue
 
-            self.logger.log("RuleUnderperforming", {
-                "rule_id": rule_id,
-                "avg_score": data["avg_score"],
-                "context_hash": rule.context_hash,
-                "attributes": rule.attributes
-            })
+            self.logger.log(
+                "RuleUnderperforming",
+                {
+                    "rule_id": rule_id,
+                    "avg_score": data["avg_score"],
+                    "context_hash": rule.context_hash,
+                    "attributes": rule.attributes,
+                },
+            )
 
             suggestions = self.suggest_rule_edits(rule, data)
             for suggestion in suggestions:
-                self.logger.log("AutoRuleSuggestion", {
-                    "rule_id": rule_id,
-                    "suggested_attributes": suggestion,
-                    "reason": "AutoTuner based on score analysis"
-                })
+                self.logger.log(
+                    "AutoRuleSuggestion",
+                    {
+                        "rule_id": rule_id,
+                        "suggested_attributes": suggestion,
+                        "reason": "AutoTuner based on score analysis",
+                    },
+                )
 
                 if self.tune_mode:
                     new_rule = SymbolicRuleORM(
@@ -52,8 +62,10 @@ class AutoTunerAgent(BaseAgent):
                         attributes=suggestion,
                         source="auto_tuner",
                         created_at=datetime.utcnow(),
-                        context_hash=SymbolicRuleORM.compute_context_hash(suggestion, rule.filter),
-                        description=f"Auto-tuned from rule {rule_id}"
+                        context_hash=SymbolicRuleORM.compute_context_hash(
+                            suggestion, rule.filter
+                        ),
+                        description=f"Auto-tuned from rule {rule_id}",
                     )
                     self.memory.symbolic_rules.insert(new_rule)
                     self.logger.log("AutoRuleInserted", {"new_rule_id": new_rule.id})

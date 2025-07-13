@@ -1,3 +1,4 @@
+# stephanie/memory/lookahead_store.py
 # stores/lookahead_store.py
 import json
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ class LookaheadStore:
         self.session = session
         self.logger = logger
         self.name = "lookahead"
-    
+
     def name(self) -> str:
         return "lookahead"
 
@@ -32,7 +33,9 @@ class LookaheadStore:
                 suggested_pipeline=result.suggested_pipeline,
                 rationale=result.rationale,
                 reflection=result.reflection,
-                backup_plans=json.dumps(result.backup_plans) if result.backup_plans else None,
+                backup_plans=json.dumps(result.backup_plans)
+                if result.backup_plans
+                else None,
                 extra_data=json.dumps(result.extra_data or {}),
                 run_id=result.run_id,
                 created_at=result.created_at or datetime.now(timezone.utc),
@@ -64,7 +67,12 @@ class LookaheadStore:
 
     def list_all(self, limit: int = 100) -> List[LookaheadORM]:
         """Returns all stored lookaheads, converted back to dataclass"""
-        db_results = self.session.query(LookaheadORM).order_by(LookaheadORM.created_at.desc()).limit(limit).all()
+        db_results = (
+            self.session.query(LookaheadORM)
+            .order_by(LookaheadORM.created_at.desc())
+            .limit(limit)
+            .all()
+        )
         return [self._orm_to_dataclass(result) for result in db_results]
 
     def get_by_goal_id(self, goal_id: int) -> List[LookaheadORM]:

@@ -1,3 +1,4 @@
+# stephanie/scoring/score_analyzer.py
 # analysis/score_analyzer.py
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,14 +17,18 @@ class ScoreAnalyzer:
         - Optional: 'outcome' (e.g., final ranking, human eval)
         """
         self.df = score_data
-        self.pivot = self.df.pivot(index='hypothesis_id', columns='dimension', values='score')
+        self.pivot = self.df.pivot(
+            index="hypothesis_id", columns="dimension", values="score"
+        )
 
     def describe_scores(self):
         return self.pivot.describe()
 
     def fit_linear_regression(self, outcome_col: str):
         merged = self.pivot.copy()
-        merged[outcome_col] = self.df.drop_duplicates(subset='hypothesis_id').set_index('hypothesis_id')[outcome_col]
+        merged[outcome_col] = self.df.drop_duplicates(subset="hypothesis_id").set_index(
+            "hypothesis_id"
+        )[outcome_col]
         merged = merged.dropna()
         X = merged.drop(columns=[outcome_col])
         y = merged[outcome_col]
@@ -43,8 +48,8 @@ class ScoreAnalyzer:
     def plot_pca_clusters(self, n_clusters=3):
         components, _ = self.perform_pca()
         labels = self.cluster_outputs(n_clusters=n_clusters)
-        plt.scatter(components[:, 0], components[:, 1], c=labels, cmap='tab10')
-        plt.xlabel('PC1')
-        plt.ylabel('PC2')
-        plt.title('PCA of Score Vectors (Colored by Cluster)')
+        plt.scatter(components[:, 0], components[:, 1], c=labels, cmap="tab10")
+        plt.xlabel("PC1")
+        plt.ylabel("PC2")
+        plt.title("PCA of Score Vectors (Colored by Cluster)")
         plt.show()

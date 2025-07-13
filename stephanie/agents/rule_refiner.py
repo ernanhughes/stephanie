@@ -1,3 +1,4 @@
+# stephanie/agents/rule_refiner.py
 import statistics
 
 from stephanie.agents.base_agent import BaseAgent
@@ -22,7 +23,9 @@ class RuleRefinerAgent(BaseAgent):
             if len(applications) < self.min_applications:
                 continue
 
-            scores = [app.result_score for app in applications if app.result_score is not None]
+            scores = [
+                app.result_score for app in applications if app.result_score is not None
+            ]
             if not scores:
                 continue
 
@@ -31,18 +34,21 @@ class RuleRefinerAgent(BaseAgent):
                 continue  # Only refine low-performing rules
 
             rule = self.memory.session.query(SymbolicRuleORM).get(rule_id)
-            self.logger.log("LowPerformingRuleFound", {
-                "rule_id": rule_id,
-                "applications": len(scores),
-                "avg_score": avg_score
-            })
+            self.logger.log(
+                "LowPerformingRuleFound",
+                {
+                    "rule_id": rule_id,
+                    "applications": len(scores),
+                    "avg_score": avg_score,
+                },
+            )
 
             refinement_prompt = self._build_prompt(rule, scores, applications)
             response = self.call_llm(refinement_prompt, context)
-            self.logger.log("RefinementSuggestion", {
-                "rule_id": rule_id,
-                "suggestion": response.strip()
-            })
+            self.logger.log(
+                "RefinementSuggestion",
+                {"rule_id": rule_id, "suggestion": response.strip()},
+            )
 
         self.logger.log("RuleRefinerEnd", {"run_id": context.get(PIPELINE_RUN_ID)})
         return context
@@ -53,7 +59,9 @@ class RuleRefinerAgent(BaseAgent):
             grouped.setdefault(app.rule_id, []).append(app)
         return grouped
 
-    def _build_prompt(self, rule: SymbolicRuleORM, scores: list, applications: list) -> str:
+    def _build_prompt(
+        self, rule: SymbolicRuleORM, scores: list, applications: list
+    ) -> str:
         attributes_str = str(rule.attributes) if rule.attributes else "{}"
         filter_str = str(rule.filter) if rule.filter else "{}"
         return f"""You are a symbolic rule optimizer.

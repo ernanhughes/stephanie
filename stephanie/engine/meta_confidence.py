@@ -14,18 +14,15 @@ class MetaConfidenceTracker:
         self.memory = memory
         self.logger = logger
 
-        self.history = defaultdict(list)  # (goal, dimension) → list of validation results
+        self.history = defaultdict(
+            list
+        )  # (goal, dimension) → list of validation results
 
         # Configurable thresholds
         self.retrain_threshold = getattr(cfg, "retrain_threshold", 0.65)
         self.fallback_threshold = getattr(cfg, "fallback_threshold", 0.50)
 
-    def update(
-        self,
-        goal: str,
-        dimension: str,
-        validation_result: dict
-    ):
+    def update(self, goal: str, dimension: str, validation_result: dict):
         """
         Accepts results from SelfValidationEngine and updates internal trust score.
         """
@@ -33,20 +30,26 @@ class MetaConfidenceTracker:
         self.history[key].append(validation_result)
 
         if self.logger:
-            self.logger.info("MetaConfidenceUpdated", extra={
-                "goal": goal,
-                "dimension": dimension,
-                "agreement": validation_result.get("agreement"),
-                "validated": validation_result.get("validated")
-            })
+            self.logger.info(
+                "MetaConfidenceUpdated",
+                extra={
+                    "goal": goal,
+                    "dimension": dimension,
+                    "agreement": validation_result.get("agreement"),
+                    "validated": validation_result.get("validated"),
+                },
+            )
 
         # Optional: persist to memory
         if self.memory:
-            self.memory.save("meta_confidence", {
-                "goal": goal,
-                "dimension": dimension,
-                "agreement": validation_result.get("agreement")
-            })
+            self.memory.save(
+                "meta_confidence",
+                {
+                    "goal": goal,
+                    "dimension": dimension,
+                    "agreement": validation_result.get("agreement"),
+                },
+            )
 
     def get_confidence(self, goal: str, dimension: str) -> float:
         """

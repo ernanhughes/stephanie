@@ -1,4 +1,6 @@
+# stephanie/components/coding_strategy.py
 # --- components/coding_strategy.py ---
+
 
 class SelfAdaptiveCoder:
     def __init__(self, config):
@@ -19,6 +21,6 @@ class SelfAdaptiveCoder:
         return f"# One-pass code for plan\n# {plan}"
 
     def _generate_stepwise(self, plan):
-        steps = [f"Step {i+1}: logic" for i in range(3)]  # Placeholder decomposition
+        steps = [f"Step {i + 1}: logic" for i in range(3)]  # Placeholder decomposition
         integrated_code = "\n".join([f"# {s}" for s in steps])
         return f"# Stepwise code for complex plan\n{integrated_code}"

@@ -4,13 +4,22 @@ import os
 
 import torch
 
-from stephanie.evaluator.text_encoder import TextEncoder
-from stephanie.scoring.document_value_predictor import DocumentValuePredictor
+from stephanie.scoring.mrq.encoder import TextEncoder
+from stephanie.scoring.mrq.value_predictor import ValuePredictor
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 
 class DocumentMRQScorer:
-    def __init__(self, memory, logger, device="cpu", dimensions=None, cfg=None, model_dir=None, model_prefix=None):
+    def __init__(
+        self,
+        memory,
+        logger,
+        device="cpu",
+        dimensions=None,
+        cfg=None,
+        model_dir=None,
+        model_prefix=None,
+    ):
         self.memory = memory
         self.logger = logger
         self.device = device
@@ -28,28 +37,39 @@ class DocumentMRQScorer:
 
         self._initialize_dimensions()
 
-
     def _initialize_dimensions(self):
         for dim in self.dimensions:
             encoder = TextEncoder().to(self.device)
-            predictor = DocumentValuePredictor(512, 1024).to(self.device)
+            predictor = ValuePredictor(512, 1024).to(self.device)
 
             # Load model weights
             model_path = os.path.join(self.model_dir, f"{self.model_prefix}{dim}.pt")
             if os.path.exists(model_path):
-                predictor.load_state_dict(torch.load(model_path, map_location=self.device))
-                self.logger.log("DocumentMRQModelLoaded", {"dimension": dim, "path": model_path})
+                predictor.load_state_dict(
+                    torch.load(model_path, map_location=self.device)
+                )
+                self.logger.log(
+                    "DocumentMRQModelLoaded", {"dimension": dim, "path": model_path}
+                )
             else:
-                self.logger.log("DocumentMRQModelMissing", {"dimension": dim, "path": model_path})
+                self.logger.log(
+                    "DocumentMRQModelMissing", {"dimension": dim, "path": model_path}
+                )
 
             # Load regression tuner if available
-            tuner_path = os.path.join(self.model_dir, f"{self.model_prefix}{dim}_tuner.json")
+            tuner_path = os.path.join(
+                self.model_dir, f"{self.model_prefix}{dim}_tuner.json"
+            )
             tuner = RegressionTuner(dimension=dim, logger=self.logger)
             if os.path.exists(tuner_path):
                 tuner.load(tuner_path)
-                self.logger.log("DocumentMRQTunerLoaded", {"dimension": dim, "path": tuner_path})
+                self.logger.log(
+                    "DocumentMRQTunerLoaded", {"dimension": dim, "path": tuner_path}
+                )
             else:
-                self.logger.log("DocumentMRQTunerMissing", {"dimension": dim, "path": tuner_path})
+                self.logger.log(
+                    "DocumentMRQTunerMissing", {"dimension": dim, "path": tuner_path}
+                )
 
             self.models[dim] = (encoder, predictor)
             self.regression_tuners[dim] = tuner
@@ -86,11 +106,10 @@ class DocumentMRQScorer:
         tuner = self.regression_tuners.get(dimension)
         if tuner:
             tuned = tuner.transform(norm_score)
-            self.logger.log("DocumentMRQTunedScore", {
-                "dimension": dimension,
-                "raw": norm_score,
-                "tuned": tuned
-            })
+            self.logger.log(
+                "DocumentMRQTunedScore",
+                {"dimension": dimension, "raw": norm_score, "tuned": tuned},
+            )
             return tuned
 
         return norm_score
@@ -108,5 +127,7 @@ class DocumentMRQScorer:
     def load_model(self, path_prefix: str):
         for dim in self.dimensions:
             _, predictor = self.models[dim]
-            predictor.load_state_dict(torch.load(f"{path_prefix}_{dim}.pt", map_location=self.device))
+            predictor.load_state_dict(
+                torch.load(f"{path_prefix}_{dim}.pt", map_location=self.device)
+            )
             self.regression_tuners[dim].load(f"{path_prefix}_{dim}_tuner.json")

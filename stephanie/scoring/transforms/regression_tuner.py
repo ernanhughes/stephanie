@@ -29,12 +29,15 @@ class RegressionTuner:
             self._fit()
 
         if self.logger:
-            self.logger.log("RegressionTunerTrainSingle", {
-                "dimension": self.dimension,
-                "mrq_score": mrq_score,
-                "llm_score": llm_score,
-                "total_samples": len(self.x)
-            })
+            self.logger.log(
+                "RegressionTunerTrainSingle",
+                {
+                    "dimension": self.dimension,
+                    "mrq_score": mrq_score,
+                    "llm_score": llm_score,
+                    "total_samples": len(self.x),
+                },
+            )
 
     def _fit(self):
         """Fits a linear regression model to current examples."""
@@ -44,12 +47,15 @@ class RegressionTuner:
         self.model = LinearRegression().fit(x_arr, y_arr)
 
         if self.logger:
-            self.logger.log("RegressionTunerFitted", {
-                "dimension": self.dimension,
-                "count": len(self.x),
-                "coef": float(self.model.coef_[0]),
-                "intercept": float(self.model.intercept_),
-            })
+            self.logger.log(
+                "RegressionTunerFitted",
+                {
+                    "dimension": self.dimension,
+                    "count": len(self.x),
+                    "coef": float(self.model.coef_[0]),
+                    "intercept": float(self.model.intercept_),
+                },
+            )
 
     def transform(self, score: float) -> float:
         """Transforms a score using the fitted regression model if available."""
@@ -60,7 +66,7 @@ class RegressionTuner:
     def save(self, path):
         if not self.model:
             raise ValueError("Model has not been trained yet — nothing to save.")
-        
+
         data = {
             "dimension": self.dimension,
             "samples": list(zip(self.x, self.y)),
@@ -71,7 +77,6 @@ class RegressionTuner:
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
-    
     def load(self, path):
         with open(path, "r") as f:
             data = json.load(f)

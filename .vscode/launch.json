@@ -12,7 +12,7 @@
             "module": "stephanie.main",
             "python": "${workspaceFolder}\\venv\\Scripts\\python",   // Linux/macOS
             "args": [
-                "--config-name", "training",
+                "--config-name", "policy",
             ]
         }
     ]

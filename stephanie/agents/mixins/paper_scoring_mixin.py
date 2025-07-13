@@ -1,4 +1,4 @@
-# stephanie/mixins/paper_scoring_mixin.py
+# stephanie/agents/mixins/paper_scoring_mixin.py
 
 from stephanie.analysis.paper_score_evaluator import PaperScoreEvaluator
 
@@ -19,5 +19,7 @@ class PaperScoringMixin:
             memory=self.memory,
         )
 
-        scores = evaluator.evaluate(document=paper_doc, context=context, llm_fn=self.call_llm)
+        scores = evaluator.evaluate(
+            document=paper_doc, context=context, llm_fn=self.call_llm
+        )
         return scores

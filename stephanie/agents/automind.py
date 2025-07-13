@@ -1,3 +1,4 @@
+# stephanie/agents/automind.py
 from stephanie.agents.ats.solution_node import SolutionNode
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.judge import JudgeAgent
@@ -39,11 +40,21 @@ class AutoMindAgent(BaseAgent):
             code = self.coder.generate_code(plan)
             output, metric = self._execute(code)
 
-            valid = self.judge.validate(plan, code, output, metric) if self.judge else True
+            valid = (
+                self.judge.validate(plan, code, output, metric) if self.judge else True
+            )
             node = SolutionNode(plan, code, metric, output, valid)
             self.tree.add_node(node)
 
-            self.logger.log({"step": step, "plan": plan, "code": code, "metric": metric, "valid": valid})
+            self.logger.log(
+                {
+                    "step": step,
+                    "plan": plan,
+                    "code": code,
+                    "metric": metric,
+                    "valid": valid,
+                }
+            )
 
         best = self.tree.get_best()
         return best.code
@@ -54,10 +65,14 @@ class AutoMindAgent(BaseAgent):
 
     def _improve_plan(self, node):
         context = self._retrieve_knowledge(node.plan)
-        return self.prompt_loader.render("improve_plan", plan=node.plan, output=node.output, context=context)
+        return self.prompt_loader.render(
+            "improve_plan", plan=node.plan, output=node.output, context=context
+        )
 
     def _debug_plan(self, node):
-        return self.prompt_loader.render("debug_plan", plan=node.plan, output=node.output)
+        return self.prompt_loader.render(
+            "debug_plan", plan=node.plan, output=node.output
+        )
 
     def _retrieve_knowledge(self, query):
         return self.embedding_store.query(query, top_k=3)

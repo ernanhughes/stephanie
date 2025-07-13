@@ -7,7 +7,7 @@ from stephanie.models.theorem import CartridgeORM
 
 class CartridgeBuilder:
     def __init__(self, cfg, memory, prompt_loader, logger=None, call_llm=None):
-        self.cfg = cfg    
+        self.cfg = cfg
         self.memory = memory
         self.prompt_loader = prompt_loader
         self.logger = logger
@@ -21,9 +21,12 @@ class CartridgeBuilder:
         doc_id = doc["id"]
 
         existing = self.memory.cartridges.get_by_source_uri(str(doc_id), "document")
-        if existing:    
+        if existing:
             if self.logger:
-                self.logger.log("CartridgeAlreadyExists", {"source_uri": str(doc_id), "type": "document"})
+                self.logger.log(
+                    "CartridgeAlreadyExists",
+                    {"source_uri": str(doc_id), "type": "document"},
+                )
             return existing
 
         title = doc.get("title", f"Document {doc_id}")
@@ -42,19 +45,22 @@ class CartridgeBuilder:
         sections = self._split_into_sections(text, goal, context)
         # Generate unified markdown content
         markdown_content = self.format_markdown(title, summary, sections)
-        cartridge = self.memory.cartridges.add_cartridge({"goal_id":goal_id,
-            "source_type":"document",
-            "source_uri":str(doc_id),
-            "title":title,
-            "summary":summary,
-            "sections":sections,
-            "triples":[],
-            "domain_tags":[],
-            "embedding_id":embedding_vector_id,
-            "markdown_content":markdown_content,
-            "created_at":datetime.utcnow(),})
+        cartridge = self.memory.cartridges.add_cartridge(
+            {
+                "goal_id": goal_id,
+                "source_type": "document",
+                "source_uri": str(doc_id),
+                "title": title,
+                "summary": summary,
+                "sections": sections,
+                "triples": [],
+                "domain_tags": [],
+                "embedding_id": embedding_vector_id,
+                "markdown_content": markdown_content,
+                "created_at": datetime.utcnow(),
+            }
+        )
         return cartridge
-                
 
     def _split_into_sections(self, text: str, goal: dict, context: dict) -> dict:
         """
@@ -70,9 +76,12 @@ class CartridgeBuilder:
         Extracts bullet points from markdown-formatted LLM output.
         """
         import re
+
         bullet_pattern = re.compile(r"^\s*([#*-]{1,2})\s+(.*)", re.MULTILINE)
         raw_lines = bullet_pattern.findall(markdown_text)
-        bullet_points = [re.sub(r"\*\*(.*?)\*\*", r"\1", content).strip() for _, content in raw_lines]
+        bullet_points = [
+            re.sub(r"\*\*(.*?)\*\*", r"\1", content).strip() for _, content in raw_lines
+        ]
         return bullet_points
 
     def format_markdown(self, title: str, summary: str, sections: list) -> str:

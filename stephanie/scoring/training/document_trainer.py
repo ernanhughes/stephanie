@@ -1,11 +1,11 @@
-from collections import defaultdict
+# stephanie/scoring/training/document_trainer.py
 from typing import List
 
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.evaluator.text_encoder import TextEncoder
-from stephanie.scoring.document_value_predictor import DocumentValuePredictor
+from stephanie.scoring.mrq.encoder import TextEncoder
+from stephanie.scoring.mrq.value_predictor import ValuePredictor
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
 
@@ -14,7 +14,7 @@ class DocumentTrainer(BaseTrainer):
         return TextEncoder().to(self.device)
 
     def init_predictor(self):
-        return DocumentValuePredictor().to(self.device)
+        return ValuePredictor().to(self.device)
 
     def prepare_training_data(self, samples: List[dict]) -> DataLoader:
         inputs, labels = [], []
@@ -42,11 +42,14 @@ class DocumentTrainer(BaseTrainer):
             labels.append(torch.tensor([1.0], device=self.device))
 
             if (idx + 1) % 100 == 0 or (idx + 1) == total:
-                self.logger.log("DocumentTrainingProgress", {
-                    "current": idx + 1,
-                    "total": total,
-                    "percent": round((idx + 1) / total * 100, 2)
-                })
+                self.logger.log(
+                    "DocumentTrainingProgress",
+                    {
+                        "current": idx + 1,
+                        "total": total,
+                        "percent": round((idx + 1) / total * 100, 2),
+                    },
+                )
 
         dataset = TensorDataset(torch.stack(inputs), torch.stack(labels))
         return DataLoader(dataset, batch_size=16, shuffle=True)

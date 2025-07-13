@@ -1,3 +1,4 @@
+# stephanie/agents/icl_reasoning.py
 from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy import case, func
 
@@ -36,7 +37,6 @@ class ICLReasoningAgent(BaseAgent):
             cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
         )
 
-
     async def run(self, context: dict) -> dict:
         goal = context.get("goal")
 
@@ -72,7 +72,7 @@ class ICLReasoningAgent(BaseAgent):
         scored_theorems = sorted(
             all_theorems,
             key=lambda thm: self.similarity(goal_vec, thm.statement),
-            reverse=True
+            reverse=True,
         )
 
         return scored_theorems[:top_k]
@@ -90,21 +90,24 @@ class ICLReasoningAgent(BaseAgent):
         goal_domain_names = [d[0] for d in goal_domains]
 
         query = (
-           session.query(CartridgeTripleORM)
+            session.query(CartridgeTripleORM)
             .join(CartridgeTripleORM.cartridge)
             .join(CartridgeORM.domains_rel)
             .filter(CartridgeDomainORM.domain.in_(goal_domain_names))
-        )        # Create a mapping of dimensions to their weights
+        )  # Create a mapping of dimensions to their weights
 
         triplets = query.distinct().all()
-        
-        self.logger.log("TripletsRetrievedByDomain", {
+
+        self.logger.log(
+            "TripletsRetrievedByDomain",
+            {
                 "goal": goal_text,
                 "domains": goal_domain_names,
                 "triplet_count": len(triplets),
-            })
+            },
+        )
 
-        return triplets[:self.top_k_triplets] if self.top_k_triplets else triplets
+        return triplets[: self.top_k_triplets] if self.top_k_triplets else triplets
 
     def retrieve_top_triplets_by_score(self, goal: dict) -> list[CartridgeTripleORM]:
         session = self.memory.session
@@ -153,7 +156,6 @@ class ICLReasoningAgent(BaseAgent):
             ]
 
         return triplets[: self.top_k_triplets]
-
 
     def similarity(self, goal_vec, text: str) -> float:
         vec = self.memory.embedding.get_or_create(text)

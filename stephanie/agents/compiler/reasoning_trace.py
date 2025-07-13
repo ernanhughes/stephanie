@@ -16,6 +16,7 @@ class ReasoningNode:
     children: List["ReasoningNode"] = field(default_factory=list)
     metadata: Dict = field(default_factory=dict)
 
+
 class ReasoningTree:
     def __init__(self):
         self.nodes: Dict[str, ReasoningNode] = {}
@@ -29,13 +30,15 @@ class ReasoningTree:
             thought=thought,
             action=action,
             response="",
-            children=[]
+            children=[],
         )
         self.nodes[node.id] = node
         self.root_id = node.id
         return node.id
 
-    def add_child(self, parent_id: str, thought: str, action: str, response: str, score: float) -> str:
+    def add_child(
+        self, parent_id: str, thought: str, action: str, response: str, score: float
+    ) -> str:
         node = ReasoningNode(
             id=str(uuid4()),
             parent_id=parent_id,
@@ -45,7 +48,7 @@ class ReasoningTree:
             response=response,
             score=score,
             children=[],
-            metadata={}
+            metadata={},
         )
         self.nodes[node.id] = node
         self.nodes[parent_id].children.append(node)

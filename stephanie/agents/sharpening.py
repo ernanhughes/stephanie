@@ -85,7 +85,9 @@ class SharpeningAgent(BaseAgent):
         # For judge-only, use a simple reflection-based transformation (or leave unchanged)
         sharpened_hypothesis = hypothesis  # no change, just self-judging
 
-        _, scores = self.evaluator.judge(prompt, hypothesis, sharpened_hypothesis, context)
+        _, scores = self.evaluator.judge(
+            prompt, hypothesis, sharpened_hypothesis, context
+        )
         value_a = scores["value_a"]
         value_b = scores["value_b"]
         winner = "a" if value_a >= value_b else "b"
@@ -152,7 +154,7 @@ class SharpeningAgent(BaseAgent):
                     "text": entry["sharpened_hypothesis"],
                     "prompt_id": new_prompt_id,
                 },
-                context=context
+                context=context,
             )
 
             self.logger.log(
@@ -193,7 +195,4 @@ class SharpeningAgent(BaseAgent):
             self.memory.mrq.insert_sharpening_result(sharpening_result_orm)
 
             # Log the event
-            self.logger.log(
-                "SharpeningResultSaved",
-                sharpening_result_orm.to_dict()
-            )
+            self.logger.log("SharpeningResultSaved", sharpening_result_orm.to_dict())

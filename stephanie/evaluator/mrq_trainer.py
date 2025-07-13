@@ -1,3 +1,4 @@
+# stephanie/evaluator/mrq_trainer.py
 from collections import defaultdict
 
 import torch
@@ -6,17 +7,12 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
-from stephanie.evaluator.text_encoder import TextEncoder
+from stephanie.scoring.mrq.encoder import TextEncoder
 
 
 class MRQTrainer:
     def __init__(
-        self,
-        memory,
-        logger,
-        encoder=None,
-        value_predictor=None,
-        device="cpu"
+        self, memory, logger, encoder=None, value_predictor=None, device="cpu"
     ):
         self.memory = memory
         self.logger = logger
@@ -99,9 +95,13 @@ class MRQTrainer:
         for epoch in range(epochs):
             total_loss = 0.0
             for x_batch, y_batch in dataloader:
-                assert isinstance(x_batch, torch.Tensor), "x_batch must be a single tensor"
+                assert isinstance(x_batch, torch.Tensor), (
+                    "x_batch must be a single tensor"
+                )
                 # Ensure x_batch has correct shape [batch_size, zsa_dim]
-                assert len(x_batch.shape) == 2, f"Unexpected x_batch shape: {x_batch.shape}"
+                assert len(x_batch.shape) == 2, (
+                    f"Unexpected x_batch shape: {x_batch.shape}"
+                )
 
                 preds = self.value_predictor(x_batch)  # Only one input now
                 loss = criterion(preds, y_batch)
@@ -114,8 +114,7 @@ class MRQTrainer:
 
             avg_loss = total_loss / len(dataloader)
             self.logger.log(
-                "MRQTrainerEpoch",
-                {"epoch": epoch + 1, "avg_loss": round(avg_loss, 5)}
+                "MRQTrainerEpoch", {"epoch": epoch + 1, "avg_loss": round(avg_loss, 5)}
             )
 
             if best_loss - avg_loss > min_delta:
@@ -162,8 +161,7 @@ class MRQTrainer:
 
             trained_models[dim] = self.value_predictor.state_dict()
             self.logger.log(
-                "TrainingDimensionComplete",
-                {"dimension": dim, "samples": len(samples)}
+                "TrainingDimensionComplete", {"dimension": dim, "samples": len(samples)}
             )
 
         return trained_models

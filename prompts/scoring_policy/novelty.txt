@@ -1,0 +1,15 @@
+Evaluate the novelty of the following document.
+
+### Goal
+{{ goal.goal_text }}
+
+### Document
+{{ scorable.text }}
+
+How original or innovative is this document relative to common approaches in this domain? Does it introduce a new idea, perspective, or mechanism?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

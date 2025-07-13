@@ -1,3 +1,4 @@
+# stephanie/utils/goal_classifier.py
 def classify_goal_strategy(goal: dict) -> str:
     desc = goal.get("goal_text", "").lower()
     kw = " ".join(goal.get("keywords", [])).lower()

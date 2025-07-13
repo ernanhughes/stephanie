@@ -1,3 +1,4 @@
+# stephanie/utils/document_section_parser.py
 import json
 import re
 from pathlib import Path
@@ -14,8 +15,7 @@ class DocumentSectionParser:
 
         # Load target sections from YAML
         self.config_path = self.cfg.get(
-            "target_sections_config",
-            "config/domain/target_sections.yaml"
+            "target_sections_config", "config/domain/target_sections.yaml"
         )
         self.TARGET_SECTIONS = self._load_target_sections()
         self.SECTION_TO_CATEGORY = self._build_section_to_category()
@@ -82,7 +82,9 @@ class DocumentSectionParser:
         if not heading:
             return ""
         heading = re.sub(r"^\s*[\d\.\s]+\s*", " ", heading)
-        heading = re.sub(r"^(section|chapter|part)\s+\w+", "", heading, flags=re.IGNORECASE)
+        heading = re.sub(
+            r"^(section|chapter|part)\s+\w+", "", heading, flags=re.IGNORECASE
+        )
         heading = re.sub(r"[^\w\s]", "", heading)
         heading = re.sub(r"\s+", " ", heading).strip()
         return heading
@@ -96,7 +98,9 @@ class DocumentSectionParser:
                 category = self.SECTION_TO_CATEGORY[normalized]
                 mapped[category] = content
             else:
-                best_match, score = process.extractOne(normalized, self.SECTION_TO_CATEGORY.keys())
+                best_match, score = process.extractOne(
+                    normalized, self.SECTION_TO_CATEGORY.keys()
+                )
                 if score > 75:
                     category = self.SECTION_TO_CATEGORY[best_match]
                     mapped[category] = content
@@ -113,7 +117,7 @@ class DocumentSectionParser:
             r"^[A-Z][a-z]+\s\d+$",
             r"^[ivxlcdmIVXLCDM]+$",
             r"^[\W_]+$",
-            r"^[^\w\s].{0,20}$"
+            r"^[^\w\s].{0,20}$",
         ]
 
         for pattern in garbage_patterns:
@@ -122,7 +126,9 @@ class DocumentSectionParser:
 
         return True
 
-    def trim_low_quality_sections(self, structured_data: dict[str, str]) -> dict[str, str]:
+    def trim_low_quality_sections(
+        self, structured_data: dict[str, str]
+    ) -> dict[str, str]:
         cleaned = {}
         for key, text in structured_data.items():
             if self.is_valid_section(text):

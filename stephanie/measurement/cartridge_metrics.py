@@ -9,10 +9,12 @@ def measure_domains(cartridge: CartridgeORM, session, context=None):
     # Use DomainClassifier from your system
     return {"tags": context["classifier"].classify(cartridge.markdown_content)}
 
+
 @measure("Cartridge", "triple_count")
 def measure_triples(cartridge: CartridgeORM, session, context=None):
     """Count semantic triples in cartridge"""
     return {"count": len(cartridge.triples)}
+
 
 @measure("Cartridge", "section_count")
 def measure_sections(cartridge: CartridgeORM, session, context=None):

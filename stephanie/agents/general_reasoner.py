@@ -1,3 +1,4 @@
+# stephanie/agents/general_reasoner.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.analysis.rubric_classifier import RubricClassifierMixin
@@ -26,25 +27,27 @@ class GeneralReasonerAgent(ScoringMixin, RubricClassifierMixin, BaseAgent):
 
         dimension_scores = []
         for hyp in hypotheses:
-            scorable = Scorable(id=hyp.get("id"), text=hyp.get("text"), target_type=TargetType.HYPOTHESIS)
+            scorable = Scorable(
+                id=hyp.get("id"),
+                text=hyp.get("text"),
+                target_type=TargetType.HYPOTHESIS,
+            )
             scored = self.score_item(scorable, context, metrics="reasoning_cor")
             hyp["final_score"] = scored.aggregate()
             hyp["dimension_scores"] = scored.to_dict()
             dimension_scores.append(scored.to_dict())
         context["dimension_scores"] = dimension_scores
 
-
         best_hypothesis = max(hypotheses, key=lambda h: h["final_score"])
-        
+
         # Classify with rubrics and store pattern stats
         pattern = self.classify_with_rubrics(
             hypothesis=best_hypothesis,
             context=context,
             prompt_loader=self.prompt_loader,
             cfg=self.cfg,
-            logger=self.logger
+            logger=self.logger,
         )
-
 
         summarized = self._summarize_pattern(pattern)
         context["pattern"] = summarized
@@ -55,14 +58,16 @@ class GeneralReasonerAgent(ScoringMixin, RubricClassifierMixin, BaseAgent):
             pattern_dict=summarized,
             cfg=self.cfg,
             agent_name=self.name,
-            confidence_score=best_hypothesis.get("confidence")
+            confidence_score=best_hypothesis.get("confidence"),
         )
 
         self.memory.pattern_stats.insert(pattern_stats)
         context["pattern_stats"] = summarized
 
         context[self.output_key] = best_hypothesis
-        context["ranked_hypotheses"] = sorted(hypotheses, key=lambda h: h["final_score"], reverse=True)
+        context["ranked_hypotheses"] = sorted(
+            hypotheses, key=lambda h: h["final_score"], reverse=True
+        )
 
         return context
 

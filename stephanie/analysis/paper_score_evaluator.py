@@ -1,4 +1,4 @@
-# stephanie/scoring/paper_score_evaluator.py
+# stephanie/analysis/paper_score_evaluator.py
 from textwrap import wrap
 
 from stephanie.scoring.scorable import Scorable
@@ -8,7 +8,13 @@ from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class PaperScoreEvaluator(ScoringManager):
-    def evaluate(self, document: dict, context: dict = None, llm_fn=None, text_to_evaluate: str = "content") -> dict:
+    def evaluate(
+        self,
+        document: dict,
+        context: dict = None,
+        llm_fn=None,
+        text_to_evaluate: str = "content",
+    ) -> dict:
         text = document.get(text_to_evaluate, "")
         chunks = self.chunk_text(text, max_tokens=1000)  # Adjust token limit as needed
         scores_accumulator = []
@@ -33,9 +39,10 @@ class PaperScoreEvaluator(ScoringManager):
         # Aggregate across chunks
         final_scores = self.aggregate_scores(dicts)
         final_bundle = ScoreBundle.from_dict(final_scores)
-        ScoringManager.save_document_score_to_memory(final_bundle, document, context, self.cfg, self.memory, self.logger)
+        ScoringManager.save_document_score_to_memory(
+            final_bundle, document, context, self.cfg, self.memory, self.logger
+        )
         return final_scores
-
 
     def chunk_text(self, text: str, max_tokens: int = 1000) -> list[str]:
         """

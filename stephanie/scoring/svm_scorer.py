@@ -23,12 +23,17 @@ class SVMScorer(BaseScorer):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.dimensions = dimensions or ["alignment", "clarity", "actionability", "relevance"]
+        self.dimensions = dimensions or [
+            "alignment",
+            "clarity",
+            "actionability",
+            "relevance",
+        ]
         self.models = {dim: SVR() for dim in self.dimensions}
         self.scalers = {dim: StandardScaler() for dim in self.dimensions}
         self.trained = dict.fromkeys(self.dimensions, False)
         self.force_rescore = cfg.get("force_rescore", False)
-        self.regression_tuners = {}  
+        self.regression_tuners = {}
         for dim in self.dimensions:
             self._initialize_dimension(dim)
 
@@ -65,12 +70,15 @@ class SVMScorer(BaseScorer):
             self.models[dim].fit(x_scaled, y)
             self.trained[dim] = True
 
-            self.logger.log("SVMTrainingComplete", {
-                "dimension": dim,
-                "samples": len(samples),
-                "score_min": float(np.min(y)),
-                "score_max": float(np.max(y)),
-            })
+            self.logger.log(
+                "SVMTrainingComplete",
+                {
+                    "dimension": dim,
+                    "samples": len(samples),
+                    "score_min": float(np.min(y)),
+                    "score_max": float(np.max(y)),
+                },
+            )
 
     def train_from_database(self, cfg: dict):
         pair_samples = self.memory.mrq.get_training_pairs_by_dimension()
@@ -79,8 +87,9 @@ class SVMScorer(BaseScorer):
         for dim, examples in samples_by_dim.items():
             self.train_for_dimension(dim, examples)
 
-
-    def convert_mrq_pairs_to_supervised_examples(self, pair_samples: list[dict]) -> dict[str, list[dict]]:
+    def convert_mrq_pairs_to_supervised_examples(
+        self, pair_samples: list[dict]
+    ) -> dict[str, list[dict]]:
         """
         Converts MRQ-style contrastive training pairs into a flat list of (prompt, output, value)
         entries per dimension, suitable for supervised regression training.
@@ -93,16 +102,17 @@ class SVMScorer(BaseScorer):
                 output = pair.get(f"output_{side}")
                 score = pair.get(f"value_{side}")
                 if output is not None and score is not None:
-                    per_dimension[dim].append({
-                        "prompt": pair["prompt"],
-                        "output": output,
-                        "value": score
-                    })
+                    per_dimension[dim].append(
+                        {"prompt": pair["prompt"], "output": output, "value": score}
+                    )
 
-        self.logger.log("SVMConvertedMRQPacks", {
-            "dimensions": list(per_dimension.keys()),
-            "total_samples": sum(len(v) for v in per_dimension.values())
-        })
+        self.logger.log(
+            "SVMConvertedMRQPacks",
+            {
+                "dimensions": list(per_dimension.keys()),
+                "total_samples": sum(len(v) for v in per_dimension.values()),
+            },
+        )
 
         return per_dimension
 
@@ -127,23 +137,31 @@ class SVMScorer(BaseScorer):
 
         self.models[dimension] = (scaler, model)
 
-        self.logger.log("SVMModelTrained", {
-            "dimension": dimension,
-            "num_samples": len(y)
-        })
+        self.logger.log(
+            "SVMModelTrained", {"dimension": dimension, "num_samples": len(y)}
+        )
 
-    def score(self, goal: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
+    def score(
+        self, goal: dict, scorable: Scorable, dimensions: list[str]
+    ) -> ScoreBundle:
         results = {}
         for dim in dimensions:
-            if not self.force_rescore:
-                prompt_hash = ScoreORM.compute_prompt_hash(goal.get("goal_text"), scorable)
+            prompt_hash = ScoreORM.compute_prompt_hash(
+                goal.get("goal_text"), scorable
+            )
+            if not self.force_rescore: # TODO  do we need this here it is super fast
                 cached_result = self.memory.scores.get_score_by_prompt_hash(prompt_hash)
                 if cached_result:
-                    self.logger.log("ScoreCacheHit", {"dimension": dim["name"]})
+                    self.logger.log(
+                        "ScoreCacheHit",
+                        {
+                            "dimension": dim,
+                            "cached_result": cached_result,
+                        },
+                    )
                     result = cached_result
-                    results.append(result)
+                    results[dim] = result
                     continue
-
 
             vec = self._build_feature_vector(goal, scorable)
 
@@ -161,11 +179,14 @@ class SVMScorer(BaseScorer):
                 score = tuned_score
                 rationale = f"SVM predicted and aligned score for {dim}"
 
-            self.logger.log("SVMScoreComputed", {
-                "dimension": dim,
-                "score": score,
-                "hypothesis": scorable.text,
-            })
+            self.logger.log(
+                "SVMScoreComputed",
+                {
+                    "dimension": dim,
+                    "score": score,
+                    "hypothesis": scorable.text,
+                },
+            )
 
             results[dim] = ScoreResult(
                 dimension=dim,
@@ -173,6 +194,8 @@ class SVMScorer(BaseScorer):
                 rationale=rationale,
                 weight=1.0,
                 source="svm",
+                target_type=scorable.target_type,
+                prompt_hash=prompt_hash,
             )
 
         return ScoreBundle(results=results)
@@ -191,11 +214,15 @@ class SVMScorer(BaseScorer):
                 hypothesis = s[f"output_{side}"]
                 llm_score = s.get(f"value_{side}")
                 if prompt and hypothesis and llm_score is not None:
-                    scorable = Scorable(text=hypothesis, target_type=TargetType.TRAINING)
+                    scorable = Scorable(
+                        text=hypothesis, target_type=TargetType.TRAINING
+                    )
                     vec = self._build_feature_vector({"goal_text": prompt}, scorable)
                     X.append(vec)
                     y.append(llm_score)
-                    self.regression_tuners[dim].train_single(llm_score, llm_score)  # no-op, self-alignment fallback
+                    self.regression_tuners[dim].train_single(
+                        llm_score, llm_score
+                    )  # no-op, self-alignment fallback
 
         if not X:
             return
@@ -204,10 +231,7 @@ class SVMScorer(BaseScorer):
         self.models[dim].fit(X_scaled, y)
         self.trained[dim] = True
 
-        self.logger.log("SVMTrainingComplete", {
-            "dimension": dim,
-            "samples": len(X)
-        })
+        self.logger.log("SVMTrainingComplete", {"dimension": dim, "samples": len(X)})
 
         # Align the scores using same logic as MRQ
         self._align_with_llm(samples, dim)
@@ -225,14 +249,14 @@ class SVMScorer(BaseScorer):
                 x = self.scalers[dim].transform([vec])
                 raw_score = self.models[dim].predict(x)[0]
 
-                self.regression_tuners[dim].train_single(mrq_score=raw_score, llm_score=llm_score)
+                self.regression_tuners[dim].train_single(
+                    mrq_score=raw_score, llm_score=llm_score
+                )
 
-                self.logger.log("SVMAlignmentDynamic", {
-                    "dimension": dim,
-                    "mrq_score": raw_score,
-                    "llm_score": llm_score
-                })    
-
+                self.logger.log(
+                    "SVMAlignmentDynamic",
+                    {"dimension": dim, "mrq_score": raw_score, "llm_score": llm_score},
+                )
 
     def _train_dimension(self, dim: str):
         pairs_by_dim = self.memory.mrq.get_training_pairs_by_dimension()
@@ -255,7 +279,9 @@ class SVMScorer(BaseScorer):
                     y.append(label)
 
         if len(X) < 5:
-            self.logger.log("SVMInsufficientTrainingData", {"dimension": dim, "count": len(X)})
+            self.logger.log(
+                "SVMInsufficientTrainingData", {"dimension": dim, "count": len(X)}
+            )
             self.trained[dim] = False
             return
 

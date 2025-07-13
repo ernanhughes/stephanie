@@ -14,8 +14,8 @@ class SelfValidationEngine:
         cfg,
         memory,
         logger,
-        reward_model: callable,      # (goal, doc_a, doc_b) -> "a" or "b"
-        llm_judge: callable          # (goal, doc_a, doc_b) -> "a" or "b"
+        reward_model: callable,  # (goal, doc_a, doc_b) -> "a" or "b"
+        llm_judge: callable,  # (goal, doc_a, doc_b) -> "a" or "b"
     ):
         self.cfg = cfg
         self.memory = memory
@@ -25,10 +25,7 @@ class SelfValidationEngine:
         self.validation_sample_rate = getattr(cfg, "validation_sample_rate", 0.05)
 
     def validate_batch(
-        self,
-        goal: str,
-        pairs: list[dict],
-        dimension: str = None
+        self, goal: str, pairs: list[dict], dimension: str = None
     ) -> dict:
         """
         Validates a batch of scored document pairs against LLM judgment.
@@ -39,8 +36,7 @@ class SelfValidationEngine:
             return {"validated": 0, "agreement": 0.0}
 
         sample = [
-            pair for pair in pairs
-            if random.random() < self.validation_sample_rate
+            pair for pair in pairs if random.random() < self.validation_sample_rate
         ]
 
         validated = 0
@@ -68,7 +64,7 @@ class SelfValidationEngine:
                 "llm_pref": llm_pref,
                 "match": is_match,
                 "text_a": doc_a[:300],  # truncate for logs
-                "text_b": doc_b[:300]
+                "text_b": doc_b[:300],
             }
             logs.append(log_entry)
 
@@ -79,16 +75,19 @@ class SelfValidationEngine:
 
         # Optional: persist validation results to memory
         if self.memory:
-            self.memory.save("self_validation", {
-                "goal": goal,
-                "dimension": dimension,
-                "agreement": agreement,
-                "logs": logs
-            })
+            self.memory.save(
+                "self_validation",
+                {
+                    "goal": goal,
+                    "dimension": dimension,
+                    "agreement": agreement,
+                    "logs": logs,
+                },
+            )
 
         return {
             "validated": validated,
             "matches": matches,
             "agreement": round(agreement, 3),
-            "logs": logs
+            "logs": logs,
         }

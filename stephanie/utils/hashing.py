@@ -5,7 +5,9 @@ import json
 from typing import Any
 
 
-def hash_dict(data: dict[str, Any], sort_keys: bool = True, exclude_keys: list = None) -> str:
+def hash_dict(
+    data: dict[str, Any], sort_keys: bool = True, exclude_keys: list = None
+) -> str:
     """
     Generate a SHA-256 hash of a dictionary.
 
@@ -27,10 +29,7 @@ def hash_dict(data: dict[str, Any], sort_keys: bool = True, exclude_keys: list =
         exclude_keys = []
 
     # Filter out excluded keys
-    filtered_data = {
-        k: v for k, v in data.items()
-        if k not in exclude_keys
-    }
+    filtered_data = {k: v for k, v in data.items() if k not in exclude_keys}
 
     # Convert to a canonical JSON string
     canonical_str = json.dumps(filtered_data, sort_keys=sort_keys, ensure_ascii=True)

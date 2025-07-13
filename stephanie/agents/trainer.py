@@ -1,3 +1,4 @@
+# stephanie/agents/trainer.py
 from stephanie.base_agent import BaseAgent
 
 

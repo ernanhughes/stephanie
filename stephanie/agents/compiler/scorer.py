@@ -1,4 +1,4 @@
-# stephanie/compiler/scorer.py
+# stephanie/agents/compiler/scorer.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin

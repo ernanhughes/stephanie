@@ -1,3 +1,4 @@
+# stephanie/memory/evaluation_store.py
 # stores/score_store.py
 import json
 from typing import Optional
@@ -45,11 +46,16 @@ class EvaluationStore:
             if evaluation.pipeline_run_id and evaluation.goal_id:
                 rule_apps = (
                     self.session.query(RuleApplicationORM)
-                    .filter_by(pipeline_run_id=evaluation.pipeline_run_id, goal_id=evaluation.goal_id)
+                    .filter_by(
+                        pipeline_run_id=evaluation.pipeline_run_id,
+                        goal_id=evaluation.goal_id,
+                    )
                     .all()
                 )
                 for ra in rule_apps:
-                    link = EvaluationRuleLinkORM(evaluation_id=evaluation.id, rule_application_id=ra.id)
+                    link = EvaluationRuleLinkORM(
+                        evaluation_id=evaluation.id, rule_application_id=ra.id
+                    )
                     self.session.add(link)
                 self.logger.log(
                     "ScoreLinkedToRuleApplications",
@@ -71,23 +77,32 @@ class EvaluationStore:
 
     def get_by_goal_id(self, goal_id: int) -> list[dict]:
         """Returns all scores associated with a specific goal."""
-        results = self.session.query(EvaluationORM).join(GoalORM).filter(GoalORM.id == goal_id).all()
+        results = (
+            self.session.query(EvaluationORM)
+            .join(GoalORM)
+            .filter(GoalORM.id == goal_id)
+            .all()
+        )
         return [self._orm_to_dict(r) for r in results]
 
     def get_by_goal_type(self, goal_type: str) -> list[dict]:
         """Returns all scores associated with a specific goal."""
-        results = self.session.query(EvaluationORM).join(GoalORM).filter(GoalORM.goal_type == goal_type).all()
+        results = (
+            self.session.query(EvaluationORM)
+            .join(GoalORM)
+            .filter(GoalORM.goal_type == goal_type)
+            .all()
+        )
         return [self._orm_to_dict(r) for r in results]
 
-
     def get_by_hypothesis_id(
-        self,
-        hypothesis_id: int,
-        source: Optional[str] = None
+        self, hypothesis_id: int, source: Optional[str] = None
     ) -> list[dict]:
         """Returns all scores associated with a specific hypothesis, optionally filtered by evaluator source."""
-        query = self.session.query(EvaluationORM).filter(EvaluationORM.hypothesis_id == hypothesis_id)
-        
+        query = self.session.query(EvaluationORM).filter(
+            EvaluationORM.hypothesis_id == hypothesis_id
+        )
+
         if source:
             query = query.filter(EvaluationORM.evaluator_name == source)
 
@@ -96,28 +111,48 @@ class EvaluationStore:
 
     def get_by_run_id(self, run_id: str) -> list[dict]:
         """Returns all scores associated with a specific pipeline run."""
-        results = self.session.query(EvaluationORM).filter(EvaluationORM.run_id == run_id).all()
+        results = (
+            self.session.query(EvaluationORM)
+            .filter(EvaluationORM.run_id == run_id)
+            .all()
+        )
         return [self._orm_to_dict(r) for r in results]
 
     def get_by_pipeline_run_id(self, pipeline_run_id: int) -> list[dict]:
         """Returns all scores associated with a specific pipeline run."""
-        results = self.session.query(EvaluationORM).filter(EvaluationORM.pipeline_run_id == pipeline_run_id).all()
+        results = (
+            self.session.query(EvaluationORM)
+            .filter(EvaluationORM.pipeline_run_id == pipeline_run_id)
+            .all()
+        )
         return [self._orm_to_dict(r) for r in results]
-
 
     def get_by_evaluator(self, evaluator_name: str) -> list[dict]:
         """Returns all scores produced by a specific evaluator (LLM, MRQ, etc.)"""
-        results = self.session.query(EvaluationORM).filter(EvaluationORM.evaluator_name == evaluator_name).all()
+        results = (
+            self.session.query(EvaluationORM)
+            .filter(EvaluationORM.evaluator_name == evaluator_name)
+            .all()
+        )
         return [self._orm_to_dict(r) for r in results]
 
     def get_by_strategy(self, strategy: str) -> list[dict]:
         """Returns all scores generated using a specific reasoning strategy."""
-        results = self.session.query(EvaluationORM).filter(EvaluationORM.strategy == strategy).all()
+        results = (
+            self.session.query(EvaluationORM)
+            .filter(EvaluationORM.strategy == strategy)
+            .all()
+        )
         return [self._orm_to_dict(r) for r in results]
 
     def get_all(self, limit: int = 100) -> list[dict]:
         """Returns the most recent scores up to a limit."""
-        results = self.session.query(EvaluationORM).order_by(EvaluationORM.created_at.desc()).limit(limit).all()
+        results = (
+            self.session.query(EvaluationORM)
+            .order_by(EvaluationORM.created_at.desc())
+            .limit(limit)
+            .all()
+        )
         return [self._orm_to_dict(r) for r in results]
 
     def _orm_to_dict(self, row: EvaluationORM) -> dict:
@@ -131,16 +166,22 @@ class EvaluationStore:
             "evaluator_name": row.evaluator_name,
             "scores": (
                 row.scores if isinstance(row.scores, dict) else json.loads(row.scores)
-            ) if row.scores else {},
+            )
+            if row.scores
+            else {},
             "strategy": row.strategy,
             "reasoning_strategy": row.reasoning_strategy,
             "pipeline_run_id": row.pipeline_run_id,
             "extra_data": (
-                row.extra_data if isinstance(row.extra_data, dict) else json.loads(row.extra_data)
-            ) if row.extra_data else {},
+                row.extra_data
+                if isinstance(row.extra_data, dict)
+                else json.loads(row.extra_data)
+            )
+            if row.extra_data
+            else {},
             "created_at": row.created_at,
         }
-    
+
     def get_rules_for_score(self, score_id: int) -> list[int]:
         links = (
             self.session.query(EvaluationRuleLinkORM.rule_application_id)
@@ -148,7 +189,7 @@ class EvaluationStore:
             .all()
         )
         return [rid for (rid,) in links]
-    
+
     def get_by_hypothesis_ids(self, hypothesis_ids: list[int]) -> list[EvaluationORM]:
         if not hypothesis_ids:
             return []
@@ -160,17 +201,19 @@ class EvaluationStore:
             )
         except Exception as e:
             if self.logger:
-                self.logger.log("EvaluationStoreError", {
-                    "method": "get_by_hypothesis_ids",
-                    "error": str(e),
-                    "hypothesis_ids": hypothesis_ids,
-                })
+                self.logger.log(
+                    "EvaluationStoreError",
+                    {
+                        "method": "get_by_hypothesis_ids",
+                        "error": str(e),
+                        "hypothesis_ids": hypothesis_ids,
+                    },
+                )
             return []
-        
+
     def get_latest_score(self, scorable: Scorable, agent_name: str = None):
         query = self.session.query(EvaluationORM).filter_by(
-            target_type=scorable.target_type,
-            target_id=scorable.id
+            target_type=scorable.target_type, target_id=scorable.id
         )
 
         if agent_name:

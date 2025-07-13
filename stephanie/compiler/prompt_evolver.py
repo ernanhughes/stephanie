@@ -1,3 +1,4 @@
+# stephanie/compiler/prompt_evolver.py
 import dspy
 from dspy import BootstrapFewShot, Example, Predict
 
@@ -9,7 +10,14 @@ from stephanie.evaluator.evaluator_loader import get_evaluator
 
 
 class PromptEvolver:
-    def __init__(self, llm, logger=None, use_strategy_mutation=False, evaluator_cfg=None, memory=None):
+    def __init__(
+        self,
+        llm,
+        logger=None,
+        use_strategy_mutation=False,
+        evaluator_cfg=None,
+        memory=None,
+    ):
         self.llm = llm
         self.logger = logger
         self.use_strategy_mutation = use_strategy_mutation
@@ -17,13 +25,19 @@ class PromptEvolver:
 
         self.compiler = LLMCompiler(llm=self.llm, logger=self.logger)
         if self.use_strategy_mutation:
-            self.strategy_pass = StrategyMutationPass(compiler=self.compiler, logger=self.logger)
+            self.strategy_pass = StrategyMutationPass(
+                compiler=self.compiler, logger=self.logger
+            )
 
         self.evaluator = None
         if evaluator_cfg:
-            self.evaluator = get_evaluator(evaluator_cfg, memory=memory, llm=llm, logger=logger)
+            self.evaluator = get_evaluator(
+                evaluator_cfg, memory=memory, llm=llm, logger=logger
+            )
 
-    def evolve(self, examples: list[dict], context: dict = {}, sample_size: int = 10) -> list[str]:
+    def evolve(
+        self, examples: list[dict], context: dict = {}, sample_size: int = 10
+    ) -> list[str]:
         """
         Use DSPy to tune prompts based on performance signals.
         Optionally use symbolic strategy mutation.
@@ -82,7 +96,11 @@ class PromptEvolver:
                     mutations = self.strategy_pass.apply(base_prompt, metadata)
                     for mut in mutations:
                         prompt_text = mut["prompt"]
-                        score = self.score_prompt(prompt_text, reference_output=metadata["hypotheses"], context=context)
+                        score = self.score_prompt(
+                            prompt_text,
+                            reference_output=metadata["hypotheses"],
+                            context=context,
+                        )
                         if score >= 0:  # optionally apply a score threshold
                             refined_prompts.append(prompt_text)
                 except Exception as e:
@@ -96,19 +114,25 @@ class PromptEvolver:
     ) -> float:
         return self.evaluator.score_single(prompt, reference_output, context)
 
-    def score_prompt_only(self, prompt: str, goal: str = "", context: dict = {}) -> float:
+    def score_prompt_only(
+        self, prompt: str, goal: str = "", context: dict = {}
+    ) -> float:
         """
         Score a prompt independently of any output. Returns a numeric score.
         Requires the evaluator to support prompt-only scoring.
         """
         if not self.evaluator:
             if self.logger:
-                self.logger.log("PromptScoreFailed", {"error": "Evaluator not initialized"})
+                self.logger.log(
+                    "PromptScoreFailed", {"error": "Evaluator not initialized"}
+                )
             return -1.0
 
         try:
             return self.evaluator.score_single(prompt, goal=goal, context=context)
         except Exception as e:
             if self.logger:
-                self.logger.log("PromptScoreFailed", {"error": str(e), "prompt": prompt})
+                self.logger.log(
+                    "PromptScoreFailed", {"error": str(e), "prompt": prompt}
+                )
             return -1.0

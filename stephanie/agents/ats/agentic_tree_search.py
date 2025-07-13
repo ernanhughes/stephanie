@@ -35,7 +35,9 @@ class AgenticTreeSearch:
 
         while not self._should_stop():
             action, parent_node = self.select_action()
-            new_plan = await self.generate_plan(task_description, parent_node, action, knowledge)
+            new_plan = await self.generate_plan(
+                task_description, parent_node, action, knowledge
+            )
             new_code = self.generate_code(new_plan)
             result = self.execute_code(new_code)
 
@@ -47,7 +49,7 @@ class AgenticTreeSearch:
                 output=result.get("stdout"),
                 summary=verification["summary"],
                 parent_id=parent_node.id if parent_node else None,
-                is_buggy=verification["is_bug"]
+                is_buggy=verification["is_bug"],
             )
 
             self.tree.append(new_node)

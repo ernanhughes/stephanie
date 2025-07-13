@@ -1,3 +1,4 @@
+# stephanie/rules/symbolic_rule_applier.py
 import hashlib
 import json
 from pathlib import Path
@@ -19,7 +20,7 @@ class SymbolicRuleApplier:
     @property
     def rules(self) -> list:
         return self._rules
-    
+
     def apply(self, context: dict) -> dict:
         if not self.enabled:
             return context
@@ -166,10 +167,9 @@ class SymbolicRuleApplier:
 
         return cfg
 
-
     def apply_prompt_rules(
-            self, agent_name: str, prompt_cfg: dict, context: dict
-        ) -> dict:
+        self, agent_name: str, prompt_cfg: dict, context: dict
+    ) -> dict:
         """
         Applies prompt-level symbolic rules to the prompt config before generation.
 
@@ -230,40 +230,53 @@ class SymbolicRuleApplier:
         prompt_name = cfg.get("prompt_key", "unknown_prompt")
 
         matching_rules = [
-            r for r in self.rules
+            r
+            for r in self.rules
             if r.target == "prompt" and self._matches_filter(r.filter, goal)
         ]
 
         if not matching_rules:
-            self.logger.log("NoSymbolicPromptRulesApplied", {
-                "prompt": prompt_name,
-                "goal_id": goal.get("id"),
-            })
+            self.logger.log(
+                "NoSymbolicPromptRulesApplied",
+                {
+                    "prompt": prompt_name,
+                    "goal_id": goal.get("id"),
+                },
+            )
             return cfg
 
-        self.logger.log("SymbolicPromptRulesFound", {
-            "prompt": prompt_name,
-            "goal_id": goal.get("id"),
-            "count": len(matching_rules),
-        })
+        self.logger.log(
+            "SymbolicPromptRulesFound",
+            {
+                "prompt": prompt_name,
+                "goal_id": goal.get("id"),
+                "count": len(matching_rules),
+            },
+        )
 
         for rule in matching_rules:
             for key, value in rule.attributes.items():
                 if key in cfg:
-                    self.logger.log("SymbolicPromptOverride", {
-                        "prompt": prompt_name,
-                        "key": key,
-                        "old_value": cfg[key],
-                        "new_value": value,
-                        "rule_id": rule.id,
-                    })
+                    self.logger.log(
+                        "SymbolicPromptOverride",
+                        {
+                            "prompt": prompt_name,
+                            "key": key,
+                            "old_value": cfg[key],
+                            "new_value": value,
+                            "rule_id": rule.id,
+                        },
+                    )
                 else:
-                    self.logger.log("SymbolicPromptNewKey", {
-                        "prompt": prompt_name,
-                        "key": key,
-                        "value": value,
-                        "rule_id": rule.id,
-                    })
+                    self.logger.log(
+                        "SymbolicPromptNewKey",
+                        {
+                            "prompt": prompt_name,
+                            "key": key,
+                            "value": value,
+                            "rule_id": rule.id,
+                        },
+                    )
                 cfg[key] = value
 
             # Track the application of the prompt-level rule

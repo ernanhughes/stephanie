@@ -10,12 +10,16 @@ class CartridgeTripleORM(Base):
     __tablename__ = "cartridge_triples"
 
     id = Column(Integer, primary_key=True)
-    cartridge_id = Column(Integer, ForeignKey("cartridges.id", ondelete="CASCADE"), nullable=False)
+    cartridge_id = Column(
+        Integer, ForeignKey("cartridges.id", ondelete="CASCADE"), nullable=False
+    )
 
     subject = Column(String, nullable=False)
     predicate = Column(String, nullable=False)
     object = Column(String, nullable=False)
-    confidence = Column(Float, default=1.0)  # Optional: confidence score from the extractor
+    confidence = Column(
+        Float, default=1.0
+    )  # Optional: confidence score from the extractor
 
     # Relationship to the parent cartridge
     cartridge = relationship("CartridgeORM", back_populates="triples_rel")
@@ -27,7 +31,7 @@ class CartridgeTripleORM(Base):
             "subject": self.subject,
             "predicate": self.predicate,
             "object": self.object,
-            "confidence": self.confidence
+            "confidence": self.confidence,
         }
 
     def __repr__(self):

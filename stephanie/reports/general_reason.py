@@ -1,3 +1,4 @@
+# stephanie/reports/general_reason.py
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,15 +22,15 @@ def save_markdown_report(result: dict, out_dir: str = "./reports"):
     for hyp in result["hypotheses"]:
         strategy = hyp.get("strategy", hyp["features"].get("strategy", "unknown"))
         report_md += f"""### Strategy: `{strategy}`  
-{hyp['text']}
+{hyp["text"]}
 
 ---
 """
 
     report_md += "\n## 🧪 Judgments\n\n"
     for score in result["scoring"]:
-        strategy_a = score["hypothesis_a"][:50].replace('\n', ' ') + "..."
-        strategy_b = score["hypothesis_b"][:50].replace('\n', ' ') + "..."
+        strategy_a = score["hypothesis_a"][:50].replace("\n", " ") + "..."
+        strategy_b = score["hypothesis_b"][:50].replace("\n", " ") + "..."
         winner = score["winner"]
         reason = score["reason"]
         report_md += f"""- **Winner:** `{winner}`  
@@ -39,9 +40,12 @@ def save_markdown_report(result: dict, out_dir: str = "./reports"):
 
     # Optional: Add per-strategy summary
     from collections import defaultdict
+
     score_stats = defaultdict(list)
     for score in result["scoring"]:
-        score_stats[score["winner"]].append(score.get("score_b", 0))  # use score_b as winner
+        score_stats[score["winner"]].append(
+            score.get("score_b", 0)
+        )  # use score_b as winner
 
     report_md += "\n## 📊 Strategy Performance\n\n"
     report_md += "| Strategy | Judged Wins | Avg Score |\n|----------|--------------|------------|\n"

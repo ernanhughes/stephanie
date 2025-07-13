@@ -1,3 +1,4 @@
+# stephanie/models/mrq_preference_pair.py
 from datetime import datetime, timezone
 
 from sqlalchemy import JSON, Column, DateTime, Integer, Text
@@ -19,15 +20,14 @@ class MRQPreferencePairORM(Base):
 
     fmt_a = Column(Text)  # e.g., direct, short_cot, code, long_cot
     fmt_b = Column(Text)
-    
+
     difficulty = Column(Text)
-    
+
     features = Column(JSON)  # Optional: extra metadata
     run_id = Column(Text)
-    source = Column(Text)  # e.g., arm_dataloader, user, 
-    
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    source = Column(Text)  # e.g., arm_dataloader, user,
 
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     def to_dict(self):
         return {

@@ -1,3 +1,4 @@
+# stephanie/agents/knowledge/document_profiler.py
 import re
 
 from stephanie.agents.base_agent import BaseAgent
@@ -6,6 +7,7 @@ from stephanie.utils.document_section_parser import DocumentSectionParser
 
 DEFAULT_SECTIONS = ["title", "abstract", "methods", "results", "contributions"]
 REQUIRED_SECTIONS = ["title", "summary"]
+
 
 class DocumentProfilerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -16,7 +18,7 @@ class DocumentProfilerAgent(BaseAgent):
         self.store_inline = cfg.get("store_inline", True)
         self.output_sections = cfg.get("output_sections", DEFAULT_SECTIONS)
         self.required_sections = cfg.get("required_sections", REQUIRED_SECTIONS)
-        self.min_chars_per_sec = cfg.get("min_chars_per_section", 120)  # quality 
+        self.min_chars_per_sec = cfg.get("min_chars_per_section", 120)  # quality
 
         self.force_domain_update = cfg.get("force_domain_update", False)
         self.top_k_domains = cfg.get("top_k_domains", 3)
@@ -66,13 +68,12 @@ class DocumentProfilerAgent(BaseAgent):
                 if title:
                     chosen["title"] = title
                 if summary:
-                    chosen["summary"] = summary 
+                    chosen["summary"] = summary
                 else:
                     prompt = self.prompt_loader.from_file(
                         self.summary_prompt_file, self.cfg, context
                     )
                     chosen["summary"] = self.call_llm(prompt, context)
-
 
                 # -- STEP 3 : Persist ------------------------------------------
                 for section, text in chosen.items():
@@ -88,7 +89,9 @@ class DocumentProfilerAgent(BaseAgent):
 
                     # -- STEP 4 : Domain detection ---------------------------------
                     # Classify domain for the section
-                    section_domains = self.domain_classifier.classify(text, self.top_k_domains, self.min_classification_score)
+                    section_domains = self.domain_classifier.classify(
+                        text, self.top_k_domains, self.min_classification_score
+                    )
 
                     # Insert classified domains for this section
                     for domain, score in section_domains:

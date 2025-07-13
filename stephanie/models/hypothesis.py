@@ -1,3 +1,4 @@
+# stephanie/models/hypothesis.py
 # models/hypothesis.py
 from datetime import datetime
 
@@ -23,7 +24,7 @@ class HypothesisORM(Base):
     reflection = Column(String)
     elo_rating = Column(Float, default=750.0)
     embedding = Column(JSON)  # Use pgvector later for better support
-    features = Column(JSON)   # For structured metadata
+    features = Column(JSON)  # For structured metadata
     source = Column(String)
     pipeline_signature = Column(String)
     enabled = Column(Boolean, default=True)

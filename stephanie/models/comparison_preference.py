@@ -1,3 +1,4 @@
+# stephanie/models/comparison_preference.py
 
 # models/comparison_preference.py
 from datetime import datetime

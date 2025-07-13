@@ -1,3 +1,4 @@
+# stephanie/memory/hypothesis_store.py
 # stores/hypothesis_store.py
 from difflib import SequenceMatcher
 from typing import Optional
@@ -16,7 +17,7 @@ class HypothesisStore:
         self.logger = logger
         self.embedding_store = embedding_store  # Optional embedding model
         self.name = "hypotheses"
-    
+
     def name(self) -> str:
         return "hypotheses"
 
@@ -30,13 +31,16 @@ class HypothesisStore:
             self.session.flush()  # To get ID before commit
 
             if self.logger:
-                self.logger.log("HypothesisInserted", {
-                    "hypothesis_id": hypothesis.id,
-                    "goal_id": hypothesis.goal_id,
-                    "strategy": hypothesis.strategy,
-                    "length": len(hypothesis.text),
-                    "timestamp": hypothesis.created_at.isoformat()
-                })
+                self.logger.log(
+                    "HypothesisInserted",
+                    {
+                        "hypothesis_id": hypothesis.id,
+                        "goal_id": hypothesis.goal_id,
+                        "strategy": hypothesis.strategy,
+                        "length": len(hypothesis.text),
+                        "timestamp": hypothesis.created_at.isoformat(),
+                    },
+                )
 
             return hypothesis.id
 
@@ -58,10 +62,10 @@ class HypothesisStore:
         self.session.commit()
 
         if self.logger:
-            self.logger.log("ReviewStored", {
-                "hypothesis_id": hyp_id,
-                "review_snippet": (review or "")[:100]
-            })
+            self.logger.log(
+                "ReviewStored",
+                {"hypothesis_id": hyp_id, "review_snippet": (review or "")[:100]},
+            )
 
     def update_reflection(self, hyp_id: int, reflection: str):
         """
@@ -75,10 +79,13 @@ class HypothesisStore:
         self.session.commit()
 
         if self.logger:
-            self.logger.log("ReflectionStored", {
-                "hypothesis_id": hyp_id,
-                "reflection_snippet": (reflection or "")[:100]
-            })
+            self.logger.log(
+                "ReflectionStored",
+                {
+                    "hypothesis_id": hyp_id,
+                    "reflection_snippet": (reflection or "")[:100],
+                },
+            )
 
     def update_elo_rating(self, hyp_id: int, new_rating: float):
         """
@@ -92,10 +99,10 @@ class HypothesisStore:
         self.session.commit()
 
         if self.logger:
-            self.logger.log("HypothesisEloUpdated", {
-                "hypothesis_id": hyp_id,
-                "elo_rating": new_rating
-            })
+            self.logger.log(
+                "HypothesisEloUpdated",
+                {"hypothesis_id": hyp_id, "elo_rating": new_rating},
+            )
 
     def soft_delete(self, hyp_id: int):
         """
@@ -125,40 +132,60 @@ class HypothesisStore:
 
         if source:
             from stephanie.models import EvaluationORM
+
             query = query.join(EvaluationORM).filter(EvaluationORM.source == source)
 
         return query.limit(limit).all()
 
     def get_latest(self, goal_text: str, limit: int = 10) -> list[HypothesisORM]:
-        return self.session.query(HypothesisORM).join(GoalORM).filter(
-            GoalORM.goal_text == goal_text
-        ).order_by(HypothesisORM.created_at.desc()).limit(limit).all()
+        return (
+            self.session.query(HypothesisORM)
+            .join(GoalORM)
+            .filter(GoalORM.goal_text == goal_text)
+            .order_by(HypothesisORM.created_at.desc())
+            .limit(limit)
+            .all()
+        )
 
     def get_unreflected(self, goal_text: str, limit: int = 10) -> list[HypothesisORM]:
-        return self.session.query(HypothesisORM).join(GoalORM).filter(
-            GoalORM.goal_text == goal_text,
-            HypothesisORM.reflection.is_(None)
-        ).limit(limit).all()
+        return (
+            self.session.query(HypothesisORM)
+            .join(GoalORM)
+            .filter(GoalORM.goal_text == goal_text, HypothesisORM.reflection.is_(None))
+            .limit(limit)
+            .all()
+        )
 
     def get_unreviewed(self, goal_text: str, limit: int = 10) -> list[HypothesisORM]:
-        return self.session.query(HypothesisORM).join(GoalORM).filter(
-            GoalORM.goal_text == goal_text,
-            HypothesisORM.review.is_(None)
-        ).limit(limit).all()
+        return (
+            self.session.query(HypothesisORM)
+            .join(GoalORM)
+            .filter(GoalORM.goal_text == goal_text, HypothesisORM.review.is_(None))
+            .limit(limit)
+            .all()
+        )
 
-    def get_from_text(self, query: str, threshold: float = 0.95) -> Optional[HypothesisORM]:
+    def get_from_text(
+        self, query: str, threshold: float = 0.95
+    ) -> Optional[HypothesisORM]:
         """
         Finds exact or fuzzy match for hypothesis text.
         """
-        result = self.session.query(HypothesisORM).filter(HypothesisORM.text == query).first()
+        result = (
+            self.session.query(HypothesisORM)
+            .filter(HypothesisORM.text == query)
+            .first()
+        )
         if result:
             return result
 
         # Fallback to similarity search if needed
         # This requires pg_trgm extension in PostgreSQL
-        result = self.session.query(HypothesisORM).filter(
-            HypothesisORM.text.ilike(f"%{query}%")
-        ).first()
+        result = (
+            self.session.query(HypothesisORM)
+            .filter(HypothesisORM.text.ilike(f"%{query}%"))
+            .first()
+        )
 
         if result and result.text:
             sim = SequenceMatcher(None, result.text, query).ratio()
@@ -171,8 +198,13 @@ class HypothesisStore:
         return self.session.get(HypothesisORM, hyp_id)
 
     def get_all(self, limit: int = 100) -> list[HypothesisORM]:
-        return self.session.query(HypothesisORM).order_by(HypothesisORM.created_at.desc()).limit(limit).all()
-    
+        return (
+            self.session.query(HypothesisORM)
+            .order_by(HypothesisORM.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
     def get_similar(self, query: str, limit: int = 3) -> list[str]:
         """
         Get top N hypotheses similar to the given prompt using semantic similarity.
@@ -196,10 +228,10 @@ class HypothesisStore:
                 results = [row[0] for row in cur.fetchall()]
 
             if self.logger:
-                self.logger.log("SimilarHypothesesFound", {
-                    "query": query[:100],
-                    "matches": [r[:100] for r in results]
-                })
+                self.logger.log(
+                    "SimilarHypothesesFound",
+                    {"query": query[:100], "matches": [r[:100] for r in results]},
+                )
 
             return results
 

@@ -1,3 +1,4 @@
+# stephanie/agents/mixins/prompt_evolver_mixin.py
 from stephanie.compiler.prompt_evolver import PromptEvolver
 
 
@@ -9,5 +10,9 @@ class PromptEvolverMixin:
     def init_evolver(self, llm, logger=None):
         self.prompt_evolver = PromptEvolver(llm, logger=logger)
 
-    def evolve_prompts(self, examples: list[dict], context: dict = {}, sample_size: int = 10) -> list[str]:
-        return self.prompt_evolver.evolve(examples, context=context, sample_size=sample_size)
+    def evolve_prompts(
+        self, examples: list[dict], context: dict = {}, sample_size: int = 10
+    ) -> list[str]:
+        return self.prompt_evolver.evolve(
+            examples, context=context, sample_size=sample_size
+        )

@@ -39,8 +39,8 @@ class LookaheadAgent(BaseAgent):
                 step: agent_registry.get(step, {"description": "No description"})
                 for step in pipeline
             },
-            "all_agents": agent_registry, 
-            **context
+            "all_agents": agent_registry,
+            **context,
         }
 
         prompt_template = self.prompt_loader.load_prompt(self.cfg, prompt_context)
@@ -61,9 +61,12 @@ class LookaheadAgent(BaseAgent):
             suggested_pipeline=["generation", "verifier", "judge"],
             rationale="Input pipeline lacks verification step.",
             reflection="# Predicted Risks\n- Hallucination risk\n- No validation",
-            backup_plans=["Plan A: Add fact-checking", "Plan B: Use retrieval-augmented generation"],
+            backup_plans=[
+                "Plan A: Add fact-checking",
+                "Plan B: Use retrieval-augmented generation",
+            ],
             metadata={"domain": "AI Safety"},
-            run_id=context.get("run_id")
+            run_id=context.get("run_id"),
         )
         self.memory.lookahead.insert(goal.id, lookahead_data)
         # Log the result

@@ -32,7 +32,7 @@ class DocumentStore:
                 source=doc["source"],
                 external_id=doc.get("external_id"),
                 url=doc.get("url"),
-                content=doc.get("content")
+                content=doc.get("content"),
             )
             for doc in documents
         ]

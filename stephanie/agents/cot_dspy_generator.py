@@ -1,3 +1,4 @@
+# stephanie/agents/cot_dspy_generator.py
 """
 ChainOfThoughtDSPyGeneratorAgent
 
@@ -81,7 +82,9 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         preferences = context.get("preferences", "")
 
         result = self.module(
-            question=goal.get("goal_text"), references=references, preferences=preferences
+            question=goal.get("goal_text"),
+            references=references,
+            preferences=preferences,
         )
 
         cot = result.answer.strip()

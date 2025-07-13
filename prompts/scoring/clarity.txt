@@ -1,0 +1,15 @@
+Evaluate the clarity of the following document.
+
+### Goal
+{{ goal.goal_text }}
+
+### Document
+{{ scorable.text }}
+
+Does the document communicate its core idea clearly and unambiguously? Is the language precise and easy to understand for the intended audience?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+
+score: <0–100>

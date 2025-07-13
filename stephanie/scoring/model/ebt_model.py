@@ -2,6 +2,7 @@
 import torch
 from torch import nn
 
+
 class EBTModel(nn.Module):
     def __init__(self, embedding_dim=1024):
         super().__init__()
@@ -12,7 +13,7 @@ class EBTModel(nn.Module):
             nn.Linear(256, 1),  # Output: scalar score (before scaling)
         )
         # Learnable scaling factor to adjust output magnitude during training
-        self.scale_factor = nn.Parameter(torch.tensor(10.0))  
+        self.scale_factor = nn.Parameter(torch.tensor(10.0))
 
     def forward(self, ctx_emb, doc_emb):
         # Concatenate context (goal) and document embeddings

@@ -1,3 +1,4 @@
+# stephanie/agents/compiler/node_executor.py
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
 from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
 
@@ -10,7 +11,7 @@ class NodeExecutor:
         self.pipeline_runner = pipeline_runner
         self.tree = tree
 
-    async def execute(self, node: ReasoningNode, context:dict) -> dict:
+    async def execute(self, node: ReasoningNode, context: dict) -> dict:
         # Construct context for pipeline execution
         goal = context.get("goal")
         if node.goal:
@@ -21,7 +22,7 @@ class NodeExecutor:
             "previous_actions": self._get_history(node),
             "pipeline_stages": self._build_pipeline_for_node(node),
             "tag": f"node_{node.id}",
-            **context
+            **context,
         }
 
         try:
@@ -29,14 +30,10 @@ class NodeExecutor:
             return {
                 "response": result.get("selected", {}).get("text", ""),
                 "success": True,
-                "raw_result": result
+                "raw_result": result,
             }
         except Exception as e:
-            return {
-                "response": str(e),
-                "success": False,
-                "raw_result": None
-            }
+            return {"response": str(e), "success": False, "raw_result": None}
 
     def _get_history(self, node: ReasoningNode) -> list[dict]:
         history = []
@@ -45,12 +42,14 @@ class NodeExecutor:
             parent = self.tree.nodes.get(current.parent_id)
             if not parent:
                 break
-            history.append({
-                "thought": parent.thought,
-                "action": parent.action,
-                "response": parent.response,
-                "score": parent.score
-            })
+            history.append(
+                {
+                    "thought": parent.thought,
+                    "action": parent.action,
+                    "response": parent.response,
+                    "score": parent.score,
+                }
+            )
             current = parent
         history.reverse()
         return history
@@ -69,15 +68,12 @@ class NodeExecutor:
                 "config": {
                     "input_key": "current_thought",
                     "output_key": "hypotheses",
-                    "mode": "single"
-                }
+                    "mode": "single",
+                },
             },
             {
                 "name": "score",
                 "type": "stephanie.agents.scoring.PipelineJudgeAgent",
-                "config": {
-                    "input_key": "hypotheses",
-                    "output_key": "selected"
-                }
-            }
+                "config": {"input_key": "hypotheses", "output_key": "selected"},
+            },
         ]

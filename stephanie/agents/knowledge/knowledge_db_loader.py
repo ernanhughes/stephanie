@@ -1,3 +1,4 @@
+# stephanie/agents/knowledge/knowledge_db_loader.py
 from sqlalchemy import select
 
 from stephanie.agents.base_agent import BaseAgent
@@ -21,16 +22,13 @@ class KnowledgeDBLoaderAgent(BaseAgent):
             self.logger.log("KnowledgeDBLoadSkipped", {"reason": "Missing goal"})
             return context
 
-        docs = self.memory.embedding.search_related_documents(
-            goal_text, 50
-        )
-
+        docs = self.memory.embedding.search_related_documents(goal_text, 50)
 
         context[self.output_key] = docs
         context["retrieved_ids"] = [d["id"] for d in docs]
-        self.logger.log("KnowledgeDBLoaded", {
-            "count": len(docs),
-            "search_method": self.search_method
-        })
+        self.logger.log(
+            "KnowledgeDBLoaded",
+            {"count": len(docs), "search_method": self.search_method},
+        )
 
         return context

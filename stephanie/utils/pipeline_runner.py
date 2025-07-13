@@ -16,7 +16,9 @@ class PipelineRunner:
         self.memory = memory
         self.logger = logger
 
-    async def run(self, pipeline_def: list, context: dict, tag: str = "runtime") -> dict:
+    async def run(
+        self, pipeline_def: list, context: dict, tag: str = "runtime"
+    ) -> dict:
         """
         Run the provided pipeline definition within the given context.
 
@@ -41,7 +43,9 @@ class PipelineRunner:
             "selected": result.get("selected"),
         }
 
-    def inject_pipeline_config(self, pipeline_def: list, tag: str = "runtime") -> OmegaConf:
+    def inject_pipeline_config(
+        self, pipeline_def: list, tag: str = "runtime"
+    ) -> OmegaConf:
         """
         Injects a pipeline definition into a valid OmegaConf configuration.
 
@@ -61,20 +65,28 @@ class PipelineRunner:
 
             result = OmegaConf.create(full_cfg_dict)
 
-            print(f"Injected pipeline config: {OmegaConf.to_yaml(result, resolve=True)}")
+            print(
+                f"Injected pipeline config: {OmegaConf.to_yaml(result, resolve=True)}"
+            )
             if self.logger:
-                self.logger.log("PipelineInjectionSuccess", {
-                    "pipeline_def": pipeline_def,
-                    "tag": tag,
-                    "config": result,
-                })
+                self.logger.log(
+                    "PipelineInjectionSuccess",
+                    {
+                        "pipeline_def": pipeline_def,
+                        "tag": tag,
+                        "config": result,
+                    },
+                )
             return result
 
         except Exception as e:
             if self.logger:
-                self.logger.log("PipelineInjectionError", {
-                    "error": str(e),
-                    "pipeline_def": pipeline_def,
-                    "tag": tag,
-                })
+                self.logger.log(
+                    "PipelineInjectionError",
+                    {
+                        "error": str(e),
+                        "pipeline_def": pipeline_def,
+                        "tag": tag,
+                    },
+                )
             raise e

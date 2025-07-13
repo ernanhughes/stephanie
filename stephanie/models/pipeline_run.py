@@ -1,3 +1,4 @@
+# stephanie/models/pipeline_run.py
 # models/pipeline_run.py
 from datetime import datetime, timezone
 
@@ -26,7 +27,9 @@ class PipelineRunORM(Base):
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
     goal = relationship("GoalORM", back_populates="pipeline_runs")
-    prompts = relationship("PromptORM", back_populates="pipeline_run", cascade="all, delete-orphan")
+    prompts = relationship(
+        "PromptORM", back_populates="pipeline_run", cascade="all, delete-orphan"
+    )
     hypotheses = relationship("HypothesisORM", back_populates="pipeline_run")
     symbolic_rules = relationship("SymbolicRuleORM", back_populates="pipeline_run")
     prompt_programs = relationship("PromptProgramORM", back_populates="pipeline_run")

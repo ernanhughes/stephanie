@@ -1,3 +1,4 @@
+# stephanie/models/world_view.py
 from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
