@@ -6,6 +6,7 @@ import torch
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
+from stephanie.models.score import ScoreORM
 from stephanie.scoring.mrq.encoder import TextEncoder
 from stephanie.scoring.mrq.model import MRQModel
 from stephanie.scoring.scorable import Scorable
@@ -17,17 +18,21 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_utils import (discover_saved_dimensions,
                                          get_model_path)
-from stephanie.models.score import ScoreORM
+
+from stephanie.scoring.scorable_factory import ScorableFactory
 
 
 class MRQInferenceAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
+        self.dim = memory.embedding.dim
+        self.hdim = memory.embedding.hdim
         self.model_path = cfg.get("model_path", "models")
         self.model_type = "mrq"
         self.evaluator = "mrq"
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
         self.dimensions = cfg.get("dimensions", [])
         self.models = {}
         self.model_meta = {}
@@ -62,11 +67,7 @@ class MRQInferenceAgent(BaseAgent):
             doc_id = doc.get("id")
             self.logger.log("MRQScoringStarted", {"document_id": doc_id})
 
-            scorable = Scorable(
-                id=doc_id,
-                text=doc.get("text", ""),
-                target_type=TargetType.DOCUMENT,
-            )
+            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
 
             dimension_scores = {}
             score_results = []  # For storing ScoreResult objects per dimension
@@ -169,14 +170,15 @@ class MRQInferenceAgent(BaseAgent):
                 self.target_type,
                 dim,
                 version=self.model_version,
+                embedding_type=self.embedding_type
             )
             encoder_path = f"{model_path}/{dim}_encoder.pt"
             predictor_path = f"{model_path}/{dim}.pt"
             meta_path = f"{model_path}/{dim}.meta.json"
             tuner_path = f"{model_path}/{dim}_model.tuner.json"
 
-            encoder = TextEncoder()
-            predictor = HypothesisValuePredictor(512, 1024)
+            encoder = TextEncoder(self.dim, self.hdim)
+            predictor = HypothesisValuePredictor(self.dim, self.hdim)
             model = MRQModel(
                 encoder, predictor, self.memory.embedding, device=self.device
             )

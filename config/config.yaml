@@ -38,7 +38,7 @@ goal:
     - "code"
 
 symbolic:
-  enabled: true  # set to false to skip symbolic rule application
+  enabled: false  # set to false to skip symbolic rule application
   rules_file: "config/rules/rules.yaml"
   enable_db_rules: true # load rules from the database
   match_priority:
@@ -61,7 +61,7 @@ planner:
 
 post_judgment:
   name: pipeline_judge
-  enabled: false
+  enabled: true
   cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 

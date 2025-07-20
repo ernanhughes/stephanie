@@ -1,10 +1,12 @@
 # stephanie/memcubes/memcube_factory.py
-from stephanie.scoring.scorable import Scorable
-from stephanie.memcubes.memcube import MemCube
-from stephanie.scoring.scorable_factory import ScorableFactory
 from datetime import datetime
 
 from sqlalchemy.sql import text
+
+from stephanie.memcubes.memcube import MemCube
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import ScorableFactory
+
 
 class MemCubeFactory:
     @staticmethod

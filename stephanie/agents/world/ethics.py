@@ -13,7 +13,7 @@ class Ethics(EthicsScoringMixin, BaseAgent):
 
         for doc in documents:
             # Score the document on ethics dimensions
-            score = self.score_ethics(doc, context)
+            score = self.score_ethics(context, doc)
             self.logger.log(
                 "EthicsScoreComputed",
                 score,

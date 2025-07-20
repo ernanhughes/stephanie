@@ -5,14 +5,39 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Compare",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "compare",
+            ]
+        },
+        {
             "name": "Python Debugger: Module",
             "type": "debugpy",
             "request": "launch",
             "console": "integratedTerminal",
             "module": "stephanie.main",
-            "python": "${workspaceFolder}\\venv\\Scripts\\python",   // Linux/macOS
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
             "args": [
-                "--config-name", "policy",
+                "--config-name",
+                "hnet",
+            ]
+        },
+        {
+            "name": "Score Documents",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "score_documents",
             ]
         }
     ]

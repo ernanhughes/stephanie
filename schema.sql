@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     pipeline TEXT NOT NULL, -- list of agent names
     name TEXT,
     tag TEXT,
+    embedding_type TEXT,
+    embedding_dimensions int, 
     description TEXT,
     strategy TEXT,
     model_name TEXT,
@@ -658,6 +660,7 @@ CREATE TABLE IF NOT EXISTS comparison_preferences (
 
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
+    embedding_id INTEGER REFERENCES embeddings(id) ON DELETE NO ACTION, 
 
     -- Metadata
     title TEXT NOT NULL,
@@ -952,7 +955,7 @@ CREATE TABLE IF NOT EXISTS memcubes (
 
 
 -- Track transformations between memory types
-CREATE TABLE memcube_transformations (
+CREATE TABLE IF NOT EXISTS  memcube_transformations (
     id SERIAL PRIMARY KEY,
     source_cube_id TEXT NOT NULL,
     target_cube_id TEXT NOT NULL,
@@ -962,7 +965,7 @@ CREATE TABLE memcube_transformations (
 );
 
 -- Track belief graph versions
-CREATE TABLE belief_graph_versions (
+CREATE TABLE IF NOT EXISTS  belief_graph_versions (
     id SERIAL PRIMARY KEY,
     goal TEXT NOT NULL,
     node_count INT,
@@ -976,7 +979,7 @@ CREATE TABLE belief_graph_versions (
 );
 
 -- Track theorem applications
-CREATE TABLE theorem_applications (
+CREATE TABLE IF NOT EXISTS  theorem_applications (
     id SERIAL PRIMARY KEY,
     theorem_id TEXT NOT NULL,
     context TEXT,
@@ -986,3 +989,199 @@ CREATE TABLE theorem_applications (
     uncertainty FLOAT,
     applied_at TIMESTAMP DEFAULT NOW()
 );
+
+
+-- Track component versions and performance
+CREATE TABLE IF NOT EXISTS  component_versions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    protocol TEXT NOT NULL,
+    class_path TEXT NOT NULL,
+    version TEXT NOT NULL,
+    config JSONB,
+    performance JSONB,
+    active BOOLEAN DEFAULT TRUE,
+    sensitivity TEXT CHECK(sensitivity IN ('public', 'internal', 'confidential', 'restricted')),
+    created_at TIMESTAMP DEFAULT NOW(),
+    last_used TIMESTAMP,
+    usage_count INT DEFAULT 0,
+    metadata JSONB
+);
+
+
+-- Track interface compliance
+CREATE TABLE IF NOT EXISTS component_interfaces (
+    component_id TEXT REFERENCES component_versions(id),
+    protocol TEXT NOT NULL,
+    implemented BOOLEAN DEFAULT TRUE,
+    last_checked TIMESTAMP DEFAULT NOW()
+);
+
+
+CREATE TABLE belief_cartridges (
+    id TEXT PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW() ON UPDATE NOW(),
+    source_id TEXT,
+    source_type TEXT,
+    markdown_content TEXT NOT NULL,
+    goal_tags JSONB DEFAULT '[]',
+    domain_tags JSONB DEFAULT '[]',
+    idea_payload JSONB,
+    rationale TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    derived_from JSONB DEFAULT '[]',
+    applied_in JSONB DEFAULT '[]',
+    version INTEGER DEFAULT 1,
+    memcube_id TEXT,
+    debug_log JSONB
+    );
+
+
+CREATE TABLE IF NOT EXISTS pipeline_stages (
+    id SERIAL PRIMARY KEY,
+    stage_name VARCHAR NOT NULL,
+    agent_class VARCHAR NOT NULL,
+    protocol_used VARCHAR NOT NULL,
+    goal_id VARCHAR,
+    run_id VARCHAR NOT NULL,
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id),
+    parent_stage_id INTEGER REFERENCES pipeline_stages(id),
+    input_context_id INTEGER REFERENCES context_states(id),
+    output_context_id INTEGER REFERENCES context_states(id),
+    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+    status VARCHAR NOT NULL,
+    score NUMERIC,
+    confidence NUMERIC,
+    symbols_applied JSONB,
+    extra_data JSONB,
+    exportable BOOLEAN,
+    reusable BOOLEAN,
+    invalidated BOOLEAN
+);
+
+CREATE INDEX idx_pipeline_stages_run_id ON pipeline_stages(run_id);
+CREATE INDEX idx_pipeline_stages_status ON pipeline_stages(status);
+CREATE INDEX idx_pipeline_stages_goal_id ON pipeline_stages(goal_id);
+CREATE INDEX idx_pipeline_stages_parent ON pipeline_stages(parent_stage_id);
+CREATE INDEX idx_pipeline_stages_input_context ON pipeline_stages(input_context_id);
+CREATE INDEX idx_pipeline_stages_output_context ON pipeline_stages(output_context_id);
+
+-- Comment descriptions (optional but helpful)
+COMMENT ON TABLE pipeline_stages IS 'Records each step in Stephanie’s reasoning process with full traceability.';
+COMMENT ON COLUMN pipeline_stages.stage_name IS 'Name of this pipeline stage (e.g., "generation", "judge")';
+COMMENT ON COLUMN pipeline_stages.agent_class IS 'Fully qualified name of the agent used';
+COMMENT ON COLUMN pipeline_stages.protocol_used IS 'Protocol type used (e.g., "g3ps_search", "cot")';
+COMMENT ON COLUMN pipeline_stages.goal_id IS 'Optional link to the associated goal ID';
+COMMENT ON COLUMN pipeline_stages.run_id IS 'Unique identifier for the current pipeline run';
+COMMENT ON COLUMN pipeline_stages.pipeline_run_id IS 'Foreign key to pipeline_runs table';
+COMMENT ON COLUMN pipeline_stages.parent_stage_id IS 'Reference to prior stage for tracing reasoning paths';
+COMMENT ON COLUMN pipeline_stages.input_context_id IS 'Context before running this stage';
+COMMENT ON COLUMN pipeline_stages.output_context_id IS 'Context after running this stage';
+COMMENT ON COLUMN pipeline_stages.status IS 'Stage outcome: accepted, rejected, retry, partial, pending';
+
+
+-- File: versions/XXXX_create_protocols_table.sql
+
+-- Up Migration
+CREATE TABLE IF NOT EXISTS protocols (
+    name VARCHAR PRIMARY KEY,
+    description TEXT,
+    input_format JSONB,
+    output_format JSONB,
+    failure_modes JSONB,
+    depends_on JSONB,
+    tags JSONB,
+    capability VARCHAR,
+    preferred_for JSONB,
+    avoid_for JSONB,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX idx_protocol_name ON protocols(name);
+CREATE INDEX idx_protocol_tags ON protocols USING GIN (tags);
+CREATE INDEX idx_protocol_capability ON protocols(capability);
+CREATE INDEX idx_protocol_depends_on ON protocols USING GIN (depends_on);
+
+-- Comment descriptions (optional but helpful)
+COMMENT ON TABLE protocols IS 'Registry of available reasoning protocols used by Stephanie';
+COMMENT ON COLUMN protocols.name IS 'Unique name of the protocol (e.g., "g3ps_search", "cot")';
+COMMENT ON COLUMN protocols.description IS 'Human-readable description of what the protocol does';
+COMMENT ON COLUMN protocols.input_format IS 'JSON schema defining expected input structure';
+COMMENT ON COLUMN protocols.output_format IS 'JSON schema defining expected output structure';
+COMMENT ON COLUMN protocols.failure_modes IS 'Common failure types (e.g., hallucination, syntax error)';
+COMMENT ON COLUMN protocols.depends_on IS 'Other protocols or agents required for this one to work';
+COMMENT ON COLUMN protocols.tags IS 'Tags like ["code", "reasoning", "llm"] for filtering';
+COMMENT ON COLUMN protocols.capability IS 'High-level capability category (e.g., code_generation, qa)';
+COMMENT ON COLUMN protocols.preferred_for IS 'Goal types where this protocol performs well';
+COMMENT ON COLUMN protocols.avoid_for IS 'Goal types where this protocol should be avoided';
+COMMENT ON COLUMN protocols.created_at IS 'When this protocol was added';
+COMMENT ON COLUMN protocols.updated_at IS 'Last time metadata was changed';
+
+
+CREATE TABLE IF NOT EXISTS goal_dimensions (
+    id SERIAL PRIMARY KEY,
+    goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+    dimension TEXT NOT NULL,
+    rank INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'llm',
+    similarity_score FLOAT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE protocols (
+    name TEXT PRIMARY KEY,
+    description TEXT,
+    input_format JSONB,
+    output_format JSONB,
+    failure_modes JSONB,
+    depends_on JSONB,
+    tags JSONB,
+    capability TEXT,
+    preferred_for JSONB,
+    avoid_for JSONB
+);
+
+CREATE TABLE IF NOT EXISTS embeddings (
+id SERIAL PRIMARY KEY,
+    text TEXT NOT NULL,
+    embedding VECTOR(1024),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    text_hash TEXT UNIQUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_embedding_vector
+ON embeddings USING ivfflat (embedding vector_cosine_ops);
+ALTER TABLE embeddings ADD CONSTRAINT unique_text_hash UNIQUE (text_hash);
+
+CREATE TABLE IF NOT EXISTS hf_embeddings (
+    id SERIAL PRIMARY KEY,
+    text TEXT,
+    embedding VECTOR(1024),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    text_hash TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_hf_embedding_vector
+ON hf_embeddings
+USING ivfflat (embedding vector_cosine_ops);
+ALTER TABLE hf_embeddings ADD CONSTRAINT unique_text_hash_hf UNIQUE (text_hash);
+
+
+CREATE TABLE IF NOT EXISTS hnet_embeddings (
+    id SERIAL PRIMARY KEY,
+    text TEXT,
+    embedding VECTOR(1024),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    text_hash TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_hnet_embedding_vector
+ON hnet_embeddings
+USING ivfflat (embedding vector_cosine_ops);
+ALTER TABLE hnet_embeddings ADD CONSTRAINT unique_text_hash_hnet UNIQUE (text_hash);
+
+

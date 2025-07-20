@@ -1,4 +1,4 @@
-# config/config.yaml
+# config/papers.yaml
 defaults:
   - _self_
   - db: postgres
@@ -15,7 +15,8 @@ defaults:
   - logging/json_logger
 
 goal:
-  goal_text: "https://arxiv.org/pdf/2506.05070"
+  # goal_text: "https://arxiv.org/pdf/2506.05070"
+  goal_text: "https://arxiv.org/pdf/2505.15143"
   goal_type: "similar_papers"
   focus_area: "AI research"
 

@@ -26,10 +26,39 @@ SYSTEM_INIT = {
     "SeedEmbeddingsPrepared": "🌱🧬",  # Seed embeddings prepared
 }
 
+AGENT_EVENTS = {
+    
+    "MRQInferenceAgentInitialized": "📊🤖",  # MRQ inference agent initialized
+    "AgentInitialized": "ᯓ★",  # Agent initialization
+    "AgentInit": "🤖",  # Agent startup
+    "MRQTrainerAgentInitialized": "📊🤖",  # MRQ trainer agent initialized
+}
+
 # =================
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "GoalContextOverride": "🎯🔄",  # Goal context override
+    "MgrScoreParseError": "📊❌",  # Scoring parse error
+    "SymbolicRulesFound": "🧩🔍",  # Symbolic rules found
+    "MRQTrainingDataLoaded": "📊📥",  # MRQ training data loaded
+    "DuplicateSymbolicRuleSkipped": "🚫🧩",  # Duplicate symbolic rule skipped
+    "EvolvedParsedHypotheses": "🌱💡",  # Evolved hypotheses parsed
+    "EvolutionCompleted": "🌱✅",  # Evolution completed
+    "GenerationStart": "📝▶️",  # Generation started
+    "MetaReviewInput": "📝📋",  # Meta-review input
+    "RawMetaReviewOutput": "📝📄",  # Raw meta-review output
+    "NotEnoughHypothesesForRanking": "❌💡",  # Not enough hypotheses for ranking
+    "PromptLookup": "🔍📝",  # Prompt lookup
+    "RubricClassified": "🏷️📄",  # Rubric classified
+    "PromptGenerated": "📝✨",  # Prompt generated
+    "PatternStatsStored": "📊💾",  # Pattern stats stored
+    "GenerationCompleted": "✅",  # Generation completed
+    "LLMJudgeResults": "📝⚖️",  # LLM judge results
+    "EvaluationCompleted": "✅",  # Evaluation completed
+    "RubricPatternsStored": "📊💾",  # Rubric patterns stored
+    "GenerationStarted": "📝▶️",  # Generation started
+    "EvaluatorInit": "🧑‍🏫",  # Evaluator initialization
     "MRQInferenceAgentInitialized": "📊🤖",  # MRQ inference agent initialized
     "EBTBufferLoaded": "🧪📦",  # EBT buffer loaded
     "EBTInferenceCompleted": "🧪✅",  # EBT inference complete I know what just before I refuse this I just want to kick it off just in case it's not being kicked off seems like it's gone d
@@ -78,31 +107,37 @@ KNOWLEDGE_OPS = {
     "CartridgeProcessingCompleted": "🏁",  # Cartridge processing completed
     "DocumentAlreadyProfiled": "📄✅",  # Document already profiled
     "StoreRegistered": "🛒",  # Store registered
+    "PreferencePairBuilder": "💾▶️",  # Preference pair builder started
 }
 
 # =================
 # PIPELINE CONTROL
 # =================
 PIPELINE_FLOW = {
-    "PipelineStart": "🚦▶️",  # Pipeline started
-    "PipelineStageStart": "⏩",  # Stage started
-    "PipelineStageEnd": "🔚",  # Stage completed
-    "PipelineStageSkipped": "⏭️",  # Stage skipped
-    "PipelineIterationStart": "🔄▶️",  # Iteration started
-    "PipelineIterationEnd": "🔄🔚",  # Iteration completed
-    "PipelineSuccess": "✅",  # Pipeline succeeded
-    "PipelineError": "❌",  # Pipeline error
-    "PipelineRunInserted": "🔁💾",  # Pipeline run saved
+    "PipelineStageInserted": "🖇️➕",  # Stage inserted
+    "PipelineStart": "🖇️▶️",  # Pipeline started
+    "PipelineStageStart": "🖇️⏩",  # Stage started
+    "PipelineStageEnd": "🖇️🔚",  # Stage completed
+    "PipelineStageSkipped": "🖇️⏭️",  # Stage skipped
+    "PipelineIterationStart": "🖇️🔄",  # Iteration started
+    "PipelineIterationEnd": "🖇️🔚",  # Iteration completed
+    "PipelineSuccess": "🖇️✅",  # Pipeline succeeded
+    "PipelineRunInserted": "🖇️💾",  # Pipeline run saved
     "AgentRunStarted": "🤖▶️",  # Agent run started
     "AgentRunCompleted": "🤖⏹️",  # Agent run completed
     "AgentRanSuccessfully": "🤖✅",  # Agent succeeded
     "PipelineJudgeAgentEnd": "⚖️🔚",  # Judge agent completed
+    "MRQPipelineSuggested": "🧠💡",  # MRQ pipeline suggested
+    "PipelineStageFailed": "🖇️⚠️❌💢",  # Pipeline stage failed
+    "PipelineScoreSummary": "🖇️📊🧾",  # Pipeline score summary
+    "PipelineError": "🖇️ OK so I have to do a force rescue and really annoying",  # Pipeline error
 }
 
 # =====================
 # SCORING & EVALUATION
 # =====================
 SCORING = {
+    "LLMJudgeResults": "📝⚖️",  # LLM judge results
     "DocumentScoresAlreadyExist": "📄✅",  # Document scores already exist
     "LLMJudgeScorerDimension": "📝📊",  # LLM judge scoring dimension
     "DocumentScored": "📊✅",  # Document scored
@@ -129,6 +164,10 @@ SCORING = {
     "DocumentModelSaved": "📄💾",  # Document model saved
     "ModelSaved": "💾✅",  # Model saved
     "EncoderSaved": "📄💾",  # Encoder saved
+    "MRQInferenceCompleted": "📊✅",  # MRQ inference completed
+    "SVMScoringFinished": "📊🏁",  # SVM scoring finished
+    "SVMScoringStarted": "📊▶️",  # SVM scoring started
+    "SVMScoreComputed": "📊✅",  # SVM score computed
 }
 
 # =====================
@@ -154,6 +193,7 @@ REASONING = {
 # TRAINING & MODEL OPS
 # =====================
 TRAINING = {
+    "MRQTrainerEpoch": "🏋️📊",  # MRQ training epoch
     "MRQTrainerStart": "🚀🧠",  # MRQ training started
     "MRQTrainerTrainingComplete": "🎓🧠",  # MRQ training completed
     "MRQModelInitializing": "🧠⚙️",  # MRQ model initializing
@@ -169,6 +209,10 @@ TRAINING = {
     "DocumentTrainingProgress": "📈🔄",  # Training progress
     "DocumentMRQTrainDimension": "🧩📊",  # Dimension training
     "DocumentPairBuilderProgress": "📊📑",  # Pair building progress
+    "SVMInferenceInitialized": "📊🤖",  # SVM inference agent initialized
+    "LoadingSVMModel": "📥📊",  # Loading SVM model
+    "SVMInferenceCompleted": "📊✅",  # SVM inference completed
+    "EBTBufferCreated": "🧪📦",  # EBT buffer created
 }
 
 PROMPTS = {
@@ -225,7 +269,6 @@ DEBUGGING = {
     "StageContext": "🔧📋",  # Stage context
     "TrimmingSection": "✂️",  # Section trimming
     "ContextAfterStage": "🗃️➡️",  # Post-stage context
-    "PipelineScoreSummary": "📊🧾",  # Pipeline score summary
     "ClassificationStarted": "🏷️▶️",  # Classification started
     "ClassificationCompleted": "🏷️✅",  # Classification completed
 }
@@ -234,7 +277,6 @@ DEBUGGING = {
 # ERROR & WARNING STATES
 # ======================
 ERROR_STATES = {
-    "PipelineError": "💀",  # Pipeline error
     "DocumentLoadFailed": "⚠️📄",  # Document load failed
     "LiteratureQueryFailed": "❌📚",  # Literature query failed
     "HypothesisStoreFailed": "❌💾",  # Hypothesis store failed
@@ -248,6 +290,7 @@ ERROR_STATES = {
     "DocumentMRQTunerMissing": "❌🔧",  # MRQ tuner missing
     "TunedPromptGenerationFailed": "❌🔄📝",  # Tuned prompt failed
     "InvalidRuleMutation": "❌🧬",  # Invalid rule mutation
+    "DocumentFilterSkipped": "⏭️📄",  # Document filter skipped
 }
 
 # =============
@@ -263,8 +306,17 @@ SPECIAL = {
     "LLMCacheHit": "💾⚡",  # LLM cache hit
 }
 
+MODELS = {
+    "SVMModelSaved": "💾📊",  # SVM model saved
+    "SVMModelLoaded": "📥📊",  # SVM model load
+    "SVMModelTrainingStarted": "🏋️📊",
+    "SVMTrainingStarted": "🏋️📊"
+
+}
+
 # Combine all categories into a single dictionary
 EVENT_ICONS = {
+    **AGENT_EVENTS,
     **SYSTEM_INIT,
     **KNOWLEDGE_OPS,
     **PIPELINE_FLOW,
@@ -277,4 +329,5 @@ EVENT_ICONS = {
     **ERROR_STATES,
     **SPECIAL,
     **PROMPTS,
+    **MODELS,
 }

@@ -1,5 +1,7 @@
 from typing import List
+
 from stephanie.memcubes.belief import Belief
+
 
 class BeliefCartridge:
     def __init__(self, beliefs: list[Belief]):

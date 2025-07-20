@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from stephanie.models.belief import BeliefORM
 from stephanie.models.cartridge import CartridgeORM
 from stephanie.models.goal import GoalORM
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.svm.svm_scorer import SVMScorer
 from stephanie.utils.embedding import EmbeddingManager
 from stephanie.utils.summarizer import summarize_text
 

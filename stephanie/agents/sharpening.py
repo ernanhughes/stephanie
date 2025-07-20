@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from stephanie.agents import BaseAgent
+from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE
 from stephanie.evaluator import MRQSelfEvaluator
 from stephanie.models.sharpening_result import SharpeningResultORM

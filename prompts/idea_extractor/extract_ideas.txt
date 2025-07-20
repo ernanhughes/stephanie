@@ -1,0 +1,42 @@
+You are an expert at extracting *learnable ideas* from research papers.
+
+Given the following method and results sections from a paper:
+
+<method>
+{{method_section}}
+</method>
+
+<results>
+{{results_section}}
+</results>
+
+Please extract all **actionable, learnable ideas** you find.
+
+A "learnable idea" is a principle, mechanism, or structure that can be applied elsewhere — even without code or full context.
+
+For each idea, provide:
+- Title: A short name summarizing the idea
+- Description: Full explanation of the idea
+- Type: One of [loss_term, scoring_rule, optimizer, representation, interaction_loop, belief_tree]
+- Abstract: Short summary (one sentence)
+- Integration hint: How it could be applied to other systems
+- Dimension tags: e.g., stability, convergence_speed, generalization, consistency
+
+Format your answer as a numbered list.
+
+Example:
+1.
+Title: Consistency Penalty in Q-Learning
+Description: When Q-values are inconsistent across similar states or trajectories, apply a penalty to encourage smoother value estimation.
+Type: loss_term
+Abstract: Penalizes inconsistent Q-value estimates to stabilize learning.
+Integration hint: Attach to Q-learning update in MRQTrainer or EBTRefinementTrainer
+Dimension tags: stability, convergence_speed
+
+2.
+Title: Belief Tree Expansion Strategy
+Description: Expands belief trees by prioritizing high-uncertainty branches first.
+Type: belief_tree
+Abstract: Prioritizes uncertain branches in tree search to reduce exploration uncertainty.
+Integration hint: Replace standard MCTS expansion policy with uncertainty-guided one
+Dimension tags: planning, exploration, efficiency

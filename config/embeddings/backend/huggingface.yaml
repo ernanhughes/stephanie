@@ -1,0 +1,10 @@
+# config/embeddings/backend/huggingface.yaml
+_target_: stephanie.memory.HuggingFaceEmbeddingStore
+name: "hf_embeddings"
+table: "hf_embeddings"
+type: "huggingface"
+model_name: "BAAI/bge-large-en"
+dim: 1024
+hdim: 512
+cache_size: 10000
+

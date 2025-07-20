@@ -1,5 +1,6 @@
 from sqlalchemy import text
 
+
 class MemCubeTrainerMixin:
     """
     Mixin that allows agents to invoke SRFT-style training using MemCube-managed refinement examples.

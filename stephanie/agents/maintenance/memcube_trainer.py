@@ -1,8 +1,9 @@
 # stephanie/agents/maintenance/memcube_trainer_agent.py
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.agents.maintenance.srft_refinement_trainer import \
+    SRFTRefinementTrainer
 from stephanie.agents.mixins.memcube_trainer_mixin import MemCubeTrainerMixin
-from stephanie.agents.maintenance.srft_refinement_trainer import SRFTRefinementTrainer
 from stephanie.scoring.model.ebt_model import EBTModel
 
 

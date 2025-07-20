@@ -1,7 +1,7 @@
 # stephanie/agents/recovery_parser.py
 import json
 
-from stephanie.agents import BaseAgent
+from stephanie.agents.base_agent import BaseAgent
 
 
 class RecoveryParserAgent(BaseAgent):

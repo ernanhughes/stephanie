@@ -1,0 +1,11 @@
+name: mrq_score
+description: "Scores document using MR.Q model"
+input_format:
+  document: "text"
+  goal: "text"
+output_format:
+  score: "float"
+  rationale: "text"
+capability: "scoring"
+agent_class: stephanie.agents.scoring.mrq.MRQScorerAgent
+model_dir: models/mrq/document/quality 

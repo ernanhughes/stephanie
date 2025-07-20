@@ -4,11 +4,10 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_engine import ScoringEngine
 from stephanie.scoring.scoring_manager import ScoringManager
-from stephanie.scoring.scorable import Scorable
-
 
 DEFAULT_DIMENSIONS = [
     "alignment",
@@ -29,6 +28,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
         super().__init__(cfg, memory, logger)
         self.model_type = "llm"
         self.evaluator = "llm"
+        self.force_rescore = cfg.get("force_rescore", False)
 
         self.dimensions = cfg.get("dimensions", DEFAULT_DIMENSIONS)
         self.scoring_engine = ScoringEngine(
@@ -46,7 +46,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
             doc_id = document["id"]
 
             saved_scores = self.get_scores_by_document_id(doc_id)
-            if saved_scores:
+            if saved_scores and not self.force_rescore:
                 self.logger.log(
                     "DocumentScoresAlreadyExist",
                     {"document_id": doc_id, "num_scores": len(saved_scores)},
@@ -57,7 +57,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
             result = self.scoring_engine.score_item(
                 scorable, context, "document"
             )
-            results.append(result)
+            results.append(result.to_dict())
             self.logger.log(
                 "DocumentScored",
                 {

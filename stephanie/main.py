@@ -12,7 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from stephanie.logs import JSONLogger
 from stephanie.memory import MemoryTool
 from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.supervisor import Supervisor
+from stephanie.supervisor import Supervisor, container
 from stephanie.utils import generate_run_id, get_log_file_path
 
 
@@ -25,8 +25,14 @@ def run(cfg: DictConfig):
         run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
         log_path = get_log_file_path(run_id, cfg)
         logger = JSONLogger(log_path=log_path)
-        memory = MemoryTool(cfg=cfg.db, logger=logger)
+        memory = MemoryTool(cfg=cfg, logger=logger)
 
+        # Configure and wire the container
+        container.config.from_yaml("config/app_container.yaml")
+        container.init_resources()
+        container.wire(modules=[__name__, 'stephanie.supervisor'])  # ✅ Pass module name
+
+        # Create supervisor
         supervisor = Supervisor(cfg=cfg, memory=memory, logger=logger)
 
         # ✅ Batch Mode: input_file provided

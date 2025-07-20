@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from stephanie.logs import JSONLogger
+from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
 from stephanie.memory.cartridge_triple_store import CartridgeTripleStore
@@ -18,14 +19,19 @@ from stephanie.memory.document_section_store import DocumentSectionStore
 from stephanie.memory.document_store import DocumentStore
 from stephanie.memory.embedding_store import EmbeddingStore
 from stephanie.memory.evaluation_store import EvaluationStore
+from stephanie.memory.goal_dimensions_store import GoalDimensionsStore
 from stephanie.memory.goal_store import GoalStore
+from stephanie.memory.hf_embedding_store import HuggingFaceEmbeddingStore
+from stephanie.memory.hnet_embedding_store import HNetEmbeddingStore
 from stephanie.memory.hypothesis_store import HypothesisStore
 from stephanie.memory.idea_store import IdeaStore
 from stephanie.memory.lookahead_store import LookaheadStore
+from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
 from stephanie.memory.mrq_store import MRQStore
 from stephanie.memory.pattern_store import PatternStatStore
 from stephanie.memory.pipeline_run_store import PipelineRunStore
+from stephanie.memory.pipeline_stage_store import PipelineStageStore
 from stephanie.memory.prompt_program_store import PromptProgramStore
 from stephanie.memory.prompt_store import PromptStore
 from stephanie.memory.reflection_delta_store import ReflectionDeltaStore
@@ -36,11 +42,10 @@ from stephanie.memory.search_result_store import SearchResultStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
-from stephanie.memory.memcube_store import MemcubeStore
 
 
 class MemoryTool:
-    def __init__(self, cfg, logger: Optional[JSONLogger] = None):
+    def __init__(self, cfg: dict, logger: Optional[JSONLogger] = None):
         self.cfg = cfg
         self.logger = logger
         self._stores = {}  # name -> Store instance
@@ -49,22 +54,40 @@ class MemoryTool:
         self.session_maker = sessionmaker(bind=engine)
         self.session: Session = self.session_maker()
 
+        db_cfg = self.cfg.get("db", {})
         # Create connection
         self.conn = psycopg2.connect(
-            dbname=self.cfg.get("db").get("name"),
-            user=self.cfg.get("db").get("user"),
-            password=self.cfg.get("db").get("password"),
-            host=self.cfg.get("db").get("host"),
-            port=self.cfg.get("db").get("port"),
+            dbname=db_cfg.get("name"),
+            user=db_cfg.get("user"),
+            password=db_cfg.get("password"),
+            host=db_cfg.get("host"),
+            port=db_cfg.get("port"),
         )
         self.conn.autocommit = True
         register_vector(self.conn)  # Register pgvector extension
 
+        embedding_cfg = self.cfg.get("embeddings", {})
+        # Register stores
+        mxbai = EmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        self.register_store(mxbai)
+        hnet = HNetEmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        self.register_store(hnet)
+        hf = HuggingFaceEmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        self.register_store(hf)
+
+        # Choose embedding backend based on config
+        selected_backend = embedding_cfg.get("backend", "mxbai")
+        if selected_backend == "hnet":
+            self.embedding = hnet
+        elif selected_backend == "huggingface":
+            self.embedding = hf
+        else:
+            self.embedding = mxbai
+
+
         # Register stores
         self.register_store(GoalStore(self.session, logger))
-        embedding_store = EmbeddingStore(self.cfg, self.conn, self.session, logger)
-        self.register_store(embedding_store)
-        self.register_store(HypothesisStore(self.session, logger, embedding_store))
+        self.register_store(HypothesisStore(self.session, logger, self.embedding))
         self.register_store(PromptStore(self.session, logger))
         self.register_store(EvaluationStore(self.session, logger))
         self.register_store(PipelineRunStore(self.session, logger))
@@ -90,7 +113,10 @@ class MemoryTool:
         self.register_store(CartridgeStore(self.session, logger))
         self.register_store(CartridgeTripleStore(self.session, logger))
         self.register_store(MemcubeStore(self.session, logger))
-
+        self.register_store(BeliefCartridgeStore(self.session, logger))
+        self.register_store(GoalDimensionsStore(self.session, logger))
+        self.register_store(PipelineStageStore(self.session, logger))
+        
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

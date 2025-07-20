@@ -1,0 +1,29 @@
+force_llm_inference:
+  name: force_llm_inference
+  description: "Infer LLM scores for documents"
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+  model_type: "llm"
+  evaluator: "llm"
+  force_rescore: true
+  target_type: "document"
+  dimensions: 
+    - "alignment"
+    - "clarity"
+    - "implementability"
+    - "novelty"
+    - "relevance"
+ 
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  input_keys: ["goal", "documents"]
+  input_key: documents
+  output_key: document_llm_inference
+  prompt_mode: file
+  prompt_file: document_llm_inference.txt

@@ -1,5 +1,6 @@
 # stephanie/models/__init__.py
 from .base import Base
+from .belief_cartridge import BeliefCartridgeORM
 from .cartridge_domain import CartridgeDomainORM
 from .comparison_preference import ComparisonPreferenceORM
 from .context_state import ContextStateORM
@@ -9,6 +10,7 @@ from .embedding import EmbeddingORM
 from .evaluation import EvaluationORM
 from .evaluation_rule_link import EvaluationRuleLinkORM
 from .goal import GoalORM
+from .goal_dimension import GoalDimensionORM
 from .hypothesis import HypothesisORM
 from .idea import IdeaORM
 from .lookahead import LookaheadORM

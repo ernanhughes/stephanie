@@ -98,6 +98,12 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
         self.lr = cfg.get("learning_rate", 2e-5)
         self.margin = cfg.get("margin", 1.0)
         self.save_interval = cfg.get("save_interval", 1)
+        self.model_path = cfg.get("model_path", "models")
+        self.model_type = "ebt"
+        self.target_type = "document"
+        self.model_version = cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
+        
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # Initialize regression tuners
@@ -256,7 +262,8 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
             self.model_type,
             self.target_type,
             dimension,
-            self.model_version
+            self.model_version,
+            self.embedding_type
         )
         os.makedirs(model_path, exist_ok=True)
         

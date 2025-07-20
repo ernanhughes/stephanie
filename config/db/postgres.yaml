@@ -1,16 +1,8 @@
 # config/db/postgres.yaml
-db:
-  database: co
-  name: co  # it keeps coming back to this
-  user: co
-  password: co
-  host: localhost
-  port: 5432
+database: co
+name: co  # it keeps coming back to this
+user: co
+password: co
+host: localhost
+port: 5432
 
-embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
-
-mrq:
-  log_evaluations: true

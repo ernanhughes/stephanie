@@ -57,13 +57,13 @@ class EBTTrainerAgent(BaseAgent):
         self.model_type = cfg.get("model_type", "ebt")
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
+        self.dimensions = cfg.get("dimensions", [])
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.encoder = TextEncoder().to(
-            torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        )
-        self.value_predictor = ValuePredictor().to(
-            torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        )
+
+        self.encoder = TextEncoder().to(self.device)
+        self.value_predictor = ValuePredictor().to(self.device)
         self.evolution_manager = ModelEvolutionManager(
             self.cfg, self.memory, self.logger
         )
@@ -76,78 +76,86 @@ class EBTTrainerAgent(BaseAgent):
 
         # Build contrastive training pairs grouped by scoring dimension
         builder = PreferencePairBuilder(db=self.memory.session, logger=self.logger)
-        training_pairs = builder.get_training_pairs_by_dimension(goal=goal_text)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Train one model per scoring dimension (e.g. clarity, novelty, etc.)
-        for dim, pairs in training_pairs.items():
-            if not pairs:
-                continue
-
+        for dim in self.dimensions:
+            training_pairs = builder.get_training_pairs_by_dimension(goal=goal_text, dim=[dim])
             self.logger.log(
-                "DocumentEBTTrainingStart", {"dimension": dim, "num_pairs": len(pairs)}
+                "DocumentEBTTrainingStart", {"dimension": dim, "num_pairs": len(training_pairs)}
             )
+            for dim, pairs in training_pairs.items():
+                if not pairs:
+                    self.logger.log(
+                        "DocumentEBTTrainingSkipped", {"dimension": dim, "reason": "No pairs"}
+                    )
+                    continue
 
-            # Construct dataset and dataloader; normalize scores between 50–100
-            ds = EBTDataset(pairs, min_score=1, max_score=100)
-            dl = DataLoader(
-                ds,
-                batch_size=8,
-                shuffle=True,
-                collate_fn=lambda b: collate_ebt_batch(
-                    b, self.memory.embedding, device
-                ),
-            )
-
-            # Create model for this dimension
-            model = EBTModel().to(device)
-            optimizer = torch.optim.Adam(model.parameters(), lr=2e-5)
-            loss_fn = nn.MSELoss()
-
-            # Training loop for fixed number of epochs
-            for epoch in range(10):
-                model.train()
-                total_loss = 0.0
-                for ctx_enc, cand_enc, labels in dl:
-                    preds = model(ctx_enc, cand_enc)  # Predict score given (goal, doc)
-                    loss = loss_fn(preds, labels)  # Compare against normalized label
-
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-
-                    total_loss += loss.item()
-
-                avg_loss = total_loss / len(dl)
                 self.logger.log(
-                    "DocumentEBTEpoch",
-                    {
-                        "dimension": dim,
-                        "epoch": epoch + 1,
-                        "avg_loss": round(avg_loss, 5),
-                    },
+                    "DocumentEBTTrainingStart", {"dimension": dim, "num_pairs": len(pairs)}
                 )
 
-            model_path = get_model_path(
-                self.model_path,
-                self.model_type,
-                self.target_type,
-                dim,
-                self.model_version,
-            )
-            os.makedirs(os.path.dirname(model_path), exist_ok=True)
-            predictor_path = f"{model_path}{dim}.pt"
-            print(model.state_dict().keys())
-            torch.save(model.state_dict(), predictor_path)
-            self.logger.log(
-                "DocumentEBTModelSaved", {"dimension": dim, "path": model_path}
-            )
+                # Construct dataset and dataloader; normalize scores between 50–100
+                ds = EBTDataset(pairs, min_score=1, max_score=100)
+                dl = DataLoader(
+                    ds,
+                    batch_size=8,
+                    shuffle=True,
+                    collate_fn=lambda b: collate_ebt_batch(
+                        b, self.memory.embedding, device
+                    ),
+                )
 
-            # Save score normalization metadata for this dimension
-            meta_path = f"{model_path}{dim}.meta.json"
-            normalization = ds.get_normalization()
-            save_json(normalization, meta_path)
+                # Create model for this dimension
+                model = EBTModel().to(device)
+                optimizer = torch.optim.Adam(model.parameters(), lr=2e-5)
+                loss_fn = nn.MSELoss()
+
+                # Training loop for fixed number of epochs
+                for epoch in range(10):
+                    model.train()
+                    total_loss = 0.0
+                    for ctx_enc, cand_enc, labels in dl:
+                        preds = model(ctx_enc, cand_enc)  # Predict score given (goal, doc)
+                        loss = loss_fn(preds, labels)  # Compare against normalized label
+
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+
+                        total_loss += loss.item()
+
+                    avg_loss = total_loss / len(dl)
+                    self.logger.log(
+                        "DocumentEBTEpoch",
+                        {
+                            "dimension": dim,
+                            "epoch": epoch + 1,
+                            "avg_loss": round(avg_loss, 5),
+                        },
+                    )
+
+                model_path = get_model_path(
+                    self.model_path,
+                    self.model_type,
+                    self.target_type,
+                    dim,
+                    self.model_version,
+                    embedding_type=self.embedding_type
+                )
+                os.makedirs(os.path.dirname(model_path), exist_ok=True)
+                predictor_path = f"{model_path}{dim}.pt"
+                print(model.state_dict().keys())
+                torch.save(model.state_dict(), predictor_path)
+                self.logger.log(
+                    "DocumentEBTModelSaved", {"dimension": dim, "path": model_path}
+                )
+
+                # Save score normalization metadata for this dimension
+                meta_path = f"{model_path}{dim}.meta.json"
+                normalization = ds.get_normalization()
+                save_json(normalization, meta_path)
 
             # self._save_and_promote_model(model, self.model_type, self.target_type, dim)
 

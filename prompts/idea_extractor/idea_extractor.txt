@@ -1,0 +1,22 @@
+You are an expert at extracting *learnable ideas* from research papers.
+
+Given the following method and results sections from a paper:
+
+<method>
+{{method_section}}
+</method>
+
+<results>
+{{results_section}}
+</results>
+
+Please extract all actionable, learnable ideas you can find.
+
+For each idea, provide:
+- Title
+- Description
+- Type (e.g., loss_term, optimizer, representation, interaction_loop, belief_tree)
+- Abstract (short summary)
+- Integration hint (how it could be applied elsewhere)
+
+Format your answer as a numbered list.

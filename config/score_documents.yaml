@@ -1,0 +1,51 @@
+defaults:
+  - _self_
+  - db: postgres
+  - agents/knowledge_db_id_loader
+  - agents/force_llm_inference
+  - logging/json_logger
+
+embeddings:
+  backend: mxbai
+
+goal:
+  goal_text: I want to build an AI that can read, refactor, and iteratively improve its own source code to become more efficient, reliable, and aligned with its evolving objectives.
+  goal_type: "tactical"
+  goal_category: "meta_learning"
+  focus_area: "self_improvement"
+  strategy: "stepwise_decomposition"
+  difficulty: "medium-high"
+  expected_formats:
+    - "symbolic_prompt_plan"
+    - "stepwise_reasoning_trace"
+    - "annotated_score_vector"
+
+post_judgment:
+  name: pipeline_judge
+  enabled: false
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: false
+  path: ${hydra:runtime.cwd}/reports
+
+pipeline:
+  name: doc_ids_scoring
+  tag: "doc_ids_scoring"
+  description: "Scores documents by ids"
+  stages:
+
+    - name: knowledge_db_id_loader
+      description: "Lods some documents by id into the context"
+      cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+      enabled: true
+      iterations: 1
+
+    - name: force_llm_inference
+      description: "Infer LLM scores for documents"
+      cls: stephanie.agents.inference.llm_inference.LLMInferenceAgent
+      enabled: true
+      iterations: 1

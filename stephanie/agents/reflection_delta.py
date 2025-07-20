@@ -1,6 +1,4 @@
 # stephanie/agents/reflection_delta.py
-from dataclasses import asdict
-from datetime import datetime
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.reflection_delta import compute_pipeline_delta
@@ -39,8 +37,8 @@ class ReflectionDeltaAgent(BaseAgent):
                     "ReflectionDeltaLogged",
                     {
                         "goal_id": goal.id,
-                        "run_id_a": run_a.run_id,
-                        "run_id_b": run_b.run_id,
+                        "pipeline_run_id_a": run_a.pipeline_run_id,
+                        "pipeline_run_id_b": run_b.pipeline_run_id,
                         "score_delta": delta.get("score_delta"),
                         "causal": delta.get("causal_improvement"),
                     },

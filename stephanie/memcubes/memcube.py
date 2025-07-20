@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
+
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.file_utils import hash_text
 
@@ -29,7 +30,7 @@ class MemCube:
         model: str = "llama3",
         access_policy: dict = None,
         priority: int = 5,
-        orriginal_score: float = None,
+        original_score: float = None,
         refined_score: float = None,
         refined_content: str = None,    
         sensitivity: str = "public",
@@ -47,7 +48,7 @@ class MemCube:
         self.model = model
         self.priority = priority
         self.sensitivity = sensitivity
-        self.original_score = orriginal_score
+        self.original_score = original_score
         self.refined_score = refined_score  
         self.refined_content = refined_content  
         self.ttl = ttl

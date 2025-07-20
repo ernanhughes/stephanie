@@ -39,6 +39,7 @@ class BaseScore(ABC):
                 target_id=hypothesis.get("id"),
                 agent_name=self.agent_name,
                 model_name=self.model_name,
+                embedding_type=self.memory.embedding.type,
                 evaluator_name=self.evaluator_name,
                 scores=dimensions,
                 pipeline_run_id=context.get("pipeline_run_id"),

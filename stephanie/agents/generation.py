@@ -3,7 +3,7 @@
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import (FEEDBACK, GOAL, GOAL_TEXT, HYPOTHESES,
                                  LITERATURE)
-from stephanie.parsers import extract_hypotheses
+from stephanie.utils.parser_utils import extract_hypotheses
 
 
 class GenerationAgent(BaseAgent):

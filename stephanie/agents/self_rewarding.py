@@ -98,6 +98,7 @@ class SelfRewardingAgent(BaseAgent):
             hypothesis_id=hypothesis.get("id"),
             agent_name=self.name,
             model_name=self.model_name,
+            embedding_type=self.memory.embedding.type,
             evaluator_name=self.name,
             pipeline_run_id=context.get(PIPELINE_RUN_ID),
         )

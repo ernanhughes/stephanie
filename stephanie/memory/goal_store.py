@@ -1,5 +1,5 @@
 # stephanie/memory/goal_store.py
-# stores/goal_store.py
+
 from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError

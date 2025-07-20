@@ -68,15 +68,15 @@ pipeline:
   description: "NOVELSEEK pipeline for exploring the question: 'Will AI ever be able to reprogram itself?'"
   stages:
      - name: survey
-       cls: stephanie.agents.survey.SurveyAgent
+       cls: stephanie.agents.knowledge.survey.SurveyAgent
        enabled: true
        iterations: 1
      - name: search_orchestrator
-       cls: stephanie.agents.search_orchestrator.SearchOrchestratorAgent
+       cls: stephanie.agents.knowledge.search_orchestrator.SearchOrchestratorAgent
        enabled: false
        iterations: 1
      - name: knowledge_loader
-       cls: stephanie.agents.knowledge_loader.KnowledgeLoaderAgent
+       cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
        enabled: true
        iterations: 1
      - name: idea_innovation

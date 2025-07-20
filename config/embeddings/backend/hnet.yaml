@@ -1,0 +1,10 @@
+# config/embeddings/backend/hnet.yaml
+_target_: stephanie.memory.HNetEmbeddingStore
+name: "hnet_embeddings"
+type: "hnet"
+table: "hnet_embeddings"
+underlying_model_name: "ollama/mxbai-embed-large"
+dim: 1024
+hdim: 512
+cache_size: 10000
+

@@ -120,7 +120,7 @@ class DocumentLoaderAgent(BaseAgent):
                 if not file_name:
                     file_name = self.sanitize_filename(title) or "document"
                 # Save to temporary file
-                pdf_path = f"{self.download_directory}/{file_name}.pdf"
+                pdf_path = f"{self.download_directory}/{file_name}"
                 with open(pdf_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
@@ -136,7 +136,7 @@ class DocumentLoaderAgent(BaseAgent):
                 text = PDFConverter.pdf_to_text(pdf_path)
                 os.remove(pdf_path)
 
-                pid = result.get("pid") or result.get("arxiv_id")
+                pid = result.get("pid") or result.get("arxiv_id") or result.get("title")
                 if self.summarize_documents:
                     meta_data = fetch_arxiv_metadata(pid)
                     if meta_data:

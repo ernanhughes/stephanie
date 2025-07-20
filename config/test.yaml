@@ -4,6 +4,7 @@ defaults:
   - db: postgres
   - agents/generation
   - agents/review
+  - agents/protocol
   - agents/unified_mrq
   - logging/json_logger
 
@@ -66,9 +67,13 @@ pipeline:
 #      cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
 #      enabled: true
 #      iterations: 1
+      - name: protocol
+        cls: stephanie.agents.protocol.ProtocolAgent
+        enabled: true
+        iterations: 1
       - name: generation
         cls: stephanie.agents.generation.GenerationAgent
-        enabled: true
+        enabled: false
         iterations: 1
       # - name: review
       #   cls: stephanie.agents.review.ReviewAgent

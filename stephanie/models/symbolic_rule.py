@@ -51,7 +51,7 @@ class SymbolicRuleORM(Base):
         "PipelineRunORM", back_populates="symbolic_rules", lazy="joined"
     )
     prompt = relationship("PromptORM", back_populates="symbolic_rules", lazy="joined")
-    scores = relationship("EvaluationORM", back_populates="symbolic_rule")
+    evaluations = relationship("EvaluationORM", back_populates="symbolic_rule")
     applications = relationship(
         "RuleApplicationORM", back_populates="rule", cascade="all, delete-orphan"
     )

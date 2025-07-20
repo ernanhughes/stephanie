@@ -2,6 +2,7 @@ from stephanie.memcubes.belief import Belief
 from stephanie.memcubes.memcube import MemCube, MemCubeFactory
 from stephanie.memcubes.scorable import Scorable, TargetType
 
+
 class WorldModel:
     def __init__(self, beliefs: list):
         self.beliefs = beliefs

@@ -1,7 +1,8 @@
 # stephanie/scoring/ebt/srft_refinement_dataset.py
 
+from typing import Dict, List
+
 from torch.utils.data import Dataset
-from typing import List, Dict
 
 
 class SRFTRefinementDataset(Dataset):

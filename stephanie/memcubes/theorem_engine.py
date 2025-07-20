@@ -1,5 +1,5 @@
-from stephanie.memcubes.theorem_validator import TheoremValidator
 from stephanie.memcubes.theorem import Theorem
+from stephanie.memcubes.theorem_validator import TheoremValidator
 
 
 class TheoremEngine:

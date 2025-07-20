@@ -1,5 +1,7 @@
+from typing import Dict, List
+
 import networkx as nx
-from typing import List, Dict
+
 
 class BelieffGraph:
     def __init__(self, ebt):

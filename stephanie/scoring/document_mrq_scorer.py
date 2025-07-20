@@ -21,6 +21,8 @@ class DocumentMRQScorer:
         model_prefix=None,
     ):
         self.memory = memory
+        self.dim = memory.embedding.dim
+        self.hdim = memory.embedding.hdim
         self.logger = logger
         self.device = device
         self.dimensions = dimensions or []
@@ -39,8 +41,8 @@ class DocumentMRQScorer:
 
     def _initialize_dimensions(self):
         for dim in self.dimensions:
-            encoder = TextEncoder().to(self.device)
-            predictor = ValuePredictor(512, 1024).to(self.device)
+            encoder = TextEncoder(dim=self.dim, hdim=self.hdim).to(self.device)
+            predictor = ValuePredictor(self.dim, self.hdim).to(self.device)
 
             # Load model weights
             model_path = os.path.join(self.model_dir, f"{self.model_prefix}{dim}.pt")

@@ -1,0 +1,111 @@
+app_container:
+  # Protocol Configuration
+  default_protocol: "direct_answer"
+  protocol_selector:
+    direct_answer:
+      enabled: true
+      description: "Answers directly using LLM"
+      input_format:
+        goal: "string"
+      output_format:
+        answer: "string"
+      failure_modes: ["incomplete", "hallucinated"]
+      tags: ["qa", "llm"]
+      capability: "question_answering"
+      model_name: "gpt-4o"
+
+    code_exec:
+      enabled: true
+      description: "Runs Python code snippets"
+      input_format:
+        code: "string"
+      output_format:
+        result: "any"
+      failure_modes: ["syntax_error", "runtime_error"]
+      tags: ["code", "execution"]
+      capability: "code_execution"
+      language: "python"
+
+    g3ps_search:
+      enabled: true
+      description: "Searches over DSL programs guided by examples"
+      input_format:
+        task_description: "string"
+        examples: "list"
+      output_format:
+        program: "string"
+        trace: "list"
+        score: "float"
+      failure_modes: ["no_solution_found", "dsl_parse_error"]
+      tags: ["reasoning", "program_synthesis"]
+      capability: "symbolic_search"
+      dsl: "python"
+      beam_width: 5
+      max_steps: 100
+
+  # Model Configuration
+  model:
+    name: "gpt-4o"
+    temperature: 0.2
+    max_tokens: 512
+    api_key: "your_api_key_here"  # Or read from env
+    api_base: "https://api.openai.com/v1 "
+
+  # Memory Tool Configuration
+  memory:
+    db_url: "sqlite:///./stephanie.db"
+    embedding_model: "all-MiniLM-L6-v2"
+    enable_caching: true
+
+  # Logger Configuration
+  logger:
+    level: "INFO"
+    log_to_file: true
+    log_dir: "./logs"
+
+  # Agent Configuration
+  agents:
+    g3ps_solver:
+      enabled: true
+      protocol: "g3ps_search"
+      cfg:
+        temperature: 0.4
+        strategy: "beam_search"
+        beam_width: 5
+
+    mrq_strategy:
+      enabled: true
+      model_name: "gpt-4o"
+      scoring_method: "MRQ"
+      enable_history: true
+
+    adaptive_reasoner:
+      enabled: true
+      mode: "adaptive"
+      format_list:
+        - "direct"
+        - "short_cot"
+        - "long_cot"
+        - "code"
+      format_priority_by_difficulty:
+        easy:
+          - "direct"
+          - "short_cot"
+          - "code"
+          - "long_cot"
+        medium:
+          - "short_cot"
+          - "code"
+          - "long_cot"
+          - "direct"
+        hard:
+          - "long_cot"
+          - "code"
+          - "short_cot"
+          - "direct"
+      evaluator: "arm"
+      evaluator_prompt_file: "evaluation.txt"
+      evaluator_model:
+        name: "ollama/phi3"
+        api_base: "http://localhost:11434"
+        api_key: null

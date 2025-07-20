@@ -5,7 +5,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import EVOLVED, GOAL, HYPOTHESES, RANKING
-from stephanie.parsers import extract_hypotheses
+from stephanie.utils.parser_utils import extract_hypotheses
 
 
 class IdeaEvolutionAgent(BaseAgent):

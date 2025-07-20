@@ -1,8 +1,8 @@
 # stephanie/agents/symbolic_optimizer.py
 from collections import defaultdict
 
-from stephanie.agents import BaseAgent
-from stephanie.constants import GOAL, PIPELINE
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.constants import GOAL
 from stephanie.memory.symbolic_rule_store import SymbolicRuleORM
 
 

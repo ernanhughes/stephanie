@@ -1,5 +1,5 @@
 # stephanie/models/context_state.py
-# models/context_state.py
+
 from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,

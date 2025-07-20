@@ -57,8 +57,7 @@ class ScoringMixin:
             ScoreBundle
         """
         if scorer:
-            dimensions = self.get_dimensions(metrics)
-            bundle = scorer.score(context.get("goal"), scorable, dimensions)
+            bundle = scorer.score(context.get("goal"), scorable, metrics)
         else:
             # Default to full ScoringManager logic (LLM-driven)
             scoring_manager = self.get_scorer(metrics)

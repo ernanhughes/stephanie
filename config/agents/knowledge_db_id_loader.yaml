@@ -1,0 +1,36 @@
+knowledge_db_id_loader:
+  name: knowledge_db_id_loader
+  description: "Will load documents by their ids into the context can be used to score a set of documents"  
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+  doc_ids_scoring: true
+  doc_ids: 
+    - 4
+    - 5
+    - 10
+    - 14
+    - 18
+    - 27
+    - 30
+    - 36
+    - 37
+    - 157
+
+  top_k: 100
+  include_full_text: true
+  search_method: document
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  input_keys: ["goal", "hypotheses"]
+  input_key: goal
+  output_key: documents
+
+  prompt_mode: file
+  prompt_file: knowledge_db_loader.txt

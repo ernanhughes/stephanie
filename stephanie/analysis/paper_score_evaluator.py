@@ -10,8 +10,8 @@ from stephanie.scoring.scoring_manager import ScoringManager
 class PaperScoreEvaluator(ScoringManager):
     def evaluate(
         self,
+        context: dict,
         document: dict,
-        context: dict = None,
         llm_fn=None,
         text_to_evaluate: str = "content",
     ) -> dict:
@@ -30,7 +30,7 @@ class PaperScoreEvaluator(ScoringManager):
                 text=chunk,
                 target_type=TargetType.CHUNK,
             )
-            result = super().evaluate(scorable, chunk_context, llm_fn)
+            result = super().evaluate(chunk_context, scorable)
 
             scores_accumulator.append(result)
 
@@ -91,3 +91,19 @@ class PaperScoreEvaluator(ScoringManager):
             }
 
         return combined
+
+
+    async def run(self, context: dict) -> dict:
+        documents = context.get(self.input_key, [])
+        results = []
+        for document in documents:
+            self.logger.log("ScoringPaper", {"title": document.get("title")})
+            score_result = self.score_paper(document, context=context)
+            results.append(
+                {
+                    "title": document.get("title"),
+                    "scores": score_result,
+                }
+            )
+        context[self.output_key] = results
+        return context

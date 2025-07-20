@@ -26,7 +26,7 @@ class GoalORM(Base):
     prompts = relationship("PromptORM", back_populates="goal")
     hypotheses = relationship("HypothesisORM", back_populates="goal")
     pipeline_runs = relationship("PipelineRunORM", back_populates="goal")
-    scores = relationship("EvaluationORM", back_populates="goal")
+    evaluations = relationship("EvaluationORM", back_populates="goal")
     lookaheads = relationship("LookaheadORM", back_populates="goal")
     reflection_deltas = relationship("ReflectionDeltaORM", back_populates="goal")
     ideas = relationship("IdeaORM", back_populates="goal")
@@ -60,3 +60,5 @@ class GoalORM(Base):
             "source": self.source,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+    dimensions = relationship("GoalDimensionORM", back_populates="goal", cascade="all, delete-orphan")

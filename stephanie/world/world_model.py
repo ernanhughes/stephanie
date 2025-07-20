@@ -1,17 +1,19 @@
 # stephanie/worldmodel/world_model.py
-import os
 import json
-import torch
-import networkx as nx
+import os
 from datetime import datetime
-from typing import List, Dict, Optional
-from stephanie.scoring.scorable import Scorable
-from stephanie.memcubes.memcube import MemCube
-from stephanie.memcubes.belief import Belief
-from stephanie.memcubes.theorem import Theorem
-from stephanie.utils.file_utils import save_json, load_json
-from stephanie.utils.model_utils import get_model_path
+from typing import Dict, List, Optional
+
+import networkx as nx
+import torch
+
 from stephanie.agents.inference.ebt_inference import DocumentEBTInferenceAgent
+from stephanie.memcubes.belief import Belief
+from stephanie.memcubes.memcube import MemCube
+from stephanie.memcubes.theorem import Theorem
+from stephanie.scoring.scorable import Scorable
+from stephanie.utils.file_utils import load_json, save_json
+from stephanie.utils.model_utils import get_model_path
 
 
 class WorldModel:
@@ -31,6 +33,8 @@ class WorldModel:
         self.memory = []          # Short-term belief store
         self.ebt = ebt_scorer
         self.version = "v1"
+        self.embedding_type = "default"
+        
         self.created_at = datetime.utcnow()
         self.last_modified = self.created_at
         self.max_memory_size = 1000  # Max beliefs in short-term memory

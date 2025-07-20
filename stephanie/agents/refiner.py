@@ -1,7 +1,7 @@
 # stephanie/agents/refiner.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, HYPOTHESES, PIPELINE, PIPELINE_RUN_ID
-from stephanie.parsers import extract_hypotheses
+from stephanie.utils.parser_utils import extract_hypotheses
 
 
 class RefinerAgent(BaseAgent):

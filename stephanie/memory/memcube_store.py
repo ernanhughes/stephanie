@@ -3,8 +3,8 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from stephanie.memcubes.memcube import MemCube
 from stephanie.memcubes.memcube_factory import MemCubeFactory

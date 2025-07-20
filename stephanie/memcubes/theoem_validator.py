@@ -1,7 +1,8 @@
 
 from stephanie.agents.mixins.ebt_mixin import EBTMixin
-
 from stephanie.memcubes.theorem import Theorem
+
+
 class TheoremValidator:
     def __init__(self, ebt: EBTMixin):
         self.ebt = ebt

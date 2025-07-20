@@ -1,0 +1,10 @@
+# config/embeddings/backend/ollama.yaml
+_target_: stephanie.memory.EmbeddingStore
+name: "ollama"
+type: "ollama"
+table: "embeddings"
+model: "mxbai-embed-large"
+endpoint: "http://localhost:11434/api/embeddings"
+dim: 1024
+hdim: 512
+cache_size: 10000

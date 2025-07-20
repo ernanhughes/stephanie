@@ -1,0 +1,59 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - agents/compare
+  - logging/json_logger
+
+# The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
+# This is a placeholder and should be replaced with the actual goal.
+goal:
+  goal_text: "Will AI ever be able to reprogram itself?"
+  goal_type: research       # enum: math, science, etc.
+  focus_area: meta_learning
+
+dynamic:
+  name: lookahead
+  enabled: false
+  cls: stephanie.agents.lookahead.LookaheadAgent
+
+planner:
+  name: planner
+  enabled: false
+  cls: stephanie.agents.planner.PipelinePlannerAgent
+  dots_enabled: true
+  lookahead_enabled: true
+
+
+post_judgment:
+  name: pipeline_judge
+  enabled: false
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
+
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+
+embeddings:
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+pipeline:
+  name: default_pipeline
+  description: "Default hypothesis generation and refinement pipeline"
+  stages:
+     - name: compare
+       cls: stephanie.agents.compare.CompareAgent
+       enabled: true
+       iterations: 1
+     

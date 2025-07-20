@@ -18,11 +18,16 @@ class MRQTrainerAgent(BaseAgent):
         self.model_type = cfg.get("model_type", "mrq")
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
         self.dimensions = cfg.get("dimensions", [])
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
         self.epochs = cfg.get("epochs", 10)
         self.lr = cfg.get("lr", 1e-4)
         self.patience = cfg.get("patience", 2)  
         self.min_delta = cfg.get("min_delta", 0.001)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
         self.logger.log(
@@ -34,7 +39,7 @@ class MRQTrainerAgent(BaseAgent):
                 "model_version": self.model_version,
                 "model_path": self.model_path,
                 "epochs": self.epochs,
-                "lr": self.lr,  
+                "lr": self.lr,
                 "patience": self.patience,
                 "min_delta": self.min_delta,
             },
@@ -44,8 +49,12 @@ class MRQTrainerAgent(BaseAgent):
         goal_text = context.get("goal", {}).get("goal_text")
 
         builder = PreferencePairBuilder(db=self.memory.session, logger=self.logger)
-        training_pairs_by_dim = builder.get_training_pairs_by_dimension(goal=goal_text, dim=self.dimensions)
+        training_pairs_by_dim = {}
 
+        for dim in self.dimensions:
+            pairs = builder.get_training_pairs_by_dimension(goal=goal_text, dim=[dim])
+            training_pairs_by_dim[dim] = pairs.get(dim, [])
+        
         contrast_pairs = [
             {
                 "title": item["title"],
@@ -70,7 +79,7 @@ class MRQTrainerAgent(BaseAgent):
         trainer = MRQTrainerEngine(
             memory=self.memory,
             logger=self.logger,
-            device="cuda" if torch.cuda.is_available() else "cpu",
+            device=self.device
         )
 
 
@@ -87,6 +96,7 @@ class MRQTrainerAgent(BaseAgent):
                 self.target_type,
                 dim,
                 self.model_version,
+                embedding_type=self.embedding_type
             )
             os.makedirs(model_path, exist_ok=True)
 

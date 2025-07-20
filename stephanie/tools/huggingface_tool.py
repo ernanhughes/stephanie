@@ -38,7 +38,7 @@ def recommend_similar_papers(
                 "query": paper_url,
                 "source": "recommend_similar_papers",
                 "result_type": "url",
-                "url": f"https://arxiv.org/pdf/{pid}.pdf",
+                "url": f"https://arxiv.org/pdf/{pid}",
                 "title": pid,
                 "summary": "Not yet processed",
             }

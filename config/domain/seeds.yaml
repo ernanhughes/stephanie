@@ -89,3 +89,38 @@ domains:
       - "Multi-agent negotiation with language."
       - "Self-organizing agent systems."
 
+  reinforcement:
+    seeds:
+      - "Q-learning"
+      - "policy gradient"
+      - "reward shaping"
+
+  stability:
+    seeds:
+      - "consistency penalty"
+      - "Q-value smoothing"
+      - "value regularization"
+
+  loss_term:
+    seeds:
+      - "loss function"
+      - "regularization term"
+      - "penalty function"
+
+  planning:
+    seeds:
+      - "tree search"
+      - "belief state"
+      - "lookahead planning"
+
+  representation:
+    seeds:
+      - "embedding space"
+      - "feature transform"
+      - "latent code"
+
+  optimizer:
+    seeds:
+      - "gradient clipping"
+      - "adaptive learning"
+      - "momentum update"

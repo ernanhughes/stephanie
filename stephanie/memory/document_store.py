@@ -56,3 +56,55 @@ class DocumentStore:
             self.session.commit()
             return True
         return False
+
+    def get_by_ids(self, document_ids: list[int]) -> list[DocumentORM]:
+        """
+        Fetches a list of documents matching the provided list of IDs.
+        """
+        return (
+            self.session.query(DocumentORM)
+            .filter(DocumentORM.id.in_(document_ids))
+            .all()
+        )
+
+    def search_documents_by_id(self, doc_ids: list[int]):
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 
+                        d.id,
+                        d.title,
+                        d.summary,
+                        d.content,
+                        d.embedding_id,
+                    FROM documents d
+                    JOIN embeddings e ON d.embedding_id = e.id
+                    WHERE d.embedding_id IS NOT NULL
+                    AND d.id = ANY(%s::int[])
+                    """,
+                    (doc_ids),
+                )
+                results = cur.fetchall()
+
+            return [
+                {
+                    "id": row[0],
+                    "title": row[1],
+                    "summary": row[2],
+                    "content": row[3],
+                    "embedding_id": row[4],
+                    "text": row[2] or row[3],  # Default to summary, fallback to content
+                    "source": "document",
+                }
+                for row in results
+            ]
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log(
+                    "DocumentSearchFailed", {"error": str(e), "query": query}
+                )
+            else:
+                print(f"[VectorMemory] Document search failed: {e}")
+            return []

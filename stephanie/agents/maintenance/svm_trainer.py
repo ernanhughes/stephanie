@@ -20,6 +20,8 @@ class SVMTrainerAgent(BaseAgent):
         self.model_type = cfg.get("model_type", "svm")
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
+
 
         self.models = {}  # dim -> (scaler, model)
         self.regression_tuners = {}
@@ -36,6 +38,7 @@ class SVMTrainerAgent(BaseAgent):
                 "target_type": self.target_type,
                 "model_version": self.model_version,
                 "model_path": self.model_path,
+                "embedding_type": self.embedding_type, 
             },
         )
 
@@ -52,15 +55,15 @@ class SVMTrainerAgent(BaseAgent):
         builder = PreferencePairBuilder(
             db=self.memory.session, logger=self.logger
         )
-        training_pairs = builder.get_training_pairs_by_dimension(
-            goal=goal_text
-        )
-
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        training_pairs = {}
+        for dim in self.dimensions:
+            pairs = builder.get_training_pairs_by_dimension(goal=goal_text, dim=[dim])
+            training_pairs[dim] = pairs.get(dim, [])
+       
         for dim, pairs in training_pairs.items():
             self._initialize_dimension(dim)
             if not pairs:
+                self.logger.log("SVMNoTrainingPairs", {"dimension": dim})
                 continue
 
             self.logger.log(
@@ -109,6 +112,7 @@ class SVMTrainerAgent(BaseAgent):
                 self.target_type,
                 dim,
                 self.model_version,
+                embedding_type=self.embedding_type
             )
             os.makedirs(model_path, exist_ok=True)
 

@@ -41,6 +41,7 @@ class EBTMixin:
         self.model_type = ebt_cfg.get("model_type", "ebt")
         self.target_type = ebt_cfg.get("target_type", "document")
         self.model_version = ebt_cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
         self.dimensions = ebt_cfg.get("dimensions", [])
         self.uncertainty_threshold = ebt_cfg.get("uncertainty_threshold", 0.75)
         
@@ -71,7 +72,8 @@ class EBTMixin:
                 self.model_type,
                 self.target_type,
                 dim,
-                self.model_version
+                self.model_version,
+                self.embedding_type
             )
             infer_path = os.path.join(model_path, f"{dim}.pt")
             meta_path = os.path.join(model_path, f"{dim}.meta.json")

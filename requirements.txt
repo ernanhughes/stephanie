@@ -11,6 +11,7 @@ ollama
 unstructured
 fuzzywuzzy
 lxml 
+dependency-injector
 
 # web search tools
 requests
@@ -21,9 +22,11 @@ beautifulsoup4
 arxiv
 gradio_client
 torch
+sentence_transformers
 
 # Hugging face tool
 huggingface_hub
+hf_transfer
 python-Levenshtein
 
 # analysis

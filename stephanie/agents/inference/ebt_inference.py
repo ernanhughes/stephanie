@@ -1,20 +1,21 @@
 # stephanie/agents/inference/document_ebt_inference.py
 import os
+from typing import Optional
 
 import torch
-from typing import Optional
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
+from stephanie.models.score import ScoreORM
 from stephanie.scoring.model.ebt_model import EBTModel
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.scoring.score_result import ScoreResult
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_utils import (discover_saved_dimensions,
                                          get_model_path)
-from stephanie.models.score import ScoreORM
 
 
 class EBTInferenceAgent(BaseAgent):
@@ -22,10 +23,11 @@ class EBTInferenceAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.model_type = "ebt"
         self.evaluator = "ebt"
-
         self.model_path = cfg.get("model_path", "models")
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
+
         self.dimensions = cfg.get("dimensions", [])
         self.models = {}
         self.model_meta = {}
@@ -65,6 +67,7 @@ class EBTInferenceAgent(BaseAgent):
                     self.target_type,
                     dim,
                     self.model_version,
+                    self.embedding_type
                 )
                 infer_path = f"{model_path}/{dim}.pt"
                 meta_path = f"{model_path}/{dim}.meta.json"
@@ -95,10 +98,7 @@ class EBTInferenceAgent(BaseAgent):
         for doc in context.get(self.input_key, []):
             doc_id = doc.get("id")
             self.logger.log("EBTScoringStarted", {"document_id": doc_id})
-
-            scorable = Scorable(
-                id=doc_id, text=doc.get("text", ""), target_type=TargetType.DOCUMENT
-            )
+            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
             memcube = MemCubeFactory.from_scorable(scorable, version="auto")
             memcube.extra_data["pipeline"] = "ebt_inference"
 

@@ -14,7 +14,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.utils.graph_tools import (build_mermaid_graph,
                                          save_mermaid_to_file)
-
+from stephanie.scoring.scorable_factory import ScorableFactory
 
 class LATSAgent(ScoringMixin, BaseAgent):
     """
@@ -259,9 +259,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             score_context = {**context, "mode": "reason"}
             context.setdefault("hypotheses", []).append(hyp.to_dict())
             # Score using dimensional scorers
-            scorable = Scorable(
-                text=hyp.text, id=hyp.id, target_type=TargetType.HYPOTHESIS
-            )
+            scorable = ScorableFactory.from_dict(hyp, TargetType.HYPOTHESIS)
             score_result = self.score_item(scorable, score_context, metrics="lats_node")
 
             # Create child node with metadata

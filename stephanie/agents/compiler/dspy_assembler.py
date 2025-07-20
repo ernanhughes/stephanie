@@ -107,6 +107,7 @@ class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
         # 5. Score merged result
         try:
             response = self.call_llm(merged_prompt, context)
+            
             scorable = Scorable(
                 text=response,
                 target_type=TargetType.RESPONSE,

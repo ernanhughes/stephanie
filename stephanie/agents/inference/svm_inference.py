@@ -5,6 +5,7 @@ import numpy as np
 from joblib import load
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.score_bundle import ScoreBundle
@@ -14,7 +15,7 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_utils import (discover_saved_dimensions,
                                          get_svm_file_paths)
-from stephanie.models.score import ScoreORM
+
 
 class SVMInferenceAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -24,6 +25,7 @@ class SVMInferenceAgent(BaseAgent):
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
         self.dimensions = cfg.get("dimensions", [])
+        self.embedding_type = self.memory.embedding.type
         self.models = {}
         self.model_meta = {}
         self.tuners = {}
@@ -44,6 +46,7 @@ class SVMInferenceAgent(BaseAgent):
                 self.target_type,
                 dim,
                 self.model_version,
+                self.embedding_type
             )
             scaler_path = paths["scaler"]
             model_file = paths["model"]

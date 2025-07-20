@@ -14,17 +14,20 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 class MRQTrainerEngine:
     def __init__(self, memory, logger, device="cpu"):
         self.memory = memory
+        self.dim = self.memory.embedding.dim
+        self.hdim = self.memory.embedding.hdim
         self.logger = logger
         self.device = device
 
     def build_encoder(self):
-        return TextEncoder().to(self.device)
+        return TextEncoder(dim=self.dim, hdim=self.hdim).to(self.device)
 
     def build_predictor(self):
-        return ValuePredictor(512, 1024).to(self.device)
+        return ValuePredictor(zsa_dim=self.dim, hdim=self.hdim).to(self.device)
 
     def prepare_training_data(self, encoder, samples):
         inputs, labels = [], []
+
         for idx, item in enumerate(samples):
             context = item.get("title", "")
             context_emb = self.memory.embedding.get_or_create(context)
@@ -35,17 +38,33 @@ class MRQTrainerEngine:
             a_tensor = torch.tensor(doc_a_emb).unsqueeze(0).to(self.device)
             b_tensor = torch.tensor(doc_b_emb).unsqueeze(0).to(self.device)
 
+            # print(f"[{idx}] context_tensor shape: {context_tensor.shape}")
+            # print(f"[{idx}] a_tensor shape: {a_tensor.shape}")
+            # print(f"[{idx}] b_tensor shape: {b_tensor.shape}")
+
             with torch.no_grad():
                 zsa_a = encoder(context_tensor, a_tensor)
                 zsa_b = encoder(context_tensor, b_tensor)
 
+            # print(f"[{idx}] zsa_a shape: {zsa_a.shape}")
+            # print(f"[{idx}] zsa_b shape: {zsa_b.shape}")
+
             diff = (
                 zsa_a - zsa_b if item["value_a"] >= item["value_b"] else zsa_b - zsa_a
             )
-            inputs.append(diff.squeeze(0).detach())
+
+            diff_squeezed = diff.squeeze(0).detach()
+            # print(f"[{idx}] diff_squeezed shape: {diff_squeezed.shape}")
+
+            inputs.append(diff_squeezed)
             labels.append(torch.tensor([1.0], device=self.device))
 
-        dataset = TensorDataset(torch.stack(inputs), torch.stack(labels))
+        stacked_inputs = torch.stack(inputs)
+        stacked_labels = torch.stack(labels)
+        print(f"Final input batch shape: {stacked_inputs.shape}")
+        print(f"Final label batch shape: {stacked_labels.shape}")
+
+        dataset = TensorDataset(stacked_inputs, stacked_labels)
         return DataLoader(dataset, batch_size=16, shuffle=True)
 
     def train_predictor(self, predictor, dataloader, cfg):

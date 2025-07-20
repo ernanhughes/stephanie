@@ -1,0 +1,5 @@
+_target_: stephanie.memory.HNetEmbeddingStore
+name: "hnet_embeddings"
+type: "hnet"
+table: "hnet_embeddings"
+dimension: 4096

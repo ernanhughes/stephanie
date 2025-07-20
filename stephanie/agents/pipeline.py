@@ -1,12 +1,9 @@
 # stephanie/agents/pipeline.py
-import json
 import re
-from dataclasses import asdict
-from datetime import datetime
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE, PIPELINE_RUN_ID, RUN_ID
-from stephanie.models import EvaluationORM, RuleApplicationORM
+from stephanie.models import EvaluationORM
 
 
 class PipelineJudgeAgent(BaseAgent):
@@ -106,6 +103,7 @@ class PipelineJudgeAgent(BaseAgent):
             target_id=self.get_hypothesis_id(top_hypo),
             agent_name=self.name,
             model_name=self.model_name,
+            embedding_type=self.memory.embedding.type,
             evaluator_name="PipelineJudgeAgent",
             score_type="pipeline_judgment",
             score=score,

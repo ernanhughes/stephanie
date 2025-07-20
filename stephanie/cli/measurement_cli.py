@@ -2,7 +2,6 @@
 import click
 
 from stephanie.measurement.registry import measurement_registry
-from stephanie.measurement.workers import compute_embedding_metrics
 from stephanie.models.base import SessionLocal
 
 

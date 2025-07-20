@@ -1,0 +1,29 @@
+You are an expert at defining what makes research ideas valuable in context.
+
+Given the following goal:
+
+<goal>
+{{goal_text}}
+</goal>
+
+And optionally, similar past goals:
+
+{% for sg in similar_goals %}
+- {{sg}}
+{% endfor %}
+
+Please generate up to {{max_dimensions}} evaluation dimensions — things we should look for when assessing ideas related to this goal.
+
+Each dimension should:
+- Be specific and measurable
+- Reflect how success will be evaluated
+- Avoid vague terms like "good" or "important"
+
+Examples:
+- Policy stability
+- Reward robustness
+- Generalization ability
+- Learning adaptivity
+- Noise tolerance
+
+Format your answer as a numbered list.

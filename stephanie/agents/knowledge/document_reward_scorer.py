@@ -5,7 +5,7 @@ from stephanie.models.evaluation import EvaluationORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.svm.svm_scorer import SVMScorer
 
 DEFAULT_DIMENSIONS = ["alignment", "implementability", "clarity", "relevance"]
 
@@ -73,6 +73,7 @@ class DocumentRewardScorerAgent(BaseAgent):
             pipeline_run_id=context.get("pipeline_run_id"),
             agent_name=self.name,
             model_name=self.model_name,
+            embedding_type=self.memory.embedding.type,
             evaluator_name=self.scorer.name,
             strategy=self.strategy,
         )

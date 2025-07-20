@@ -16,6 +16,7 @@ class TargetType(PyEnum):
     TRIPLE = "triple"
     CHUNK = "chunk"
     PROMPT = "prompt"
+    IDEA = "idea"
     RESPONSE = "response"
     PROMPT_RESPONSE = "prompt_response"
     TRAINING = "training"

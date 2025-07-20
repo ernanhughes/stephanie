@@ -1,5 +1,6 @@
-import torch
 from typing import List
+
+import torch
 
 
 def srft_collate_fn(batch: List[dict], embedding_store, device):

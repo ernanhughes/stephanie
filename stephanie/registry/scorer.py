@@ -2,7 +2,7 @@
 from stephanie.scoring.llm_scorer import LLMScorer
 from stephanie.scoring.mrq.mrq_scorer import MRQScorer
 from stephanie.scoring.proximity_scorer import ProximityScorer
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.svm.svm_scorer import SVMScorer
 
 SCORER_REGISTRY = {
     "mrq": MRQScorer,

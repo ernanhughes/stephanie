@@ -1,10 +1,12 @@
 # stephanie/scoring/scoring_manager.py
 import re
 from pathlib import Path
+from typing import Optional
 
 import yaml
 from sqlalchemy.orm import Session
 
+from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
 from stephanie.models.score_dimension import ScoreDimensionORM
@@ -12,6 +14,7 @@ from stephanie.prompts.prompt_renderer import PromptRenderer
 from stephanie.scoring.calculations.score_delta import ScoreDeltaCalculator
 from stephanie.scoring.calculations.weighted_average import \
     WeightedAverageCalculator
+from stephanie.scoring.fallback_scorer import FallbackScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.score_bundle import ScoreBundle
@@ -19,7 +22,7 @@ from stephanie.scoring.score_display import ScoreDisplay
 from stephanie.scoring.score_result import ScoreResult
 
 
-class ScoringManager:
+class ScoringManager(BaseAgent):
     def __init__(
         self,
         dimensions,
@@ -29,20 +32,43 @@ class ScoringManager:
         memory,
         calculator=None,
         dimension_filter_fn=None,
-        scoring_profile=None,
-        scorer=None,
+        scorer: Optional[FallbackScorer] = None,
+        scoring_profile: str = "default",
     ):
+        super().__init__(cfg, memory, logger)
         self.dimensions = dimensions
         self.prompt_loader = prompt_loader
-        self.cfg = cfg
-        self.logger = logger
-        self.memory = memory
         self.output_format = cfg.get("output_format", "simple")  # default
         self.prompt_renderer = PromptRenderer(prompt_loader, cfg)
         self.calculator = calculator or WeightedAverageCalculator()
         self.dimension_filter_fn = dimension_filter_fn
         self.scoring_profile = scoring_profile
-        self.scorer = scorer
+         # Initialize fallback scorer if not provided
+        if scorer is None:
+            from stephanie.scoring.llm_scorer import LLMScorer
+            from stephanie.scoring.mrq.mrq_scorer import MRQScorer
+            from stephanie.scoring.svm.svm_scorer import SVMScorer
+
+            svm_scorer = SVMScorer(cfg, memory, logger, dimensions=dimensions)
+            mrq_scorer = MRQScorer(cfg, memory, logger, dimensions=dimensions)
+            llm_scorer = LLMScorer(cfg, memory, logger, prompt_loader=prompt_loader, call_llm=self._call_llm)
+
+            self.scorer = FallbackScorer(
+                scorers=[svm_scorer, mrq_scorer, llm_scorer],
+                fallback_order=["svm", "mrq", "llm"],
+                default_fallback="llm",
+                logger=logger
+            )
+        else:
+            self.scorer = scorer
+
+    async def run(self, context: dict) -> dict:
+        """
+        Main entry point for running the scoring manager.
+        This method can be overridden by subclasses to implement custom logic.
+        """
+        # Default implementation just returns the context
+        return context
 
     def dimension_names(self):
         """Returns the names of all dimensions."""
@@ -139,7 +165,7 @@ class ScoringManager:
 
         from stephanie.scoring.llm_scorer import LLMScorer
         from stephanie.scoring.mrq.mrq_scorer import MRQScorer
-        from stephanie.scoring.svm_scorer import SVMScorer
+        from stephanie.scoring.svm.svm_scorer import SVMScorer
 
         if data["scorer"] == "mrq":
             # Use MRQ scoring profile if specified
@@ -209,17 +235,17 @@ class ScoringManager:
 
         raise ValueError(f"Could not extract numeric score from response: {response}")
 
-    def evaluate(self, scorable: Scorable, context: dict = {}, llm_fn=None):
+    def evaluate(self, context: dict, scorable: Scorable, llm_fn=None):
         try:
             score = self.scorer.score(
-                context.get("goal"), scorable, self.dimension_names(), llm_fn=llm_fn
+                context, scorable, self.dimensions
             )
         except Exception as e:
             self.logger.log(
                 "MgrScoreParseError",
                 {"scorable": scorable, "error": str(e)},
             )
-            score = self.evaluate_llm(scorable, context, llm_fn)
+            score = self.evaluate_llm(context, scorable, llm_fn or self.call_llm)
         log_key = "CorDimensionEvaluated" if format == "cor" else "DimensionEvaluated"
         self.logger.log(
             log_key,
@@ -228,7 +254,7 @@ class ScoringManager:
 
         return score
 
-    def evaluate_llm(self, scorable: Scorable, context: dict = {}, llm_fn=None):
+    def evaluate_llm(self, context: dict, scorable: Scorable, llm_fn=None):
         if llm_fn is None:
             raise ValueError("You must pass a call_llm function to evaluate")
 
@@ -303,7 +329,7 @@ class ScoringManager:
         cfg: dict,
         memory,
         logger,
-        source="ScoreEvaluator",
+        source=None,
         model_name=None,
     ):
         goal = context.get("goal")
@@ -326,6 +352,7 @@ class ScoringManager:
             target_id=scorable.id,
             agent_name=cfg.get("name"),
             model_name=model_name,
+            embedding_type=memory.embedding.type,
             evaluator_name=cfg.get("evaluator", "ScoreEvaluator"),
             strategy=cfg.get("strategy"),
             reasoning_strategy=cfg.get("reasoning_strategy"),
@@ -392,6 +419,7 @@ class ScoringManager:
             target_id=document_id,
             agent_name=cfg.get("name"),
             model_name=cfg.get("model", {}).get("name"),
+            embedding_type=memory.embedding.type,
             evaluator_name=cfg.get("evaluator", "ScoreEvaluator"),
             strategy=cfg.get("strategy"),
             reasoning_strategy=cfg.get("reasoning_strategy"),

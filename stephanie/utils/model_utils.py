@@ -17,18 +17,19 @@ def get_model_path(
     target_type: str,
     dimension: str,
     version: str = "v1",
+    embedding_type: str = "default"
 ):
-    return f"{model_path}/{model_type}/{target_type}/{dimension}/{version}/"
-
+    return f"{model_path}/{embedding_type}/{model_type}/{target_type}/{dimension}/{version}/"
+    
 
 def discover_saved_dimensions(
-    model_type: str, target_type: str, model_dir: str = "models"
+    model_type: str, target_type: str, model_dir: str = "models", version: str = "v1"
 ) -> list:
     """
     Discover saved dimensions for a given model and target type.
     Filters out scalers and metadata artifacts.
     """
-    path = os.path.join(model_dir, model_type, target_type)
+    path = os.path.join(model_dir, model_type, target_type, version)
     if not os.path.exists(path):
         print(f"[discover_saved_dimensions] Path {path} does not exist.")
         return []
@@ -50,8 +51,8 @@ def discover_saved_dimensions(
     return sorted(dimension_names)
 
 
-def get_svm_file_paths(model_path, model_type, target_type, dim, model_version="v1"):
-    base = get_model_path(model_path, model_type, target_type, dim, model_version)
+def get_svm_file_paths(model_path, model_type, target_type, dim, model_version="v1", embedding_type="default"):
+    base = get_model_path(model_path, model_type, target_type, dim, model_version, embedding_type)
     return {
         "model": base + f"{dim}.joblib",
         "scaler": base + f"{dim}_scaler.joblib",

@@ -1,0 +1,18 @@
+id: stephanie_hnet_embedder
+type: embedding
+module: stephanie.embeddings.hnet_embedder
+class: StephanieHNetEmbedder
+
+config:
+  chunking:
+    threshold: 0.7  # Adjust based on task
+  embedder:
+    type: hname        # Could be "hf", "ollama", etc.
+    model_name: hnet-base
+  pooling: mean     # or "weighted_mean"
+
+description: >
+  A hierarchical, byte-level chunking embedder inspired by H-Net.
+  It segments text into semantic units using a learnable chunk boundary predictor
+  and encodes them via a goal-adaptive embedder backend. Results are pooled
+  using configurable strategies to produce robust document embeddings.

@@ -163,6 +163,7 @@ class ProximityAgent(ScoringMixin, BaseAgent):
                 target_id=hypothesis.get("id"),
                 agent_name=self.name,
                 model_name=self.model_name,
+                embedding_type=self.memory.embedding.type,
                 evaluator_name=self.name,
                 extra_data={"summary": summary_output},
                 scores=structured_scores,

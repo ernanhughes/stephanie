@@ -24,21 +24,7 @@ class PipelineRunStore:
         """
         try:
             # Convert dictionary to ORM object
-            db_run = PipelineRunORM(
-                goal_id=run_dict.get("goal_id"),
-                run_id=run_dict.get("run_id"),
-                pipeline=run_dict.get("pipeline"),
-                name=run_dict.get("name"),
-                tag=run_dict.get("tag"),
-                description=run_dict.get("description"),
-                strategy=run_dict.get("strategy"),
-                model_name=run_dict.get("model_name"),
-                run_config=run_dict.get("run_config"),
-                lookahead_context=run_dict.get("lookahead_context"),
-                symbolic_suggestion=run_dict.get("symbolic_suggestion"),
-                extra_data=run_dict.get("extra_data"),
-            )
-
+            db_run = PipelineRunORM(**run_dict)
             self.session.add(db_run)
             self.session.flush()  # Get ID before commit
             run_id = db_run.id

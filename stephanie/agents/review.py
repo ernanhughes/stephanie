@@ -1,8 +1,7 @@
 # stephanie/agents/review.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
 class ReviewAgent(ScoringMixin, BaseAgent):
@@ -15,11 +14,7 @@ class ReviewAgent(ScoringMixin, BaseAgent):
 
         for hyp in hypotheses:
             # Score and update review
-            scorable = Scorable(
-                id=hyp.get("id", ""),
-                text=hyp.get("text", ""),
-                target_type=TargetType.HYPOTHESIS,
-            )
+            scorable = ScorableFactory.from_dict(hyp, TargetType.HYPOTHESIS)
             score = self.score_item(scorable, context, metrics="review")
             self.logger.log(
                 "ReviewScoreComputed",

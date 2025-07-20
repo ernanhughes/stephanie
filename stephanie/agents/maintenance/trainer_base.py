@@ -3,9 +3,10 @@ import os
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.agents.maintenance.ebt_trainer import EBTDataset
 from stephanie.agents.maintenance.model_evolution_manager import \
     ModelEvolutionManager
 from stephanie.scoring.model.ebt_model import EBTModel
@@ -22,12 +23,11 @@ class TrainerAgent(BaseAgent):
         self.model_type = cfg.get("model_type", "ebt")
         self.output_key = cfg.get("output_key", "training_pairs")
         self.target_type = cfg.get("target_type", "document")
-        self.encoder = TextEncoder().to(
-            torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        )
-        self.value_predictor = ValuePredictor().to(
-            torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        )
+        self.model_version = cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.encoder = TextEncoder().to(self.device)
+        self.value_predictor = ValuePredictor().to(self.device)
         self.evolution_manager = ModelEvolutionManager(
             self.cfg, self.memory, self.logger
         )
@@ -35,14 +35,10 @@ class TrainerAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         goal_text = context.get("goal", {}).get("goal_text")
 
-        from stephanie.scoring.mrq.preference_pair_builder import \
-            PreferencePairBuilder
 
         # Build contrastive training pairs grouped by scoring dimension
         builder = PreferencePairBuilder(db=self.memory.session, logger=self.logger)
         training_pairs = builder.get_training_pairs_by_dimension(goal=goal_text)
-
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Train one model per scoring dimension (e.g. clarity, novelty, etc.)
         for dim, pairs in training_pairs.items():
@@ -54,18 +50,18 @@ class TrainerAgent(BaseAgent):
             )
 
             # Construct dataset and dataloader; normalize scores between 50–100
-            ds = DocumentEBTDataset(pairs, min_score=50, max_score=100)
+            ds = EBTDataset(pairs, min_score=50, max_score=100)
             dl = DataLoader(
                 ds,
                 batch_size=8,
                 shuffle=True,
                 collate_fn=lambda b: collate_ebt_batch(
-                    b, self.memory.embedding, device
+                    b, self.memory.embedding, self.device
                 ),
             )
 
             # Create model for this dimension
-            model = EBTModel().to(device)
+            model = EBTModel().to(self.device)
             optimizer = torch.optim.Adam(model.parameters(), lr=2e-5)
             loss_fn = nn.MSELoss()
 
@@ -94,7 +90,7 @@ class TrainerAgent(BaseAgent):
                 )
 
             # Save trained model weights to disk
-            model_path = f"{get_model_path(self.model_type, self.target_type, dim)}.pt"
+            model_path = f"{get_model_path(self.model_type, self.target_type, dim, self.model_version, self.embedding_type)}.pt"
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             print(model.state_dict().keys())
             torch.save(model.state_dict(), model_path)

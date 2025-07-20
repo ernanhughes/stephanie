@@ -10,10 +10,10 @@ from torch.utils.data import DataLoader
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.ebt_mixin import EBTMixin
-from stephanie.scoring.model.ebt_model import EBTModel
-from stephanie.utils.model_utils import get_model_path
-from stephanie.utils.file_utils import save_json
 from stephanie.scoring.ebt.srft_refinement_dataset import SRFTRefinementDataset
+from stephanie.scoring.model.ebt_model import EBTModel
+from stephanie.utils.file_utils import save_json
+from stephanie.utils.model_utils import get_model_path
 
 
 class SRFTRefinementTrainer(BaseAgent, EBTMixin):
@@ -24,10 +24,12 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
         self.epochs = cfg.get("epochs", 5)
         self.batch_size = cfg.get("batch_size", 8)
         self.lr = cfg.get("learning_rate", 1e-4)
-        self.model_version = cfg.get("model_version", "v1")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_type = "ebt"
-        self.target_type = "document"
+        self.target_type = cfg.get("target_type", "document")
+        self.model_version = cfg.get("model_version", "v1")
+        self.embedding_type = self.memory.embedding.type
+
 
     def train_srft_model(
         self,
@@ -104,7 +106,8 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
             self.model_type,
             self.target_type,
             dimension,
-            self.model_version
+            self.model_version,
+            embedding_type=self.embedding_type
         )
         os.makedirs(model_path, exist_ok=True)
 

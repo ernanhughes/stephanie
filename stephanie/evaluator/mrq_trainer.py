@@ -15,6 +15,8 @@ class MRQTrainer:
         self, memory, logger, encoder=None, value_predictor=None, device="cpu"
     ):
         self.memory = memory
+        self.dim = memory.embedding.dim
+        self.hdim = memory.embedding.hdim
         self.logger = logger
         self.device = device
 
@@ -22,13 +24,13 @@ class MRQTrainer:
         if encoder is not None:
             self.encoder = encoder.to(device)
         else:
-            self.encoder = TextEncoder().to(device)
+            self.encoder = TextEncoder(dim=self.dim, hdim=self.hdim).to(device)
 
         # Use provided predictor or instantiate new HypothesisValuePredictor
         if value_predictor is not None:
             self.value_predictor = value_predictor.to(device)
         else:
-            self.value_predictor = HypothesisValuePredictor(512, 1024).to(device)
+            self.value_predictor = HypothesisValuePredictor(self.dim, self.hdim).to(device)
 
     def prepare_training_data(self, samples):
         inputs, labels = [], []

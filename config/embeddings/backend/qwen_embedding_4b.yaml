@@ -1,0 +1,6 @@
+_target_: stephanie.memory.HuggingFaceEmbeddingStore
+name: "hf_embeddings"
+table: "hf_embeddings"
+type: "huggingface"
+model_name: "Qwen/Qwen3-Embedding-4B"
+dimension: 2560

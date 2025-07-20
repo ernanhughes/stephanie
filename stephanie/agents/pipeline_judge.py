@@ -4,15 +4,13 @@ import os
 import re
 from datetime import datetime
 
-from tabulate import tabulate
-
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.analysis.rule_analytics import RuleAnalytics
 from stephanie.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
 class PipelineJudgeAgent(ScoringMixin, BaseAgent):
@@ -43,11 +41,7 @@ class PipelineJudgeAgent(ScoringMixin, BaseAgent):
         )
 
         for doc in documents:
-            scorable = Scorable(
-                id=doc.get("id"),
-                text=doc.get("summary", ""),
-                target_type=TargetType.DOCUMENT,
-            )
+            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
             score_result = self.score_item(
                 scorable=scorable,
                 context=context,
@@ -59,11 +53,7 @@ class PipelineJudgeAgent(ScoringMixin, BaseAgent):
             )
 
         for hypo in hypotheses:
-            scorable = Scorable(
-                id=hypo.get("id"),
-                text=hypo.get("text", ""),
-                target_type=TargetType.HYPOTHESIS,
-            )
+            scorable = ScorableFactory.from_dict(hypo, TargetType.HYPOTHESIS)
             score_result = self.score_item(
                 scorable=scorable,
                 context=context,

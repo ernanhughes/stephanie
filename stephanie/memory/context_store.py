@@ -1,5 +1,5 @@
 # stephanie/memory/context_store.py
-# stores/context_store.py
+
 import json
 import os
 from datetime import datetime, timezone
@@ -95,14 +95,14 @@ class ContextStore:
         )
         return count > 0
 
-    def load(self, goal_id: int, stage: Optional[str] = None) -> dict:
+    def load(self, run_id: str, stage: Optional[str] = None) -> dict:
         try:
             session = self.session if self.session.is_active else self.sessionmaker()
 
             if stage:
                 states = (
                     session.query(ContextStateORM)
-                    .filter_by(stage_name=stage, goal_id=goal_id)
+                    .filter_by(stage_name=stage, run_id=run_id)
                     .order_by(ContextStateORM.timestamp.asc())
                     .all()
                 )
@@ -122,6 +122,33 @@ class ContextStore:
                 self.logger.log("ContextLoadFailed", {"error": str(e)})
             return {}
 
+
+    def get_latest(self, run_id: str) -> Optional[ContextStateORM]:
+        """
+        Gets the most recent context for a given run_id.
+        """
+        return (
+            self.session.query(ContextStateORM)
+            .filter(ContextStateORM.run_id == run_id)
+            .order_by(ContextStateORM.timestamp.desc())
+            .first()
+        )
+
+    def get_previous(self, run_id: str) -> Optional[ContextStateORM]:
+        """
+        Gets the second-most recent context for a given run_id (useful for diffing).
+        """
+        results = (
+            self.session.query(ContextStateORM)
+            .filter(ContextStateORM.run_id == run_id)
+            .order_by(ContextStateORM.timestamp.desc())
+            .limit(2)
+            .all()
+        )
+        if len(results) < 2:
+            return None
+        return results[1]
+    
     def _dump_to_yaml(self, stage: str, context: dict):
         os.makedirs(self.dump_dir, exist_ok=True)
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
