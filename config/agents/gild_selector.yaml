@@ -1,0 +1,24 @@
+gild_selector:
+  name: gild_selector
+  description: "Select the best documents based on GILD criteria"
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+  selection_strategy: greedy # "greedy", "top_k", "weighted"
+  min_efficiency: 0.1
+  top_k: 1
+  require_llm: true  
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  
+  input_keys: ["goal", "hypotheses"]
+  
+  input_key: documents
+  output_key: gild_selector
+  prompt_mode: file
+  prompt_file: gild_selector.txt

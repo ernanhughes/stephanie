@@ -38,6 +38,7 @@ from stephanie.memory.reflection_delta_store import ReflectionDeltaStore
 from stephanie.memory.rule_application_store import RuleApplicationStore
 from stephanie.memory.rule_effect_store import RuleEffectStore
 from stephanie.memory.score_store import ScoreStore
+from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
@@ -116,7 +117,8 @@ class MemoryTool:
         self.register_store(BeliefCartridgeStore(self.session, logger))
         self.register_store(GoalDimensionsStore(self.session, logger))
         self.register_store(PipelineStageStore(self.session, logger))
-        
+        self.register_store(ScoringStore(self.session, logger))
+
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

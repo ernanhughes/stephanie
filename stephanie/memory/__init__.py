@@ -35,3 +35,4 @@ from .search_result_store import SearchResultStore
 from .sharpening_store import SharpeningStore
 from .symbolic_rule_store import SymbolicRuleStore
 from .theorem_store import TheoremStore
+from .scoring_store import ScoringStore
