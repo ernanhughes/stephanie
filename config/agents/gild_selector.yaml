@@ -10,6 +10,10 @@ gild_selector:
   min_efficiency: 0.1
   top_k: 1
   require_llm: true  
+  goal_aware: true
+  time_decay: 0.9  # Daily decay factor
+  min_samples: 10
+  
 
   model:
     name: ollama/qwen3

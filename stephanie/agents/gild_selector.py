@@ -4,7 +4,8 @@
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 import logging
-
+from collections import defaultdict
+import scipy.stats
 
 class GILDSelectorAgent(BaseAgent):
     """
@@ -31,6 +32,15 @@ class GILDSelectorAgent(BaseAgent):
             selected = self._select_scorers(scores)
             context["efficiency_scores"] = scores
             context["selected_scorers"] = selected
+
+            stats = self.memory.scoring.get_scorer_stats()
+            self.logger.log("GILDSelector", {"scoring_stats": stats})
+            context["scoring_stats"] = stats
+
+            goal_id = goal.get("id")
+            report = self.memory.scoring.generate_comparison_report(goal_id)
+            self.logger.log("GILDSelector", {"goal_id": goal_id, "report": report})
+
             return context
 
         except Exception as e:
@@ -58,10 +68,24 @@ class GILDSelectorAgent(BaseAgent):
                     efficiency = max(0.0, 1.0 - abs(norm_score - norm_llm))
                     grouped[scorer_name].append(efficiency)
 
-        return {
-            scorer: {"efficiency": float(np.mean(effs))}
-            for scorer, effs in grouped.items()
-        }
+        
+
+        result = {}
+        for scorer, effs in grouped.items():
+            mean = np.mean(effs)
+            ci = scipy.stats.t.interval(
+                confidence=0.95, 
+                df=len(effs)-1, 
+                loc=mean, 
+                scale=scipy.stats.sem(effs)
+            )
+            result[scorer] = {
+                "efficiency": float(mean),
+                "ci_lower": float(ci[0]),
+                "ci_upper": float(ci[1]),
+                "sample_count": len(effs)
+            }
+        return result
 
     def _select_scorers(self, scores: dict) -> list[str]:
         """
@@ -96,3 +120,26 @@ class GILDSelectorAgent(BaseAgent):
             }]
             self.logger.log("Weighted selection", result)
         return result
+
+    # In GILDSelectorAgent._compute_efficiency_scores
+    def _compute_efficiency_scores(self, examples: list) -> dict:
+        import numpy as np
+        from datetime import datetime
+        
+        scorer_fields = [f"{emb}_{scorer}_score" for emb in ["hnet", "huggingface", "ollama"] 
+                        for scorer in ["ebt", "svm", "mrq"]]
+        
+        grouped = defaultdict(list)
+        for ex in examples:
+            age_days = (datetime.now() - ex.created_at).days  # Add created_at to GILDScoringExample
+            time_weight = 0.9 ** age_days  # Exponential decay
+            
+            for scorer_name in scorer_fields:
+                score = getattr(ex, scorer_name)
+                if score is not None and ex.llm_score is not None:
+                    norm_score = score / 100.0
+                    norm_llm = ex.llm_score / 100.0
+                    efficiency = max(0.0, 1.0 - abs(norm_score - norm_llm)) * time_weight
+                    grouped[scorer_name].append(efficiency)
+        
+        return {scorer: {"efficiency": float(np.mean(effs))} for scorer, effs in grouped.items()}

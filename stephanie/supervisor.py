@@ -270,7 +270,7 @@ class Supervisor:
         try:
             cls = hydra.utils.get_class(stage.cls)
             stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
-            stage_details["stage_dict"] = stage.stage_dict.name
+            stage_details["agent"] = stage.cls.split(".")[-1]
             self.rule_applier.apply_to_agent(stage_dict, context)
 
             # Try loading saved context
@@ -311,8 +311,8 @@ class Supervisor:
 
         except Exception as e:
             self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
-            stage_details["duration"] = time.time() - start_time
             stage_details["status"] = "💀 failed"
+            stage_details["duration"] = time.time() - start_time
             return context
         
     def _save_pipeline_stage(self, stage: PipelineStage, context: dict, stage_dict: dict):
@@ -615,9 +615,8 @@ class Supervisor:
                 self._trigger_ebt_retraining(r.dimension)
 
     def _print_pipeline_summary(self, context:dict):
-        print("\n🧠 Pipeline Execution Summary:\n")
-        print(f"\n📊 Pipeline: {context.get(PIPELINE)}")
-        print(f"🆔 Run ID: {context.get(RUN_ID)}")
+        print("\n🖇️ Pipeline Execution Summary:\n")
+        print(f"\n🆔 Pipeline: {context.get(PIPELINE)} Run ID: {context.get(RUN_ID)}")
         summary = context.get("STAGE_DETAILS", {})
         table = tabulate(
             summary,
