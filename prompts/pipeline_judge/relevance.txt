@@ -4,7 +4,7 @@ Evaluate the relevance of the following hypothesis.
 {{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 How directly does it address the stated goal?
 

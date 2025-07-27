@@ -18,6 +18,8 @@ from stephanie.memory.document_domain_store import DocumentDomainStore
 from stephanie.memory.document_section_store import DocumentSectionStore
 from stephanie.memory.document_store import DocumentStore
 from stephanie.memory.embedding_store import EmbeddingStore
+from stephanie.memory.evaluation_attribute_store import \
+    EvaluationAttributeStore
 from stephanie.memory.evaluation_store import EvaluationStore
 from stephanie.memory.goal_dimensions_store import GoalDimensionsStore
 from stephanie.memory.goal_store import GoalStore
@@ -118,6 +120,7 @@ class MemoryTool:
         self.register_store(GoalDimensionsStore(self.session, logger))
         self.register_store(PipelineStageStore(self.session, logger))
         self.register_store(ScoringStore(self.session, logger))
+        self.register_store(EvaluationAttributeStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

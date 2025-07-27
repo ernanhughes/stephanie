@@ -10,7 +10,7 @@ from stephanie.agents.maintenance.ebt_trainer import EBTDataset
 from stephanie.agents.maintenance.model_evolution_manager import \
     ModelEvolutionManager
 from stephanie.scoring.model.ebt_model import EBTModel
-from stephanie.scoring.mrq.encoder import TextEncoder
+from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.mrq.preference_pair_builder import PreferencePairBuilder
 from stephanie.scoring.mrq.value_predictor import ValuePredictor
 from stephanie.utils.file_utils import save_json

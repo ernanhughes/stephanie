@@ -2,7 +2,7 @@
 
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.llm_scorer import LLMScorer
-from stephanie.scoring.mrq.mrq_scorer import MRQScorer  # formerly MRQEvaluator
+from stephanie.scoring.mrq_scorer import MRQScorer  # formerly MRQEvaluator
 
 
 class MetaReviewScorer(BaseScorer):

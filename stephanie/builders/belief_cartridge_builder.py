@@ -1,261 +1,320 @@
-import os
-from typing import Any, Dict, List, Optional
+# stephanie/agents/belief_cartridge_builder.py
+import time
+from collections import defaultdict
+from datetime import datetime
+from typing import Dict
 
-import yaml
+import numpy as np
+import torch
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
+from stephanie.memory.evaluation_attribute_store import \
+    EvaluationAttributeStore
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
+from stephanie.models.evaluation import EvaluationORM
+from stephanie.models.evaluation_attribute import EvaluationAttributeORM
+from stephanie.models.score import ScoreORM
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
+from stephanie.utils.metrics import compute_uncertainty
 
 
-class BeliefCartridgeBuilder:
-    """
-    Converts structured research ideas into reusable cognitive scaffolds called 'Belief Cartridges'.
+class BeliefCartridgeBuilder(BaseAgent):
+    def __init__(self, cfg, memory=None, logger=None):
+        super().__init__(cfg, memory, logger)
+        self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "novelty"])
+        self.embedding_types = cfg.get("embedding_types", ["hnet", "mxbai", "hf"])
+        self.scorer_types = cfg.get("scorer_types", ["mrq", "ebt", "svm", "llm"])
+        self.use_sicql = cfg.get("use_sicql", False)
+        self.track_efficiency = cfg.get("track_efficiency", True)
+        self.uncertainty_threshold = cfg.get("uncertainty_threshold", 0.3)
+        self.evaluation_store = EvaluationAttributeStore(memory.session, logger)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    Features:
-        - Builds cartridges from parsed paper ideas
-        - Attaches metadata + embeddings
-        - Tags by domain/technique
-        - Stores in memory for reuse
-    """
+    async def build_cartridge(self, context: dict) -> dict:
+        goal = context.get(GOAL)
+        document = context.get("document")
+        
+        if not document or not goal:
+            return context
 
-    def __init__(
-        self,
-        cfg: dict,
-        memory: Any = None,
-        prompt_loader: Any = None,
-        logger: Any = None,
-        call_llm: Any = None,
-    ):
-        self.cfg = cfg
-        self.memory = memory
-        self.prompt_loader = prompt_loader
-        self.logger = logger
-        self.call_llm = call_llm
+        # Create scorable object
+        scorable = Scorable(
+            text=document.get("text"),
+            target_type=TargetType.DOCUMENT,
+            id=document.get("id")
+        )
+        
+        # Initialize belief cartridge
+        cartridge = BeliefCartridgeORM(
+            id=document.get("id"),
+            title=document.get("title", ""),
+            content=document.get("text", ""),
+            goal_id=goal.get("id"),
+            domain=goal.get("domain", "default"),
+            created_at=datetime.utcnow()
+        )
+        
+        # Score across all dimensions and scorers
+        scoring_results = await self._score_document(goal, scorable)
+        
+        # Generate idea (if applicable)
+        if self.cfg.get("generate_idea", True):
+            scorable.embedding_type = "hnet"  # Default for idea generation
+            idea = await self._generate_idea(goal, scorable)
+            cartridge.idea = idea
+            
+        # Save to database
+        await self._save_to_db(cartridge, scoring_results, goal, scorable)
+        
+        context["belief_cartridge"] = cartridge.to_dict()
+        return context
 
-        # Load cartridge templates
-        self.template_dir = cfg.get("template_dir", "templates/cartridges")
-        self.default_template = cfg.get("default_template", "base.yaml")
-
-        # Tagging configuration
-        self.tag_heuristics = {
-            "reinforcement": ["q-value", "policy", "reward", "rl"],
-            "stability": ["penalty", "regularization", "smooth", "consistent"],
-            "loss_term": ["loss", "objective", "gradient", "optimize"],
-            "representation": ["embedding", "transform", "encode", "feature"],
-            "planning": ["tree", "search", "plan", "lookahead"],
-        }
-
-    def build(
-        self,
-        title: str,
-        content: str,
-        source_type: str = "paper",
-        source_id: Optional[int] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> BeliefCartridgeORM:
-        """
-        Main method to build a belief cartridge from raw idea content.
-        """
-        try:
-            # Step 1: Normalize inputs
-            metadata = metadata or {}
-            source_paper = metadata.get("source_paper", "unknown_paper")
-            abstract = metadata.get("abstract", "")
-
-            # Step 2: Build basic structure
-            cartridge_data = {
-                "title": title,
-                "content": content,
-                "source_type": source_type,
-                "source_id": source_id,
-                "source_paper": source_paper,
-                "abstract": abstract,
-                "integration_hint": metadata.get("integration_hint", ""),
-                "type": metadata.get("type", "general"),
-                "tags": self._tag_idea(content),
-                "metadata": metadata,
+    async def _score_document(self, goal, scorable: Scorable) -> Dict[str, Dict]:
+        """Score document across all dimensions, embeddings, and scorers"""
+        results = {
+            "scores": {},
+            "dimension_scores": defaultdict(dict),
+            "embedding_comparison": defaultdict(lambda: defaultdict(dict)),
+            "metadata": {
+                "embedding_types": self.embedding_types,
+                "scorers": self.scorer_types,
+                "dimensions": self.dimensions
             }
-
-            # Step 3: Generate embedding
-            embed_text = f"{title}\n\n{abstract}"
-            self.memory.embedding.get_or_create(embed_text)
-            embedding_vector_id = self.memory.embedding.get_id_for_text(embed_text)
-
-            cartridge_data["embedding_id"] = embedding_vector_id
-
-            # Step 4: Save to DB
-            cartridge = self.memory.belief_cartridges.insert(cartridge_data)
-            self.assign_domains_to_cartridge(cartridge)
-
-            # Log success
-            self.logger.log(
-                "BeliefCartridgeBuilt",
-                {
-                    "cartridge_id": cartridge.id,
-                    "title": title[:60],
-                    "tags": cartridge_data["tags"],
-                },
+        }
+        
+        # Track execution time for efficiency calculation
+        start_time = time.time()
+        
+        # Score across all combinations
+        for embedding_type in self.embedding_types:
+            scorable.embedding_type = embedding_type
+            
+            for scorer_type in self.scorer_types:
+                scorer = self._get_scorer(scorer_type, embedding_type)
+                if not scorer:
+                    continue
+                
+                # Score all dimensions
+                scores = await scorer.score(goal, scorable)
+                
+                # Store results
+                results["scores"][f"{embedding_type}_{scorer_type}"] = scores
+                results["dimension_scores"][embedding_type][scorer_type] = scores
+                
+                # Track per-dimension scores for comparison
+                for dim, score in scores.items():
+                    results["embedding_comparison"][dim][f"{embedding_type}_{scorer_type}"] = score
+        
+        # Calculate efficiency metrics
+        if self.track_efficiency:
+            results["metadata"]["execution_time"] = time.time() - start_time
+            results["metadata"]["efficiency"] = self._compute_efficiency(
+                results["scores"], 
+                goal.get("llm_score", {})
             )
+        
+        return results
 
-            return cartridge
+    def _get_scorer(self, scorer_type: str, embedding_type: str):
+        """Get appropriate scorer based on type and embedding"""
+        if scorer_type == "sicql" and self.use_sicql:
+            return self.memory.sicql_scorer.get(embedding_type)
+        elif scorer_type == "mrq":
+            return self.memory.mrq_scorer.get(embedding_type)
+        elif scorer_type == "ebt":
+            return self.memory.ebt_scorer.get(embedding_type)
+        elif scorer_type == "svm":
+            return self.memory.svm_scorer.get(embedding_type)
+        elif scorer_type == "llm":
+            return self.memory.llm_scorer
+        return None
 
+    async def _generate_idea(self, goal, scorable: Scorable) -> str:
+        """Generate structured idea using GILD-enhanced scoring"""
+        try:
+            # Use best scorer according to efficiency metrics
+            best_scorer = self._select_best_scorer(goal, scorable)
+            scores = await best_scorer.score(goal, scorable)
+            
+            # Apply GILD policy if available
+            if hasattr(best_scorer, "apply_gild_policy"):
+                scores = best_scorer.apply_gild_policy(scores)
+            
+            # Generate idea using EBT refinement
+            if self.cfg.get("use_ebt_refinement", True):
+                ebt_scorer = self._get_scorer("ebt", scorable.embedding_type)
+                scorable.text = await ebt_scorer.refine(scorable.text)
+            
+            return self._format_idea(goal, scorable, scores)
+            
         except Exception as e:
-            self.logger.log(
-                "BeliefCartridgeBuildFailed",
-                {"error": str(e), "title": title}
-            )
+            self.logger.log("IdeaGenerationFailed", {"error": str(e)})
+            return ""
+
+    def _select_best_scorer(self, goal, scorable: Scorable):
+        """Select best scorer based on historical performance"""
+        if self.cfg.get("use_gild_selector", True):
+            gild_selector = self.memory.gild_selector
+            best_scorer_type = gild_selector.select_scorer(goal, scorable)
+            return self._get_scorer(best_scorer_type, scorable.embedding_type)
+        
+        # Fallback to default scorer
+        return self._get_scorer(self.cfg.get("default_scorer", "mrq"), scorable.embedding_type)
+
+    async def _save_to_db(self, cartridge: BeliefCartridgeORM, scoring_results, goal, scorable: Scorable):
+        """Save belief cartridge and all scoring results"""
+        try:
+            # Save main cartridge
+            self.memory.session.add(cartridge)
+            self.memory.session.flush()
+            
+            # Save evaluations for each scorer
+            for scorer_key, scores in scoring_results["scores"].items():
+                embedding_type, scorer_type = scorer_key.split("_", 1)
+                evaluation = self._create_evaluation(
+                    cartridge.id, goal, scorable, embedding_type, scorer_type
+                )
+                self.memory.session.add(evaluation)
+                
+                # Save detailed scores
+                for dim, score in scores.items():
+                    prompt_hash = ScoreORM.compute_prompt_hash(
+                        goal_text=goal.get("goal_text", ""),
+                        document_text=scorable.text
+                    )
+                    score_orm = self._create_score_orm(
+                        evaluation.id, dim, score, scorer_type, prompt_hash
+                    )
+                    self.memory.session.add(score_orm)
+                    
+                # Save SICQL-specific attributes if available
+                if scorer_type == "sicql" and self.use_sicql:
+                    await self._save_sicql_attributes(evaluation.id, scores, scorable)
+
+            # Save efficiency metrics
+            efficiency = scoring_results["metadata"].get("efficiency", {})
+            for scorer_key, score in efficiency.items():
+                if "composite" not in scorer_key:
+                    continue
+                _, scorer_type = scorer_key.split("_")
+                cartridge.efficiency_score = score["efficiency"]
+                cartridge.efficiency_details = efficiency.get(scorer_type, {})
+
+            self.memory.session.commit()
+            
+        except Exception as e:
+            self.memory.session.rollback()
+            self.logger.log("CartridgeSaveFailed", {
+                "error": str(e),
+                "cartridge_id": cartridge.id
+            })
             raise
 
-    def _tag_idea(self, content: str) -> List[str]:
-        """
-        Uses heuristics + embeddings to assign tags like 'rl', 'stability', etc.
-        """
-        if not content:
-            return []
-
-        tags = set()
-
-        # Heuristic-based tagging
-        content_lower = content.lower()
-        for tag, keywords in self.tag_heuristics.items():
-            if any(kw in content_lower for kw in keywords):
-                tags.add(tag)
-
-        # Fallback using similarity
-        if not tags:
-            fallback_tags = self._infer_tags_via_similarity(content)
-            tags.update(fallback_tags)
-
-        return list(tags)
-
-    def _infer_tags_via_similarity(self, content: str) -> List[str]:
-        """
-        Fall back to embedding-based domain classification when no heuristic matches.
-        """
-        from stephanie.analysis.domain_classifier import DomainClassifier
-
-        classifier = DomainClassifier(
-            memory=self.memory,
-            logger=self.logger,
-            config_path=self.cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
+    def _create_evaluation(self, cartridge_id, goal, scorable, embedding_type, scorer_type):
+        """Create evaluation record with metadata"""
+        return EvaluationORM(
+            goal_id=goal.get("id"),
+            target_id=scorable.id,
+            target_type=scorable.target_type,
+            evaluator_name=scorer_type,
+            model_name=f"{scorable.target_type}_{scorer_type}_v1",
+            embedding_type=embedding_type,
+            cartridge_id=cartridge_id
         )
 
-        results = classifier.classify(content, top_k=3, min_score=0.5)
-        return [domain for domain, score in results]
+    def _create_score_orm(self, evaluation_id, dimension, score, scorer_type, prompt_hash):
+        """Create score ORM object with metadata"""
+        return ScoreORM(
+            evaluation_id=evaluation_id,
+            dimension=dimension,
+            score=score,
+            rationale=f"{scorer_type} scorer",
+            energy=score,  # For compatibility
+            source=scorer_type,
+            target_type=TargetType.DOCUMENT,
+            prompt_hash=prompt_hash
+        )
 
-    def load_from_template(self, template_name: str) -> Dict[str, Any]:
-        """
-        Loads a cartridge structure from a YAML template.
-        """
-        template_path = os.path.join(self.template_dir, template_name)
+    async def _save_sicql_attributes(self, evaluation_id: int, scores: Dict[str, float], scorable: Scorable):
+        """Save SICQL-specific metrics to evaluation attributes"""
         try:
-            with open(template_path, "r") as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            self.logger.log("TemplateNotFound", {"template": template_path})
-            return {}
+            sicql_scorer = self.memory.sicql_scorer.get(scorable.embedding_type)
+            if not sicql_scorer:
+                return
+                
+            # Get SICQL outputs
+            sicql_outputs = await sicql_scorer.get_detailed_scores(scorable)
+            
+            # Save Q/V values and policy metrics
+            for dim in self.dimensions:
+                attribute = EvaluationAttributeORM(
+                    evaluation_id=evaluation_id,
+                    dimension=dim,
+                    source="sicql",
+                    q_value=sicql_outputs[dim].get("q_value"),
+                    v_value=sicql_outputs[dim].get("v_value"),
+                    advantage=sicql_outputs[dim].get("advantage"),
+                    policy_logits=sicql_outputs[dim].get("policy_logits"),
+                    uncertainty=compute_uncertainty(
+                        sicql_outputs[dim].get("q_value"),
+                        sicql_outputs[dim].get("v_value")
+                    ),
+                    entropy=sicql_outputs[dim].get("entropy")
+                )
+                self.evaluation_store.insert(attribute)
+                
+                # Log high uncertainty cases
+                if attribute.uncertainty > self.uncertainty_threshold:
+                    self.logger.log("HighUncertainty", {
+                        "document_id": scorable.id,
+                        "dimension": dim,
+                        "uncertainty": attribute.uncertainty
+                    })
+                    
+        except Exception as e:
+            self.logger.log("SICQLAttributeSaveFailed", {
+                "error": str(e),
+                "evaluation_id": evaluation_id
+            })
 
-    def save_to_yaml(self, cartridge: BeliefCartridgeORM, path: str):
-        """
-        Saves a belief cartridge to disk in YAML format.
-        Useful for inspection, sharing, or archiving.
-        """
-        data = {
-            "id": cartridge.id,
-            "title": cartridge.title,
-            "type": cartridge.type,
-            "description": cartridge.content,
-            "source_paper": cartridge.source_paper,
-            "source_url": cartridge.source_url,
-            "abstract": cartridge.abstract,
-            "integration_hint": cartridge.integration_hint,
-            "tags": cartridge.tags,
-            "metadata": cartridge.metadata,
-            "scoring": {
-                "usefulness": round(cartridge.usefulness_score, 2),
-                "novelty": round(cartridge.novelty_score, 2),
-                "alignment": round(cartridge.alignment_score, 2),
-            },
-        }
+    def _compute_efficiency(self, scores: Dict[str, Dict], llm_scores: Dict) -> Dict:
+        """Compute composite efficiency scores for scorer selection"""
+        efficiency_scores = {}
+        
+        for scorer_key, dim_scores in scores.items():
+            if "llm" in scorer_key:
+                continue
+                
+            # Calculate alignment with LLM scores
+            alignment_gains = {}
+            for dim, score in dim_scores.items():
+                llm_score = llm_scores.get(dim, score)
+                alignment_gains[dim] = 1 - abs(score - llm_score) / 100
+                
+            # Calculate composite efficiency
+            avg_gain = np.mean(list(alignment_gains.values()))
+            execution_time = 0.1  # Placeholder from metadata
+            
+            efficiency_scores[f"composite_{scorer_key}"] = {
+                "efficiency": avg_gain / (execution_time + 0.01),
+                "alignment_gains": alignment_gains,
+                "execution_time": execution_time,
+                "scorer_key": scorer_key
+            }
+            
+        return efficiency_scores
 
-        with open(path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-
-        self.logger.log("BeliefCartridgeSaved", {"path": path})
-
-    def bulk_save_all(self, directory: str):
+    def _format_idea(self, goal, scorable: Scorable, scores: Dict) -> str:
+        """Format idea with scoring metadata"""
+        return f"""
+        IDEA: {scorable.text[:200]}...
+        DIMENSION SCORES:
+        {" ".join(f"{dim}: {score:.1f}" for dim, score in scores.items())}
+        METADATA:
+        embedding_type: {scorable.embedding_type}
+        scorer: {self.cfg.get("default_scorer", "mrq")}
+        efficiency: {scores.get("efficiency", "N/A")}
+        GOAL ALIGNMENT: {scores.get("alignment", 0.0)}
         """
-        Exports all stored cartridges to individual YAML files.
-        """
-        cartridges = self.memory.belief_cartridges.all()
-        for c in cartridges:
-            filename = f"bc_{c.id}_{c.title.replace(' ', '_')}.yaml"
-            self.save_to_yaml(c, os.path.join(directory, filename))
-
-    def attach_scoring_signals(self, cartridge: BeliefCartridgeORM, context: dict):
-        """
-        Optionally attaches learned scores (e.g., GILD, MRQ) to the cartridge.
-        """
-        goal = context.get(GOAL, {})
-        gild_score = self._compute_gild_score(cartridge, goal)
-        mrq_score = self._compute_mrq_score(cartridge, goal)
-
-        cartridge.usefulness_score = gild_score * 0.5 + mrq_score * 0.5
-        cartridge.novelty_score = self._compute_novelty_score(cartridge)
-        cartridge.alignment_score = mrq_score
-
-        self.memory.session.commit()
-
-    def _compute_gild_score(self, cartridge: BeliefCartridgeORM, goal: dict) -> float:
-        """
-        Placeholder for actual GILD-style signal integration.
-        """
-        return 0.75  # Dummy score; replace with real model later
-
-    def _compute_mrq_score(self, cartridge: BeliefCartridgeORM, goal: dict) -> float:
-        """
-        Placeholder for MRQ scoring logic.
-        """
-        return 0.82
-
-    def _compute_novelty_score(self, cartridge: BeliefCartridgeORM) -> float:
-        """
-        Measures how novel this idea is compared to existing ones.
-        """
-        similar = self.memory.belief_cartridges.find_similar(
-            cartridge.embedding_id, top_k=5
-        )
-        if not similar:
-            return 1.0  # Completely new
-        avg_similarity = sum(s.score for s in similar) / len(similar)
-        return round(1.0 - avg_similarity, 2)
-    
-
-    def assign_domains_to_cartridge(self, cartridge: BeliefCartridgeORM):
-        """
-        Uses DomainClassifier to assign domains to a belief cartridge.
-        """
-        content = cartridge.description or cartridge.content
-        if not content:
-            self.logger.log("CartridgeNoContent", {"cartridge_id": cartridge.id})
-            return
-
-        results = self.domain_classifier.classify(content, self.top_k_domains, self.min_classification_score)
-
-        for domain, score in results:
-            self.memory.cartridge_domains.insert(
-                {
-                    "cartridge_id": cartridge.id,
-                    "domain": domain,
-                    "score": float(score),
-                }
-            )
-            self.logger.log(
-                "CartridgeDomainAssigned",
-                {
-                    "title": cartridge.title[:60],
-                    "domain": domain,
-                    "score": score,
-                },
-            )

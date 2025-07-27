@@ -1,4 +1,5 @@
 # stephanie/scoring/scoring_manager.py
+import json
 import re
 from pathlib import Path
 from typing import Optional
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.evaluation import EvaluationORM
+from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.score import ScoreORM
 from stephanie.models.score_dimension import ScoreDimensionORM
 from stephanie.prompts.prompt_renderer import PromptRenderer
@@ -46,8 +48,8 @@ class ScoringManager(BaseAgent):
          # Initialize fallback scorer if not provided
         if scorer is None:
             from stephanie.scoring.llm_scorer import LLMScorer
-            from stephanie.scoring.mrq.mrq_scorer import MRQScorer
-            from stephanie.scoring.svm.svm_scorer import SVMScorer
+            from stephanie.scoring.mrq_scorer import MRQScorer
+            from stephanie.scoring.svm_scorer import SVMScorer
 
             svm_scorer = SVMScorer(cfg, memory, logger, dimensions=dimensions)
             mrq_scorer = MRQScorer(cfg, memory, logger, dimensions=dimensions)
@@ -164,8 +166,8 @@ class ScoringManager(BaseAgent):
         cfg["output_format"] = output_format
 
         from stephanie.scoring.llm_scorer import LLMScorer
-        from stephanie.scoring.mrq.mrq_scorer import MRQScorer
-        from stephanie.scoring.svm.svm_scorer import SVMScorer
+        from stephanie.scoring.mrq_scorer import MRQScorer
+        from stephanie.scoring.svm_scorer import SVMScorer
 
         if data["scorer"] == "mrq":
             # Use MRQ scoring profile if specified
@@ -238,7 +240,7 @@ class ScoringManager(BaseAgent):
     def evaluate(self, context: dict, scorable: Scorable, llm_fn=None):
         try:
             score = self.scorer.score(
-                context, scorable, self.dimensions
+                context, scorable, self.dimensions, llm_fn=llm_fn
             )
         except Exception as e:
             self.logger.log(
@@ -285,7 +287,7 @@ class ScoringManager(BaseAgent):
                 score = dim.get("postprocess", lambda s: s)(score)
             except Exception as e:
                 self.logger.log(
-                    "MgrScoreParseError",
+                    "ScoreParseError",
                     {"dimension": dim["name"], "response": response, "error": str(e)},
                 )
                 self.handle_score_error(dim, response, e)
@@ -329,7 +331,7 @@ class ScoringManager(BaseAgent):
         cfg: dict,
         memory,
         logger,
-        source=None,
+        source,
         model_name=None,
     ):
         goal = context.get("goal")
@@ -350,10 +352,11 @@ class ScoringManager(BaseAgent):
             pipeline_run_id=pipeline_run_id,
             target_type=scorable.target_type,
             target_id=scorable.id,
+            source=source,
             agent_name=cfg.get("name"),
             model_name=model_name,
             embedding_type=memory.embedding.type,
-            evaluator_name=cfg.get("evaluator", "ScoreEvaluator"),
+            evaluator_name=cfg.get("evaluator", cfg.get("model_type", "ScoreEvaluator")),
             strategy=cfg.get("strategy"),
             reasoning_strategy=cfg.get("reasoning_strategy"),
             scores=scores_json,
@@ -376,6 +379,24 @@ class ScoringManager(BaseAgent):
             )
             memory.session.add(score)
 
+            # After inserting ScoreORM
+            attribute = EvaluationAttributeORM(
+                evaluation_id=eval_orm.id,
+                dimension=score_result.dimension,
+                source=score_result.source,
+                raw_score=score_result.score,
+                energy=score_result.energy,
+                uncertainty=score_result.uncertainty,
+                pi_value=score_result.policy_logits[0] if score_result.policy_logits else None,
+                entropy=score_result.entropy,
+                advantage=score_result.advantage,
+                q_value=score_result.q_value,
+                v_value=score_result.state_value,
+                policy_logits=json.dumps(score_result.policy_logits),
+                extra=score_result.to_dict(),
+            )
+            memory.session.add(attribute)
+
         memory.session.commit()
 
         logger.log(
@@ -392,7 +413,8 @@ class ScoringManager(BaseAgent):
         )
         ScoreDisplay.show(scorable, bundle.to_dict(), weighted_score)
 
-    @staticmethod
+
+    @staticmethod 
     def save_document_score_to_memory(
         bundle, document, context, cfg, memory, logger, source="DocumentEvaluator"
     ):
@@ -415,7 +437,7 @@ class ScoringManager(BaseAgent):
         eval_orm = EvaluationORM(
             goal_id=goal.get("id"),
             pipeline_run_id=pipeline_run_id,
-            target_type=TargetType.DOCUMENT,
+            target_type=TargetType.DOCUMENT.value,
             target_id=document_id,
             agent_name=cfg.get("name"),
             model_name=cfg.get("model", {}).get("name"),

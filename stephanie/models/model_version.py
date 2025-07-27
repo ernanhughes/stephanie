@@ -1,9 +1,8 @@
 # stephanie/models/model_version.py
 from datetime import datetime
 
-from sqlalchemy import (JSON, TIMESTAMP, Boolean, Column, Float, ForeignKey,
-                        Integer, String, Text)
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import JSON, TIMESTAMP, Boolean, Column, Integer, Text
+from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
 
@@ -28,6 +27,9 @@ class ModelVersionORM(Base):
     meta_path = Column(Text, nullable=True)
     description = Column(Text, nullable=True)
     source = Column(Text, nullable=True)
+
+    # Relationships
+    training_stats = relationship("TrainingStatsORM", back_populates="model_version")
 
     def __repr__(self):
         return f"<ModelVersionORM(model_type={self.model_type}, target_type={self.target_type}, dimension={self.dimension}, version={self.version})>"

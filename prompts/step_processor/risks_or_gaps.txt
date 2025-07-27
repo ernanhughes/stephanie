@@ -4,7 +4,7 @@ Evaluate the risks or gaps of the following hypothesis.
 {{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 Does the hypothesis contain major assumptions or missing elements?
 

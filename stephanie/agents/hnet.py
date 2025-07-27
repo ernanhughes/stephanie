@@ -1,7 +1,7 @@
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_factory import TargetType
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+
 
 class HNetAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):

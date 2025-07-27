@@ -4,7 +4,7 @@ Evaluate the insightfulness of the following Document.
 {{ goal.goal_text }}
 
 ### Document
-{{ scoable.text }}
+{{ scorable.text }}
 
 Does the Document reveal non-obvious, creative, or surprising insights that go beyond standard approaches?
 

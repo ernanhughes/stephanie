@@ -3,6 +3,15 @@ document_ebt_trainer:
   model_path: "${hydra:runtime.cwd}/models"
   model_type: "ebt"
   target_type: "document"
+  model_version: "v1"
+  device: "cpu"  # Use GPU if available
+  num_actions: 1  # Number of scorers to imitate
+  use_gild: true  # Enable policy learning
+  q_weight: 1.0   # Q-head loss weight
+  v_weight: 0.5   # V-head loss weight
+  pi_weight: 0.3  # Policy head loss weight
+  il_weight: 0.5   # Imitation learning weight
+  gild_decay_rate: 0.95
   dimensions: 
     - "alignment"
     - "clarity"

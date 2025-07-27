@@ -21,9 +21,7 @@ class Scorable:
         return {
             "id": self._id,
             "text": self._text,
-            "target_type": self._target_type.value
-            if hasattr(self._target_type, "value")
-            else self._target_type,
+            "target_type": self._target_type
         }
 
     def __repr__(self):

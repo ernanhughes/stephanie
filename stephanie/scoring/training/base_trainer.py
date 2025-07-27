@@ -1,113 +1,130 @@
-# stephanie/scoring/training/base_trainer.py
-from collections import defaultdict
+import json
+import os
 
 import torch
-import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 
 class BaseTrainer:
-    def __init__(
-        self, memory, logger, encoder=None, value_predictor=None, device="cpu"
-    ):
+    class Locator:
+        def __init__(self, root_dir, model_type, target_type, dimension, version, embedding_type):
+            self.root_dir = root_dir
+            self.model_type = model_type
+            self.target_type = target_type
+            self.dimension = dimension
+            self.version = version
+            self.embedding_type = embedding_type
+
+        @property
+        def base_path(self):
+            path = os.path.join(
+                self.root_dir,
+                self.embedding_type,
+                self.model_type,
+                self.target_type,
+                self.dimension,
+                self.version,
+            )
+            os.makedirs(path, exist_ok=True)
+            return path
+
+        def encoder_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}_encoder.pt")
+
+        def q_head_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}_q.pt")
+
+        def v_head_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}_v.pt")
+
+        def pi_head_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}_pi.pt")
+
+        def meta_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}.meta.json")
+
+        def tuner_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}.tuner.json")
+
+        def scaler_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}_scaler.joblib")
+
+        def joblib_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}_model.joblib")
+
+        def model_file(self, suffix: str = ".pt") -> str:
+            return os.path.join(self.base_path, f"{self.dimension}{suffix}")
+
+
+        def model_exists(self) -> bool:
+            return False
+
+    def __init__(self, cfg, memory=None, logger=None):
+        self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.device = device
+        self.embedding_type = memory.embedding.type
+        self.dim = memory.embedding.dim
+        self.hdim = memory.embedding.hdim
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.root_dir = cfg.get("model_path", "models")
+        self.version = cfg.get("model_version", "v1")
+        self.target_type = cfg.get("target_type", "document")
+        self.model_type = cfg.get("model_type", "base")
+        self.dimensions = cfg.get("dimensions", [])
+        self.min_samples = cfg.get("min_samples", 5)
 
-        self.encoder = encoder.to(device) if encoder else self.init_encoder().to(device)
-        self.value_predictor = (
-            value_predictor.to(device)
-            if value_predictor
-            else self.init_predictor().to(device)
+    def get_locator(self, dimension):
+        return self.Locator(
+            root_dir=self.root_dir,
+            model_type=self.model_type,
+            target_type=self.target_type,
+            dimension=dimension,
+            version=self.version,
+            embedding_type=self.embedding_type,
         )
 
-    def init_encoder(self):
-        raise NotImplementedError("Subclasses must implement init_encoder")
+    def _create_dataloader(self, samples):
+        valid = []
+        for s in samples:
+            ctx_text = s.get("title", "")
+            doc_text = s.get("output", "")
+            score = s.get("score", 0.5)
 
-    def init_predictor(self):
-        raise NotImplementedError("Subclasses must implement init_predictor")
-
-    def prepare_training_data(self, samples: list[dict]) -> DataLoader:
-        raise NotImplementedError("Subclasses must implement prepare_training_data")
-
-    def train(self, dataloader: DataLoader, cfg: dict):
-        epochs = cfg.get("epochs", 20)
-        lr = cfg.get("lr", 1e-4)
-        patience = cfg.get("patience", 3)
-        min_delta = cfg.get("min_delta", 0.0001)
-
-        optimizer = torch.optim.Adam(self.value_predictor.parameters(), lr=lr)
-        criterion = nn.BCEWithLogitsLoss()
-        self.value_predictor.train()
-
-        best_loss = float("inf")
-        epochs_no_improve = 0
-
-        self.logger.log(
-            "BaseTrainerTrainingStart",
-            {"epochs": epochs, "lr": lr, "patience": patience, "min_delta": min_delta},
-        )
-
-        for epoch in range(epochs):
-            total_loss = 0.0
-            for x_batch, y_batch in dataloader:
-                assert isinstance(x_batch, torch.Tensor), "x_batch must be a tensor"
-                assert len(x_batch.shape) == 2, f"Unexpected shape: {x_batch.shape}"
-
-                preds = self.value_predictor(x_batch)
-                loss = criterion(preds, y_batch)
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                total_loss += loss.item()
-
-            avg_loss = total_loss / len(dataloader)
-            self.logger.log(
-                "BaseTrainerEpoch", {"epoch": epoch + 1, "avg_loss": round(avg_loss, 5)}
-            )
-
-            if best_loss - avg_loss > min_delta:
-                best_loss = avg_loss
-                epochs_no_improve = 0
-            else:
-                epochs_no_improve += 1
-                if epochs_no_improve >= patience:
-                    self.logger.log(
-                        "BaseTrainerEarlyStopping",
-                        {"stopped_epoch": epoch + 1, "best_loss": round(best_loss, 5)},
-                    )
-                    break
-
-        self.logger.log(
-            "BaseTrainerTrainingComplete",
-            {"epochs_trained": epoch + 1, "final_loss": round(avg_loss, 5)},
-        )
-
-    def train_multidimensional_model(
-        self, contrast_pairs: list[dict], cfg: dict = None
-    ):
-        by_dimension = defaultdict(list)
-        for pair in contrast_pairs:
-            dim = pair.get("dimension", "default")
-            by_dimension[dim].append(pair)
-
-        trained_models = {}
-
-        for dim, samples in by_dimension.items():
-            if not samples:
-                self.logger.log("BaseTrainerSkipDimension", {"dimension": dim})
+            if not ctx_text or not doc_text or not isinstance(score, (float, int)):
                 continue
 
-            self.logger.log(
-                "BaseTrainerTrainDimension",
-                {"dimension": dim, "num_samples": len(samples)},
-            )
+            ctx_emb = torch.tensor(self.memory.embedding.get_or_create(ctx_text)).to(self.device)
+            doc_emb = torch.tensor(self.memory.embedding.get_or_create(doc_text)).to(self.device)
 
-            dataloader = self.prepare_training_data(samples)
-            self.train(dataloader, cfg or {})
+            valid.append({"context": ctx_emb, "document": doc_emb, "score": score})
 
-            trained_models[dim] = self.value_predictor.state_dict()
+        if len(valid) < self.min_samples:
+            return None
 
-        return trained_models
+        return DataLoader(
+            TensorDataset(
+                torch.stack([s["context"] for s in valid]),
+                torch.stack([s["document"] for s in valid]),
+                torch.tensor([s["score"] for s in valid])
+            ),
+            batch_size=self.cfg.get("batch_size", 32),
+            shuffle=True
+        )
+
+    def _save_meta_file(self, meta: dict, dimension: str):
+        locator = self.get_locator(dimension)
+        with open(locator.meta_file(), "w") as f:
+            json.dump(meta, f)
+
+    def _calculate_policy_metrics(self, logits):
+        probs = F.softmax(torch.tensor(logits), dim=-1)
+        entropy = -torch.sum(probs * torch.log(probs + 1e-8)).item()
+        stability = probs.max().item()
+        return entropy, stability
+
+    def log_event(self, name: str, payload: dict):
+        if self.logger:
+            self.logger.log(name, payload)
+

@@ -44,7 +44,7 @@ class ScoringEngine:
             scoring_manager = self.get_manager(scoring_profile)
 
             merged_context = {
-                "target_type": target_type.value,
+                "target_type": target_type,
                 "target": scorable.to_dict(),
                 **context,
             }
@@ -76,7 +76,7 @@ class ScoringEngine:
             scoring_manager = self.get_manager(scoring_profile)
 
             merged_context = {
-                "target_type": scorable.target_type.value,
+                "target_type": scorable.target_type,
                 "target": scorable.to_dict(),
                 **context,
             }

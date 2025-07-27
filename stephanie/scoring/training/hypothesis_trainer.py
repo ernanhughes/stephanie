@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
-from stephanie.scoring.mrq.encoder import TextEncoder
+from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
 

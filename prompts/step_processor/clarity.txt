@@ -4,7 +4,7 @@ Evaluate the clarity of the following hypothesis.
 {{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 Is the expression clear, coherent, and precise?
 

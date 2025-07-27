@@ -5,7 +5,7 @@
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.domain_classifier import DomainClassifier
 from stephanie.builders.belief_cartridge_builder import BeliefCartridgeBuilder
-from stephanie.scoring.mrq.mrq_scorer import \
+from stephanie.scoring.mrq_scorer import \
     MRQScorer  # or wherever your scorer lives
 from stephanie.utils.idea_parser import IdeaParser
 

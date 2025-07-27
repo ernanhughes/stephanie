@@ -6,7 +6,7 @@ from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
 from stephanie.evaluator.mrq_trainer import MRQTrainer
 from stephanie.models.sharpening_prediction import SharpeningPredictionORM
-from stephanie.scoring.mrq.encoder import TextEncoder
+from stephanie.scoring.model.text_encoder import TextEncoder
 
 
 class MRQSelfEvaluator(BaseEvaluator):

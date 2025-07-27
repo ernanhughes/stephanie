@@ -227,6 +227,7 @@ CREATE TABLE IF NOT EXISTS context_states (
     stage_name TEXT NOT NULL,         -- Agent name (generation, reflection)
     version INT DEFAULT 1,           -- Iteration number for this stage
     context JSONB NOT NULL,          -- Full context dict after stage
+    trace JSONB DEFAULT '{}'::JSONB, -- Execution trace (e.g., {"generation": [...], "reflection": [...]})
     preferences JSONB,              -- Preferences used (novelty, feasibility)
     feedback JSONB,                 -- Feedback from previous stages
     extra_data JSONB DEFAULT '{}'::JSONB, -- Strategy, prompt_version, etc.
@@ -1018,24 +1019,46 @@ CREATE TABLE IF NOT EXISTS component_interfaces (
 );
 
 
+-- Create table with core fields and relationships
 CREATE TABLE belief_cartridges (
     id TEXT PRIMARY KEY,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW() ON UPDATE NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Source information
     source_id TEXT,
-    source_type TEXT,
+    source_type TEXT NOT NULL CHECK (source_type IN ('paper', 'blog', 'experiment', 'pipeline', 'manual')),
+    source_url TEXT,
+    
+    -- Core content
     markdown_content TEXT NOT NULL,
-    goal_tags JSONB DEFAULT '[]',
-    domain_tags JSONB DEFAULT '[]',
-    idea_payload JSONB,
-    rationale TEXT,
     is_active BOOLEAN DEFAULT TRUE,
-    derived_from JSONB DEFAULT '[]',
-    applied_in JSONB DEFAULT '[]',
+    
+    -- Structured idea payload
+    idea_payload JSONB,  -- e.g., {title: "Q-MAX", description: "...", code_snippet: "..."}
+    
+    -- Tagging
+    goal_tags TEXT[] DEFAULT ARRAY[]::TEXT[],  -- Tags from goal context
+    domain_tags TEXT[] DEFAULT ARRAY[]::TEXT[],  -- Tags from domain analysis
+    
+    -- Provenance
+    derived_from JSONB DEFAULT '[]',  -- List of belief_cartridge IDs this was derived from
+    applied_in JSONB DEFAULT '[]',    -- List of pipeline_run IDs where this was used
+    
+    -- Versioning
     version INTEGER DEFAULT 1,
     memcube_id TEXT,
-    debug_log JSONB
-    );
+    
+    -- Relationships
+    goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+    document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_belief_cartridges_source ON belief_cartridges(source_type, source_id);
+CREATE INDEX idx_belief_cartridges_tags ON belief_cartridges USING GIN (goal_tags);
+CREATE INDEX idx_belief_cartridges_active ON belief_cartridges(is_active);
+CREATE INDEX idx_belief_cartridges_version ON belief_cartridges(version);
 
 
 CREATE TABLE IF NOT EXISTS pipeline_stages (
@@ -1183,5 +1206,73 @@ CREATE INDEX IF NOT EXISTS idx_hnet_embedding_vector
 ON hnet_embeddings
 USING ivfflat (embedding vector_cosine_ops);
 ALTER TABLE hnet_embeddings ADD CONSTRAINT unique_text_hash_hnet UNIQUE (text_hash);
+
+CREATE TABLE IF NOT EXISTS evaluation_attributes (
+    id SERIAL PRIMARY KEY,
+    evaluation_id INTEGER NOT NULL,
+    dimension TEXT NOT NULL,
+    source TEXT NOT NULL,
+    raw_score FLOAT,
+    energy FLOAT,
+    uncertainty FLOAT,
+    advantage FLOAT,
+    pi_value FLOAT,
+    q_value FLOAT,
+    v_value FLOAT,
+    extra JSON,
+    entropy FLOAT,
+    td_error FLOAT, 
+    expected_return FLOAT,
+
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE IF NOT EXISTS training_stats (
+    id SERIAL PRIMARY KEY,
+    
+    -- Model identification
+    model_type VARCHAR NOT NULL,
+    target_type VARCHAR NOT NULL,
+    dimension VARCHAR NOT NULL,
+    version VARCHAR NOT NULL,
+    embedding_type VARCHAR NOT NULL,
+    
+    -- Training metrics
+    q_loss DOUBLE PRECISION,
+    v_loss DOUBLE PRECISION,
+    pi_loss DOUBLE PRECISION,
+    avg_q_loss DOUBLE PRECISION,
+    avg_v_loss DOUBLE PRECISION,
+    avg_pi_loss DOUBLE PRECISION,
+    
+    -- Policy metrics
+    policy_entropy DOUBLE PRECISION,
+    policy_stability DOUBLE PRECISION,
+    policy_logits JSONB,
+    
+    -- Configuration
+    config JSONB,
+    
+    -- Dataset stats
+    sample_count INTEGER DEFAULT 0,
+    valid_samples INTEGER DEFAULT 0,
+    invalid_samples INTEGER DEFAULT 0,
+    
+    -- Timing
+    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    end_time TIMESTAMP,
+    
+    -- Relationships
+    goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+    model_version_id INTEGER REFERENCES model_versions(id) ON DELETE SET NULL
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_training_stats_dimension ON training_stats(dimension);
+CREATE INDEX idx_training_stats_model ON training_stats(model_type);
+CREATE INDEX idx_training_stats_version ON training_stats(version);
+CREATE INDEX idx_training_stats_embedding ON training_stats(embedding_type);
+
 
 

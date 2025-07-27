@@ -5,8 +5,7 @@ from typing import Dict, List, Optional
 
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.scoring.svm.svm_model_loader import SVMModelLoader
-from stephanie.scoring.svm.svm_scorer import SVMScorer
+from stephanie.scoring.svm_scorer import SVMScorer
 # Import the existing document section parser
 from stephanie.utils.document_section_parser import DocumentSectionParser
 
@@ -42,11 +41,6 @@ class IdeaParser:
             memory=self.memory,
             dimensions=self.dimensions
         )
-        model_loader = SVMModelLoader(
-            cfg,
-            logger=self.logger
-        )
-        self.scorer.models = model_loader.load_all(self.dimensions)
 
     def parse(self, paper_text: str, paper_title: str = "", context={}, override_dimensions: Optional[list] = None) -> List[Dict]:
         """

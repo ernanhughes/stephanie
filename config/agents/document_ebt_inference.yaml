@@ -6,6 +6,7 @@ document_ebt_inference:
   target_type: "document"
 
   use_llm_refinement: true
+  device: cpu
   optimization:
     steps: 15
     step_size: 0.05

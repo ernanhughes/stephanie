@@ -3,6 +3,7 @@ document_mrq_trainer:
   model_path: "${hydra:runtime.cwd}/models"
   model_type: "mrq"
   target_type: "document"
+  use_sicql_style: false
   dimensions: 
     - "alignment"
     - "clarity"

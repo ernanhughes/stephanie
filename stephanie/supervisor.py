@@ -2,17 +2,18 @@
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import hydra
-from dependency_injector.wiring import Provide, inject
 from omegaconf import DictConfig, OmegaConf
+from tabulate import tabulate
 
 from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
                                  SKIP_IF_COMPLETED, STAGE)
-from stephanie.containers import AppContainer
+from stephanie.core.context.context_manager import ContextManager
 from stephanie.engine.cycle_watcher import CycleWatcher
 from stephanie.engine.meta_confidence import MetaConfidenceTracker
 from stephanie.engine.self_validation import SelfValidationEngine
@@ -20,15 +21,10 @@ from stephanie.engine.state_tracker import StateTracker
 from stephanie.engine.training_controller import TrainingController
 from stephanie.logs.json_logger import JSONLogger
 from stephanie.memory import MemoryTool
-from stephanie.protocols.base import Protocol
-from stephanie.registry.agent_registry import AgentRegistry
 from stephanie.registry.registry import register
 from stephanie.reports import ReportFormatter
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.utils.timing import time_function
-
-from tabulate import tabulate
-import time
 
 
 class PipelineStage:
@@ -41,32 +37,20 @@ class PipelineStage:
         self.stage_dict = stage_dict
 
 
-class SingleAgentPipeline:
-    def __init__(self, agent_name, config, container: AppContainer):
-        self.agent = AgentRegistry(config).get(agent_name)
-        self.goal_input = config.input_path
-        self.container = container
-
-    def run(self):
-        pass
-        # goals = load_goal_list(self.goal_input)
-        # for goal in goals:
-        #     result = self.agent.run(goal)
-        # wrap it in pipeline logs, score evals, etc.
-
-container = AppContainer()
-
 class Supervisor:
-    def __init__(self, cfg, memory=None, logger=None, container: AppContainer = None):
+    def __init__(self, cfg, memory=None, logger=None):
         self.cfg = cfg
-        self.container = container or AppContainer()
-        self.container.init_resources()  # Important!
         self.memory = memory or MemoryTool(cfg=cfg.db, logger=logger)
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
         self.logger.log("SupervisorInit", {"cfg": cfg})
         self.rule_applier = SymbolicRuleApplier(cfg, self.memory, self.logger)
         print(f"Parsing pipeline stages from config: {cfg.pipeline}")
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
+
+        self.context = self._init_context()
+        self.logger.log("ContextManagerInitialized", {
+            "context": self.context
+        })
 
         # Initialize and register core components
         state_tracker = StateTracker(cfg, self.memory, self.logger)
@@ -116,6 +100,36 @@ class Supervisor:
             },
         )
 
+    def _init_context(self):
+        # Get context config from Hydra
+        context_cfg = self.cfg.get("context", {})
+
+        # Build context manager
+        context_manager = ContextManager(
+            cfg=context_cfg,
+            memory=self.memory,
+            logger=self.logger
+        )
+        
+        # Load from DB if context_id exists
+        if self.cfg.get("context_id"):
+            loaded = context_manager.load_from_db(self.cfg.context_id)
+            if loaded:
+                context_manager = loaded
+                self.logger.log("ContextLoadedFromDB", {
+                    "context_id": self.cfg.context_id,
+                    "component_count": len(context_manager["metadata"]["components"])
+                })
+
+        return context_manager
+
+    def _stage_already_processed(self, stage):
+        """Check if stage was already processed"""
+        for action in self.context._data["trace"]:
+            if action["agent"] == stage.name:
+                return True
+        return False
+
     def _parse_pipeline_stages(
         self, stage_configs: list[dict[str, any]]
     ) -> list[PipelineStage]:
@@ -132,52 +146,18 @@ class Supervisor:
         return stages
 
     async def run_pipeline_config(self, input_data: dict) -> dict:
-        """
-        Run all stages defined in config.
-        Each stage loads its class dynamically via hydra.utils.get_class()
-        """
         self.logger.log("PipelineStart", input_data)
-        input_file = input_data.get("input_file", self.cfg.get("input_file", None))
-
-        if input_file and os.path.exists(input_file):
-            self.logger.log("BatchProcessingStart", {"file": input_file})
-            with open(input_file, "r", encoding="utf-8") as f:
-                for i, line in enumerate(f):
-                    goal_dict = json.loads(line)
-                    goal_orm = self.memory.goals.get_or_create(goal_dict)
-
-                    run_id = goal_orm.get("id", f"goal_{i}")
-                    context = {
-                        GOAL: goal_dict,
-                        RUN_ID: run_id,
-                        "prompt_dir": self.cfg.paths.prompts,
-                        PIPELINE: [stage.name for stage in self.pipeline_stages],
-                    }
-                    try:
-                        await self._run_pipeline_stages(context)
-                    except Exception as e:
-                        self.logger.log(
-                            "BatchItemFailed",
-                            {"index": i, "run_id": run_id, "error": str(e)},
-                        )
-            self.logger.log("BatchProcessingComplete", {"file": input_file})
-            return {"status": "completed_batch", "input_file": input_file}
-
+        
         goal_dict = self.get_goal(input_data)
         run_id = str(uuid4())
         pipeline_list = [stage.name for stage in self.pipeline_stages]
 
-        context = input_data.copy()
-        context.update(
-            {
-                RUN_ID: run_id,
-                PIPELINE: pipeline_list,
-                PROMPT_DIR: self.cfg.paths.prompts,
-                "goal": goal_dict,
-            }
-        )
+        # Initialize context via ContextManager
+        self.context["goal"] = goal_dict
+        self.context[RUN_ID] = run_id
+        self.context[PIPELINE] = pipeline_list
+        self.context[PROMPT_DIR] = self.cfg.paths.prompts
 
-        # Create and store PipelineRun
         pipeline_run_data = {
             "name": self.cfg.get("pipeline", {}).get(NAME, "UnnamedPipelineRun"),
             "tag": self.cfg.get("pipeline", {}).get("tag", "default"),
@@ -187,20 +167,23 @@ class Supervisor:
             "embedding_dimensions": self.memory.embedding.dim,
             "run_id": run_id,
             "pipeline": pipeline_list,  # Should be list of strings like ["generation", "judge"]
-            "strategy": context.get("strategy"),
             "model_name": self.cfg.get("model.name", "unknown"),
             "run_config": OmegaConf.to_container(self.cfg),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-
-        # Insert into DB
         run_id = self.memory.pipeline_runs.insert(pipeline_run_data)
-        context[PIPELINE_RUN_ID] = run_id
+        self.context[PIPELINE_RUN_ID] = run_id
 
-        # Now allow lookahead or other steps to adjust context
-        context = await self.maybe_adjust_pipeline(context)
-        context = self.rule_applier.apply(context)
-        return await self._run_pipeline_stages(context)
+        # Adjust pipeline if needed
+        await self.maybe_adjust_pipeline(self.context())
+
+        # Apply symbolic rules directly via context manager data
+        self.context._data = self.rule_applier.apply(self.context())
+
+        # Run pipeline stages with simple dict (agents stay unaware of ContextManager)
+        result_context = await self._run_pipeline_stages(self.context())
+
+        return result_context
 
     def _parse_pipeline_stages_from_list(
         self, stage_names: list[str]
@@ -219,7 +202,7 @@ class Supervisor:
             # Post-judgment hook
             if self.cfg.get("post_judgment", {}).get("enabled", False):
                 context = await self._maybe_run_pipeline_judge(context)
-        self._print_pipeline_summary(context)
+        self._print_pipeline_summary()
         return context
 
     async def _maybe_run_pipeline_judge(self, context: dict) -> dict:
@@ -242,44 +225,25 @@ class Supervisor:
         return context
 
 
-    @inject
-    async def _run_with_protocol(
-        self,
-        context: dict,
-        protocol_name: str,
-        protocol: Protocol = Provide["container.protocol_selector"]
-    ):
-        """
-        Runs the given protocol.
-        Dependency Injector resolves `protocol` based on `protocol_name`.
-        """
-        result = protocol.run(context)
-        return result
-    
     async def _run_single_stage(self, stage: PipelineStage, context: dict) -> dict:
         stage_details = {
             STAGE: stage.name,
+            "agent": stage.cls.split(".")[-1],
+            "status": "⏳ running", 
+            "start_time": datetime.utcnow().strftime("%H:%M:%S")
+
         }
-        start_time = time.time()
-        context.setdefault("STAGE_DETAILS", []).append(stage_details)
+        self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
+
         if not stage.enabled:
-            self.logger.log("PipelineStageSkipped", {STAGE: stage.name, "reason": "disabled_in_config"})
+            self.logger.log("PipelineStageSkipped", {STAGE: stage.name})
             stage_details["status"] = "⏭️ skipped"
             return context
 
         try:
             cls = hydra.utils.get_class(stage.cls)
             stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
-            stage_details["agent"] = stage.cls.split(".")[-1]
             self.rule_applier.apply_to_agent(stage_dict, context)
-
-            # Try loading saved context
-            goal_id = context.get(GOAL, {}).get("id")
-            saved_context = self.load_context(stage_dict, goal_id=goal_id)
-            if saved_context:
-                self.logger.log("PipelineStageSkipped", {STAGE: stage.name, "reason": "context_loaded"})
-                return {**context, **saved_context}
-
             agent_args = {
                 "cfg": stage_dict,
                 "memory": self.memory,
@@ -289,30 +253,38 @@ class Supervisor:
                 agent_args["full_cfg"] = self.cfg
 
             agent = cls(**agent_args)
-
             self.logger.log("PipelineStageStart", {STAGE: stage.name})
 
             for i in range(stage.iterations or 1):
                 self.logger.log("PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1})
-                context = await agent.run(context)
-
-                if self.rule_applier.rules:
-                    self.rule_applier.track_pipeline_stage(stage_dict, context)
+                
+                agent_input_context = context.copy()
+                context = await agent.run(agent_input_context)
+                
+                self.context.log_action(
+                    agent=agent,
+                    inputs=agent_input_context,
+                    outputs=context,
+                    description=f"Iteration {i + 1} of {stage.name}"
+                )
 
                 self.logger.log("PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1})
 
-            self.save_context(stage_dict, context)
+            # Saving context after stage
+            if stage_dict.get(SAVE_CONTEXT, True):
+                self.context.save_to_db(stage_dict)
             self._save_pipeline_stage(stage, context, stage_dict)
             self.logger.log("PipelineStageEnd", {STAGE: stage.name})
 
             stage_details["status"] = "✅ completed"
-            stage_details["duration"] = time.time() - start_time
+            stage_details["end_time"] = datetime.utcnow().strftime("%H:%M:%S")
             return context
 
         except Exception as e:
             self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
             stage_details["status"] = "💀 failed"
-            stage_details["duration"] = time.time() - start_time
+            stage_details["error"] = str(e)
+            stage_details["end_time"] = datetime.utcnow().strftime("%H:%M:%S")
             return context
         
     def _save_pipeline_stage(self, stage: PipelineStage, context: dict, stage_dict: dict):
@@ -377,81 +349,23 @@ class Supervisor:
         )
         return report
 
-    @time_function(logger=None)
     def save_context(self, cfg: DictConfig, context: dict):
-        if self.memory and cfg.get(SAVE_CONTEXT, True):
-            run_id = context.get(RUN_ID)
-            name = cfg.get(NAME, "NoAgentNameInConfig")
-            try:
-                self.memory.context.save(run_id, name, context, cfg)
-            except Exception as e:
-                self.logger.log(
-                    "ContextSaveFailed",
-                    {
-                        "run_id": run_id,
-                        "name": name,
-                        "error": str(e),
-                        "context_keys": list(context.keys()),
-                    },
-                )
-                for k, v in context.items():
-                    self.inspect_context_serializability(v, f"context[{repr(k)}]")
-                    print(f"Context Key: {k}, Type: {type(v)}")
-
-
-
-            self.logger.log(
-                "ContextSaved",
-                {NAME: name, RUN_ID: run_id, "context_keys": list(context.keys())},
-            )
-
-    def inspect_context_serializability(self, obj, path="context"):
-        try:
-            json.dumps(obj)
-        except TypeError as e:
-            print(f"❌ Non-serializable at {path} → {type(obj)}: {e}")
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    self.inspect_context_serializability(v, f"{path}[{repr(k)}]")
-            elif isinstance(obj, list):
-                for i, item in enumerate(obj):
-                    self.inspect_context_serializability(item, f"{path}[{i}]")
-            elif hasattr(obj, "__dict__"):
-                for attr, val in vars(obj).items():
-                    self.inspect_context_serializability(val, f"{path}.{attr}")
-            else:
-                print(f"⚠️ Unknown non-serializable object at {path}: {type(obj)}")
-        else:
-            # Optional: print serializable paths
-            pass
-
-
-    def inspect_non_serializable(self, obj, path="context"):
-        try:
-            json.dumps(obj)
-        except TypeError as e:
-            print(f"❌ Non-serializable at {path} → {type(obj)}: {e}")
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    self.inspect_non_serializable(v, f"{path}[{repr(k)}]")
-            elif isinstance(obj, list):
-                for i, item in enumerate(obj):
-                    self.inspect_non_serializable(item, f"{path}[{i}]")
-            elif hasattr(obj, "__dict__"):
-                for attr, val in vars(obj).items():
-                    self.inspect_non_serializable(val, f"{path}.{attr}")
-
-
-
+        if cfg.get(SAVE_CONTEXT, True):
+            self.context.save_to_db()
+            self.logger.log("ContextSaved", {
+                NAME: cfg.get(NAME, "UnnamedAgent"),
+                RUN_ID: context.get(RUN_ID),
+                "context_keys": list(context.keys())
+            })
 
     def load_context(self, cfg: DictConfig, goal_id: int):
-        if self.memory and cfg.get(SKIP_IF_COMPLETED, False):
+        if cfg.get(SKIP_IF_COMPLETED, False):
             name = cfg.get(NAME, None)
             if name and self.memory.context.has_completed(goal_id, name):
-                saved_context = self.memory.context.load(goal_id, name)
-                if saved_context:
+                loaded_context = self.context.load_from_db(goal_id)
+                if loaded_context:
                     self.logger.log("ContextLoaded", {"Goal Id": goal_id, NAME: name})
-                    return saved_context
+                    return loaded_context()
         return None
 
     async def maybe_adjust_pipeline(self, context: dict) -> dict:
@@ -614,16 +528,9 @@ class Supervisor:
                 # Trigger retraining
                 self._trigger_ebt_retraining(r.dimension)
 
-    def _print_pipeline_summary(self, context:dict):
+    def _print_pipeline_summary(self):
         print("\n🖇️ Pipeline Execution Summary:\n")
-        print(f"\n🆔 Pipeline: {context.get(PIPELINE)} Run ID: {context.get(RUN_ID)}")
-        summary = context.get("STAGE_DETAILS", {})
-        table = tabulate(
-            summary,
-            headers="keys",
-            tablefmt="fancy_grid"
-        )
-        print(table)
-        self.logger.log("PipelineSummaryPrinted", {"summary": summary})    
+        summary = self.context().get("STAGE_DETAILS", [])
+        print(tabulate(summary, headers="keys", tablefmt="fancy_grid"))
+        self.logger.log("PipelineSummaryPrinted", {"summary": summary})
 
-__all__ = ["Supervisor", "container"]

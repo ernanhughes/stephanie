@@ -4,7 +4,7 @@ You are an impartial expert evaluator. Given a goal and a hypothesis, your task 
 {{ goal.goal_text }}
 
 ### Hypothesis:
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 ### Evaluation Criteria:
 - Relevance to the goal

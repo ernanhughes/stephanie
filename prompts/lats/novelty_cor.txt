@@ -6,7 +6,7 @@ Rubric:
 <eval>
 Evaluate the following reflection for novelty:
 Goal: {{ goal.goal_text }}
-Reflection: {{ hypothesis.text }}
+Reflection: {{ scorable.text }}
 </eval>
 
 Return your review in the exact structured format below:
@@ -23,7 +23,7 @@ Rubric:
 <eval>
 Evaluate the following hypothesis for novelty:
 Goal: {{ goal.goal_text }}
-Hypothesis: {{ hypothesis.text }}
+Hypothesis: {{ scorable.text }}
 </eval>
 
 Return your review in the exact structured format below:

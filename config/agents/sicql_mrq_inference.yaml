@@ -1,0 +1,18 @@
+sicql_mrq_inference:
+  name: sicql_mrq_inference
+  model_path: "${hydra:runtime.cwd}/models"
+  
+  model_type: mrq
+  evaluator: mrq
+  use_sicql_style: true
+  model_version: "v1"
+
+  target_type: document
+  dimensions: 
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+  input_key: documents
+  output_key: sicql_mrq_inference

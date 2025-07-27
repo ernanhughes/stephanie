@@ -1,0 +1,12 @@
+sicql_mrq_trainer:
+  name: sicql_mrq_trainer
+  model_path: "${hydra:runtime.cwd}/models"
+  model_type: mrq
+  target_type: document
+  use_sicql_style: true
+  dimensions: 
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance

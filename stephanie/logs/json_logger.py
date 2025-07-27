@@ -11,6 +11,46 @@ class JSONLogger:
         self.log_path = Path(log_path)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
+    def info(self, message: str, extra: dict = None):
+        """
+        Log an informational message with optional extra data.
+        
+        Args:
+            message: The log message
+            extra: Additional data to include in the log
+        """
+        self.log("info", {"message": message, "extra": extra or {}})
+
+    def exception(self, message: str, extra: dict = None):
+        """
+        Log an exception with a message and optional extra data.
+        
+        Args:
+            message: The error message
+            extra: Additional data to include in the log
+        """
+        self.log("exception", {"message": message, "extra": extra or {}})
+
+    def error(self, message: str, extra: dict = None):
+        """
+        Log an error message with optional extra data.
+
+        Args:
+            message: The error message
+            extra: Additional data to include in the log
+        """
+        self.log("error", {"message": message, "extra": extra or {}})
+
+    def warning(self, message: str, extra: dict = None):
+        """
+        Log a warning message with optional extra data.
+        
+        Args:
+            message: The warning message
+            extra: Additional data to include in the log
+        """
+        self.log("warning", {"message": message, "extra": extra or {}})
+
     def log(self, event_type: str, data: dict):
         icon = get_event_icon(event_type)
         print(f"{icon} [{event_type}] {str(data)[:100]}")

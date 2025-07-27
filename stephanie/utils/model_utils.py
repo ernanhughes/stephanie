@@ -7,10 +7,12 @@ from datetime import datetime
 import torch
 
 
+@DeprecationWarning
 def get_model_version(session, model_type: str, target_type: str, dimension: str):
     return "v1"
 
 
+@DeprecationWarning
 def get_model_path(
     model_path,
     model_type: str,
@@ -22,6 +24,7 @@ def get_model_path(
     return f"{model_path}/{embedding_type}/{model_type}/{target_type}/{dimension}/{version}/"
     
 
+@DeprecationWarning
 def discover_saved_dimensions(
     model_type: str, target_type: str, model_dir: str = "models", version: str = "v1"
 ) -> list:
@@ -51,6 +54,7 @@ def discover_saved_dimensions(
     return sorted(dimension_names)
 
 
+@DeprecationWarning
 def get_svm_file_paths(model_path, model_type, target_type, dim, model_version="v1", embedding_type="default"):
     base = get_model_path(model_path, model_type, target_type, dim, model_version, embedding_type)
     return {
@@ -61,6 +65,7 @@ def get_svm_file_paths(model_path, model_type, target_type, dim, model_version="
     }
 
 
+@DeprecationWarning
 def save_model_with_version(
     model_state: dict,
     model_type: str,

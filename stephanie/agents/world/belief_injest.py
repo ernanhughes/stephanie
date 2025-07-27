@@ -4,16 +4,14 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from stephanie.models.belief import BeliefORM
-from stephanie.models.cartridge import CartridgeORM
 from stephanie.models.goal import GoalORM
-from stephanie.scoring.svm.svm_scorer import SVMScorer
-from stephanie.utils.embedding import EmbeddingManager
+from stephanie.scoring.svm_scorer import SVMScorer
 from stephanie.utils.summarizer import summarize_text
 
 
 class BeliefIngestAgent:
     def __init__(
-        self, db: Session, scorer: SVMScorer, embedding: EmbeddingManager, logger=None
+        self, db: Session, scorer: SVMScorer, embedding, logger=None
     ):
         self.db = db
         self.scorer = scorer

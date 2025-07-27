@@ -4,7 +4,7 @@ from stephanie.evaluator.hypothesis_value_predictor import \
 from stephanie.evaluator.mrq_trainer import MRQTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
-from .encoder import TextEncoder
+from ..model.text_encoder import TextEncoder
 from .model import MRQModel
 
 

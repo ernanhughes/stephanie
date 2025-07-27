@@ -1,11 +1,14 @@
 
 # stephanie/agents/selection/gild_selector.py
 
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import GOAL
 import logging
 from collections import defaultdict
+
 import scipy.stats
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.constants import GOAL
+
 
 class GILDSelectorAgent(BaseAgent):
     """
@@ -48,6 +51,7 @@ class GILDSelectorAgent(BaseAgent):
 
     def _compute_efficiency_scores(self, examples: list) -> dict:
         from collections import defaultdict
+
         import numpy as np
 
         scorer_fields = [
@@ -123,8 +127,9 @@ class GILDSelectorAgent(BaseAgent):
 
     # In GILDSelectorAgent._compute_efficiency_scores
     def _compute_efficiency_scores(self, examples: list) -> dict:
-        import numpy as np
         from datetime import datetime
+
+        import numpy as np
         
         scorer_fields = [f"{emb}_{scorer}_score" for emb in ["hnet", "huggingface", "ollama"] 
                         for scorer in ["ebt", "svm", "mrq"]]

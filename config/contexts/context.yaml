@@ -1,0 +1,36 @@
+# This file configures the MonologueContext (or PipelineContext)
+# used across all pipeline stages in Stephanie
+
+context:
+  # Basic metadata
+  context_id: null               # Will auto-generate if not supplied
+  goal: ??                       # Can be injected by parent pipeline
+
+  # Persistence options
+  save_path: "outputs/contexts/${now:%Y%m%d_%H%M%S}.json"
+  load_from: null                # If provided, context will be loaded from this path
+  serialize_each_stage: true     # Save JSON snapshot after every stage
+
+  # Backing storage
+  use_database: true
+  db_table: "monologue_contexts"
+  db_index_keys: ["context_id", "goal", "created_at"]
+
+  # Logging / tracing
+  enable_trace: true
+  track_keys_added: true
+  track_agent_steps: true
+  log_agent_input_output: true
+
+  # Memory integration
+  store_to_memcube: true
+  memcube_namespace: "monologues"
+  belief_extraction_agent: "ContextSummarizerAgent"
+
+  # Cleanup and pruning
+  max_keys: 1000
+  prune_strategy: "none"   # options: none, lru, temporal, by_domain
+
+  # Versioning
+  version_tag: "v1"
+  created_at: ${now:%Y-%m-%dT%H:%M:%S}

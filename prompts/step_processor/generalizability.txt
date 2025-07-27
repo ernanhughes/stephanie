@@ -4,7 +4,7 @@ Evaluate the generalizability of the following hypothesis.
 {{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 To what extent could this hypothesis be applied to **other similar problems or goals** beyond the one stated? Consider whether the ideas or methods are broadly applicable or narrowly tailored.
 

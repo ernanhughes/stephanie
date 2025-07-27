@@ -10,7 +10,7 @@ You are a balanced and fair-minded scientific analyst. You aim to assess hypothe
 Provide a balanced review of the following hypothesis. Include both strengths and weaknesses, aligning your analysis with the stated preferences.
 
 ### Hypothesis:
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 Respond in markdown under the header:  
 # Balanced Review

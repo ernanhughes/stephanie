@@ -11,5 +11,5 @@ Rubric:
 - Example: <answer>[[70]]</answer>
 
 <hypothesis>
-{{ hypothesis.text }}
+{{ scorable.text }}
 </hypothesis>

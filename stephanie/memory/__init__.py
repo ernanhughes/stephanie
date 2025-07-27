@@ -12,6 +12,7 @@ from .document_domain_store import DocumentDomainStore
 from .document_section_store import DocumentSectionStore
 from .document_store import DocumentStore
 from .embedding_store import EmbeddingStore
+from .evaluation_attribute_store import EvaluationAttributeStore
 from .evaluation_store import EvaluationStore
 from .goal_dimensions_store import GoalDimensionsStore
 from .goal_store import GoalStore
@@ -31,8 +32,8 @@ from .reflection_delta_store import ReflectionDeltaStore
 from .report_logger import ReportLogger
 from .rule_application_store import RuleApplicationStore
 from .score_store import ScoreStore
+from .scoring_store import ScoringStore
 from .search_result_store import SearchResultStore
 from .sharpening_store import SharpeningStore
 from .symbolic_rule_store import SymbolicRuleStore
 from .theorem_store import TheoremStore
-from .scoring_store import ScoringStore

@@ -1,58 +1,42 @@
 # stephanie/scoring/score_result.py
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from stephanie.scoring.scorable_factory import TargetType
+import numpy as np
 
 
 @dataclass
 class ScoreResult:
-    """
-    Represents the result of scoring a single dimension, including the score,
-    rationale text, and weight used in aggregation.
-    """
-
     dimension: str
     score: float
-    weight: float
     rationale: str
+    weight: float
     source: str
+    target_type: str
+    prompt_hash: str
+    # SICQL-specific fields
     energy: Optional[float] = None
-    uncertainty: Optional[float] = None  # Added uncertainty field
-    target_type: str = "custom"
-    prompt_hash: Optional[str] = None
-    parser_error: Optional[str] = None
+    q_value: Optional[float] = None
+    state_value: Optional[float] = None
+    policy_logits: Optional[list[float]] = None
+    uncertainty: Optional[float] = None
+    entropy: Optional[float] = None
+    advantage: Optional[float] = None
 
-    def weighted(self) -> float:
-        return self.score * self.weight
-
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "dimension": self.dimension,
             "score": self.score,
-            "weight": self.weight,
             "rationale": self.rationale,
-            "prompt_hash": self.prompt_hash,
-            "source": self.source,
+            "weight": self.weight,
             "energy": self.energy,
+            "source": self.source,
+            "target_type": self.target_type,
+            "prompt_hash": self.prompt_hash,
+            "q_value": self.q_value,
+            "state_value": self.state_value,
+            "policy_logits": self.policy_logits,
             "uncertainty": self.uncertainty,
-            "parser_error": self.parser_error,
-            "target_type": self.target_type.value
-            if isinstance(self.target_type, TargetType)
-            else self.target_type,
+            "entropy": self.entropy,
+            "advantage": self.advantage
         }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "ScoreResult":
-        return cls(
-            dimension=data.get("dimension"),
-            score=data.get("score"),
-            weight=data.get("weight", 1.0),
-            rationale=data.get("rationale", ""),
-            source=data.get("source", ""),
-            energy=data.get("energy"),
-            uncertainty=data.get("uncertainty"),
-            prompt_hash=data.get("prompt_hash", ""),
-            parser_error=data.get("parser_error", None),
-            target_type=data.get("target_type", "custom"),
-        )

@@ -9,8 +9,7 @@ class IdeaSharpeningAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.target = cfg.get("target", "generation")
-        self.device = cfg.get("device", "cpu")
-        self.evaluator = MRQSelfEvaluator(memory, logger, device=self.device)
+Call the song        self.evaluator = MRQSelfEvaluator(memory, logger, device=self.device)
         self.templates = cfg.get("templates", ["critic"])
         self.save_count = cfg.get("save_count", 3)
 

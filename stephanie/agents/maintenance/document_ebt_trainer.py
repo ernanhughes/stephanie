@@ -69,7 +69,6 @@ class DocumentEBTTrainerAgent(BaseAgent):
         self.lr = cfg.get("lr", 2e-5)
         self.early_stopping = cfg.get("early_stopping", True)
         self.min_delta = cfg.get("min_delta", 0.001)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Initialize model evolution manager
         self.model_evolution = ModelEvolutionManager(cfg, memory, logger)

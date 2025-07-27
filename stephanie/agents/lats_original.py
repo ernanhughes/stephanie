@@ -11,10 +11,10 @@ from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.analysis.symbolic_impact_analyzer import SymbolicImpactAnalyzer
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.utils.graph_tools import (build_mermaid_graph,
                                          save_mermaid_to_file)
-from stephanie.scoring.scorable_factory import ScorableFactory
+
 
 class LATSAgent(ScoringMixin, BaseAgent):
     """

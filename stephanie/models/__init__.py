@@ -15,6 +15,7 @@ from .hypothesis import HypothesisORM
 from .idea import IdeaORM
 from .lookahead import LookaheadORM
 from .method_plan import MethodPlanORM
+from .model_version import ModelVersionORM
 from .mrq_memory_entry import MRQMemoryEntryORM
 from .mrq_preference_pair import MRQPreferencePairORM
 from .node_orm import NodeORM
@@ -31,4 +32,5 @@ from .sharpening_prediction import SharpeningPredictionORM
 from .sharpening_result import SharpeningResultORM
 from .symbolic_rule import SymbolicRuleORM
 from .theorem import CartridgeORM, TheoremORM
+from .training_stats import TrainingStatsORM
 from .unified_mrq import UnifiedMRQModelORM

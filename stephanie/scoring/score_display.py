@@ -14,9 +14,14 @@ class ScoreDisplay:
             ]
             for dim_name, dim_data in results.items()
         ]
-        table_data.append(["FINAL", f"{weighted_score:.2f}", "-", "Weighted average"])
-
-        print(f"\n📊 Dimension Scores {scorable.target_type}:{scorable.id} Summary")
+        source = "Unknown"
+        try:
+            table_data.append(["FINAL", f"{weighted_score:.2f}", "-", "Weighted average"])
+            _, value = next(iter(results.items()))
+            source = value.get("source", "Unknown")
+        except StopIteration:
+            pass
+        print(f"\n📊 {source} Dimension Scores {scorable.target_type}:{scorable.id} Summary")
         print(
             tabulate(
                 table_data,

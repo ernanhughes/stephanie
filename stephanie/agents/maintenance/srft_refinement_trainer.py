@@ -13,7 +13,7 @@ from stephanie.agents.mixins.ebt_mixin import EBTMixin
 from stephanie.scoring.ebt.srft_refinement_dataset import SRFTRefinementDataset
 from stephanie.scoring.model.ebt_model import EBTModel
 from stephanie.utils.file_utils import save_json
-from stephanie.utils.model_utils import get_model_path
+from stephanie.utils.model_locator import ModelLocator
 
 
 class SRFTRefinementTrainer(BaseAgent, EBTMixin):
@@ -101,26 +101,25 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
 
     def _save_model(self, model, dimension: str) -> str:
         """Save model and metadata"""
-        model_path = get_model_path(
-            self.model_path,
-            self.model_type,
-            self.target_type,
-            dimension,
-            self.model_version,
+        localer = ModelLocator(
+            root_dir=self.model_path,
+            model_type=self.model_type,
+            target_type=self.target_type,
+            dimension=dimension,
+            version=self.model_version,
             embedding_type=self.embedding_type
         )
-        os.makedirs(model_path, exist_ok=True)
+        localer.ensure_dirs()
+        torch.save(model.state_dict(), localer.model_file())
 
-        torch.save(model.state_dict(), os.path.join(model_path, f"{dimension}.pt"))
-
-        meta_path = os.path.join(model_path, f"{dimension}.meta.json")
+        meta_path = localer.meta_file()
         meta = {
             "training_date": datetime.utcnow().isoformat(),
             "version": self.model_version,
         }
         save_json(meta, meta_path)
 
-        return model_path
+        return localer.model_file()
 
     async def run(self, context: dict) -> dict:
         goal_text = context.get("goal", {}).get("goal_text")

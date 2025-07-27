@@ -7,7 +7,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import GOAL
-from stephanie.scoring.mrq.mrq_scorer import MRQScorer
+from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 

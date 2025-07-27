@@ -4,7 +4,7 @@ Evaluate the originality of this hypothesis in relation to the goal
 {{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 How original is the hypothesis relative to prior approaches?
 

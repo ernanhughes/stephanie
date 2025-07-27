@@ -1,9 +1,11 @@
 # stephanie/agents/analysis/cost_benefit_analyzer.py
 
+import logging
+from statistics import mean
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from statistics import mean
-import logging
+
 
 class CostBenefitAnalyzerAgent(BaseAgent):
     """

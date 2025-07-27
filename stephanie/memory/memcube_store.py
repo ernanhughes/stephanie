@@ -105,8 +105,6 @@ class MemcubeStore:
     def get_target_type(self, target_type) -> str:
         if isinstance(target_type, str):
             return target_type.lower()
-        elif hasattr(target_type, 'value'):
-            return target_type.value.lower()
         else:
             raise ValueError(f"Unsupported target type: {target_type}")
         

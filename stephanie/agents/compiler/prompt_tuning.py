@@ -7,7 +7,7 @@ from dspy import (BootstrapFewShot, Example, InputField, OutputField, Predict,
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.scoring.mrq.mrq_scorer import MRQScorer
+from stephanie.scoring.mrq_scorer import MRQScorer
 
 
 # DSPy signature for prompt refinement: defines input/output fields for tuning

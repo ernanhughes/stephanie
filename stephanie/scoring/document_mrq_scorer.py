@@ -4,7 +4,7 @@ import os
 
 import torch
 
-from stephanie.scoring.mrq.encoder import TextEncoder
+from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.mrq.value_predictor import ValuePredictor
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 

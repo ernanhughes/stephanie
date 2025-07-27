@@ -1,0 +1,33 @@
+score_energy_comparison:
+  name: score_energy_comparison
+  enabled: true
+  save_prompt: true
+  save_context: false # too big to save
+  skip_if_completed: false
+
+  sources_for_deep_analysis:
+    - sicql
+    - ebt
+
+  ground_truth_source: llm
+
+  report_output_dir: "${hydra:runtime.cwd}/reports/score_comparison"
+
+  target_type: "document"
+  dimensions: 
+    - "alignment"
+    - "clarity"
+    - "implementability"
+    - "novelty"
+    - "relevance"
+
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: score_energy_comparison
+  prompt_mode: file
+  prompt_file: score_energy_comparison.txt

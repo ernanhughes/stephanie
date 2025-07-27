@@ -10,7 +10,7 @@ You are a skeptical scientific analyst tasked with evaluating hypotheses strictl
 Critique the following hypothesis. Highlight flaws, uncertainties, missing logic, and unsupported claims.
 
 ### Hypothesis:
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 Respond in markdown under the header:  
 # Skeptical Review

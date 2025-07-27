@@ -27,7 +27,7 @@ SYSTEM_INIT = {
 }
 
 AGENT_EVENTS = {
-    
+    "GILDTrainerAgentInitialized": "📊🤖",  # GILD trainer agent initialized
     "MRQInferenceAgentInitialized": "📊🤖",  # MRQ inference agent initialized
     "AgentInitialized": "ᯓ★",  # Agent initialization
     "AgentInit": "🤖",  # Agent startup
@@ -114,6 +114,7 @@ KNOWLEDGE_OPS = {
 # PIPELINE CONTROL
 # =================
 PIPELINE_FLOW = {
+    "PipelineSummaryPrinted": "🖇️📄",  # Pipeline summary printed
     "PipelineStageInserted": "🖇️➕",  # Stage inserted
     "PipelineStart": "🖇️▶️",  # Pipeline started
     "PipelineStageStart": "🖇️⏩",  # Stage started
@@ -130,7 +131,7 @@ PIPELINE_FLOW = {
     "MRQPipelineSuggested": "🧠💡",  # MRQ pipeline suggested
     "PipelineStageFailed": "🖇️⚠️❌💢",  # Pipeline stage failed
     "PipelineScoreSummary": "🖇️📊🧾",  # Pipeline score summary
-    "PipelineError": "🖇️ OK so I have to do a force rescue and really annoying",  # Pipeline error
+    "PipelineError": "🖇️❌",  # Pipeline error
 }
 
 # =====================
@@ -168,6 +169,9 @@ SCORING = {
     "SVMScoringFinished": "📊🏁",  # SVM scoring finished
     "SVMScoringStarted": "📊▶️",  # SVM scoring started
     "SVMScoreComputed": "📊✅",  # SVM score computed
+    "PolicyAnalysis": "📊🔍",  # Policy analysis
+    "NoSICQLDataFound": "🚫📊",  # No SI-CQL data found
+
 }
 
 # =====================
@@ -193,7 +197,7 @@ REASONING = {
 # TRAINING & MODEL OPS
 # =====================
 TRAINING = {
-    "MRQTrainerEpoch": "🏋️📊",  # MRQ training epoch
+    "MRQTrainerEpoch": "🏋️",  # MRQ training epoch
     "MRQTrainerStart": "🚀🧠",  # MRQ training started
     "MRQTrainerTrainingComplete": "🎓🧠",  # MRQ training completed
     "MRQModelInitializing": "🧠⚙️",  # MRQ model initializing
@@ -213,6 +217,13 @@ TRAINING = {
     "LoadingSVMModel": "📥📊",  # Loading SVM model
     "SVMInferenceCompleted": "📊✅",  # SVM inference completed
     "EBTBufferCreated": "🧪📦",  # EBT buffer created
+    "EBTTrainerEpoch": "🏋️🧪",  # EBT training epoch
+    "TrainingCompleted": "🏁🎓",  # Training completed
+    "MRQTrainingEpoch": "🏋️🧠",  # MRQ training epoch
+    "MRQEarlyStopping": "🛑🏋️",  # MRQ early stopping
+    "MRQTrainingComplete": "🎓🧠",  # MRQ training completed
+    "MRQTrainerInitialized": "🧠🤖",  # MRQ trainer initialized
+    "NoSamplesFound": "🚫🚫🚫",  # No samples found for training
 }
 
 PROMPTS = {
@@ -257,6 +268,7 @@ RESEARCH = {
     "NoResultsFromWebSearch": "🌐🚫",  # No search results
     "DocumentProfiled": "📄📋",  # Document profiled
     "DocumentProfileFailed": "📄❌",  # Document profile failed
+    "DocumentsSearched": "📄🔍",  # Documents searched
 }
 
 # ===================
@@ -309,8 +321,11 @@ SPECIAL = {
 MODELS = {
     "SVMModelSaved": "💾📊",  # SVM model saved
     "SVMModelLoaded": "📥📊",  # SVM model load
-    "SVMModelTrainingStarted": "🏋️📊",
-    "SVMTrainingStarted": "🏋️📊"
+    "SVMModelTrainingStarted": "🏋️⚖️",
+    "SVMTrainingStarted": "🏋️📊",
+    "EBTModelLoaded": "📥🧪",  # EBT model loaded
+    "SICQLTrainingEpoch": "🏋️📊",  # SICQL training epoch
+    "SICQLTrainingComplete": "🎓📊",  # SICQL training completed
 
 }
 

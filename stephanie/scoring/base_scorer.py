@@ -1,40 +1,55 @@
-# stephanie/scoring/base_scorer.py
-from abc import ABC, abstractmethod
+import abc
+from typing import List
 
-import numpy as np
+import torch
 
+from stephanie.scoring.model_locator_mixin import ModelLocatorMixin
 from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.score_bundle import ScoreBundle
 
 
-class BaseScorer(ABC):
+class BaseScorer(ModelLocatorMixin, abc.ABC):
+    def __init__(self, cfg: dict, memory, logger):
+        self.cfg = cfg
+        self.memory = memory
+        self.logger = logger
+
+        self.embedding_type = self.memory.embedding.type
+        self.dim = self.memory.embedding.dim
+        self.hdim = self.memory.embedding.hdim
+
+        self.model_path = cfg.get("model_path", "models")
+        self.target_type = cfg.get("target_type", "document")
+        self.model_type = cfg.get("model_type", "svm")  # Override in subclass
+        self.version = cfg.get("model_version", "v1")
+
+        self.force_rescore = cfg.get("force_rescore", False)
+        self.dimensions = cfg.get("dimensions", [])
+        self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
+
     @property
-    @abstractmethod
     def name(self) -> str:
-        """Return the unique name or tag for the scorer (e.g. 'svm', 'mrq', 'llm-feedback')"""
-        pass
+        """Returns a canonical name for the scorer."""
+        return f"{self.model_type}"
 
-    """ 
-    Base interface for any scorer that evaluates a hypothesis given a goal and dimensions.
+    def get_model_name(self) -> str:
+        return f"{self.target_type}_{self.model_type}_{self.version}"
 
-    Returns:
-        A dictionary with dimension names as keys, and for each:
-            - score (float)
-            - rationale (str)
-            - weight (float, optional)
-    """
+    @abc.abstractmethod
+    def score(
+        self,
+        goal: dict,
+        scorable: Scorable,
+        dimensions: List[str],
+    ) -> ScoreBundle:
+        """
+        Score a single item (Scorable) for a given goal and a set of dimensions.
 
-    @abstractmethod
-    def score(self, goal: dict, scorable: Scorable, dimensions: list[str]) -> dict:
-        raise NotImplementedError("Subclasses must implement the score method.")
+        Returns:
+            ScoreBundle containing ScoreResults for each dimension.
+        """
+        raise NotImplementedError("Subclasses must implement score()")
 
-    def _build_feature_vector(self, goal: dict, scorable: Scorable):
-        emb_goal = self.memory.embedding.get_or_create(goal["goal_text"])
-        emb_hyp = self.memory.embedding.get_or_create(scorable.text)
-
-        # Optional: make sure they're both numpy arrays
-        emb_goal = np.array(emb_goal)
-        emb_hyp = np.array(emb_hyp)
-
-        vec = np.concatenate([emb_goal, emb_hyp])
-
-        return vec
+    def log_event(self, event: str, data: dict):
+        if self.logger:
+            self.logger.log(event, data)

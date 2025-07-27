@@ -4,7 +4,7 @@ Evaluate the logical correctness of the following hypothesis in relation to the 
 {{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 Is the reasoning logically valid and consistent with the goal?
 

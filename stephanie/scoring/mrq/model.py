@@ -29,10 +29,10 @@ class MRQModel:
         self.encoder.eval()
         self.predictor.eval()
 
-    def train_mode(self):
+    def train(self):
         self.encoder.train()
         self.predictor.train()
 
-    def eval_mode(self):
+    def eval(self):
         self.encoder.eval()
         self.predictor.eval()

@@ -7,7 +7,7 @@ Rubric:
 <eval>
 Evaluate the following reflection for insightfulness:
 Goal: {{ goal.goal_text }}
-Reflection: {{ hypothesis.text }}
+Reflection: {{ scorable.text }}
 </eval>
 
 Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
@@ -25,7 +25,7 @@ Rubric:
 <eval>
 Evaluate the following hypothesis for insightfulness:
 Goal: {{ goal.goal_text }}
-Hypothesis: {{ hypothesis.text }}
+Hypothesis: {{ scorable.text }}
 </eval>
 
 Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:

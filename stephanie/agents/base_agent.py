@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 import litellm
+import torch
 
 from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  GOAL, HYPOTHESES, INPUT_KEY, MODEL, NAME,
@@ -29,6 +30,8 @@ class BaseAgent(ABC):
         self.name = cfg.get(NAME, agent_key)
         self.memory = memory
         self.logger = logger or JSONLogger()
+        self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
+        self.embedding_type = self.memory.embedding.type
         self.rule_applier = SymbolicRuleApplier(cfg, memory, logger)
         self.model_config = cfg.get(MODEL, {})
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)

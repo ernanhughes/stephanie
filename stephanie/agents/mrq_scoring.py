@@ -17,7 +17,7 @@ class MRQScoringAgent(BaseAgent):
         count_scored = 0
 
         for hypothesis in hypotheses:
-            if not hypothesis.prompt or not hypothesis.text:
+            if not hypothesis.prompt or not scorable.text:
                 continue
 
             existing_score = self.memory.evaluations.get_by_hypothesis_id(
@@ -28,7 +28,7 @@ class MRQScoringAgent(BaseAgent):
 
             # Run evaluator
             result = self.evaluator.score_single(
-                prompt=hypothesis.prompt.prompt_text, output=hypothesis.text
+                prompt=hypothesis.prompt.prompt_text, output=scorable.text
             )
 
             # Handle result: could be float or dict of dimensions

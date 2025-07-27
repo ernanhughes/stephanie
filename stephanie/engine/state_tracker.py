@@ -64,3 +64,16 @@ class StateTracker:
         self.state[(goal, None)]["metadata"] = metadata
         if self.memory:
             self.memory.save("goal_metadata", {"goal": goal, "metadata": metadata})
+
+    def __repr__(self):
+        summary = []
+        for (goal, dimension), state in self.state.items():
+            dim_str = dimension if dimension is not None else "ALL"
+            status = state.get("status", "unknown")
+            scored = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(state.get("last_scored_at", 0)))
+            trained = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(state.get("last_trained_at", 0)))
+            retrain_count = state.get("retrain_count", 0)
+            summary.append(
+                f"[{goal} | {dim_str}] status={status}, last_scored={scored}, last_trained={trained}, retrains={retrain_count}"
+            )
+        return f"<StateTracker: {len(summary)} tracked goals>\n" + "\n".join(summary)

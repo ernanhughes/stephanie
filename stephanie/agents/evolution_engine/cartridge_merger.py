@@ -2,7 +2,7 @@
 import numpy as np
 from sklearn.cluster import DBSCAN
 
-from stephanie.core.knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 
 
 class CartridgeMerger:

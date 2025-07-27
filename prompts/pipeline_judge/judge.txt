@@ -5,7 +5,7 @@
 {{ pipeline | join(" → ") }}
 
 # Final Hypothesis (top scored)
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 # Reflection from Lookahead
 {{ lookahead }}

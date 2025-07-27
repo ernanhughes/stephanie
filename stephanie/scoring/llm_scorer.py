@@ -9,7 +9,6 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.scoring.score_result import ScoreResult
 from stephanie.scoring.scoring_manager import ScoringManager
-from stephanie.utils.timing import time_function
 
 
 class LLMScorer(BaseScorer):
@@ -30,7 +29,7 @@ class LLMScorer(BaseScorer):
     def name(self) -> str:
         return "llm"
 
-    def score(self, context:dict, scorable: Scorable, dimensions: list[dict]) -> ScoreBundle:
+    def score(self, context:dict, scorable: Scorable, dimensions: list[dict], llm_fn=None) -> ScoreBundle:
         """
         Scores a Scorable across multiple dimensions using an LLM.
         Returns a ScoreBundle object.
@@ -52,7 +51,9 @@ class LLMScorer(BaseScorer):
                     results.append(result)
                     continue
 
-            response = self.llm_fn(prompt, context)
+            if not llm_fn:
+                llm_fn = self.llm_fn
+            response = llm_fn(prompt, context)
 
             try:
                 parser = dim.get("parser") or self._get_parser(dim)

@@ -10,7 +10,7 @@ You are an optimistic scientific analyst. Your goal is to evaluate hypotheses ge
 Review the following hypothesis positively. Highlight strengths, potential validity, and possible real-world impacts.
 
 ### Hypothesis:
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 Respond in markdown under the header:  
 # Optimistic Review

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, relationship
 from stephanie.models.base import Base
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.models.document import DocumentORM
+from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.goal import GoalORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.pipeline_run import PipelineRunORM
@@ -26,7 +27,7 @@ class EvaluationORM(Base):
     goal_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("goals.id"))
     
     # Polymorphic target reference
-    target_type: Mapped[TargetType] = Column(Enum(TargetType), nullable=False)
+    target_type: Mapped[String] = Column(String, nullable=False)
     target_id: Mapped[int] = Column(Integer, nullable=False)
     
     embedding_type: Mapped[Optional[str]] = Column(String, nullable=True)
@@ -40,6 +41,7 @@ class EvaluationORM(Base):
 
     # Metadata
     agent_name: Mapped[str] = Column(String, nullable=False)
+    source: Mapped[str] = Column(String)
     model_name: Mapped[str] = Column(String, nullable=False)
     evaluator_name: Mapped[str] = Column(String, nullable=False)
     strategy: Mapped[Optional[str]] = Column(String)
@@ -71,6 +73,12 @@ class EvaluationORM(Base):
         back_populates="evaluations"
     )
 
+    attributes: Mapped[List[EvaluationAttributeORM]] = relationship(
+        "EvaluationAttributeORM",
+        back_populates="evaluation",
+        cascade="all, delete-orphan"
+    )
+
     def to_dict(self, include_relationships: bool = False) -> dict:
         data = {
             "id": self.id,
@@ -87,6 +95,11 @@ class EvaluationORM(Base):
             "scores": self.scores,
             "extra_data": self.extra_data,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "target_type": self.target_type,
+            "target_id": self.target_id,
+            "embedding_type": self.embedding_type,
+            "belief_cartridge_id": self.belief_cartridge_id,
+            "attributes": [attr.to_dict() for attr in self.attributes] if self.attributes else []    
         }
 
         if include_relationships:

@@ -7,7 +7,9 @@ defaults:
   - agents/paper_score
   - agents/knowledge_loader
   - agents/document_mrq_inference
+  - agents/sicql_mrq_inference
   - agents/document_mrq_trainer
+  - agents/sicql_mrq_trainer
   - agents/document_ebt_trainer
   - agents/document_ebt_inference
   - agents/document_reward_scorer
@@ -16,12 +18,19 @@ defaults:
   - agents/document_embedding_backfill
   - agents/document_llm_inference
   - agents/knowledge_db_loader
+  - agents/gild_trainer
   - agents/ethics
   - agents/scoring_memcube
   - agents/scoring_policy
+  - agents/policy_analyzer
+  - agents/pipeline_comparison
   - agents/pipeline_judge
+  - agents/scoring_report
   - agents/hnet
-  - agents/gild_selector
+  - agents/score_comparison
+  - agents/score_energy_comparison
+  - agents/score_analysis
+  - agents/policy_synthesis
   - logging/json_logger
 
 embeddings:
@@ -48,6 +57,7 @@ paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
 report:
+  save_context_result: false
   generate_report: false
   path: ${hydra:runtime.cwd}/reports
 
@@ -66,8 +76,14 @@ pipeline:
       enabled: false
       iterations: 1
 
+    - name: sicql_mrq_trainer
+      description: "Build document pairs for training and evaluation"
+      cls: stephanie.agents.maintenance.sicql_trainer.SICQLTrainerAgent
+      enabled: false
+      iterations: 1
+
     - name: document_svm_trainer
-      description: "Train a model to predict document values using SVM"
+      description: "Train a model to All right predict document values using SVM"
       cls: stephanie.agents.maintenance.svm_trainer.SVMTrainerAgent
       enabled: false
       iterations: 1
@@ -108,6 +124,12 @@ pipeline:
       enabled: false
       iterations: 1
 
+    - name: sicql_mrq_inference
+      description: "Infer MRQ SICQL scores for documents"
+      cls: stephanie.agents.inference.mrq_inference.MRQInferenceAgent
+      enabled: false
+      iterations: 1
+
     - name: document_svm_inference
       description: "Infer SVM scores for documents"
       cls: stephanie.agents.inference.svm_inference.SVMInferenceAgent
@@ -126,15 +148,21 @@ pipeline:
       enabled: false
       iterations: 1
 
-    - name: ethics
-      description: "Evaluate the ethical soundness of AI-generated advice"
-      cls: stephanie.agents.world.ethics.Ethics
-      enabled: false
-      iterations: 1
-
     - name: scoring_policy
       description: "Apply scoring policy to evaluate documents"
       cls: stephanie.agents.inference.scoring_policy.ScoringPolicyAgent
+      enabled: false
+      iterations: 1
+
+    - name: policy_analyzer
+      description: "Analyze the policy and its effectiveness"
+      cls: stephanie.agents.policy_analyzer.PolicyAnalysisAgent
+      enabled: false
+      iterations: 1
+
+    - name: gild_trainer
+      description: "Train the GILD model for policy improvement"
+      cls: stephanie.agents.gild_trainer.GILDTrainerAgent
       enabled: false
       iterations: 1
 
@@ -144,14 +172,32 @@ pipeline:
       enabled: false
       iterations: 1
 
-    - name: hnet
-      description: "HNet agent for handling knowledge and scoring"
-      cls: stephanie.agents.hnet.HNetAgent
+    - name: scoring_report
+      description: "Generate a scoring report from the ScoringStore"
+      cls: stephanie.agents.scoring_report.ScoringReportAgent
       enabled: false
       iterations: 1
+    
+    - name: score_comparison
+      description: "Compare scores from different models"
+      cls: stephanie.agents.score_comparison.ScoreComparisonAgent
+      enabled: true
+      iterations: 1
 
-    - name: gild_selector
-      description: "GILD selector for selecting the best documents based on GILD criteria"  
-      cls: stephanie.agents.gild_selector.GILDSelectorAgent
+    - name: score_energy_comparison
+      description: "Compare energy scores from different models"
+      cls: stephanie.agents.score_energy_comparison.ScoreEnergyComparisonAgent
+      enabled: true
+      iterations: 1
+
+    - name: policy_synthesis
+      description: "Synthesize policies based on the analysis of scores"
+      cls: stephanie.agents.policy_synthesis.PolicySynthesisAgent
+      enabled: true
+      iterations: 1
+
+    - name: gild_trainer
+      description: "Train the GILD model for policy improvement"
+      cls: stephanie.agents.gild_trainer.GILDTrainerAgent
       enabled: true
       iterations: 1

@@ -15,29 +15,7 @@ class PreferencePairBuilder:
         self.db = db
         self.logger = logger
 
-    def get_training_pairs_by_dimension(
-        self, goal: str = None, limit: int = 100, dim: list[str] = None
-    ) -> dict:
-        """
-        Returns a dictionary of document preference pairs grouped by dimension.
-
-        If `dim` is provided, only those dimensions will be included.
-
-        Output Format:
-        {
-            "relevance": [
-                {
-                    "title": "...",
-                    "text_a": "...",     # preferred
-                    "text_b": "...",     # less preferred
-                    "value_a": 9.1,
-                    "value_b": 5.3
-                },
-                ...
-            ],
-            ...
-        }
-        """
+    def get_training_pairs_by_dimension(self, goal=None, limit=100, dim=None):
         query = text(f"""
             WITH scored_docs AS (
                 SELECT
@@ -56,7 +34,7 @@ class PreferencePairBuilder:
                 JOIN evaluations e ON s.evaluation_id = e.id
                 JOIN documents d ON e.document_id = d.id
                 WHERE s.score IS NOT NULL
-                { "AND s.dimension IN :dims" if dim else "" }
+                {"AND s.dimension IN :dims" if dim else ""}
             )
             SELECT
                 dimension,
@@ -94,15 +72,19 @@ class PreferencePairBuilder:
             LIMIT :limit
         """)
 
-        params = {"limit": limit}
+        params = {
+            "limit": limit or 100
+        }
         if dim:
             params["dims"] = tuple(dim)
         if goal:
-            params["goal"] = goal
+            params["goal"] = goal  # Currently unused unless you add it to the query.
 
+        # Optional: print full SQL for debugging
+        # compiled = query.compile(self.db.bind, compile_kwargs={"literal_binds": True})
+        # self.logger.log("SQLQuery", {"query": str(compiled)})
         try:
             rows = self.db.execute(query, params).fetchall()
-            print(f"Fetched {len(rows)} rows from the database.")
         except Exception as e:
             if self.logger:
                 self.logger.log("DocumentPairBuilderError", {"error": str(e)})

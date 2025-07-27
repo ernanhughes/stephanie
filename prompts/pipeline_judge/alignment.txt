@@ -4,7 +4,7 @@ Evaluate the alignment of the following hypothesis with the stated goal.
 {{ goal.goal_text }}
 
 ### Hypothesis
-{{ hypothesis.text }}
+{{ scorable.text }}
 
 Does the hypothesis directly address the goal? Is it focused, relevant, and well-targeted to the core objective?
 

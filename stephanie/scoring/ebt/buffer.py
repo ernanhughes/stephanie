@@ -1,9 +1,8 @@
 # stephanie/utils/ebt_buffer.py
 import json
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List
 
 
 class EBTTrainingBuffer:

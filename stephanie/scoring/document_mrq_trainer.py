@@ -1,16 +1,10 @@
 # stephanie/scoring/document_mrq_trainer.py
 
-from collections import defaultdict
 from typing import List
 
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-
-from stephanie.scoring.mrq.encoder import TextEncoder
+from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.mrq.trainer_engine import MRQTrainerEngine
 from stephanie.scoring.mrq.value_predictor import ValuePredictor
-from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 
 class DocumentMRQTrainer:

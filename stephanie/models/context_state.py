@@ -21,6 +21,8 @@ class ContextStateORM(Base):
     version = Column(Integer, nullable=False)
     is_current = Column(Boolean, default=True)
     context = Column(JSON, nullable=False)  # Stored as JSONB or TEXT
+    trace = Column(JSON)
     preferences = Column(JSON)
+    token_count = Column(Integer)
     extra_data = Column(JSON)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))

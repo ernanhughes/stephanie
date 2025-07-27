@@ -1,14 +1,17 @@
 document_mrq_inference:
   name: document_mrq_inference
   model_path: "${hydra:runtime.cwd}/models"
-  model_type: "mrq"
-  evaluator: "mrq"
-  target_type: "document"
+  
+  model_type: mrq
+  evaluator: mrq
+  use_sicql_style: false
+
+  target_type: document
   dimensions: 
-    - "alignment"
-    - "clarity"
-    - "implementability"
-    - "novelty"
-    - "relevance"
-  input_key: "documents"
-  output_key: "document_mrq_inference"
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+  input_key: documents
+  output_key: document_mrq_inference

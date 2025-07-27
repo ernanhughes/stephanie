@@ -1,0 +1,87 @@
+gild_trainer:
+  name: gild_trainer
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  use_gild: true
+  il_weight: 0.5
+  il_decay_rate: 0.95
+  min_weight: 0.01
+  gild_loss_threshold: 0.1
+  use_ebt_as_expert: true
+  use_llm_as_expert: false
+  dimensions: 
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: gild_trainer
+  prompt_mode: file
+  prompt_file: gild_trainer.txt
+
+  mrq:
+    name: gild_trainer_mrq
+    model_type: "mrq"
+    evaluator: "mrq"
+    target_type: "document"
+    dimensions: 
+      - "alignment"
+      - "clarity"
+      - "implementability"
+      - "novelty"
+      - "relevance"
+
+  ebt:
+    name: gild_trainer_ebt
+    model_type: "ebt"
+    evaluator: "ebt"
+    target_type: "document"
+    dimensions: 
+      - "alignment"
+      - "clarity"
+      - "implementability"
+      - "novelty"
+      - "relevance"
+
+  llm:
+    name: gild_trainer_llm
+    model_type: "llm"
+    evaluator: "llm"
+    target_type: "document"
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    dimensions: 
+      - "alignment"
+      - "clarity"
+      - "implementability"
+      - "novelty"
+      - "relevance"
+
+  sicql:
+    name: gild_trainer_sicql
+    model_type: "sicql"
+    evaluator: "sicql"
+    target_type: "document"
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null And Tom Zimmerman
+    dimensions: 
+      - "alignment"
+      - "clarity"
+      - "implementability"
+      - "novelty"
+      - "relevance"

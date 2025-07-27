@@ -1,0 +1,5 @@
+fastapi
+uvicorn[standard]
+pydantic
+sqlite3
+gradio

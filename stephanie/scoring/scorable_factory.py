@@ -9,7 +9,7 @@ from stephanie.scoring.scorable import Scorable
 
 
 # Enum defining all the supported types of scoreable targets
-class TargetType(PyEnum):
+class TargetType:
     DOCUMENT = "document"
     HYPOTHESIS = "hypothesis"
     CARTRIDGE = "cartridge"
@@ -104,7 +104,7 @@ class ScorableFactory:
             target_type = data.get("target_type", "document")
         if "text" in data: # If text is provided, use it directly
             return Scorable(id=data.get("id", ""), text=data["text"], target_type=target_type)
-        if target_type == TargetType.DOCUMENT:
+        if target_type == "document":
             title = data.get("title", "")
             summary = data.get("summary", "")
             content = data.get("content", "")
@@ -114,7 +114,7 @@ class ScorableFactory:
                 text = content
             else:
                 text = title or summary
-        elif target_type == TargetType.TRIPLE:
+        elif target_type == "triple":
             text = (
                 f"{data.get('subject')} {data.get('relation')} {data.get('object')}",
             )

@@ -16,6 +16,7 @@ class BelieffGraph:
             self.ebt.add_belief(belief)
         else:
             raise ValueError("Invalid belief")
+
     def get_beliefs(self):
         return self.ebt.get_beliefs()
 
