@@ -29,6 +29,18 @@
             ]
         },
         {
+            "name": "HRM",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "hrm",
+            ]
+        },
+        {
             "name": "reflection",
             "type": "debugpy",
             "request": "launch",

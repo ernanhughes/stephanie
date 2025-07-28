@@ -8,6 +8,7 @@ from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.hrm_scorer import HRMScorer
 
 
 class DocumentRewardScorerAgent(BaseAgent):
@@ -29,8 +30,10 @@ class DocumentRewardScorerAgent(BaseAgent):
         mrq_scorer = MRQScorer(self.cfg, memory=self.memory, logger=self.logger)
         sicql_scorer = SICQLScorer(self.cfg, memory=self.memory, logger=self.logger)  
         ebt_scorer = EBTScorer(self.cfg, memory=self.memory, logger=self.logger)
+        hrm_scorer = HRMScorer(self.cfg, memory=self.memory, logger=self.logger)
 
-        scorers = [sicql_scorer, svm_scorer, mrq_scorer, ebt_scorer]
+        # scorers = [hrm_scorer, sicql_scorer, svm_scorer, mrq_scorer, ebt_scorer]
+        scorers = [hrm_scorer]
 
         for doc in documents:
 

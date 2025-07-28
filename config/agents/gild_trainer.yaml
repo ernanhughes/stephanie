@@ -78,7 +78,7 @@ gild_trainer:
     model:
       name: ollama/qwen3
       api_base: http://localhost:11434
-      api_key: null And Tom Zimmerman
+      api_key: null
     dimensions: 
       - "alignment"
       - "clarity"
