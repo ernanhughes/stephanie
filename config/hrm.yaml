@@ -41,7 +41,7 @@ embeddings:
   backend: hnet
 
 goal:
-  goal_text: I want to build an AI that can read, refactor, and iteratively improve its own source code to become more efficient, reliable, and aligned with its evolving objectives.
+  goal_text: Develop a strategy for the AI to safely modify its own functions without breaking core behavior.
   goal_type: "tactical"
   goal_category: "meta_learning"
   focus_area: "self_improvement"

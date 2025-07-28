@@ -1,24 +1,31 @@
-# stephanie/agents/epistemic_plan_executor_agent.py
+# stephanie/agents/epistemic_plan_executor_agent.py (Modified for Isolated LATS-like Logic)
+
 import os
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import time
 import uuid
+import json
 
+# --- Import necessary Stephanie components ---
 from stephanie.scoring.scorable_factory import TargetType, ScorableFactory
-from stephanie.scoring.scoring_manager import ScoringManager
+from stephanie.scoring.sicql_scorer import SICQLScorer
+from stephanie.scoring.hrm_scorer import HRMScorer  # Optional
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.data.plan_trace import PlanTrace, ExecutionStep
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.hrm_scorer import HRMScorer  # Optional: for future use
 
+# --- Import DSPy components needed for LLM interaction ---
+# Assuming you have dspy configured globally or can access the LM
+# If not, you might need to initialize it here or pass it in.
+# For this example, let's assume access via dspy.settings
 import dspy
 
 class EpistemicPlanExecutorAgent(BaseAgent):
     """
-    Agent to execute a reasoning plan (e.g., a DSPy program) and generate
-    a detailed PlanTrace for subsequent analysis by the Epistemic Plan HRM.
+    Agent to execute a reasoning plan using a simplified, internal LATS-like process
+    and generate a detailed PlanTrace for subsequent analysis by the Epistemic Plan HRM.
+    This avoids direct dependency on the external LATSDSPyAgent.
     """
 
     def __init__(
@@ -27,9 +34,101 @@ class EpistemicPlanExecutorAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", [])
         self.plan_timeout_seconds = cfg.get("plan_timeout_seconds", 300)
-        self.max_reasoning_steps = cfg.get("max_reasoning_steps", 5)  # Configurable steps
-        self.scorer = SICQLScorer(cfg=self.cfg.get("sicql", {}), memory=memory, logger=logger)
-        self.hrm_scorer = HRMScorer(cfg=self.cfg.get("hrm", {}), memory=memory, logger=logger)  # Optional use
+        self.max_reasoning_steps = cfg.get("max_reasoning_steps", 5) # Configurable steps
+        self.use_hrm_in_trace = cfg.get("use_hrm_in_trace", True) # Config flag
+
+        # --- Initialize Scorers for Trace Scoring ---
+        self.sicql_scorer = SICQLScorer(cfg=self.cfg.get("sicql", {}), memory=memory, logger=logger)
+        if self.use_hrm_in_trace:
+            self.hrm_scorer = HRMScorer(cfg=self.cfg.get("hrm", {}), memory=memory, logger=logger)
+        else:
+            self.hrm_scorer = None
+        # Get the configured LM
+        self.lm = dspy.LM(
+            "ollama_chat/qwen3",
+            api_base="http://localhost:11434",
+            api_key="",
+        )
+        dspy.configure(lm=self.lm)
+        self.logger.log("EpistemicPlanExecutorAgentInitialized", {
+            "max_reasoning_steps": self.max_reasoning_steps,
+            "use_hrm_in_trace": self.use_hrm_in_trace,
+        })
+
+    async def _run_simplified_lats(self, goal_text: str, input_data: Dict[str, Any]) -> List[str]:
+        """
+        Simplified internal logic to generate a sequence of reasoning steps,
+        mimicking the core iterative process of LATS.
+
+        Args:
+            goal_text (str): The main goal to reason about.
+            input_data (dict): Initial data provided to the reasoning process.
+
+        Returns:
+            List[str]: A list of strings, each representing an intermediate reasoning step/output.
+        """
+        trace_outputs = []
+        previous_steps_summary = "No steps taken yet."
+
+        for step_num in range(1, self.max_reasoning_steps + 1):
+            self.logger.log("LATS_StepStarted", {"step": step_num, "summary": previous_steps_summary[-100:]})
+
+            try:
+                # --- Construct Prompt for LLM (CORRECTED STRUCTURE) ---
+                # Create a flat list of message dictionaries
+                # Combine messages into a single prompt string
+                system_prompt = (
+                    "You are an AI assistant engaged in structured thinking to solve a complex problem.\n"
+                    "You will break down the problem into steps. Each response should represent one clear thinking step or action.\n"
+                    "Be specific and build logically on previous steps.\n"
+                    f"Goal: {goal_text}\n\n"
+                )
+
+                user_prompt = (
+                    f"Previous Steps Summary:\n{previous_steps_summary}\n\n"
+                    f"Input Data:\n{json.dumps(input_data, indent=2)}\n\n"
+                    f"Please provide the next logical reasoning step (Step {step_num}) to work towards solving the goal.\n"
+                    "If you have reached a conclusion, state 'Final Answer:' followed by your answer.\n"
+                    "Otherwise, just provide the reasoning step.\n"
+                )
+
+                # Full flat prompt string
+                prompt_text = system_prompt + user_prompt
+
+                # Now call the LLM correctly
+                completions = self.lm(prompt_text, n=1)
+                step_output_text = completions[0]
+
+
+                # --- Check for Final Answer ---
+                if step_output_text.strip().lower().startswith("final answer:"):
+                    # If the LLM signals completion, we can stop early
+                    # Extract the actual answer part if needed, or keep the whole text
+                    trace_outputs.append(step_output_text)
+                    self.logger.log("EpistemicPlanExecutorLATS", {"message": f"Early stopping at step {step_num} due to 'Final Answer' signal."})
+                    break
+                else:
+                    trace_outputs.append(step_output_text)
+                    # Update the summary for the next step
+                    # A simple approach: take the last N characters or summarize
+                    # For simplicity, we'll just append the new step
+                    previous_steps_summary += f"\nStep {step_num}: {step_output_text[:100]}..." # Truncate for summary
+
+                self.logger.log("LATS_StepCompleted", {"step": step_num, "output": step_output_text[:100]})
+
+            
+            except Exception as e:
+                self.logger.log("EpistemicPlanExecutorLATSStepError", {
+                    "message": f"Error generating LATS-like step {step_num}.",
+                    "error": str(e),
+                    "traceback": traceback.format_exc(),
+                })
+                # Decide whether to break or continue with a placeholder/error step
+                # For now, let's add an error indicator and continue
+                trace_outputs.append(f"[ERROR: Failed to generate step {step_num}]")
+                # Continue to next step
+
+        return trace_outputs
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         self.logger.log("EpistemicPlanExecutorStarted", {})
@@ -38,11 +137,18 @@ class EpistemicPlanExecutorAgent(BaseAgent):
         goal_text = goal_dict.get("goal_text", "")
         goal_id = goal_dict.get("id", "unknown_goal")
         input_data = context.get("input_data", {})
-        plan_to_execute = context.get("plan")
+
+        if not goal_text:
+             error_msg = "Missing 'goal_text' in context['goal']. Cannot execute plan."
+             self.logger.log("EpistemicPlanExecutorError", {"message": error_msg})
+             context["executed_plan_trace"] = None
+             context["epistemic_executor_status"] = "failed"
+             context["epistemic_executor_error"] = error_msg
+             return context
 
         goal_embedding = self.memory.embedding.get_or_create(goal_text)
         trace_id = f"trace_{uuid.uuid4().hex}"
-        plan_signature = str(plan_to_execute)
+        plan_signature = f"SimplifiedLATS_{self.max_reasoning_steps}_steps"
 
         execution_steps: List[ExecutionStep] = []
         final_output_text: str = ""
@@ -50,72 +156,117 @@ class EpistemicPlanExecutorAgent(BaseAgent):
         final_output_embedding: Optional[List[float]] = None
 
         try:
-            if hasattr(plan_to_execute, "trace") and callable(plan_to_execute.trace):
-                trace_outputs = plan_to_execute.trace(goal=goal_dict, input_data=input_data)
-            else:
-                trace_outputs = [
-                    f"Step 1: Analyzing goal '{goal_text[:20]}...'",
-                    f"Step 2: Retrieving relevant information for '{goal_text.split()[0]}'...",
-                    "Step 3: Synthesizing findings from retrieved data...",
-                ]
+            # --- Execute the Simplified LATS-like Reasoning ---
+            trace_outputs = await self._run_simplified_lats(goal_text, input_data)
 
-            step_id = int(time.time() * 1000)
+            # --- Process Generated Trace into ExecutionSteps ---
+            step_id_counter = int(time.time() * 1000)
+            processed_trace_info = []
+
             for i, step_output_text in enumerate(trace_outputs):
-                step_id += 1
-                step_description = f"Reasoning step {i + 1}"
+                 step_id_counter += 1
+                 step_description = f"Simplified LATS Step {i + 1}"
+                 processed_trace_info.append({
+                     "step_id": step_id_counter,
+                     "description": step_description,
+                     "output_text": step_output_text.strip() # Clean up whitespace
+                 })
+
+            # --- Score Each Processed Step Using Stephanie Scorers ---
+            for step_info in processed_trace_info:
+                step_id = step_info["step_id"]
+                step_description = step_info["description"]
+                step_output_text = step_info["output_text"]
+
+                if not step_output_text:
+                     self.logger.log("EpistemicPlanExecutorWarning", {
+                         "message": f"Generated step {step_id} has empty output. Skipping scoring."
+                     })
+                     continue
 
                 try:
-                    scorable_dict = {"text": step_output_text, "id": step_id}
+                    scorable_dict = {"text": step_output_text, "id": str(step_id)} # Ensure ID is string
                     scorable = ScorableFactory.from_dict(scorable_dict, TargetType.DOCUMENT)
 
-                    sicql_scores = self.scorer.score(goal=goal_dict, scorable=scorable, dimensions=self.dimensions)
-                    hrm_scores = self.hrm_scorer.score(goal=goal_dict, scorable=scorable, dimensions=self.dimensions)
+                    # --- Score the Step Output ---
+                    sicql_scores: ScoreBundle = self.sicql_scorer.score(
+                        goal=goal_dict, scorable=scorable, dimensions=self.dimensions
+                    )
+                    hrm_scores: Optional[ScoreBundle] = None
+                    if self.hrm_scorer:
+                        hrm_scores = self.hrm_scorer.score(
+                            goal=goal_dict, scorable=scorable, dimensions=self.dimensions
+                        )
+
+                    # --- Create ExecutionStep Object ---
+                    step_meta = {
+                        "sicql_scores": sicql_scores.to_dict(),
+                        "source": "simplified_lats_step"
+                    }
+                    if hrm_scores:
+                         step_meta["hrm_scores"] = hrm_scores.to_dict()
 
                     exec_step = ExecutionStep(
-                        step_id=step_id,
+                        step_id=str(step_id), # Ensure ID is string
                         description=step_description,
                         output_text=step_output_text,
-                        scores=sicql_scores,
-                        output_embedding=None,
-                        meta={
-                            "sicql_scores": sicql_scores.to_dict(),
-                            "hrm_scores": hrm_scores.to_dict()
-                        },
+                        scores=sicql_scores, # Primary scores for the trace
+                        output_embedding=None, # Can be computed on demand
+                        meta=step_meta,
                     )
                     execution_steps.append(exec_step)
 
                 except Exception as e:
                     self.logger.log("EpistemicPlanExecutorStepError", {
-                        "message": f"Error scoring step {step_id}.",
+                        "message": f"Error scoring generated step {step_id}.",
+                        "step_output_snippet": step_output_text[:50],
                         "error": str(e),
                         "traceback": traceback.format_exc(),
                     })
-                    continue
+                    continue # Continue with other steps
 
-            final_output_text = f"Final Answer: Based on the analysis of '{goal_text}', the conclusion is..."
+            # --- Determine Final Output ---
+            # The final output is typically the last step's text
+            # Or, if the last step started with "Final Answer:", extract that part
+            if execution_steps:
+                last_step_text = execution_steps[-1].output_text
+                if last_step_text.lower().startswith("final answer:"):
+                    # Extract the part after "Final Answer:"
+                    final_output_text = last_step_text[len("final answer:"):].strip()
+                else:
+                    final_output_text = last_step_text
+            else:
+                final_output_text = "No reasoning steps were generated."
 
+            # --- Score the Final Output ---
             try:
-                final_scorable_dict = {"text": final_output_text, "id": int(time.time() * 1000)}
+                final_scorable_dict = {"text": final_output_text, "id": f"{trace_id}_final"}
                 final_scorable = ScorableFactory.from_dict(final_scorable_dict, TargetType.DOCUMENT)
-                final_scores = self.scorer.score(goal=goal_dict, scorable=final_scorable, dimensions=self.dimensions)
+                final_scores: ScoreBundle = self.sicql_scorer.score(
+                    goal=goal_dict, scorable=final_scorable, dimensions=self.dimensions
+                )
                 final_output_embedding = self.memory.embedding.get_or_create(final_output_text)
 
             except Exception as e:
                 self.logger.log("EpistemicPlanExecutorFinalScoringError", {
                     "message": "Error scoring final output.",
+                    "final_output_snippet": final_output_text[:50],
                     "error": str(e),
                     "traceback": traceback.format_exc(),
                 })
 
         except Exception as e:
             self.logger.log("EpistemicPlanExecutorExecutionError", {
-                "message": str(e),
+                "message": "Error during simplified LATS execution or trace processing.",
+                "error": str(e),
                 "traceback": traceback.format_exc(),
             })
             context["executed_plan_trace"] = None
             context["epistemic_executor_status"] = "failed"
+            context["epistemic_executor_error"] = str(e)
             return context
 
+        # --- Assemble the PlanTrace ---
         try:
             executed_trace = PlanTrace(
                 trace_id=trace_id,
@@ -127,62 +278,66 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                 final_output_text=final_output_text,
                 final_scores=final_scores,
                 final_output_embedding=final_output_embedding,
-                target_epistemic_quality=None,
+                target_epistemic_quality=None, # To be filled later
                 target_epistemic_quality_source=None,
-                created_at="",
+                created_at="", # Can be set to current timestamp
                 meta={
-                    "goal_id": goal_id,
+                    "goal_id": goal_id, 
                     "executor_agent": self.__class__.__name__,
-                    "plan_type": type(plan_to_execute).__name__,
+                    "source": "simplified_lats_execution",
+                    "max_reasoning_steps_config": self.max_reasoning_steps
                 },
             )
 
+            # --- Save Trace (Optional) ---
             self.save_trace_markdown(executed_trace)
 
+            # --- Update Context ---
             context["executed_plan_trace"] = executed_trace
             context["epistemic_executor_status"] = "completed"
+            context["epistemic_executor_error"] = None
             self.logger.log("EpistemicPlanExecutorCompleted", {
                 "trace_id": trace_id,
                 "num_execution_steps": len(execution_steps),
+                "final_output_snippet": final_output_text[:50]
             })
 
         except Exception as e:
             self.logger.log("EpistemicPlanExecutorAssemblyError", {
-                "message": str(e),
+                "message": "Error assembling PlanTrace object.",
+                "error": str(e),
                 "traceback": traceback.format_exc(),
             })
             context["executed_plan_trace"] = None
             context["epistemic_executor_status"] = "failed"
+            context["epistemic_executor_error"] = str(e)
 
         return context
 
+    # ... (rest of the methods like format_trace_as_markdown, save_trace_markdown remain the same) ...
     def format_trace_as_markdown(self, trace: PlanTrace) -> str:
+        # Ensure step_id is string for markdown formatting
         lines = [f"## Plan Trace: {trace.trace_id}", f"**Goal:** {trace.goal_text}\n"]
         for step in trace.execution_steps:
-            lines.append(f"### Step {step.step_id}: {step.description}")
+            # Ensure step_id is treated as string
+            step_id_str = str(step.step_id) if step.step_id is not None else "N/A"
+            lines.append(f"### Step {step_id_str}: {step.description}")
             lines.append(f"Output: `{step.output_text}`")
-            lines.append(step.scores.to_report(f"Step {step.step_id}: Scores"))
+            lines.append(step.scores.to_report(f"Step {step_id_str}: Scores"))
         lines.append(f"\n**Final Output:** `{trace.final_output_text}`")
         lines.append("Final Scores:")
         lines.append(trace.final_scores.to_report("Trace Final Scores") if trace.final_scores else "No final scores available.")
         return "\n".join(lines)
-    
-    import os
 
     def save_trace_markdown(self, trace: PlanTrace, reports_dir: str = "reports") -> str:
         """
         Saves the PlanTrace as a markdown file in the reports directory.
-
-        Args:
-            trace (PlanTrace): The trace object to convert and save.
-            reports_dir (str): Directory where the report should be saved.
-
-        Returns:
-            str: The path to the saved markdown file.
         """
         os.makedirs(reports_dir, exist_ok=True)
         markdown_text = self.format_trace_as_markdown(trace)
-        filename = f"{trace.trace_id}.md"
+        # Sanitize filename
+        safe_trace_id = "".join(c for c in trace.trace_id if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        filename = f"{safe_trace_id}.md"
         filepath = os.path.join(reports_dir, filename)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(markdown_text)

@@ -19,6 +19,20 @@ epistemic_plan_executor:
     model_type: sicql
     evaluator: sicql
     target_type: document
+    model_version: "v1"
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  hrm:
+    name: epistemic_plan_executor_hrm
+    model_type: hrm
+    evaluator: hrm
+    model_version: "v1"
+    target_type: document
     dimensions: 
       - alignment
       - clarity

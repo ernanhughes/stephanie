@@ -138,6 +138,13 @@ PIPELINE_FLOW = {
 # SCORING & EVALUATION
 # =====================
 SCORING = {
+    "EpistemicTraceSaved": "🧠💾",  # Epistemic trace saved
+    "HRMScorerModelLoaded": "🧠📥",  # HRM scorer model loaded
+    "HRMScorerMetaLoaded": "🧠📄",  # HRM scorer meta loaded
+    "LATS_StepStarted": "🧠🔄",  # LATS step started
+    "LATS_StepCompleted": "🧠✅",  # LATS step completed
+    "LargeDataContextComponentDumped": "📂💾",  # Large data context dumped
+    "EpistemicPlanExecutorAgentInitialized" : "🤖📄",  # Epistemic plan executor agent initialized
     "EpistemicPlanExecutorStarted": "🚀📄",  # Epistemic plan executor started
     "EpistemicPlanExecutorCompleted": "🚀✅",  # Epistemic plan executor completed
     "PolicyLogits": "📊⚖️",  # Policy logits computed
