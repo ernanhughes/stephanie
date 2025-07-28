@@ -1,0 +1,23 @@
+mrq:
+  class: stephanie.scoring.mrq.mrq_scorer.MRQScorer
+  target_type: document
+  model_path: models/mrq
+  model_version: v1
+svm: 
+  class: stephanie.scoring.svm.svm_scorer.SVMScorer
+  target_type: document
+  model_path: models/svm
+sicql:
+  class: stephanie.scoring.sicql.sicql_scorer.SICQLScorer
+  target_type: document 
+  model_path: models/sicql  
+ebt:
+  class: stephanie.scoring.ebt.ebt_scorer.EBTScorer
+  target_type: document
+  model_path: models/ebt
+hrm:
+  class: stephanie.scoring.hrm.hrm_scorer.HRMScorer
+  target_type: document
+  hrm_dimension: sicql_aligned   # or whatever you trained
+  model_path: models
+  model_version: v1

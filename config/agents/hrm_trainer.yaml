@@ -5,13 +5,18 @@ hrm_trainer:
   save_context: true
   skip_if_completed: false
 
-  hrm_dimension: sicql_alignment
   target_scorer_dimension: alignment
+
+  dimensions: 
+    - "alignment"
+    - "clarity"
+    - "implementability"
+    - "novelty"
+    - "relevance"
 
   hrm: 
     name: hrm
     model_type: hrm
-    dimension_name: sicql_alignment
     model_path: "${hydra:runtime.cwd}/models"
     version: v1
     h_dim: 256

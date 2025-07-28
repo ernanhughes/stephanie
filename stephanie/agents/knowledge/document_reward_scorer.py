@@ -32,8 +32,8 @@ class DocumentRewardScorerAgent(BaseAgent):
         ebt_scorer = EBTScorer(self.cfg, memory=self.memory, logger=self.logger)
         hrm_scorer = HRMScorer(self.cfg, memory=self.memory, logger=self.logger)
 
-        # scorers = [hrm_scorer, sicql_scorer, svm_scorer, mrq_scorer, ebt_scorer]
-        scorers = [hrm_scorer]
+        scorers = [hrm_scorer, sicql_scorer, svm_scorer, mrq_scorer, ebt_scorer]
+        # scorers = [hrm_scorer]
 
         for doc in documents:
 
