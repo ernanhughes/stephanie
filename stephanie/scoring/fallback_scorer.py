@@ -29,10 +29,12 @@ class FallbackScorer(BaseScorer):
 
     def __init__(
         self,
+        cfg,
+        memory,
+        logger,
         scorers: List[BaseScorer],
         fallback_order: Optional[List[str]] = None,
         default_fallback: str = "llm",
-        logger = None,
     ): 
         """
         Args:
@@ -41,7 +43,7 @@ class FallbackScorer(BaseScorer):
             default_fallback: Final fallback if all scorers fail
             logger: Optional logger
         """
-        super().__init__(cfg={}, memory=None, logger=logger)
+        super().__init__(cfg=cfg, memory=memory, logger=logger)
         self.scorers = {scorer.name: scorer for scorer in scorers}
         self.fallback_order = fallback_order or list(self.scorers.keys())
         self.default_fallback = default_fallback

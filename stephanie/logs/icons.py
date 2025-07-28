@@ -138,6 +138,9 @@ PIPELINE_FLOW = {
 # SCORING & EVALUATION
 # =====================
 SCORING = {
+    "EpistemicPlanExecutorStarted": "🚀📄",  # Epistemic plan executor started
+    "EpistemicPlanExecutorCompleted": "🚀✅",  # Epistemic plan executor completed
+    "PolicyLogits": "📊⚖️",  # Policy logits computed
     "LLMJudgeResults": "📝⚖️",  # LLM judge results
     "DocumentScoresAlreadyExist": "📄✅",  # Document scores already exist
     "LLMJudgeScorerDimension": "📝📊",  # LLM judge scoring dimension

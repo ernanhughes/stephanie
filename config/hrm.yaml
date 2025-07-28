@@ -33,6 +33,8 @@ defaults:
   - agents/score_energy_comparison
   - agents/score_analysis
   - agents/policy_synthesis
+  - agents/epistemic_plan_hrm_trainer
+  - agents/epistemic_plan_executor
   - logging/json_logger
 
 embeddings:
@@ -72,23 +74,35 @@ pipeline:
   tag: "search_arxiv"
   description: "Search Arxiv for papers related to a goal"
   stages:
-
     - name: knowledge_db_loader
       description: "Load knowledge from the database into the system"
       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
       enabled: true
       iterations: 1
 
+    - name: epistemic_plan_executor
+      description: "Execute the epistemic plan to generate hypotheses"
+      cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
+      enabled: true
+      iterations: 1
+
+    - name: epistemic_plan_hrm_trainer  
+      description: "Train the HRM model to predict document values based on epistemic plans"
+      cls: stephanie.agents.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
+      enabled: false
+      iterations: 1
+
+
     - name: hrm_trainer
       description: "Train the HRM model to predict document values"
       cls: stephanie.agents.maintenance.hrm_trainer.HRMTrainerAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: document_reward_scorer
       description: "Score the documents based on their relevance and quality"
       cls: stephanie.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: document_mrq_trainer

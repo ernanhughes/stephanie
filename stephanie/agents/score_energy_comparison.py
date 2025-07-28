@@ -1,7 +1,6 @@
 # stephanie/agents/score_energy_comparison.py
 
 import os
-import json
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -11,9 +10,6 @@ import numpy as np
 from scipy.stats import pearsonr
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM # Import the new ORM
 
 class ScoreEnergyComparisonAgent(BaseAgent):
     """
@@ -30,10 +26,10 @@ class ScoreEnergyComparisonAgent(BaseAgent):
         # Configuration for sources to analyze (focus on those with rich attributes)
         # Default to SICQL and EBT, as they are primary sources of rich data
         # SVM, MRQ might have some, but SICQL and EBT are richest.
-        self.sources_for_deep_analysis = cfg.get("sources_for_deep_analysis", ["sicql", "ebt"])
+        self.sources_for_deep_analysis = cfg.get("sources_for_deep_analysis", ["sicql", "ebt", "hbr"])
         
         # Output directory for reports
-        self.output_dir = cfg.get("report_output_dir", "logs/deep_analysis_reports")
+        self.output_dir = cfg.get("report_output_dir", "reports/deep_analysis_reports")
         os.makedirs(self.output_dir, exist_ok=True)
         self.session = self.memory.session  # Get the database session
 
@@ -440,7 +436,7 @@ class ScoreEnergyComparisonAgent(BaseAgent):
             report_path = os.path.join(self.output_dir, report_filename)
 
             with open(report_path, 'w', encoding='utf-8') as f:
-                f.write(f"# Deep Score Analysis Report (Attributes)\n\n")
+                f.write("# Deep Score Analysis Report (Attributes)\n\n")
                 f.write(f"**Generated:** {metadata.get('analysis_timestamp', 'N/A')}\n\n")
                 f.write(f"**Pipeline Runs Analyzed:** {metadata.get('pipeline_run_ids', 'N/A')}\n\n")
                 f.write(f"**Sources Analyzed:** {', '.join(metadata.get('sources_analyzed', []))}\n\n")
@@ -468,6 +464,7 @@ class ScoreEnergyComparisonAgent(BaseAgent):
                             f.write(f"- **Interpretation:** {insight.get('interpretation', 'N/A')}\n")
                         f.write("\n---\n\n")
             
+            print(f"Deep analysis report generated: {report_path}")
             self.logger.log("DeepAnalysisReportSaved", {"path": report_path})
 
         except Exception as e:

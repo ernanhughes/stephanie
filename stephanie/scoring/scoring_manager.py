@@ -51,15 +51,17 @@ class ScoringManager(BaseAgent):
             from stephanie.scoring.mrq_scorer import MRQScorer
             from stephanie.scoring.svm_scorer import SVMScorer
 
-            svm_scorer = SVMScorer(cfg, memory, logger, dimensions=dimensions)
-            mrq_scorer = MRQScorer(cfg, memory, logger, dimensions=dimensions)
-            llm_scorer = LLMScorer(cfg, memory, logger, prompt_loader=prompt_loader, call_llm=self._call_llm)
+            svm_scorer = SVMScorer(cfg, memory, logger)
+            mrq_scorer = MRQScorer(cfg, memory, logger)
+            llm_scorer = LLMScorer(cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=self.call_llm)
 
             self.scorer = FallbackScorer(
+                cfg=self.cfg,
+                memory=self.memory,
+                logger=self.logger,
                 scorers=[svm_scorer, mrq_scorer, llm_scorer],
                 fallback_order=["svm", "mrq", "llm"],
                 default_fallback="llm",
-                logger=logger
             )
         else:
             self.scorer = scorer

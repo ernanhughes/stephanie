@@ -14,6 +14,7 @@ policy_synthesis:
   sources_for_deep_analysis:
     - sicql
     - ebt
+    - hrm
 
   ground_truth_source: llm
 

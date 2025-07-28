@@ -28,7 +28,7 @@ class ScoreComparisonAgent(BaseAgent):
         
         # Configuration for sources to compare
         # Default to common scorers. Can be overridden in config.
-        self.sources_to_compare = cfg.get("sources_to_compare", ["sicql", "mrq", "svm", "ebt"])
+        self.sources_to_compare = cfg.get("sources_to_compare", ["sicql", "mrq", "svm", "ebt", "hrm"])
         self.ground_truth_source = cfg.get("ground_truth_source", "llm") # Typically "llm"
         
         # Ensure ground truth is included if not already in the list
@@ -54,7 +54,7 @@ class ScoreComparisonAgent(BaseAgent):
         """
         try:
             # --- 1. Get Input Parameters ---
-            pipeline_run_ids = context.get("pipeline_run_ids", [4148])
+            pipeline_run_ids = context.get("pipeline_run_ids", [4240])
             # Fallback to single ID if list isn't provided
             single_pipeline_run_id = context.get("pipeline_run_id")
             if single_pipeline_run_id and not pipeline_run_ids:

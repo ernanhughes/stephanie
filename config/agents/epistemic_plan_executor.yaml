@@ -1,10 +1,12 @@
-hrm_trainer:
-  name: hrm_trainer
+epistemic_plan_executor:
+  name: epistemic_plan_executor
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
+  plan_timeout_seconds: 300 # Safety timeout
+  
   dimensions: 
     - "alignment"
     - "clarity"
@@ -12,22 +14,8 @@ hrm_trainer:
     - "novelty"
     - "relevance"
 
-  hrm: 
-    name: hrm
-    model_type: hrm
-    model_path: "${hydra:runtime.cwd}/models"
-    version: v1
-    h_dim: 256
-    l_dim: 128
-    output_dim: 1
-    n_cycles: 4
-    t_steps: 4
-    lr: 0.001
-    batch_size: 32
-    epochs: 10
-
   sicql:
-    name: gild_trainer_sicql
+    name: epistemic_plan_executor_sicql
     model_type: sicql
     evaluator: sicql
     target_type: document
@@ -38,14 +26,13 @@ hrm_trainer:
       - novelty
       - relevance
 
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
-  
-  input_keys: [goal, hypotheses]
+  input_keys: ["goal", "hypotheses"]
   input_key: documents
-  
-  output_key: hrm_trainer
+  output_key: epistemic_plan_executor
   prompt_mode: file
-  prompt_file: hrm_trainer.txt
+  prompt_file: epistemic_plan_executor.txt

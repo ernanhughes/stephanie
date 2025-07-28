@@ -4,7 +4,8 @@ import os
 from datetime import datetime
 from typing import List, Dict, Any
 from collections import defaultdict
-
+import numpy as np
+from scipy.stats import pearsonr
 
 from stephanie.agents.base_agent import BaseAgent
 
@@ -217,6 +218,10 @@ class PolicySynthesisAgent(BaseAgent):
                 }
             report["cross_model_comparison"] = comparison_summary
 
+            # Assuming you have your flattened score data in `score_comparison_data`
+            hrm_stats = self.extract_hrm_analysis_data(comparison_data)
+            report["hrm_analysis"] = hrm_stats
+
             # --- 5. Refinement Recommendations ---
             # Based on synthesis, recommend actions
             recommendations = []
@@ -280,7 +285,7 @@ class PolicySynthesisAgent(BaseAgent):
             # and fetching attributes on the fly (less efficient)
             data_source = enriched_data_list if enriched_data_list else comparison_data
 
-            for key, data_point  in data_source:
+            for key, data_point  in data_source.items() :
                 source = data_point.get('source')
                 dimension = data_point.get('dimension')
                 target_id = data_point.get('target_id')
@@ -479,7 +484,183 @@ class PolicySynthesisAgent(BaseAgent):
                 else:
                     f.write("No specific refinement recommendations generated.\n\n")
 
+
+            print(f"Policy synthesis report generated: {report_path}")
+
+
+
             self.logger.log("PolicySynthesisReportSaved", {"path": report_path})
 
         except Exception as e:
             self.logger.log("PolicySynthesisReportGenerationFailed", {"error": str(e)})
+
+    def extract_hrm_analysis_data(self, flat_score_data: list[dict[str, any]]) -> dict[str, any]:
+        """
+        Extracts HRM-specific diagnostic statistics from flat score data.
+        
+        Args:
+            flat_score_data: A list of score records, each containing at least:
+                - 'target_id'
+                - 'source' (e.g., 'hrm', 'sicql', 'mrq', etc.)
+                - 'dimension'
+                - 'score'
+                - 'llm_score'
+
+        Returns:
+            A dictionary with HRM analysis results, including:
+                - HRM vs SICQL comparison (MAE, RMSE, correlation, etc.)
+                - HRM vs LLM correlation
+                - Residual statistics
+                - Pairwise correlation matrix (HRM vs others)
+        """
+        results = {
+            "hrm_vs_sicql": {},
+            "hrm_vs_llm": {},
+            "residual_stats": {},
+            "pairwise_correlation_matrix": {},
+        }
+
+        # Group scores by target_id and dimension
+        grouped = defaultdict(lambda: defaultdict(dict))
+        for record in flat_score_data:
+            tid = record['target_id']
+            dim = record['dimension']
+            source = record['source']
+            score = record.get('score')
+            grouped[(tid, dim)][source] = score
+            if 'llm_score' in record:
+                grouped[(tid, dim)]['llm'] = record['llm_score']
+
+        # Collect aligned lists
+        hrm_scores = []
+        sicql_scores = []
+        llm_scores = []
+        residuals = []
+
+        all_scores_by_source = defaultdict(list)
+
+        for (tid, dim), scores in grouped.items():
+            hrm = scores.get('hrm')
+            sicql = scores.get('sicql')
+            llm = scores.get('llm')
+
+            if hrm is not None and sicql is not None:
+                hrm_scores.append(hrm)
+                sicql_scores.append(sicql)
+                residuals.append(abs(hrm - sicql))
+
+            if hrm is not None and llm is not None:
+                llm_scores.append(llm)
+
+            for source, val in scores.items():
+                all_scores_by_source[source].append(val)
+
+        # --- HRM vs SICQL stats ---
+        if hrm_scores and sicql_scores:
+            try:
+                mae = np.mean(np.abs(np.array(hrm_scores) - np.array(sicql_scores)))
+                rmse = np.sqrt(np.mean((np.array(hrm_scores) - np.array(sicql_scores))**2))
+                corr, pval = pearsonr(hrm_scores, sicql_scores)
+                results["hrm_vs_sicql"] = {
+                    "mae": round(mae, 4),
+                    "rmse": round(rmse, 4),
+                    "correlation": round(corr, 4),
+                    "p_value": round(pval, 6),
+                    "sample_size": len(hrm_scores),
+                }
+            except Exception as e:
+                results["hrm_vs_sicql"]["error"] = str(e)
+
+        # --- HRM vs LLM stats ---
+        if hrm_scores and llm_scores:
+            try:
+                corr, pval = pearsonr(hrm_scores, llm_scores)
+                results["hrm_vs_llm"] = {
+                    "correlation": round(corr, 4),
+                    "p_value": round(pval, 6),
+                    "sample_size": len(hrm_scores),
+                }
+            except Exception as e:
+                results["hrm_vs_llm"]["error"] = str(e)
+
+        # --- Residual stats ---
+        if residuals:
+            results["residual_stats"] = {
+                "mean_absolute_error": round(np.mean(residuals), 4),
+                "std_dev": round(np.std(residuals), 4),
+                "max_error": round(np.max(residuals), 4),
+            }
+
+        # --- Correlation matrix: HRM vs all others ---
+        for other_source, other_scores in all_scores_by_source.items():
+            if other_source == 'hrm' or len(other_scores) != len(all_scores_by_source['hrm']):
+                continue
+            try:
+                corr, pval = pearsonr(all_scores_by_source['hrm'], other_scores)
+                results["pairwise_correlation_matrix"][f"hrm_vs_{other_source}"] = {
+                    "correlation": round(corr, 4),
+                    "p_value": round(pval, 6),
+                }
+            except Exception as e:
+                results["pairwise_correlation_matrix"][f"hrm_vs_{other_source}"] = {
+                    "error": str(e)
+                }
+
+        return results
+
+
+    def generate_hrm_markdown_section(self, hrm_stats: dict[str, any]) -> str:
+        """
+        Converts HRM statistics into a markdown-formatted section for reporting.
+
+        Args:
+            hrm_stats: A dictionary containing HRM evaluation results, typically returned by extract_hrm_analysis_data().
+
+        Returns:
+            A string of markdown content representing the HRM evaluation summary.
+        """
+        lines = ["## 🔍 HRM Evaluation Summary", ""]
+
+        # --- HRM vs SICQL ---
+        sicql = hrm_stats.get("hrm_vs_sicql", {})
+        if sicql:
+            lines.append("### 📊 HRM vs SICQL Comparison\n")
+            lines.append("| Metric | Value |")
+            lines.append("| :-- | --: |")
+            for k, v in sicql.items():
+                lines.append(f"| {k.replace('_', ' ').title()} | {v} |")
+            lines.append("")
+
+        # --- HRM vs LLM ---
+        llm = hrm_stats.get("hrm_vs_llm", {})
+        if llm:
+            lines.append("### 🤖 HRM vs LLM Correlation\n")
+            lines.append("| Metric | Value |")
+            lines.append("| :-- | --: |")
+            for k, v in llm.items():
+                lines.append(f"| {k.replace('_', ' ').title()} | {v} |")
+            lines.append("")
+
+        # --- Residual Stats ---
+        residuals = hrm_stats.get("residual_stats", {})
+        if residuals:
+            lines.append("### 🧮 Residual Statistics\n")
+            lines.append("| Metric | Value |")
+            lines.append("| :-- | --: |")
+            for k, v in residuals.items():
+                lines.append(f"| {k.replace('_', ' ').title()} | {v} |")
+            lines.append("")
+
+        # --- Pairwise Matrix ---
+        pairwise = hrm_stats.get("pairwise_correlation_matrix", {})
+        if pairwise:
+            lines.append("### 🔗 HRM Pairwise Correlation (vs Other Models)\n")
+            lines.append("| Compared With | Correlation | p-value |")
+            lines.append("| :-- | --: | --: |")
+            for label, stats in pairwise.items():
+                corr = stats.get("correlation", "N/A")
+                pval = stats.get("p_value", "N/A")
+                lines.append(f"| {label.replace('_', ' ').title()} | {corr} | {pval} |")
+            lines.append("")
+
+        return "\n".join(lines)

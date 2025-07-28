@@ -11,6 +11,7 @@ score_comparison:
     - svm
     - ebt
     - llm
+    - hrm
   ground_truth_source: llm
 
   report_output_dir: "/reports/score_comparison"

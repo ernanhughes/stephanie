@@ -76,3 +76,37 @@ class ScoreBundle:
         }
 
         return cls(results)
+
+    def to_report(self, title: str = "Score Report") -> str:
+        lines = [f"## {title}", ""]
+        for dim, result in self.results.items():
+            lines.append(f"### Dimension: `{dim}`")
+            lines.append(f"- **Score**: `{result.score:.4f}`")
+            lines.append(f"- **Weight**: `{result.weight:.2f}`")
+            lines.append(f"- **Source**: `{result.source}`")
+            lines.append(f"- **Target Type**: `{result.target_type}`")
+            lines.append(f"- **Prompt Hash**: `{result.prompt_hash}`")
+            if result.rationale:
+                lines.append(f"- **Rationale**: {result.rationale}")
+
+            # SICQL-specific fields
+            if result.energy is not None:
+                lines.append(f"- **Energy**: `{result.energy:.4f}`")
+            if result.q_value is not None:
+                lines.append(f"- **Q-Value**: `{result.q_value:.4f}`")
+            if result.state_value is not None:
+                lines.append(f"- **State Value**: `{result.state_value:.4f}`")
+            if result.policy_logits is not None:
+                logits_str = ", ".join(f"{x:.4f}" for x in result.policy_logits)
+                lines.append(f"- **Policy Logits**: [{logits_str}]")
+            if result.uncertainty is not None:
+                lines.append(f"- **Uncertainty**: `{result.uncertainty:.4f}`")
+            if result.entropy is not None:
+                lines.append(f"- **Entropy**: `{result.entropy:.4f}`")
+            if result.advantage is not None:
+                lines.append(f"- **Advantage**: `{result.advantage:.4f}`")
+
+            lines.append("")  # Empty line between dimensions
+
+        lines.append(f"**Aggregate Score:** `{self.aggregate():.4f}`")
+        return "\n".join(lines)
