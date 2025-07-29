@@ -5,7 +5,10 @@ epistemic_plan_executor:
   save_context: false
   skip_if_completed: false
 
-  plan_timeout_seconds: 300 # Safety timeout
+  plan_timeout_seconds: 300
+  max_reasoning_steps: 10
+  max_execution_steps: 5
+  use_hrm_in_trace: true
   
   dimensions: 
     - "alignment"

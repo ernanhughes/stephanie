@@ -34,3 +34,5 @@ from .symbolic_rule import SymbolicRuleORM
 from .theorem import CartridgeORM, TheoremORM
 from .training_stats import TrainingStatsORM
 from .unified_mrq import UnifiedMRQModelORM
+from .plan_trace import PlanTraceORM, ExecutionStepORM
+

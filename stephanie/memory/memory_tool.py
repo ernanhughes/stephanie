@@ -44,6 +44,8 @@ from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
+from stephanie.memory.execution_step_store import ExecutionStepStore
+from stephanie.memory.plan_trace_store import PlanTraceStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 
 
@@ -121,6 +123,8 @@ class MemoryTool:
         self.register_store(PipelineStageStore(self.session, logger))
         self.register_store(ScoringStore(self.session, logger))
         self.register_store(EvaluationAttributeStore(self.session, logger))
+        self.register_store(ExecutionStepStore(self.session, logger))
+        self.register_store(PlanTraceStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

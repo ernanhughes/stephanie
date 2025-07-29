@@ -1,13 +1,12 @@
-# stephanie/agents/epistemic_plan_executor_agent.py (Modified for Isolated LATS-like Logic)
+# stephanie/agents/epistemic_plan_executor.py
 
 import os
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 import time
 import uuid
 import json
 
-# --- Import necessary Stephanie components ---
 from stephanie.scoring.scorable_factory import TargetType, ScorableFactory
 from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.hrm_scorer import HRMScorer  # Optional
@@ -15,10 +14,6 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.data.plan_trace import PlanTrace, ExecutionStep
 
-# --- Import DSPy components needed for LLM interaction ---
-# Assuming you have dspy configured globally or can access the LM
-# If not, you might need to initialize it here or pass it in.
-# For this example, let's assume access via dspy.settings
 import dspy
 
 class EpistemicPlanExecutorAgent(BaseAgent):
@@ -37,7 +32,6 @@ class EpistemicPlanExecutorAgent(BaseAgent):
         self.max_reasoning_steps = cfg.get("max_reasoning_steps", 5) # Configurable steps
         self.use_hrm_in_trace = cfg.get("use_hrm_in_trace", True) # Config flag
 
-        # --- Initialize Scorers for Trace Scoring ---
         self.sicql_scorer = SICQLScorer(cfg=self.cfg.get("sicql", {}), memory=memory, logger=logger)
         if self.use_hrm_in_trace:
             self.hrm_scorer = HRMScorer(cfg=self.cfg.get("hrm", {}), memory=memory, logger=logger)
@@ -212,7 +206,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                         output_text=step_output_text,
                         scores=sicql_scores, # Primary scores for the trace
                         output_embedding=None, # Can be computed on demand
-                        meta=step_meta,
+                        extra_data=step_meta,
                     )
                     execution_steps.append(exec_step)
 
@@ -271,6 +265,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
             executed_trace = PlanTrace(
                 trace_id=trace_id,
                 goal_text=goal_text,
+                goal_id=goal_id,
                 goal_embedding=goal_embedding,
                 input_data=input_data,
                 plan_signature=plan_signature,
@@ -278,10 +273,10 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                 final_output_text=final_output_text,
                 final_scores=final_scores,
                 final_output_embedding=final_output_embedding,
-                target_epistemic_quality=None, # To be filled later
-                target_epistemic_quality_source=None,
+                target_epistemic_quality=final_scores.aggregate(), # To be filled later
+                target_epistemic_quality_source=self.sicql_scorer.model_type,
                 created_at="", # Can be set to current timestamp
-                meta={
+                extra_data={
                     "goal_id": goal_id, 
                     "executor_agent": self.__class__.__name__,
                     "source": "simplified_lats_execution",
@@ -289,8 +284,17 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                 },
             )
 
-            # --- Save Trace (Optional) ---
-            self.save_trace_markdown(executed_trace)
+
+            # --- Save Trace Report ---
+            executed_trace.save_as_markdown(reports_dir="reports")
+
+            # --- Store the PlanTrace and ExecutionSteps in Memory ---
+            plan_trace_id = self.memory.plan_traces.add(executed_trace)
+            for i, step in enumerate(execution_steps):
+                step.plan_trace_id = plan_trace_id
+                step.step_order = i + 1
+                self.memory.execution_steps.add(step)
+            self.memory.session.commit()  # Commit all changes
 
             # --- Update Context ---
             context["executed_plan_trace"] = executed_trace
@@ -314,33 +318,3 @@ class EpistemicPlanExecutorAgent(BaseAgent):
 
         return context
 
-    # ... (rest of the methods like format_trace_as_markdown, save_trace_markdown remain the same) ...
-    def format_trace_as_markdown(self, trace: PlanTrace) -> str:
-        # Ensure step_id is string for markdown formatting
-        lines = [f"## Plan Trace: {trace.trace_id}", f"**Goal:** {trace.goal_text}\n"]
-        for step in trace.execution_steps:
-            # Ensure step_id is treated as string
-            step_id_str = str(step.step_id) if step.step_id is not None else "N/A"
-            lines.append(f"### Step {step_id_str}: {step.description}")
-            lines.append(f"Output: `{step.output_text}`")
-            lines.append(step.scores.to_report(f"Step {step_id_str}: Scores"))
-        lines.append(f"\n**Final Output:** `{trace.final_output_text}`")
-        lines.append("Final Scores:")
-        lines.append(trace.final_scores.to_report("Trace Final Scores") if trace.final_scores else "No final scores available.")
-        return "\n".join(lines)
-
-    def save_trace_markdown(self, trace: PlanTrace, reports_dir: str = "reports") -> str:
-        """
-        Saves the PlanTrace as a markdown file in the reports directory.
-        """
-        os.makedirs(reports_dir, exist_ok=True)
-        markdown_text = self.format_trace_as_markdown(trace)
-        # Sanitize filename
-        safe_trace_id = "".join(c for c in trace.trace_id if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        filename = f"{safe_trace_id}.md"
-        filepath = os.path.join(reports_dir, filename)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(markdown_text)
-        print(f"Trace saved to {filepath}")
-        self.logger.log("EpistemicTraceSaved", {"path": filepath})
-        return filepath

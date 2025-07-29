@@ -1275,4 +1275,50 @@ CREATE INDEX idx_training_stats_version ON training_stats(version);
 CREATE INDEX idx_training_stats_embedding ON training_stats(embedding_type);
 
 
+-- Assuming the 'public' schema and SERIAL for auto-incrementing IDs
+-- Adjust schema name and ID generation strategy (e.g., UUIDs) if needed.
 
+-- Table: plan_traces
+-- Stores metadata and key identifiers for reasoning plan traces.
+CREATE TABLE IF NOT EXISTS plan_traces (
+    id SERIAL PRIMARY KEY,
+    trace_id TEXT NOT NULL UNIQUE, -- Unique identifier for the trace
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE, -- Link to the original goal
+    goal_embedding_id INTEGER, -- ID referencing the embeddings table (if exists)
+    goal_text TEXT NOT NULL, -- Cached goal text
+    plan_signature TEXT NOT NULL, -- Signature of the plan that generated this trace
+    final_output_text TEXT NOT NULL, -- Cached final output text
+    final_output_embedding_id INTEGER, -- ID referencing the embeddings table (if exists)
+    target_epistemic_quality DOUBLE PRECISION, -- Label for HRM training
+    target_epistemic_quality_source TEXT, -- Source of the HRM training label
+    meta JSONB, -- Flexible metadata storage
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
+);
+
+-- Indexes for efficient lookups
+CREATE INDEX IF NOT EXISTS idx_plan_traces_trace_id ON public.plan_traces (trace_id);
+CREATE INDEX IF NOT EXISTS idx_plan_traces_goal_id ON public.plan_traces (goal_id);
+CREATE INDEX IF NOT EXISTS idx_plan_traces_created_at ON public.plan_traces (created_at);
+-- Optional index on target_epistemic_quality if querying by it becomes common
+-- CREATE INDEX IF NOT EXISTS idx_plan_traces_target_quality ON public.plan_traces (target_epistemic_quality);
+
+-- Table: execution_steps
+-- Stores metadata for individual steps within a plan trace.
+CREATE TABLE IF NOT EXISTS execution_steps (
+    id SERIAL PRIMARY KEY,
+    plan_trace_id INTEGER NOT NULL REFERENCES public.plan_traces(id) ON DELETE CASCADE, -- Parent trace
+    step_order INTEGER NOT NULL, -- Order of the step within the trace
+    step_id TEXT NOT NULL, -- Unique identifier for the step
+    description TEXT NOT NULL, -- Description of the step
+    output_text TEXT NOT NULL, -- Output text of the step
+    output_embedding_id INTEGER, -- ID referencing the embeddings table (if exists)
+    evaluation_id INTEGER UNIQUE REFERENCES public.evaluations(id) ON DELETE SET NULL, -- Link to standard scoring
+    meta JSONB, -- Flexible step-specific metadata
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
+);
+
+-- Indexes for efficient lookups and ordering
+CREATE INDEX IF NOT EXISTS idx_execution_steps_plan_trace_id ON execution_steps (plan_trace_id);
+CREATE INDEX IF NOT EXISTS idx_execution_steps_step_order ON execution_steps (plan_trace_id, step_order);
+CREATE INDEX IF NOT EXISTS idx_execution_steps_evaluation_id ON execution_steps (evaluation_id);

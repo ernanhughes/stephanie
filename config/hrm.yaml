@@ -41,7 +41,7 @@ embeddings:
   backend: hnet
 
 goal:
-  goal_text: Develop a strategy for the AI to safely modify its own functions without breaking core behavior.
+  goal_text: Develop a strategy for the AI to Identify high-quality reasoning patterns in previous traces and reuse them.
   goal_type: "tactical"
   goal_category: "meta_learning"
   focus_area: "self_improvement"
