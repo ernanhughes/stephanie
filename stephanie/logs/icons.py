@@ -7,6 +7,7 @@ def get_event_icon(event_type: str) -> str:
 # SYSTEM & INITIALIZATION
 # ========================
 SYSTEM_INIT = {
+    "ContextManagerInitialized": "⚙️",  # Context manager initialized
     "UncertaintyEstimated": "🔍",  # Uncertainty estimation
     "EBTEnergyCalculated": "⚡",  # EBT energy calculation
     "ScoringPolicyCompleted": "✅",  # Scoring policy completed
@@ -37,7 +38,7 @@ AGENT_EVENTS = {
     "MRQTrainerAgentInitialized": "📊🤖",  # MRQ trainer agent initialized
     "DocumentMRQInferenceAgentInitialized": "📊🤖",  # Document MRQ inference agent initialized
     "DocumentEBTInferenceAgentInitialized": "🧠🚦",  # Inference agent initialized
-    "EpistemicPlanExecutorAgentInitialized": "🤖📄",  # Epistemic plan executor agent initialized
+    "EpistemicPlanExecutorAgentInitialized": "🪸🤖",  # Epistemic plan executor agent initialized
 }
 
 # =================
@@ -128,15 +129,20 @@ PIPELINE_FLOW = {
 # SCORING & EVALUATION
 # =====================
 SCORING = {
-    "EpistemicTraceSaved": "🧠💾",  # Epistemic trace saved
+    "EpistemicPlanExecutorSkipped": "🪸⏭️",  # Epistemic plan executor skipped
+    "EpistemicPlanHRMTrainingBatch": "🪸🏋️",  # Training batch
+    "EpistemicPlanHRMDataLoaderCreated": "🪸📥",  # Data loader created
+    "EpistemicPlanHRMTrainingEpoch": "🪸🏋️",  # Training epoch
+    "EpistemicPlanHRMModelSaved": "🪸🧮💾",  # Model saved
+    "EpistemicTraceSaved": "🪸💾",  # Epistemic trace saved
     "HRMScorerEvaluated": "🧠⚖️",  # HRM scorer evaluated
-    "HRMScorerModelLoaded": "🧠📥",  # HRM scorer model loaded
+    "HRMScorerModelLoaded": "🧠🧮📥",  # HRM scorer model loaded
     "HRMScorerMetaLoaded": "🧠📄",  # HRM scorer meta loaded
     "LATS_StepStarted": "🧠🔄",  # LATS step started
     "LATS_StepCompleted": "🧠✅",  # LATS step completed
     "LargeDataContextComponentDumped": "📂💾",  # Large data context dumped
-    "EpistemicPlanExecutorStarted": "🚀📄",  # Epistemic plan executor started
-    "EpistemicPlanExecutorCompleted": "🚀✅",  # Epistemic plan executor completed
+    "EpistemicPlanExecutorStarted": "🪸📄",  # Epistemic plan executor started
+    "EpistemicPlanExecutorCompleted": "🪸✅",  # Epistemic plan executor completed
     "PolicyLogits": "📊⚖️",  # Policy logits computed
     "DocumentScoresAlreadyExist": "📄✅",  # Document scores already exist
     "LLMJudgeScorerDimension": "📝📊",  # LLM judge scoring dimension
@@ -157,10 +163,10 @@ SCORING = {
     "ReportGenerated": "📄✅",  # Report generated
     "MRQScoringFinished": "📊🏁",  # MRQ scoring finished
     "MRQScoringStarted": "📊▶️",  # MRQ scoring started
-    "AllMRQModelsLoaded": "📊✅",  # All MRQ models loaded
-    "LoadingModelPaths": "📂🔄",  # Model paths loading
+    "AllMRQModelsLoaded": "📊🧮✅",  # All MRQ models loaded
+    "LoadingModelPaths": "📂🧮🔄",  # Model paths loading
     "DocumentModelSaved": "📄💾",  # Document model saved
-    "ModelSaved": "💾✅",  # Model saved
+    "ModelSaved": "💾🧮✅",  # Model saved
     "EncoderSaved": "📄💾",  # Encoder saved
     "MRQInferenceCompleted": "📊✅",  # MRQ inference completed
     "SVMScoringFinished": "📊🏁",  # SVM scoring finished
@@ -175,6 +181,13 @@ SCORING = {
 # REASONING & ANALYSIS
 # =====================
 REASONING = {
+    "EpistemicPlanHRMModelInitialized": "🪸🧠",  # Epistemic Plan HRM model initialized
+    "EpistemicPlanHRMOptimizerInitialized": "🪸⚙️",  # Epistemic Plan HRM optimizer initialized
+    "EpistemicPlanHRMLossInitialized": "🪸📉",  # Epistemic Plan HRM loss initialized
+    "EpistemicPlanHRMTrainingNoTraces": "🪸🚫",  # No traces for training
+    "EpistemicPlanHRMTrainingStarted": "🪸🚀",  # Epistemic Plan HRM training started
+    "EpistemicPlanHRMTrainingDataPrepared": "🪸📊",  # Training data prepared
+
     "KeywordsExtracted": "🔑",  # Keywords extracted
     "ProximityAnalysisScored": "📌🗺️",  # Proximity analysis
     "ProximityGraphComputed": "📊🌐",  # Proximity graph
@@ -197,7 +210,7 @@ TRAINING = {
     "MRQTrainerEpoch": "🏋️",  # MRQ training epoch
     "MRQTrainerStart": "🚀🧠",  # MRQ training started
     "MRQTrainerTrainingComplete": "🎓🧠",  # MRQ training completed
-    "MRQModelInitializing": "🧠⚙️",  # MRQ model initializing
+    "MRQModelInitializing": "🧠🧮⚙️",  # MRQ model initializing
     "TrainingEpoch": "🏋️",  # Training epoch
     "TrainingComplete": "🎓✅",  # Training completed
     "TrainingDataProgress": "📈🔄",  # Training data progress
@@ -312,12 +325,12 @@ ERROR_STATES = {
 # MODEL OPS
 # =============
 MODELS = {
-    "SVMModelSaved": "💾📊",  # SVM model saved
-    "SVMModelLoaded": "📥📊",  # SVM model load
-    "SVMModelTrainingStarted": "🏋️⚖️",
+    "SVMModelSaved": "💾🧮📊",  # SVM model saved
+    "SVMModelLoaded": "📥🧮📊",  # SVM model load
+    "SVMModelTrainingStarted": "🏋️🧮⚖️",
     "SVMTrainingStarted": "🏋️📊",
-    "EBTModelLoaded": "📥🧪",  # EBT model loaded
-    "DocumentEBTModelSaved": "💾✅",  # Model saved after training
+    "EBTModelLoaded": "📥🧮🧪",  # EBT model loaded
+    "DocumentEBTModelSaved": "💾🧮✅",  # Model saved after training
     "DocumentEBTTrainingStart": "🧪▶️",  # Training started for a dimension
     "DocumentEBTEpoch": "📊🔁",  # Epoch completed during training
 }

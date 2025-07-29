@@ -1,28 +1,26 @@
 # stephanie/scoring/score_bundle.py
 import json
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 from stephanie.scoring.score_result import ScoreResult
+
 
 @dataclass
 class ScoreBundle:
     results: dict[str, ScoreResult] = field(default_factory=dict)
 
     def __init__(self, results: dict[str, ScoreResult]):
-        from stephanie.scoring.calculations.weighted_average import \
-            WeightedAverageCalculator
+        from stephanie.scoring.calculations.weighted_average import (
+            WeightedAverageCalculator,
+        )
 
         self.results = results
         self.calculator = WeightedAverageCalculator()
 
-
-
     def aggregate(self):
         result = self.calculator.calculate(self)
         return result
-
-
 
     def get(self, dimension: str) -> Optional[ScoreResult]:
         return self.results.get(dimension)
@@ -53,7 +51,6 @@ class ScoreBundle:
                 merged[dim] = result
         return ScoreBundle(merged)
 
-
     def to_json(self, stage: str):
         final_score = self.aggregate()
         return {
@@ -81,13 +78,15 @@ class ScoreBundle:
                 policy_logits=r.policy_logits,
                 uncertainty=r.uncertainty,
                 entropy=r.entropy,
-                advantage=r.advantage
+                advantage=r.advantage,
             )
             for r in self.results.values()
         ]
 
     def __repr__(self):
-        summary = ", ".join(f"{dim}: {res.score}" for dim, res in self.results.items())
+        summary = ", ".join(
+            f"{dim}: {res.score}" for dim, res in self.results.items()
+        )
         return f"<ScoreBundle({summary})>"
 
     def __str__(self):
@@ -113,7 +112,9 @@ class ScoreBundle:
             if result.state_value is not None:
                 lines.append(f"- **State Value**: `{result.state_value:.4f}`")
             if result.policy_logits is not None:
-                logits_str = ", ".join(f"{x:.4f}" for x in result.policy_logits)
+                logits_str = ", ".join(
+                    f"{x:.4f}" for x in result.policy_logits
+                )
                 lines.append(f"- **Policy Logits**: [{logits_str}]")
             if result.uncertainty is not None:
                 lines.append(f"- **Uncertainty**: `{result.uncertainty:.4f}`")
@@ -126,4 +127,3 @@ class ScoreBundle:
 
         lines.append(f"**Aggregate Score:** `{self.aggregate():.4f}`")
         return "\n".join(lines)
-

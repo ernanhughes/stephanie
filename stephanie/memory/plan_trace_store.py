@@ -139,5 +139,11 @@ class PlanTraceStore:
                 self.logger.log("PlanTraceGetRecentFailed", {"error": str(e), "limit": limit})
             return []
 
-    # Add more query methods as needed, e.g., by date range, by plan_signature, etc.
-    # Consider methods to load related ExecutionSteps if not loaded via relationship.
+    def all(self) -> List[PlanTraceORM]:
+        """Returns all PlanTraceORM records."""
+        try:
+            return self.session.query(PlanTraceORM).all()
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceGetAllFailed", {"error": str(e)})
+            return []

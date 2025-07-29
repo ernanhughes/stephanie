@@ -15,8 +15,6 @@ from stephanie.scoring.model.hrm_model import HRMModel
 from stephanie.scoring.model.epistemic_trace_encoder import EpistemicTraceEncoder
 from stephanie.scoring.model_locator_mixin import ModelLocatorMixin
 
-# Assuming PlanTrace is available or will be passed as dict
-
 class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
     """
     Agent to train the Hierarchical Reasoning Model (HRM) specifically for evaluating
@@ -27,7 +25,7 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
     """
     def __init__(self, cfg: Dict[str, Any], memory: Any = None, logger: Any = None):
         super().__init__(cfg, memory, logger)
-        self.model_type = "hrm"
+        self.model_type = "epistemic_hrm"
         self.model_path = cfg.get("model_path", "models")
         self.evaluator = "hrm"
         self.target_type = cfg.get("target_type", "plan_trace")
@@ -115,6 +113,10 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
         raw_traces_data = context.get("plan_traces", [])
         if not raw_traces_data:
             # If no traces are provided, try loading from export directory
+            self.logger.log("EpistemicPlanHRMTrainingNoTraces", {
+                "message": "No plan traces found in context['plan_traces']. Attempting to load from export directory.",
+                "export_dir": self.export_dir
+            })
             raw_traces_data = self.load_plan_traces_from_export_dir()
         
         if not raw_traces_data:
@@ -166,7 +168,6 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 "num_samples": len(dataset),
                 "num_batches": len(dataloader),
                 "batch_size": self.hrm_model_config["hrm.batch_size"],
-                "dimensions": self.dimensions
             })
             
         except Exception as e:
@@ -175,7 +176,6 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 "message": error_msg,
                 "error": str(e),
                 "traceback": traceback.format_exc(),
-                "dimensions": self.dimensions
             })
             return { "status": "failed", "message": error_msg, "dimensions": self.dimensions }
 
@@ -213,18 +213,16 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                     epoch_loss += loss.item()
                     num_batches += 1
                     
-                    # if batch_idx % 10 == 0:
-                    #     self.logger.log("EpistemicPlanHRMTrainingBatch", {
-                    #         "epoch": epoch, "batch": batch_idx, "loss": loss.item(),
-                    #         "hrm_dimension": self.hrm_dimension
-                    #     })
+                    if batch_idx % 10 == 0:
+                        self.logger.log("EpistemicPlanHRMTrainingBatch", {
+                            "epoch": epoch, "batch": batch_idx, "loss": loss.item(),
+                        })
 
                 # Log average epoch loss
                 avg_epoch_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
                 self.logger.log("EpistemicPlanHRMTrainingEpoch", {
                     "epoch": epoch, 
                     "avg_loss": avg_epoch_loss,
-                    "dimensions": self.dimensions
                 })
 
             # Set model back to evaluation mode
@@ -236,7 +234,6 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 "message": error_msg,
                 "error": str(e),
                 "traceback": traceback.format_exc(),
-                "dimensions": self.dimensions
             })
             return { "status": "failed", "message": error_msg, "dimensions": self.dimensions }
 
@@ -245,14 +242,12 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
             self._save_model()
             self.logger.log("EpistemicPlanHRMTrainingCompleted", {
                 "final_avg_loss": round(avg_epoch_loss, 6),
-                "dimensions":  self.dimensions
             })
             
             return {
                 "status": "trained",
                 "final_loss": round(avg_epoch_loss, 6),
                 "message": "Epistemic Plan HRM trained successfully.",
-                "dimensions": self.dimensions,
                 "epochs_trained": num_epochs,
                 "samples_used": len(dataset)
             }
@@ -263,7 +258,6 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 "message": error_msg,
                 "error": str(e),
                 "traceback": traceback.format_exc(),
-                "dimensions": self.dimensions
             })
             return {
                 "status": "trained_partial", # Model trained, but save failed
@@ -303,7 +297,6 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                     score_stats_fn=self.get_trace_score_stats  # You’ll define this separately
                 )
                 encoded_inputs.append(z.detach())
-                print(f"Encoded trace shape: {z.shape}")
 
                 score = trace.target_epistemic_quality if hasattr(trace, "target_epistemic_quality") else trace.get("target_epistemic_quality")
                 target_scores.append(float(score))

@@ -148,14 +148,36 @@ class EpistemicPlanExecutorAgent(BaseAgent):
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
 
+        existing_goal_ids = {
+            pt.goal_id for pt in self.memory.plan_traces.all()
+            if pt.goal_id is not None
+        }
         goals = self.memory.goals.get_all_goals()
 
         for goal in goals:
-            self.logger.log("EpistemicPlanExecutorStarted", {})
+            goal_id = goal.id
+            if goal.id in existing_goal_ids:
+                self.logger.log("EpistemicPlanExecutorSkipped", {
+                    "goal_id": goal.id,
+                    "message": "Goal already has a PlanTrace, skipping."
+                })
+                continue
+
             goal_dict = goal.to_dict()
             goal_text = goal.goal_text
-            goal_id = goal.id
+            if not goal_text or len(goal_text) < 10:
+                self.logger.log("EpistemicPlanExecutorWarning", {
+                    "message": f"Goal text is too short or missing: {goal_text}",
+                    "goal_id": goal.id
+                })
+                continue
+            
             input_data = context.get("input_data", {})
+            self.logger.log("EpistemicPlanExecutorStarted", {
+                "goal_id": goal_id,
+                "goal_text": goal_text,
+                "input_data": input_data
+            })
 
             if not goal_text:
                 error_msg = "Missing 'goal_text' in context['goal']. Cannot execute plan."
@@ -214,6 +236,9 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                             hrm_scores = self.hrm_scorer.score(
                                 goal=goal_dict, scorable=scorable, dimensions=self.dimensions
                             )
+                            if hrm_scores:
+                                sicql_scores = sicql_scores.merge(hrm_scores)
+
 
                         # --- Create ExecutionStep Object ---
                         step_meta = {
@@ -303,7 +328,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                 )
 
 
-                # --- Save Trace Report ---
+                # --- Save Trace Report --- Yeah you'll be back here 1000 times OK this is going to be
                 executed_trace.save_as_json(f"reports/{self.name}/")
 
                 executed_trace.save_as_markdown(reports_dir="reports")
