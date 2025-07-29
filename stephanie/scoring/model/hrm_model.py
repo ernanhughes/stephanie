@@ -91,7 +91,7 @@ class HRMModel(nn.Module):
     def __init__(self, cfg, logger=None):
         super().__init__()
         self.logger = logger
-        self.input_dim = cfg.get("hrm.input_dim", 1536) # e.g., 768 (ctx) + 768 (doc)
+        self.input_dim = cfg.get("hrm.input_dim", 2048) # e.g., 768 (ctx) + 768 (doc)
         self.h_dim = cfg.get("hrm.h_dim", 256)
         self.l_dim = cfg.get("hrm.l_dim", 128)
         self.output_dim = cfg.get("hrm.output_dim", 1) # e.g., 1 for score prediction

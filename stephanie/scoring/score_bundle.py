@@ -1,10 +1,14 @@
 # stephanie/scoring/score_bundle.py
 import json
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, List
 
 from stephanie.scoring.score_result import ScoreResult
 
-
+@dataclass
 class ScoreBundle:
+    results: dict[str, ScoreResult] = field(default_factory=dict)
+
     def __init__(self, results: dict[str, ScoreResult]):
         from stephanie.scoring.calculations.weighted_average import \
             WeightedAverageCalculator
@@ -12,13 +16,43 @@ class ScoreBundle:
         self.results = results
         self.calculator = WeightedAverageCalculator()
 
+
+
     def aggregate(self):
         result = self.calculator.calculate(self)
-        print(f"ScoreBundle: Aggregated score: {result}")
         return result
 
-    def to_dict(self) -> dict:
-        return {k: v.to_dict() for k, v in self.results.items()}
+
+
+    def get(self, dimension: str) -> Optional[ScoreResult]:
+        return self.results.get(dimension)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {dim: result.to_dict() for dim, result in self.results.items()}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ScoreBundle":
+        """
+        Reconstruct a ScoreBundle from a dictionary where each value is a ScoreResult-like dict.
+        """
+        results = {
+            dim: ScoreResult.from_dict(score_data)
+            for dim, score_data in data.items()
+            if isinstance(score_data, dict)
+        }
+        return cls(results=results)
+
+    def merge(self, other: "ScoreBundle") -> "ScoreBundle":
+        """
+        Merge two bundles, preferring `self` values but including all from both.
+        If a dimension exists in both, the value from `self` is kept.
+        """
+        merged = dict(self.results)
+        for dim, result in other.results.items():
+            if dim not in merged:
+                merged[dim] = result
+        return ScoreBundle(merged)
+
 
     def to_json(self, stage: str):
         final_score = self.aggregate()
@@ -41,7 +75,13 @@ class ScoreBundle:
                 source=r.source,
                 target_type=r.target_type,
                 prompt_hash=r.prompt_hash,
-
+                energy=r.energy,
+                q_value=r.q_value,
+                state_value=r.state_value,
+                policy_logits=r.policy_logits,
+                uncertainty=r.uncertainty,
+                entropy=r.entropy,
+                advantage=r.advantage
             )
             for r in self.results.values()
         ]
@@ -52,30 +92,6 @@ class ScoreBundle:
 
     def __str__(self):
         return json.dumps(self.to_dict(), indent=2)
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "ScoreBundle":
-        """
-        Reconstruct a ScoreBundle from a dict where each value is a ScoreResult-like dict.
-        """
-        from stephanie.scoring.score_result import ScoreResult
-
-        results = {
-            dim: ScoreResult(
-                dimension=dim,
-                score=entry.get("score"),
-                weight=entry.get("weight", 1.0),
-                rationale=entry.get("rationale", ""),
-                source=entry.get("source", "from_dict"),
-                target_type=entry.get("target_type", "unknown"),
-                prompt_hash=entry.get("prompt_hash", ""),
-                
-            )
-            for dim, entry in data.items()
-            if isinstance(entry, dict)  # Defensive: skip bad formats
-        }
-
-        return cls(results)
 
     def to_report(self, title: str = "Score Report") -> str:
         lines = [f"## {title}", ""]
@@ -110,3 +126,4 @@ class ScoreBundle:
 
         lines.append(f"**Aggregate Score:** `{self.aggregate():.4f}`")
         return "\n".join(lines)
+

@@ -77,19 +77,19 @@ pipeline:
     - name: knowledge_db_loader
       description: "Load knowledge from the database into the system"
       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: epistemic_plan_executor
       description: "Execute the epistemic plan to generate hypotheses"
       cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: epistemic_plan_hrm_trainer  
       description: "Train the HRM model to predict document values based on epistemic plans"
       cls: stephanie.agents.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
 

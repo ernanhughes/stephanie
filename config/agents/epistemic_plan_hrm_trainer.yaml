@@ -4,6 +4,44 @@ epistemic_plan_hrm_trainer:
   save_prompt: true
   save_context: true
   skip_if_completed: false
+
+  model_path: "${hydra:runtime.cwd}/models"
+  model_type: hrm
+  model_version: "v1"
+  evaluator: hrm
+  target_type: plan_trace
+
+
+  export_dir: ${hydra:runtime.cwd}/reports/epistemic_plan_executor
+  dimensions: 
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+
+  hrm:
+    name: epistemic_plan_executor_hrm
+    input_dim: 256
+    h_dim: 256
+    l_dim: 128
+    output_dim: 1
+    n_cycles: 4
+    t_steps: 4
+    lr: 0.001
+    batch_size: 1
+    epochs: 10
+    model_type: hrm
+    evaluator: hrm
+    model_version: "v1"
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434

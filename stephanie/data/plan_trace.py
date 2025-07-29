@@ -3,6 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union
 from stephanie.scoring.score_bundle import ScoreBundle
+import json
 
 @dataclass
 class ExecutionStep:
@@ -16,15 +17,39 @@ class ExecutionStep:
 
     # The scores assigned to this step's output by various scorers (SICQL, EBT, etc.)
     # against the original goal. 
-    scores: ScoreBundle 
+    scores: Optional[ScoreBundle] 
 
     plan_trace_id: Optional[int] = None  # Foreign key to the PlanTrace this step belongs to
     step_order: Optional[int] = None  # Foreign key to the PlanTrace this step belongs to
     # Optional: Embedding of the output_text. Can be computed on demand if not stored.
-    output_embedding: Optional[List[float]] = None 
     
     # Optional: Any other metadata specific to this step
-    extra_data: Dict[str, Any] = field(default_factory=dict) 
+    extra_data: Optional[Dict[str, Any]] = field(default_factory=dict) 
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "step_id": self.step_id,
+            "description": self.description,
+            "output_text": self.output_text,
+            "scores": self.scores.to_dict(),
+            "plan_trace_id": self.plan_trace_id,
+            "step_order": self.step_order,
+            "extra_data": self.extra_data,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ExecutionStep":
+        from stephanie.scoring.score_bundle import ScoreBundle  # Local import to avoid circular dependencies
+
+        return cls(
+            step_id=data.get("step_id"),
+            description=data.get("description", ""),
+            output_text=data.get("output_text", ""),
+            scores=ScoreBundle.from_dict(data.get("scores", {})),
+            plan_trace_id=data.get("plan_trace_id"),
+            step_order=data.get("step_order"),
+            extra_data=data.get("extra_data", {}),
+        )
 
 
 @dataclass
@@ -40,7 +65,6 @@ class PlanTrace:
     # --- Initial Context ---
     goal_text: str # The original goal or query
     goal_id: int
-    goal_embedding: List[float] # The embedding vector for the goal_text
     input_data: Dict[str, Any] # Any initial data or variables provided to the plan
     
     # --- Plan Definition (Optional but useful for context) ---
@@ -54,9 +78,7 @@ class PlanTrace:
     # --- Final Outcome ---
     final_output_text: str # The final output produced by the plan
     # The scores assigned to the final output by various scorers.
-    final_scores: ScoreBundle 
-    # Optional: Embedding of the final_output_text. Can be computed on demand.
-    final_output_embedding: Optional[List[float]] = None 
+    final_scores: Optional[ScoreBundle] = None
 
     # --- Target for Epistemic Plan HRM Training ---
     # This is the label the HRM model will try to predict.
@@ -68,7 +90,24 @@ class PlanTrace:
     # --- Metadata ---
     created_at: str = "" # ISO format timestamp
     # Any other execution metadata (e.g., time taken, DSPy optimizer version)
-    extra_data: Dict[str, Any] = field(default_factory=dict) 
+    extra_data: Optional[Dict[str, Any]] = field(default_factory=dict) 
+
+    def to_dict(self) -> dict:
+        return {
+            "trace_id": self.trace_id,
+            "goal_text": self.goal_text,
+            "goal_id": self.goal_id,
+            "input_data": self.input_data,
+            "plan_signature": self.plan_signature,
+            "execution_steps": [step.to_dict() for step in self.execution_steps],
+            "final_output_text": self.final_output_text,
+            "final_scores": self.final_scores.to_dict(),
+            "target_epistemic_quality": self.target_epistemic_quality,
+            "target_epistemic_quality_source": self.target_epistemic_quality_source,
+            "created_at": self.created_at,
+            "extra_data": self.extra_data,
+        }
+
 
     # --- Utility Methods ---
     def get_all_text_outputs(self) -> List[str]:
@@ -105,4 +144,45 @@ class PlanTrace:
             f.write(markdown_text)
         return filepath
 
+    def save_as_json(self, dir_path: str = "reports/json") -> str:
+        os.makedirs(dir_path, exist_ok=True)
+        filename = f"{self.trace_id}.json"
+        path = os.path.join(dir_path, filename)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2)
 
+        print(f"PlanTraceSavedAsJSON path: {path}")
+
+        return path
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PlanTrace":
+        from stephanie.scoring.score_bundle import ScoreBundle
+
+        execution_steps = [
+            ExecutionStep(
+                step_id=step["step_id"],
+                description=step["description"],
+                output_text=step["output_text"],
+                scores=ScoreBundle.from_dict(step["scores"]),
+                plan_trace_id=step.get("plan_trace_id"),
+                step_order=step.get("step_order"),
+                extra_data=step.get("extra_data", {}),
+            )
+            for step in data["execution_steps"]
+        ]
+
+        return cls(
+            trace_id=data["trace_id"],
+            goal_text=data["goal_text"],
+            goal_id=data["goal_id"],
+            input_data=data["input_data"],
+            plan_signature=data["plan_signature"],
+            execution_steps=execution_steps,
+            final_output_text=data["final_output_text"],
+            final_scores=ScoreBundle.from_dict(data["final_scores"]),
+            target_epistemic_quality=data.get("target_epistemic_quality"),
+            target_epistemic_quality_source=data.get("target_epistemic_quality_source"),
+            created_at=data.get("created_at", ""),
+            extra_data=data.get("extra_data", {}),
+        )
