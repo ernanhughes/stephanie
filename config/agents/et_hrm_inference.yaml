@@ -1,37 +1,23 @@
-epistemic_plan_hrm_trainer:
-  name: epistemic_plan_hrm_trainer
+et_hrm_inference:
+  name: et_hrm_inference
   enabled: true
   save_prompt: true
   save_context: true
   skip_if_completed: false
 
-  model_path: "${hydra:runtime.cwd}/models"
-  model_type: hrm
-  model_version: "v1"
-  evaluator: hrm
-  target_type: plan_trace
-
-
   export_dir: ${hydra:runtime.cwd}/reports/epistemic_plan_executor
+  model_type: hrm
+  model_path: "${hydra:runtime.cwd}/models"
+  model_version: v1
+  target_type: plan_trace
+  version: v1
+
   dimensions: 
     - alignment
     - clarity
     - implementability
     - novelty
     - relevance
-
-  encoder:
-    name: epistemic_trace_encoder
-    input_dim: 256
-    embedding_dim: 1024
-    step_hidden_dim: 64
-    stats_input_dim: 12
-    stats_hidden_dim: 128
-    final_dim: 256
-    n_steps: 4
-    n_stats: 2
-    model_type: trace_encoder
-    model_version: "v1"
 
   hrm:
     name: epistemic_plan_executor_hrm
@@ -44,16 +30,30 @@ epistemic_plan_hrm_trainer:
     lr: 0.001
     batch_size: 1
     epochs: 10
-    model_type: hrm
+    model_type: epistemic_hrm
     evaluator: hrm
     model_version: "v1"
-    target_type: document
+    target_type: plan_trace
     dimensions: 
       - alignment
       - clarity
       - implementability
       - novelty
       - relevance
+    
+    encoder:
+      name: epistemic_trace_encoder
+      input_dim: 256
+      embedding_dim: 1024
+      step_hidden_dim: 64
+      stats_input_dim: 12
+      stats_hidden_dim: 128
+      final_dim: 256
+      n_steps: 4
+      n_stats: 2
+      model_type: trace_encoder
+      model_version: "v1"
+
 
   model:
     name: ollama/qwen3
@@ -61,6 +61,6 @@ epistemic_plan_hrm_trainer:
     api_key: null
   input_keys: ["goal", "hypotheses"]
   input_key: documents
-  output_key: epistemic_plan_hrm_trainer
+  output_key: et_hrm_inference
   prompt_mode: file
-  prompt_file: epistemic_plan_hrm_trainer.txt
+  prompt_file: et_hrm_inference.txt

@@ -4,8 +4,8 @@ from torch import nn
 
 from stephanie.scoring.model.policy_head import PolicyHead
 from stephanie.scoring.model.q_head import QHead
-from stephanie.scoring.model.v_head import VHead
 from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.scoring.model.v_head import VHead
 
 
 class InContextQModel(nn.Module):

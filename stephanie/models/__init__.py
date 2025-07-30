@@ -21,6 +21,7 @@ from .mrq_preference_pair import MRQPreferencePairORM
 from .node_orm import NodeORM
 from .pattern_stat import PatternStatORM
 from .pipeline_run import PipelineRunORM
+from .plan_trace import ExecutionStepORM, PlanTraceORM
 from .prompt import PromptORM, PromptProgramORM
 from .reflection_delta import ReflectionDeltaORM
 from .rule_application import RuleApplicationORM
@@ -34,5 +35,3 @@ from .symbolic_rule import SymbolicRuleORM
 from .theorem import CartridgeORM, TheoremORM
 from .training_stats import TrainingStatsORM
 from .unified_mrq import UnifiedMRQModelORM
-from .plan_trace import PlanTraceORM, ExecutionStepORM
-

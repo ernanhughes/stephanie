@@ -1,7 +1,8 @@
 # stephanie/scoring/score_result.py
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 
 @dataclass
 class ScoreResult:

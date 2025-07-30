@@ -16,8 +16,8 @@ from stephanie.models.training_stats import TrainingStatsORM
 from stephanie.scoring.model.in_context_q import InContextQModel
 from stephanie.scoring.model.policy_head import PolicyHead
 from stephanie.scoring.model.q_head import QHead
-from stephanie.scoring.model.v_head import VHead
 from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.scoring.model.v_head import VHead
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner

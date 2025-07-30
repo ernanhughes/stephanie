@@ -1,9 +1,10 @@
 # stephanie/agents/maintenance/hrm_trainer_agent.py
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.training.hrm_trainer import HRMTrainer
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+
 
 class HRMTrainerAgent(BaseAgent):
     """

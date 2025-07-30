@@ -1,12 +1,14 @@
 # stephanie/memory/execution_step_store.py
 
 from typing import List, Optional
-from sqlalchemy.orm import Session
+
 from sqlalchemy import asc
+from sqlalchemy.orm import Session
 
 # Import the ORM
 from stephanie.data.plan_trace import ExecutionStep
 from stephanie.models.plan_trace import ExecutionStepORM
+
 
 class ExecutionStepStore:
     """

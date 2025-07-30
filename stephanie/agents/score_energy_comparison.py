@@ -2,14 +2,15 @@
 
 import os
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-from sqlalchemy import text
-import sqlalchemy
 import numpy as np
+import sqlalchemy
 from scipy.stats import pearsonr
+from sqlalchemy import text
 
 from stephanie.agents.base_agent import BaseAgent
+
 
 class ScoreEnergyComparisonAgent(BaseAgent):
     """

@@ -21,6 +21,7 @@ from stephanie.memory.embedding_store import EmbeddingStore
 from stephanie.memory.evaluation_attribute_store import \
     EvaluationAttributeStore
 from stephanie.memory.evaluation_store import EvaluationStore
+from stephanie.memory.execution_step_store import ExecutionStepStore
 from stephanie.memory.goal_dimensions_store import GoalDimensionsStore
 from stephanie.memory.goal_store import GoalStore
 from stephanie.memory.hf_embedding_store import HuggingFaceEmbeddingStore
@@ -34,6 +35,7 @@ from stephanie.memory.mrq_store import MRQStore
 from stephanie.memory.pattern_store import PatternStatStore
 from stephanie.memory.pipeline_run_store import PipelineRunStore
 from stephanie.memory.pipeline_stage_store import PipelineStageStore
+from stephanie.memory.plan_trace_store import PlanTraceStore
 from stephanie.memory.prompt_program_store import PromptProgramStore
 from stephanie.memory.prompt_store import PromptStore
 from stephanie.memory.reflection_delta_store import ReflectionDeltaStore
@@ -44,8 +46,6 @@ from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
-from stephanie.memory.execution_step_store import ExecutionStepStore
-from stephanie.memory.plan_trace_store import PlanTraceStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 
 

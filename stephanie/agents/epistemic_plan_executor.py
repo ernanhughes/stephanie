@@ -1,21 +1,21 @@
 # stephanie/agents/epistemic_plan_executor.py
 
-import re
-import traceback
-from typing import Any, Dict, List, Optional
-import time
-import uuid
 import json
-
-from stephanie.scoring.scorable_factory import TargetType, ScorableFactory
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.hrm_scorer import HRMScorer  # Optional
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.data.plan_trace import PlanTrace, ExecutionStep
+import re
+import time
+import traceback
+import uuid
+from typing import Any, Dict, List, Optional
 
 import dspy
-# Add these imports to the top of your epistemic_plan_executor_agent.py file
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.scoring.hrm_scorer import HRMScorer  # Optional
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.scoring.sicql_scorer import SICQLScorer
+
 
 # Define a Signature for a single LATS-style reasoning step
 class ReasoningStepSignature(dspy.Signature):
@@ -182,9 +182,13 @@ class EpistemicPlanExecutorAgent(BaseAgent):
             if not goal_text:
                 error_msg = "Missing 'goal_text' in context['goal']. Cannot execute plan."
                 self.logger.log("EpistemicPlanExecutorError", {"message": error_msg})
-                context["executed_plan_trace"] = None
-                context["epistemic_executor_status"] = "failed"
-                context["epistemic_executor_error"] = error_msg
+                context[self.output_key] = {
+                    "goal_id": goal_id,
+                    "executor_agent": self.__class__.__name__,
+                    "source": "simplified_lats_execution",
+                    "status": "failed",
+                    "error": error_msg
+                }
                 return context
 
             trace_id = f"trace_{uuid.uuid4().hex}"
@@ -357,9 +361,12 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                     "error": str(e),
                     "traceback": traceback.format_exc(),
                 })
-                context["executed_plan_trace"] = None
-                context["epistemic_executor_status"] = "failed"
-                context["epistemic_executor_error"] = str(e)
+                context[self.output_key] = {
+                    "goal_id": goal_id,
+                    "executor_agent": self.__class__.__name__,
+                    "source": "simplified_lats_execution",
+                    "max_reasoning_steps_config": self.max_reasoning_steps
+                }
 
         return context
 

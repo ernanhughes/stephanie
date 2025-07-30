@@ -1,9 +1,11 @@
 # stephanie/data/plan_trace.py
+import json
 import os
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
+
 from stephanie.scoring.score_bundle import ScoreBundle
-import json
+
 
 @dataclass
 class ExecutionStep:
@@ -39,7 +41,8 @@ class ExecutionStep:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ExecutionStep":
-        from stephanie.scoring.score_bundle import ScoreBundle  # Local import to avoid circular dependencies
+        from stephanie.scoring.score_bundle import \
+            ScoreBundle  # Local import to avoid circular dependencies
 
         return cls(
             step_id=data.get("step_id"),
@@ -108,6 +111,13 @@ class PlanTrace:
             "extra_data": self.extra_data,
         }
 
+    def get_target_quality(self) -> float:
+        if self.has_target_quality():
+            return float(self.target_epistemic_quality)
+        raise ValueError(f"Trace {self.trace_id} is missing 'target_epistemic_quality'")
+
+    def has_target_quality(self) -> float:
+        return self.target_epistemic_quality is not None
 
     # --- Utility Methods ---
     def get_all_text_outputs(self) -> List[str]:

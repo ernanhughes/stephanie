@@ -1,19 +1,18 @@
 # stephanie/models/plan_trace.py (or a suitable path in your models directory)
 
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from stephanie.models.base import Base
 
+from stephanie.models.base import Base
+# Assuming EmbeddingORM exists (you mentioned a separate table)
+from stephanie.models.evaluation import \
+    EvaluationORM  # Assuming EvaluationORM exists
 # Assuming GoalORM exists
 from stephanie.models.goal import GoalORM
 
-# Assuming EmbeddingORM exists (you mentioned a separate table)
-from stephanie.models.evaluation import (
-    EvaluationORM,
-)  # Assuming EvaluationORM exists
 # If EmbeddingORM is not directly importable or you just need the ID:
 # You can define a foreign key without the full ORM relationship if not needed for navigation here.
 

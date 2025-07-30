@@ -28,7 +28,7 @@ class EvaluationORM(Base):
     
     # Polymorphic target reference
     target_type: Mapped[String] = Column(String, nullable=False)
-    target_id: Mapped[int] = Column(Integer, nullable=False)
+    target_id: Mapped[int] = Column(String, nullable=False)
     
     embedding_type: Mapped[Optional[str]] = Column(String, nullable=True)
 

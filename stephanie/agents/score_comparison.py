@@ -1,17 +1,19 @@
 # stephanie/agents/score_comparison.py
 import csv
 import os
+from collections import defaultdict
 from datetime import datetime
-from typing import List, Dict, Any
-from sqlalchemy import text
-import sqlalchemy
-from stephanie.models import EvaluationORM, ScoreORM  # Assuming these are the ORM models used
+from typing import Any, Dict, List
 
 import numpy as np
+import sqlalchemy
 from scipy.stats import pearsonr
-from collections import defaultdict
+from sqlalchemy import text
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.models import (  # Assuming these are the ORM models used
+    EvaluationORM, ScoreORM)
+
 # If ScoringStore methods aren't directly usable, we might need to adapt them or use session directly
 
 class ScoreComparisonAgent(BaseAgent):
@@ -374,6 +376,7 @@ class ScoreComparisonAgent(BaseAgent):
 
             # Let's adapt the CTE logic from ScoringStore.load_gild_examples for just LLM
             from sqlalchemy import text
+
             # This is a simplified version focusing only on LLM
             # Note: This assumes target_type is consistent or handled, or we filter it out if not needed here
             cte_query_text = """
@@ -439,8 +442,8 @@ class ScoreComparisonAgent(BaseAgent):
                  self.logger.log("EmptyComparisonReportGenerated", {})
             else:
                 # Simple aggregation: count, average delta per source
-                from collections import defaultdict
                 import statistics
+                from collections import defaultdict
 
                 source_stats = defaultdict(lambda: {"count": 0, "avg_delta": 0, "deltas": []})
                 

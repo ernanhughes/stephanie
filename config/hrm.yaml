@@ -1,40 +1,17 @@
 defaults:
   - _self_
   - db: postgres
-  - agents/arxiv_search
-  - agents/document_loader
-  - agents/document_profiler
-  - agents/paper_score
-  - agents/knowledge_loader
-  - agents/document_mrq_inference
-  - agents/sicql_mrq_inference
-  - agents/document_mrq_trainer
-  - agents/hrm_trainer
-  - agents/document_mrq_inference
-  - agents/sicql_mrq_trainer
-  - agents/document_ebt_trainer
-  - agents/document_ebt_inference
-  - agents/document_reward_scorer
-  - agents/document_svm_trainer
-  - agents/document_svm_inference
-  - agents/document_embedding_backfill
-  - agents/document_llm_inference
   - agents/knowledge_db_loader
   - agents/gild_trainer
-  - agents/ethics
-  - agents/scoring_memcube
-  - agents/scoring_policy
-  - agents/policy_analyzer
-  - agents/pipeline_comparison
   - agents/pipeline_judge
-  - agents/scoring_report
-  - agents/hnet
   - agents/score_comparison
   - agents/score_energy_comparison
   - agents/score_analysis
   - agents/policy_synthesis
   - agents/epistemic_plan_hrm_trainer
   - agents/epistemic_plan_executor
+  - agents/et_hrm_inference
+  - agents/gild_trainer
   - logging/json_logger
 
 embeddings:
@@ -70,20 +47,55 @@ web_search:
   instance_url: "http://localhost:8080"
 
 pipeline:
-  name: policy
-  tag: "search_arxiv"
-  description: "Search Arxiv for papers related to a goal"
+  name: epistemic_plan_hrm
+  tag: "epistemic_plan_hrm"
+  description: "Builds and tests epistemic plans using HRM (Hierarchical Reasoning Model) to synthesize policies based on document values and scores."
   stages:
-
-    - name: epistemic_plan_executor
-      description: "Execute the epistemic plan to generate hypotheses"
-      cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
-      enabled: true
-      iterations: 1
 
     - name: epistemic_plan_hrm_trainer  
       description: "Train the HRM model to predict document values based on epistemic plans"
       cls: stephanie.agents.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
+      enabled: false
+      iterations: 1
+
+    - name: et_hrm_inference
+      description: "Use HRM to infer epistemic traces from documents"
+      cls: stephanie.agents.inference.et_hrm_inference.EpistemicTraceHRMInferenceAgent
+      enabled: false
+      iterations: 1
+
+    - name: epistemic_plan_executor
+      description: "Execute the epistemic plan to generate hypotheses"
+      cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
+      enabled: false
+      iterations: 1
+
+    - name: knowledge_db_loader
+      description: "Load knowledge from the database"
+      cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+      enabled: false
+      iterations: 1    
+
+    - name: score_comparison
+      description: "Compare scores of different documents"
+      cls: stephanie.agents.score_comparison.ScoreComparisonAgent
       enabled: true
       iterations: 1
 
+    - name: score_energy_comparison
+      description: "Compare energy scores of different documents"
+      cls: stephanie.agents.score_energy_comparison.ScoreEnergyComparisonAgent
+      enabled: true
+      iterations: 1
+
+    - name: policy_synthesis
+      description: "Synthesize a policy based on the scores and comparisons"
+      cls: stephanie.agents.policy_synthesis.PolicySynthesisAgent
+      enabled: true
+      iterations: 1
+    
+    - name: gild_trainer
+      description: "Train the GILD model to synthesize policies"
+      cls: stephanie.agents.gild_trainer.GILDTrainerAgent
+      enabled: true
+      iterations: 1

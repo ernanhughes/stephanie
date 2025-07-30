@@ -1,13 +1,15 @@
 # stephanie/agents/policy_synthesis.py
 
 import os
-from datetime import datetime
-from typing import List, Dict, Any
 from collections import defaultdict
+from datetime import datetime
+from typing import Any, Dict, List
+
 import numpy as np
 from scipy.stats import pearsonr
 
 from stephanie.agents.base_agent import BaseAgent
+
 
 class PolicySynthesisAgent(BaseAgent):
     """
@@ -302,7 +304,7 @@ class PolicySynthesisAgent(BaseAgent):
                     uncertainty = data_point.get('uncertainty')
                     entropy = data_point.get('entropy')
                     delta = data_point.get('delta') # Error signal
-                    
+                    evaluation_id = data_point.get('evaluation_id')
                     # Ensure we have the core components
                     if advantage is not None and q_value is not None and v_value is not None:
                         # Prepare the advantage data point for GILD
@@ -310,6 +312,7 @@ class PolicySynthesisAgent(BaseAgent):
                             "target_id": target_id,
                             "target_type": target_type,
                             "dimension": dimension,
+                            "evaluation_id": evaluation_id, 
                             "advantage": float(advantage), # The core GILD weighting signal
                             "q_value": float(q_value),
                             "v_value": float(v_value),

@@ -1,11 +1,12 @@
 # stephanie/training/hrm_trainer.py
 import torch
 import torch.nn as nn
+from torch.optim import AdamW  # As recommended by HRM paper
 from torch.utils.data import DataLoader, TensorDataset
-from torch.optim import AdamW # As recommended by HRM paper
 
-from stephanie.scoring.training.base_trainer import BaseTrainer # Assuming this exists or adapt
-from stephanie.scoring.model.hrm_model import HRMModel # Import the model
+from stephanie.scoring.model.hrm_model import HRMModel  # Import the model
+from stephanie.scoring.training.base_trainer import \
+    BaseTrainer  # Assuming this exists or adapt
 
 
 class HRMTrainer(BaseTrainer): 

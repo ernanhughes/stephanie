@@ -1,12 +1,14 @@
 # stephanie/data/loaders/plan_trace_loader.py
 
-import os
 import json
-from typing import List, Union, Optional
+import os
+from typing import List, Optional, Union
+
 # Assuming PlanTrace and ExecutionStep dataclasses exist
 # Adjust the import path as needed based on your project structure.
-from stephanie.data.plan_trace import PlanTrace, ExecutionStep
-from stephanie.scoring.score_bundle import ScoreBundle # Needed for reconstruction
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.scoring.score_bundle import \
+    ScoreBundle  # Needed for reconstruction
 
 
 def load_plan_traces(source: Union[str, List[Union[dict, PlanTrace]]], 

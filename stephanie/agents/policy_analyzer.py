@@ -11,7 +11,7 @@ class PolicyAnalysisAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "novelty"])
         self.analyzer = PolicyAnalyzer(memory.session, logger)
-        self.output_dir = cfg.get("report_output_dir", "logs/policy_reports")
+        self.output_dir = cfg.get("report_output_dir", f"reports/{self.name}")
 
         os.makedirs(self.output_dir, exist_ok=True)  # Ensure output directory exists
 

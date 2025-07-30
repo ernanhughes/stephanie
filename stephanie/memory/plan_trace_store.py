@@ -1,12 +1,14 @@
 # stephanie/memory/plan_trace_store.py
 
-from typing import List, Optional, Dict, Any
-from sqlalchemy.orm import Session
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 # Import the ORM
 from stephanie.data.plan_trace import PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
+
 # Import related ORMs if needed for relationships/filters
 # from stephanie.models.goal import GoalORM
 

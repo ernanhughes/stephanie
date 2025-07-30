@@ -1,6 +1,7 @@
 # stephanie/scoring/scorable_factory.py
 from enum import Enum as PyEnum
 
+from stephanie.data.plan_trace import PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.prompt import PromptORM
@@ -23,7 +24,8 @@ class TargetType:
     THEOREM = "theorem"
     SYMBOLIC_RULE = "symbolic_rule"
     CUSTOM = "custom"
-    REFINEMENT = "refinement"  # For SRFT-style usage
+    REFINEMENT = "refinement"
+    PLAN_TRACE = "plan_trace"
 
 
 class ScorableFactory:
@@ -131,3 +133,50 @@ class ScorableFactory:
         title, summary, and content for DOCUMENT types.
         """
         return Scorable(id="", text=text, target_type=target_type)
+
+    @staticmethod
+    def from_plan_trace(trace: PlanTrace, mode: str = "default") -> Scorable:
+        """
+        Convert a PlanTrace into a Scorable object for scoring.
+        Mode can be used to customize how the trace is represented as text.
+        """
+        if mode == "default":
+            text = trace.goal_text + "\n\n" + trace.final_output_text
+        elif mode == "full_trace":
+            step_texts = "\n".join([f"[{s.step_id}] {s.output_text}" for s in trace.execution_steps])
+            text = f"Goal: {trace.goal_text}\n\nSteps:\n{step_texts}\n\nFinal: {trace.final_output_text}"
+        else:
+            raise ValueError(f"Unsupported PlanTrace scoring mode: {mode}")
+        
+        return Scorable(
+            id=trace.trace_id,
+            text=text,
+            target_type=TargetType.PLAN_TRACE
+        )
+
+
+    @staticmethod
+    def from_id(memory, target_type: str, target_id: str) -> str:
+        """
+        Extracts the text content from a Scorable object.
+        """ 
+        orm = None
+        if target_type == TargetType.DOCUMENT:
+            orm = memory.document.get_by_id(target_id)
+        elif target_type == TargetType.HYPOTHESIS:
+            orm = memory.hypothesis.get_by_id(target_id)
+        elif target_type == TargetType.CARTRIDGE:
+            orm = memory.cartridge.get_by_id(target_id)
+        elif target_type == TargetType.TRIPLE:
+            orm = memory.triple.get_by_id(target_id)
+        elif target_type == TargetType.PROMPT:
+            orm = memory.prompt.get_by_id(target_id)
+        elif target_type == TargetType.THEOREM:
+            orm = memory.theorem.get_by_id(target_id)
+        elif target_type == TargetType.PLAN_TRACE:
+            orm = memory.plan_trace.get_by_id(target_id)
+        if orm is not None:
+            scorable = ScorableFactory.from_orm(orm)
+            return scorable
+        else:
+            raise ValueError(f"Unsupported target type for text extraction: {target_type}")

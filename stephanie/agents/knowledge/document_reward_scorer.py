@@ -2,13 +2,13 @@
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.ebt_scorer import EBTScorer
+from stephanie.scoring.hrm_scorer import HRMScorer
 from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.svm_scorer import SVMScorer
-from stephanie.scoring.hrm_scorer import HRMScorer
 
 
 class DocumentRewardScorerAgent(BaseAgent):

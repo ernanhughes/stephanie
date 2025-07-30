@@ -85,6 +85,12 @@ class EvaluationStore:
         )
         return [self._orm_to_dict(r) for r in results]
 
+    def get_goal(self, id: int) -> Optional[str]:
+        """Returns the goal text for a given goal ID."""
+        evaluation = self.session.query(EvaluationORM).filter(EvaluationORM.id == id).first()
+        goal = self.session.query(GoalORM).filter(GoalORM.id == evaluation.goal_id).first()
+        return goal if goal else None
+
     def get_by_goal_type(self, goal_type: str) -> list[dict]:
         """Returns all scores associated with a specific goal."""
         results = (

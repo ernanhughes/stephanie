@@ -24,64 +24,114 @@ gild_trainer:
     api_base: http://localhost:11434
     api_key: null
 
-  input_keys: ["goal", "hypotheses"]
+  input_keys: [goal, hypotheses]
   input_key: documents
   output_key: gild_trainer
   prompt_mode: file
   prompt_file: gild_trainer.txt
 
-  mrq:
-    name: gild_trainer_mrq
-    model_type: "mrq"
-    evaluator: "mrq"
-    target_type: "document"
-    dimensions: 
-      - "alignment"
-      - "clarity"
-      - "implementability"
-      - "novelty"
-      - "relevance"
 
-  ebt:
-    name: gild_trainer_ebt
-    model_type: "ebt"
-    evaluator: "ebt"
-    target_type: "document"
-    dimensions: 
-      - "alignment"
-      - "clarity"
-      - "implementability"
-      - "novelty"
-      - "relevance"
-
-  llm:
-    name: gild_trainer_llm
-    model_type: "llm"
-    evaluator: "llm"
-    target_type: "document"
-    model:
-      name: ollama/qwen3
-      api_base: http://localhost:11434
-      api_key: null
-    dimensions: 
-      - "alignment"
-      - "clarity"
-      - "implementability"
-      - "novelty"
-      - "relevance"
 
   sicql:
     name: gild_trainer_sicql
-    model_type: "sicql"
-    evaluator: "sicql"
-    target_type: "document"
+    model_type: sicql
+    model_version: v1
+    evaluator: sicql
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  hrm:
+    name: gild_trainer_hrm
+    model_type: hrm
+    model_version: v1
+    evaluator: hrm
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+
+  epistemic_plan_hrm:
+    name: epistemic_plan_executor_hrm
+    input_dim: 256
+    h_dim: 256
+    l_dim: 128
+    output_dim: 1
+    n_cycles: 4
+    t_steps: 4
+    lr: 0.001
+    batch_size: 1
+    epochs: 10
+    model_type: epistemic_hrm
+    evaluator: hrm
+    model_version: "v1"
+    target_type: plan_trace
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+    
+    encoder:
+      name: epistemic_trace_encoder
+      input_dim: 256
+      embedding_dim: 1024
+      step_hidden_dim: 64
+      stats_input_dim: 12
+      stats_hidden_dim: 128
+      final_dim: 256
+      n_steps: 4
+      n_stats: 2
+      model_type: trace_encoder
+      model_version: "v1"
+
+
+  mrq:
+    name: gild_trainer_mrq
+    model_type: mrq
+    evaluator: mrq
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  ebt:
+    name: gild_trainer_ebt
+    model_type: ebt
+    evaluator: ebt
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  llm:
+    name: gild_trainer_llm
+    model_type: llm
+    evaluator: llm
+    target_type: document
     model:
       name: ollama/qwen3
       api_base: http://localhost:11434
       api_key: null
     dimensions: 
-      - "alignment"
-      - "clarity"
-      - "implementability"
-      - "novelty"
-      - "relevance"
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+

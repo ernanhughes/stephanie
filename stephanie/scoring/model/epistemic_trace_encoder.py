@@ -1,103 +1,133 @@
+from typing import Callable, Dict
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import Callable
+
 
 class EpistemicTraceEncoder(nn.Module):
     """
-    A hybrid trace encoder combining:
-    - goal & final output embeddings,
-    - pooled step embeddings,
-    - aggregated score statistics (e.g., Q, V, Energy, Uncertainty).
+    A hybrid encoder that transforms a full PlanTrace (goal + steps + scores + final output)
+    into a single latent vector for downstream HRM-style scoring.
+
+    The final representation is used as input to models like the Hierarchical Reasoning Model (HRM).
+    It fuses multiple modalities:
+      - goal and output embeddings (from LLM or embedding model)
+      - encoded step-wise reasoning traces
+      - aggregate scoring statistics (Q/V/energy/etc.)
     """
 
-    def __init__(self,
-                 embedding_dim=1024,
-                 step_hidden_dim=64,
-                 stats_input_dim=12,
-                 stats_hidden_dim=128,
-                 final_dim=256):
+    def __init__(self, cfg: Dict[str, any]):
+        """
+        Initialize the encoder architecture based on configurable hyperparameters.
+
+        Args:
+            cfg (dict): Config dictionary with keys:
+                - embedding_dim: size of input text embeddings (default: 1024)
+                - step_hidden_dim: output dim for encoded step traces
+                - stats_input_dim: number of scalar stats per trace (e.g., Q/V/E)
+                - stats_hidden_dim: MLP hidden dim for stats vector
+                - final_dim: final encoded vector size
+        """
         super().__init__()
-        self.embedding_dim = embedding_dim
-        self.step_hidden_dim = step_hidden_dim
-        self.stats_input_dim = stats_input_dim
-        self.stats_hidden_dim = stats_hidden_dim
-        self.final_dim = final_dim
+
+        # Configuration with sensible defaults
+        self.embedding_dim = cfg.get("embedding_dim", 1024)
+        self.step_hidden_dim = cfg.get("step_hidden_dim", 64)
+        self.stats_input_dim = cfg.get("stats_input_dim", 32)
+        self.stats_hidden_dim = cfg.get("stats_hidden_dim", 128)
+        self.final_dim = cfg.get("final_dim", 256)
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Encode each step's textual embedding
+        print("[EpistemicTraceEncoder] Config:")
+        print(f"  - embedding_dim: {self.embedding_dim}")
+        print(f"  - step_hidden_dim: {self.step_hidden_dim}")
+        print(f"  - stats_input_dim: {self.stats_input_dim}")
+        print(f"  - stats_hidden_dim: {self.stats_hidden_dim}")
+        print(f"  - final_dim: {self.final_dim}")
+
+        # 1. Step encoder: compress individual step embeddings into a latent vector
         self.step_encoder = nn.Sequential(
-            nn.Linear(embedding_dim, step_hidden_dim),
+            nn.Linear(self.embedding_dim, self.step_hidden_dim),
             nn.ReLU(),
-            nn.Linear(step_hidden_dim, step_hidden_dim),
+            nn.Linear(self.step_hidden_dim, self.step_hidden_dim),
         ).to(self.device)
 
-        # Encode statistical features across steps
+        # 2. Scoring statistics encoder: MLP for Q/V/Energy stats etc.
         self.stats_encoder = nn.Sequential(
-            nn.Linear(stats_input_dim, stats_hidden_dim),
+            nn.Linear(self.stats_input_dim, self.stats_hidden_dim),
             nn.ReLU(),
-            nn.Linear(stats_hidden_dim, stats_hidden_dim),
+            nn.Linear(self.stats_hidden_dim, self.stats_hidden_dim),
         ).to(self.device)
 
-        # Final fusion layer: combines everything
-        combined_input_dim = 2 * embedding_dim + step_hidden_dim + stats_hidden_dim
+        # 3. Final combiner: concatenate goal, final output, steps, stats
+        combined_input_dim = 2 * self.embedding_dim + self.step_hidden_dim + self.stats_hidden_dim
         self.combiner = nn.Sequential(
-            nn.Linear(combined_input_dim, final_dim),
+            nn.Linear(combined_input_dim, self.final_dim),
             nn.ReLU(),
-            nn.Linear(final_dim, final_dim)
+            nn.Linear(self.final_dim, self.final_dim)
         ).to(self.device)
 
-    def forward(self,
-                trace,
-                embedding_lookup_fn: Callable[[str], torch.Tensor],
-                score_stats_fn: Callable[[object], torch.Tensor]) -> torch.Tensor:
+    def forward(
+        self,
+        trace,
+        embedding_lookup_fn: Callable[[str], torch.Tensor],
+        score_stats_fn: Callable[[object, list], torch.Tensor],
+        dimensions: list[str]
+    ) -> torch.Tensor:
         """
+        Encode a reasoning trace into a latent vector.
+
         Args:
-            trace: PlanTrace instance or dict with:
+            trace: PlanTrace object (or dict-like) with fields:
                 - goal_text
                 - final_output_text
                 - execution_steps: list of ExecutionStep
-            embedding_lookup_fn: function(str) -> torch.Tensor[embedding_dim]
-            score_stats_fn: function(trace) -> torch.Tensor[stats_input_dim]
+            embedding_lookup_fn: callable that maps text → embedding tensor
+            score_stats_fn: callable that returns numeric feature vector for scores
+            dimensions: list of scoring dimensions (for stat extraction)
 
         Returns:
             torch.Tensor of shape [final_dim]
         """
 
-        # Step 1: Goal and final output embeddings
+        # -- Embed goal and final output text
         goal_emb = embedding_lookup_fn(trace.goal_text)
         final_emb = embedding_lookup_fn(trace.final_output_text)
 
-        goal_emb = torch.as_tensor(goal_emb, dtype=torch.float32).to(self.device)
-        final_emb = torch.as_tensor(final_emb, dtype=torch.float32).to(self.device)
+        goal_emb = torch.as_tensor(goal_emb, dtype=torch.float32, device=self.device)
+        final_emb = torch.as_tensor(final_emb, dtype=torch.float32, device=self.device)
 
-        # Step 2: Mean-pooled encoded step embeddings
+        # -- Encode each step in the trace
         step_embeddings = []
         for step in trace.execution_steps:
             z_np = embedding_lookup_fn(step.output_text)
-            z = torch.tensor(z_np, dtype=torch.float32) if isinstance(z_np, np.ndarray) else z_np
-            step_encoded = self.step_encoder(z.to(self.device))  
+            z = torch.tensor(z_np, dtype=torch.float32, device=self.device) \
+                if isinstance(z_np, np.ndarray) else z_np.to(self.device)
+
+            step_encoded = self.step_encoder(z)  # shape: [step_hidden_dim]
             step_embeddings.append(step_encoded)
 
+        # -- Aggregate step representations (mean pool)
         if step_embeddings:
             step_pooled = torch.mean(torch.stack(step_embeddings, dim=0), dim=0)
         else:
-            step_pooled = torch.zeros(self.step_hidden_dim)
+            step_pooled = torch.zeros(self.step_hidden_dim, device=self.device)
 
-        # Step 3: Score statistics
-        stats_vector = score_stats_fn(trace)  # shape: [stats_input_dim]
-        stats_encoded = self.stats_encoder(stats_vector.to(self.device))  # shape: [stats_hidden_dim]
+        # -- Get score stats (e.g., mean Q, max energy, etc.)
+        stats_vector = score_stats_fn(trace, dimensions)  # shape: [stats_input_dim]
+        stats_encoded = self.stats_encoder(stats_vector.to(self.device))
 
-        step_pooled = torch.as_tensor(step_pooled, dtype=torch.float32).to(self.device)
-        stats_encoded = torch.as_tensor(stats_encoded, dtype=torch.float32).to(self.device)
-
-        # Step 4: Combine all parts
+        # -- Concatenate all latent components
         combined = torch.cat([
-            goal_emb,
-            final_emb,
-            step_pooled,
-            stats_encoded
+            goal_emb,         # [embedding_dim]
+            final_emb,        # [embedding_dim]
+            step_pooled,      # [step_hidden_dim]
+            stats_encoded     # [stats_hidden_dim]
         ], dim=-1)
 
+        # -- Final projection to fixed-size trace representation
         z_trace = self.combiner(combined)  # shape: [final_dim]
+        print(f"[EpistemicTraceEncoder] Encoded trace to shape: {z_trace.shape}")   
         return z_trace

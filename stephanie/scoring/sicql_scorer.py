@@ -8,8 +8,8 @@ from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.model.in_context_q import InContextQModel
 from stephanie.scoring.model.policy_head import PolicyHead
 from stephanie.scoring.model.q_head import QHead
-from stephanie.scoring.model.v_head import VHead
 from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.scoring.model.v_head import VHead
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.scoring.score_result import ScoreResult
@@ -146,3 +146,46 @@ class SICQLScorer(BaseScorer):
                         advantage=advantage,
                     )
         return ScoreBundle(results=results)
+    
+    def encode(self, goal: dict,  scorable: Scorable, dimension: str) -> InContextQModel:
+        """
+        Returns the model for a specific dimension.
+        Raises ValueError if the model is not loaded.
+        """
+        model = self.models.get(dimension)
+        if model is None:
+            raise ValueError(f"Model for dimension '{dimension}' not loaded.")
+
+        prompt_emb = torch.tensor(
+            self.memory.embedding.get_or_create(goal["goal_text"]), device=self.device
+        ).unsqueeze(0)
+        output_emb = torch.tensor(
+            self.memory.embedding.get_or_create(scorable.text), device=self.device
+        ).unsqueeze(0)
+        return model.encoder(prompt_emb, output_emb)
+
+
+    def __call__(self, goal: dict,  scorable: Scorable, dimension: str) -> float:
+        """
+        Direct model access for a single dimension. Useful for quick inference.
+
+        Args:
+            scorable: The object to score (must have `.text`)
+            dimension: The scoring dimension (e.g. "epistemic_quality")
+            goal_text: Optional override for goal text (defaults to "")
+
+        Returns:
+            q_value: The raw Q-value score for the given dimension
+        """
+        model = self.models.get(dimension)
+        if model is None:
+            raise ValueError(f"Model for dimension '{dimension}' not loaded.")
+
+        prompt_emb = torch.tensor(
+            self.memory.embedding.get_or_create(goal["goal_text"]), device=self.device
+        ).unsqueeze(0)
+        output_emb = torch.tensor(
+            self.memory.embedding.get_or_create(scorable.text), device=self.device
+        ).unsqueeze(0)
+
+        return model(prompt_emb, output_emb)
