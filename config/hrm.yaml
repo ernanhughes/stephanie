@@ -79,19 +79,19 @@ pipeline:
     - name: score_comparison
       description: "Compare scores of different documents"
       cls: stephanie.agents.score_comparison.ScoreComparisonAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: score_energy_comparison
       description: "Compare energy scores of different documents"
       cls: stephanie.agents.score_energy_comparison.ScoreEnergyComparisonAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: policy_synthesis
       description: "Synthesize a policy based on the scores and comparisons"
       cls: stephanie.agents.policy_synthesis.PolicySynthesisAgent
-      enabled: true
+      enabled: false
       iterations: 1
     
     - name: gild_trainer

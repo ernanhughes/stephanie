@@ -5,11 +5,17 @@ gild_trainer:
   save_context: false
   skip_if_completed: false
 
-  use_gild: true
+  beta: 1.0
+  learning_rate: 0.0001
+  batch_size: 1
+  epochs: 10
   il_weight: 0.5
   il_decay_rate: 0.95
   min_weight: 0.01
   gild_loss_threshold: 0.1
+
+  gild_data_file_path: ${hydra:runtime.cwd}/reports/gild_data/
+
   use_ebt_as_expert: true
   use_llm_as_expert: false
   dimensions: 
@@ -37,6 +43,7 @@ gild_trainer:
     model_type: sicql
     model_version: v1
     evaluator: sicql
+    return_zsa: true
     target_type: document
     dimensions: 
       - alignment

@@ -30,6 +30,7 @@ class PolicySynthesisAgent(BaseAgent):
         self.high_error_threshold = cfg.get("high_error_threshold", 0.5) # Placeholder, e.g., high MAE relative to range
         self.misleading_uncertainty_correlation_threshold = cfg.get("misleading_uncertainty_correlation_threshold", -0.2) # Negative correlation
         self.low_correlation_threshold = cfg.get("low_correlation_threshold", 0.3)
+        self.gild_debug_data_generate = cfg.get("gild_debug_data_generate", True)  # Will generate a lot of gild signals
 
     async def run(self, context: dict) -> dict:
         """
@@ -285,9 +286,12 @@ class PolicySynthesisAgent(BaseAgent):
             
             # If enriched_data_list is empty, fall back to using comparison_data
             # and fetching attributes on the fly (less efficient)
-            data_source = enriched_data_list if enriched_data_list else comparison_data
+            if self.gild_debug_data_generate:
+                data_source = comparison_data
+            else:
+                data_source = enriched_data_list if enriched_data_list else comparison_data
 
-            for key, data_point  in data_source.items() :
+            for key, data_point  in enumerate(data_source) :
                 source = data_point.get('source')
                 dimension = data_point.get('dimension')
                 target_id = data_point.get('target_id')
