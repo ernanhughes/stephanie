@@ -2,7 +2,7 @@ worldview_pipeline_runner:
   name: worldview_pipeline_runner
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   pipeline_registry_path: ${hydra:runtime.cwd}/config/registry/pipeline_registry.yaml

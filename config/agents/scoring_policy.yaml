@@ -2,7 +2,7 @@ scoring_policy:
   name: scoring_policy
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   target_type: "document"

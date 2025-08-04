@@ -8,8 +8,8 @@ from stephanie.models.score import ScoreORM  # For prompt_hash
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.model.hrm_model import HRMModel
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.scoring.score_result import ScoreResult
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.utils.file_utils import load_json  # To load meta file
 
 
@@ -59,7 +59,6 @@ class HRMScorer(BaseScorer):
                     self.logger.log("HRMScorerModelError", {
                         "message": "HRM model file not found.",
                         "path": model_file_path,
-                        "dimension": self.hrm_dimension
                     })
                     return # Cannot load if file is missing
 
@@ -80,12 +79,12 @@ class HRMScorer(BaseScorer):
                 # --- Reconstruct HRM Model Configuration ---
                 # Get HRM hyperparameters from meta or use defaults consistent with training
                 hrm_cfg_from_meta = {
-                    "hrm.input_dim": self.model_meta.get("input_dim", self.dim * 2), # Default concat
-                    "hrm.h_dim": self.model_meta.get("h_dim", 256),
-                    "hrm.l_dim": self.model_meta.get("l_dim", 128),
-                    "hrm.output_dim": self.model_meta.get("output_dim", 1),
-                    "hrm.n_cycles": self.model_meta.get("n_cycles", 4),
-                    "hrm.t_steps": self.model_meta.get("t_steps", 4),
+                    "input_dim": self.model_meta[dimension].get("input_dim", self.dim * 2), # Default concat
+                    "h_dim": self.model_meta[dimension].get("h_dim", 256),
+                    "l_dim": self.model_meta[dimension].get("l_dim", 128),
+                    "output_dim": self.model_meta[dimension].get("output_dim", 1),
+                    "n_cycles": self.model_meta[dimension].get("n_cycles", 4),
+                    "t_steps": self.model_meta[dimension].get("t_steps", 4),
                     # lr, epochs are not needed for inference
                 }
                 
@@ -170,18 +169,21 @@ class HRMScorer(BaseScorer):
                     f"zH_mag={round(zH_mag, 4) if zH_mag else 'NA'}"
                 )
 
-                prompt_hash = ScoreORM.compute_prompt_hash(goal_text, scorable)
+                attributes = {
+                    "raw_score": round(raw_score, 4),
+                    "zL_magnitude": zL_mag,
+                    "zH_magnitude": zH_mag,
+                    "q_value": raw_score,  # Using raw_score as q_value
+                    "energy": raw_score,  # Keeping energy as q_value as in original
+                }
 
                 result = ScoreResult(
                     dimension=dimension,
                     score=raw_score,
+                    source=self.model_type,
                     rationale=rationale,
                     weight=1.0,
-                    q_value=raw_score,
-                    energy=raw_score,
-                    source=self.model_type,
-                    target_type=scorable.target_type,
-                    prompt_hash=prompt_hash
+                    attributes=attributes
                 )
 
                 results[dimension] = result

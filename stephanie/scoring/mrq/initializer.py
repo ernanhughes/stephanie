@@ -27,6 +27,6 @@ def initialize_dimension(self, dimension):
     self.models[dimension] = MRQModel(
         self.encoder, self.value_predictor, device=self.device
     )
-    self.min_score_by_dim[dimension] = 0.0
-    self.max_score_by_dim[dimension] = 1.0
+    self.min_value_by_dim[dimension] = 0.0
+    self.max_value_by_dim[dimension] = 1.0
     self.logger.log("MRQModelInitializing", {"dimension": dimension})

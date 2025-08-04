@@ -15,7 +15,7 @@ from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.constants import GOAL
 from stephanie.scoring.mrq.scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.utils.graph_tools import (build_mermaid_graph, compare_graphs,
                                          save_mermaid_to_file)
 

@@ -35,7 +35,7 @@ class DomainClassifier:
             {"total_seeds": total_seeds, "domains": list(self.domains.keys())},
         )
 
-    def classify(self, text: str, top_k: int = 3, min_score: float = 0.7):
+    def classify(self, text: str, top_k: int = 3, min_value: float = 0.7):
         embedding = self.memory.embedding.get_or_create(text)
         scores = []
 
@@ -48,7 +48,7 @@ class DomainClassifier:
         top_matches = sorted_scores[:top_k]
 
         # log warning if none meet the threshold
-        if all(score < min_score for _, score in top_matches):
+        if all(score < min_value for _, score in top_matches):
             self.logger.log(
                 "LowDomainScore",
                 {"text_snippet": text[:100], "top_scores": top_matches},

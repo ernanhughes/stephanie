@@ -38,7 +38,7 @@ class SICQLTrainer(BaseTrainer):
         self.embedding_type = cfg.get("embedding_type", "hnet")
         self.model_type = "sicql"
         self.target_type = cfg.get("target_type", "document")
-        self.version = cfg.get("model_version", "v1")
+        self.version = cfg.get("mode I l_version", "v1")
 
         # Device management
         self.device = torch.device(

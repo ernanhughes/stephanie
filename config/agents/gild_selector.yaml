@@ -3,7 +3,7 @@ gild_selector:
   description: "Select the best documents based on GILD criteria"
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   selection_strategy: greedy # "greedy", "top_k", "weighted"

@@ -2,7 +2,7 @@ idea_extractor:
   name: idea_extractor
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
   model:
     name: ollama/qwen3

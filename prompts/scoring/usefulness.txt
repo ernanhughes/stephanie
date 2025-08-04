@@ -1,7 +1,7 @@
 Assess the usefulness of this paper for developing self-improving AI systems.
 
-Title: {{ document.title }}
-Abstract: {{ document.summary }}
+### Document
+{{ scorable.text }}
 
 Does this work offer tools, insights, or frameworks that can improve adaptive reasoning or learning?
 

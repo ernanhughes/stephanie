@@ -2,7 +2,7 @@ epistemic_plan_hrm_trainer:
   name: epistemic_plan_hrm_trainer
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   model_path: "${hydra:runtime.cwd}/models"

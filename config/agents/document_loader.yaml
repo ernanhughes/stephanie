@@ -4,7 +4,7 @@ document_loader:
   name: document_loader
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: tr
 
   force_domain_update: false Omewhere # will force update the document domains

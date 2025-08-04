@@ -34,8 +34,8 @@ class DocumentMRQScorer:
 
         self.models = {}
         self.regression_tuners = {}
-        self.min_score_by_dim = {}
-        self.max_score_by_dim = {}
+        self.min_value_by_dim = {}
+        self.max_value_by_dim = {}
 
         self._initialize_dimensions()
 
@@ -75,12 +75,12 @@ class DocumentMRQScorer:
 
             self.models[dim] = (encoder, predictor)
             self.regression_tuners[dim] = tuner
-            self.min_score_by_dim[dim] = 0.0
-            self.max_score_by_dim[dim] = 1.0
+            self.min_value_by_dim[dim] = 0.0
+            self.max_value_by_dim[dim] = 1.0
 
     def normalize_score(self, raw_score: float, dimension: str) -> float:
-        min_val = self.min_score_by_dim.get(dimension, 0.0)
-        max_val = self.max_score_by_dim.get(dimension, 1.0)
+        min_val = self.min_value_by_dim.get(dimension, 0.0)
+        max_val = self.max_value_by_dim.get(dimension, 1.0)
         return (raw_score - min_val) / (max_val - min_val + 1e-6)
 
     def score(self, goal_text: str, document_text: str, dimension: str) -> float:

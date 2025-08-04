@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import (JSON, Column, DateTime, Enum, ForeignKey, Integer,
+from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer,
                         String)
 from sqlalchemy.orm import Mapped, relationship
 
@@ -15,7 +15,6 @@ from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.pipeline_run import PipelineRunORM
 from stephanie.models.score import ScoreORM
 from stephanie.models.symbolic_rule import SymbolicRuleORM
-from stephanie.scoring.scorable_factory import TargetType
 
 
 class EvaluationORM(Base):
@@ -28,7 +27,7 @@ class EvaluationORM(Base):
     
     # Polymorphic target reference
     target_type: Mapped[String] = Column(String, nullable=False)
-    target_id: Mapped[int] = Column(String, nullable=False)
+    target_id: Mapped[String] = Column(String, nullable=False)
     
     embedding_type: Mapped[Optional[str]] = Column(String, nullable=True)
 

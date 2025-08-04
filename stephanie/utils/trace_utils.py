@@ -59,6 +59,9 @@ def get_trace_score_stats(trace: PlanTrace, dimensions: list[str]) -> torch.Tens
 
 def load_plan_traces_from_export_dir(export_dir: str) -> list[PlanTrace]:
     traces = []
+    if not os.path.exists(export_dir):
+        print(f"Export directory {export_dir} does not exist.")
+        return traces
     for fname in os.listdir(export_dir):
         if fname.startswith("trace_") and fname.endswith(".json"):
             fpath = os.path.join(export_dir, fname)

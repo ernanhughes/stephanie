@@ -36,7 +36,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
         self.ucb_weight = cfg.get("ucb_weight", 1.41)
         self.num_simulations = cfg.get("num_simulations", 50)
         self.lambda_weight = cfg.get("lambda", 0.5)
-        self.min_score_threshold = cfg.get("min_score_threshold", 0.7)
+        self.min_value_threshold = cfg.get("min_value_threshold", 0.7)
         self.prune_threshold = cfg.get("prune_threshold", 0.4)
         self.similarity_threshold = cfg.get("similarity_threshold", 0.75)
 
@@ -620,7 +620,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
         """
         Check if trace meets quality threshold
         """
-        return trace["score"] > self.min_score_threshold
+        return trace["score"] > self.min_value_threshold
 
     def _retrain_on_examples(self, examples):
         """

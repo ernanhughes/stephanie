@@ -2,7 +2,7 @@ policy_analyzer:
   name: policy_analyzer
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   target_type: document

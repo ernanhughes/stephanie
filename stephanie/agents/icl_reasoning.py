@@ -16,7 +16,7 @@ class ICLReasoningAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.top_k_triplets = cfg.get("top_k_triplets", 5)
-        self.min_score_threshold = cfg.get("min_triplet_score", 0.6)
+        self.min_value_threshold = cfg.get("min_triplet_score", 0.6)
         self.use_embeddings = cfg.get("use_triplet_embeddings", False)
         self.score_weights = cfg.get(
             "score_weights",
@@ -152,7 +152,7 @@ class ICLReasoningAgent(BaseAgent):
             triplets = [
                 t
                 for t in triplets
-                if self.similarity(goal_vec, t) >= self.min_score_threshold
+                if self.similarity(goal_vec, t) >= self.min_value_threshold
             ]
 
         return triplets[: self.top_k_triplets]

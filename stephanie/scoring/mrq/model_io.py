@@ -20,8 +20,8 @@ class MRQModelIO:
             self.regression_tuners[dim].save(os.path.join(dim_dir, "tuner.json"))
 
             meta = {
-                "min_score": self.min_score_by_dim[dim],
-                "max_score": self.max_score_by_dim[dim],
+                "min_value": self.min_value_by_dim[dim],
+                "max_value": self.max_value_by_dim[dim],
             }
             with open(os.path.join(dim_dir, "meta.json"), "w") as f:
                 json.dump(meta, f)
@@ -73,8 +73,8 @@ class MRQModelIO:
                 if os.path.exists(meta_path):
                     with open(meta_path) as f:
                         meta = json.load(f)
-                        self.min_score_by_dim[dim] = meta.get("min_score", 0.0)
-                        self.max_score_by_dim[dim] = meta.get("max_score", 100.0)
+                        self.min_value_by_dim[dim] = meta.get("min_value", 0.0)
+                        self.max_value_by_dim[dim] = meta.get("max_value", 100.0)
 
                 self.logger.log("MRQModelLoaded", {"dimension": dim})
 
@@ -103,8 +103,8 @@ class MRQModelIO:
 
             with open(os.path.join(dim_dir, "meta.json")) as f:
                 meta = json.load(f)
-                self.min_score_by_dim[dim] = meta["min_score"]
-                self.max_score_by_dim[dim] = meta["max_score"]
+                self.min_value_by_dim[dim] = meta["min_value"]
+                self.max_value_by_dim[dim] = meta["max_value"]
 
             self.logger.log("MRQModelLoaded", {"dimension": dim})
 
@@ -116,8 +116,8 @@ class MRQModelIO:
             with open(meta_path, "w") as f:
                 json.dump(
                     {
-                        "min_score": self.min_score_by_dim.get(dim, 0.0),
-                        "max_score": self.max_score_by_dim.get(dim, 1.0),
+                        "min_value": self.min_value_by_dim.get(dim, 0.0),
+                        "max_value": self.max_value_by_dim.get(dim, 1.0),
                     },
                     f,
                 )

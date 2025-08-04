@@ -1322,3 +1322,28 @@ CREATE TABLE IF NOT EXISTS execution_steps (
 CREATE INDEX IF NOT EXISTS idx_execution_steps_plan_trace_id ON execution_steps (plan_trace_id);
 CREATE INDEX IF NOT EXISTS idx_execution_steps_step_order ON execution_steps (plan_trace_id, step_order);
 CREATE INDEX IF NOT EXISTS idx_execution_steps_evaluation_id ON execution_steps (evaluation_id);
+
+
+CREATE TABLE IF NOT EXISTS public.scores
+(
+    id SERIAL PRIMARY KEY,
+    evaluation_id integer NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
+    dimension text NOT NULL,
+    score double precision,
+    weight double precision,
+    rationale text,
+    source text,
+    prompt_hash text,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+
+
+CREATE INDEX IF NOT EXISTS score_attributes (
+    id SERIAL PRIMARY KEY,
+    score_id INTEGER NOT NULL REFERENCES scores(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    data_type VARCHAR(32) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+

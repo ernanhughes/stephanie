@@ -13,7 +13,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.scoring.hrm_scorer import HRMScorer  # Optional
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.sicql_scorer import SICQLScorer
 
 
@@ -156,12 +156,12 @@ class EpistemicPlanExecutorAgent(BaseAgent):
 
         for goal in goals:
             goal_id = goal.id
-            if goal.id in existing_goal_ids:
-                self.logger.log("EpistemicPlanExecutorSkipped", {
-                    "goal_id": goal.id,
-                    "message": "Goal already has a PlanTrace, skipping."
-                })
-                continue
+            # if goal.id in existing_goal_ids:
+            #     self.logger.log("EpistemicPlanExecutorSkipped", {
+            #         "goal_id": goal.id,
+            #         "message": "Goal already has a PlanTrace, skipping."
+            #     })
+            #     continue
 
             goal_dict = goal.to_dict()
             goal_text = goal.goal_text
@@ -254,6 +254,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
 
                         exec_step = ExecutionStep(
                             step_id=str(step_id), # Ensure ID is string
+                            step_type="reasoning",  # Assuming all steps are actions
                             description=step_description,
                             output_text=step_output_text,
                             scores=sicql_scores, # Primary scores for the trace
@@ -313,10 +314,10 @@ class EpistemicPlanExecutorAgent(BaseAgent):
             try:
                 executed_trace = PlanTrace(
                     trace_id=trace_id,
+                    plan_signature=plan_signature,
                     goal_text=goal_text,
                     goal_id=goal_id,
                     input_data=input_data,
-                    plan_signature=plan_signature,
                     execution_steps=execution_steps,
                     final_output_text=final_output_text,
                     final_scores=final_scores,

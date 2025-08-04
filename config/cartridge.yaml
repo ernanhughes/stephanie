@@ -6,7 +6,6 @@ defaults:
   - agents/cartridge
   - agents/document_loader
   - agents/document_profiler
-  - agents/mrq_trainer
   - agents/document_reward_scorer
   - agents/icl_reasoning
   - agents/knowledge_loader

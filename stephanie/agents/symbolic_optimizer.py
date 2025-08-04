@@ -10,7 +10,7 @@ class SymbolicOptimizerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.score_target = cfg.get("score_target", "correctness")
-        self.min_scores = cfg.get("min_scores", 2)
+        self.min_values = cfg.get("min_values", 2)
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL, {})
@@ -74,7 +74,7 @@ class SymbolicOptimizerAgent(BaseAgent):
         pipeline_scores = {
             pipe: sum(vals) / len(vals)
             for pipe, vals in scores_by_pipeline.items()
-            if len(vals) >= self.min_scores
+            if len(vals) >= self.min_values
         }
 
         self.logger.log(

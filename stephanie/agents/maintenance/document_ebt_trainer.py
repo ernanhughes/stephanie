@@ -16,20 +16,20 @@ from stephanie.utils.file_utils import save_json
 
 class DocumentEBTDataset(Dataset):
     """Dataset that normalizes LLM scores for EBT training"""
-    def __init__(self, contrast_pairs, min_score=None, max_score=None):
+    def __init__(self, contrast_pairs, min_value=None, max_value=None):
         self.data = []
 
         # Compute normalization range from data if not provided
         all_scores = []
         for pair in contrast_pairs:
             all_scores.extend([pair["value_a"], pair["value_b"]])
-        self.min_score = min(all_scores) if min_score is None else min_score
-        self.max_score = max(all_scores) if max_score is None else max_score
+        self.min_value = min(all_scores) if min_value is None else min_value
+        self.max_value = max(all_scores) if max_value is None else max_value
 
         # Convert to normalized training examples
         for pair in contrast_pairs:
-            norm_a = (pair["value_a"] - self.min_score) / (self.max_score - self.min_score)
-            norm_b = (pair["value_b"] - self.min_score) / (self.max_score - self.min_score)
+            norm_a = (pair["value_a"] - self.min_value) / (self.max_value - self.min_value)
+            norm_b = (pair["value_b"] - self.min_value) / (self.max_value - self.min_value)
             self.data.append((pair["title"], pair["output_a"], norm_a))
             self.data.append((pair["title"], pair["output_b"], norm_b))
 
@@ -41,7 +41,7 @@ class DocumentEBTDataset(Dataset):
 
     def get_normalization(self):
         """Returns score range for inference-time rescaling"""
-        return {"min": self.min_score, "max": self.max_score}
+        return {"min": self.min_value, "max": self.max_value}
 
 
 class DocumentEBTTrainerAgent(BaseAgent):
@@ -114,7 +114,7 @@ class DocumentEBTTrainerAgent(BaseAgent):
             })
 
             # Create dataset and dataloader
-            ds = DocumentEBTDataset(training_pairs[dim], min_score=1, max_score=100)
+            ds = DocumentEBTDataset(training_pairs[dim], min_value=1, max_value=100)
             dl = DataLoader(
                 ds,
                 num_workers= 4,

@@ -50,15 +50,15 @@ goal:
 
 post_judgment:
   name: pipeline_judge
-  enabled: false
+  enabled: true
   cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
 report:
-  save_context_result: false
-  generate_report: false
+  save_context_result: true
+  generate_report: true
   path: ${hydra:runtime.cwd}/reports
 
 web_search:
@@ -127,19 +127,19 @@ pipeline:
     - name: sicql_mrq_inference
       description: "Infer MRQ SICQL scores for documents"
       cls: stephanie.agents.inference.mrq_inference.MRQInferenceAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: document_svm_inference
       description: "Infer SVM scores for documents"
       cls: stephanie.agents.inference.svm_inference.SVMInferenceAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: document_ebt_inference
       description: "Infer EBT scores for documents"
       cls: stephanie.agents.inference.ebt_inference.EBTInferenceAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: document_reward_scorer
@@ -181,23 +181,23 @@ pipeline:
     - name: score_comparison
       description: "Compare scores from different models"
       cls: stephanie.agents.score_comparison.ScoreComparisonAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: score_energy_comparison
       description: "Compare energy scores from different models"
       cls: stephanie.agents.score_energy_comparison.ScoreEnergyComparisonAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: policy_synthesis
       description: "Synthesize policies based on the analysis of scores"
       cls: stephanie.agents.policy_synthesis.PolicySynthesisAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: gild_trainer
       description: "Train the GILD model for policy improvement"
       cls: stephanie.agents.gild_trainer.GILDTrainerAgent
-      enabled: true
+      enabled: false
       iterations: 1

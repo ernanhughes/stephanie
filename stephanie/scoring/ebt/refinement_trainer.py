@@ -21,7 +21,7 @@ class EBTRefinementDataset(Dataset):
     Dataset that contains original → refined document pairs
     Used to train EBT models to recognize refined content
     """
-    def __init__(self, refinement_examples: List[Dict], min_score=None, max_score=None):
+    def __init__(self, refinement_examples: List[Dict], min_value=None, max_value=None):
         """
         Args:
             refinement_examples: List of # Existing structure:
@@ -39,19 +39,19 @@ class EBTRefinementDataset(Dataset):
                 }
         """
         self.data = []
-        self.min_score = min_score
-        self.max_score = max_score
+        self.min_value = min_value
+        self.max_value = max_value
         
         # Compute global min/max if not provided
-        if min_score is None or max_score is None:
+        if min_value is None or max_value is None:
             all_scores = [e["score"] for e in refinement_examples]
-            self.min_score = min(all_scores) if min_score is None else min_score
-            self.max_score = max(all_scores) if max_score is None else max_score
+            self.min_value = min(all_scores) if min_value is None else min_value
+            self.max_value = max(all_scores) if max_value is None else max_value
 
         # Build contrastive pairs
         for example in refinement_examples:
             # Original document gets normalized score
-            norm_score = (example["score"] - self.min_score) / (self.max_score - self.min_score)
+            norm_score = (example["score"] - self.min_value) / (self.max_value - self.min_value)
             
             # Refined document should have higher quality
             refined_score = example.get("refined_score", norm_score + 0.1)
@@ -285,10 +285,10 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
         # Save normalization metadata
         meta_path = os.path.join(model_path, f"{dimension}.meta.json")
         meta = {
-            "min_score": self.ebt_meta.get(dimension, {}).get("min", 40),
-            "max_score": self.ebt_meta.get(dimension, {}).get("max", 100),
-            "train_min_score": self._get_train_min_score(dimension),
-            "train_max_score": self._get_train_max_score(dimension),
+            "min_value": self.ebt_meta.get(dimension, {}).get("min", 40),
+            "max_value": self.ebt_meta.get(dimension, {}).get("max", 100),
+            "train_min_value": self._get_train_min_value(dimension),
+            "train_max_value": self._get_train_max_value(dimension),
             "training_date": datetime.utcnow().isoformat(),
             "version": version
         }
@@ -296,7 +296,7 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
         
         return model_path
 
-    def _get_train_min_score(self, dimension: str):
+    def _get_train_min_value(self, dimension: str):
         """Get training minimum score for normalization"""
         query = f"""
         SELECT MIN(score) FROM scoring_events
@@ -334,7 +334,7 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
         return sum(losses)
 
 
-    def _get_train_max_score(self, dimension: str):
+    def _get_train_max_value(self, dimension: str):
         """Get training maximum score for normalization"""
         query = f"""
         SELECT MAX(score) FROM scoring_events

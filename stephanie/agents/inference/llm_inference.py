@@ -8,14 +8,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_engine import ScoringEngine
 from stephanie.scoring.scoring_manager import ScoringManager
-
-DEFAULT_DIMENSIONS = [
-    "alignment",
-    "implementability",
-    "clarity",
-    "relevance",
-    "novelty",
-]
+from tqdm import tqdm
 
 
 class LLMInferenceAgent(ScoringMixin, BaseAgent):
@@ -30,7 +23,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
         self.evaluator = "llm"
         self.force_rescore = cfg.get("force_rescore", False)
 
-        self.dimensions = cfg.get("dimensions", DEFAULT_DIMENSIONS)
+        self.dimensions = cfg.get("dimensions", [])
         self.scoring_engine = ScoringEngine(
             cfg=self.cfg,
             memory=self.memory,
@@ -42,29 +35,28 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
     async def run(self, context: dict) -> dict:
         documents = context.get(self.input_key, [])
         results = []
-        for document in documents:
-            doc_id = document["id"]
 
-            saved_scores = self.get_scores_by_document_id(doc_id)
-            if saved_scores and not self.force_rescore:
+        # Add progress bar over documents
+        for document in tqdm(documents, desc="🔍 LLM Scoring Progress", unit="doc"):
+            doc_id = document["id"]
+            scorable = ScorableFactory.from_dict(document, TargetType.DOCUMENT)
+
+            score_count = self.get_score_count_by_document_id(scorable.id)
+            if score_count > 0 and not self.force_rescore:
                 self.logger.log(
                     "DocumentScoresAlreadyExist",
-                    {"document_id": doc_id, "num_scores": len(saved_scores)},
+                    {"document_id": doc_id, "num_scores": score_count},
                 )
                 continue
 
-            scorable = ScorableFactory.from_dict(document, TargetType.DOCUMENT)
-            result = self.scoring_engine.score_item(
-                scorable, context, "document"
-            )
+            result = self.scoring_engine.score_item(scorable, context, "document")
             results.append(result.to_dict())
-            self.logger.log(
-                "DocumentScored",
-                {
-                    "document_id": doc_id,
-                    "title": document.get("title"),
-                },
-            )
+
+            self.logger.log("DocumentScored", {
+                "document_id": doc_id,
+                "title": document.get("title"),
+            })
+
             ScoringManager.save_score_to_memory(
                 result,
                 scorable,
@@ -74,18 +66,18 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
                 self.logger,
                 source="llm",
             )
-        self.logger.log(
-            "DocumentLLMInferenceCompleted",
-            {"total_documents_scored": len(results)},
-        )
-        # Store results in context for further processing
+
+        self.logger.log("DocumentLLMInferenceCompleted", {
+            "total_documents_scored": len(results),
+        })
+
         context[self.output_key] = results
         return context
 
-    def get_scores_by_document_id(self, document_id: int) -> list[ScoreORM]:
+    def get_scores_by_document_id(self, scorable_id: str) -> list[ScoreORM]:
         evaluations = (
             self.memory.session.query(EvaluationORM)
-            .filter_by(target_type=TargetType.DOCUMENT, target_id=document_id)
+            .filter_by(target_type=TargetType.DOCUMENT, target_id=scorable_id)
             .all()
         )
 
@@ -117,3 +109,20 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
         )
 
         return result
+
+    def get_score_count_by_document_id(self, scorable_id: str) -> int:
+        """
+        Fast check: how many scores exist for this document.
+        Uses a single join query.
+        """
+        count = (
+            self.memory.session.query(ScoreORM)
+            .join(EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id)
+            .filter(
+                EvaluationORM.target_type == "document",
+                EvaluationORM.target_id == str(scorable_id),
+                EvaluationORM.source == "llm"
+            )
+            .count()
+        )
+        return count

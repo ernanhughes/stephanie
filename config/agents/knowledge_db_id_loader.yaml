@@ -3,7 +3,7 @@ knowledge_db_id_loader:
   description: "Will load documents by their ids into the context can be used to score a set of documents"  
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   doc_ids_scoring: true

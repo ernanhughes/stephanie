@@ -8,10 +8,10 @@ from stephanie.models.symbolic_rule import SymbolicRuleORM
 
 
 class RuleRefinerAgent(BaseAgent):
-    def __init__(self, *args, min_applications=3, min_score_threshold=6.5, **kwargs):
+    def __init__(self, *args, min_applications=3, min_value_threshold=6.5, **kwargs):
         super().__init__(*args, **kwargs)
         self.min_applications = min_applications
-        self.min_score_threshold = min_score_threshold
+        self.min_value_threshold = min_value_threshold
 
     async def run(self, context: dict) -> dict:
         self.logger.log("RuleRefinerStart", {"run_id": context.get(PIPELINE_RUN_ID)})
@@ -30,7 +30,7 @@ class RuleRefinerAgent(BaseAgent):
                 continue
 
             avg_score = statistics.mean(scores)
-            if avg_score >= self.min_score_threshold:
+            if avg_score >= self.min_value_threshold:
                 continue  # Only refine low-performing rules
 
             rule = self.memory.session.query(SymbolicRuleORM).get(rule_id)

@@ -7,7 +7,7 @@ refiner:
   batch_size: 10    # limit to process at a time
 
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
   strategy : default
   model:

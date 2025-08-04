@@ -1,5 +1,5 @@
 # stephanie/memory/plan_trace_store.py
-
+import traceback
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import desc
@@ -9,13 +9,10 @@ from sqlalchemy.orm import Session
 from stephanie.data.plan_trace import PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
 
-# Import related ORMs if needed for relationships/filters
-# from stephanie.models.goal import GoalORM
-
 class PlanTraceStore:
     """
     Store for managing PlanTraceORM objects in the database.
-    Provides methods to insert, retrieve, and query plan traces.
+    Provides methods to insert, retrieve, update, and query plan traces.
     """
     def __init__(self, session: Session, logger=None):
         self.session = session
@@ -61,18 +58,81 @@ class PlanTraceStore:
                     },
                 )
             
-            # Commit is typically handled by the caller or session manager
-            # to allow for batch inserts or rollback on error in a larger context.
-            # self.session.commit() # Consider removing if caller handles transactions
-            self.session.commit()  # Ensure the ORM object is flushed to get the I
+            self.session.commit()
             return plan_trace.id
 
         except Exception as e:
-            # Let the caller handle rollback if needed, or do it here if this store manages transactions
-            # self.session.rollback() 
             if self.logger:
                 self.logger.log("PlanTraceInsertFailed", {"error": str(e), "trace_id": getattr(plan_trace, 'trace_id', 'unknown')})
-            raise # Re-raise to let caller handle
+            raise
+
+    def update(self, plan_trace: PlanTrace) -> bool:
+        """
+        Updates an existing PlanTrace in the database with new scoring data.
+        
+        Args:
+            plan_trace: The PlanTrace dataclass with updated scoring information
+            
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        try:
+            # Find the existing PlanTraceORM by trace_id
+            orm_trace = self.session.query(PlanTraceORM).filter(
+                PlanTraceORM.trace_id == plan_trace.trace_id
+            ).first()
+            
+            if not orm_trace:
+                if self.logger:
+                    self.logger.log("PlanTraceUpdateFailed", {
+                        "error": "Trace not found",
+                        "trace_id": plan_trace.trace_id
+                    })
+                return False
+            
+            # Update scoring fields
+            if hasattr(plan_trace, 'step_scores') and plan_trace.step_scores is not None:
+                orm_trace.step_scores = plan_trace.step_scores
+            
+            if hasattr(plan_trace, 'pipeline_score') and plan_trace.pipeline_score is not None:
+                orm_trace.pipeline_score = plan_trace.pipeline_score
+            
+            if hasattr(plan_trace, 'mars_analysis') and plan_trace.mars_analysis is not None:
+                orm_trace.mars_analysis = plan_trace.mars_analysis
+            
+            # Update meta data with scoring timestamp
+            if not orm_trace.meta:
+                orm_trace.meta = {}
+            
+            orm_trace.meta.update({
+                "scored_at": plan_trace.extra_data.get("completed_at", orm_trace.meta.get("completed_at")),
+                "scoring_duration": plan_trace.extra_data.get("scoring_duration", 0)
+            })
+            
+            # Commit the changes
+            self.session.commit()
+            
+            if self.logger:
+                self.logger.log("PlanTraceUpdated", {
+                    "trace_id": plan_trace.trace_id,
+                    "step_count": len(plan_trace.execution_steps),
+                    "pipeline_score": plan_trace.pipeline_score
+                })
+            
+            return True
+            
+        except Exception as e:
+            self.session.rollback()
+            error_traceback = traceback.format_exc()
+            
+            if self.logger:
+                self.logger.log("PlanTraceUpdateError", {
+                    "trace_id": plan_trace.trace_id,
+                    "error": str(e),
+                    "traceback": error_traceback
+                })
+            
+            return False
 
     def get_by_id(self, trace_id: int) -> Optional[PlanTraceORM]:
         """Retrieves a PlanTraceORM by its database ID."""
@@ -117,8 +177,6 @@ class PlanTraceStore:
             if trace:
                 trace.target_epistemic_quality = quality
                 trace.target_epistemic_quality_source = source
-                # Assuming session commit is handled externally or by a manager
-                # self.session.commit() 
                 if self.logger:
                     self.logger.log("PlanTraceTargetQualityUpdated", {"trace_id": trace_id, "quality": quality, "source": source})
                 return True
@@ -127,7 +185,6 @@ class PlanTraceStore:
                     self.logger.log("PlanTraceTargetQualityUpdateFailed", {"reason": "Trace not found", "trace_id": trace_id})
                 return False
         except Exception as e:
-            # self.session.rollback()
             if self.logger:
                 self.logger.log("PlanTraceTargetQualityUpdateError", {"error": str(e), "trace_id": trace_id})
             return False

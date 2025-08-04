@@ -1,0 +1,12 @@
+# config/scorer/hrm.yaml
+name: hrm
+model_type: hrm
+model_version: v1
+evaluator: hrm
+target_type: document
+dimensions: 
+  - alignment
+  - clarity
+  - implementability
+  - novelty
+  - relevance

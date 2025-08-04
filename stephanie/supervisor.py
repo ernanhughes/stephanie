@@ -1,8 +1,5 @@
 # stephanie/supervisor.py
 
-import json
-import os
-import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -18,10 +15,11 @@ from stephanie.engine.cycle_watcher import CycleWatcher
 from stephanie.engine.meta_confidence import MetaConfidenceTracker
 from stephanie.engine.self_validation import SelfValidationEngine
 from stephanie.engine.state_tracker import StateTracker
+from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
 from stephanie.engine.training_controller import TrainingController
 from stephanie.logs.json_logger import JSONLogger
 from stephanie.memory import MemoryTool
-from stephanie.registry.registry import register
+from stephanie.registry.component_registry import register, get_registered_component
 from stephanie.reports import ReportFormatter
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.utils.timing import time_function
@@ -55,7 +53,6 @@ class Supervisor:
         # Initialize and register core components
         state_tracker = StateTracker(cfg, self.memory, self.logger)
         confidence_tracker = MetaConfidenceTracker(cfg, self.memory, self.logger)
-        cycle_watcher = CycleWatcher(cfg, self.memory, self.logger)
 
         # Stub judgment and reward model evaluators
         def reward_model_fn(goal, doc_a, doc_b):
@@ -87,16 +84,17 @@ class Supervisor:
 
         register("state_tracker", state_tracker)
         register("confidence_tracker", confidence_tracker)
-        register("cycle_watcher", cycle_watcher)
+        register("cycle_watcher", CycleWatcher(cfg, self.memory, self.logger))
         register("training_controller", training_controller)
         register("self_validation", validator)
+        register("plan_trace_monitor", PlanTraceMonitor(cfg, self.memory, self.logger))
         self.logger.log(
             "SupervisorComponentsRegistered",
             {
                 "state_tracker": state_tracker,
                 "confidence_tracker": confidence_tracker,
-                "cycle_watcher": cycle_watcher,
                 "training_controller": training_controller,
+                "self_validation": validator,
             },
         )
 
@@ -174,16 +172,39 @@ class Supervisor:
         run_id = self.memory.pipeline_runs.insert(pipeline_run_data)
         self.context[PIPELINE_RUN_ID] = run_id
 
+        plan_trace_monitor: PlanTraceMonitor = get_registered_component("plan_trace_monitor")
+
+        plan_trace_monitor.start_pipeline(self.context(), run_id)
+
+
         # Adjust pipeline if needed
         await self.maybe_adjust_pipeline(self.context())
 
         # Apply symbolic rules directly via context manager data
         self.context._data = self.rule_applier.apply(self.context())
 
-        # Run pipeline stages with simple dict (agents stay unaware of ContextManager)
-        result_context = await self._run_pipeline_stages(self.context())
+        try:
+            # Run pipeline stages with simple dict (agents stay unaware of ContextManager)
+            result_context = await self._run_pipeline_stages(self.context())
 
-        return result_context
+            await plan_trace_monitor.complete_pipeline(result_context)
+            await plan_trace_monitor.score_pipeline(result_context)
+            
+
+            return result_context
+        except Exception as e:
+            self.logger.log("PipelineRunFailed", {"error": str(e)})
+            plan_trace_monitor.handle_pipeline_error(e, self.context())
+            raise e
+        finally:
+            plan_trace_monitor.reset()
+            # Save context to DB if configured
+            if self.cfg.get(SAVE_CONTEXT, False):
+                self.context.save_to_db()
+                self.logger.log("ContextSaved", {
+                    "run_id": run_id,
+                    "context_keys": list(self.context().keys())
+                })
 
     def _parse_pipeline_stages_from_list(
         self, stage_names: list[str]
@@ -196,12 +217,73 @@ class Supervisor:
 
     @time_function(logger=None)
     async def _run_pipeline_stages(self, context: dict) -> dict:
-        for stage in self.pipeline_stages:
-            context = await self._run_single_stage(stage, context)
-
-            # Post-judgment hook
-            if self.cfg.get("post_judgment", {}).get("enabled", False):
-                context = await self._maybe_run_pipeline_judge(context)
+        plan_trace_monitor: PlanTraceMonitor = get_registered_component("plan_trace_monitor")
+        for stage_idx, stage in enumerate(self.pipeline_stages):
+            stage_details = {
+                STAGE: stage.name,
+                "agent": stage.cls.split(".")[-1],
+                "status": "⏳ running", 
+                "start_time": datetime.utcnow().strftime("%H:%M:%S")
+            }
+            self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
+            
+            # Record stage start
+            plan_trace_monitor.start_stage(stage.name, context, stage_idx)
+            
+            if not stage.enabled:
+                self.logger.log("PipelineStageSkipped", {STAGE: stage.name})
+                stage_details["status"] = "⏭️ skipped"
+                continue
+            
+            try:
+                cls = hydra.utils.get_class(stage.cls)
+                stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
+                self.rule_applier.apply_to_agent(stage_dict, context)
+                agent_args = {
+                    "cfg": stage_dict,
+                    "memory": self.memory,
+                    "logger": self.logger,
+                }
+                if "full_cfg" in cls.__init__.__code__.co_varnames:
+                    agent_args["full_cfg"] = self.cfg
+                agent = cls(**agent_args)
+                self.logger.log("PipelineStageStart", {STAGE: stage.name})
+                
+                for i in range(stage.iterations or 1): 
+                    self.logger.log("PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1})
+                    agent_input_context = context.copy()
+                    context = await agent.run(agent_input_context)
+                    self.context.log_action(
+                        agent=agent,
+                        inputs=agent_input_context,
+                        outputs=context,
+                        description=f"Iteration {i + 1} of {stage.name}"
+                    )
+                    self.logger.log("PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1})
+                
+                # Saving context after stage
+                if stage_dict.get(SAVE_CONTEXT, False):
+                    self.context.save_to_db(stage_dict)
+                
+                self._save_pipeline_stage(stage, context, stage_dict)
+                self.logger.log("PipelineStageEnd", {STAGE: stage.name})
+                
+                # Record stage completion
+                plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
+                
+                stage_details["status"] = "✅ completed"
+                stage_details["end_time"] = datetime.utcnow().strftime("%H:%M:%S")
+                
+            except Exception as e:
+                # Record stage error
+                plan_trace_monitor.handle_stage_error(stage.name, e, stage_idx)
+                
+                self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
+                stage_details["status"] = "💀 failed"
+                stage_details["error"] = str(e)
+                stage_details["end_time"] = datetime.utcnow().strftime("%H:%M:%S")
+                raise  # Re-raise the exception to be caught by the outer handler
+        
         self._print_pipeline_summary()
         return context
 
@@ -255,7 +337,7 @@ class Supervisor:
             agent = cls(**agent_args)
             self.logger.log("PipelineStageStart", {STAGE: stage.name})
 
-            for i in range(stage.iterations or 1):
+            for i in range(stage.iterations or 1): 
                 self.logger.log("PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1})
                 
                 agent_input_context = context.copy()
@@ -271,7 +353,7 @@ class Supervisor:
                 self.logger.log("PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1})
 
             # Saving context after stage
-            if stage_dict.get(SAVE_CONTEXT, True):
+            if stage_dict.get(SAVE_CONTEXT, False):
                 self.context.save_to_db(stage_dict)
             self._save_pipeline_stage(stage, context, stage_dict)
             self.logger.log("PipelineStageEnd", {STAGE: stage.name})
@@ -350,7 +432,7 @@ class Supervisor:
         return report
 
     def save_context(self, cfg: DictConfig, context: dict):
-        if cfg.get(SAVE_CONTEXT, True):
+        if cfg.get(SAVE_CONTEXT, False):
             self.context.save_to_db()
             self.logger.log("ContextSaved", {
                 NAME: cfg.get(NAME, "UnnamedAgent"),

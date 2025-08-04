@@ -4,7 +4,7 @@ cot_generator:
   name: cot_generator
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   evaluator: llm         #(mrq or llm)  may not be enough items fo mrq

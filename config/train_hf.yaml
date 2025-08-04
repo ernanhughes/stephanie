@@ -1,0 +1,147 @@
+defaults:
+  - _self_
+  - db: postgres
+
+  - scorer/sicql/default
+  - scorer/contrastive_ranker/default
+  - scorer/hrm/default
+  - scorer/epistemic_hrm/default
+
+  - agents/arxiv_search
+  - agents/document_loader
+  - agents/document_profiler
+  - agents/paper_score
+  - agents/knowledge_loader
+  - agents/document_mrq_inference
+  - agents/sicql_mrq_inference
+  - agents/document_mrq_trainer
+  - agents/sicql_mrq_trainer
+  - agents/document_ebt_trainer
+  - agents/document_ebt_inference
+  - agents/document_reward_scorer
+  - agents/document_svm_trainer
+  - agents/rank_trainer
+  - agents/hrm_trainer
+  - agents/document_svm_inference
+  - agents/document_embedding_backfill
+  - agents/document_llm_inference
+  - agents/knowledge_db_loader
+  - agents/gild_trainer
+  - agents/ethics
+  - agents/scoring_memcube
+  - agents/scoring_policy
+  - agents/policy_analyzer
+  - agents/pipeline_comparison
+  - agents/pipeline_judge
+  - agents/scoring_report
+  - agents/hnet
+  - agents/scorer
+  - agents/score_comparison
+  - agents/score_energy_comparison
+  - agents/score_analysis
+  - agents/policy_synthesis
+  - logging/json_logger
+
+embeddings:
+  backend: hf
+
+plan_monitor:
+  enabled: false
+  cls: stephanie.engine.plan_trace.PlanTraceMonitor
+  max_stages: 1000
+  max_stage_length: 1000
+  max_stage_name_length: 100
+
+goal:
+  goal_text: I want to build an AI that can read, refactor, and iteratively improve its own source code to become more efficient, reliable, and aligned with its evolving objectives.
+  goal_type: "tactical"
+  goal_category: "meta_learning"
+  focus_area: "self_improvement"
+  strategy: "stepwise_decomposition"
+  difficulty: "medium-high"
+  expected_formats:
+    - "symbolic_prompt_plan"
+    - "stepwise_reasoning_trace"
+    - "annotated_score_vector"
+
+post_judgment:
+  name: pipeline_judge
+  enabled: true
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  save_context_result: true
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+pipeline:
+  name: policy
+  tag: "search_arxiv"
+  description: "Search Arxiv for papers related to a goal"
+  stages:
+    - name: document_mrq_trainer
+      description: "Build document pairs for training and evaluation"
+      cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent
+      enabled: true
+      iterations: 1
+
+    - name: sicql_mrq_trainer
+      description: "Build document pairs for training and evaluation"
+      cls: stephanie.agents.maintenance.sicql_trainer.SICQLTrainerAgent
+      enabled: true
+      iterations: 1
+
+    - name: document_svm_trainer
+      description: "Train a model to All right predict document values using SVM"
+      cls: stephanie.agents.maintenance.svm_trainer.SVMTrainerAgent
+      enabled: true
+      iterations: 1
+
+    - name: document_ebt_trainer
+      description: "Train a model to predict document values based on EBT"
+      cls: stephanie.agents.maintenance.ebt_trainer.EBTTrainerAgent
+      enabled: true
+      iterations: 1
+
+    - name: rank_trainer
+      description: "Train a ranker model using SICQL"
+      cls: stephanie.agents.maintenance.rank_trainer.ContrastiveRankerTrainerAgent
+      enabled: true
+      iterations: 1
+
+    - name: hrm_trainer
+      description: "Train a model to predict document values based on HRM"
+      cls: stephanie.agents.maintenance.hrm_trainer.HRMTrainerAgent
+      enabled: true
+      iterations: 1
+
+    - name: knowledge_loader
+      description: "Load knowledge from the scored papers into the system"
+      cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
+      enabled: true
+      iterations: 1
+
+    - name: document_embedding_backfill
+      description: "Backfill document embeddings for existing documents"
+      cls: stephanie.agents.maintenance.document_embedding_backfill.DocumentEmbeddingBackfillAgent
+      enabled: true
+      iterations: 1
+
+    - name: knowledge_db_loader
+      description: "Load knowledge from the database into the system"
+      cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+      enabled: true
+      iterations: 1
+
+    - name: scorer
+      description: "Score documents using various scorers"
+      cls: stephanie.agents.scorer.ScorerAgent
+      enabled: true
+      iterations: 1  

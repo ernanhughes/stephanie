@@ -15,7 +15,7 @@ from stephanie.prompts import PromptLoader
 class SelfRewardingConfig:
     inner_agent: str  # e.g., "ChainOfThoughtAgent"
     scorer_agent: str = "MRQScoringAgent"
-    min_score_threshold: float = 5.0
+    min_value_threshold: float = 5.0
     use_symbolic_filter: bool = True
     log_to_db: bool = True
     update_rules: bool = False

@@ -1,7 +1,10 @@
-Evaluate the originality of this research paper.
+Evaluate the originality of this document in relation to the goal.
 
-Title: {{ document.title }}
-Abstract: {{ document.summary }}
+### Goal
+{{ goal.goal_text }}
+
+### Document
+{{ scorable.text }}
 
 Does it introduce novel ideas, methods, or perspectives?
 

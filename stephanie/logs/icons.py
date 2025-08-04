@@ -45,6 +45,7 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "GenerationStart": "🧑‍🧒‍🧒▶️",  # Knowledge generation started
     "GoalContextOverride": "🎯🔄",  # Goal context override
     "MgrScoreParseError": "📊❌",  # Scoring parse error
     "SymbolicRulesFound": "🧩🔍",  # Symbolic rules found
@@ -108,6 +109,8 @@ KNOWLEDGE_OPS = {
 # PIPELINE CONTROL
 # =================
 PIPELINE_FLOW = {
+    "PipelineStageCompleted": "🖇️✅",  # Pipeline stage completed
+    "PipelineStageStarted": "🖇️▶️",  # Pipeline stage started
     "PipelineSummaryPrinted": "🖇️📄",  # Pipeline summary printed
     "PipelineStageInserted": "🖇️➕",  # Stage inserted
     "PipelineStart": "🖇️▶️",  # Pipeline started
@@ -129,6 +132,7 @@ PIPELINE_FLOW = {
 # SCORING & EVALUATION
 # =====================
 SCORING = {
+    "ScoringPaper": "📄⚖️",  # Scoring paper
     "EpistemicPlanExecutorSkipped": "🪸⏭️",  # Epistemic plan executor skipped
     "EpistemicPlanHRMTrainingBatch": "🪸🏋️",  # Training batch
     "EpistemicPlanHRMDataLoaderCreated": "🪸📥",  # Data loader created
@@ -181,6 +185,16 @@ SCORING = {
 # REASONING & ANALYSIS
 # =====================
 REASONING = {
+    "PlanTraceMonitorDisabled": "📄🔧",  # Plan trace monitoring disabled
+    "PlanTraceSavedToFile": "📄💾",  # Plan trace saved to file
+    "PlanTraceCompleted": "📄✅",  # Plan trace completed
+    "MARSAnalysisCompleted": "📊✅",  # MARS analysis completed
+    "PlanTraceScoringCompleted": "📄✅",  # Plan trace scoring completed
+    "PlanTraceUpdated": "📄🔄",  # Plan trace updated
+    "PlanTraceScored": "📄⚖️",  # Plan trace scored
+    "PlanTraceScoringComplete": "📄✅",  # Plan trace scoring completed
+    "DocumentScoringProgress": "📄🔄",  # Document scoring progress
+    "DocumentScoringCompleted": "📄✅",  # Document scoring completed
     "EpistemicPlanHRMModelInitialized": "🪸🧠",  # Epistemic Plan HRM model initialized
     "EpistemicPlanHRMOptimizerInitialized": "🪸⚙️",  # Epistemic Plan HRM optimizer initialized
     "EpistemicPlanHRMLossInitialized": "🪸📉",  # Epistemic Plan HRM loss initialized
@@ -207,6 +221,19 @@ REASONING = {
 # TRAINING & MODEL OPS
 # =====================
 TRAINING = {
+    "TrainingStarted": "🏋️▶️",  # Training started
+    "CalibrationCompleted": "✅📊",  # Calibration completed
+    "ContrastiveRankerTrainingComplete": "🎓📊",  # Contrastive ranker training completed
+    "TrainingEpochsCompleted": "🏋️✅",  # Training epochs completed
+    "DimensionTrainingStart": "📏▶️",  # Dimension training started
+    "ContrastiveRankerTrainingStarted": "📊🏋️",  # Contrastive ranker training started I
+    "SICQLTrainerInitialized": "📊🤖",  # SICQL trainer initialized   
+    "SVMTrainingComplete": "🎓📊",  # SVM training completed
+    "SVMTrainingCompleted": "🎓📊",  # SVM training completed
+    "SVMTrainerInvoked": "📊🤖",  # SVM trainer invoked
+    "DimensionTrainingStarted": "📏▶️",  # Dimension training started
+    "DimensionTrainingComplete": "📏🎓",  # Dimension training completed
+    "TunerMissing": "🔧📄",  # Tuner missing
     "MRQTrainerEpoch": "🏋️",  # MRQ training epoch
     "MRQTrainerStart": "🚀🧠",  # MRQ training started
     "MRQTrainerTrainingComplete": "🎓🧠",  # MRQ training completed
@@ -230,7 +257,7 @@ TRAINING = {
     "EBTTrainerEpoch": "🏋️🧪",  # EBT training epoch
     "TrainingCompleted": "🏁🎓",  # Training completed
     "MRQTrainingEpoch": "🏋️🧠",  # MRQ training epoch
-    "MRQEarlyStopping": "🛑🏋️",  # MRQ early stopping
+    "MRQEarlyStopping": "✨🏋️",  # MRQ early stopping
     "MRQTrainerInitialized": "🧠🤖",  # MRQ trainer initialized
     "NoSamplesFound": "🚫🚫",  # No samples found for training
     "SICQLTrainingEpoch": "🏋️📊",  # SICQL training epoch
@@ -325,6 +352,8 @@ ERROR_STATES = {
 # MODEL OPS
 # =============
 MODELS = {
+    "EpistemicPlanHRMScorerModelLoaded": "🪸🧠📥",  # Epistemic Plan HRM scorer model loaded
+
     "SVMModelSaved": "💾🧮📊",  # SVM model saved
     "SVMModelLoaded": "📥🧮📊",  # SVM model load
     "SVMModelTrainingStarted": "🏋️🧮⚖️",
@@ -339,9 +368,17 @@ MODELS = {
 # ETHICS & REVIEWS
 # =============
 SPECIAL = {
+    "PlanTraceCreated": "📄📝",  # Plan trace created
+    "PlanTraceScorerInitialized": "📊🤖🪸",  # Plan trace scorer initialized
+    "PlanTraceMonitorInitialized": "📊🤖🪸",  # Plan trace monitor initialized
+    "GILDProcessTraceStarted": "📊▶️",  # GILD process trace started
+    "SICQLAdvantageExtracted": "📊📈",  # SICQL advantage extracted
+    "SICQLAdvantageWarning": "⚠️📊",  # SICQL advantage warning
+    "GILDDataPreparationCompleted": "📊✅",  # GILD data preparation completed
+      
     "SQLQuery": "💾🔍",  # SQL query executed
     "EthicsReviewsGenerated": "⚖️🧾",  # Ethics reviews generated
-    "EarlyStopping": "🛑⏱️",  # Early stopping triggered
+    "EarlyStopping": "✅⏱️",  # Early stopping triggered
 }
 
 # Combine all categories into a single dictionary

@@ -28,7 +28,7 @@ class RuleTunerAgent(BaseAgent):
             session=self.memory.session, logger=self.logger
         )
         self.rule_tuner = RuleTuner(memory=self.memory, logger=self.logger)
-        self.min_score_threshold = cfg.get("min_score_threshold", 7.5)
+        self.min_value_threshold = cfg.get("min_value_threshold", 7.5)
         self.min_repeat_count = cfg.get("min_repeat_count", 2)
 
     async def run(self, context: dict) -> dict:
@@ -81,7 +81,7 @@ class RuleTunerAgent(BaseAgent):
         grouped = get_high_scoring_runs(
             session=self.memory.session,
             dimension=self.score_target,
-            threshold=self.min_score_threshold,
+            threshold=self.min_value_threshold,
             min_repeat_count=self.min_repeat_count,
         )
 

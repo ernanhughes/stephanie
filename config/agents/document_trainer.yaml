@@ -2,7 +2,7 @@ mrq_trainer:
   name: mrq_trainer
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   model_save_path: "${hydra:runtime.cwd}/models/documents"

@@ -40,7 +40,7 @@ goal:
 
 post_judgment:
   name: pipeline_judge
-  enabled: false
+  enabled: true
   cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
@@ -62,31 +62,31 @@ pipeline:
     - name: document_mrq_trainer
       description: "Build document pairs for training and evaluation"
       cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: document_svm_trainer
       description: "Train a model to predict document values using SVM"
       cls: stephanie.agents.maintenance.svm_trainer.SVMTrainerAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: document_ebt_trainer
       description: "Train a model to predict document values based on EBT"
       cls: stephanie.agents.maintenance.ebt_trainer.EBTTrainerAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: knowledge_loader
       description: "Load knowledge from the scored papers into the system"
       cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: document_embedding_backfill
       description: "Backfill document embeddings for existing documents"
       cls: stephanie.agents.maintenance.document_embedding_backfill.DocumentEmbeddingBackfillAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: knowledge_db_loader
@@ -122,29 +122,29 @@ pipeline:
     - name: document_reward_scorer
       description: "Score the documents based on their relevance and quality"
       cls: stephanie.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: ethics
       description: "Evaluate the ethical soundness of AI-generated advice"
       cls: stephanie.agents.world.ethics.Ethics
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: scoring_policy
       description: "Apply scoring policy to evaluate documents"
       cls: stephanie.agents.inference.scoring_policy.ScoringPolicyAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: scoring_memcube
       description: "Apply scoring memcube to evaluate documents"
       cls: stephanie.agents.inference.scoring_memcube.ScoringMemcubeAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: hnet
       description: "HNet agent for handling knowledge and scoring"
       cls: stephanie.agents.hnet.HNetAgent
-      enabled: false
+      enabled: true
       iterations: 1

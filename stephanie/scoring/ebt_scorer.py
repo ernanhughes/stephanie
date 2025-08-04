@@ -8,8 +8,8 @@ from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.model.ebt_model import EBTModel
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.scoring.score_result import ScoreResult
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
@@ -68,7 +68,7 @@ class EBTScorer(BaseScorer):
             model.eval()
             self.models[dim] = model
 
-            meta = load_json(locator.meta_file()) if os.path.exists(locator.meta_file()) else {"min_score": 0, "max_score": 100}
+            meta = load_json(locator.meta_file()) if os.path.exists(locator.meta_file()) else {"min_value": 0, "max_value": 100}
             self.model_meta[dim] = meta
 
             if os.path.exists(locator.tuner_file()):
@@ -105,33 +105,37 @@ class EBTScorer(BaseScorer):
             action_probs = F.softmax(torch.tensor(policy_logits), dim=-1)
             entropy = -torch.sum(action_probs * torch.log(action_probs + 1e-8)).item()
 
-            meta = self.model_meta.get(dim, {"min_score": 0, "max_score": 100})
+            meta = self.model_meta.get(dim, {"min_value": 0, "max_value": 100})
             if dim in self.tuners:
                 scaled_score = self.tuners[dim].transform(q_value)
             else:
                 normalized = torch.sigmoid(torch.tensor(q_value)).item()
-                scaled_score = normalized * (meta["max_score"] - meta["min_score"]) + meta["min_score"]
+                scaled_score = normalized * (meta["max_value"] - meta["min_value"]) + meta["min_value"]
 
-            final_score = round(max(min(scaled_score, meta["max_score"]), meta["min_score"]), 4)
+            final_score = round(max(min(scaled_score, meta["max_value"]), meta["min_value"]), 4)
 
-            prompt_hash = ScoreORM.compute_prompt_hash(goal_text, scorable)
             rationale = f"Q={q_value:.4f}, V={v_value:.4f}, Δ={uncertainty:.3f}, H={entropy:.3f}"
+
+            attributes = {
+                "q_value": round(q_value, 4),
+                "v_value": round(v_value, 4),
+                "normalized_score": round(scaled_score, 4),
+                "final_score": final_score,
+                "energy": q_value,
+                "state_value": v_value,
+                "policy_logits": policy_logits,
+                "uncertainty": uncertainty,
+                "entropy": entropy,
+                "advantage": advantage,
+            }
 
             results[dim] = ScoreResult(
                 dimension=dim,
                 score=final_score,
+                source=self.model_type,
                 rationale=rationale,
-                weight=1.0,
-                q_value=q_value,
-                energy=q_value,
-                source=self.name,
-                target_type=scorable.target_type,
-                prompt_hash=prompt_hash,
-                state_value=v_value,
-                policy_logits=policy_logits,
-                uncertainty=uncertainty,
-                entropy=entropy,
-                advantage=advantage,
+                weight=1.0, 
+                attributes=attributes,
             )
 
         return ScoreBundle(results=results)

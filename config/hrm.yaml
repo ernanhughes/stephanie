@@ -1,6 +1,12 @@
 defaults:
   - _self_
   - db: postgres
+
+  - scorer/sicql/default
+  - scorer/contrastive_ranker/default
+  - scorer/hrm/default
+  - scorer/epistemic_hrm/default
+
   - agents/knowledge_db_loader
   - agents/gild_trainer
   - agents/pipeline_judge
@@ -31,15 +37,15 @@ goal:
 
 post_judgment:
   name: pipeline_judge
-  enabled: false
+  enabled: true
   cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
 report:
-  save_context_result: false
-  generate_report: false
+  save_context_result: true
+  generate_report: true
   path: ${hydra:runtime.cwd}/reports
 
 web_search:
@@ -55,43 +61,43 @@ pipeline:
     - name: epistemic_plan_hrm_trainer  
       description: "Train the HRM model to predict document values based on epistemic plans"
       cls: stephanie.agents.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: et_hrm_inference
       description: "Use HRM to infer epistemic traces from documents"
       cls: stephanie.agents.inference.et_hrm_inference.EpistemicTraceHRMInferenceAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: epistemic_plan_executor
       description: "Execute the epistemic plan to generate hypotheses"
       cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: knowledge_db_loader
       description: "Load knowledge from the database"
       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
-      enabled: false
+      enabled: true
       iterations: 1    
 
     - name: score_comparison
       description: "Compare scores of different documents"
       cls: stephanie.agents.score_comparison.ScoreComparisonAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: score_energy_comparison
       description: "Compare energy scores of different documents"
       cls: stephanie.agents.score_energy_comparison.ScoreEnergyComparisonAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: policy_synthesis
       description: "Synthesize a policy based on the scores and comparisons"
       cls: stephanie.agents.policy_synthesis.PolicySynthesisAgent
-      enabled: false
+      enabled: true
       iterations: 1
     
     - name: gild_trainer

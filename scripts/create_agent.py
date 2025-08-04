@@ -17,7 +17,7 @@ TEMPLATE_CONFIG = '''{{ agent_name }}:
   name: {{ agent_name }}
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
   model:
     name: ollama/qwen3

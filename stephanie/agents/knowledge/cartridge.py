@@ -230,7 +230,7 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
         results = self.domain_classifier.classify(
             cartridge.markdown_content,
             top_k=self.top_k_domains,
-            min_score=self.min_classification_score,
+            min_value=self.min_classification_score,
         )
         for domain, score in results:
             self.memory.cartridge_domains.insert(

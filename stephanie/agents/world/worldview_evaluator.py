@@ -7,7 +7,7 @@ from stephanie.models.belief import BeliefORM
 from stephanie.models.cartridge import CartridgeORM
 from stephanie.models.icl_example import ICLExampleORM
 from stephanie.models.world_view import WorldviewORM
-from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.svm_scorer import SVMScorer
 
 

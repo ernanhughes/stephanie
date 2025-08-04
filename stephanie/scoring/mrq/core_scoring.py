@@ -4,8 +4,8 @@ import torch
 from stephanie.models.score import ScoreORM
 from stephanie.models.sharpening_prediction import SharpeningPredictionORM
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.scoring.score_result import ScoreResult
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scoring_manager import ScoringManager
 
 
@@ -162,8 +162,8 @@ class MRQCoreScoring:
         if tuner:
             tuned = tuner.transform(norm_score)
             tuned = max(
-                self.min_score_by_dim.get(dimension, 0.0),
-                min(self.max_score_by_dim.get(dimension, 100.0), tuned),
+                self.min_value_by_dim.get(dimension, 0.0),
+                min(self.max_value_by_dim.get(dimension, 100.0), tuned),
             )
             self.logger.log(
                 "MRQTunedScore",

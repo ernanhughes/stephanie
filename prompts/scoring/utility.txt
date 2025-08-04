@@ -1,4 +1,4 @@
-Evaluate the utility of the following hypothesis.
+Evaluate the utility of the following document in relation ot the goal.
 
 ### Goal
 {{ goal.goal_text }}

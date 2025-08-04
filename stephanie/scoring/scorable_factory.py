@@ -1,7 +1,8 @@
 # stephanie/scoring/scorable_factory.py
 from enum import Enum as PyEnum
 
-from stephanie.data.plan_trace import PlanTrace
+from typing import Optional
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.prompt import PromptORM
@@ -26,7 +27,7 @@ class TargetType:
     CUSTOM = "custom"
     REFINEMENT = "refinement"
     PLAN_TRACE = "plan_trace"
-
+    PLAN_TRACE_STEP = "plan_trace_step"
 
 class ScorableFactory:
     """ Why am I hitting the cash It shouldn't be slamming the cash by now
@@ -105,7 +106,7 @@ class ScorableFactory:
         if target_type is None:
             target_type = data.get("target_type", "document")
         if "text" in data: # If text is provided, use it directly
-            return Scorable(id=data.get("id", ""), text=data["text"], target_type=target_type)
+            return Scorable(id=str(data.get("id", "")), text=data["text"], target_type=target_type)
         if target_type == "document":
             title = data.get("title", "")
             summary = data.get("summary", "")
@@ -123,7 +124,7 @@ class ScorableFactory:
         else:
             text = data.get("text", "")
 
-        return Scorable(id=data.get("id"), text=text, target_type=target_type)
+        return Scorable(id=str(data.get("id")), text=text, target_type=target_type)
 
 
     @staticmethod
@@ -135,25 +136,79 @@ class ScorableFactory:
         return Scorable(id="", text=text, target_type=target_type)
 
     @staticmethod
-    def from_plan_trace(trace: PlanTrace, mode: str = "default") -> Scorable:
+    def from_plan_trace(trace: PlanTrace, mode: str = "default", step: Optional[ExecutionStep] = None) -> Scorable:
         """
         Convert a PlanTrace into a Scorable object for scoring.
         Mode can be used to customize how the trace is represented as text.
-        """
-        if mode == "default":
-            text = trace.goal_text + "\n\n" + trace.final_output_text
-        elif mode == "full_trace":
-            step_texts = "\n".join([f"[{s.step_id}] {s.output_text}" for s in trace.execution_steps])
-            text = f"Goal: {trace.goal_text}\n\nSteps:\n{step_texts}\n\nFinal: {trace.final_output_text}"
-        else:
-            raise ValueError(f"Unsupported PlanTrace scoring mode: {mode}")
         
-        return Scorable(
-            id=trace.trace_id,
-            text=text,
-            target_type=TargetType.PLAN_TRACE
-        )
-
+        Args:
+            trace: The PlanTrace object to convert
+            mode: How to represent the trace ('default', 'single_step', 'full_trace')
+            step: Optional ExecutionStep for single-step mode
+            
+        Returns:
+            Scorable: A scorable object representing the trace or step
+        """
+        if mode == "single_step" and step is not None:
+            # Format a single step for scoring
+            step_text = f"Step {step.step_order}: {step.step_type}\n"
+            step_text += f"Description: {step.description or 'No description'}\n"
+            
+            # Add input if available
+            if hasattr(step, 'input_text') and step.input_text:
+                step_text += f"Input: {step.input_text[:500]}...\n"
+            
+            # Add output with truncation
+            output_text = step.output_text or ""
+            step_text += f"Output: {output_text[:1000]}"
+            if len(output_text) > 1000:
+                step_text += "..."
+            
+            # Create scorable for this step
+            return Scorable(
+                id=f"{trace.trace_id}_step_{step.step_id}",
+                text=step_text,
+                target_type=TargetType.PLAN_TRACE_STEP
+            )
+        
+        elif mode == "full_trace":
+            # Format the complete trace for scoring
+            trace_text = f"Goal: {trace.goal_text or 'No goal text'}\n\n"
+            trace_text += "Pipeline Execution Steps:\n\n"
+            
+            # Add all steps
+            for i, step in enumerate(trace.execution_steps, 1):
+                trace_text += f"{i}. {step.step_type}: {step.description[:100]}...\n"
+                output_text = step.output_text or ""
+                trace_text += f"   Output: {output_text[:200]}"
+                if len(output_text) > 200:
+                    trace_text += "...\n\n"
+                else:
+                    trace_text += "\n\n"
+            
+            # Add final output
+            final_output = trace.final_output_text or ""
+            trace_text += f"Final Output: {final_output[:500]}"
+            if len(final_output) > 500:
+                trace_text += "..."
+            
+            return Scorable(
+                id=trace.trace_id,
+                text=trace_text,
+                target_type=TargetType.PLAN_TRACE
+            )
+        
+        else:
+            # Default mode - goal + final output
+            goal_text = trace.goal_text or ""
+            final_output = trace.final_output_text or ""
+            
+            return Scorable(
+                id=trace.trace_id,
+                text=f"{goal_text}\n\n{final_output}",
+                target_type=TargetType.PLAN_TRACE
+            )
+        
 
     @staticmethod
     def from_id(memory, target_type: str, target_id: str) -> str:

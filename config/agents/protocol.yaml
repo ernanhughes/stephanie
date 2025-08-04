@@ -3,7 +3,7 @@ protocol:
   enabled: true
   protocol: "code_exec"
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
   model:
     name: ollama/qwen3

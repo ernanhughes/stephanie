@@ -6,7 +6,7 @@ evolution:
   strategy: goal_aligned  # Options: goal_aligned, simplification, inspiration, out_of_the_box
   use_grafting: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
   model:
     name: ollama_chat/qwen3

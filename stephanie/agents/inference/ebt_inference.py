@@ -7,11 +7,10 @@ import torch.nn.functional as F
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
-from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.scoring.score_result import ScoreResult
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.math_utils import (advantage_weighted_regression,
@@ -110,10 +109,10 @@ class EBTInferenceAgent(BaseAgent):
                 with torch.no_grad():
                     raw_energy = model(ctx_emb, doc_emb)["q_value"].squeeze().cpu().item()
                     normalized_score = torch.sigmoid(torch.tensor(raw_energy)).item()
-                    meta = self.model_meta.get(dim, {"min_score": 40, "max_score": 100})
+                    meta = self.model_meta.get(dim, {"min_value": 40, "max_value": 100})
                     real_score = (
-                        normalized_score * (meta["max_score"] - meta["min_score"]) + meta["min_score"]
-                    )
+                        normalized_score * (meta["max_value"] - meta["min_value"]) + meta["min_value"]
+                    ) 
                     final_score = round(real_score, 4)
                     dimension_scores[dim] = final_score
 
@@ -121,6 +120,13 @@ class EBTInferenceAgent(BaseAgent):
                     confidence_penalty = 1 - abs(normalized_score - 0.5) * 2
                     uncertainty = confidence_penalty * (1 / (1 + abs(raw_energy)))
 
+                    attributes = {
+                        "raw_energy": round(raw_energy, 4),
+                        "normalized_score": round(normalized_score, 4),
+                        "confidence_penalty": round(confidence_penalty, 4),
+                        "final_score": final_score,
+                        "uncertainty": uncertainty,
+                    }
 
                     score_results.append(
                         ScoreResult(
@@ -128,11 +134,8 @@ class EBTInferenceAgent(BaseAgent):
                             score=final_score,
                             rationale=f"Energy={round(raw_energy, 4)}",
                             weight=1.0,
-                            energy = raw_energy,     
-                            uncertainty = uncertainty, 
                             source=self.name,
-                            target_type=scorable.target_type,
-                            prompt_hash=ScoreORM.compute_prompt_hash(goal_text, scorable),
+                            attributes=attributes,
                         )
                     )
 

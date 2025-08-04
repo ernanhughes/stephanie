@@ -2,8 +2,8 @@
 from textwrap import wrap
 
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
-from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scoring_manager import ScoringManager
 
 
@@ -39,8 +39,9 @@ class PaperScoreEvaluator(ScoringManager):
         # Aggregate across chunks
         final_scores = self.aggregate_scores(dicts)
         final_bundle = ScoreBundle.from_dict(final_scores)
-        ScoringManager.save_document_score_to_memory(
-            final_bundle, document, context, self.cfg, self.memory, self.logger
+        scorable = ScorableFactory.from_dict(document, TargetType.DOCUMENT)
+        ScoringManager.save_score_to_memory(
+            final_bundle, scorable, context, self.cfg, self.memory, self.logger
         )
         return final_scores
 

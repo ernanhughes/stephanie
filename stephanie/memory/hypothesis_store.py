@@ -37,7 +37,6 @@ class HypothesisStore:
                         "hypothesis_id": hypothesis.id,
                         "goal_id": hypothesis.goal_id,
                         "strategy": hypothesis.strategy,
-                        "length": len(scorable.text),
                         "timestamp": hypothesis.created_at.isoformat(),
                     },
                 )

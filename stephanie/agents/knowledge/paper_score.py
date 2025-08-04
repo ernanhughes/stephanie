@@ -17,12 +17,12 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
         documents = context.get(self.input_key, [])
         results = []
         for document in documents:
-            doc_id = document["id"]
-            existing_scores = self.get_scores_by_document_id(doc_id)
+            doc_id_str = str(document["id"])
+            existing_scores = self.scores_exist_for_document(doc_id_str)
             if existing_scores and not self.force_rescore:
                 self.logger.log(
                     "ScoreSkipped",
-                    {"doc_id": doc_id, "score": existing_scores},
+                    {"doc_id": doc_id_str, "score": existing_scores},
                 )
                 results.append(
                     {
@@ -73,7 +73,7 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
                 },
             )
 
-    def get_scores_by_document_id(self, document_id: int) -> list[ScoreORM]:
+    def get_scores_by_document_id(self, document_id: str) -> list[ScoreORM]:
         evaluations = (
             self.memory.session.query(EvaluationORM)
             .filter_by(target_type=TargetType.DOCUMENT, target_id=document_id)
@@ -88,6 +88,14 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
                 .all()
             )
         return scores
+
+    def scores_exist_for_document(self, document_id: str) -> bool:
+        return self.memory.session.query(ScoreORM.id).join(
+            EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id
+        ).filter(
+            EvaluationORM.target_type == TargetType.DOCUMENT,
+            EvaluationORM.target_id == document_id
+        ).first() is not None
 
     def aggregate_scores_by_dimension(self, scores: list[ScoreORM]) -> dict:
         dimension_totals = defaultdict(list)

@@ -6,8 +6,8 @@ from string import Template
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.scoring.score_result import ScoreResult
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scoring_manager import ScoringManager
 
 
@@ -19,6 +19,7 @@ class LLMScorer(BaseScorer):
 
     def __init__(self, cfg, memory, logger, prompt_loader=None, llm_fn=None):
         self.cfg = cfg
+        self.model_type = "llm"
         self.memory = memory
         self.logger = logger
         self.prompt_loader = prompt_loader
@@ -86,8 +87,6 @@ class LLMScorer(BaseScorer):
                 rationale=response,
                 weight=dim.get("weight", 1.0),
                 source="llm",
-                target_type=scorable.target_type,
-                prompt_hash=prompt_hash,
             )
 
             results.append(result)

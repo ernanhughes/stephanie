@@ -9,9 +9,9 @@ from stephanie.models import (EvaluationORM, PipelineRunORM,
 
 
 class RuleGeneratorAgent(BaseAgent):
-    def __init__(self, *args, min_score_threshold=7.5, min_repeat_count=2, **kwargs):
+    def __init__(self, *args, min_value_threshold=7.5, min_repeat_count=2, **kwargs):
         super().__init__(*args, **kwargs)
-        self.min_score_threshold = min_score_threshold
+        self.min_value_threshold = min_value_threshold
         self.min_repeat_count = min_repeat_count
 
     async def run(self, context: dict) -> dict:
@@ -50,7 +50,7 @@ class RuleGeneratorAgent(BaseAgent):
     def _get_high_performance_runs(self):
         scores = (
             self.memory.session.query(EvaluationORM)
-            .filter(EvaluationORM.score >= self.min_score_threshold)
+            .filter(EvaluationORM.score >= self.min_value_threshold)
             .all()
         )
         runs = []

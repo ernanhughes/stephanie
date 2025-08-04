@@ -27,7 +27,7 @@ class UnifiedMRQAgent(BaseAgent):
         )
         self.similarity_threshold = cfg.get("similarity_threshold", 0.85)
         self.top_k_similar = cfg.get("top_k_similar", 20)
-        self.min_score_difference = cfg.get("min_score_difference", 10)
+        self.min_value_difference = cfg.get("min_value_difference", 10)
         self.output_dir = cfg.get("model_output_dir", "mrq_models")
         self.trainer = MRQTrainer(memory, logger)
 
@@ -85,7 +85,7 @@ class UnifiedMRQAgent(BaseAgent):
                     trainer_version="v1.0",
                     context={
                         "similarity_threshold": self.similarity_threshold,
-                        "min_score_diff": self.min_score_difference,
+                        "min_value_diff": self.min_value_difference,
                     },
                 )
             )

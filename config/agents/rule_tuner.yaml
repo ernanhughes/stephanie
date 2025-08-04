@@ -5,7 +5,7 @@ rule_tuner:
   enabled: true
   source: context  # database or context
   batch_size: 20
-  save_context: true
+  save_context: false
   skip_if_completed: false
   model:
     name: ollama_chat/qwen3

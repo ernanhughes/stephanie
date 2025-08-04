@@ -3,7 +3,7 @@ document_llm_inference:
   description: "Infer LLM scores for documents"
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   model_type: "llm"

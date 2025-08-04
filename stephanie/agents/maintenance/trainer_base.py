@@ -50,7 +50,7 @@ class TrainerAgent(BaseAgent):
             )
 
             # Construct dataset and dataloader; normalize scores between 50–100
-            ds = EBTDataset(pairs, min_score=50, max_score=100)
+            ds = EBTDataset(pairs, min_value=50, max_value=100)
             dl = DataLoader(
                 ds,
                 batch_size=8,

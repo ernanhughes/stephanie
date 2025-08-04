@@ -152,7 +152,8 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
             return context
 
         # Filter traces with valid targets
-        training_traces = [t for t in raw_traces_data if t.has_target_quality()]
+        # training_traces = [t for t in raw_traces_data if t.has_target_quality()]
+        training_traces = raw_traces_data
 
         self.logger.log(
             "EpistemicPlanHRMTrainingDataPrepared",

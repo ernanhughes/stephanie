@@ -1,0 +1,12 @@
+# config/scorer/sicql/default.yaml
+name: sicql
+model_type: sicql
+model_version: v1
+evaluator: sicql
+target_type: document
+dimensions: 
+  - alignment
+  - clarity
+  - implementability
+  - novelty
+  - relevance

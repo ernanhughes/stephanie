@@ -4,7 +4,7 @@ document_profiler:
   name: document_profiler
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   max_chars_for_summary: 16000

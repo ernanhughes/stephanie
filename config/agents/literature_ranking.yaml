@@ -4,7 +4,7 @@ literature_ranking:
   name: literature_ranking
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
   strategy: literature_ranking
   model:

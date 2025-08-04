@@ -36,8 +36,6 @@ gild_trainer:
   prompt_mode: file
   prompt_file: gild_trainer.txt
 
-
-
   sicql:
     name: gild_trainer_sicql
     model_type: sicql
@@ -64,7 +62,6 @@ gild_trainer:
       - implementability
       - novelty
       - relevance
-
 
   epistemic_plan_hrm:
     name: epistemic_plan_executor_hrm

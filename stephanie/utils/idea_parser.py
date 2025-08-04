@@ -38,8 +38,7 @@ class IdeaParser:
         self.scorer = SVMScorer(
             cfg,
             logger=self.logger,
-            memory=self.memory,
-            dimensions=self.dimensions
+            memory=self.memory
         )
 
     def parse(self, paper_text: str, paper_title: str = "", context={}, override_dimensions: Optional[list] = None) -> List[Dict]:

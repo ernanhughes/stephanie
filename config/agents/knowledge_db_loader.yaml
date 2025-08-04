@@ -3,7 +3,7 @@ knowledge_db_loader:
   description: "Load knowledge from the database into the system this uses the embeddings to do a similarty search retuns top_k documents"  
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   top_k: 100

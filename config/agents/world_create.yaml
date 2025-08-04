@@ -2,7 +2,7 @@ world_create:
   name: world_create
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   base_directory: ${hydra:runtime.cwd}/worldviews

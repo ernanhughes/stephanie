@@ -219,7 +219,7 @@ class EvaluationStore:
 
     def get_latest_score(self, scorable: Scorable, agent_name: str = None):
         query = self.session.query(EvaluationORM).filter_by(
-            target_type=scorable.target_type, target_id=scorable.id
+            target_type=scorable.target_type, target_id=str(scorable.id)
         )
 
         if agent_name:

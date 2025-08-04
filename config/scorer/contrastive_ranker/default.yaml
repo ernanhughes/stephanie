@@ -1,0 +1,12 @@
+# config/scorer/contrastive_ranker.yaml
+name: contrastive_ranker
+model_type: contrastive_ranker
+model_version: v1
+evaluator: contrastive_ranker
+target_type: document
+dimensions: 
+  - alignment
+  - clarity
+  - implementability
+  - novelty
+  - relevance

@@ -4,7 +4,7 @@ paper_score:
   name: paper_score
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   force_rescore: false

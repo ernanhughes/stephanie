@@ -2,7 +2,7 @@ et_hrm_inference:
   name: et_hrm_inference
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   export_dir: ${hydra:runtime.cwd}/reports/epistemic_plan_executor

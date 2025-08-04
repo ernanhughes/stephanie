@@ -100,7 +100,7 @@ class EBTTrainer(BaseTrainer):
             "hdim": model.hidden_dim,
             "num_actions": model.num_actions,
             "version": self.version,
-            "min_score": self.cfg.get("min_score", 0),
-            "max_score": self.cfg.get("max_score", 100),
+            "min_value": self.cfg.get("min_value", 0),
+            "max_value": self.cfg.get("max_value", 100),
         }
         self._save_meta_file(meta, dimension)

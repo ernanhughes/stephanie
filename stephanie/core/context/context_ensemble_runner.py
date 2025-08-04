@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.core.context.context_manager import ContextManager
-from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.data.score_bundle import ScoreBundle
 
 
 class ContextEnsembleRunner:

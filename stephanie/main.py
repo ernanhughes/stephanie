@@ -11,10 +11,9 @@ from omegaconf import DictConfig, OmegaConf
 
 from stephanie.logs import JSONLogger
 from stephanie.memory import MemoryTool
-from stephanie.scoring.score_bundle import ScoreBundle
 from stephanie.supervisor import Supervisor
 from stephanie.utils import generate_run_id, get_log_file_path
-
+from stephanie.data.plan_trace import PlanTrace, ExecutionStep
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def run(cfg: DictConfig):
@@ -70,15 +69,27 @@ def save_yaml_result(log_path: str, result: dict):
     print(f"✅ Result saved to: {report_path}")
 
 
-def default_serializer(obj):
-    if isinstance(obj, ScoreBundle):
-        return obj.to_dict()
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    if isinstance(obj, set):
-        return list(obj)
-    raise TypeError(f"Type {type(obj)} not serializable")
 
+def default_serializer(obj):
+    import numpy as np
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif hasattr(obj, 'to_dict'):
+        return obj.to_dict()
+    elif isinstance(obj, ExecutionStep):
+        return obj.to_dict()
+    # Handle PlanTrace objects
+    elif isinstance(obj, PlanTrace):
+        return obj.to_dict()
+    # Handle DictConfig objects from Hydra
+    elif hasattr(obj, '_get_node'):
+        return OmegaConf.to_container(obj, resolve=True, enum_to_str=True)
+    # If we still can't serialize, raise the error
+    raise TypeError(f"Type {type(obj)} not serializable")
 
 def save_json_result(log_path: str, result: dict):
     report_path = log_path.replace(".jsonl", "_report.json")

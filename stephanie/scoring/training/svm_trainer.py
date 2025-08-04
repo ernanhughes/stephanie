@@ -41,7 +41,7 @@ class SVMTrainer(BaseTrainer):
         X = np.concatenate(X, axis=0)
         y = np.concatenate(y, axis=0)
 
-        # Fit scaler and scale features
+        # Fit scaler and scale features 
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
 
@@ -68,8 +68,8 @@ class SVMTrainer(BaseTrainer):
             "epsilon": self.epsilon,
             "dim": self.dim,
             "hdim": self.hdim,
-            "min_score": self.cfg.get("min_score", 0),
-            "max_score": self.cfg.get("max_score", 100),
+            "min_value": self.cfg.get("min_value", 0),
+            "max_value": self.cfg.get("max_value", 100),
         }
         self._save_meta_file(meta, dimension)
 

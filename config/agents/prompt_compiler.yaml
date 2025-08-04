@@ -3,7 +3,7 @@
 prompt_compiler:
   name: prompt_compiler
   enabled: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   # Number of sample prompts to use in tuning

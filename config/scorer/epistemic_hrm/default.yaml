@@ -1,0 +1,34 @@
+# config/scorer/epistemic_hrm.yaml
+name: epistemic_hrm
+input_dim: 256
+h_dim: 256
+l_dim: 128
+output_dim: 1
+n_cycles: 4
+t_steps: 4
+lr: 0.001
+batch_size: 1
+epochs: 10
+model_type: epistemic_hrm
+evaluator: hrm
+model_version: "v1"
+target_type: plan_trace
+dimensions: 
+  - alignment
+  - clarity
+  - implementability
+  - novelty
+  - relevance
+
+encoder:
+  name: epistemic_trace_encoder
+  input_dim: 256
+  embedding_dim: 1024
+  step_hidden_dim: 64
+  stats_input_dim: 12
+  stats_hidden_dim: 128
+  final_dim: 256
+  n_steps: 4
+  n_stats: 2
+  model_type: trace_encoder
+  model_version: "v1"

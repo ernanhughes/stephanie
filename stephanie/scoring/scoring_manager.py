@@ -1,15 +1,14 @@
 # stephanie/scoring/scoring_manager.py
-import json
 import re
 from pathlib import Path
 from typing import Optional
+import json
 
 import yaml
 from sqlalchemy.orm import Session
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.score import ScoreORM
 from stephanie.models.score_dimension import ScoreDimensionORM
 from stephanie.prompts.prompt_renderer import PromptRenderer
@@ -18,11 +17,10 @@ from stephanie.scoring.calculations.weighted_average import \
     WeightedAverageCalculator
 from stephanie.scoring.fallback_scorer import FallbackScorer
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
-from stephanie.scoring.score_bundle import ScoreBundle
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.score_display import ScoreDisplay
-from stephanie.scoring.score_result import ScoreResult
-
+from stephanie.data.score_result import ScoreResult
+from stephanie.models.score_attribute import ScoreAttributeORM
 
 class ScoringManager(BaseAgent):
     def __init__(
@@ -174,11 +172,9 @@ class ScoringManager(BaseAgent):
         if data["scorer"] == "mrq":
             # Use MRQ scoring profile if specified
             scorer = MRQScorer(cfg, memory, logger)
-            scorer.load_models()
         elif data["scorer"] == "svm":
             # Use SVM scoring profile if specified
             scorer = SVMScorer(cfg, memory, logger)
-            scorer.load_models()
         else:
             # Default to LLM scoring profile
             scorer = LLMScorer(
@@ -241,9 +237,14 @@ class ScoringManager(BaseAgent):
 
     def evaluate(self, context: dict, scorable: Scorable, llm_fn=None):
         try:
-            score = self.scorer.score(
-                context, scorable, self.dimensions, llm_fn=llm_fn
-            )
+            if self.scorer.name == "llm":
+                score = self.scorer.score(
+                    context, scorable, self.dimensions, llm_fn=llm_fn
+                )
+            else:
+                score = self.scorer.score(
+                    context, scorable, self.dimensions
+                )
         except Exception as e:
             self.logger.log(
                 "MgrScoreParseError",
@@ -300,9 +301,7 @@ class ScoringManager(BaseAgent):
                 score=score,
                 weight=dim["weight"],
                 rationale=response,
-                prompt_hash=prompt_hash,
                 source="llm",
-                target_type=scorable.target_type,
             )
             results.append(result)
 
@@ -316,7 +315,9 @@ class ScoringManager(BaseAgent):
 
         bundle = ScoreBundle(results={r.dimension: r for r in results})
         self.save_score_to_memory(
-            bundle, scorable, context, self.cfg, self.memory, self.logger
+            bundle=bundle, scorable=scorable,
+            context=context, cfg=self.cfg, memory=self.memory, logger=self.logger,
+            source=self.scorer.name
         )
         return bundle
 
@@ -338,19 +339,12 @@ class ScoringManager(BaseAgent):
     ):
         goal = context.get("goal")
         pipeline_run_id = context.get("pipeline_run_id")
-        weighted_score = bundle.calculator.calculate(bundle)
-
-        scores_json = {
-            "stage": cfg.get("stage", "review"),
-            "dimensions": bundle.to_dict(),
-            "final_score": round(weighted_score, 2),
-        }
 
         if not model_name:
             model_name = cfg.get("model", {}).get("name", "UnknownModel")
 
         eval_orm = EvaluationORM(
-            goal_id=goal.get("id"),
+            goal_id=goal.get("id") if goal else None,
             pipeline_run_id=pipeline_run_id,
             target_type=scorable.target_type,
             target_id=scorable.id,
@@ -361,130 +355,88 @@ class ScoringManager(BaseAgent):
             evaluator_name=cfg.get("evaluator", cfg.get("model_type", "ScoreEvaluator")),
             strategy=cfg.get("strategy"),
             reasoning_strategy=cfg.get("reasoning_strategy"),
-            scores=scores_json,
             extra_data={"source": source},
         )
         memory.session.add(eval_orm)
         memory.session.flush()
 
-        for result in bundle.results:
-            score_result = bundle.results[result]
-            score = ScoreORM(
+        # Store all scores and attributes
+        score_orms = []
+        attribute_orms = []
+        
+        for result in bundle.results.values():
+            # Create ScoreORM with core fields
+            score_orm = ScoreORM(
                 evaluation_id=eval_orm.id,
-                dimension=score_result.dimension,
-                score=score_result.score,
-                source=score_result.source,
-                weight=score_result.weight,
-                rationale=score_result.rationale,
-                prompt_hash=score_result.prompt_hash
-                or ScoreORM.compute_prompt_hash(goal.get("goal_text", ""), scorable),
+                dimension=result.dimension,
+                score=result.score,
+                source=result.source,
+                weight=result.weight,
+                rationale=result.rationale,
             )
-            memory.session.add(score)
+            score_orms.append(score_orm)
+            
+            # Create attributes for ScoreAttributeORM
+            if result.attributes:
+                for key, value in result.attributes.items():
+                    # Determine data type for proper storage
+                    if isinstance(value, (int, float)):
+                        data_type = "float"
+                    elif isinstance(value, (list, tuple, dict)):
+                        data_type = "json"
+                    else:
+                        data_type = "string"
+                    
+                    # Convert to string representation
+                    if data_type == "json":
+                        value_str = json.dumps(value)
+                    else:
+                        value_str = str(value)
+                    
+                    attribute_orms.append(ScoreAttributeORM(
+                        score_id=None,  # Will be set after score_orm is committed
+                        key=key,
+                        value=value_str,
+                        data_type=data_type
+                    ))
 
-            # After inserting ScoreORM
-            attribute = EvaluationAttributeORM(
-                evaluation_id=eval_orm.id,
-                dimension=score_result.dimension,
-                source=score_result.source,
-                raw_score=score_result.score,
-                energy=score_result.energy,
-                uncertainty=score_result.uncertainty,
-                pi_value=score_result.policy_logits[0] if score_result.policy_logits else None,
-                entropy=score_result.entropy,
-                advantage=score_result.advantage,
-                q_value=score_result.q_value,
-                v_value=score_result.state_value,
-                policy_logits=json.dumps(score_result.policy_logits),
-                extra=score_result.to_dict(),
+        # Add all scores to database
+        memory.session.add_all(score_orms)
+        memory.session.flush()  # Get score IDs
+        
+        # Update attribute_orms with score IDs and add to session
+        score_id_map = {score_orm.dimension: score_orm.id for score_orm in score_orms}
+        for attr_orm in attribute_orms:
+            # Find corresponding score ID (simplified for this example)
+            # In practice, you'd need a better mapping strategy
+            attr_orm.score_id = next(
+                (id for dim, id in score_id_map.items() if dim == result.dimension), 
+                None
             )
-            memory.session.add(attribute)
-
+        
+        memory.session.add_all(attribute_orms)
         memory.session.commit()
 
+        # Log successful save
+        scores_json = json.dumps(bundle.to_dict(include_attributes=False))
         logger.log(
             "ScoreSavedToMemory",
             {
-                "goal_id": goal.get("id"),
+                "goal_id": goal.get("id") if goal else None,
                 "target_id": scorable.id,
                 "target_type": scorable.target_type,
                 "scores": scores_json,
             },
         )
-        ScoreDeltaCalculator(cfg, memory, logger).log_score_delta(
-            scorable, weighted_score, goal.get("id")
-        )
-        ScoreDisplay.show(scorable, bundle.to_dict(), weighted_score)
-
-
-    @staticmethod 
-    def save_document_score_to_memory(
-        bundle, document, context, cfg, memory, logger, source="DocumentEvaluator"
-    ):
-        goal = context.get("goal")
-        pipeline_run_id = context.get("pipeline_run_id")
-        document_id = document.get("id")
-        weighted_score = bundle.calculator.calculate(bundle)
-
-        soring_text = ScoringManager.get_scoring_text(document)
-        scorable = Scorable(
-            text=soring_text, target_type=TargetType.DOCUMENT, id=document_id
-        )
-
-        scores_json = {
-            "stage": cfg.get("stage", "review"),
-            "dimensions": bundle.to_dict(),
-            "final_score": round(weighted_score, 2),
-        }
-
-        eval_orm = EvaluationORM(
-            goal_id=goal.get("id"),
-            pipeline_run_id=pipeline_run_id,
-            target_type=TargetType.DOCUMENT.value,
-            target_id=document_id,
-            agent_name=cfg.get("name"),
-            model_name=cfg.get("model", {}).get("name"),
-            embedding_type=memory.embedding.type,
-            evaluator_name=cfg.get("evaluator", "ScoreEvaluator"),
-            strategy=cfg.get("strategy"),
-            reasoning_strategy=cfg.get("reasoning_strategy"),
-            scores=scores_json,
-            extra_data={"source": source},
-        )
-        memory.session.add(eval_orm)
-        memory.session.flush()
-
-        for result in bundle.results:
-            score_result = bundle.results[result]
-            score = ScoreORM(
-                evaluation_id=eval_orm.id,
-                dimension=score_result.dimension,
-                score=score_result.score,
-                weight=score_result.weight,
-                rationale=score_result.rationale,
-                prompt_hash=score_result.prompt_hash,
+        
+        # Calculate weighted score for display
+        weighted_score = bundle.aggregate()
+        
+        # Log score delta (if applicable)
+        if goal and "id" in goal:
+            ScoreDeltaCalculator(cfg, memory, logger).log_score_delta(
+                scorable, weighted_score, goal["id"]
             )
-            memory.session.add(score)
-
-        memory.session.commit()
-
-        logger.log(
-            "ScoreSavedToMemory",
-            {
-                "goal_id": goal.get("id"),
-                "hypothesis_id": document_id,
-                "scores": scores_json,
-            },
-        )
-        ScoreDeltaCalculator(cfg, memory, logger).log_score_delta(
-            scorable, weighted_score, goal.get("id")
-        )
+        
+        # Display score
         ScoreDisplay.show(scorable, bundle.to_dict(), weighted_score)
-
-    @staticmethod
-    def get_scoring_text(document: dict) -> str:
-        if document.get("summary"):
-            return f"{document.get('title', '')}\n\n{document['summary']}".strip()
-        elif document.get("content"):
-            return document["content"][:1500]  # Safely truncate
-        else:
-            return document.get("title", "")

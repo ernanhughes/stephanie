@@ -15,8 +15,8 @@ class MRQScorer(MRQCoreScoring, MRQTraining, MRQModelIO):
         self.dimensions = dimensions or ["mrq"]
         self.models = {}
         self.trainers = {}
-        self.min_score_by_dim = {}
-        self.max_score_by_dim = {}
+        self.min_value_by_dim = {}
+        self.max_value_by_dim = {}
         self.regression_tuners = {}
         self.value_predictor = None
         self.encoder = None

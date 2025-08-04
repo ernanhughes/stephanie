@@ -35,8 +35,8 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
         self,
         dimension: str,
         examples: List[Dict],
-        min_score: Optional[float] = None,
-        max_score: Optional[float] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
     ):
         """
         Train an EBT model using SRFT loss (SFT + RL + Entropy weighting)
@@ -46,7 +46,7 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
 
         # Prepare dataset and dataloader
-        dataset = SRFTRefinementDataset(examples, min_score, max_score)
+        dataset = SRFTRefinementDataset(examples, min_value, max_value)
         dataloader = DataLoader(
             dataset,
             batch_size=self.batch_size,

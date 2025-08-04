@@ -3,7 +3,7 @@
 generation:
   name: generation
   enabled: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
   strategy : default
   model:

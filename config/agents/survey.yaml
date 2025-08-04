@@ -8,7 +8,7 @@ survey:
   batch_size: 10
 
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   strategy: full_review  # Options: initial, full, observation, deep_verification

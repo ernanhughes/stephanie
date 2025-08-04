@@ -18,8 +18,6 @@ class ScoreORM(Base):
     )
     dimension = Column(String, nullable=False)
     score = Column(Float)
-    energy = Column(Float)     
-    uncertainty = Column(Float) 
     weight = Column(Float)
 
     rationale = Column(Text)
@@ -27,6 +25,7 @@ class ScoreORM(Base):
     source = Column(Text, default="llm")
 
     evaluation = relationship("EvaluationORM", back_populates="dimension_scores")
+    attributes = relationship("ScoreAttributeORM", back_populates="score")
 
     def to_dict(self):
         return {

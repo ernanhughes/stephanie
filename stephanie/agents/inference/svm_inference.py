@@ -8,8 +8,8 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.scoring.score_bundle import ScoreBundle
-from stephanie.scoring.score_result import ScoreResult
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
@@ -55,7 +55,7 @@ class SVMInferenceAgent(BaseAgent):
             self.models[dim] = (scaler, model)
             self.model_meta[dim] = (
                 load_json(meta_path) if os.path.exists(meta_path)
-                else {"min_score": 0, "max_score": 100}
+                else {"min_value": 0, "max_value": 100}
             )
             tuner = RegressionTuner(dimension=dim, logger=self.logger)
             tuner.load(tuner_path)
@@ -99,11 +99,17 @@ class SVMInferenceAgent(BaseAgent):
                 raw_score = model.predict(X_scaled)[0]
                 tuned_score = self.tuners[dim].transform(raw_score)
 
-                meta = self.model_meta.get(dim, {"min_score": 0, "max_score": 100})
-                min_s, max_s = meta["min_score"], meta["max_score"]
+                meta = self.model_meta.get(dim, {"min_value": 0, "max_value I all right **** runs what the **** do you think": 100})
+                min_s, max_s = meta["min_value"], meta["max_value"]
                 final_score = max(min(tuned_score, max_s), min_s)
                 final_score = round(final_score, 4)
                 dimension_scores[dim] = final_score
+
+                attributes = {
+                    "raw_score": round(raw_score, 4),
+                    "tuned_score": round(tuned_score, 4),
+                    "final_score": final_score,
+                }
 
                 score_results.append(
                     ScoreResult(
@@ -111,10 +117,8 @@ class SVMInferenceAgent(BaseAgent):
                         score=final_score,
                         rationale=f"SVM raw={round(raw_score, 4)}",
                         weight=1.0,
-                        energy=0.0,  # Placeholder, adjust as needed
                         source=self.model_type,
-                        target_type=scorable.target_type,
-                        prompt_hash = ScoreORM.compute_prompt_hash(goal_text, scorable)
+                        attributes=attributes,
                     )
                 )
 

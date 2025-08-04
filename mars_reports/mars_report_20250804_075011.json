@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "timestamp": "20250804_075011",
+    "document_count": 3,
+    "scorers": [],
+    "metrics": [
+      "agreement",
+      "uncertainty",
+      "std_deviation",
+      "outliers"
+    ]
+  },
+  "results": {},
+  "full_data": {
+    "corpus_summary": {
+      "metadata": {
+        "scorables_count": 3,
+        "dimensions": [],
+        "scorers": [],
+        "metrics": [
+          "score"
+        ],
+        "created_at": "",
+        "source": "unknown"
+      },
+      "statistics": {
+        "average_scores": {},
+        "score_ranges": {},
+        "uncertainty_stats": {},
+        "agreement_stats": {}
+      },
+      "insights": {
+        "high_uncertainty_count": 0,
+        "strong_agreement_count": 0,
+        "scorer_reliability": {}
+      }
+    },
+    "metric_matrices": {}
+  }
+}

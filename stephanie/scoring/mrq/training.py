@@ -80,16 +80,16 @@ class MRQTraining:
             elif "value" in s:
                 values.append(s["value"])
         if values:
-            min_score = min(values)
-            max_score = max(values)
-            self.min_score_by_dim[dim] = min_score
-            self.max_score_by_dim[dim] = max_score
+            min_value = min(values)
+            max_value = max(values)
+            self.min_value_by_dim[dim] = min_value
+            self.max_value_by_dim[dim] = max_value
             self.logger.log(
                 "MRQScoreBoundsUpdated",
                 {
                     "dimension": dim,
-                    "min_score": min_score,
-                    "max_score": max_score,
+                    "min_value": min_value,
+                    "max_value": max_value,
                     "example_count": len(values),
                 },
             )

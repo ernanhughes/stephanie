@@ -4,7 +4,7 @@ final_assembler:
   name: final_assembler
 
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   token_limit: 8192 # max tokens for the model

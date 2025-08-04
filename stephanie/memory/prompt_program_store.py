@@ -45,13 +45,13 @@ class PromptProgramStore:
         )
 
     def get_top_prompts(
-        self, goal_text: str, min_score: float = 0.0, top_k: int = 5
+        self, goal_text: str, min_value: float = 0.0, top_k: int = 5
     ) -> List[PromptProgramORM]:
         return (
             self.session.query(PromptProgramORM)
             .filter(
                 PromptProgramORM.goal == goal_text,
-                PromptProgramORM.score >= min_score,
+                PromptProgramORM.score >= min_value,
             )
             .order_by(PromptProgramORM.score.desc().nullslast())
             .limit(top_k)

@@ -1,16 +1,64 @@
-# configs/agents/scorer.yaml
-
 scorer:
   name: scorer
   enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
 
-  source: context  # Options: database, context where to get hypotheses from
-  batch_size: 10    # Number of hypotheses to process if database is used
+  scorer_types:
+    - svm
+    - mrq
+    - sicql
+    - ebt
+    - hrm
+    - contrastive_ranker
+  include_mars: true
 
-  weight_proximity: 0.4
-  weight_review: 0.3
-  weight_llm_judge: 0.2
-  weight_elo: 0.1
+  # Test mode configuration
+  test_mode: true
+  test_document_count: 100
+  progress: true
 
-  input_key: hypotheses
-  output_key: scored_hypotheses
+  model_path: "${hydra:runtime.cwd}/models"
+
+  model_version: "v1"
+  model_type: "rank"
+  target_type: "document"
+  dimensions: 
+    - "alignment"
+    - "clarity"
+    - "implementability"
+    - "novelty"
+    - "relevance"
+
+  dimension_config:
+      alignment:
+        scale: "0-100"
+        trust_references: ["llm"]
+        expected_variance: 0.15
+      clarity:
+        scale: "0-100"
+        trust_references: ["llm"]
+        expected_variance: 0.15
+      implementability:
+        scale: "0-100"
+        trust_references: ["llm"]
+        expected_variance: 0.15
+      novelty:
+        scale: "0-100"
+        trust_references: ["llm"]
+        expected_variance: 0.15
+      relevance:
+        scale: "0-100"
+        trust_references: ["llm"]
+        expected_variance: 0.15
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: scorer
+  prompt_mode: file
+  prompt_file: scorer.txt
