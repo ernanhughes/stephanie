@@ -1,0 +1,8 @@
+recursive-include config *.yaml
+recursive-include prompts *.txt
+recursive-include docs *.md
+exclude models/*
+exclude outputs/*
+exclude logs/*
+exclude data/*
+exclude dist/*

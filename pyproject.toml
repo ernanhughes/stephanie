@@ -36,7 +36,26 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ernanhughes/co-ai"
+Homepage = "https://github.com/ernanhughes/stephanie"
+
+[tool.setuptools.package-data]
+# ship configs & prompts by default
+"*" = [
+  "config/**/*.yaml",
+  "prompts/**/*.txt",
+  "docs/**/*.md",
+]
+
+[tool.setuptools.exclude-package-data]
+# models, logs, outputs, big artifacts stay out of the wheel; fetch at runtime
+"*" = [
+  "models/**",
+  "outputs/**",
+  "logs/**",
+  "data/**",
+  "dist/**",
+]
+
 
 [build-system]
 requires = ["setuptools", "wheel"]
