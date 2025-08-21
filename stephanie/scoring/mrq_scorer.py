@@ -66,14 +66,18 @@ class MRQScorer(BaseScorer):
         results = {}
 
         for dim in dimensions:
-            model = self.models.get(dim)
+            if isinstance(dim, dict):
+                dimension_name = dim.get("name")
+            else:
+                dimension_name = dim
+            model = self.models.get(dimension_name)
             if not model:
                 continue
 
             q_value = model.predict(goal_text, scorable.text)
 
-            meta = self.model_meta.get(dim, {"min_value": 0, "max_value": 100})
-            tuner = self.tuners.get(dim)
+            meta = self.model_meta.get(dimension_name, {"min_value": 0, "max_value": 100})
+            tuner = self.tuners.get(dimension_name)
 
             if tuner:
                 scaled = tuner.transform(q_value)
@@ -91,8 +95,8 @@ class MRQScorer(BaseScorer):
                 "energy": q_value,
             }
 
-            results[dim] = ScoreResult(
-                dimension=dim,
+            results[dimension_name] = ScoreResult(
+                dimension=dimension_name,
                 score=final_score,
                 source=self.model_type,
                 rationale=f"Q={round(q_value, 4)}",

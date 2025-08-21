@@ -20,6 +20,7 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
             doc_id_str = str(document["id"])
             existing_scores = self.scores_exist_for_document(doc_id_str)
             if existing_scores and not self.force_rescore:
+                scores = self.get_scores_by_document_id(doc_id_str)
                 self.logger.log(
                     "ScoreSkipped",
                     {"doc_id": doc_id_str, "score": existing_scores},
@@ -27,7 +28,7 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
                 results.append(
                     {
                         "title": document.get("title"),
-                        "scores": self.aggregate_scores_by_dimension(existing_scores),
+                        "scores": self.aggregate_scores_by_dimension(scores),
                     }
                 )
                 continue

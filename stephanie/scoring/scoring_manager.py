@@ -161,6 +161,8 @@ class ScoringManager(BaseAgent):
             for d in data["dimensions"]
         ]
 
+        dimension_names = [d["name"] for d in dimensions]
+
         # Ensure the output_format is accessible in instance
         cfg = cfg.copy()
         cfg["output_format"] = output_format
@@ -174,13 +176,13 @@ class ScoringManager(BaseAgent):
             scorer = MRQScorer(cfg, memory, logger)
         elif data["scorer"] == "svm":
             # Use SVM scoring profile if specified
-            scorer = SVMScorer(cfg, memory, logger)
+            scorer = SVMScorer(cfg, memory, logger, )
         else:
             # Default to LLM scoring profile
             scorer = LLMScorer(
                 cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=llm_fn
             )
-
+            scorer.l
         return cls(
             dimensions=dimensions,
             prompt_loader=prompt_loader,
@@ -237,13 +239,14 @@ class ScoringManager(BaseAgent):
 
     def evaluate(self, context: dict, scorable: Scorable, llm_fn=None):
         try:
+            goal = context.get("goal", {})
             if self.scorer.name == "llm":
                 score = self.scorer.score(
-                    context, scorable, self.dimensions, llm_fn=llm_fn
+                     goal, scorable, self.dimensions, llm_fn=llm_fn
                 )
             else:
                 score = self.scorer.score(
-                    context, scorable, self.dimensions
+                     goal, scorable, self.dimensions
                 )
         except Exception as e:
             self.logger.log(

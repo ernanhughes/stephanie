@@ -1,7 +1,7 @@
 [project]
 name = "stephanie"
-version = "0.1.0"
-description = "A modular DSPy-based pipeline for LLM-powered scientific hypothesis generation and ranking."
+version = "0.1.1"
+description = "Stephanie — self-improving AI research & reasoning engine"
 authors = [{ name = "Ernan Hughes", email = "ernanhughes@gmail.com" }]
 [project.license]
 file = "LICENSE"
