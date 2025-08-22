@@ -210,7 +210,7 @@ class ScorerAgent(BaseAgent):
             try:
                 # Score with this scorer
                 score_bundle = scorer.score(
-                    goal=goal,
+                    context,
                     scorable=scorable,
                     dimensions=self.dimensions,
                 )

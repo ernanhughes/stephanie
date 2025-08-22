@@ -2,7 +2,7 @@
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 from stephanie.scoring.mrq_scorer import MRQScorer
-from stephanie.utils.memory_manager import SharedMemoryManager
+from stephanie.utils.token_counter import TokenCounter
 
 
 class FinalAssemblerAgent(BaseAgent):
@@ -11,7 +11,6 @@ class FinalAssemblerAgent(BaseAgent):
         self.token_limit = cfg.get("token_limit", 2048)
         self.scorer = MRQScorer(cfg, memory, logger)
         self.token_counter = TokenCounter(model_name="qwen:7b")
-        self.memory_manager = SharedMemoryManager(memory=memory)
         self.max_steps = cfg.get("max_steps", 15)  # Limit on how many steps to include
 
     async def run(self, context: dict) -> dict:
@@ -34,7 +33,7 @@ class FinalAssemblerAgent(BaseAgent):
         # 3. Optional: Evaluate final prompt via LLM + MR.Q
         final_score = None
         try:
-            output = call_llm(final_prompt, context={"goal": goal})
+            output = self.call_llm(final_prompt, context={"goal": goal})
             score_obj = self.scorer.score(
                 hypothesis={"text": output}, context={"goal": goal}
             )

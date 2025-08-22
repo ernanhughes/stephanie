@@ -7,6 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.icl.prompt_builder import PromptBuilder
 from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
+from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.svm_scorer import SVMScorer
 
 
@@ -39,7 +40,9 @@ class ICLHelper:
         self.examples.append(ICLExample(prompt, response, task_type))
         if self.embedding_fn:
             embedding = self.embedding_fn([prompt])[0]
-        self.examples.append(ICLExample(prompt, response, task_type, embedding))
+        self.examples.append(
+            ICLExample(prompt, response, task_type, embedding)
+        )
 
     def get_top_k_similar(self, query, task_type, k=5):
         filtered = [
@@ -52,13 +55,16 @@ class ICLHelper:
 
         query_emb = self.embedding_fn([query])[0]
         scores = [
-            cosine_similarity([query_emb], [ex.embedding])[0][0] for ex in filtered
+            cosine_similarity([query_emb], [ex.embedding])[0][0]
+            for ex in filtered
         ]
         top_indices = np.argsort(scores)[-k:][::-1]
         return [filtered[i].to_dict() for i in top_indices]
 
     def get_examples_by_type(self, task_type):
-        return [ex.to_dict() for ex in self.examples if ex.task_type == task_type]
+        return [
+            ex.to_dict() for ex in self.examples if ex.task_type == task_type
+        ]
 
     def to_prompt_context(self, task_type, query=None, top_k=5):
         if query and self.embedding_fn:
@@ -106,12 +112,17 @@ class ICLAgent(BaseAgent):
             and hasattr(self.memory, "svm_scorer")
         ):
             scorer = self.memory.svm_scorer
-            goal = {"goal_text": input_text}
+            score_context = {"goal": {"goal_text": input_text}}
+            scorable = ScorableFactory.from_text(original_response)
             original_score = scorer.score(
-                goal, {"text": original_response}, ["alignment"]
+                score_context, scorable, ["alignment"]
             ).aggregate()
             icl_score = (
-                scorer.score(goal, {"text": icl_response}, ["alignment"]).aggregate()
+                scorer.score(
+                    score_context,
+                    ScorableFactory.from_text(icl_response),
+                    ["alignment"],
+                ).aggregate()
                 if icl_response
                 else 0
             )
@@ -135,7 +146,9 @@ class ICLAgent(BaseAgent):
 
     def export_to_cartridge(self, cartridge: KnowledgeCartridge):
         for example in self.helper.examples:
-            cartridge.schema.setdefault("icl_examples", []).append(example.to_dict())
+            cartridge.schema.setdefault("icl_examples", []).append(
+                example.to_dict()
+            )
 
         return cartridge
 
@@ -146,7 +159,9 @@ class ICLPromptEngineeringAgent:
     def __init__(self, prompt_builder: PromptBuilder):
         self.prompt_builder = prompt_builder
 
-    def construct_prompt(self, task_context: dict, examples: list[dict]) -> str:
+    def construct_prompt(
+        self, task_context: dict, examples: list[dict]
+    ) -> str:
         """Construct a complete prompt with instructions, examples, and constraints"""
         self.prompt_builder.reset()
 
@@ -174,7 +189,9 @@ class ICLPromptEngineeringAgent:
             if "cot" in example.get("metadata", {}).get("example_type", ""):
                 self.prompt_builder.add_cot_example(
                     input_text=example["input"],
-                    thought_process=example["metadata"].get("thought_process", ""),
+                    thought_process=example["metadata"].get(
+                        "thought_process", ""
+                    ),
                     output_text=example["output"],
                 )
             else:
@@ -243,8 +260,10 @@ class PromptEditorAgent:
         for variant in variations:
             full_prompt = f"{variant}\n\nNow, {prompt}"
             output = self.llm_call_fn(full_prompt)
+            score_context = {"goal": {"goal_text": prompt}}
+            scorable = ScorableFactory.from_text(output)
             score_bundle = self.scorer.score(
-                goal, {"text": output}, dimensions=["alignment"]
+                score_context, scorable, dimensions=["alignment"]
             )
             score = score_bundle.aggregate()
 

@@ -10,7 +10,7 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
-
+from stephanie.constants import GOAL, GOAL_TEXT
 
 class SVMScorer(BaseScorer):
     def __init__(self, cfg: dict, memory, logger):
@@ -34,8 +34,9 @@ class SVMScorer(BaseScorer):
             self.tuners[dim] = tuner
             self.metas[dim] = load_json(locator.meta_file())
 
-    def score(self, goal: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
-        goal_text = goal.get("goal_text", "")
+    def score(self, context: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
+        goal = context.get(GOAL, {})
+        goal_text = goal.get(GOAL_TEXT, "")
         ctx_emb = np.asarray(self.memory.embedding.get_or_create(goal_text))
         doc_emb = np.asarray(self.memory.embedding.get_or_create(scorable.text))
         input_vec = np.concatenate([ctx_emb, doc_emb]).reshape(1, -1)

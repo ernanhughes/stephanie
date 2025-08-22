@@ -31,7 +31,6 @@ class SVMInferenceAgent(BaseAgent):
         self.model_meta = {}
         self.tuners = {}
 
- 
         for dim in self.dimensions:
             locator = ModelLocator(
                 root_dir=self.model_path,
@@ -42,10 +41,13 @@ class SVMInferenceAgent(BaseAgent):
                 version=self.model_version,
             )
 
-            self.logger.log("LoadingSVMModel", {
-                "dimension": dim,
-                "model": locator.model_file(suffix=".joblib"),
-            })
+            self.logger.log(
+                "LoadingSVMModel",
+                {
+                    "dimension": dim,
+                    "model": locator.model_file(suffix=".joblib"),
+                },
+            )
 
             scaler = load(locator.scaler_file())
             model = load(locator.model_file(suffix=".joblib"))
@@ -54,7 +56,8 @@ class SVMInferenceAgent(BaseAgent):
 
             self.models[dim] = (scaler, model)
             self.model_meta[dim] = (
-                load_json(meta_path) if os.path.exists(meta_path)
+                load_json(meta_path)
+                if os.path.exists(meta_path)
                 else {"min_value": 0, "max_value": 100}
             )
             tuner = RegressionTuner(dimension=dim, logger=self.logger)
@@ -73,33 +76,45 @@ class SVMInferenceAgent(BaseAgent):
             self.logger.log("SVMScoringStarted", {"document_id": doc_id})
 
             scorable = Scorable(
-                id=doc_id, text=doc.get("text", ""), target_type=TargetType.DOCUMENT
+                id=doc_id,
+                text=doc.get("text", ""),
+                target_type=TargetType.DOCUMENT,
             )
 
             ctx_emb = self.memory.embedding.get_or_create(goal_text)
             doc_emb = self.memory.embedding.get_or_create(scorable.text)
-            feature = np.concatenate([np.array(ctx_emb), np.array(doc_emb)], axis=0).reshape(1, -1)
+            feature = np.concatenate(
+                [np.array(ctx_emb), np.array(doc_emb)], axis=0
+            ).reshape(1, -1)
 
             dimension_scores = {}
             score_results = []
 
             for dim, (scaler, model) in self.models.items():
-
                 meta = self.model_meta[dim]
                 expected_features = 2 * meta.get("dim", 512)
                 actual_features = self.memory.embedding.dim * 2
                 if expected_features != actual_features:
-                    self.logger.log("EmbeddingDimMismatch", {
-                        "dimension": dim,
-                        "expected": expected_features,
-                        "actual": actual_features
-                    })
+                    self.logger.log(
+                        "EmbeddingDimMismatch",
+                        {
+                            "dimension": dim,
+                            "expected": expected_features,
+                            "actual": actual_features,
+                        },
+                    )
 
                 X_scaled = scaler.transform(feature)
                 raw_score = model.predict(X_scaled)[0]
                 tuned_score = self.tuners[dim].transform(raw_score)
 
-                meta = self.model_meta.get(dim, {"min_value": 0, "max_value I all right **** runs what the **** do you think": 100})
+                meta = self.model_meta.get(
+                    dim,
+                    {
+                        "min_value": 0,
+                        "max_value I all right **** runs what the **** do you think": 100,
+                    },
+                )
                 min_s, max_s = meta["min_value"], meta["max_value"]
                 final_score = max(min(tuned_score, max_s), min_s)
                 final_score = round(final_score, 4)
@@ -133,7 +148,9 @@ class SVMInferenceAgent(BaseAgent):
                     },
                 )
 
-            score_bundle = ScoreBundle(results={r.dimension: r for r in score_results})
+            score_bundle = ScoreBundle(
+                results={r.dimension: r for r in score_results}
+            )
 
             ScoringManager.save_score_to_memory(
                 score_bundle,

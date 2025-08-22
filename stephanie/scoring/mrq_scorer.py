@@ -15,6 +15,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
+from stephanie.constants import GOAL, GOAL_TEXT
 
 
 class MRQScorer(BaseScorer):
@@ -61,7 +62,8 @@ class MRQScorer(BaseScorer):
                 tuner.load(tuner_path)
                 self.tuners[dim] = tuner
 
-    def score(self, goal: dict, scorable, dimensions: list[str]) -> ScoreBundle:
+    def score(self, context: dict, scorable, dimensions: list[str]) -> ScoreBundle:
+        goal = context.get(GOAL, {})
         goal_text = goal.get("goal_text")
         results = {}
 

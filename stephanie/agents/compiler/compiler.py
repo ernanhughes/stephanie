@@ -70,7 +70,7 @@ class CompilerAgent(ScoringMixin, BaseAgent):
 
             merged = {"thought": node.thought, **context}
 
-            score = self.scorer.score(node, merged)
+            score = self.scorer.score(context, merged) # TODO convert to scorable
             node.score = score.aggregate()
 
             if self.logger:

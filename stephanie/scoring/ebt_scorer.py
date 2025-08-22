@@ -13,6 +13,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
+from stephanie.constants import GOAL, GOAL_TEXT
 
 
 class EBTScorer(BaseScorer):
@@ -76,8 +77,9 @@ class EBTScorer(BaseScorer):
                 tuner.load(locator.tuner_file())
                 self.tuners[dim] = tuner
 
-    def score(self, goal: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
-        goal_text = goal.get("goal_text")
+    def score(self, context: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
+        goal = context.get(GOAL, {})
+        goal_text = goal.get(GOAL_TEXT, "")
         results = {}
 
         for dim in dimensions:

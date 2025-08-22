@@ -238,7 +238,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                         hrm_scores: Optional[ScoreBundle] = None
                         if self.hrm_scorer:
                             hrm_scores = self.hrm_scorer.score(
-                                goal=goal_dict, scorable=scorable, dimensions=self.dimensions
+                                {"goal": goal_dict}, scorable=scorable, dimensions=self.dimensions
                             )
                             if hrm_scores:
                                 sicql_scores = sicql_scores.merge(hrm_scores)
@@ -289,7 +289,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                     final_scorable_dict = {"text": final_output_text, "id": f"{trace_id}_final"}
                     final_scorable = ScorableFactory.from_dict(final_scorable_dict, TargetType.DOCUMENT)
                     final_scores: ScoreBundle = self.sicql_scorer.score(
-                        goal=goal_dict, scorable=final_scorable, dimensions=self.dimensions
+                        {"goal": goal_dict}, scorable=final_scorable, dimensions=self.dimensions
                     )
 
                 except Exception as e:

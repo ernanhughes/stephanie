@@ -7,6 +7,7 @@ from stephanie.analysis.domain_classifier import DomainClassifier
 from stephanie.builders.belief_cartridge_builder import BeliefCartridgeBuilder
 from stephanie.scoring.mrq_scorer import \
     MRQScorer  # or wherever your scorer lives
+from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.utils.idea_parser import IdeaParser
 
 
@@ -77,7 +78,7 @@ class LearnableIdeaExtractorAgent(BaseAgent):
                     continue
 
                 # Step 3: Score and rank ideas
-                scored_ideas = self._score_ideas(raw_ideas, goal, context)
+                scored_ideas = self._score_ideas(context, raw_ideas)
                 top_ideas = sorted(scored_ideas, key=lambda x: x["score"], reverse=True)[
                     : self.max_ideas_per_paper
                 ]
@@ -127,12 +128,13 @@ class LearnableIdeaExtractorAgent(BaseAgent):
             self.logger.log("SectionParsingFailed", {"error": str(e)})
             return {}
 
-    def _score_ideas(self, ideas: list, goal: dict, context: dict) -> list:
+    def _score_ideas(self, context: dict, ideas: list) -> list:
         """Apply GILD/MRQ-style scoring to prioritize best ideas."""
         scored = []
         for idea in ideas:
             merged = {"idea_description": idea["description"], **context}
-            score_bundle = self.mrq_scorer.score(merged)
+            scorable = ScorableFactory.from_text(idea["description"])
+            score_bundle = self.mrq_scorer.score(merged, scorable)
             idea["score"] = score_bundle.overall_score()
             idea["scores"] = score_bundle.to_dict()
             scored.append(idea)

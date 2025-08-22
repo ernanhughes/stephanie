@@ -29,6 +29,16 @@
             ]
         },
         {
+            "name": "base",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+            ]
+        },
+        {
             "name": "comparison",
             "type": "debugpy",
             "request": "launch",

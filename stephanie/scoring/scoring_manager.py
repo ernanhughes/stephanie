@@ -236,21 +236,19 @@ class ScoringManager(BaseAgent):
 
     def evaluate(self, context: dict, scorable: Scorable, llm_fn=None):
         try:
-            goal = context.get("goal", {})
             if self.scorer.name == "llm":
                 score = self.scorer.score(
-                     goal, scorable, self.dimensions, llm_fn=llm_fn
+                    context, scorable, self.dimensions, llm_fn=llm_fn
                 )
             else:
                 score = self.scorer.score(
-                     goal, scorable, self.dimensions
+                    context, scorable, self.dimensions
                 )
         except Exception as e:
             self.logger.log(
                 "MgrScoreParseError",
                 {"scorable": scorable, "error": str(e)},
             )
-            score = self.evaluate_llm(context, scorable, llm_fn or self.call_llm)
         log_key = "CorDimensionEvaluated" if format == "cor" else "DimensionEvaluated"
         self.logger.log(
             log_key,
