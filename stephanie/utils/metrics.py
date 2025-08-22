@@ -5,7 +5,7 @@ from typing import Dict, Optional, Union
 import numpy as np
 import torch
 
-from stephanie.logs.json_logger import JSONLogger
+from stephanie.logging.json_logger import JSONLogger
 
 
 class EpistemicMetrics:

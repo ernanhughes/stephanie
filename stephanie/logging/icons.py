@@ -29,6 +29,7 @@ SYSTEM_INIT = {
 # AGENT OPERATIONS
 # =================
 AGENT_EVENTS = {
+    "AgentInit": "🤖",
     "AgentInitialized": "🤖",  # Agent initialization
     "AgentRunStarted": "🤖▶️",  # Agent run started
     "AgentRunCompleted": "🤖⏹️",  # Agent run completed
@@ -45,6 +46,10 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "EvaluatorInit": "🧑‍🏫",
+    "GenerationStarted": "🧑‍🧒‍🧒▶️",
+    "LLMJudgeResult": "🧑‍⚖️",
+    "EvaluationCompleted": "🧑‍🏫✅",
     "GenerationStart": "🧑‍🧒‍🧒▶️",  # Knowledge generation started
     "GoalContextOverride": "🎯🔄",  # Goal context override
     "MgrScoreParseError": "📊❌",  # Scoring parse error

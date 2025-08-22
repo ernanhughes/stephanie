@@ -6,7 +6,7 @@ from pgvector.psycopg2 import register_vector
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from stephanie.logs import JSONLogger
+from stephanie.logging import JSONLogger
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore

@@ -4,7 +4,7 @@ import json
 import click
 from omegaconf import OmegaConf
 
-from stephanie.logs.json_logger import JSONLogger
+from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.reports.comparison import ComparisonReporter
 
