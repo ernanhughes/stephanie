@@ -724,29 +724,7 @@ CREATE TABLE IF NOT EXISTS document_section_domains (
     CONSTRAINT unique_document_section_domain UNIQUE (document_section_id, domain)
 );
 
-CREATE TABLE IF NOT EXISTS evaluations (
-    id SERIAL PRIMARY KEY,
-    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
-    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
-    document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
-    agent_name TEXT NOT NULL,
-    model_name TEXT NOT NULL,
-    evaluator_name TEXT NOT NULL,
-    strategy TEXT,
-    reasoning_strategy TEXT,
-    run_id TEXT,
-    symbolic_rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE SET NULL,
-    rule_application_id INTEGER REFERENCES rule_applications(id) ON DELETE SET NULL,
-    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE SET NULL,
-    scores JSON DEFAULT '{}'::json,
-    extra_data JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP DEFAULT NOW()
-
-     -- Add unique constraint here
-  ---  CONSTRAINT unique_source_type_uri UNIQUE (source_type, source_uri)
-);
-
-CREATE TABLE IF NOT EXISTS evaluation_rule_links (
+I CREATE TABLE IF NOT EXISTS evaluation_rule_links (
     id SERIAL PRIMARY KEY,
     evaluation_id INTEGER NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
     rule_application_id INTEGER NOT NULL REFERENCES rule_applications(id) ON DELETE CASCADE,
@@ -1149,14 +1127,6 @@ CREATE TABLE IF NOT EXISTS goal_dimensions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
-CREATE TABLE IF NOT EXISTS embeddings (
-id SERIAL PRIMARY KEY,
-    text TEXT NOT NULL,
-    embedding VECTOR(1024),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    text_hash TEXT UNIQUE
-);
 
 CREATE INDEX IF NOT EXISTS idx_embedding_vector
 ON embeddings USING ivfflat (embedding vector_cosine_ops);

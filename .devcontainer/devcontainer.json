@@ -1,0 +1,21 @@
+{
+    "name": "Stephanie Dev",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspace",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python"
+            },
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance"
+            ]
+        }
+    },
+    "forwardPorts": [
+        5432
+    ],
+    "postCreateCommand": "pip install -e .[dev]"
+}

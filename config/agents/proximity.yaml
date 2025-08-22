@@ -16,11 +16,6 @@ proximity:
   save_context: false
   skip_if_completed: false
 
-  model:
-    name: ollama_chat/qwen3
-    api_base: http://localhost:11434
-    api_key: null
-
   # Required keys for the agent ot effectively process the context
   required_keys: ["goal", "hypotheses"]   # add nodes
   # Key that it will iterate over ot generate reflections
@@ -28,14 +23,50 @@ proximity:
   # Key that it store the results of those reflections
   output_key: "proximity"  # change
 
-  save_prompt: true
-  strategy:
-  prompt_mode: file
-  prompt_file: proximity.txt
+  metrics:
+    # 🔹 Classical Text Similarity
+    - name: cosine
+      weight: 1.0    # Standard baseline for embeddings
+    - name: jaccard
+      weight: 0.6    # Token-level overlap; good for redundancy detection
+    - name: tfidf
+      weight: 0.8    # Keyword relevance; pairs well with embeddings
 
-  preferences:
-  - goal_consistency
-  - biological_plausibility
-  - experimental_validity
-  - novelty
-  - simplicity
+    # 🔹 Embedding Proximity (core of Stephanie)
+    - name: avg_similarity
+      weight: 1.2    # Strong signal: overall semantic closeness
+    - name: max_similarity
+      weight: 1.0    # Useful for near-duplicate spotting
+    - name: min_similarity
+      weight: 0.5    # Outlier detection
+    - name: avg_topk_similarity
+      weight: 1.1    # Captures clustering effect
+    - name: similarity_variance
+      weight: 0.7    # Spread of cluster tightness (uncertainty)
+    - name: graft_pair_count
+      weight: 0.9    # How many strong overlaps (≥ threshold) exist
+
+    # 🔹 Cluster / Diversity Measures
+    - name: cluster_density
+      weight: 1.0    # Ratio of high-similarity pairs / all pairs
+    - name: redundancy_index
+      weight: 0.8    # Inverse of diversity; penalizes too many duplicates
+    - name: novelty_index
+      weight: 0.9    # Encourages fresh hypotheses; high if min_similarity is low
+
+    # 🔹 Knowledge Base Proximity
+    - name: db_match_score
+      weight: 1.0    # Similarity to top-k past hypotheses (retrieved from DB)
+    - name: db_overlap_count
+      weight: 0.7    # Count of past hypotheses above threshold
+    - name: db_diversity
+      weight: 0.6    # Ensures retrieved matches aren’t just duplicates
+
+    # 🔹 Advanced/Optional (can be enabled later)
+    - name: hnet_alignment
+      weight: 1.1    # Alignment between H-Net embeddings & raw embeddings
+    - name: contrastive_rank
+      weight: 0.9    # Contrastive score (reward separation of close/far items)
+    - name: info_entropy
+      weight: 0.8    # Entropy of similarity distribution (uncertainty)
+
