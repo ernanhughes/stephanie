@@ -1,9 +1,9 @@
-version: "3.9"
 services:
   app:
     build:
-      context: .
+      context: ..
       dockerfile: .devcontainer/Dockerfile
+    image: stephanie-dev-app   # ✅ add this line
     volumes:
       - ..:/workspace:cached
     depends_on:
@@ -21,3 +21,7 @@ services:
       POSTGRES_DB: stephanie
     ports:
       - "5432:5432"
+
+networks:
+  default:
+    name: devcontainer_default

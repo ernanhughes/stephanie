@@ -1,0 +1,21 @@
+# Ignore local venvs
+.venv
+venv
+env
+
+# Ignore Python junk
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore build outputs
+dist/
+build/
+*.egg-info/
+
+# Ignore git + editor stuff
+.git
+.vscode
+.idea
+
+setup.cfg
