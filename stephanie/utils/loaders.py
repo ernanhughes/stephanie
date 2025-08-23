@@ -4,7 +4,7 @@ import os
 
 from omegaconf import OmegaConf
 
-from stephanie.logs import JSONLogger
+from stephanie.logging import JSONLogger
 from stephanie.memory import MemoryTool
 
 

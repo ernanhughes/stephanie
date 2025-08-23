@@ -66,7 +66,6 @@ OK so
 {context.get("feedback", "")}
 
 ### 📘 DB Matches:
-{context.get("proximity", {}).get("database_matches", [])}
 
 
 ---

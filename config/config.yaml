@@ -86,14 +86,6 @@ pipeline:
   name: default_pipeline
   description: "Default hypothesis generation and refinement pipeline"
   stages:
-    - name: literature
-      cls: stephanie.agents.literature.LiteratureAgent
-      enabled: false
-      iterations: 1
-    - name: literature_ranking
-      cls: stephanie.agents.generic.GenericAgent
-      enabled: false
-      iterations: 1
     - name: generation
       cls: stephanie.agents.generation.GenerationAgent
       enabled: true
@@ -140,9 +132,5 @@ pipeline:
       iterations: 1
     - name: mrq_strategy
       cls: stephanie.agents.mrq_strategy.MRQStrategyAgent
-      enabled: true
-      iterations: 1
-    - name: symbolic_optimizer
-      cls: stephanie.agents.symbolic_optimizer.SymbolicOptimizerAgent
       enabled: true
       iterations: 1

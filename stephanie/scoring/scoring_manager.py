@@ -180,7 +180,6 @@ class ScoringManager(BaseAgent):
             scorer = LLMScorer(
                 cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=llm_fn
             )
-
         return cls(
             dimensions=dimensions,
             prompt_loader=prompt_loader,
@@ -250,7 +249,6 @@ class ScoringManager(BaseAgent):
                 "MgrScoreParseError",
                 {"scorable": scorable, "error": str(e)},
             )
-            score = self.evaluate_llm(context, scorable, llm_fn or self.call_llm)
         log_key = "CorDimensionEvaluated" if format == "cor" else "DimensionEvaluated"
         self.logger.log(
             log_key,

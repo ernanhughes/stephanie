@@ -21,6 +21,13 @@ paper_score:
   input_key: documents
   output_key: paper_score
 
+  dimensions: 
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+
   preferences:
     - goal_consistency
     - factual

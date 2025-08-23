@@ -1,0 +1,8 @@
+recursive-include stephanie/config *.yaml
+recursive-include stephanie/prompts *.txt
+recursive-include stephanie/docs *.md
+recursive-exclude stephanie/models *
+recursive-exclude stephanie/outputs *
+recursive-exclude stephanie/logs *
+recursive-exclude stephanie/data *
+recursive-exclude stephanie/dist *

@@ -1,177 +1,243 @@
 # stephanie/scoring/proximity_scorer.py
-import re
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVR
-
+import numpy as np
 from stephanie.scoring.base_scorer import BaseScorer
-from stephanie.scoring.scorable import Scorable
-from stephanie.data.score_bundle import ScoreBundle
+from stephanie.utils import compute_similarity_matrix
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.transforms.regression_tuner import RegressionTuner
+from stephanie.data.score_bundle import ScoreBundle
+from sklearn.feature_extraction.text import TfidfVectorizer
+from scipy.spatial.distance import cosine, euclidean, cityblock
+
+def jaccard_similarity(a: str, b: str) -> float:
+    set_a, set_b = set(a.lower().split()), set(b.lower().split())
+    return len(set_a & set_b) / len(set_a | set_b) if set_a | set_b else 0.0
+
+def tfidf_cosine(a: str, b: str) -> float:
+    vec = TfidfVectorizer().fit([a, b])
+    mat = vec.transform([a, b]).toarray()
+    return 1 - cosine(mat[0], mat[1])
+
+def cosine_similarity(v1, v2) -> float:
+    return 1 - cosine(v1, v2)
+
+def euclidean_similarity(v1, v2) -> float:
+    return 1 / (1 + euclidean(v1, v2))
+
+def manhattan_similarity(v1, v2) -> float:
+    return 1 / (1 + cityblock(v1, v2))
 
 
-class ProximityScorer(BaseScorer):
-    def __init__(self, cfg, memory, logger, prompt_loader=None, dimensions=None):
+# Registry of all available metrics
+METRIC_REGISTRY = {
+    "jaccard": lambda a, b, *_: jaccard_similarity(a, b),
+    "tfidf": lambda a, b, *_: tfidf_cosine(a, b),
+    "cosine": lambda _, __, v1, v2: cosine_similarity(v1, v2),
+    "euclidean": lambda _, __, v1, v2: euclidean_similarity(v1, v2),
+    "manhattan": lambda _, __, v1, v2: manhattan_similarity(v1, v2),
+}
+
+class ProximityScorer:
+    """
+    Proximity-based scorer for hypotheses.
+    Uses multiple similarity/distance metrics as dimensions.
+    """
+
+    def __init__(self, cfg, memory=None, logger=None):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.prompt_loader = prompt_loader
+        self.similarity_threshold = cfg.get("similarity_threshold", 0.75)
+        self.max_pairs = cfg.get("max_graft_candidates", 5)
+        self.top_k_db = cfg.get("top_k_database_matches", 10)
+        self.use_db = cfg.get("use_database_search", True)
+        self.model_type = "proximity"
 
-        # Dynamically pull dimensions from scoring config
-        self.dimensions_config = cfg.get("dimensions", [])
-        self.dimensions = dimensions or [d["name"] for d in self.dimensions_config]
+    def score(self, context: dict, scorable, metrics: list[dict] = {}) -> ScoreBundle:
+        """
+        Compute proximity-based scores for a given scorable in context.
 
-        self.models = {}
-        self.scalers = {}
-        self.trained = dict.fromkeys(self.dimensions, False)
-        self.force_rescore = cfg.get("force_rescore", False)
-        self.regression_tuners = {}
+        Args:
+            context (dict): Pipeline or agent context containing "hypotheses".
+            scorable: The scorable object (must have .text).
+            metrics (list[dict]): Metric definitions from config.
 
-        for dim in self.dimensions:
-            self._initialize_dimension(dim)
+        Returns:
+            ScoreBundle: Containing one ScoreResult per proximity metric.
+        """
+        text = scorable.text
 
-    @property
-    def name(self) -> str:
-        return "proximity"
+        # Step 1. Collect hypotheses
+        hypotheses = []
+        if context and "hypotheses" in context:
+            hypotheses = [h["text"] for h in context["hypotheses"]]
+        if text and text not in hypotheses:
+            hypotheses.append(text)
 
-    def evaluate(self, prompt: str, response: str) -> ScoreBundle:
-        if not response:
-            return self._fallback("No proximity response available.")
+        if not hypotheses:
+            empty_result = ScoreResult(
+                dimension="avg_similarity",
+                score=0.0,
+                source=self.model_type,
+                rationale="No hypotheses to compare.",
+                weight=1.0,
+                attributes={"pair_count": 0},
+            )
+            return ScoreBundle(results={"avg_similarity": empty_result})
 
-        try:
-            themes = self._extract_block(response, "Common Themes Identified")
-            grafts = self._extract_block(response, "Grafting Opportunities")
-            directions = self._extract_block(response, "Strategic Directions")
+        # Step 2. Compute similarity matrix
+        similarities = compute_similarity_matrix(hypotheses, self.memory, self.logger)
 
-            themes_score = 10.0 * len(themes)
-            grafts_score = 10.0 * len(grafts)
-            directions_score = 20.0 * len(directions)
+        # Step 3. Compute metrics
+        metrics = self._compute_metrics(similarities, hypotheses, text)
 
-            results = {
-                "proximity_themes": ScoreResult(
-                    dimension="proximity_themes",
-                    score=min(100.0, themes_score),
-                    weight=0.3,
-                    rationale=f"{len(themes)} theme(s) identified",
-                    source="proximity",
-                ),
-                "proximity_grafts": ScoreResult(
-                    dimension="proximity_grafts",
-                    score=min(100.0, grafts_score),
-                    weight=0.3,
-                    rationale=f"{len(grafts)} grafting suggestion(s)",
-                    source="proximity",
-                ),
-                "proximity_directions": ScoreResult(
-                    dimension="proximity_directions",
-                    score=min(100.0, directions_score),
-                    weight=0.4,
-                    rationale=f"{len(directions)} strategic direction(s)",
-                    source="proximity",
-                ),
-            }
-
-            return ScoreBundle(results=results)
-
-        except Exception as e:
-            return self._fallback(f"Failed to parse proximity response: {str(e)}")
-
-    def _extract_block(self, text: str, section_title: str) -> list:
-        pattern = rf"# {re.escape(section_title)}\n((?:- .+\n?)*)"
-        match = re.search(pattern, text)
-        if not match:
-            return []
-        block = match.group(1).strip()
-        return [line.strip("- ").strip() for line in block.splitlines() if line.strip()]
-
-    def _fallback(self, message: str) -> ScoreBundle:
-        results = {
-            "proximity_themes": ScoreResult(
-                "proximity_themes", 0.0, message, 0.3, source="proximity"
-            ),
-            "proximity_grafts": ScoreResult(
-                "proximity_grafts", 0.0, message, 0.3, source="proximity"
-            ),
-            "proximity_directions": ScoreResult(
-                "proximity_directions", 0.0, message, 0.4, source="proximity"
-            ),
-        }
-        return ScoreBundle(results=results)
-
-    def _initialize_dimension(self, dim: str):
-        self.models[dim] = SVR()
-        self.scalers[dim] = StandardScaler()
-        self.regression_tuners[dim] = RegressionTuner(dimension=dim, logger=self.logger)
-        self.trained[dim] = False
-
-    def _try_train_on_dimension(self, dim: str):
-        training_data = self.memory.training.get_training_data(dimension=dim)
-        if not training_data:
-            return
-
-        X = [self._build_feature_vector(g, s) for g, s in training_data]
-        y = [score for (_, _, score) in training_data]
-
-        self.scalers[dim].fit(X)
-        X_scaled = self.scalers[dim].transform(X)
-
-        self.models[dim].fit(X_scaled, y)
-        self.trained[dim] = True
-
-    def _build_feature_vector(self, goal: dict, scorable: Scorable):
-        goal_vec = self.memory.embedding.get_or_create(goal.get("goal_text", ""))
-        text_vec = self.memory.embedding.get_or_create(scorable.text)
-        return [g - t for g, t in zip(goal_vec, text_vec)]
-
-    def score(
-        self, goal: dict, scorable: Scorable, dimensions: list[str]
-    ) -> ScoreBundle:
+        # Step 4. Wrap metrics as ScoreResults
         results = {}
-
-        for dim in dimensions:
-            vec = self._build_feature_vector(goal, scorable)
-
-            if not self.trained[dim]:
-                self._try_train_on_dimension(dim)
-
-            if not self.trained[dim]:
-                score = 50.0
-                rationale = f"SVM not trained for {dim}, returning neutral."
-            else:
-                x = self.scalers[dim].transform([vec])
-                raw_score = self.models[dim].predict(x)[0]
-                score = self.regression_tuners[dim].transform(raw_score)
-                rationale = f"SVM predicted and aligned score for {dim}"
-
-            # Lookup weight from config
-            weight = next(
-                (
-                    d.get("weight", 1.0)
-                    for d in self.dimensions_config
-                    if d["name"] == dim
-                ),
-                1.0,
-            )
-
-            self.logger.log(
-                "ProximityScoreComputed",
-                {
-                    "dimension": dim,
-                    "score": score,
-                    "hypothesis": scorable.text,
-                },
-            )
-
+        for dim, meta in metrics.items():
             results[dim] = ScoreResult(
                 dimension=dim,
-                score=score,
-                rationale=rationale,
-                weight=weight,
-                source="svm",
+                score=meta["score"],
+                source=self.model_type,
+                rationale=meta["rationale"],
+                weight=meta["weight"],
+                attributes=meta.get("attributes", {}),
             )
 
         return ScoreBundle(results=results)
 
-    def parse_from_response(self, response: str) -> ScoreBundle:
-        return self.evaluate(prompt="", response=response)
+    def _compute_metrics(self, similarities, hypotheses, target_text):
+        """Turn similarity matrix into structured dimensions."""
+        if not similarities:
+            return {
+                "avg_similarity": {
+                    "score": 0.0,
+                    "rationale": "No similarity pairs found.",
+                    "weight": 1.0,
+                    "attributes": {"pair_count": 0},
+                }
+            }
+
+        sims = [s for _, _, s in similarities]
+        pair_count = len(sims)
+
+        # Core stats
+        avg_sim = float(np.mean(sims))
+        max_sim = float(np.max(sims))
+        min_sim = float(np.min(sims))
+        sim_var = float(np.var(sims))
+        sims_sorted = sorted(sims, reverse=True)[: self.max_pairs]
+        avg_topk = float(np.mean(sims_sorted)) if sims_sorted else 0.0
+
+        graft_pairs = [(h1, h2) for h1, h2, s in similarities if s >= self.similarity_threshold]
+        graft_count = len(graft_pairs)
+
+        # Cluster measures
+        cluster_density = graft_count / pair_count if pair_count > 0 else 0.0
+        redundancy_index = avg_topk  # high top-k mean → redundancy
+        novelty_index = 1.0 - min_sim  # inverse of worst similarity
+
+        # DB measures (optional)
+        db_scores = {}
+        if self.use_db and self.memory:
+            db_scores = self._compute_db_proximity(target_text)
+
+        metrics = {
+            # Embedding stats
+            "avg_similarity": {
+                "score": avg_sim,
+                "rationale": f"Average pairwise similarity across {pair_count} pairs.",
+                "weight": 1.2,
+                "attributes": {"pair_count": pair_count},
+            },
+            "max_similarity": {
+                "score": max_sim,
+                "rationale": "Strongest semantic overlap between any two hypotheses.",
+                "weight": 1.0,
+            },
+            "min_similarity": {
+                "score": min_sim,
+                "rationale": "Weakest semantic overlap (outlier detection).",
+                "weight": 0.5,
+            },
+            "similarity_variance": {
+                "score": sim_var,
+                "rationale": "Variance of similarity scores (spread/uncertainty).",
+                "weight": 0.7,
+            },
+            "avg_topk_similarity": {
+                "score": avg_topk,
+                "rationale": f"Average similarity among top-{self.max_pairs} pairs.",
+                "weight": 1.1,
+            },
+            "graft_pair_count": {
+                "score": graft_count,
+                "rationale": f"Number of pairs ≥ {self.similarity_threshold}.",
+                "weight": 0.9,
+                "attributes": {"graft_pairs": graft_pairs},
+            },
+            # Cluster / diversity
+            "cluster_density": {
+                "score": cluster_density,
+                "rationale": "Fraction of pairs above threshold (cluster tightness).",
+                "weight": 1.0,
+            },
+            "redundancy_index": {
+                "score": redundancy_index,
+                "rationale": "High top-k similarity → risk of redundancy.",
+                "weight": 0.8,
+            },
+            "novelty_index": {
+                "score": novelty_index,
+                "rationale": "Encourages new hypotheses (low overlap).",
+                "weight": 0.9,
+            },
+        }
+
+        # Merge DB metrics if available
+        metrics.update(db_scores)
+        return metrics
+
+    def _compute_db_proximity(self, target_text):
+        """Compute database match metrics for hypothesis proximity."""
+        matches = self.memory.embedding.search_related(
+            target_text, top_k=self.top_k_db
+        )
+        if not matches:
+            return {
+                "db_match_score": {
+                    "score": 0.0,
+                    "rationale": "No DB matches found.",
+                    "weight": 1.0,
+                },
+                "db_overlap_count": {
+                    "score": 0,
+                    "rationale": "No overlaps above threshold.",
+                    "weight": 0.7,
+                },
+                "db_diversity": {
+                    "score": 0.0,
+                    "rationale": "No DB diversity measurable.",
+                    "weight": 0.6,
+                },
+            }
+
+        scores = [m.similarity for m in matches]
+        avg_match = float(np.mean(scores))
+        overlap_count = sum(1 for s in scores if s >= self.similarity_threshold)
+        db_div = float(np.std(scores))  # diversity from DB history
+
+        return {
+            "db_match_score": {
+                "score": avg_match,
+                "rationale": f"Average similarity to top-{self.top_k_db} DB matches.",
+                "weight": 1.0,
+            },
+            "db_overlap_count": {
+                "score": overlap_count,
+                "rationale": f"Count of DB matches ≥ {self.similarity_threshold}.",
+                "weight": 0.7,
+            },
+            "db_diversity": {
+                "score": db_div,
+                "rationale": "Spread of DB match similarities (diversity).",
+                "weight": 0.6,
+            },
+        }

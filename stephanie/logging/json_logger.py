@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from stephanie.logs.icons import get_event_icon
+from stephanie.logging.icons import get_event_icon
 
 
 class JSONLogger:

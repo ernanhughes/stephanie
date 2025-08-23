@@ -11,7 +11,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.utils.file_utils import load_json  # To load meta file
-
+from stephanie.constants import GOAL, GOAL_TEXT
 
 class HRMScorer(BaseScorer):
     """
@@ -113,7 +113,7 @@ class HRMScorer(BaseScorer):
                 })
                 self.model = None # Ensure model is None on failure
 
-    def score(self, goal: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
+    def score(self, context: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
         """
         Scores a single scorable item against a goal using the HRM models per dimension.
 
@@ -121,7 +121,8 @@ class HRMScorer(BaseScorer):
             ScoreBundle with a ScoreResult for each applicable dimension.
         """
         results = {}
-        goal_text = goal.get("goal_text", "")
+        goal = context.get(GOAL, {})
+        goal_text = goal.get(GOAL_TEXT, "")
         doc_text = scorable.text
 
         if not goal_text or not doc_text:

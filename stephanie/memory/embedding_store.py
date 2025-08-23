@@ -1,5 +1,6 @@
 # stephanie/memory/embedding_store.py
 import hashlib
+import torch  # ✅ ensure torch available for tensor→list conversion
 
 from stephanie.memory import BaseStore
 from stephanie.tools import get_embedding
@@ -23,6 +24,12 @@ class EmbeddingStore(BaseStore):
     def name(self) -> str:
         return self.name
 
+    def _ensure_list(self, embedding):
+        """Convert torch.Tensor → list[float], passthrough otherwise."""
+        if isinstance(embedding, torch.Tensor):
+            return embedding.detach().cpu().tolist()
+        return embedding
+
     def get_or_create(self, text: str):
         text_hash = self.get_text_hash(text)
 
@@ -33,18 +40,20 @@ class EmbeddingStore(BaseStore):
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
-                    "SELECT embedding FROM embeddings WHERE text_hash  = %s",
+                    "SELECT embedding FROM embeddings WHERE text_hash = %s",
                     (text_hash,),
                 )
                 row = cur.fetchone()
                 if row:
-                    return row[0]  # Force conversion to list of floats
+                    embedding = self._ensure_list(row[0])
+                    self._cache.set(text_hash, embedding)
+                    return embedding
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("EmbeddingFetchFailed", {"error": str(e)})
 
-        embedding = get_embedding(text, self.cfg)
+        embedding = self._ensure_list(get_embedding(text, self.cfg))
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -65,7 +74,7 @@ class EmbeddingStore(BaseStore):
 
     def search_related(self, query: str, top_k: int = 5):
         try:
-            embedding = get_embedding(query, self.cfg)
+            embedding = self._ensure_list(get_embedding(query, self.cfg))
             with self.conn.cursor() as cur:
                 cur.execute(
                     """
@@ -76,7 +85,8 @@ class EmbeddingStore(BaseStore):
                             h.review
                         FROM hypotheses h
                         JOIN goals g ON h.goal_id = g.id
-                        ORDER BY h.embedding <-> %s
+                        WHERE h.embedding IS NOT NULL
+                        ORDER BY h.embedding <-> %s::vector
                         LIMIT %s;
                     """,
                     (embedding, top_k),
@@ -105,8 +115,7 @@ class EmbeddingStore(BaseStore):
         Returns:
             A list of dicts: [{prompt, score, pipeline_run_id, step_index, dimension_scores}, ...]
         """
-        embedding = get_embedding(query, self.cfg)
-
+        embedding = self._ensure_list(get_embedding(query, self.cfg))
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -197,8 +206,7 @@ class EmbeddingStore(BaseStore):
         Returns:
             A list of dicts: [{prompt, score, pipeline_run_id, step_index, dimension_scores}, ...]
         """
-        embedding = get_embedding(document, self.cfg)
-
+        embedding = self._ensure_list(get_embedding(document, self.cfg))
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -224,29 +232,16 @@ class EmbeddingStore(BaseStore):
                 )
                 rows = cur.fetchall()
 
-            results = []
-            for row in rows:
-                results.append(
-                    {
-                        "prompt": row[0],
-                        "pipeline_run_id": row[1],
-                        "score": float(row[2]) if row[2] is not None else 0.0,
-                        "dimension": row[3],
-                        "source": row[4],
-                    }
-                )
-
-            if self.logger:
-                self.logger.log(
-                    "PromptSimilaritySearch",
-                    {
-                        "query": document,
-                        "top_k": top_k,
-                        "returned": len(results),
-                    },
-                )
-
-            return results
+            return [
+                {
+                    "prompt": row[0],
+                    "pipeline_run_id": row[1],
+                    "score": float(row[2]) if row[2] is not None else 0.0,
+                    "dimension": row[3],
+                    "source": row[4],
+                }
+                for row in rows
+            ]
 
         except Exception as e:
             if self.logger:
@@ -264,38 +259,21 @@ class EmbeddingStore(BaseStore):
             The embedding ID (int) if found, otherwise None.
         """
         text_hash = self.get_text_hash(text)
-
-        # First check the cache to avoid unnecessary DB hit
-        cached = self._cache.get(text_hash)
-        if cached:
-            try:
-                with self.conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT id FROM embeddings WHERE text_hash = %s", (text_hash,)
-                    )
-                    row = cur.fetchone()
-                    return row[0] if row else None
-            except Exception as e:
-                if self.logger:
-                    self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
-                return None
-        else:
-            # No cache, still check DB
-            try:
-                with self.conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT id FROM embeddings WHERE text_hash = %s", (text_hash,)
-                    )
-                    row = cur.fetchone()
-                    return row[0] if row else None
-            except Exception as e:
-                if self.logger:
-                    self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
-                return None
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM embeddings WHERE text_hash = %s", (text_hash,)
+                )
+                row = cur.fetchone()
+                return row[0] if row else None
+        except Exception as e:
+            if self.logger:
+                self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
+            return None
 
     def search_related_documents(self, query: str, top_k: int = 10):
         try:
-            embedding = self.get_or_create(query)
+            embedding = self._ensure_list(self.get_or_create(query))
             with self.conn.cursor() as cur:
                 cur.execute(
                     """
@@ -305,7 +283,7 @@ class EmbeddingStore(BaseStore):
                         d.summary,
                         d.content,
                         d.embedding_id,
-                        1 - (e.embedding <-> %s::vector) AS score  -- cosine similarity proxy
+                        1 - (e.embedding <-> %s::vector) AS score
                     FROM documents d
                     JOIN embeddings e ON d.embedding_id = e.id
                     WHERE d.embedding_id IS NOT NULL
@@ -324,7 +302,7 @@ class EmbeddingStore(BaseStore):
                     "content": row[3],
                     "embedding_id": row[4],
                     "score": float(row[5]),
-                    "text": row[2] or row[3],  # Default to summary, fallback to content
+                    "text": row[2] or row[3],
                     "source": "document",
                 }
                 for row in results
@@ -351,17 +329,14 @@ class EmbeddingStore(BaseStore):
             list[str]: List of text contents of the top-k nearest items.
         """
         try:
-            import torch    
-              # ✅ Fix: convert tensor to list if needed
-            if isinstance(embedding, torch.Tensor):
-                embedding = embedding.detach().cpu().tolist()
+            embedding = self._ensure_list(embedding)
             with self.conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT 
                         e.id,
                         e.text,
-                        1 - (e.embedding <-> %s::vector) AS score  -- cosine similarity proxy
+                        1 - (e.embedding <-> %s::vector) AS score
                     FROM embeddings e
                     WHERE e.embedding IS NOT NULL
                     ORDER BY e.embedding <-> %s::vector
@@ -370,9 +345,7 @@ class EmbeddingStore(BaseStore):
                     (embedding, embedding, k),
                 )
                 rows = cur.fetchall()
-
-            return [row[1] for row in rows]  # Return only the 'text' column
-
+            return [row[1] for row in rows]
         except Exception as e:
             if self.logger:
                 self.logger.log("FindNeighborsFailed", {"error": str(e)})

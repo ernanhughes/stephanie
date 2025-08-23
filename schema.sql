@@ -1,3 +1,37 @@
+--
+-- Stephanie Database Schema
+-- --------------------------
+-- Purpose:
+--   This file defines the PostgreSQL schema for Stephanie, the 
+--   Self-Tuning Epistemic Platform for Heuristics, Analysis, Navigation, 
+--   and Intelligent Evolution.
+--
+-- Usage:
+--   Run this file on a fresh PostgreSQL database to set up all 
+--   required extensions, tables, constraints, and indexes.
+--
+--   Example:
+--     createdb stephanie_db
+--     psql -U postgres -d stephanie_db -f schema.sql
+--
+-- Notes:
+--   • Extensions: Requires `pgvector` (for embeddings) and `pgcrypto` (for text hashing).
+--   • Idempotency: All tables and extensions use `IF NOT EXISTS`, so rerunning 
+--     this script is safe (it will not overwrite existing data).
+--   • Types: Most columns are declared as TEXT for portability and flexibility.
+--   • Compatibility: Columns can be mapped to DuckDB in the future, since the 
+--     schema avoids Postgres-specific features except extensions and vector types.
+--
+-- Maintenance:
+--   • Keep this schema in sync with `schema_raw.sql` by validating with the 
+--     `validate_schema.py` helper script.
+--   • Document new tables and columns inline with `--` comments.
+--
+-- Last Updated: 2025-08-22
+--
+
+BEGIN;
+
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- text hashing
@@ -16,7 +50,13 @@ CREATE TABLE IF NOT EXISTS goals (
     created_at TIMESTAMP DEFAULT now()
 );
 
-
+CREATE TABLE IF NOT EXISTS embeddings (
+    id SERIAL PRIMARY KEY,
+    text TEXT,
+    text_hash TEXT UNIQUE,
+    embedding VECTOR(1024),  -- adjust dimension if needed
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS prompts (
     id SERIAL PRIMARY KEY,
@@ -104,6 +144,73 @@ CREATE TABLE IF NOT EXISTS hypotheses (
 -- CREATE INDEX idx_hypothesis_source ON hypotheses(source);
 -- CREATE INDEX idx_hypothesis_strategy ON hypotheses(strategy_used);
 
+
+CREATE TABLE IF NOT EXISTS documents (
+    id SERIAL PRIMARY KEY,
+    embedding_id INTEGER REFERENCES embeddings(id) ON DELETE NO ACTION, 
+
+    -- Metadata
+    title TEXT NOT NULL,
+    source TEXT NOT NULL,
+    external_id TEXT,
+    url TEXT,
+    content TEXT,
+    summary TEXT,
+    date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Relationships
+    goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+
+    -- Domain Classification
+    domain_label TEXT,
+    domains TEXT[]  -- Optional list of additional domain tags
+);
+
+
+CREATE TABLE IF NOT EXISTS symbolic_rules
+(
+    id SERIAL PRIMARY KEY,
+    goal_id integer,
+    pipeline_run_id integer,
+    prompt_id integer,
+    agent_name text,
+    target text NOT NULL,
+    rule_text text,
+    source text,
+    attributes jsonb,
+    filter jsonb,
+    context_hash text,
+    score double precision,
+    goal_type text,
+    goal_category text,
+    difficulty text,
+    focus_area text,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+
+CREATE TABLE IF NOT EXISTS rule_applications (
+    id SERIAL PRIMARY KEY,                                  -- Unique application ID
+    rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE CASCADE, -- Applied rule
+    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE, -- Target goal
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE, -- Affected run
+    hypothesis_id INTEGER REFERENCES hypotheses(id),        -- Resulting hypothesis (optional)
+
+    -- Metadata
+    applied_at TIMESTAMP DEFAULT NOW(),                     -- When the rule was applied
+    agent_name TEXT,                                        -- Which agent was affected
+    change_type TEXT,                                       -- e.g., "pipeline_override", "hint", "param_tweak"
+    details JSONB,                                          -- Any structured data (e.g., {"old":..., "new":...})
+
+    -- Feedback loop: Evaluation
+    post_score FLOAT,                                       -- Final score after applying the rule
+    pre_score FLOAT,                                        -- Score before the rule (if available)
+    delta_score FLOAT,                                      -- Computed delta (post - pre)
+    evaluator_name TEXT,                                    -- Evaluator used to compute scores
+    rationale TEXT,                                         -- Why the rule was applied (optional)
+    notes TEXT                                               -- Extra notes or observations
+);
 
 CREATE TABLE IF NOT EXISTS evaluations (
     id SERIAL PRIMARY KEY,
@@ -241,15 +348,6 @@ CREATE TABLE IF NOT EXISTS context_states (
 -- CREATE INDEX idx_context_run_stage ON context_states(run_id, stage_name);
 -- CREATE INDEX idx_context_preferences ON context_states USING GIN (preferences);
 
-CREATE TABLE IF NOT EXISTS embeddings (
-    id SERIAL PRIMARY KEY,
-    text TEXT,
-    text_hash TEXT UNIQUE,
-    embedding VECTOR(1024),  -- adjust dimension if needed
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-
 CREATE TABLE IF NOT EXISTS prompt_evaluations (
     id SERIAL PRIMARY KEY,
     prompt_id INTEGER NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
@@ -356,25 +454,11 @@ CREATE INDEX IF NOT EXISTS idx_cot_pattern_dimension ON cot_pattern_stats (dimen
 
 CREATE TABLE IF NOT EXISTS scores (
     id SERIAL PRIMARY KEY,
-    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
-    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
-    rule_application_id INTEGER REFERENCES rule_applications(id) ON DELETE CASCADE,
-    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE,
-    agent_name TEXT NOT NULL,
-    model_name TEXT NOT NULL,
-    evaluator_name TEXT NOT NULL,
-    score_type TEXT NOT NULL,
+    evaluation_id INTEGER REFERENCES evaluations(id) ON DELETE CASCADE,
+    dimension TEXT NOT NULL,
     score FLOAT,
-    score_text TEXT,
-    strategy TEXT,
-    reasoning_strategy TEXT,
-    rationale TEXT,
-    reflection TEXT,            -- NEW
-    review TEXT,                -- NEW
-    meta_review TEXT,           -- NEW
-    run_id TEXT,
-    extra_data JSONB DEFAULT '{}'::JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    weight FLOAT,
+    rationale TEXT
 );
 
 
@@ -549,50 +633,6 @@ CREATE TABLE IF NOT EXISTS mrq_preference_pairs (
 );
 
 
-CREATE TABLE IF NOT EXISTS symbolic_rules
-(
-    id SERIAL PRIMARY KEY,
-    goal_id integer,
-    pipeline_run_id integer,
-    prompt_id integer,
-    agent_name text,
-    target text NOT NULL,
-    rule_text text,
-    source text,
-    attributes jsonb,
-    filter jsonb,
-    context_hash text,
-    score double precision,
-    goal_type text,
-    goal_category text,
-    difficulty text,
-    focus_area text,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-
-CREATE TABLE IF NOT EXISTS rule_applications (
-    id SERIAL PRIMARY KEY,                                  -- Unique application ID
-    rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE CASCADE, -- Applied rule
-    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE, -- Target goal
-    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE, -- Affected run
-    hypothesis_id INTEGER REFERENCES hypotheses(id),        -- Resulting hypothesis (optional)
-
-    -- Metadata
-    applied_at TIMESTAMP DEFAULT NOW(),                     -- When the rule was applied
-    agent_name TEXT,                                        -- Which agent was affected
-    change_type TEXT,                                       -- e.g., "pipeline_override", "hint", "param_tweak"
-    details JSONB,                                          -- Any structured data (e.g., {"old":..., "new":...})
-
-    -- Feedback loop: Evaluation
-    post_score FLOAT,                                       -- Final score after applying the rule
-    pre_score FLOAT,                                        -- Score before the rule (if available)
-    delta_score FLOAT,                                      -- Computed delta (post - pre)
-    evaluator_name TEXT,                                    -- Evaluator used to compute scores
-    rationale TEXT,                                         -- Why the rule was applied (optional)
-    notes TEXT                                               -- Extra notes or observations
-);
 CREATE TABLE IF NOT EXISTS prompt_programs (
     id TEXT PRIMARY KEY,
     goal TEXT NOT NULL,
@@ -635,14 +675,6 @@ CREATE TABLE IF NOT EXISTS unified_mrq_models (
 );
 
 
-CREATE TABLE IF NOT EXISTS scores (
-    id SERIAL PRIMARY KEY,
-    evaluation_id INTEGER REFERENCES evaluations(id) ON DELETE CASCADE,
-    dimension TEXT NOT NULL,
-    score FLOAT,
-    weight FLOAT,
-    rationale TEXT
-);
 
 CREATE TABLE IF NOT EXISTS comparison_preferences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -659,26 +691,6 @@ CREATE TABLE IF NOT EXISTS comparison_preferences (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS documents (
-    id SERIAL PRIMARY KEY,
-    embedding_id INTEGER REFERENCES embeddings(id) ON DELETE NO ACTION, 
-
-    -- Metadata
-    title TEXT NOT NULL,
-    source TEXT NOT NULL,
-    external_id TEXT,
-    url TEXT,
-    content TEXT,
-    summary TEXT,
-    date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    -- Relationships
-    goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
-
-    -- Domain Classification
-    domain_label TEXT,
-    domains TEXT[]  -- Optional list of additional domain tags
-);
 
 CREATE TABLE IF NOT EXISTS document_domains (
     id SERIAL PRIMARY KEY,
@@ -712,29 +724,7 @@ CREATE TABLE IF NOT EXISTS document_section_domains (
     CONSTRAINT unique_document_section_domain UNIQUE (document_section_id, domain)
 );
 
-CREATE TABLE IF NOT EXISTS evaluations (
-    id SERIAL PRIMARY KEY,
-    goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
-    hypothesis_id INTEGER REFERENCES hypotheses(id) ON DELETE CASCADE,
-    document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
-    agent_name TEXT NOT NULL,
-    model_name TEXT NOT NULL,
-    evaluator_name TEXT NOT NULL,
-    strategy TEXT,
-    reasoning_strategy TEXT,
-    run_id TEXT,
-    symbolic_rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE SET NULL,
-    rule_application_id INTEGER REFERENCES rule_applications(id) ON DELETE SET NULL,
-    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE SET NULL,
-    scores JSON DEFAULT '{}'::json,
-    extra_data JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP DEFAULT NOW()
-
-     -- Add unique constraint here
-  ---  CONSTRAINT unique_source_type_uri UNIQUE (source_type, source_uri)
-);
-
-CREATE TABLE IF NOT EXISTS evaluation_rule_links (
+I CREATE TABLE IF NOT EXISTS evaluation_rule_links (
     id SERIAL PRIMARY KEY,
     evaluation_id INTEGER NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
     rule_application_id INTEGER NOT NULL REFERENCES rule_applications(id) ON DELETE CASCADE,
@@ -892,23 +882,6 @@ CREATE TABLE IF NOT EXISTS scoring_dimensions (
     uncertainty_score FLOAT,
     final_score FLOAT,
     PRIMARY KEY (event_id, dimension)
-);
-
-CREATE TABLE IF NOT EXISTS scores (
-    id SERIAL PRIMARY KEY,
-    evaluation_id INTEGER REFERENCES evaluations(id),
-    target_type TEXT NOT NULL,         -- e.g., "document", "triplet"
-    target_id INTEGER NOT NULL,        -- refers to document.id, etc.
-    dimension TEXT NOT NULL,
-
-    score FLOAT NOT NULL,
-    energy FLOAT,                      -- nullable: only present if EBT was used
-    uncertainty FLOAT,                 -- sigmoid(energy), optional
-
-    weight FLOAT DEFAULT 1.0,
-    rationale TEXT,
-    source TEXT,                       -- "mrq", "llm", "ebt", etc.
-    created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Table for storing refinement history
@@ -1155,27 +1128,6 @@ CREATE TABLE IF NOT EXISTS goal_dimensions (
 );
 
 
-CREATE TABLE protocols (
-    name TEXT PRIMARY KEY,
-    description TEXT,
-    input_format JSONB,
-    output_format JSONB,
-    failure_modes JSONB,
-    depends_on JSONB,
-    tags JSONB,
-    capability TEXT,
-    preferred_for JSONB,
-    avoid_for JSONB
-);
-
-CREATE TABLE IF NOT EXISTS embeddings (
-id SERIAL PRIMARY KEY,
-    text TEXT NOT NULL,
-    embedding VECTOR(1024),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    text_hash TEXT UNIQUE
-);
-
 CREATE INDEX IF NOT EXISTS idx_embedding_vector
 ON embeddings USING ivfflat (embedding vector_cosine_ops);
 ALTER TABLE embeddings ADD CONSTRAINT unique_text_hash UNIQUE (text_hash);
@@ -1323,22 +1275,7 @@ CREATE INDEX IF NOT EXISTS idx_execution_steps_plan_trace_id ON execution_steps 
 CREATE INDEX IF NOT EXISTS idx_execution_steps_step_order ON execution_steps (plan_trace_id, step_order);
 CREATE INDEX IF NOT EXISTS idx_execution_steps_evaluation_id ON execution_steps (evaluation_id);
 
-
-CREATE TABLE IF NOT EXISTS public.scores
-(
-    id SERIAL PRIMARY KEY,
-    evaluation_id integer NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
-    dimension text NOT NULL,
-    score double precision,
-    weight double precision,
-    rationale text,
-    source text,
-    prompt_hash text,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-
-
-CREATE INDEX IF NOT EXISTS score_attributes (
+CREATE TABLE IF NOT EXISTS score_attributes (
     id SERIAL PRIMARY KEY,
     score_id INTEGER NOT NULL REFERENCES scores(id) ON DELETE CASCADE,
     key TEXT NOT NULL,
@@ -1347,3 +1284,4 @@ CREATE INDEX IF NOT EXISTS score_attributes (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+COMMIT;

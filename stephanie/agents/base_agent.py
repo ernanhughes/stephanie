@@ -13,7 +13,7 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
-from stephanie.logs import JSONLogger
+from stephanie.logging import JSONLogger
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
 from stephanie.rules import SymbolicRuleApplier

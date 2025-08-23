@@ -6,7 +6,7 @@ from pgvector.psycopg2 import register_vector
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from stephanie.logs import JSONLogger
+from stephanie.logging import JSONLogger
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
@@ -88,6 +88,27 @@ class MemoryTool:
             self.embedding = hf
         else:
             self.embedding = mxbai
+
+        # Choose embedding backend based on config
+        selected_backend = embedding_cfg.get("backend", "mxbai")
+        if selected_backend == "hnet":
+            self.embedding = hnet
+        elif selected_backend == "huggingface":
+            self.embedding = hf
+        else:
+            self.embedding = mxbai
+
+        if self.logger:
+            self.logger.log(
+                "EmbeddingBackendSelected",
+                {
+                    "backend": selected_backend,
+                    "db_host": db_cfg.get("host"),
+                    "db_name": db_cfg.get("name"),
+                    "db_port": db_cfg.get("port"),
+                    "conn_id": id(self.conn),  # unique Python object ID
+                },
+            )
 
 
         # Register stores

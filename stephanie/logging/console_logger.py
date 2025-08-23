@@ -2,7 +2,7 @@
 import sys
 from datetime import datetime, timezone
 
-from stephanie.logs.icons import get_event_icon
+from stephanie.logging.icons import get_event_icon
 
 
 class ConsoleLogger:

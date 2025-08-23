@@ -454,6 +454,7 @@ class GILDTrainerAgent(BaseAgent):
 
 
                 # Score the trace (Suggestion 3)
+                # TODO convert to scorable
                 score = self.epistemic_plan_hrm_scorer.score(gild_trace, self.dimensions)
                 quality_pred = score.aggregate()
 

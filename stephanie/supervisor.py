@@ -17,7 +17,7 @@ from stephanie.engine.self_validation import SelfValidationEngine
 from stephanie.engine.state_tracker import StateTracker
 from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
 from stephanie.engine.training_controller import TrainingController
-from stephanie.logs.json_logger import JSONLogger
+from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory import MemoryTool
 from stephanie.registry.component_registry import register, get_registered_component
 from stephanie.reports import ReportFormatter

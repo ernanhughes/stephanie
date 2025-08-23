@@ -163,7 +163,7 @@ class IdeaParser:
         self.scorer.logger=self.logger
         self.scorer.memory=self.memory
         
-        score_bundle = self.scorer.score(context.get("goal"), scorable=scorable, 
+        score_bundle = self.scorer.score(context, scorable=scorable, 
                                          dimensions=override_dimensions or self.dimensions)
 
         return {

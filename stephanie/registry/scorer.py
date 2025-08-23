@@ -1,14 +1,18 @@
 # stephanie/registry/scorer.py
+from stephanie.scoring.ebt_scorer import EBTScorer
 from stephanie.scoring.llm_scorer import LLMScorer
 from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.proximity_scorer import ProximityScorer
+from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.svm_scorer import SVMScorer
 
 SCORER_REGISTRY = {
     "mrq": MRQScorer,
     "llm": LLMScorer,
     "svm": SVMScorer,
-    "proximity": ProximityScorer,
+    "sicql": SICQLScorer,
+    "ebt": EBTScorer,
+    "proximity": ProximityScorer
 }
 
 

@@ -191,7 +191,7 @@ class PlanTraceScorerAgent(BaseAgent):
             try:
                 # Score with this scorer
                 score_bundle = scorer.score(
-                    goal={"goal_text": goal_text},
+                    {"goal": {"goal_text": goal_text}},
                     scorable=scorable,
                     dimensions=self.dimensions,
                 )

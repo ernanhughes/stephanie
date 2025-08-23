@@ -189,5 +189,5 @@ class MethodPlannerAgent(BaseAgent):
         Use ScorerAgent to evaluate methodology quality
         """
         scorer = self.memory.scorer
-        scores = scorer.score(plan, context)
+        scores = scorer.score(context, plan) # TODO convert to scorable
         return scores

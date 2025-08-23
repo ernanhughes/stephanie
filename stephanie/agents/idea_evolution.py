@@ -161,7 +161,7 @@ class IdeaEvolutionAgent(BaseAgent):
         scored = []
 
         for v in variants:
-            score_data = scorer.score(v, context)
+            score_data = scorer.score(context, v) # TODO convert to scorable
             score_data["text"] = v
             scored.append(score_data)
 

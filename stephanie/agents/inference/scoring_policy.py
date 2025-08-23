@@ -1,6 +1,8 @@
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
+from stephanie.memcubes.memcube_factory import MemCubeFactory
+from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.scoring.ebt.buffer import EBTTrainingBuffer
 from stephanie.scoring.ebt_scorer import EBTScorer
 from stephanie.scoring.llm_scorer import LLMScorer
@@ -45,13 +47,13 @@ class ScoringPolicyAgent(BaseAgent):
         for doc in docs:
             scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
             mrq_scores = mrq_scorer.score(
-                goal=goal,
+                context,
                 scorable=scorable,
                 dimensions=self.dimensions,
             )
 
             ebt_result = ebt_scorer.score(
-                goal=goal,
+                context=context,
                 scorable=scorable,
                 dimensions=self.dimensions,
             )
@@ -132,3 +134,49 @@ class ScoringPolicyAgent(BaseAgent):
         self.plot_score_distributions(results)
         self.generate_summary_report(results)
         return context
+
+
+
+
+    def _log_memcubes_for_srft(
+        self,
+        scorable,
+        refined_text: str,
+        goal_text: str,
+        mrq_scores: dict,
+        llm_scores: dict,
+        ebt_energy: float,
+        uncertainty_by_dim: dict,
+        refined: bool = False,
+    ):
+        """
+        Create and save a MemCube capturing SRFT training data.
+        """
+
+        memcube = MemCubeFactory.create(
+            scorable=scorable,
+            source="srft",
+            model=self.cfg.get("model", "unknown"),
+            version="auto",
+            priority="normal",
+            sensitivity="public",
+            extra_data={
+                "goal_text": goal_text,
+                "refined": refined,
+                "refined_text": refined_text,
+                "mrq_scores": mrq_scores,
+                "llm_scores": llm_scores,
+                "ebt_energy": ebt_energy,
+                "uncertainty": uncertainty_by_dim,
+            },
+        )
+    
+        self.memory.memcube.save_memcube(memcube)
+
+        if self.logger:
+            self.logger.log("SRFTMemCubeSaved", {
+                "scorable_id": scorable.id,
+                "refined": refined,
+                "version": memcube.version,
+                "goal_text": goal_text[:80],  # log only snippet
+            })

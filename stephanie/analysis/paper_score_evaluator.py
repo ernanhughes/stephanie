@@ -41,7 +41,8 @@ class PaperScoreEvaluator(ScoringManager):
         final_bundle = ScoreBundle.from_dict(final_scores)
         scorable = ScorableFactory.from_dict(document, TargetType.DOCUMENT)
         ScoringManager.save_score_to_memory(
-            final_bundle, scorable, context, self.cfg, self.memory, self.logger
+            final_bundle, scorable, context, self.cfg, self.memory, self.logger,
+            source="paper_score_evaluator"
         )
         return final_scores
 
@@ -89,6 +90,8 @@ class PaperScoreEvaluator(ScoringManager):
                 "score": round(avg_score, 4),
                 "rationale": "\n---\n".join(rationales[:3]),  # cap rationale size
                 "weight": weight,
+                "source": "paper_score_evaluator",
+                "dimension": name
             }
 
         return combined
