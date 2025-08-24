@@ -57,7 +57,7 @@ class CartridgeBuilder:
                 "domain_tags": [],
                 "embedding_id": embedding_vector_id,
                 "markdown_content": markdown_content,
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(),
             }
         )
         return cartridge

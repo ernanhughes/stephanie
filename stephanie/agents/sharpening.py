@@ -187,7 +187,7 @@ class SharpeningAgent(BaseAgent):
                 score_diff=entry["score_diff"],
                 best_score=entry["score"],
                 prompt_template=entry.get("prompt_template"),
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(),
             )
 
             # Save to DB via memory

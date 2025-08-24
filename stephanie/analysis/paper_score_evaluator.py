@@ -1,9 +1,9 @@
 # stephanie/analysis/paper_score_evaluator.py
 from textwrap import wrap
 
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scoring_manager import ScoringManager
 
 

@@ -3,9 +3,9 @@ from typing import List
 
 import torch
 
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.model_locator_mixin import ModelLocatorMixin
 from stephanie.scoring.scorable import Scorable
-from stephanie.data.score_bundle import ScoreBundle
 
 
 class BaseScorer(ModelLocatorMixin, abc.ABC):

@@ -1,14 +1,16 @@
-import torch
-import torch.nn as nn
-import numpy as np
-from sklearn.preprocessing import StandardScaler
-import joblib
-from tqdm import tqdm  # Import tqdm for progress bars
 import time
 
+import joblib
+import numpy as np
+import torch
+import torch.nn as nn
+from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm  # Import tqdm for progress bars
+
+from stephanie.scoring.model.preference_ranker import PreferenceRanker
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
-from stephanie.scoring.model.preference_ranker import PreferenceRanker
+
 
 class ContrastiveRankerTrainer(BaseTrainer):
     def __init__(self, cfg, memory=None, logger=None):

@@ -1,13 +1,14 @@
 # stephanie/scoring/score_bundle.py
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, List, Tuple
 from statistics import stdev
+from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.scoring.calculations.weighted_average import (
-    WeightedAverageCalculator,
-)
 import numpy as np
+
+from stephanie.scoring.calculations.weighted_average import \
+    WeightedAverageCalculator
+
 
 @dataclass
 class ScoreBundle:
@@ -58,6 +59,7 @@ class ScoreBundle:
     def from_dict(cls, data: Dict[str, Any]) -> "ScoreBundle":
         """Reconstruct from dictionary"""
         from stephanie.data.score_result import ScoreResult
+
         # Extract meta if present
         meta = data.pop("_meta", None)
 

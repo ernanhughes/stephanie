@@ -41,7 +41,7 @@ class PipelineRunStore:
                         "timestamp": db_run.created_at if db_run.created_at else None,
                     },
                 )
-
+            self.session.commit()
             return run_id
 
         except Exception as e:
@@ -50,13 +50,14 @@ class PipelineRunStore:
                 self.logger.log("PipelineRunInsertFailed", {"error": str(e)})
             raise
 
-    def get_by_run_id(self, run_id: str) -> Optional[PipelineRunORM]:
+    def get_by_run_id(self, run_id: int) -> Optional[PipelineRunORM]:
         """
         Fetches a single pipeline run by its unique run_id.
         """
         result = (
             self.session.query(PipelineRunORM)
-            .filter(PipelineRunORM.run_id == run_id)
+            .filter(PipelineRunORM.id == run_id)
+            .order_by(PipelineRunORM.created_at.desc())
             .first()
         )
         return result

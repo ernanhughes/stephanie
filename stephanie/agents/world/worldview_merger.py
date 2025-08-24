@@ -39,7 +39,7 @@ class WorldviewMergerAgent:
                     {
                         "source": src_id,
                         "target": target_id,
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now().isoformat(),
                     },
                 )
 
@@ -64,7 +64,7 @@ class WorldviewMergerAgent:
                     novelty_score=b.novelty_score,
                     domain=b.domain,
                     status="active",
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(),
                 )
                 self.db.add(merged)
 
@@ -77,7 +77,7 @@ class WorldviewMergerAgent:
                 response=e.response,
                 task_type=e.task_type,
                 source=f"Merged from {source_id}",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(),
             )
             self.db.add(new_e)
 
@@ -89,7 +89,7 @@ class WorldviewMergerAgent:
                 goal=c.goal,
                 generation=c.generation,
                 schema=c.schema,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(),
                 source=f"Merged from worldview {source_id}",
             )
             self.db.add(merged_cart)

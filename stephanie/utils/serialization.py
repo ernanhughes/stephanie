@@ -7,9 +7,12 @@ that we encountered when trying to store PlanTrace objects in the database.
 """
 
 from typing import Any
-from omegaconf import OmegaConf
+
 import numpy as np
-from stephanie.data.plan_trace import PlanTrace, ExecutionStep
+from omegaconf import OmegaConf
+
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+
 
 def to_serializable(obj: Any) -> Any:
     """

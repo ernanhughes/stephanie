@@ -1,12 +1,13 @@
-import torch
 import numpy as np
+import torch
 from joblib import load
+from torch import nn
 from tqdm import tqdm
-from torch import nn 
-from stephanie.scoring.base_scorer import BaseScorer
-from stephanie.scoring.scorable import Scorable
+
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.base_scorer import BaseScorer
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 

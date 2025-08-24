@@ -92,7 +92,7 @@ class ArxivSearchAgent(BaseAgent):
         filters = [f"({keyword_filter})"]
 
         date_filter_mode = self.cfg.get("date_filter", "").lower()
-        now = datetime.utcnow()
+        now = datetime.now()
 
         if date_filter_mode == "today":
             day = now.strftime("%Y%m%d")

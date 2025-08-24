@@ -1,11 +1,13 @@
 # stephanie/scoring/proximity_scorer.py
 import numpy as np
+from scipy.spatial.distance import cityblock, cosine, euclidean
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.utils import compute_similarity_matrix
-from stephanie.data.score_result import ScoreResult
-from stephanie.data.score_bundle import ScoreBundle
-from sklearn.feature_extraction.text import TfidfVectorizer
-from scipy.spatial.distance import cosine, euclidean, cityblock
+
 
 def jaccard_similarity(a: str, b: str) -> float:
     set_a, set_b = set(a.lower().split()), set(b.lower().split())

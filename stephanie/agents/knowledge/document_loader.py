@@ -53,6 +53,7 @@ import requests
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.domain_classifier import DomainClassifier
 from stephanie.constants import GOAL
+from stephanie.scoring.scorable_factory import TargetType
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 from stephanie.tools.pdf_tools import PDFConverter
 
@@ -73,6 +74,7 @@ class DocumentLoaderAgent(BaseAgent):
         self.top_k_domains = cfg.get("top_k_domains", 3)
         self.download_directory = cfg.get("download_directory", "/tmp")
         self.min_classification_score = cfg.get("min_classification_score", 0.6)
+        self.embed_full_document = cfg.get("embed_full_document", True)
         self.domain_classifier = DomainClassifier(
             memory=self.memory,
             logger=self.logger,
@@ -90,9 +92,7 @@ class DocumentLoaderAgent(BaseAgent):
         for result in search_results:
             try:
                 url = result.get("url")
-                external_id = result.get(
-                    "title"
-                )  # A quirk of the search we store the id as the title
+                external_id = result.get("title")  # A quirk of the search we store the id as the title
                 title = result.get("title")
                 summary = result.get("summary")
 
@@ -100,12 +100,23 @@ class DocumentLoaderAgent(BaseAgent):
                 if existing:
                     self.logger.log("DocumentAlreadyExists", {"url": url})
                     stored_documents.append(existing.to_dict())
+                    self.memory.pipeline_references.insert(
+                        {
+                            "pipeline_run_id": context.get("pipeline_run_id"),
+                            "target_type": TargetType.DOCUMENT,
+                            "target_id": existing.id,
+                            "relation_type": "retrieved",
+                            "source": self.name,
+                        }
+                    )
+
                     if (
-                        not self.memory.document_domains.get_domains(existing.id)
+                        not self.memory.document_domains.has_domains(existing.id)
                         or self.force_domain_update
                     ):
                         self.assign_domains_to_document(existing)
-                        continue
+
+                    continue
 
                 # Download PDF
                 response = requests.get(url, stream=True)
@@ -162,11 +173,34 @@ class DocumentLoaderAgent(BaseAgent):
                 }
 
                 # Save embedding
-                embed_text = f"{doc['title']}\n\n{doc.get('summary', '')}"
+                if self.embed_full_document:
+                    embed_text = f"{doc['title']}\n\n{doc.get('text', doc.get('summary', ''))}"
+                else:
+                    embed_text = f"{doc['title']}\n\n{doc.get('summary', '')}"
                 self.memory.embedding.get_or_create(embed_text)
+                embedding_id = self.memory.embedding.get_id_for_text(embed_text)
 
                 # Save to DB
                 stored = self.memory.document.add_document(doc)
+                doc_id = stored.get("id")
+                self.memory.document_embeddings.insert(
+                    {
+                        "document_id": doc_id,
+                        "document_type": str(TargetType.DOCUMENT),
+                        "embedding_id": embedding_id,
+                        "embedding_type": self.memory.embedding.name,
+                    }
+                )
+                self.memory.pipeline_references.insert(
+                    {
+                        "pipeline_run_id": context.get("pipeline_run_id"),
+                        "target_type": TargetType.DOCUMENT,
+                        "target_id": doc_id,
+                        "relation_type": "stored",
+                        "source": self.name,
+                    }
+                )
+
                 stored_documents.append(stored.to_dict())
 
                 # Assign + store domain

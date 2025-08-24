@@ -1,7 +1,6 @@
 # stephanie/agents/analysis/refinement_analysis_agent.py
 
 from stephanie.memcubes.memcube_store import MemCubeStore
-from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.utils.visualization import plot_refinement_traces
 
 

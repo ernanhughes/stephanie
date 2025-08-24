@@ -15,6 +15,7 @@ from stephanie.memory.context_store import ContextStore
 from stephanie.memory.document_domain_section_store import \
     DocumentSectionDomainStore
 from stephanie.memory.document_domain_store import DocumentDomainStore
+from stephanie.memory.document_embedding_store import DocumentEmbeddingStore
 from stephanie.memory.document_section_store import DocumentSectionStore
 from stephanie.memory.document_store import DocumentStore
 from stephanie.memory.embedding_store import EmbeddingStore
@@ -33,12 +34,14 @@ from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
 from stephanie.memory.mrq_store import MRQStore
 from stephanie.memory.pattern_store import PatternStatStore
+from stephanie.memory.pipeline_reference_store import PipelineReferenceStore
 from stephanie.memory.pipeline_run_store import PipelineRunStore
 from stephanie.memory.pipeline_stage_store import PipelineStageStore
 from stephanie.memory.plan_trace_store import PlanTraceStore
 from stephanie.memory.prompt_program_store import PromptProgramStore
 from stephanie.memory.prompt_store import PromptStore
 from stephanie.memory.reflection_delta_store import ReflectionDeltaStore
+from stephanie.memory.report_store import ReportStore
 from stephanie.memory.rule_application_store import RuleApplicationStore
 from stephanie.memory.rule_effect_store import RuleEffectStore
 from stephanie.memory.score_store import ScoreStore
@@ -146,6 +149,9 @@ class MemoryTool:
         self.register_store(EvaluationAttributeStore(self.session, logger))
         self.register_store(ExecutionStepStore(self.session, logger))
         self.register_store(PlanTraceStore(self.session, logger))
+        self.register_store(PipelineReferenceStore(self.session, logger))
+        self.register_store(DocumentEmbeddingStore(self.session, logger))
+        self.register_store(ReportStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

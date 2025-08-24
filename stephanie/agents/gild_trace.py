@@ -60,7 +60,7 @@ class GILDTraceAgent(BaseAgent):
                 target_epistemic_quality_source=None, # Will be set later
                 meta={
                     "agent_name": self.__class__.__name__,
-                    "started_at": datetime.utcnow().isoformat() + 'Z'
+                    "started_at": datetime.now().isoformat() + 'Z'
                 }
             )
             # Save the initial trace ORM to get its ID
@@ -129,7 +129,7 @@ class GILDTraceAgent(BaseAgent):
              context["gild_error"] = str(e)
              if gild_trace_orm:
                  gild_trace_orm.final_output_text = f"Failed during data prep: {e}"
-                 gild_trace_orm.meta["completed_at"] = datetime.utcnow().isoformat() + 'Z'
+                 gild_trace_orm.meta["completed_at"] = datetime.now().isoformat() + 'Z'
                  self.plan_trace_store.session.commit()
              return context
 
@@ -146,7 +146,7 @@ class GILDTraceAgent(BaseAgent):
             context["gild_error"] = error_msg
             if gild_trace_orm:
                 gild_trace_orm.final_output_text = error_msg
-                gild_trace_orm.meta["completed_at"] = datetime.utcnow().isoformat() + 'Z'
+                gild_trace_orm.meta["completed_at"] = datetime.now().isoformat() + 'Z'
                 self.plan_trace_store.session.commit()
             return context
 
@@ -305,7 +305,7 @@ class GILDTraceAgent(BaseAgent):
              context["gild_error"] = str(e)
              if gild_trace_orm:
                  gild_trace_orm.final_output_text = f"Failed during training: {e}"
-                 gild_trace_orm.meta["completed_at"] = datetime.utcnow().isoformat() + 'Z'
+                 gild_trace_orm.meta["completed_at"] = datetime.now().isoformat() + 'Z'
                  self.plan_trace_store.session.commit()
              return context
 
@@ -325,7 +325,7 @@ class GILDTraceAgent(BaseAgent):
                 gild_trace_orm.target_epistemic_quality = normalized_loss_quality
                 gild_trace_orm.target_epistemic_quality_source = "proxy_final_loss_normalized"
                 gild_trace_orm.final_output_text = f"GILD run completed successfully. Final average Pi loss: {final_avg_loss:.6f}. Assigned proxy epistemic quality: {normalized_loss_quality:.4f}."
-                gild_trace_orm.meta["completed_at"] = datetime.utcnow().isoformat() + 'Z'
+                gild_trace_orm.meta["completed_at"] = datetime.now().isoformat() + 'Z'
                 gild_trace_orm.meta["final_metrics"] = {
                     "final_avg_loss": final_avg_loss,
                     "proxy_epistemic_quality": normalized_loss_quality,

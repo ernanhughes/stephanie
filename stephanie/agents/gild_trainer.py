@@ -1,22 +1,23 @@
 # stephanie/agents/learning/gild_trainer.py
-import traceback
-import os
 import json
+import os
+import time
+import traceback
+from datetime import datetime
+
 import torch
 import torch.nn.functional as F
-from datetime import datetime
+from sqlalchemy import text
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.scoring.ep_hrm_scorer import \
+    EpistemicPlanHRMScorer  # Adjust import
 from stephanie.scoring.hrm_scorer import HRMScorer
 from stephanie.scoring.mrq.preference_pair_builder import PreferencePairBuilder
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.ep_hrm_scorer import (
-    EpistemicPlanHRMScorer,
-)  # Adjust import
-import time
-from sqlalchemy import text
+
 
 class GILDTrainerAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -93,7 +94,7 @@ class GILDTrainerAgent(BaseAgent):
                 target_epistemic_quality_source=None,
                 extra_data={
                     "agent_name": self.__class__.__name__,
-                    "started_at": datetime.utcnow().isoformat() + "Z",
+                    "started_at": datetime.now().isoformat() + "Z",
                 },
             )
             self.logger.log(
@@ -216,7 +217,7 @@ class GILDTrainerAgent(BaseAgent):
             if gild_trace:
                 gild_trace.final_output_text = f"Failed during data prep: {e}"
                 gild_trace.extra_data["completed_at"] = (
-                    datetime.utcnow().isoformat() + "Z"
+                    datetime.now().isoformat() + "Z"
                 )
                 self.plan_trace_store.session.commit()
             return context
@@ -421,7 +422,7 @@ class GILDTrainerAgent(BaseAgent):
                 )
                 gild_trace.final_output_text = f"GILD run {final_status}. Overall final average loss: {overall_final_loss:.6f}. Assigned proxy epistemic quality: {normalized_loss_quality:.4f}."
                 gild_trace.extra_data["completed_at"] = (
-                    datetime.utcnow().isoformat() + "Z"
+                    datetime.now().isoformat() + "Z"
                 )
                 gild_trace.extra_data["final_metrics"] = {
                     "overall_final_loss": overall_final_loss,

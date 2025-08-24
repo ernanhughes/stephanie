@@ -49,6 +49,7 @@ class BaseAgent(ABC):
         self._goal_id_cache = {}
         self._prompt_id_cache = {}
         self._hypothesis_id_cache = {}
+        self.report_entries = {} 
         self.logger.log(
             "AgentInitialized",
             {
@@ -361,3 +362,16 @@ class BaseAgent(ABC):
 
         self.memory.session.commit()
         return hypothesis
+
+    def report(self, item: dict):
+        """Add a report entry for the given item."""
+        self.report_entries.setdefault(self.name, []).append(item)
+
+    def get_report(self, context: dict) -> dict:
+        """Return a dict with reportable information."""
+        return {
+            "summary": f"Ran {self.name}",
+            "metrics": context.get("metrics", {}),
+            "outputs": {k: context[k] for k in ("result",) if k in context},
+            "entries": self.report_entries.get(self.name, []),
+        }

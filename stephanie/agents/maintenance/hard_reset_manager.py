@@ -66,7 +66,7 @@ class HardResetManager(BaseAgent):
 
     def create_backup(self):
         """Creates a versioned backup with metadata"""
-        backup_id = f"backup_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        backup_id = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         backup_path = os.path.join(self.backup_dir, backup_id)
 
         if os.path.exists(backup_path):
@@ -77,7 +77,7 @@ class HardResetManager(BaseAgent):
 
         # Save metadata
         metadata = {
-            "timestamp": str(datetime.utcnow()),
+            "timestamp": str(datetime.now()),
             "model_versions": self._get_current_versions(),
             "description": "Hard reset baseline",
         }
@@ -140,7 +140,7 @@ class HardResetManager(BaseAgent):
         ):
             self.logger.log(
                 "HardResetTriggered",
-                {"timestamp": str(datetime.utcnow()), "dry_run": dry_run},
+                {"timestamp": str(datetime.now()), "dry_run": dry_run},
             )
 
             if not dry_run:

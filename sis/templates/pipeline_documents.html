@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1 class="mb-4">Documents for Pipeline Run {{ pipeline_run_id }}</h1>
+
+  {% if documents %}
+    <div class="list-group">
+      {% for key, doc in documents.items() %}
+      <div class="list-group-item">
+        <h5 class="mb-1">
+          <span class="badge bg-secondary">{{ doc.target_type }}</span>
+          ID: {{ doc.id }}
+        </h5>
+        <p class="mb-1 text-muted small">
+          Target Key: {{ key }}
+        </p>
+        <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;">
+{{ doc.text }}
+        </pre>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-warning">⚠️ No documents found for this pipeline run.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">📊 Database Overview</h1>
+    <a href="/" class="btn btn-secondary">⬅ Back to Pipelines</a>
+  </div>
+
+  {% if tables %}
+    <!-- Stats summary -->
+    <div class="alert alert-info">
+      <strong>Total Tables:</strong> {{ tables|length }} |
+      <strong>Total Rows:</strong> {{ tables | sum(attribute='count') }}
+    </div>
+
+    <!-- Table listing -->
+    <table class="table table-striped table-bordered align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th style="width: 40%">Table</th>
+          <th style="width: 20%">Row Count</th>
+          <th style="width: 40%">Distribution</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set max_count = (tables | max(attribute='count')).count %}
+        {% for table in tables %}
+        <tr>
+          <!-- Clickable table name -->
+          <td>
+            <a href="/db/table/{{ table.name }}" class="fw-bold text-decoration-none">
+              📂 {{ table.name }}
+            </a>
+          </td>
+          <!-- Row count badge -->
+          <td>
+            <span class="badge bg-primary">{{ table.count }}</span>
+          </td>
+          <!-- Relative progress bar -->
+          <td>
+            <div class="progress" style="height: 20px;">
+              <div class="progress-bar bg-success" role="progressbar"
+                style="width: {{ (table.count / max_count * 100) | round(1) }}%">
+                {{ (table.count / max_count * 100) | round(1) }}%
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="alert alert-warning">⚠️ No tables found in database.</div>
+  {% endif %}
+</div>
+{% endblock %}

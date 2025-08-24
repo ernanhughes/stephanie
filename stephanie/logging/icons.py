@@ -7,6 +7,7 @@ def get_event_icon(event_type: str) -> str:
 # SYSTEM & INITIALIZATION
 # ========================
 SYSTEM_INIT = {
+    "EmbeddingBackendSelected": "🔌",  # Embedding backend selected
     "ContextManagerInitialized": "⚙️",  # Context manager initialized
     "UncertaintyEstimated": "🔍",  # Uncertainty estimation
     "EBTEnergyCalculated": "⚡",  # EBT energy calculation
@@ -46,6 +47,7 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "IdeaSharpeningFailed": "🧑‍🏫❌",
     "EvaluatorInit": "🧑‍🏫",
     "GenerationStarted": "🧑‍🧒‍🧒▶️",
     "LLMJudgeResult": "🧑‍⚖️",
@@ -114,6 +116,7 @@ KNOWLEDGE_OPS = {
 # PIPELINE CONTROL
 # =================
 PIPELINE_FLOW = {
+    "PipelineReferenceInserted": "🖇️📄➕",  # Pipeline reference inserted
     "PipelineStageCompleted": "🖇️✅",  # Pipeline stage completed
     "PipelineStageStarted": "🖇️▶️",  # Pipeline stage started
     "PipelineSummaryPrinted": "🖇️📄",  # Pipeline summary printed
@@ -373,6 +376,8 @@ MODELS = {
 # ETHICS & REVIEWS
 # =============
 SPECIAL = {
+    "PolicyInsight": "📊💡",  # Policy insight generated
+    "PolicyReportSaved": "💾📊",  # Policy report saved
     "PlanTraceCreated": "📄📝",  # Plan trace created
     "PlanTraceScorerInitialized": "📊🤖🪸",  # Plan trace scorer initialized
     "PlanTraceMonitorInitialized": "📊🤖🪸",  # Plan trace monitor initialized

@@ -47,7 +47,7 @@ class BeliefIngestAgent:
             novelty_score=novelty_score,
             domain=self._infer_domain(summary),
             status="active",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(),
         )
 
         self.db.add(belief)

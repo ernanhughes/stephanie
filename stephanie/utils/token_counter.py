@@ -2,6 +2,7 @@
 import tiktoken
 from transformers import AutoTokenizer
 
+
 class TokenCounter:
     """
     Counts tokens for different model families.

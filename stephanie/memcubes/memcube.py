@@ -53,7 +53,7 @@ class MemCube:
         self.refined_content = refined_content  
         self.ttl = ttl
         self.version = version
-        self.created_at = created_at or datetime.utcnow()
+        self.created_at = created_at or datetime.now()
         self.last_modified = last_modified or self.created_at
         self.usage_count = usage_count
         self.extra_data = extra_data or {}
@@ -108,14 +108,14 @@ class MemCube:
 
     def increment_usage(self):
         self.usage_count += 1
-        self.last_modified = datetime.utcnow()
+        self.last_modified = datetime.now()
         return self.usage_count
 
     def has_expired(self) -> bool:
         if not self.ttl:
             return False
         from datetime import timedelta
-        return (datetime.utcnow() - self.created_at) > timedelta(days=self.ttl)
+        return (datetime.now() - self.created_at) > timedelta(days=self.ttl)
 
     def apply_governance(self, user: str, action: str) -> bool:
         policy = self.extra_data.get("access_policy", {})

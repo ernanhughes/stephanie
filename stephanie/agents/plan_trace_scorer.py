@@ -1,17 +1,19 @@
 # stephanie/agents/knowledge/plan_trace_scorer.py
+import time
+from statistics import mean
+from typing import Any, Dict, List, Optional
+
+from tqdm import tqdm
+
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.data.plan_trace import PlanTrace, ExecutionStep
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.hrm_scorer import HRMScorer
-from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
-from typing import Dict, List, Any, Optional
-import time
-from tqdm import tqdm
-from statistics import mean
+from stephanie.scoring.hrm_scorer import HRMScorer
+from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.utils.trace_utils import load_plan_traces_from_export_dir
 
 

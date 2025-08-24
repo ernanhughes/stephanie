@@ -1,4 +1,7 @@
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
@@ -180,3 +183,48 @@ class ScoringPolicyAgent(BaseAgent):
                 "version": memcube.version,
                 "goal_text": goal_text[:80],  # log only snippet
             })
+
+    def plot_score_distributions(self, results: list):
+        """Plot histograms of final scores by dimension."""
+        scores_by_dim = {}
+        for r in results:
+            for dim, score in r["scores"].items():
+                scores_by_dim.setdefault(dim, []).append(score)
+
+        for dim, vals in scores_by_dim.items():
+            plt.hist(vals, bins=20, alpha=0.6)
+            plt.title(f"Score Distribution - {dim}")
+            plt.xlabel("Score")
+            plt.ylabel("Frequency")
+            plt.savefig(f"reports/score_dist_{dim}.png")
+            plt.close()
+
+import numpy as np
+
+
+def generate_summary_report(self, results: list):
+    """Generate a text summary of results."""
+    if not results:  # Handle empty list
+        summary = {
+            "total_docs": 0,
+            "refined_count": 0,
+            "llm_fallback_count": 0,
+            "avg_scores": {}
+        }
+        if self.logger:
+            self.logger.log("SummaryReport", summary)
+        return summary
+
+    # When results exist
+    summary = {
+        "total_docs": len(results),
+        "refined_count": sum(r.get("used_refinement", False) for r in results),
+        "llm_fallback_count": sum(r.get("used_llm_fallback", False) for r in results),
+        "avg_scores": {
+            dim: np.mean([r["scores"][dim] for r in results if "scores" in r and dim in r["scores"]])
+            for dim in results[0].get("scores", {}).keys()
+        },
+    }
+    if self.logger:
+        self.logger.log("SummaryReport", summary)
+    return summary

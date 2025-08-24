@@ -26,6 +26,7 @@ from .prompt import PromptORM, PromptProgramORM
 from .reflection_delta import ReflectionDeltaORM
 from .rule_application import RuleApplicationORM
 from .score import ScoreORM
+from .score_attribute import ScoreAttributeORM
 from .score_dimension import ScoreDimensionORM
 from .search_hit import SearchHitORM
 from .search_result import SearchResultORM
@@ -35,4 +36,3 @@ from .symbolic_rule import SymbolicRuleORM
 from .theorem import CartridgeORM, TheoremORM
 from .training_stats import TrainingStatsORM
 from .unified_mrq import UnifiedMRQModelORM
-from .score_attribute import ScoreAttributeORM

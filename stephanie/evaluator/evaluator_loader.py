@@ -12,6 +12,6 @@ def get_evaluator(cfg, memory=None, call_llm=None, logger=None):
     elif cfg["judge"] == "mrq":
         from stephanie.evaluator.mrq_self_evaluator import MRQSelfEvaluator
 
-        return MRQSelfEvaluator(memory=memory, logger=logger)
+        return MRQSelfEvaluator(cfg, memory=memory, logger=logger)
     else:
         raise ValueError(f"Unknown evaluator type: {cfg['type']}")

@@ -69,7 +69,7 @@ class EBTTrainingBuffer:
             "llm_score": llm_score,
             "ebt_score": ebt_score,
             "source": source,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "disagreement": abs(llm_score - (ebt_score or 0)),
             "meta": metadata or {}
         }
@@ -206,7 +206,7 @@ class EBTTrainingBuffer:
                 for e in top_disagreements
             ],
             "dimensions_with_most_disagreement": [d[0] for d in sorted_dims[:3]],
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.now().isoformat()
         }
         
         self.logger.log("EBTBufferAnalysis", analysis)

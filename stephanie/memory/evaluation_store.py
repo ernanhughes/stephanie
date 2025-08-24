@@ -119,7 +119,7 @@ class EvaluationStore:
         """Returns all scores associated with a specific pipeline run."""
         results = (
             self.session.query(EvaluationORM)
-            .filter(EvaluationORM.run_id == run_id)
+            .filter(EvaluationORM.pipeline_run_id == run_id)
             .all()
         )
         return [self._orm_to_dict(r) for r in results]

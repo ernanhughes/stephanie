@@ -114,7 +114,7 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
 
         meta_path = localer.meta_file()
         meta = {
-            "training_date": datetime.utcnow().isoformat(),
+            "training_date": datetime.now().isoformat(),
             "version": self.model_version,
         }
         save_json(meta, meta_path)

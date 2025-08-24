@@ -1,16 +1,17 @@
 # stephanie/engine/plan_trace_monitor.py
-import os
 import json
-from datetime import datetime
+import os
 import time
-from typing import Dict, Optional
 import traceback
+from datetime import datetime
+from typing import Dict, Optional
 
-from stephanie.data.plan_trace import PlanTrace, ExecutionStep
-from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
-from stephanie.utils.timing import time_function
 from omegaconf import OmegaConf
+
+from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.utils.serialization import default_serializer
+from stephanie.utils.timing import time_function
 
 
 class PlanTraceMonitor:

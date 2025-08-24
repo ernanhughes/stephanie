@@ -289,7 +289,7 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
             "max_value": self.ebt_meta.get(dimension, {}).get("max", 100),
             "train_min_value": self._get_train_min_value(dimension),
             "train_max_value": self._get_train_max_value(dimension),
-            "training_date": datetime.utcnow().isoformat(),
+            "training_date": datetime.now().isoformat(),
             "version": version
         }
         save_json(meta, meta_path)

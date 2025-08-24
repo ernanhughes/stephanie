@@ -1,7 +1,8 @@
 # stephanie/agents/knowledge/knowledge_db_loader.py
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import GOAL
+from stephanie.constants import GOAL, PIPELINE_RUN_ID
+from stephanie.scoring.scorable_factory import TargetType
 
 
 class KnowledgeDBLoaderAgent(BaseAgent):
@@ -9,17 +10,16 @@ class KnowledgeDBLoaderAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.top_k = cfg.get("top_k", 100)
         self.include_full_text = cfg.get("include_full_text", False)
-        self.search_method = cfg.get(
-            "search_method", "document"
-        )  # or "section"
+        self.search_method = cfg.get("search_method", "document")  # or "section"
         self.doc_ids_scoring = cfg.get("doc_ids_scoring", False)
-        self.doc_ids = cfg.get("doc_ids", [])   
+        self.doc_ids = cfg.get("doc_ids", [])
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL)
         goal_text = goal.get("goal_text", "")
+        pipeline_run_id = context.get(PIPELINE_RUN_ID)
 
-
+        # 1. Fetch documents
         if self.doc_ids_scoring:
             if not self.doc_ids:
                 self.logger.log("NoDocumentIdsProvided", "No document ids to score.")
@@ -34,8 +34,8 @@ class KnowledgeDBLoaderAgent(BaseAgent):
                 {"count": len(docs), "ids": self.doc_ids},
             )
             docs = [d.to_dict() for d in docs]
-        else: 
-            docs = self.memory.ollama_embeddings.search_related_documents(
+        else:
+            docs = self.memory.embedding.search_related_documents(
                 goal_text, self.top_k
             )
             self.logger.log(
@@ -43,8 +43,21 @@ class KnowledgeDBLoaderAgent(BaseAgent):
                 {"count": len(docs), "goal_text": goal_text, "top_k": self.top_k},
             )
 
+        # 2. Save retrieved doc dicts into context
         context[self.output_key] = docs
         context["retrieved_ids"] = [d["id"] for d in docs]
+
+        for d in docs:
+            self.memory.pipeline_references.insert(
+                {
+                    "pipeline_run_id": pipeline_run_id,
+                    "target_type": TargetType.DOCUMENT,
+                    "target_id": d["id"],
+                    "relation_type": "retrieved",
+                    "source": self.name,
+                }
+            )
+
         self.logger.log(
             "KnowledgeDBLoaded",
             {"count": len(docs), "search_method": self.search_method},

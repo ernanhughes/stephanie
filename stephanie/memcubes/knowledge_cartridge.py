@@ -11,7 +11,7 @@ class KnowledgeCartridge(KnowledgePackage):
     def __init__(self, goal, generation=0, parent_hash=None):
         super().__init__(goal=goal)
         self.generation = generation
-        self.created_at = datetime.utcnow().isoformat()
+        self.created_at = datetime.now().isoformat()
         self.parent_hash = parent_hash
         self.quality_metrics = {}
         self.signature = None
@@ -25,7 +25,7 @@ class KnowledgeCartridge(KnowledgePackage):
                 "prompt": prompt,
                 "response": response,
                 "task_type": task_type,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now().isoformat(),
             }
         )
 
@@ -35,14 +35,10 @@ class KnowledgeCartridge(KnowledgePackage):
             "content": content,
             "source": source,
             "confidence": confidence,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "metadata": metadata or {},
         }
         self.schema[category].append(finding)
-        self._update_signature()
-
-    def add_validation_protocol(self, hypothesis_id, protocol):
-        self.schema["validation_protocols"][hypothesis_id] = protocol
         self._update_signature()
 
     def _update_signature(self):

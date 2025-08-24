@@ -5,11 +5,11 @@ from datetime import datetime
 from typing import Dict, List, Optional, Union
 
 from stephanie.constants import GOAL
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.scorable import Scorable
-from stephanie.data.score_bundle import ScoreBundle
 
 
 @dataclass
@@ -18,7 +18,7 @@ class ScoreAttempt:
     success: bool
     error: Optional[str] = None
     score_bundle: Optional[ScoreBundle] = None
-    timestamp: datetime = datetime.utcnow()
+    timestamp: datetime = datetime.now()
 
 
 class FallbackScorer(BaseScorer):

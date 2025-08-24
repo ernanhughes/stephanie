@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1>Pipeline Run {{ run.id }}</h1>
+  <p class="text-muted">Tag: {{ run.tag }} | Description: {{ run.description }}</p>
+
+  <!-- Mermaid Diagram -->
+  <h3 class="mt-4">Pipeline Stages</h3>
+  <div class="bg-light p-3 rounded">
+    <pre class="mermaid">
+flowchart LR
+{% for stage in run.stages %}
+  {{ "S" ~ stage.id }}[{{ stage.stage_name }} <br/> {{ stage.agent_class }}]
+  {% if not loop.last %}
+    {{ "S" ~ stage.id }} --> {{ "S" ~ run.stages[loop.index].id }}
+  {% endif %}
+{% endfor %}
+    </pre>
+  </div>
+
+  <a class="btn btn-outline-primary" href="/pipeline/{{ run.id }}/scores">
+      View Scores Grid
+  </a>
+
+  <!-- Tabbed View -->
+  <ul class="nav nav-tabs mt-4" id="pipelineTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button"
+        role="tab">Prompts</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="evaluations-tab" data-bs-toggle="tab" data-bs-target="#evaluations" type="button"
+        role="tab">Evaluations</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button"
+        role="tab">Documents</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config" type="button"
+        role="tab">Config</button>
+    </li>
+  </ul>
+
+  <div class="tab-content mt-3" id="pipelineTabsContent">
+
+    <!-- Prompts Tab -->
+    <div class="tab-pane fade show active" id="prompts" role="tabpanel">
+      {% if run.prompts %}
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Prompt</th>
+            <th>Response</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for prompt in run.prompts %}
+          <tr>
+            <td>{{ prompt.agent_name }}</td>
+            <td><code>{{ prompt.prompt_key }}</code></td>
+            <td style="max-width: 600px; white-space: pre-wrap;">{{ prompt.response_text }}</td>
+            <td>{{ prompt.timestamp.strftime("%Y-%m-%d %H:%M") if prompt.timestamp else "-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-muted">No prompts recorded for this pipeline.</p>
+      {% endif %}
+    </div>
+
+    <!-- Evaluations Tab -->
+    <div class="tab-pane fade" id="evaluations" role="tabpanel">
+      {% if run.evaluations %}
+      <div class="accordion" id="evaluationAccordion">
+        {% for eval in run.evaluations %}
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="heading-{{ eval.id }}">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+              data-bs-target="#collapse-{{ eval.id }}">
+              {{ eval.evaluator_name }} ({{ eval.target_id }}, {{ eval.target_type }})
+            </button>
+          </h2>
+          <div id="collapse-{{ eval.id }}" class="accordion-collapse collapse" data-bs-parent="#evaluationAccordion">
+            <div class="accordion-body">
+              <p><strong>Agent:</strong> {{ eval.agent_name or "-" }}</p>
+              <p><strong>Scores:</strong></p>
+              {% if eval.dimension_scores %}
+                <table class="table table-sm table-bordered">
+                  <thead>
+                    <tr>
+                      <th>Dimension</th>
+                      <th>Score</th>
+                      <th>Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for score in eval.dimension_scores %}
+                    <tr>
+                      <td>{{ score.dimension }}</td>
+                      <td>{{ "%.3f"|format(score.score) if score.score is not none else "-" }}</td>
+                      <td>{{ score.source or "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              {% else %}
+                <p class="text-muted">No scores recorded.</p>
+              {% endif %}
+
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-muted">No evaluations recorded for this pipeline.</p>
+      {% endif %}
+    </div>
+
+    <!-- Documents Tab -->
+    <div class="tab-pane fade" id="documents" role="tabpanel">
+      <h4 class="mb-3">Documents Referenced</h4>
+      {% if documents %}
+      <div class="list-group">
+        {% for key, doc in documents.items() %}
+        <div class="list-group-item">
+          <h6>
+            <span class="badge bg-secondary">{{ doc.target_type }}</span>
+            ID: {{ doc.id }}
+          </h6>
+          <p class="mb-1 text-muted small">Target Key: {{ key }}</p>
+          <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;">
+{{ doc.text }}
+            </pre>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="alert alert-warning">⚠️ No documents found for this pipeline run.</div>
+      {% endif %}
+    </div>
+
+  <!-- Config Tab -->
+  <div class="tab-pane fade" id="config" role="tabpanel">
+    <h4 class="mb-3">Pipeline Configuration (YAML)</h4>
+      {% if config_yaml %}
+        <pre class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">
+        {{ config_yaml }}
+        </pre>
+      {% else %}
+        <p class="text-muted">No pipeline configuration available.</p>
+      {% endif %}
+  </div>
+
+  </div>
+
+</div>
+
+<!-- Mermaid Support -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true });
+</script>
+{% endblock %}

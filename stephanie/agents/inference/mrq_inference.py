@@ -5,21 +5,21 @@ import torch
 import torch.nn.functional as F
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.evaluator.hypothesis_value_predictor import \
-    HypothesisValuePredictor
-from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.mrq.model import MRQModel
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+from stephanie.evaluator.hypothesis_value_predictor import \
+    HypothesisValuePredictor
+from stephanie.scoring.model.in_context_q import InContextQModel
+from stephanie.scoring.model.policy_head import PolicyHead
+from stephanie.scoring.model.q_head import QHead
+from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.scoring.model.v_head import VHead
+from stephanie.scoring.mrq.model import MRQModel
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
-from stephanie.scoring.model.in_context_q import InContextQModel
-from stephanie.scoring.model.policy_head import PolicyHead
-from stephanie.scoring.model.q_head import QHead
-from stephanie.scoring.model.v_head import VHead
 
 
 class MRQInferenceAgent(BaseAgent):

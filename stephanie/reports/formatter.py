@@ -22,13 +22,15 @@ class ReportFormatter:
         file_name = f"{safe_goal}_{timestamp}_report.md"
         file_path = self.output_dir / file_name
 
-        content = f"""# 🧪 AI Co-Research Summary Report
+        summary = f"""# 🧪 AI Co-Research Summary Report
 
 **🗂️ Run ID:** `{context.get("run_id", "Error No Run_id")}`  
 **🎯 Goal:** *{goal}*  
 **📅 Timestamp:** {timestamp}
 
 ---
+""" 
+        content = f"""{summary}
 
 ### 🔬 Literature:
 {self._format_list(context.get("literature", []))}
@@ -72,7 +74,7 @@ OK so
 """
 
         file_path.write_text(content, encoding="utf-8")
-        return str(file_path)
+        return content, summary
 
     def _format_list(self, items):
         return "\n".join(f"1. **{item.strip()}**" for item in items)

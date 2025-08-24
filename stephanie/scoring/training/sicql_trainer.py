@@ -277,7 +277,7 @@ class SICQLTrainer(BaseTrainer):
             "policy_stability": max(policy_probs),
             "device": str(self.device),
             "embedding_type": self.cfg.get("embedding_type", "hnet"),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
         # Save metadata
@@ -656,7 +656,7 @@ class SICQLTrainer(BaseTrainer):
             "max_value": 100,
             "min_value": 0,
             "device": str(self.device), 
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
         super()._save_meta_file(meta, dimension)

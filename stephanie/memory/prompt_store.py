@@ -292,3 +292,19 @@ class PromptStore:
                     "GetLatestPromptsFailed", {"error": str(e), "goal": goal}
                 )
             return []
+
+    def get_by_run_id(self, run_id: int) -> list[dict]:
+        try:
+            return [
+                p.to_dict()
+                for p in self.session.query(PromptORM)
+                .filter(PromptORM.pipeline_run_id == run_id)
+                .all()
+            ]
+        except Exception as e:
+            self.session.rollback()
+            if self.logger:
+                self.logger.log(
+                    "GetPromptsByPipelineFailed", {"error": str(e), "pipeline_id": pipeline_id}
+                )
+            return []

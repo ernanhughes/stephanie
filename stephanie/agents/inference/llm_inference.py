@@ -1,5 +1,7 @@
 # stephanie/agents/inference/document_llm_inference.py
 
+from tqdm import tqdm
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.models.evaluation import EvaluationORM
@@ -8,7 +10,6 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_engine import ScoringEngine
 from stephanie.scoring.scoring_manager import ScoringManager
-from tqdm import tqdm
 
 
 class LLMInferenceAgent(ScoringMixin, BaseAgent):

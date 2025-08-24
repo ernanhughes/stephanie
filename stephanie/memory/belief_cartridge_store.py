@@ -10,8 +10,8 @@ import torch
 import yaml
 from sqlalchemy.orm import Session
 
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.data.score_bundle import ScoreBundle
+from stephanie.models.belief_cartridge import BeliefCartridgeORM
 
 
 class BeliefCartridgeStore:
@@ -25,7 +25,7 @@ class BeliefCartridgeStore:
 
         if existing:
             # Update only certain fields
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = datetime.now()
             existing.markdown_content = data.get("markdown_content", existing.markdown_content)
             existing.idea_payload = data.get("idea_payload", existing.idea_payload)
             existing.rationale = data.get("rationale", existing.rationale)
@@ -67,7 +67,7 @@ class BeliefCartridgeStore:
         belief = self.get_by_id(belief_id)
         if belief:
             belief.is_active = False
-            belief.updated_at = datetime.utcnow()
+            belief.updated_at = datetime.now()
             self.session.commit()
             return True
         return False

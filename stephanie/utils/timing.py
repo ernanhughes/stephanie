@@ -2,7 +2,7 @@
 import functools
 import inspect
 import time
-from typing import Optional, Callable, Any, Dict, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 T = TypeVar('T')
 

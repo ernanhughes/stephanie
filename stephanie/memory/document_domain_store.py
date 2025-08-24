@@ -21,17 +21,16 @@ class DocumentDomainStore:
             pg_insert(DocumentDomainORM)
             .values(**data)
             .on_conflict_do_nothing(index_elements=["document_id", "domain"])
-            .returning(DocumentDomainORM.id)  # Adjust field if needed
+            .returning(DocumentDomainORM.id)
         )
 
         result = self.session.execute(stmt)
         inserted_id = result.scalar()
         self.session.commit()
 
-        if inserted_id:
+        if inserted_id and self.logger:
             self.logger.log("DomainUpserted", data)
 
-        # Optionally return the upserted object (retrieved fresh)
         return (
             self.session.query(DocumentDomainORM)
             .filter_by(document_id=data["document_id"], domain=data["domain"])
@@ -68,3 +67,14 @@ class DocumentDomainStore:
                     "score": float(score),
                 }
             )
+
+    def has_domains(self, document_id: int) -> bool:
+        """
+        Check if the given document has any domain classifications.
+        """
+        exists = (
+            self.session.query(DocumentDomainORM.id)
+            .filter_by(document_id=document_id)
+            .first()
+        )
+        return exists is not None

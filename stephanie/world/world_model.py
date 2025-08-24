@@ -35,7 +35,7 @@ class WorldModel:
         self.version = "v1"
         self.embedding_type = "default"
         
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now()
         self.last_modified = self.created_at
         self.max_memory_size = 1000  # Max beliefs in short-term memory
         self.contradiction_threshold = 0.7  # Energy threshold for contradiction
@@ -116,7 +116,7 @@ class WorldModel:
         self._update_connections(belief)
         
         # Track modifications
-        self.last_modified = datetime.utcnow()
+        self.last_modified = datetime.now()
         self.save_to_disk()
         return belief
     
@@ -128,7 +128,7 @@ class WorldModel:
             strength=memcube.scorable.scores.get("novelty", 0.5),
             relevance=self._calculate_relevance(memcube),
             source=memcube.id,
-            created_at=datetime.utcnow()
+            created_at=datetime.now()
         )
     
     def _calculate_relevance(self, memcube: MemCube) -> float:

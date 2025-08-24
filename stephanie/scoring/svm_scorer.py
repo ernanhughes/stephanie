@@ -4,13 +4,14 @@
 import numpy as np
 from joblib import load
 
-from stephanie.scoring.base_scorer import BaseScorer
-from stephanie.scoring.scorable import Scorable
+from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.base_scorer import BaseScorer
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
-from stephanie.constants import GOAL, GOAL_TEXT
+
 
 class SVMScorer(BaseScorer):
     def __init__(self, cfg: dict, memory, logger):

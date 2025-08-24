@@ -24,7 +24,6 @@ class PipelineStageStore:
             db_stage = PipelineStageORM(
                 stage_name=stage_dict.get("stage_name"),
                 agent_class=stage_dict.get("agent_class"),
-                protocol_used=stage_dict.get("protocol_used"),
                 goal_id=stage_dict.get("goal_id"),
                 run_id=stage_dict.get("run_id"),
                 pipeline_run_id=stage_dict.get("pipeline_run_id"),
@@ -45,6 +44,7 @@ class PipelineStageStore:
             self.session.flush()  # Get ID before commit
             stage_id = db_stage.id
 
+
             if self.logger:
                 self.logger.log(
                     "PipelineStageInserted",
@@ -57,6 +57,7 @@ class PipelineStageStore:
                     },
                 )
 
+            self.session.commit()
             return stage_id
 
         except Exception as e:
@@ -88,21 +89,7 @@ class PipelineStageStore:
         """
         return (
             self.session.query(PipelineStageORM)
-            .filter(PipelineStageORM.run_id == run_id)
-            .order_by(PipelineStageORM.timestamp.asc())
-            .all()
-        )
-
-    def get_by_pipeline_run_id(self, pipeline_run_id: int) -> List[PipelineStageORM]:
-        """
-        Fetches all stages associated with a given pipeline_run.
-
-        :param pipeline_run_id: ID of the pipeline run
-        :return: List of PipelineStageORM objects
-        """
-        return (
-            self.session.query(PipelineStageORM)
-            .filter(PipelineStageORM.pipeline_run_id == pipeline_run_id)
+            .filter(PipelineStageORM.pipeline_run_id == run_id)
             .order_by(PipelineStageORM.timestamp.asc())
             .all()
         )
@@ -162,8 +149,6 @@ class PipelineStageStore:
             query = query.filter(PipelineStageORM.run_id == filters["run_id"])
         if "stage_name" in filters:
             query = query.filter(PipelineStageORM.stage_name == filters["stage_name"])
-        if "protocol_used" in filters:
-            query = query.filter(PipelineStageORM.protocol_used == filters["protocol_used"])
         if "status" in filters:
             query = query.filter(PipelineStageORM.status == filters["status"])
         if "goal_id" in filters:
@@ -221,7 +206,6 @@ class PipelineStageStore:
             "id": stage.id,
             "stage_name": stage.stage_name,
             "agent_class": stage.agent_class,
-            "protocol_used": stage.protocol_used,
             "status": stage.status,
             "score": stage.score,
             "timestamp": stage.timestamp.isoformat(),

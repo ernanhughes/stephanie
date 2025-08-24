@@ -31,7 +31,7 @@ class BeliefTunerAgent:
         else:
             belief.score = max(0.0, min(1.0, old_score + delta))
 
-        belief.last_tuned = datetime.utcnow()
+        belief.last_tuned = datetime.now()
         belief.last_tune_source = source
         belief.last_tune_rationale = rationale or "Tuned via agent"
 

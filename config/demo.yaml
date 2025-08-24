@@ -1,0 +1,145 @@
+defaults:
+  - _self_
+  - db: postgres
+
+  - scorer/sicql/default
+  - scorer/contrastive_ranker/default
+  - scorer/hrm/default
+  - scorer/epistemic_hrm/default
+
+  - agents/arxiv_search
+  - agents/document_loader
+  - agents/knowledge_db_loader
+  - agents/paper_score
+  - agents/gild_trainer
+  - agents/pipeline_judge
+  - agents/score_comparison
+  - agents/score_energy_comparison
+  - agents/score_analysis
+  - agents/policy_synthesis
+  - agents/epistemic_plan_hrm_trainer
+  - agents/epistemic_plan_executor
+  - agents/et_hrm_inference
+  - agents/document_reward_scorer
+  - logging/json_logger
+
+embeddings:
+  backend: hnet
+
+goal:
+  goal_text: I want to build an AI that can read, refactor, and iteratively improve its own source code to become more efficient, reliable, and aligned with its evolving objectives.
+  goal_type: tactical
+  goal_category: meta_learning
+  focus_area: reasoning_refinement
+  strategy: iterative_feedback
+  difficulty: medium-high
+  expected_formats:
+    - evaluation_report
+    - refined_reasoning_trace
+    - scoring_vector_analysis
+
+post_judgment:
+  name: pipeline_judge
+  enabled: true
+  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: searxng
+  instance_url: "http://localhost:8080"
+
+pipeline:
+  name: demo
+  tag: "demo"
+  description: "Demonstration pipeline for Stephanie will show how to use the system effectively."
+  stages:
+
+    - name: arxiv_search
+      description: "Search Arxiv for papers related to the goal" 
+      cls: stephanie.agents.knowledge.arxiv_search.ArxivSearchAgent
+      enabled: false
+      iterations: 1
+
+    - name: document_loader
+      description: "Load documents from the search results and summarize them"
+      cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
+      enabled: true
+      iterations: 1
+
+    - name: document_reward_scorer
+      description: "Score the documents based on their relevance and quality"
+      cls: stephanie.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
+      enabled: true
+      iterations: 1
+
+    - name: document_profiler
+      description: "Profile the loaded documents to extract key sections"
+      cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
+      enabled: false
+      iterations: 1
+
+    - name: paper_score
+      description: "Score the papers based on their relevance and quality"
+      cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
+      enabled: true
+      iterations: 1
+
+    - name: knowledge_loader
+      description: "Load knowledge from the scored papers into the system"
+      cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
+      enabled: false
+      iterations: 1
+
+    - name: epistemic_plan_hrm_trainer  
+      description: "Train the HRM model to predict document values based on epistemic plans"
+      cls: stephanie.agents.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
+      enabled: false
+      iterations: 1
+
+    - name: et_hrm_inference
+      description: "Use HRM to infer epistemic traces from documents"
+      cls: stephanie.agents.inference.et_hrm_inference.EpistemicTraceHRMInferenceAgent
+      enabled: false
+      iterations: 1
+
+    - name: epistemic_plan_executor
+      description: "Execute the epistemic plan to generate hypotheses"
+      cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
+      enabled: false
+      iterations: 1
+
+    - name: knowledge_db_loader
+      description: "Load knowledge from the database"
+      cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+      enabled: true
+      iterations: 1    
+
+    - name: score_comparison
+      description: "Compare scores of different documents"
+      cls: stephanie.agents.score_comparison.ScoreComparisonAgent
+      enabled: false
+      iterations: 1
+
+    - name: score_energy_comparison
+      description: "Compare energy scores of different documents"
+      cls: stephanie.agents.score_energy_comparison.ScoreEnergyComparisonAgent
+      enabled: false
+      iterations: 1
+
+    - name: policy_synthesis
+      description: "Synthesize a policy based on the scores and comparisons"
+      cls: stephanie.agents.policy_synthesis.PolicySynthesisAgent
+      enabled: false
+      iterations: 1
+    
+    - name: gild_trainer
+      description: "Train the GILD model to synthesize policies"
+      cls: stephanie.agents.gild_trainer.GILDTrainerAgent
+      enabled: false
+      iterations: 1

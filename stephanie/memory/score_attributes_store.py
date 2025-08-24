@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from stephanie.models.score import ScoreORM
 from stephanie.models.score_attribute import ScoreAttributeORM
 
+
 class ScoreAttributeStore:
     def __init__(self, session: Session, logger=None):
         self.session = session

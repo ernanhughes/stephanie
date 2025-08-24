@@ -1,8 +1,11 @@
 # stephanie/models/score_attribute.py
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import relationship
+
 from stephanie.models.base import Base
+
 
 class ScoreAttributeORM(Base):
     __tablename__ = "score_attributes"

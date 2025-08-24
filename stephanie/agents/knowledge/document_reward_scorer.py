@@ -1,5 +1,16 @@
 # stephanie/agents/knowledge/document_reward_scorer.py
+import random
+import time
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_corpus import ScoreCorpus
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
 from stephanie.scoring.ebt_scorer import EBTScorer
 from stephanie.scoring.hrm_scorer import HRMScorer
@@ -8,15 +19,6 @@ from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.svm_scorer import SVMScorer
-from stephanie.data.score_bundle import ScoreBundle
-from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from typing import Dict, List, Any, Optional
-import time
-import random
-from tqdm import tqdm
-import numpy as np
-import pandas as pd
 
 
 class DocumentRewardScorerAgent(BaseAgent):

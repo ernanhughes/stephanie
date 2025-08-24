@@ -10,16 +10,17 @@ from tabulate import tabulate
 from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
                                  SKIP_IF_COMPLETED, STAGE)
-from stephanie.core.context.context_manager import ContextManager
+from stephanie.engine.context_manager import ContextManager
 from stephanie.engine.cycle_watcher import CycleWatcher
 from stephanie.engine.meta_confidence import MetaConfidenceTracker
+from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
 from stephanie.engine.self_validation import SelfValidationEngine
 from stephanie.engine.state_tracker import StateTracker
-from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
 from stephanie.engine.training_controller import TrainingController
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory import MemoryTool
-from stephanie.registry.component_registry import register, get_registered_component
+from stephanie.registry.component_registry import (get_registered_component,
+                                                   register)
 from stephanie.reports import ReportFormatter
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.utils.timing import time_function
@@ -215,6 +216,21 @@ class Supervisor:
             if name in self.cfg.agents
         ]
 
+    def get_stage_report_details(self, stage: dict) -> dict:
+        report_entry = {
+            "stage": stage.name,
+            "display_name": stage.get("display_name", stage.name),
+            "agent": stage.cls.split(".")[-1],
+            "status": "",
+            "summary": stage.description, # short natural-language summary
+            "metrics": {},           # e.g., {"accuracy": 0.91, "loss": 0.08}
+            "outputs": {},           # selected fields from context
+            "start_time": datetime.now().strftime("%H:%M:%S"),
+            "end_time": "",
+        }
+        return report_entry
+
+
     @time_function(logger=None)
     async def _run_pipeline_stages(self, context: dict) -> dict:
         plan_trace_monitor: PlanTraceMonitor = get_registered_component("plan_trace_monitor")
@@ -223,9 +239,10 @@ class Supervisor:
                 STAGE: stage.name,
                 "agent": stage.cls.split(".")[-1],
                 "status": "⏳ running", 
-                "start_time": datetime.utcnow().strftime("%H:%M:%S")
+                "start_time": datetime.now().strftime("%H:%M:%S")
             }
             self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
+            context.setdefault("REPORTS", []).append(self.get_stage_report_details(stage)) 
             
             # Record stage start
             plan_trace_monitor.start_stage(stage.name, context, stage_idx)
@@ -272,7 +289,7 @@ class Supervisor:
                 plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
                 
                 stage_details["status"] = "✅ completed"
-                stage_details["end_time"] = datetime.utcnow().strftime("%H:%M:%S")
+                stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
                 
             except Exception as e:
                 # Record stage error
@@ -281,10 +298,10 @@ class Supervisor:
                 self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
                 stage_details["status"] = "💀 failed"
                 stage_details["error"] = str(e)
-                stage_details["end_time"] = datetime.utcnow().strftime("%H:%M:%S")
+                stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
                 raise  # Re-raise the exception to be caught by the outer handler
         
-        self._print_pipeline_summary()
+        self._print_pipeline_summary() 
         return context
 
     async def _maybe_run_pipeline_judge(self, context: dict) -> dict:
@@ -312,7 +329,7 @@ class Supervisor:
             STAGE: stage.name,
             "agent": stage.cls.split(".")[-1],
             "status": "⏳ running", 
-            "start_time": datetime.utcnow().strftime("%H:%M:%S")
+            "start_time": datetime.now().strftime("%H:%M:%S")
 
         }
         self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
@@ -359,14 +376,14 @@ class Supervisor:
             self.logger.log("PipelineStageEnd", {STAGE: stage.name})
 
             stage_details["status"] = "✅ completed"
-            stage_details["end_time"] = datetime.utcnow().strftime("%H:%M:%S")
+            stage_details["end_time"] = datetime.now().strftime("%H%M%S")
             return context
 
         except Exception as e:
             self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
             stage_details["status"] = "💀 failed"
             stage_details["error"] = str(e)
-            stage_details["end_time"] = datetime.utcnow().strftime("%H:%M:%S")
+            stage_details["end_time"] = datetime.now().strftime("%H%M%S")
             return context
         
     def _save_pipeline_stage(self, stage: PipelineStage, context: dict, stage_dict: dict):
@@ -382,22 +399,19 @@ class Supervisor:
         input_context_id = None
         output_context_id = None
 
-        if hasattr(self.memory, 'context') and self.memory.context:
-            # Get latest saved context ID from memory.context
-            latest_context = self.memory.context.get_latest(run_id=run_id)
-            if latest_context:
-                output_context_id = latest_context.id
+        latest_context = self.memory.context.get_latest(run_id=run_id)
+        if latest_context:
+            output_context_id = latest_context.id
 
-            # If this is not the first stage, get previous context
-            prev_context = self.memory.context.get_previous(run_id=run_id)
-            if prev_context:
-                input_context_id = prev_context.id
+        # If this is not the first stage, get previous context
+        prev_context = self.memory.context.get_previous(run_id=run_id)
+        if prev_context:
+            input_context_id = prev_context.id
 
         # Build stage data
         stage_data = {
             "stage_name": stage.name,
             "agent_class": stage.cls,
-            "protocol_used": context.get("protocol_used", "unknown"),
             "goal_id": context.get(GOAL, {}).get("id"),
             "run_id": run_id,
             "pipeline_run_id": context.get(PIPELINE_RUN_ID),
@@ -422,10 +436,10 @@ class Supervisor:
     def generate_report(self, context: dict[str, any], run_id: str) -> str:
         """Generate a report based on the pipeline context."""
         formatter = ReportFormatter(self.cfg.report.path)
-        report = formatter.format_report(context)
-        # self.memory.report.log(
-        #     run_id, str(context.get("goal")), report, self.cfg.report.path
-        # )
+        report, summary = formatter.format_report(context)
+        self.memory.reports.insert(
+             run_id, str(context.get("goal")), summary , self.cfg.report.path, report
+        )
         self.logger.log(
             "ReportGenerated", {RUN_ID: run_id, "report_snippet": report[:100]}
         )

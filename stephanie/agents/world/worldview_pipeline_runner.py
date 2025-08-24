@@ -44,7 +44,7 @@ class WorldviewPipelineRunner(BaseAgent):
                     {
                         "goal_id": goal_id,
                         "pipeline": pipeline_key,
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now().isoformat(),
                     },
                 )
 
@@ -55,7 +55,7 @@ class WorldviewPipelineRunner(BaseAgent):
                 {
                     "goal_id": goal_id,
                     "pipeline": pipeline_key,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now().isoformat(),
                     "inputs": inputs,
                 },
             )
@@ -71,7 +71,7 @@ class WorldviewPipelineRunner(BaseAgent):
                 {
                     "goal_id": goal_id,
                     "pipeline": pipeline_key,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now().isoformat(),
                     "output_summary": str(result)[:300],
                 },
             )

@@ -169,7 +169,7 @@ class MRQTrainer(BaseTrainer):
             "min_value": min_value,
             "max_value": max_value,
             "avg_loss": best_loss,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now().isoformat()
         }
         self._save_meta_file(meta, dimension)
 

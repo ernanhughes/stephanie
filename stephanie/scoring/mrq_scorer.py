@@ -4,18 +4,18 @@ import os
 
 import torch
 
+from stephanie.constants import GOAL, GOAL_TEXT
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.mrq.model import MRQModel
-from stephanie.data.score_bundle import ScoreBundle
-from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
-from stephanie.constants import GOAL, GOAL_TEXT
 
 
 class MRQScorer(BaseScorer):

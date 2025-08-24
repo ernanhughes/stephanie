@@ -1,0 +1,51 @@
+# sis/config/config.yaml
+
+# Where SIS should pull insights from
+source:
+  type: "db"   # options: "db" | "logs"
+  db_url: "postgresql://postgres:postgres@localhost:5432/stephanie"
+  log_dir: "../logs"
+
+# Database connection (for MemoryTool and ORM)
+db:
+  name: "co"
+  user: "co"
+  password: "co"
+  host: "localhost"
+  port: 5432
+
+# Dashboard settings
+dashboard:
+  host: "0.0.0.0"
+  port: 7860
+  title: "📊 Stephanie Insight Dashboard"
+  limit: 50   # how many recent insights to show
+
+# API service (FastAPI/uvicorn)
+api:
+  host: "0.0.0.0"
+  port: 8000
+  reload: true
+
+# Database tables (logical mapping for SIS views)
+database:
+  schema: "public"
+  tables:
+    insights: "insights"
+    pipelines: "pipeline_runs"
+    stages: "pipeline_stages"
+    scores: "scores"
+    cartridges: "cartridges"
+    theorems: "theorems"
+
+# Embeddings (to match MemoryTool usage)
+embeddings:
+  backend: "mxbai"   # options: mxbai | hnet | huggingface
+  model: "mxbai-embed-large"
+  dimension: 1024
+  endpoint: "http://localhost:11434/api/embeddings"
+
+# Logging
+logging:
+  level: "INFO"
+  file: "sis.log"

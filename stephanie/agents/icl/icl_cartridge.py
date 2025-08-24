@@ -16,7 +16,7 @@ class ICLExample:
         self.prompt = prompt
         self.response = response
         self.task_type = task_type
-        self.timestamp = datetime.utcnow().isoformat()
+        self.timestamp = datetime.now().isoformat()
         self.embedding = embedding
         self.score = score  # Score for relevance or quality, default to 0.5
 

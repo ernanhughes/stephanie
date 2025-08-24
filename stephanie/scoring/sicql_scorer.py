@@ -3,6 +3,9 @@ import os
 import torch
 import torch.nn.functional as F
 
+from stephanie.constants import GOAL, GOAL_TEXT
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.model.in_context_q import InContextQModel
@@ -11,12 +14,9 @@ from stephanie.scoring.model.q_head import QHead
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.model.v_head import VHead
 from stephanie.scoring.scorable import Scorable
-from stephanie.data.score_bundle import ScoreBundle
-from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
-from stephanie.constants import GOAL, GOAL_TEXT
 
 
 class SICQLScorer(BaseScorer):

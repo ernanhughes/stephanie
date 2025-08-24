@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1>Scores Grid for Pipeline Run {{ pipeline_run_id }}</h1>
+
+  {% if rows %}
+  <div class="table-responsive mt-4">
+    <table class="table table-bordered table-striped align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>Evaluation ID</th>
+          <th>Agent</th>
+          <th>Evaluator</th>
+          <th>Model</th>
+          {% for dim in dimensions %}
+          <th>{{ dim }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.id }}</td>
+          <td>{{ row.agent }}</td>
+          <td>{{ row.evaluator }}</td>
+          <td>{{ row.model }}</td>
+          {% for dim in dimensions %}
+          <td>
+            {% if row.scores[dim] is not none %}
+              {{ "%.3f"|format(row.scores[dim]) }}
+            {% else %}
+              <span class="text-muted">–</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-warning">⚠️ No scores found for this pipeline run.</div>
+  {% endif %}
+</div>
+{% endblock %}

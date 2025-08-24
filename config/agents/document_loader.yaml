@@ -5,9 +5,10 @@ document_loader:
   enabled: true
   save_prompt: true
   save_context: false
-  skip_if_completed: tr
+  skip_if_completed: true
 
-  force_domain_update: false Omewhere # will force update the document domains
+  embed_full_document: true # if you are not using hnet reconsider
+  force_domain_update: false
   top_k_domains: 3
   min_classification_score: 0.4
   domain_seed_config_path: "config/domain/seeds.yaml"

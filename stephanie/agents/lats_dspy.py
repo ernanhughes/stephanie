@@ -13,9 +13,9 @@ from stephanie.agents.proximity import ProximityAgent
 from stephanie.agents.rule_tuner import RuleTunerAgent
 from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.constants import GOAL
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.mrq.scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
-from stephanie.data.score_bundle import ScoreBundle
 from stephanie.utils.graph_tools import (build_mermaid_graph, compare_graphs,
                                          save_mermaid_to_file)
 

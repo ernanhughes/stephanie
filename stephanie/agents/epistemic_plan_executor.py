@@ -11,9 +11,9 @@ import dspy
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.hrm_scorer import HRMScorer  # Optional
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.sicql_scorer import SICQLScorer
 
 

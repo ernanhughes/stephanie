@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1 class="mb-4">Prompts & Responses</h1>
+
+  {% if prompts %}
+    <table class="table table-hover align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th style="width: 15%;">Agent</th>
+          <th style="width: 20%;">Prompt Key</th>
+          <th style="width: 55%;">Response</th>
+          <th style="width: 10%;">Timestamp</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for prompt in prompts %}
+        <tr>
+          <td>{{ prompt.agent_name or "-" }}</td>
+          <td>{{ prompt.prompt_key }}</td>
+          <td style="white-space: pre-wrap; max-width: 800px;">
+            <div class="mb-2">
+              <small class="text-muted"><strong>Prompt:</strong> {{ prompt.prompt_text }}</small>
+            </div>
+            <div>
+              <strong>Response:</strong>
+              <div class="p-2 border rounded bg-light mt-1">
+                {{ prompt.response_text or "-" }}
+              </div>
+            </div>
+          </td>
+          <td>{{ prompt.timestamp.strftime("%Y-%m-%d %H:%M") if prompt.timestamp else "-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="alert alert-warning">⚠️ No prompts found.</div>
+  {% endif %}
+</div>
+{% endblock %}

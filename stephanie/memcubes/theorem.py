@@ -29,7 +29,7 @@ class Theorem:
         self.source = source
         self.version = version
         self.usage_count = 0
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now()
         self.last_used = self.created_at
         self.metadata = metadata or {
             "energy_trace": [],

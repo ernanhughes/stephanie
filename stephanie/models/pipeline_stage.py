@@ -31,7 +31,6 @@ class PipelineStageORM(Base):
     # Stage metadata
     stage_name = Column(String, nullable=False)
     agent_class = Column(String, nullable=False)
-    protocol_used = Column(String, nullable=False)
 
     # Timestamp
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)

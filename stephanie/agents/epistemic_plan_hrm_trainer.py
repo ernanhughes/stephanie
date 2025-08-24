@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
+import datetime
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import PlanTrace
@@ -402,11 +403,7 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 "model_type": self.model_type,
                 "dimension": dimension,
                 "trainer_agent": self.__class__.__name__,
-                "training_completed_at": __import__("datetime")
-                    .datetime.utcnow()
-                    .isoformat()
-                    + "Z",
-
+                "training_completed_at": datetime.now().isoformat()+ "Z",
                 # Explicit model architecture config
                 "input_dim": self.hrm_cfg["input_dim"],
                 "h_dim": self.hrm_cfg["h_dim"],

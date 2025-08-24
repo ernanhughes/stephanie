@@ -86,7 +86,7 @@ def save_model_with_version(
         "target_type": target_type,
         "dimension": dimension,
         "version": version,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now().isoformat(),
     }
 
     with open(os.path.join(version_path, "metadata.json"), "w") as f:

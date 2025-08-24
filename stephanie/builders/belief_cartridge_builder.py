@@ -53,7 +53,7 @@ class BeliefCartridgeBuilder(BaseAgent):
             content=document.get("text", ""),
             goal_id=goal.get("id"),
             domain=goal.get("domain", "default"),
-            created_at=datetime.utcnow()
+            created_at=datetime.now()
         )
         
         # Score across all dimensions and scorers

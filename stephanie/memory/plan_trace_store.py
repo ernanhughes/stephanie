@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from stephanie.data.plan_trace import PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
 
+
 class PlanTraceStore:
     """
     Store for managing PlanTraceORM objects in the database.

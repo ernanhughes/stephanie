@@ -39,7 +39,7 @@ class AutonomousWorldviewCycleAgent:
         goal = self._select_goal()
         if not goal:
             self.logger.log(
-                "NoGoalAvailable", {"timestamp": datetime.utcnow().isoformat()}
+                "NoGoalAvailable", {"timestamp": datetime.now().isoformat()}
             )
             return
 
@@ -57,7 +57,7 @@ class AutonomousWorldviewCycleAgent:
             {
                 "goal_id": goal["id"],
                 "score": evaluation.aggregate(),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now().isoformat(),
             },
         )
 

@@ -61,7 +61,7 @@ class AutoTunerAgent(BaseAgent):
                         filter=rule.filter,
                         attributes=suggestion,
                         source="auto_tuner",
-                        created_at=datetime.utcnow(),
+                        created_at=datetime.now(),
                         context_hash=SymbolicRuleORM.compute_context_hash(
                             suggestion, rule.filter
                         ),

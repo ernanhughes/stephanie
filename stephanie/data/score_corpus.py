@@ -1,8 +1,9 @@
 # stephanie/scoring/score_corpus.py
+import warnings
+from typing import Any, Dict, List, Set, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Any, Set, Tuple
-import warnings
 
 from stephanie.data.score_bundle import ScoreBundle
 

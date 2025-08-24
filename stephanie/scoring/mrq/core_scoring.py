@@ -1,11 +1,11 @@
 # stephanie/scoring/mrq/core_scoring.py
 import torch
 
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 from stephanie.models.score import ScoreORM
 from stephanie.models.sharpening_prediction import SharpeningPredictionORM
 from stephanie.scoring.scorable import Scorable
-from stephanie.data.score_bundle import ScoreBundle
-from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scoring_manager import ScoringManager
 
 

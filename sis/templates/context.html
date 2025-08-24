@@ -1,0 +1,85 @@
+<div class="accordion-body">
+
+  <!-- Metadata -->
+  <p><strong>Strategy:</strong> {{ eval.strategy or "-" }}</p>
+  <p><strong>Reasoning Strategy:</strong> {{ eval.reasoning_strategy or "-" }}</p>
+  <p><strong>Target:</strong> {{ eval.target_type }} → {{ eval.target_id }}</p>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs" id="evalTabs-{{ eval.id }}" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="scores-tab-{{ eval.id }}" data-bs-toggle="tab"
+              data-bs-target="#scores-{{ eval.id }}" type="button" role="tab"
+              aria-controls="scores-{{ eval.id }}" aria-selected="true">
+        Scores
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="attributes-tab-{{ eval.id }}" data-bs-toggle="tab"
+              data-bs-target="#attributes-{{ eval.id }}" type="button" role="tab"
+              aria-controls="attributes-{{ eval.id }}" aria-selected="false">
+        Attributes
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="context-tab-{{ eval.id }}" data-bs-toggle="tab"
+              data-bs-target="#context-{{ eval.id }}" type="button" role="tab"
+              aria-controls="context-{{ eval.id }}" aria-selected="false">
+        Context
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content mt-3" id="evalTabsContent-{{ eval.id }}">
+    
+    <!-- Scores Tab -->
+    <div class="tab-pane fade show active" id="scores-{{ eval.id }}" role="tabpanel"
+         aria-labelledby="scores-tab-{{ eval.id }}">
+      {% if eval.dimension_scores %}
+        <table class="table table-sm table-bordered">
+          <thead>
+            <tr><th>Dimension</th><th>Score</th><th>Source</th></tr>
+          </thead>
+          <tbody>
+            {% for score in eval.dimension_scores %}
+            <tr>
+              <td>{{ score.dimension }}</td>
+              <td>{{ "%.3f"|format(score.score) }}</td>
+              <td>{{ score.source or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% elif eval.scores %}
+        <pre class="bg-light p-2 rounded">{{ eval.scores | tojson(indent=2) }}</pre>
+      {% else %}
+        <p class="text-muted">No scores recorded.</p>
+      {% endif %}
+    </div>
+
+    <!-- Attributes Tab -->
+    <div class="tab-pane fade" id="attributes-{{ eval.id }}" role="tabpanel"
+         aria-labelledby="attributes-tab-{{ eval.id }}">
+      {% if eval.attributes %}
+        <ul>
+          {% for attr in eval.attributes %}
+            <li><strong>{{ attr.key }}</strong>: {{ attr.value }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted">No attributes recorded.</p>
+      {% endif %}
+    </div>
+
+    <!-- Context Tab -->
+    <div class="tab-pane fade" id="context-{{ eval.id }}" role="tabpanel"
+         aria-labelledby="context-tab-{{ eval.id }}">
+      {% if eval.extra_data %}
+        <pre class="bg-light p-2 rounded">{{ eval.extra_data | tojson(indent=2) }}</pre>
+      {% else %}
+        <p class="text-muted">No context data.</p>
+      {% endif %}
+    </div>
+
+  </div>
+</div>

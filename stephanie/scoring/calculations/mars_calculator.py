@@ -1,16 +1,17 @@
-import numpy as np
-import os
-from statistics import mean
-from typing import Dict, Any, List
-from scipy import stats
 import json
-from datetime import datetime
+import os
 import traceback
+from datetime import datetime
+from statistics import mean
+from typing import Any, Dict, List
 
-from stephanie.scoring.calculations.base_calculator import BaseScoreCalculator
+import numpy as np
+from scipy import stats
+
 from stephanie.data.score_corpus import ScoreCorpus
-
+from stephanie.scoring.calculations.base_calculator import BaseScoreCalculator
 from stephanie.utils.serialization import default_serializer
+
 
 class MARSCalculator(BaseScoreCalculator):
     """

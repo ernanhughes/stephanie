@@ -79,5 +79,5 @@ class TrainingStatsORM(Base):
             policy_stability=stats.get("policy_stability"),
             policy_logits=stats.get("policy_logits"),
             config=kwargs.get("config", {}),
-            start_time=kwargs.get("start_time", datetime.utcnow())
+            start_time=kwargs.get("start_time", datetime.now())
         )

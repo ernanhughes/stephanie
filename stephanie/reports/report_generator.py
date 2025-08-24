@@ -19,9 +19,6 @@ class ReportGenerator:
         for i, hypothesis in enumerate(cartridge.schema["hypotheses"]):
             report += f"{i + 1}. **{hypothesis['content']}**  \n"
             report += f"   *Confidence: {hypothesis['confidence']:.2f}*\n"
-            if hypothesis["id"] in cartridge.schema["validation_protocols"]:
-                protocol = cartridge.schema["validation_protocols"][hypothesis["id"]]
-                report += f"   Validation Protocol: {protocol}\n"
             report += "\n"
 
         report += "## Quality Metrics\n"

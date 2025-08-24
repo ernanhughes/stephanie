@@ -1,7 +1,7 @@
 # stephanie/scoring/scorable_factory.py
 from enum import Enum as PyEnum
-
 from typing import Optional
+
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.document import DocumentORM

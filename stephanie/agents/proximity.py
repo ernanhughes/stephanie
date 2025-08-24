@@ -1,16 +1,11 @@
 # stephanie/agents/proximity.py
+import numpy as np
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT
 from stephanie.scoring.proximity_scorer import ProximityScorer
-
-from stephanie.constants import (
-    GOAL,
-    GOAL_TEXT,
-    DATABASE_MATCHES,
-)
-
-import numpy as np
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
 class ProximityAgent(ScoringMixin, BaseAgent):

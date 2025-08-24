@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">📂 Table: {{ table_name }}</h1>
+    <a href="/db" class="btn btn-secondary">⬅ Back to Overview</a>
+    <a href="/db/table/{{ table_name }}/csv" class="btn btn-success">⬇ Download CSV</a>
+  </div>
+
+  {% if rows %}
+    <table class="table table-hover table-bordered table-sm">
+      <thead class="table-dark">
+        <tr>
+          {% for col in columns %}
+            <th>{{ col }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          {% for col in columns %}
+            <td style="max-width: 250px; white-space: pre-wrap; word-break: break-word;">
+              {{ row[col] }}
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="text-muted">Showing last {{ rows|length }} rows (ordered by <code>id</code> DESC).</p>
+  {% else %}
+    <div class="alert alert-warning">⚠️ No rows found for this table.</div>
+  {% endif %}
+</div>
+{% endblock %}

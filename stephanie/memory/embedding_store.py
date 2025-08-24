@@ -1,5 +1,6 @@
 # stephanie/memory/embedding_store.py
 import hashlib
+
 import torch  # ✅ ensure torch available for tensor→list conversion
 
 from stephanie.memory import BaseStore
@@ -34,7 +35,7 @@ class EmbeddingStore(BaseStore):
         text_hash = self.get_text_hash(text)
 
         cached = self._cache.get(text_hash)
-        if cached:
+        if cached is not None:
             return cached
 
         try:
