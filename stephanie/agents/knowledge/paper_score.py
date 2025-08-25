@@ -11,37 +11,66 @@ from stephanie.scoring.scorable_factory import TargetType
 class PaperScoreAgent(BaseAgent, PaperScoringMixin):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.force_rescore = cfg.get("force_rescore", False)
+        self.force_rescore = cfg.get("force_rescore", True)
 
     async def run(self, context: dict) -> dict:
         documents = context.get(self.input_key, [])
         results = []
+
+        self.report({
+            "event": "start",
+            "step": "PaperScoring",
+            "details": f"Scoring {len(documents)} documents",
+        })
+
         for document in documents:
             doc_id_str = str(document["id"])
+            title = document.get("title", "Untitled")
+
             existing_scores = self.scores_exist_for_document(doc_id_str)
             if existing_scores and not self.force_rescore:
                 scores = self.get_scores_by_document_id(doc_id_str)
-                self.logger.log(
-                    "ScoreSkipped",
-                    {"doc_id": doc_id_str, "score": existing_scores},
-                )
-                results.append(
-                    {
-                        "title": document.get("title"),
-                        "scores": self.aggregate_scores_by_dimension(scores),
-                    }
-                )
+                aggregated = self.aggregate_scores_by_dimension(scores)
+
+                self.report({
+                    "event": "skipped_existing",
+                    "step": "PaperScoring",
+                    "doc_id": doc_id_str,
+                    "title": title[:80],
+                    "scores": aggregated,
+                })
+
+                results.append({"title": title, "scores": aggregated})
                 continue
 
-            self.logger.log("ScoringPaper", {"title": document.get("title")})
+            # Fresh scoring
+            self.report({
+                "event": "scoring_started",
+                "step": "PaperScoring",
+                "doc_id": doc_id_str,
+                "title": title[:80],
+            })
+
             score_result = self.score_paper(document, context=context)
-            results.append(
-                {
-                    "title": document.get("title"),
-                    "scores": score_result,
-                }
-            )
+
+            self.report({
+                "event": "scored",
+                "step": "PaperScoring",
+                "doc_id": doc_id_str,
+                "title": title[:80],
+                "scores": score_result,
+            })
+
+            results.append({"title": title, "scores": score_result})
+
         context[self.output_key] = results
+
+        self.report({
+            "event": "end",
+            "step": "PaperScoring",
+            "details": f"Completed scoring {len(results)} documents",
+        })
+
         return context
 
     def assign_domains_to_document(self, document):

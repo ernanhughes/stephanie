@@ -40,9 +40,26 @@ class ICLReasoningAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         goal = context.get("goal")
 
+        self.report({
+            "event": "start",
+            "step": "ICLReasoning",
+            "goal": goal.get("goal_text", "")
+        })
+
+        # --- Step 1: Gather inputs
         top_triplets = self.retrieve_top_triplets(goal)
         top_theorems = self.retrieve_top_theorems(goal)
 
+        self.report({
+            "event": "inputs_collected",
+            "step": "ICLReasoning",
+            "triplet_count": len(top_triplets),
+            "theorem_count": len(top_theorems),
+            "triplet_examples": [f"({t.subject}, {t.predicate}, {t.object})" for t in top_triplets[:3]],
+            "theorem_examples": [t.statement[:100] for t in top_theorems[:2]]
+        })
+
+        # --- Step 2: Format facts + theorems
         learned_facts = self.format_triplets_as_facts(top_triplets)
         learned_theorems = self.format_theorems(top_theorems)
 
@@ -53,15 +70,24 @@ class ICLReasoningAgent(BaseAgent):
             **context,
         }
 
+        # --- Step 3: Generate reasoning
         prompt = self.prompt_loader.load_prompt(self.cfg, merged_context)
         response = self.call_llm(prompt, context=context)
 
-        self.logger.log(
-            "ICLPromptResponse",
-            {"goal": goal["goal_text"], "prompt": prompt, "response": response},
-        )
+        self.report({
+            "event": "reasoning_generated",
+            "step": "ICLReasoning",
+            "prompt_excerpt": prompt[:300],
+            "response_excerpt": response[:300],
+        })
 
         context[self.output_key] = response
+
+        self.report({
+            "event": "completed",
+            "step": "ICLReasoning",
+            "output_length": len(response),
+        })
         return context
 
     def retrieve_top_theorems(self, goal: dict, top_k=3) -> list[TheoremORM]:

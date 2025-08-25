@@ -35,36 +35,58 @@ class DocumentProfilerAgent(BaseAgent):
         documents = context.get(self.input_key, [])
         profiled = []
 
+        self.report({
+            "event": "start",
+            "step": "DocumentProfiler",
+            "details": f"Profiling {len(documents)} documents",
+        })
+
         for doc in documents:
             try:
                 doc_id = doc["id"]
+                title = doc.get("title", "")
 
                 existing_sections = self.memory.document_section.get_by_document(doc_id)
                 if existing_sections and not self.force_domain_update:
-                    # If we already have sections and not forcing update, skip
-                    self.logger.log(
-                        "DocumentAlreadyProfiled",
-                        {"doc_id": doc_id, "title": doc.get("title", "")},
-                    )
+                    self.report({
+                        "event": "skipped_existing",
+                        "step": "DocumentProfiler",
+                        "doc_id": doc_id,
+                        "title": title[:80],
+                        "details": "Already profiled, skipping.",
+                    })
                     continue
 
-                title = doc.get("title")
                 summary = doc.get("summary")
                 text = doc.get("content", doc.get("text", ""))
 
-                # -- STEP 1 : Unstructured pass ---------------------------------
+                # STEP 1: Unstructured parsing
                 unstruct_data = {}
                 if self.use_unstructured:
                     unstruct_data = self.section_parser.parse(text)
+                    self.report({
+                        "event": "parsed_unstructured",
+                        "step": "DocumentProfiler",
+                        "doc_id": doc_id,
+                        "title": title[:80],
+                        "sections": list(unstruct_data.keys()),
+                    })
 
-                # -- STEP 2 : Quality check & optional LLM fallback -------------
+                # STEP 2: Fallback if needed
                 if self.fallback_to_llm and self.needs_fallback(unstruct_data):
                     llm_data = await self.extract_with_prompt(text, context)
                     chosen = self.merge_outputs(unstruct_data, llm_data)
+                    self.report({
+                        "event": "used_fallback",
+                        "step": "DocumentProfiler",
+                        "doc_id": doc_id,
+                        "title": title[:80],
+                        "sections": list(chosen.keys()),
+                    })
                 else:
                     chosen = unstruct_data
 
-                # no point in overwriting arxiv data
+                # Ensure title/summary filled
                 if title:
                     chosen["title"] = title
                 if summary:
@@ -75,7 +97,8 @@ class DocumentProfilerAgent(BaseAgent):
                     )
                     chosen["summary"] = self.call_llm(prompt, context)
 
-                # -- STEP 3 : Persist ------------------------------------------
+                # STEP 3: Persist sections
+                section_summaries = []
                 for section, text in chosen.items():
                     existing = self.memory.document_section.upsert(
                         {
@@ -102,33 +125,47 @@ class DocumentProfilerAgent(BaseAgent):
                                 "score": float(score),
                             }
                         )
+                    if section_domains:
+                        section_summaries.append({
+                            "section": section,
+                            "domains": [
+                                {"domain": d, "score": float(s)} for d, s in section_domains
+                            ],
+                        })
 
                 profiled.append(
                     {
                         "id": doc_id,
-                        "title": doc.get("title", "")[:80],
+                        "title": title[:80],
                         "structured_data": chosen,
                     }
                 )
 
-                self.logger.log(
-                    "DocumentProfiled",
-                    {
-                        "doc_id": doc_id,
-                        "method": "unstructured+llm"
-                        if self.needs_fallback(unstruct_data)
-                        else "unstructured",
-                        "sections": list(chosen.keys()),
-                    },
-                )
+                self.report({
+                    "event": "profiled",
+                    "step": "DocumentProfiler",
+                    "doc_id": doc_id,
+                    "title": title[:80],
+                    "sections": list(chosen.keys()),
+                    "classified_domains": section_summaries,
+                })
 
             except Exception as e:
-                self.logger.log(
-                    "DocumentProfileFailed",
-                    {"error": str(e), "title": doc.get("title")},
-                )
+                self.report({
+                    "event": "error",
+                    "step": "DocumentProfiler",
+                    "doc_id": doc.get("id"),
+                    "title": doc.get("title", "")[:80],
+                    "details": str(e),
+                })
 
         context[self.output_key] = profiled
+
+        self.report({
+            "event": "end",
+            "step": "DocumentProfiler",
+            "details": f"Profiled {len(profiled)} documents successfully",
+        })
         return context
 
     async def extract_with_prompt(self, text: str, context: dict) -> dict:

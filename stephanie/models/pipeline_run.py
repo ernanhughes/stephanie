@@ -49,7 +49,6 @@ class PipelineRunORM(Base):
     def __repr__(self):
         return (
             f"<PipelineRunORM(id={self.id}, "
-            f"run_id='{self.run_id}', "
             f"name='{self.name}', "
             f"description='{(self.description[:50] + '...') if self.description and len(self.description) > 50 else self.description}')>"
         )

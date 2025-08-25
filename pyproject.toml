@@ -35,7 +35,8 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "arxiv>=2.1",
     "gradio_client>=0.16",
-
+    "seaborn>=0.12",
+    
     # Models / embeddings
     "torch>=2.2",
     "sentence-transformers>=3",
@@ -74,7 +75,9 @@ Repository = "https://github.com/ernanhughes/stephanie"
 Issues = "https://github.com/ernanhughes/stephanie/issues"
 
 [project.scripts]
-stephanie = "main:main"
+stephanie = "stephanie.main:main"
+sis = "sis.__main__:main"
+sis-dashboard = "sis.dashboard:main"
 
 [tool.setuptools]
 include-package-data = true

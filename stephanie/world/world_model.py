@@ -1,20 +1,18 @@
 # stephanie/worldmodel/world_model.py
-import json
 import os
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import networkx as nx
 import torch
+import pickle
 
 from stephanie.agents.inference.ebt_inference import DocumentEBTInferenceAgent
-from stephanie.memcubes.belief import Belief
 from stephanie.memcubes.memcube import MemCube
 from stephanie.memcubes.theorem import Theorem
-from stephanie.scoring.scorable import Scorable
-from stephanie.utils.file_utils import load_json, save_json
+from stephanie.utils.file_utils import save_json
 from stephanie.utils.model_utils import get_model_path
-
+from stephanie.models.belief import BeliefORM
 
 class WorldModel:
     """
@@ -39,7 +37,6 @@ class WorldModel:
         self.last_modified = self.created_at
         self.max_memory_size = 1000  # Max beliefs in short-term memory
         self.contradiction_threshold = 0.7  # Energy threshold for contradiction
-        self.logger = logging.getLogger(__name__)
         
         # Load existing graph if available
         self._load_from_disk()
@@ -120,9 +117,9 @@ class WorldModel:
         self.save_to_disk()
         return belief
     
-    def _extract_belief(self, memcube: MemCube) -> Belief:
+    def _extract_belief(self, memcube: MemCube) -> BeliefORM:
         """Convert MemCube content to structured belief"""
-        return Belief(
+        return BeliefORM(
             id=f"{hash(memcube.scorable.text)}_{memcube.version}",
             content=memcube.scorable.text,
             strength=memcube.scorable.scores.get("novelty", 0.5),
@@ -142,8 +139,8 @@ class WorldModel:
         
         # Convert energy to relevance score
         return torch.sigmoid(torch.tensor(energy)).item()
-    
-    def _update_connections(self, new_belief: Belief):
+
+    def _update_connections(self, new_belief: BeliefORM):
         """Link new belief to similar existing beliefs"""
         # Find similar beliefs
         similar = []
@@ -168,8 +165,8 @@ class WorldModel:
         self.memory = self.memory[int(len(self.memory) * 0.2):]
         
         # Remove pruned beliefs from graph
-        all_ids = set(b.id for b in self.memory)
-        for node in list(self.graph.nodes):
+        all_ids = {b.id for b in self.memory}
+        for node in self.graph.nodes:
             if node not in all_ids:
                 self.graph.remove_node(node)
     
@@ -184,7 +181,7 @@ class WorldModel:
             return None
         return max(self.memory, key=lambda b: b.relevance).id
     
-    def query(self, question: str) -> List[Belief]:
+    def query(self, question: str) -> List[BeliefORM]:
         """Answer questions using belief graph"""
         # Use EBT to find relevant beliefs
         relevant = []
@@ -296,8 +293,8 @@ class WorldModel:
             self.graph.nodes[belief.id]["data"] = belief
             if belief.strength < 0.4:
                 self._remove_belief(belief.id)
-    
-    def find_hypothesis(self, uncertainty_threshold: float = 0.7) -> Belief:
+
+    def find_hypothesis(self, uncertainty_threshold: float = 0.7) -> BeliefORM:
         """Find uncertain but relevant beliefs for hypothesis generation"""
         candidates = []
         for belief in self.memory:
@@ -310,9 +307,14 @@ class WorldModel:
         # Select weakest but most relevant belief
         return max(candidates, key=lambda b: b.relevance * (1 - b.strength))
     
-    def generate_hypotheses(self, count: int = 3) -> List[Belief]:
+    def generate_hypotheses(self, count: int = 3) -> List[BeliefORM]:
         """Generate hypotheses to improve weak beliefs"""
         candidates = []
         for _ in range(count):
             hypothesis = self.find_hypothesis()
-            if not hypothesis
+            if not hypothesis:
+                break
+
+            candidates.append(hypothesis)
+
+        return candidates

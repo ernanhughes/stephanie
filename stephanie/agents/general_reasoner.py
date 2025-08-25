@@ -93,9 +93,3 @@ class GeneralReasonerAgent(ScoringMixin, RubricClassifierMixin, BaseAgent):
 
             hypotheses.append(hypothesis.to_dict())
         return hypotheses
-
-    def _summarize_pattern(self, pattern: dict):
-        stats = {}
-        for dimension, label in pattern.items():
-            stats[label] = stats.get(label, 0) + 1
-        return stats

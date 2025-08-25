@@ -30,6 +30,7 @@ SYSTEM_INIT = {
 # AGENT OPERATIONS
 # =================
 AGENT_EVENTS = {
+    "ReportEntry": "📄",
     "AgentInit": "🤖",
     "AgentInitialized": "🤖",  # Agent initialization
     "AgentRunStarted": "🤖▶️",  # Agent run started
@@ -229,6 +230,11 @@ REASONING = {
 # TRAINING & MODEL OPS
 # =====================
 TRAINING = {
+    "HRMTrainerInitialized": "🧠🤖",  # HRM trainer initialized
+    "HRMTrainingAgentError": "🚫🧠",  # HRM training agent error
+    "CalibrationStart": "🔧📊",  # Calibration started
+    "CalibrationComplete": "✅📊",  # Calibration complete
+    "TrainingEpochsComplete": "🏋️✅",  # Training epochs complete
     "TrainingStarted": "🏋️▶️",  # Training started
     "CalibrationCompleted": "✅📊",  # Calibration completed
     "ContrastiveRankerTrainingComplete": "🎓📊",  # Contrastive ranker training completed
@@ -376,6 +382,7 @@ MODELS = {
 # ETHICS & REVIEWS
 # =============
 SPECIAL = {
+    "ContextSavedToFile": "📄💾",  # Context saved to file
     "PolicyInsight": "📊💡",  # Policy insight generated
     "PolicyReportSaved": "💾📊",  # Policy report saved
     "PlanTraceCreated": "📄📝",  # Plan trace created

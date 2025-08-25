@@ -27,7 +27,6 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
 
     async def run(self, context: dict):
         goal = context.get(GOAL)
-        # __ will flag as non serializable
         context["__llm"] = self.call_llm
         self.logger.log("AgentRunStarted", {"goal": goal})
 
@@ -37,19 +36,21 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
             self.call_llm(prompt_text, context) for _ in range(self.num_candidates)
         ]
         self.logger.log("GenerationCompleted", {"candidates": [c[:100] for c in candidates]})
+        self.report({
+            "event": "candidates_generated",
+            "count": len(candidates),
+            "examples": [c[:120] for c in candidates]
+        })
 
         # 2. Evaluate candidates pairwise
         best = candidates[0]
         scores = {}
-
         for candidate in candidates[1:]:
             if isinstance(self.evaluator, LLMJudgeEvaluator):
-                # LLM judge handles prompts directly
                 best, scores = self.evaluator.judge(
                     prompt=prompt_text, output_a=best, output_b=candidate, context=context
                 )
             else:
-                # All scorers follow standard Scorable interface
                 scorable_a = ScorableFactory.from_dict(
                     {"id": "a", "text": best}, TargetType.HYPOTHESIS
                 )
@@ -59,11 +60,22 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
 
                 score_a = self.evaluator.score(context, scorable_a, ["value"]).results["value"].score
                 score_b = self.evaluator.score(context, scorable_b, ["value"]).results["value"].score
-
                 scores = {"value_a": score_a, "value_b": score_b}
                 best = best if score_a >= score_b else candidate
 
+            # Report after each comparison
+            self.report({
+                "event": "pairwise_eval",
+                "scores": scores,
+                "best_snippet": best[:120]
+            })
+
         self.logger.log("EvaluationCompleted", {"best_output": best[:100], **scores})
+        self.report({
+            "event": "evaluation_done",
+            "final_choice_snippet": best[:200],
+            "scores": scores
+        })
 
         # 3. Save hypothesis
         confidence = max(scores.get("value_a", 0), scores.get("value_b", 0))
@@ -81,6 +93,12 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         )
         self.memory.hypotheses.insert(best_orm)
 
+        self.report({
+            "event": "hypothesis_saved",
+            "hypothesis_id": best_orm.id,
+            "confidence": confidence
+        })
+
         # 4. Classify patterns
         self.classify_and_store_patterns(
             hypothesis=best_orm.to_dict(),
@@ -92,9 +110,20 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
             agent_name=self.name,
             score=confidence,
         )
+        self.report({
+            "event": "patterns_classified",
+            "hypothesis_id": best_orm.id
+        })
 
         context[self.output_key] = [best_orm.to_dict()]
         self.logger.log("AgentRunCompleted", {"output_key": self.output_key})
+
+        # Final report entry
+        self.report({
+            "event": "completed",
+            "message": f"CoT generation completed. Best hypothesis {best_orm.id} saved."
+        })
+
         return context
 
     def _init_evaluator(self, cfg):

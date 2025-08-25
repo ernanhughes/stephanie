@@ -1,7 +1,6 @@
 # stephanie/agents/knowledge/arxiv_search.py
 import re
 from datetime import datetime, timedelta
-
 import arxiv
 
 from stephanie.agents.base_agent import BaseAgent
@@ -20,11 +19,23 @@ class ArxivSearchAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {}).get("goal_text", "")
 
-        self.logger.log("ArxivSearchStart", {"goal": goal})
+        # --- Report: Start ---
+        self.report({
+            "event": "start",
+            "step": "ArxivSearch",
+            "details": f"Searching arXiv for goal: {goal}",
+        })
 
         # Step 1: Extract relevant keywords
         keywords = self.extract_keywords(context)
         context["search_keywords"] = keywords
+
+        self.report({
+            "event": "keywords_extracted",
+            "step": "ArxivSearch",
+            "details": f"Extracted {len(keywords)} keywords",
+            "keywords": keywords,
+        })
 
         # Step 2: Build Arxiv-compatible query
         query = self.build_arxiv_query_from_goal(
@@ -35,45 +46,59 @@ class ArxivSearchAgent(BaseAgent):
             keywords=keywords,
         )
 
-        results = []
+        self.report({
+            "event": "query_built",
+            "step": "ArxivSearch",
+            "details": f"Built query with {len(keywords)} keywords",
+            "query": query,
+        })
+
         # Step 3: Fetch raw papers
+        results = []
         try:
             results = self.fetch_arxiv_results(
                 context, query, max_results=self.max_results
             )
             context["raw_arxiv_results"] = results
-            self.logger.log(
-                "ArxivSearchComplete",
-                {
-                    "keyword_count": len(keywords),
-                    "results_fetched": len(results),
-                },
-            )
-        except Exception as e:
-            self.logger.log("ArxivSearchError", {"except": e, "query": query})
 
-        # # Step 4: Rank by relevance to the goal
-        # top_ranked = rank_papers(raw_results, goal)[:self.return_top_n]
+            self.report({
+                "event": "search_complete",
+                "step": "ArxivSearch",
+                "details": f"Fetched {len(results)} papers",
+                "sample_titles": [r['title'] for r in results[:3]],  # just first 3
+            })
+        except Exception as e:
+            self.report({
+                "event": "error",
+                "step": "ArxivSearch",
+                "details": f"Error fetching arXiv results: {str(e)}",
+            })
+
+        # TODO: Ranking can also report
         # context["filtered_arxiv_results"] = top_ranked
 
         context[self.output_key] = results
+
+        # --- Report: End ---
+        self.report({
+            "event": "end",
+            "step": "ArxivSearch",
+            "details": f"Completed with {len(results)} results",
+        })
 
         return context
 
     def extract_keywords(self, merged_context: dict) -> list:
         """Extract keywords from the goal text using simple heuristics."""
         response = self.execute_prompt(merged_context)
-        # This can be improved with NLP techniques, but for now we use basic splitting
         pattern = r"(?:\n|\r|\r\n)([^\n\r]+?)(?=(?:\n|\r|\r\n|$))"
         lines = re.findall(pattern, response.strip())
-        # Optional: filter out bullet points or numbering (e.g., "- ", "1. ")
-        keywords = [re.sub(r"^[-•\\d\\.\\s]+", "", line).strip() for line in lines]
+        keywords = [re.sub(r"^[-•\d\.\s]+", "", line).strip() for line in lines]
 
+        # Keep the debug log
         self.logger.log(
             "KeywordsExtracted", {"raw_keywords": lines, "cleaned_keywords": keywords}
         )
-
-        # Remove empties or duplicates
         return [kw for kw in keywords if kw]
 
     def build_arxiv_query_from_goal(
@@ -84,10 +109,6 @@ class ArxivSearchAgent(BaseAgent):
         year_end: int = None,
         category: str = None,
     ) -> str:
-        """
-        Builds a plain arXiv query string from goal metadata and keywords,
-        supporting 'today', 'week', 'month', or 'year' filtering.
-        """
         keyword_filter = " OR ".join(f'"{kw.strip()}"' for kw in keywords if kw.strip())
         filters = [f"({keyword_filter})"]
 
@@ -114,17 +135,6 @@ class ArxivSearchAgent(BaseAgent):
             end = f"{year_end}1231" if year_end else "99991231"
             filters.append(f"submittedDate:[{start} TO {end}]")
 
-        self.logger.log(
-            "ArxivQueryFilters",
-            {
-                "keyword_filter": keyword_filter,
-                "date_filter": date_filter_mode,
-                "year_start": year_start,
-                "year_end": year_end,
-                "category": category,
-            },
-        )
-
         if category:
             filters.append(f"cat:{category}")
 
@@ -133,16 +143,6 @@ class ArxivSearchAgent(BaseAgent):
     def fetch_arxiv_results(
         self, context: dict, query: str, max_results: int = 50
     ) -> list[dict]:
-        """
-        Executes a search on the arXiv API using the given query string.
-
-        Args:
-            query (str): An arXiv-compatible query string (already encoded if needed).
-            max_results (int): Maximum number of results to return.
-
-        Returns:
-            list[dict]: List of paper metadata dictionaries.
-        """
         search = arxiv.Search(
             query=query,
             max_results=max_results,
@@ -156,6 +156,7 @@ class ArxivSearchAgent(BaseAgent):
         parent_goal = goal.get("goal_text")
         strategy = goal.get("strategy")
         focus_area = goal.get("focus_area")
+
         for result in search.results():
             arxiv_url = result.entry_id
             pid = arxiv_url.split("/")[-1]

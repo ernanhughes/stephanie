@@ -62,52 +62,56 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
     async def run(self, context: dict) -> dict:
         documents = context.get(self.input_key, [])
         cartridges = []
-
         total_docs = len(documents)
-        self.logger.log("CartridgeProcessingStarted", {"total_documents": total_docs})
+
+        self.report({
+            "event": "start",
+            "step": "CartridgeAgent",
+            "total_documents": total_docs,
+        })
 
         for idx, doc in enumerate(documents, start=1):
-            self.logger.log(
-                "CartridgeDocumentProcessingStarted",
-                {
-                    "current_document": idx,
-                    "total_documents": total_docs,
-                    "document_id": doc.get("id"),
-                },
-            )
             try:
+                self.report({
+                    "event": "document_start",
+                    "step": "CartridgeAgent",
+                    "doc_number": idx,
+                    "doc_id": doc.get("id"),
+                    "title": doc.get("title", "")[:100],
+                })
+
                 goal = context.get("goal")
 
                 # 1. Build CartridgeORM
                 cartridge = self.builder.build(doc, goal=goal)
                 if not cartridge:
-                    self.logger.log(
-                        "CartridgeSkipped",
-                        {
-                            "reason": "Builder returned None",
-                            "document_id": doc.get("id"),
-                        },
-                    )
+                    self.report({
+                        "event": "cartridge_skipped",
+                        "step": "CartridgeAgent",
+                        "doc_id": doc.get("id"),
+                        "reason": "Builder returned None",
+                    })
                     continue
-                self.logger.log("CartridgeBuilt", {"cartridge_id": cartridge.id})
 
-                # 2. Extract and insert triplets
-                if self.memory.cartridge_triples.has_triples(cartridge.id):
-                    self.logger.log(
-                        "TriplesAlreadyExist", {"cartridge_id": cartridge.id}
-                    )
-                else:
+                self.report({
+                    "event": "cartridge_built",
+                    "step": "CartridgeAgent",
+                    "cartridge_id": cartridge.id,
+                    "title": cartridge.title[:80] if cartridge.title else "Untitled",
+                })
+
+                # 2. Extract Triplets
+                if not self.memory.cartridge_triples.has_triples(cartridge.id):
                     triplets = self.triplet_extractor.extract(
                         cartridge.sections, context
                     )
-                    total_triplets = len(triplets)
-                    self.logger.log(
-                        "TripletsExtractionCompleted",
-                        {
-                            "cartridge_id": cartridge.id,
-                            "total_triplets": total_triplets,
-                        },
-                    )
+                    self.report({
+                        "event": "triplets_extracted",
+                        "step": "CartridgeAgent",
+                        "cartridge_id": cartridge.id,
+                        "triplet_count": len(triplets),
+                        "examples": triplets[:3],
+                    })
 
                     for subj, pred, obj in triplets:
                         triple_orm = self.memory.cartridge_triples.insert(
@@ -119,24 +123,24 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                             }
                         )
                         if self.score_triplets:
-                            triplet_text = f"({subj}, {pred}, {obj})"
                             score = self.scoring_engine.score(
                                 target_id=triple_orm.id,
                                 target_type=TargetType.TRIPLE,
-                                text=triplet_text,
+                                text=f"({subj}, {pred}, {obj})",
                                 context=context,
                                 scoring_profile="cartridge",
                             )
                             context.setdefault("triplet_scores", []).append(score)
-                self.logger.log("TripletsInserted", {"cartridge_id": cartridge.id})
 
-                # 3. Extract and insert theorems
+                # 3. Extract Theorems
                 theorems = self.theorem_extractor.extract(cartridge.sections, context)
-                total_theorems = len(theorems)
-                self.logger.log(
-                    "TheoremsExtractionCompleted",
-                    {"cartridge_id": cartridge.id, "total_theorems": total_theorems},
-                )
+                self.report({
+                    "event": "theorems_extracted",
+                    "step": "CartridgeAgent",
+                    "cartridge_id": cartridge.id,
+                    "theorem_count": len(theorems),
+                    "examples": [t.statement[:80] for t in theorems[:2]],
+                })
 
                 for theorem in theorems:
                     self.memory.embedding.get_or_create(theorem.statement)
@@ -146,24 +150,16 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                     theorem.cartridges.append(cartridge)
                     self.memory.session.add(theorem)
 
-                    merged_context = {
-                        "theorem": theorem.to_dict(),
-                        "cartridge_title": cartridge.title,
-                        "cartridge_id": cartridge.id,
-                        **context,
-                    }
-
-                    # Score theorem immediately
                     theorem_score = self.scoring_engine.score(
                         target_id=theorem.id,
                         target_type=TargetType.THEOREM,
                         text=theorem.statement,
-                        context=merged_context,
+                        context={**context, "theorem": theorem.to_dict()},
                         scoring_profile="cartridge",
                     )
                     context.setdefault("theorem_scores", []).append(theorem_score)
+
                 self.memory.session.commit()
-                self.logger.log("TheoremsInserted", {"cartridge_id": cartridge.id})
 
                 # 4. Score Cartridge
                 if self.score_cartridges:
@@ -175,37 +171,40 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                         scoring_profile="cartridge",
                     )
                     context.setdefault("cartridge_scores", []).append(score)
-                    self.logger.log("CartridgeScored", {"cartridge_id": cartridge.id})
+                    self.report({
+                        "event": "cartridge_scored",
+                        "step": "CartridgeAgent",
+                        "cartridge_id": cartridge.id,
+                        "score": getattr(score, "value", None),
+                    })
 
                 # 5. Assign Domains
                 self.assign_domains(cartridge)
 
-                self.logger.log(
-                    "CartridgeProcessingCompleted",
-                    {
-                        "cartridge_id": cartridge.id,
-                        "document_number": idx,
-                        "total_documents": total_docs,
-                    },
-                )
+                self.report({
+                    "event": "document_done",
+                    "step": "CartridgeAgent",
+                    "cartridge_id": cartridge.id,
+                    "doc_number": idx,
+                    "total_documents": total_docs,
+                })
 
                 cartridges.append(cartridge.to_dict())
 
             except Exception as e:
-                self.logger.log(
-                    "CartridgeProcessingFailed",
-                    {
-                        "document_id": doc.get("id"),
-                        "error": str(e),
-                        "document_number": idx,
-                        "total_documents": total_docs,
-                    },
-                )
+                self.report({
+                    "event": "error",
+                    "step": "CartridgeAgent",
+                    "doc_number": idx,
+                    "error": str(e),
+                })
 
-        self.logger.log(
-            "CartridgeProcessingFinished",
-            {"processed_documents": len(cartridges), "total_documents": total_docs},
-        )
+        self.report({
+            "event": "end",
+            "step": "CartridgeAgent",
+            "processed_cartridges": len(cartridges),
+            "total_documents": total_docs,
+        })
 
         context[self.output_key] = cartridges
         context["cartridge_ids"] = [c.get("id") for c in cartridges]

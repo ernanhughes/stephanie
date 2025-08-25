@@ -81,14 +81,19 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
         references = context.get("references", "")
         preferences = context.get("preferences", "")
 
+        # Generate chain-of-thought with DSPy
         result = self.module(
             question=goal.get("goal_text"),
             references=references,
             preferences=preferences,
         )
-
         cot = result.answer.strip()
-        self.logger.log("CoTGenerated", {"goal": goal, "cot": cot})
+
+        # 📋 Report: CoT generated
+        self.report({
+            "event": "cot_generated",
+            "cot_snippet": cot[:200],
+        })
 
         prompt_text = goal.get(GOAL_TEXT)
         prompt = self.get_or_save_prompt(prompt_text, context)
@@ -100,5 +105,19 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
             },
             context=context,
         )
+
+        # 📋 Report: hypothesis saved
+        self.report({
+            "event": "hypothesis_saved",
+            "hypothesis_id": hyp.id,
+        })
+
         context[self.output_key] = [hyp.to_dict()]
+
+        # 📋 Report: completed OK so
+        self.report({
+            "event": "completed",
+            "message": "DSPy CoT generation completed",
+        })
+
         return context

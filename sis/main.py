@@ -13,7 +13,7 @@ def load_config(path="sis/config/config.yaml"):
         return yaml.safe_load(f)
 
 cfg = load_config()
-logger = JSONLogger("sis.jsonl")
+logger = JSONLogger("logs/sis.jsonl")
 memory = MemoryTool(cfg=cfg, logger=logger)
 
 app = FastAPI(title="Stephanie Insight System (SIS)")

@@ -10,9 +10,6 @@ from stephanie.agents.base_agent import BaseAgent
 class RankingAgent(BaseAgent):
     """
     The Ranking agent simulates scientific debate between hypotheses using a tournament-style approach.
-
-    From the paper_score:
-    > 'The Ranking agent employs an Elo-based tournament to assess and prioritize generated hypotheses'
     """
 
     def __init__(self, cfg, memory=None, logger=None):
@@ -23,19 +20,11 @@ class RankingAgent(BaseAgent):
         self.initial_elo_score = cfg.get("initial_elo_score", 750)
         self.win_history = []
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
-        self.elo_scores = {}  # map: hypothesis ID → score
-        self.hypothesis_lookup = {}  # map: hypothesis ID → full dict
+        self.elo_scores = {}
+        self.hypothesis_lookup = {}
 
     async def run(self, context: dict) -> dict:
-        """
-        Rank hypotheses using pairwise comparisons and Elo updates.
-
-        Args:
-            context: Dictionary with keys:
-                - hypotheses: list of hypothesis strings
-                - goal: research objective
-                - preferences: override criteria
-        """
+        """Rank hypotheses using pairwise comparisons and Elo updates."""
         hypotheses = self.get_hypotheses(context)
 
         if len(hypotheses) < 2:
@@ -43,8 +32,22 @@ class RankingAgent(BaseAgent):
                 "NotEnoughHypothesesForRanking",
                 {"count": len(hypotheses), "reason": "less than 2 hypotheses"},
             )
+            # 🔹 Report event
+            self.report({
+                "event": "not_enough_hypotheses",
+                "count": len(hypotheses),
+                "reason": "less than 2 hypotheses"
+            })
+
             context[self.output_key] = [(h, 1000) for h in hypotheses]
             return context
+
+        # 🔹 Report event
+        self.report({
+            "event": "ranking_start",
+            "total_hypotheses": len(hypotheses),
+            "preferences": self.preferences,
+        })
 
         self._initialize_elo(hypotheses)
 
@@ -58,29 +61,53 @@ class RankingAgent(BaseAgent):
 
             if winner:
                 self._update_elo(hyp1, hyp2, winner)
+                # 🔹 Report event
+                self.report({
+                    "event": "comparison_done",
+                    "hypothesis_a": hyp1.get("id") or hyp1.get("text")[:50],
+                    "hypothesis_b": hyp2.get("id") or hyp2.get("text")[:50],
+                    "winner": winner,
+                    "elo_a": self.elo_scores[hyp1.get("id") or hyp1.get("text")],
+                    "elo_b": self.elo_scores[hyp2.get("id") or hyp2.get("text")],
+                })
             else:
                 self.logger.log(
                     "ComparisonParseFailed",
-                    {
-                        "prompt_snippet": prompt[:200],
-                        "response_snippet": response[:300],
-                        "agent": self.__class__.__name__,
-                    },
+                    {"prompt_snippet": prompt[:200], "response_snippet": response[:300]},
                 )
+                # 🔹 Report event
+                self.report({
+                    "event": "comparison_failed",
+                    "hypothesis_a": hyp1.get("id") or hyp1.get("text")[:50],
+                    "hypothesis_b": hyp2.get("id") or hyp2.get("text")[:50],
+                    "response": response[:200]
+                })
 
         ranked_ids = sorted(self.elo_scores.items(), key=lambda x: x[1], reverse=True)
         context[self.output_key] = [
             (self.hypothesis_lookup[h_id], score) for h_id, score in ranked_ids
         ]
 
+        final_summary = self._extract_win_loss_feedback()
+
         self.logger.log(
             "TournamentCompleted",
             {
                 "total_hypotheses": len(ranked_ids),
-                "win_loss_patterns": self._extract_win_loss_feedback(),
+                "win_loss_patterns": final_summary,
                 "preferences": self.preferences,
             },
         )
+        # 🔹 Report event
+        self.report({
+            "event": "tournament_completed",
+            "total_hypotheses": len(ranked_ids),
+            "ranked": [
+                {"hypothesis": self.hypothesis_lookup[h], "elo": score}
+                for h, score in ranked_ids
+            ],
+            "summary": final_summary,
+        })
 
         return context
 

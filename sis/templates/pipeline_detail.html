@@ -2,11 +2,16 @@
 
 {% block content %}
 <div class="container mt-4">
-  <h1>Pipeline Run {{ run.id }}</h1>
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Pipeline Run {{ run.id }}</h1>
+    <a href="/" class="btn btn-outline-primary">⬅ Pipelines</a>
+  </div>
   <p class="text-muted">Tag: {{ run.tag }} | Description: {{ run.description }}</p>
 
-  <!-- Mermaid Diagram -->
-  <h3 class="mt-4">Pipeline Stages</h3>
+  <!-- Pipeline Stages -->
+  <h3 class="mt-4">🔧 Pipeline Stages</h3>
   <div class="bg-light p-3 rounded">
     <pre class="mermaid">
 flowchart LR
@@ -19,34 +24,47 @@ flowchart LR
     </pre>
   </div>
 
-  <a class="btn btn-outline-primary" href="/pipeline/{{ run.id }}/scores">
-      View Scores Grid
-  </a>
-
-  <!-- Tabbed View -->
+  <!-- Tabs -->
   <ul class="nav nav-tabs mt-4" id="pipelineTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button"
-        role="tab">Prompts</button>
+      <button class="nav-link active" id="report-tab" data-bs-toggle="tab" data-bs-target="#report" type="button" role="tab">📑 Report</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="evaluations-tab" data-bs-toggle="tab" data-bs-target="#evaluations" type="button"
-        role="tab">Evaluations</button>
+      <button class="nav-link" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button" role="tab">💬 Prompts</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button"
-        role="tab">Documents</button>
+      <button class="nav-link" id="evaluations-tab" data-bs-toggle="tab" data-bs-target="#evaluations" type="button" role="tab">📊 Evaluations</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config" type="button"
-        role="tab">Config</button>
+      <button class="nav-link" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button" role="tab">📚 Documents</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config" type="button" role="tab">⚙ Config</button>
     </li>
   </ul>
 
+  <!-- Tab Contents -->
   <div class="tab-content mt-3" id="pipelineTabsContent">
 
-    <!-- Prompts Tab -->
-    <div class="tab-pane fade show active" id="prompts" role="tabpanel">
+    <!-- Report -->
+    <div class="tab-pane fade show active" id="report" role="tabpanel">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="mb-0">Pipeline Report</h4>
+        {% if report %}
+        <a href="/pipeline/{{ run.id }}/report/download" class="btn btn-sm btn-outline-primary">⬇ Download Full Report</a>
+        {% endif %}
+      </div>
+      {% if report %}
+      <div class="bg-light p-3 rounded" style="white-space: pre-wrap;">
+        {{ report | safe }}
+      </div>
+      {% else %}
+      <p class="text-muted">No report available for this run.</p>
+      {% endif %}
+    </div>
+
+    <!-- Prompts -->
+    <div class="tab-pane fade" id="prompts" role="tabpanel">
       {% if run.prompts %}
       <table class="table table-striped">
         <thead>
@@ -73,45 +91,42 @@ flowchart LR
       {% endif %}
     </div>
 
-    <!-- Evaluations Tab -->
+    <!-- Evaluations -->
     <div class="tab-pane fade" id="evaluations" role="tabpanel">
+        <a class="btn btn-outline-primary" href="/pipeline/{{ run.id }}/scores">
+        View Scores Grid
+        </a>
       {% if run.evaluations %}
+
       <div class="accordion" id="evaluationAccordion">
         {% for eval in run.evaluations %}
         <div class="accordion-item">
           <h2 class="accordion-header" id="heading-{{ eval.id }}">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-              data-bs-target="#collapse-{{ eval.id }}">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ eval.id }}">
               {{ eval.evaluator_name }} ({{ eval.target_id }}, {{ eval.target_type }})
             </button>
           </h2>
           <div id="collapse-{{ eval.id }}" class="accordion-collapse collapse" data-bs-parent="#evaluationAccordion">
             <div class="accordion-body">
               <p><strong>Agent:</strong> {{ eval.agent_name or "-" }}</p>
-              <p><strong>Scores:</strong></p>
               {% if eval.dimension_scores %}
-                <table class="table table-sm table-bordered">
-                  <thead>
-                    <tr>
-                      <th>Dimension</th>
-                      <th>Score</th>
-                      <th>Source</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for score in eval.dimension_scores %}
-                    <tr>
-                      <td>{{ score.dimension }}</td>
-                      <td>{{ "%.3f"|format(score.score) if score.score is not none else "-" }}</td>
-                      <td>{{ score.source or "-" }}</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
+              <table class="table table-sm table-bordered">
+                <thead>
+                  <tr><th>Dimension</th><th>Score</th><th>Source</th></tr>
+                </thead>
+                <tbody>
+                  {% for score in eval.dimension_scores %}
+                  <tr>
+                    <td>{{ score.dimension }}</td>
+                    <td>{{ "%.3f"|format(score.score) if score.score is not none else "-" }}</td>
+                    <td>{{ score.source or "-" }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
               {% else %}
-                <p class="text-muted">No scores recorded.</p>
+              <p class="text-muted">No scores recorded.</p>
               {% endif %}
-
             </div>
           </div>
         </div>
@@ -122,21 +137,15 @@ flowchart LR
       {% endif %}
     </div>
 
-    <!-- Documents Tab -->
+    <!-- Documents -->
     <div class="tab-pane fade" id="documents" role="tabpanel">
-      <h4 class="mb-3">Documents Referenced</h4>
       {% if documents %}
       <div class="list-group">
         {% for key, doc in documents.items() %}
         <div class="list-group-item">
-          <h6>
-            <span class="badge bg-secondary">{{ doc.target_type }}</span>
-            ID: {{ doc.id }}
-          </h6>
+          <h6><span class="badge bg-secondary">{{ doc.target_type }}</span> ID: {{ doc.id }}</h6>
           <p class="mb-1 text-muted small">Target Key: {{ key }}</p>
-          <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;">
-{{ doc.text }}
-            </pre>
+          <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;">{{ doc.text }}</pre>
         </div>
         {% endfor %}
       </div>
@@ -145,19 +154,16 @@ flowchart LR
       {% endif %}
     </div>
 
-  <!-- Config Tab -->
-  <div class="tab-pane fade" id="config" role="tabpanel">
-    <h4 class="mb-3">Pipeline Configuration (YAML)</h4>
+    <!-- Config -->
+    <div class="tab-pane fade" id="config" role="tabpanel">
       {% if config_yaml %}
-        <pre class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">
-        {{ config_yaml }}
-        </pre>
+      <pre class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">{{ config_yaml }}</pre>
       {% else %}
-        <p class="text-muted">No pipeline configuration available.</p>
+      <p class="text-muted">No pipeline configuration available.</p>
       {% endif %}
-  </div>
+    </div>
 
-  </div>
+  </div> <!-- end tab-content -->
 
 </div>
 
