@@ -1,6 +1,8 @@
-from stephanie.memcubes.belief import Belief
+from stephanie.models.belief import BeliefORM
 from stephanie.memcubes.memcube import MemCube, MemCubeFactory
 from stephanie.memcubes.scorable import Scorable, TargetType
+import torch
+
 
 
 class WorldModel:
@@ -35,7 +37,6 @@ class WorldModel:
         
         return world_model
     
-    # In your self-improvement loop
 def generate_hypotheses(self, world_model: WorldModel):
     hypothesis_engine = HypothesisEngine(world_model)
     hypotheses = hypothesis_engine.generate_hypotheses(world_model.goal)
@@ -43,7 +44,7 @@ def generate_hypotheses(self, world_model: WorldModel):
     # Score hypotheses
     scored = []
     for h in hypotheses:
-        score = self.ebt.get_energy(world_model.goal, h.content)
+        score = self.ebt.get_energy(world_model.goal, h.text)
         score = torch.sigmoid(torch.tensor(score)).item()
         h.relevance = score
         scored.append(h)
@@ -51,3 +52,11 @@ def generate_hypotheses(self, world_model: WorldModel):
     # Select top hypothesis
     best = max(scored, key=lambda x: x.relevance * x.strength)
     return best
+
+class HypothesisEngine:
+    def __init__(self, world_model: WorldModel):
+        self.world_model = world_model
+
+    def generate_hypotheses(self, goal: str) -> list:
+        # Generate hypotheses based on the current world model and goal
+        pass

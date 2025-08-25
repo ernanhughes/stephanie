@@ -14,6 +14,9 @@ defaults:
   - agents/paper_score
   - logging/json_logger
 
+embeddings:
+  backend: hnet
+
 goal:
   goal_text: 1. I would like to build an AI that continually learns from its own results to solve increasingly complex problems.
   #goal_text: I want to build an AI that can teach itself to solve complex problems better over time.
@@ -42,12 +45,6 @@ report:
 web_search:
   engine: "searxng"
   instance_url: "http://localhost:8080"
-
-
-embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
 
 pipeline:
   name: cartridge

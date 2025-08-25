@@ -27,7 +27,7 @@ class KnowledgeDBLoaderAgent(BaseAgent):
                 goal_text, top_k=self.top_k
             )
         else:
-            matches = self.memory.embedding.search_related(goal_text, top_k=self.top_k)
+            matches = self.memory.embedding.search_related_documents(goal_text, top_k=self.top_k)
 
         # Step 3: Format results
         results = []

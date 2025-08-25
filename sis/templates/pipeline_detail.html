@@ -10,19 +10,26 @@
   </div>
   <p class="text-muted">Tag: {{ run.tag }} | Description: {{ run.description }}</p>
 
-  <!-- Pipeline Stages -->
-  <h3 class="mt-4">🔧 Pipeline Stages</h3>
-  <div class="bg-light p-3 rounded">
-    <pre class="mermaid">
+<!-- Pipeline Stages -->
+<h3 class="mt-4">🔧 Pipeline Stages</h3>
+<div class="bg-light p-3 rounded">
+<pre class="mermaid">
 flowchart LR
-{% for stage in run.stages %}
-  {{ "S" ~ stage.id }}[{{ stage.stage_name }} <br/> {{ stage.agent_class }}]
+{% for stage in stages %}
+  {# short class name only #}
+  {% set short_class = stage.agent_class.split('.')[-1] if stage.agent_class else "Unknown" %}
+  {% set config_preview = stage.stage_dict if stage.stage_dict else "⚠️ No config found" %}
+  
+  S{{ stage.id }}["{{ stage.stage_name }}<br/><i>{{ short_class }}</i>"]
+
+  click S{{ stage.id }} "javascript:void(0)" "{{ config_preview | tojson | replace('"', '&quot;') }}"
+
   {% if not loop.last %}
-    {{ "S" ~ stage.id }} --> {{ "S" ~ run.stages[loop.index].id }}
+    S{{ stage.id }} --> S{{ stages[loop.index].id }}
   {% endif %}
 {% endfor %}
-    </pre>
-  </div>
+</pre>
+</div>
 
   <!-- Tabs -->
   <ul class="nav nav-tabs mt-4" id="pipelineTabs" role="tablist">
@@ -167,9 +174,11 @@ flowchart LR
 
 </div>
 
+
 <!-- Mermaid Support -->
 <script type="module">
-  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.10.1/dist/mermaid.esm.min.mjs";
   mermaid.initialize({ startOnLoad: true });
 </script>
+
 {% endblock %}

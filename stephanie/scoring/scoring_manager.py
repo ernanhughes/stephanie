@@ -49,16 +49,18 @@ class ScoringManager(BaseAgent):
             from stephanie.scoring.llm_scorer import LLMScorer
             from stephanie.scoring.mrq_scorer import MRQScorer
             from stephanie.scoring.svm_scorer import SVMScorer
+            from stephanie.scoring.sicql_scorer import SICQLScorer
 
             svm_scorer = SVMScorer(cfg, memory, logger)
             mrq_scorer = MRQScorer(cfg, memory, logger)
+            sicql_scorer = SICQLScorer(cfg, memory, logger)
             llm_scorer = LLMScorer(cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=self.call_llm)
-
+            
             self.scorer = FallbackScorer(
                 cfg=self.cfg,
                 memory=self.memory,
                 logger=self.logger,
-                scorers=[svm_scorer, mrq_scorer, llm_scorer],
+                scorers=[sicql_scorer, svm_scorer, mrq_scorer, llm_scorer],
                 fallback_order=["svm", "mrq", "llm"],
                 default_fallback="llm",
             )
@@ -169,6 +171,7 @@ class ScoringManager(BaseAgent):
         from stephanie.scoring.llm_scorer import LLMScorer
         from stephanie.scoring.mrq_scorer import MRQScorer
         from stephanie.scoring.svm_scorer import SVMScorer
+        from stephanie.scoring.sicql_scorer import SICQLScorer
 
         if data["scorer"] == "mrq":
             # Use MRQ scoring profile if specified
@@ -176,6 +179,9 @@ class ScoringManager(BaseAgent):
         elif data["scorer"] == "svm":
             # Use SVM scoring profile if specified
             scorer = SVMScorer(cfg, memory, logger)
+        elif data["scorer"] == "sicql":
+            # Use SICQL scoring profile if specified
+            scorer = SICQLScorer(cfg, memory, logger)
         else:
             # Default to LLM scoring profile
             scorer = LLMScorer(
@@ -242,8 +248,9 @@ class ScoringManager(BaseAgent):
                     context, scorable, self.dimensions, llm_fn=llm_fn
                 )
             else:
+                dimensions= [d["name"] for d in self.dimensions]
                 score = self.scorer.score(
-                    context, scorable, self.dimensions
+                    context, scorable, dimensions
                 )
         except Exception as e:
             self.logger.log(
@@ -399,7 +406,7 @@ class ScoringManager(BaseAgent):
                         data_type=data_type
                     ))
 
-        # Add all scores to database
+        # Add all scores to database I
         memory.session.add_all(score_orms)
         memory.session.flush()  # Get score IDs
         

@@ -118,10 +118,10 @@ class WorldModel:
         return belief
     
     def _extract_belief(self, memcube: MemCube) -> BeliefORM:
-        """Convert MemCube content to structured belief"""
+        """Convert MemCube text to structured belief"""
         return BeliefORM(
             id=f"{hash(memcube.scorable.text)}_{memcube.version}",
-            content=memcube.scorable.text,
+            text=memcube.scorable.text,
             strength=memcube.scorable.scores.get("novelty", 0.5),
             relevance=self._calculate_relevance(memcube),
             source=memcube.id,
@@ -148,7 +148,7 @@ class WorldModel:
             if belief.id == new_belief.id:
                 continue
             # Use EBT to check compatibility
-            energy = self.ebt.get_energy(belief.content, new_belief.content, "relevance")
+            energy = self.ebt.get_energy(belief.text, new_belief.text, "relevance")
             if energy < self.contradiction_threshold:
                 similar.append((belief.id, energy))
         
@@ -186,7 +186,7 @@ class WorldModel:
         # Use EBT to find relevant beliefs
         relevant = []
         for belief in self.memory:
-            energy = self.ebt.get_energy(question, belief.content, "relevance")
+            energy = self.ebt.get_energy(question, belief.text, "relevance")
             relevance = torch.sigmoid(torch.tensor(energy)).item()
             if relevance > 0.6:
                 relevant.append(belief)
@@ -215,8 +215,8 @@ class WorldModel:
             belief_b = self.graph.nodes[c["belief_b"]]["data"]
             
             # Use EBT to verify which belief is better
-            energy_a = self.ebt.get_energy(self.goal, belief_a.content)
-            energy_b = self.ebt.get_energy(self.goal, belief_b.content)
+            energy_a = self.ebt.get_energy(self.goal, belief_a.text)
+            energy_b = self.ebt.get_energy(self.goal, belief_b.text)
             
             # Keep the belief with lower energy (better alignment)
             if energy_a < energy_b:
@@ -250,8 +250,8 @@ class WorldModel:
     
     def _build_theorem(self, path: List) -> Theorem:
         """Convert belief path into theorem"""
-        premises = [self.graph.nodes[b]["data"].content for b in path[:-1]]
-        conclusion = self.graph.nodes[path[-1]]["data"].content
+        premises = [self.graph.nodes[b]["data"].text for b in path[:-1]]
+        conclusion = self.graph.nodes[path[-1]]["data"].text
         
         return Theorem(
             id=hash("".join(premises + [conclusion])),

@@ -18,7 +18,7 @@ class DocumentORM(Base):
     domain_label = Column(String, nullable=True)
     url = Column(String, nullable=True)
     summary = Column(Text, nullable=True)
-    content = Column(Text, nullable=True)
+    text = Column(Text, nullable=True)
     goal_id = Column(
         Integer, ForeignKey("goals.id", ondelete="SET NULL"), nullable=True
     )
@@ -50,7 +50,7 @@ class DocumentORM(Base):
             "external_id": self.external_id,
             "url": self.url,
             "summary": self.summary,
-            "content": self.content,
+            "text": self.text,
             "goal_id": self.goal_id,
             "embedding_id": self.embedding_id,
             "domains": self.domains,

@@ -5,7 +5,7 @@ from sis.utils.data_utils import get_run_config
 from fastapi.responses import FileResponse, PlainTextResponse
 import os
 import tempfile
-
+import yaml
 
 router = APIRouter()
 
@@ -55,7 +55,6 @@ def pipeline_detail(request: Request, pipeline_id: int):
         ]
 
     stages = memory.pipeline_stages.get_by_run_id(pipeline_id)
-
     documents = memory.pipeline_references.get_documents_by_run_id(
         pipeline_id, memory, limit=100
     )
@@ -75,7 +74,6 @@ def pipeline_detail(request: Request, pipeline_id: int):
             "config_yaml": config_yaml,
         },
     )
-
 
 @router.get("/pipeline/{pipeline_id}/evaluations", response_class=HTMLResponse)
 def pipeline_evaluations(request: Request, pipeline_id: int):

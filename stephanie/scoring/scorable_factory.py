@@ -5,6 +5,7 @@ from typing import Optional
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.document import DocumentORM
+from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.scorable import Scorable
@@ -29,57 +30,68 @@ class TargetType:
     PLAN_TRACE = "plan_trace"
     PLAN_TRACE_STEP = "plan_trace_step"
 
+
 class ScorableFactory:
-    """ Why am I hitting the cash It shouldn't be slamming the cash by now
-    Factory for turning various content types into unified Scorable objects.
     """
+    Factory for turning ORM objects, dicts, or plain text into unified Scorable objects.
+    Now supports summary vs. full text representations.
+    """
+
+    @staticmethod
+    def get_text(title: str, summary: str, text: str, mode: str = "default") -> str:
+        """
+        Utility to produce either a summary or full text representation of a document.
+
+        Args:
+            title: The document's title
+            summary: A short summary
+            text: The full content
+            mode: "summary" or "full"/"default"
+        """
+        title = title or ""
+        summary = summary or ""
+        text = text or ""
+
+        if mode == "summary" and summary:
+            return f"{title}\n\n{summary}"
+        return f"{title}\n\n{text or summary}"
+
 
     @staticmethod
     def from_orm(obj, mode: str = "default") -> Scorable:
         """
-        Convert an ORM object to a Scorable.
-        Dispatches based on the object's class type.
+        Convert an ORM object into a Scorable.
+        Mode controls whether to return summary, full, or default text.
         """
         if isinstance(obj, PromptORM):
             return ScorableFactory.from_prompt_pair(obj, mode)
+
         elif isinstance(obj, CartridgeORM):
-            return Scorable(
-                id=obj.id, text=obj.markdown_content, target_type=TargetType.CARTRIDGE
-            )
+            text = ScorableFactory.get_text(obj.title, obj.summary, obj.markdown_content, mode)
+            return Scorable(id=obj.id, text=text, target_type=TargetType.CARTRIDGE)
+
+        elif isinstance(obj, HypothesisORM):
+            text = obj.text or ""
+            return Scorable(id=obj.id, text=text, target_type=TargetType.HYPOTHESIS)
+
         elif isinstance(obj, CartridgeTripleORM):
-            # For a triple, we concatenate subject, relation, and object as a textual representation
-            return Scorable(
-                id=obj.id,
-                text=f"{obj.subject} {obj.relation} {obj.object}",
-                target_type=TargetType.TRIPLE,
-            )
+            text = f"{obj.subject} {obj.relation} {obj.object}"
+            return Scorable(id=obj.id, text=text, target_type=TargetType.TRIPLE)
+
         elif isinstance(obj, TheoremORM):
-            return Scorable(
-                id=obj.id, text=obj.statement, target_type=TargetType.THEOREM
-            )
+            text = obj.statement or ""
+            return Scorable(id=obj.id, text=text, target_type=TargetType.THEOREM)
+
         elif isinstance(obj, DocumentORM):
-            title = obj.title or ""
-            summary = obj.summary or ""
-            content = obj.content or ""
-
-            if title and summary:
-                text = f"#Title\n{title}\n\n## Summary\n{summary}"
-            elif content:
-                text = content
-            else:
-                text = title or summary  # fallback if only one exists
-
+            text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
             return Scorable(id=obj.id, text=text, target_type=TargetType.DOCUMENT)
+
         else:
             raise ValueError(f"Unsupported ORM type for scoring: {type(obj)}")
 
     @staticmethod
     def from_prompt_pair(obj: PromptORM, mode: str = "prompt+response") -> Scorable:
-        """
-        Handles PromptORM objects that contain both prompt and response.
-        The `mode` parameter controls whether to extract only the prompt, only the response,
-        or a concatenated version of both.
-        """
+        """Handles PromptORM with different modes (prompt_only, response_only, prompt+response, summary)."""
         prompt = obj.prompt or ""
         response = obj.response or ""
         target_type = TargetType.PROMPT
@@ -89,7 +101,11 @@ class ScorableFactory:
         elif mode == "response_only":
             text = response
             target_type = TargetType.RESPONSE
-        elif mode == "prompt+response":
+        elif mode == "summary":
+            snippet = (response[:200] + "...") if response else (prompt[:200] + "...")
+            text = snippet
+            target_type = TargetType.PROMPT_RESPONSE
+        elif mode == "prompt+response" or mode == "default":
             text = f"{prompt}\n\n{response}"
             target_type = TargetType.PROMPT_RESPONSE
         else:
@@ -98,41 +114,20 @@ class ScorableFactory:
         return Scorable(id=obj.id, text=text, target_type=target_type)
 
     @staticmethod
-    def from_dict(data: dict, target_type: TargetType = None) -> Scorable:
-        """
-        Converts a plain dictionary into a Scorable, using optional fields like
-        title, summary, and content for DOCUMENT types.
-        """
+    def from_dict(data: dict, target_type: TargetType = None, mode: str = "default") -> Scorable:
+        """Convert dicts to Scorable. Supports summary vs. full text where applicable."""
         if target_type is None:
-            target_type = data.get("target_type", "document")
-        if "text" in data: # If text is provided, use it directly
-            return Scorable(id=str(data.get("id", "")), text=data["text"], target_type=target_type)
-        if target_type == "document":
-            title = data.get("title", "")
-            summary = data.get("summary", "")
-            content = data.get("content", "")
-            if title and summary:
-                text = f"#Title\n{title}\n\n## Summary\n{summary}"
-            elif content:
-                text = content
-            else:
-                text = title or summary
-        elif target_type == "triple":
-            text = (
-                f"{data.get('subject')} {data.get('relation')} {data.get('object')}",
-            )
-        else:
-            text = data.get("text", "")
+           target_type = data.get("target_type", "document")
+        title = data.get("title", "")
+        summary = data.get("summary", "")
+        in_text = data.get("text", "")
+        text = ScorableFactory.get_text(title, summary, in_text, mode)
 
-        return Scorable(id=str(data.get("id")), text=text, target_type=target_type)
-
+        return Scorable(id=str(data.get("id", "")), text=text, target_type=target_type)
 
     @staticmethod
     def from_text(text: str, target_type: TargetType) -> Scorable:
-        """
-        Converts a plain dictionary into a Scorable, using optional fields like
-        title, summary, and content for DOCUMENT types.
-        """
+        """Convert plain text to Scorable. Supports summary truncation."""
         return Scorable(id="", text=text, target_type=target_type)
 
     @staticmethod

@@ -382,6 +382,8 @@ MODELS = {
 # ETHICS & REVIEWS
 # =============
 SPECIAL = {
+    "DocumentEmbeddingInserted": "📄✅",  # Document embedding inserted
+    "DocumentEmbeddingBackfilled": "📄🔄",  # Document embedding backfilled
     "ContextSavedToFile": "📄💾",  # Context saved to file
     "PolicyInsight": "📊💡",  # Policy insight generated
     "PolicyReportSaved": "💾📊",  # Policy report saved

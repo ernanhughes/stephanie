@@ -287,10 +287,10 @@ class DocumentLoaderAgent(BaseAgent):
         return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", title)[:100]
 
     def assign_domains_to_document(self, document):
-        content = document.content
-        if content:
+        text = document.text
+        if text:
             results = self.domain_classifier.classify(
-                content, self.top_k_domains, self.min_classification_score
+                text, self.top_k_domains, self.min_classification_score
             )
             for domain, score in results:
                 self.memory.document_domains.insert(

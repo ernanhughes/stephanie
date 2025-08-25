@@ -1,0 +1,18 @@
+You are a helpful assistant
+
+Based upon this goal:
+Goal: {{ '{{' }} goal.goal_text {{ '}}' }}
+
+{% if preferences %}
+And these preferences:
+{% for p in preferences %}
+- {{ '{{' }} p {{ '}}' }}
+{% endfor %}
+{% endif %}
+
+{% if instructions %}
+Additional instructions: 
+{% for i in instructions %}
+- {{ '{{' }} i {{ '}}' }}
+{% endfor %}
+{% endif %}

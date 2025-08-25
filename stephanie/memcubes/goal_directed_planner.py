@@ -1,14 +1,18 @@
+from stephanie.models.belief import BeliefORM
+from stephanie.memcubes.world_model import WorldModel
+from typing import List
+
 class GoalDirectedPlanner:
     def __init__(self, world_model: WorldModel):
         self.world_model = world_model
         self.plan = []
     
-    def generate_plan(self, goal: str) -> List[Belief]:
+    def generate_plan(self, goal: str) -> List[BeliefORM]:
         """Generate plan using belief graph"""
         self.plan = self._find_path_to_goal(goal)
         return self.plan
     
-    def _find_path_to_goal(self, goal: str) -> List[Belief]:
+    def _find_path_to_goal(self, goal: str) -> List[BeliefORM]:
         """Find reasoning path to goal"""
         goal_node = self.world_model.belief_graph.nodes[self.world_model._find_goal_node(goal)]
         return nx.shortest_path(self.world_model.belief_graph, source=self.world_model._find_root(), target=goal_node)
@@ -23,13 +27,13 @@ class GoalDirectedPlanner:
                 break
         return result
     
-    def _apply_step(self, context: dict, belief: Belief):
+    def _apply_step(self, context: dict, belief: BeliefORM):
         """Apply belief to context"""
         # Use belief content to transform context
         context["input"] = belief.content + "\n\n" + context.get("input", "")
         return context
     
-    def _check_success(self, context: dict, belief: Belief) -> bool:
+    def _check_success(self, context: dict, belief: BeliefORM) -> bool:
         """Check if belief solves the goal"""
         # Use EBT to verify goal alignment
         energy = self.ebt.get_energy(belief.content, context.get("input", ""))
