@@ -31,9 +31,6 @@ flowchart LR
 </pre>
 </div>
 
-<a href="/pipeline/{{ run.id }}/cartridges" class="btn btn-sm btn-outline-info">📦 Cartridges</a>
-<a href="/pipeline/{{ run.id }}/theorems" class="btn btn-sm btn-outline-success">📐 Theorems</a>
-
   <!-- Tabs -->
   <ul class="nav nav-tabs mt-4" id="pipelineTabs" role="tablist">
     <li class="nav-item" role="presentation">
@@ -109,47 +106,51 @@ flowchart LR
 
     <!-- Evaluations -->
     <div class="tab-pane fade" id="evaluations" role="tabpanel">
-        <a class="btn btn-outline-primary" href="/pipeline/{{ run.id }}/scores">
-        View Scores Grid
-        </a>
-      {% if run.evaluations %}
+      <a class="btn btn-outline-primary mb-3" href="/pipeline/{{ run.id }}/scores">
+        📊 View Scores Grid
+      </a>
 
-      <div class="accordion" id="evaluationAccordion">
-        {% for eval in run.evaluations %}
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="heading-{{ eval.id }}">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ eval.id }}">
-              {{ eval.evaluator_name }} ({{ eval.target_id }}, {{ eval.target_type }})
-            </button>
-          </h2>
-          <div id="collapse-{{ eval.id }}" class="accordion-collapse collapse" data-bs-parent="#evaluationAccordion">
-            <div class="accordion-body">
-              <p><strong>Agent:</strong> {{ eval.agent_name or "-" }}</p>
+      {% if run.evaluations %}
+        <table class="table table-bordered table-striped">
+          <thead class="table-light">
+            <tr>
+              <th>ID</th>
+              <th>Evaluator</th>
+              <th>Agent</th>
+              <th>Target</th>
+              <th>Dimension</th>
+              <th>Score</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for eval in run.evaluations %}
               {% if eval.dimension_scores %}
-              <table class="table table-sm table-bordered">
-                <thead>
-                  <tr><th>Dimension</th><th>Score</th><th>Source</th></tr>
-                </thead>
-                <tbody>
-                  {% for score in eval.dimension_scores %}
-                  <tr>
-                    <td>{{ score.dimension }}</td>
-                    <td>{{ "%.3f"|format(score.score) if score.score is not none else "-" }}</td>
-                    <td>{{ score.source or "-" }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+                {% for score in eval.dimension_scores %}
+                <tr>
+                  <td>{{ eval.id }}</td>
+                  <td>{{ eval.evaluator_name }}</td>
+                  <td>{{ eval.agent_name or "-" }}</td>
+                  <td>{{ eval.target_type }} ({{ eval.target_id }})</td>
+                  <td>{{ score.dimension }}</td>
+                  <td>{{ "%.3f"|format(score.score) if score.score is not none else "-" }}</td>
+                  <td>{{ score.source or "-" }}</td>
+                </tr>
+                {% endfor %}
               {% else %}
-              <p class="text-muted">No scores recorded.</p>
+                <tr>
+                  <td>{{ eval.id }}</td>
+                  <td>{{ eval.evaluator_name }}</td>
+                  <td>{{ eval.agent_name or "-" }}</td>
+                  <td>{{ eval.target_type }} ({{ eval.target_id }})</td>
+                  <td colspan="3"><span class="text-muted">No scores recorded</span></td>
+                </tr>
               {% endif %}
-            </div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
+            {% endfor %}
+          </tbody>
+        </table>
       {% else %}
-      <p class="text-muted">No evaluations recorded for this pipeline.</p>
+        <p class="text-muted">No evaluations recorded for this pipeline.</p>
       {% endif %}
     </div>
 

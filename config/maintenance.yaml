@@ -11,7 +11,7 @@ embeddings:
   backend: hnet
 
 plan_monitor:
-  enabled: false
+  enabled: true
   cls: stephanie.agents.plan_monitor.PlanMonitorAgent
   save_output: false
   output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline

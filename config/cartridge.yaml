@@ -2,6 +2,13 @@
 defaults:
   - _self_
   - db: postgres
+
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/mrq/default
+  - scorer/ebt/default
+
+
   - agents/arxiv_search
   - agents/cartridge
   - agents/document_loader

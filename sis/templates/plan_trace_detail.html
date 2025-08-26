@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>📋 Plan Trace {{ trace.trace_id }}</h2>
+  <p><strong>Goal:</strong> {{ trace.goal_text }}</p>
+  <p><strong>Pipeline:</strong> {{ trace.plan_signature }}</p>
+
+  <h4 class="mt-4">Execution Steps</h4>
+  {% if steps %}
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Stage</th>
+        <th>Description</th>
+        <th>Duration (s)</th>
+        <th>Status</th>
+        <th>Scores</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for step in steps %}
+      <tr>
+        <td>{{ step.step_order }}</td>
+        <td>{{ step.step_type }}</td>
+        <td>{{ step.description }}</td>
+        <td>{{ "%.2f"|format(step.duration or 0) }}</td>
+        <td>
+          {% if step.error %}
+            <span class="text-danger">❌ {{ step.error.type }}</span>
+          {% else %}
+            ✅ Completed
+          {% endif %}
+        </td>
+        <td>
+          {% if step.scores %}
+            <ul class="small mb-0">
+              {% for dim, val in step.scores.items() %}
+              <li>{{ dim }}: {{ val }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            -
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No execution steps recorded for this trace.</p>
+  {% endif %}
+</div>
+{% endblock %}

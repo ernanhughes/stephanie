@@ -30,6 +30,7 @@ class ExecutionStepStore:
         orm_step = ExecutionStepORM(
             step_id=step.step_id,
             plan_trace_id=step.plan_trace_id,
+            pipeline_run_id=step.pipeline_run_id,
             step_order=step.step_order,  
             description=step.description,
             output_text=step.output_text,

@@ -2,6 +2,17 @@
 defaults:
   - _self_
   - db: postgres
+
+
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/mrq/default
+  - scorer/ebt/default
+  - scorer/contrastive_ranker/default
+  - scorer/hrm/default
+  - scorer/epistemic_hrm/default
+
+
   - agents/literature
   - agents/literature_ranking
   - agents/prompt_tuning
@@ -64,10 +75,13 @@ goal:
     - "multi_dimensional_score_map"
     - "cross_domain_transfer_loop"
 
-post_judgment:
-  name: pipeline_judge
+plan_monitor:
   enabled: true
-  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
+  save_output: false
+  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
+  plan_monitoring_interval: 10
+  plan_monitoring_timeout: 60
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -82,9 +96,7 @@ web_search:
 
 
 embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
+  backend: hnet
 
 pipeline:
   name: long_cot_pipeline

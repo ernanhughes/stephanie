@@ -7,17 +7,25 @@ from stephanie.builders.cartridge_builder import CartridgeBuilder
 from stephanie.builders.theorem_extractor import TheoremExtractor
 from stephanie.builders.triplet_extractor import TripletExtractor
 from stephanie.models.theorem import CartridgeORM
-from stephanie.scoring.scorable_factory import TargetType
-from stephanie.scoring.scoring_engine import ScoringEngine
+from stephanie.scoring.ebt_scorer import EBTScorer
+from stephanie.scoring.mrq.scorer import MRQScorer
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from tqdm import tqdm
 
-class CartridgeAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+from stephanie.scoring.sicql_scorer import SICQLScorer
+from stephanie.scoring.svm_scorer import SVMScorer
+
+class CartridgeAgent(BaseAgent):
+    def __init__(self, cfg, memory=None, logger=None, full_cfg=None):
         super().__init__(cfg, memory, logger)
 
         self.input_key = cfg.get("input_key", "documents")
         self.score_cartridges = cfg.get("score_cartridges", True)
         self.score_triplets = cfg.get("score_triplets", True)
+        self.scorer_type = cfg.get("scorer_type", "sicql")  # default
+        self.scorer = self._init_scorer(full_cfg, self.scorer_type)
+        self.dimensions = cfg.get("dimensions", ["relevance", "acy", "completeness"])
+        self.force_rescore = cfg.get("force_rescore", False)
         self.top_k_domains = cfg.get("top_k_domains", 3)
         self.min_classification_score = cfg.get("min_classification_score", 0.6)
         self.force_rebuild_cartridges = cfg.get("force_rebuild_cartridges", False)
@@ -52,13 +60,16 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
             call_llm=self.call_llm,
         )
 
-        self.scoring_engine = ScoringEngine(
-            cfg=self.cfg,
-            memory=self.memory,
-            prompt_loader=self.prompt_loader,
-            logger=self.logger,
-            call_llm=self.call_llm,
-        )
+    def _init_scorer(self, full_cfg, scorer_type):
+        if scorer_type == "sicql":
+            return SICQLScorer(full_cfg.scorer.sicql, memory=self.memory, logger=self.logger)
+        if scorer_type == "mrq":
+            return MRQScorer(full_cfg.scorer.mrq, memory=self.memory, logger=self.logger)
+        if scorer_type == "svm":
+            return SVMScorer(full_cfg.scorer.svm, memory=self.memory, logger=self.logger)
+        if scorer_type == "ebt":
+            return EBTScorer(full_cfg.scorer.ebt, memory=self.memory, logger=self.logger)
+        raise ValueError(f"Unsupported scorer_type: {scorer_type}")
 
     async def run(self, context: dict) -> dict:
         documents = context.get(self.input_key, [])
@@ -156,12 +167,11 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                             }
                         )
                         if self.score_triplets:
-                            score = self.scoring_engine.score(
-                                target_id=triple_orm.id,
-                                target_type=TargetType.TRIPLE,
-                                text=f"({subj}, {pred}, {obj})",
+                            scorable = ScorableFactory.from_text(f"({subj}, {pred}, {obj})", TargetType.TRIPLE)
+                            score = self.scorer.score(
                                 context=context,
-                                scoring_profile="cartridge",
+                                scorable=scorable,
+                                dimensions=self.dimensions
                             )
                             context.setdefault("triplet_scores", []).append(score)
 
@@ -198,12 +208,11 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                     theorem.cartridges.append(cartridge)
 
                     # Score theorem
-                    theorem_score = self.scoring_engine.score(
-                        target_id=theorem.id,
-                        target_type=TargetType.THEOREM,
-                        text=theorem.statement,
+                    scorable = ScorableFactory.from_text(theorem.statement, TargetType.THEOREM)
+                    theorem_score = self.scorer.score(
                         context={**context, "theorem": theorem.to_dict()},
-                        scoring_profile="cartridge",
+                        scorable=scorable,
+                        dimensions=self.dimensions,
                     )
                     context.setdefault("theorem_scores", []).append(theorem_score)
 
@@ -211,12 +220,11 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
 
                 # 4. Score Cartridge
                 if self.score_cartridges:
-                    score = self.scoring_engine.score(
-                        target_id=cartridge.id,
-                        target_type=TargetType.CARTRIDGE,
-                        text=cartridge.markdown_content,
+                    scorable = ScorableFactory.from_text(cartridge.markdown_content, TargetType.CARTRIDGE)
+                    score = self.scorer.score(
                         context=context,
-                        scoring_profile="cartridge",
+                        scorable=scorable,
+                        dimensions=self.dimensions,
                     )
                     context.setdefault("cartridge_scores", []).append(score)
                     self.report({

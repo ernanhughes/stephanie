@@ -46,6 +46,8 @@ class PipelineRunORM(Base):
     reports = relationship("ReportORM", back_populates="pipeline_run", cascade="all, delete-orphan")
     theorems = relationship("TheoremORM", back_populates="pipeline_run", cascade="all, delete-orphan")
     cartridges = relationship("CartridgeORM", back_populates="pipeline_run", cascade="all, delete-orphan")
+    plan_traces = relationship("PlanTraceORM", back_populates="pipeline_run")
+    execution_steps = relationship("ExecutionStepORM", back_populates="pipeline_run")
 
     def __repr__(self):
         return (

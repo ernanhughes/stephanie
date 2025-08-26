@@ -23,7 +23,6 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         self.logger.log("AgentInit", {"agent": "ChainOfThoughtGeneratorAgent"})
         self.num_candidates = cfg.get("num_candidates", 2)
         self.evaluator = self._init_evaluator(cfg)
-        
 
     async def run(self, context: dict):
         goal = context.get(GOAL)
@@ -31,16 +30,29 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         self.logger.log("AgentRunStarted", {"goal": goal})
 
         # 1. Generate candidates
-        prompt_text = self.prompt_loader.load_prompt(self.cfg, context)
+        merged = {
+            **context,
+            "gen": lambda slot: ChainOfThoughtGeneratorAgent.gen(
+                slot, context
+            ),
+        }
+
+        prompt_text = self.prompt_loader.load_prompt(self.cfg, merged)
         candidates = [
-            self.call_llm(prompt_text, context) for _ in range(self.num_candidates)
+            self.call_llm(prompt_text, context)
+            for _ in range(self.num_candidates)
         ]
-        self.logger.log("GenerationCompleted", {"candidates": [c[:100] for c in candidates]})
-        self.report({
-            "event": "candidates_generated",
-            "count": len(candidates),
-            "examples": [c[:120] for c in candidates]
-        })
+        self.logger.log(
+            "GenerationCompleted",
+            {"candidates": [c[:100] for c in candidates]},
+        )
+        self.report(
+            {
+                "event": "candidates_generated",
+                "count": len(candidates),
+                "examples": [c[:120] for c in candidates],
+            }
+        )
 
         # 2. Evaluate candidates pairwise
         best = candidates[0]
@@ -48,7 +60,10 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         for candidate in candidates[1:]:
             if isinstance(self.evaluator, LLMJudgeEvaluator):
                 best, scores = self.evaluator.judge(
-                    prompt=prompt_text, output_a=best, output_b=candidate, context=context
+                    prompt=prompt_text,
+                    output_a=best,
+                    output_b=candidate,
+                    context=context,
                 )
             else:
                 scorable_a = ScorableFactory.from_dict(
@@ -58,28 +73,46 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
                     {"id": "b", "text": candidate}, TargetType.HYPOTHESIS
                 )
 
-                score_a = self.evaluator.score(context, scorable_a, ["value"]).results["value"].score
-                score_b = self.evaluator.score(context, scorable_b, ["value"]).results["value"].score
+                score_a = (
+                    self.evaluator.score(context, scorable_a, ["value"])
+                    .results["value"]
+                    .score
+                )
+                score_b = (
+                    self.evaluator.score(context, scorable_b, ["value"])
+                    .results["value"]
+                    .score
+                )
                 scores = {"value_a": score_a, "value_b": score_b}
                 best = best if score_a >= score_b else candidate
 
             # Report after each comparison
-            self.report({
-                "event": "pairwise_eval",
-                "scores": scores,
-                "best_snippet": best[:120]
-            })
+            self.report(
+                {
+                    "event": "pairwise_eval",
+                    "scores": scores,
+                    "best_snippet": best[:120],
+                }
+            )
 
-        self.logger.log("EvaluationCompleted", {"best_output": best[:100], **scores})
-        self.report({
-            "event": "evaluation_done",
-            "final_choice_snippet": best[:200],
-            "scores": scores
-        })
+        self.logger.log(
+            "EvaluationCompleted", {"best_output": best[:100], **scores}
+        )
+        self.report(
+            {
+                "event": "evaluation_done",
+                "final_choice_snippet": best[:200],
+                "scores": scores,
+            }
+        )
 
         # 3. Save hypothesis
         confidence = max(scores.get("value_a", 0), scores.get("value_b", 0))
-        features = {"prompt": prompt_text, "best_output": best, "candidates": candidates}
+        features = {
+            "prompt": prompt_text,
+            "best_output": best,
+            "candidates": candidates,
+        }
 
         prompt = self.get_or_save_prompt(prompt_text, context)
         best_orm = self.save_hypothesis(
@@ -93,11 +126,13 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
         )
         self.memory.hypotheses.insert(best_orm)
 
-        self.report({
-            "event": "hypothesis_saved",
-            "hypothesis_id": best_orm.id,
-            "confidence": confidence
-        })
+        self.report(
+            {
+                "event": "hypothesis_saved",
+                "hypothesis_id": best_orm.id,
+                "confidence": confidence,
+            }
+        )
 
         # 4. Classify patterns
         self.classify_and_store_patterns(
@@ -110,19 +145,20 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
             agent_name=self.name,
             score=confidence,
         )
-        self.report({
-            "event": "patterns_classified",
-            "hypothesis_id": best_orm.id
-        })
+        self.report(
+            {"event": "patterns_classified", "hypothesis_id": best_orm.id}
+        )
 
         context[self.output_key] = [best_orm.to_dict()]
         self.logger.log("AgentRunCompleted", {"output_key": self.output_key})
 
         # Final report entry
-        self.report({
-            "event": "completed",
-            "message": f"CoT generation completed. Best hypothesis {best_orm.id} saved."
-        })
+        self.report(
+            {
+                "event": "completed",
+                "message": f"CoT generation completed. Best hypothesis {best_orm.id} saved.",
+            }
+        )
 
         return context
 
@@ -152,19 +188,22 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
 
     @staticmethod
     def gen(slot: str, context: dict = None) -> str:
-        # Compose a slot-specific instruction
+        """Generate slot-specific text using context LLM."""
         slot_prompts = {
             "step_1_understanding": "Explain the problem in your own words.",
             "step_2_concepts": "List key concepts and methods that could help.",
             "step_3_application": "Apply these concepts to solving the problem.",
             "step_4_verification": "Check if each step is logically correct.",
             "step_5_reflection": "Reflect: is the reasoning complete and creative?",
-            "final_answer": "Give the final answer in a clear, concise form."
+            "final_answer": "Give the final answer in a clear, concise form.",
         }
         instruction = slot_prompts.get(slot, f"Expand reasoning for {slot}.")
-        llm = context.get("__llm")
-        goal_text = context.get("goal", {}).get("goal_text", "")
+        llm = context.get("__llm") if context else None
+        goal_text = (
+            context.get("goal", {}).get("goal_text", "") if context else ""
+        )
+
         query = f"Problem: {goal_text}\n\nTask: {instruction}"
         print("GeneratingPrompt", {"slot": slot, "prompt": query})
-        response = llm(query, context)
-        return response
+
+        return llm(query, context) if llm else f"[No LLM available for {slot}]"

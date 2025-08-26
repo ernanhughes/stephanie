@@ -58,6 +58,7 @@ class PlanTraceMonitor:
         # Create PlanTrace for this pipeline execution
         self.current_plan_trace = PlanTrace(
             trace_id=str(pipeline_run_id),  # Use pipeline_run_id as trace_id
+            pipeline_run_id=pipeline_run_id,
             goal_id=goal.get("id"),
             goal_text=goal.get("goal_text", ""),
             plan_signature=self._generate_plan_signature(context),
@@ -118,6 +119,7 @@ class PlanTraceMonitor:
         # Create ExecutionStep
         execution_step = ExecutionStep(
             step_id=step_id,
+            pipeline_run_id=self.current_plan_trace.pipeline_run_id,
             step_order=stage_idx + 1,
             step_type=stage_name,
             description=description,

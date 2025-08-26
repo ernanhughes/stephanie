@@ -29,6 +29,7 @@ class PlanTraceStore:
         """
         orm_trace = PlanTraceORM(
             trace_id=plan_trace.trace_id,
+            pipeline_run_id=plan_trace.pipeline_run_id,
             goal_id=plan_trace.goal_id,
             plan_signature=plan_trace.plan_signature,
             target_epistemic_quality=plan_trace.target_epistemic_quality,
@@ -151,6 +152,17 @@ class PlanTraceStore:
         except Exception as e:
             if self.logger:
                 self.logger.log("PlanTraceGetByTraceIdFailed", {"error": str(e), "trace_id": trace_id})
+            return None
+
+
+    def get_by_run_id(self, run_id: str) -> Optional[PlanTraceORM]:
+        """Retrieves a PlanTraceORM by its unique run_id string."""
+        try:
+            print("Retrieving PlanTraceORM by run_id:", run_id)
+            return self.session.query(PlanTraceORM).filter(PlanTraceORM.pipeline_run_id == run_id).first()
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceGetByRunIdFailed", {"error": str(e), "run_id": run_id})
             return None
 
     def get_by_goal_id(self, goal_id: int) -> List[PlanTraceORM]:

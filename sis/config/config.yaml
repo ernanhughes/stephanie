@@ -6,6 +6,12 @@ source:
   db_url: "postgresql://postgres:postgres@localhost:5432/stephanie"
   log_dir: "../logs"
 
+# Logs directory (global for SIS + UI browser)
+logs:
+  dir: "logs"     # absolute or relative path
+  max_files: 500     # optional: limit how many files to show in UI
+  extensions: [".log", ".jsonl", ".yaml"]  # optional: restrict what shows
+
 # Database connection (for MemoryTool and ORM)
 db:
   name: "co"

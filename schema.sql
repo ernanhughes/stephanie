@@ -1235,6 +1235,7 @@ CREATE INDEX idx_training_stats_embedding ON training_stats(embedding_type);
 CREATE TABLE IF NOT EXISTS plan_traces (
     id SERIAL PRIMARY KEY,
     trace_id TEXT NOT NULL UNIQUE, -- Unique identifier for the trace
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id),
     goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE, -- Link to the original goal
     goal_embedding_id INTEGER, -- ID referencing the embeddings table (if exists)
     goal_text TEXT NOT NULL, -- Cached goal text
@@ -1260,6 +1261,7 @@ CREATE INDEX IF NOT EXISTS idx_plan_traces_created_at ON public.plan_traces (cre
 CREATE TABLE IF NOT EXISTS execution_steps (
     id SERIAL PRIMARY KEY,
     plan_trace_id INTEGER NOT NULL REFERENCES public.plan_traces(id) ON DELETE CASCADE, -- Parent trace
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id),
     step_order INTEGER NOT NULL, -- Order of the step within the trace
     step_id TEXT NOT NULL, -- Unique identifier for the step
     description TEXT NOT NULL, -- Description of the step

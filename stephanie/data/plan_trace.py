@@ -22,6 +22,7 @@ class ExecutionStep:
     # against the original goal. 
     scores: Optional[ScoreBundle] 
 
+    pipeline_run_id: Optional[int] = None
     input_text: Optional[str] = None  # Optional input text for this step, if applicable
     agent_name: Optional[str] = None  # Name of the agent that executed this step, if applicable
     plan_trace_id: Optional[int] = None  # Foreign key to the PlanTrace this step belongs to
@@ -52,6 +53,7 @@ class ExecutionStep:
         """Convert to dictionary for serialization"""
         result = {
             "step_id": self.step_id,
+            "pipeline_run_id": self.pipeline_run_id,
             "step_order": self.step_order,
             "step_type": self.step_type,
             "description": self.description,
@@ -98,6 +100,7 @@ class ExecutionStep:
         """Create from dictionary"""
         return cls(
             step_id=data["step_id"],
+            pipeline_run_id=data["pipeline_run_id"],
             step_order=data["step_order"],
             step_type=data["step_type"],
             description=data["description"],
@@ -146,6 +149,8 @@ class PlanTrace:
     
     # --- Final Outcome ---
     final_output_text: str # The final output produced by the plan
+
+    pipeline_run_id: Optional[int] = None
     # The scores assigned to the final output by various scorers.
     final_scores: Optional[ScoreBundle] = None
 
@@ -165,6 +170,7 @@ class PlanTrace:
     def to_dict(self) -> dict:
         result = {
             "trace_id": self.trace_id,
+            "pipeline_run_id": self.pipeline_run_id,   
             "goal_text": self.goal_text,
             "goal_id": self.goal_id,
             "input_data": self.input_data,
@@ -240,6 +246,7 @@ class PlanTrace:
         execution_steps = [
             ExecutionStep(
                 step_id=step["step_id"],
+                pipeline_run_id=step.get("pipeline_run_id"),
                 step_type=step.get("step_type", "action"),  # Default to "action"
                 agent_name=step.get("agent_name"),
                 description=step["description"],
@@ -269,6 +276,7 @@ class PlanTrace:
 
         return cls(
             trace_id=data["trace_id"],
+            pipeline_run_id=data["pipeline_run_id"],
             goal_text=data["goal_text"],
             goal_id=data["goal_id"],
             input_data=data["input_data"],

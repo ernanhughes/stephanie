@@ -5,31 +5,16 @@ output_format: simple  # or: simple, json, etc.
 scorer: sicql
 dimensions:
   - name: relevance
-    file: relevance.txt
+    file: relevance
+    weight: 1.5
+    extra_data: { parser: numeric }
+
+  - name: novelty
+    file: novelty
     weight: 1.2
-    extra_data: 
-      parser: numeric
-
-  - name: clarity
-    file: clarity.txt
-    weight: 1.0
-    extra_data: 
-      parser: numeric
-
-  - name: novelty 
-    file: novelty.txt
-    weight: 0.8
-    extra_data: 
-      parser: numeric
-
-  - name: alignment
-    file: alignment.txt
-    weight: 0.8
-    extra_data: 
-      parser: numeric
+    extra_data: { parser: numeric }
 
   - name: implementability
-    file: implementability.txt
-    weight: 0.8
-    extra_data: 
-      parser: numeric
+    file: implementability
+    weight: 1.0
+    extra_data: { parser: numeric }
