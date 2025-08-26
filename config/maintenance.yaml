@@ -4,6 +4,7 @@ defaults:
 
   - agents/document_embedding_backfill
   - agents/related
+  - agents/universal_scorer
   - logging/json_logger
 
 embeddings:
@@ -96,6 +97,12 @@ pipeline:
      - name: document_embedding_backfill
        description: "Backfill document embeddings for existing documents"
        cls: stephanie.agents.maintenance.document_embedding_backfill.DocumentEmbeddingBackfillAgent
+       enabled: false
+       iterations: 1
+
+     - name: universal_scorer
+       description: "Score documents using a universal scoring approach"
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
        enabled: true
        iterations: 1
 

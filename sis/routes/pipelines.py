@@ -196,3 +196,47 @@ def download_report(request: Request, pipeline_id: int):
         filename=f"pipeline_{pipeline_id}_report.md",
         media_type="text/markdown",
     )
+
+
+@router.get("/pipeline/{pipeline_id}/cartridges", response_class=HTMLResponse)
+def pipeline_cartridges(request: Request, pipeline_id: int):
+    memory = request.app.state.memory
+    templates = request.app.state.templates
+
+
+    cartridges = memory.cartridges.get_all()
+    # # fetch cartridges linked to pipeline
+    # cartridges = memory.cartridges.session.query(
+    #     memory.cartridges.session.registry.mapped["CartridgeORM"]
+    # ).filter_by(pipeline_run_id=pipeline_id).all()
+
+    return templates.TemplateResponse(
+        "pipeline_cartridges.html",
+        {
+            "request": request,
+            "pipeline_run_id": pipeline_id,
+            "cartridges": cartridges,
+        },
+    )
+
+
+@router.get("/pipeline/{pipeline_id}/theorems", response_class=HTMLResponse)
+def pipeline_theorems(request: Request, pipeline_id: int):
+    memory = request.app.state.memory
+    templates = request.app.state.templates
+
+    # fetch theorems linked to pipeline
+
+    theorems = memory.theorems.get_all()
+    # theorems = memory.theorems.session.query(
+    #     memory.theorems.session.registry.mapped["TheoremORM"]
+    # ).filter_by(pipeline_run_id=pipeline_id).all()
+
+    return templates.TemplateResponse(
+        "pipeline_theorems.html",
+        {
+            "request": request,
+            "pipeline_run_id": pipeline_id,
+            "theorems": theorems,
+        },
+    )

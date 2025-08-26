@@ -68,10 +68,11 @@ automind:
     top_k_similar: 20
     min_value_difference: 10
     model_output_dir: ./outputs/unified_mrq
-    target_dimensions:
-      - correctness
-      - originality
+    dimensions: 
+      - alignment
       - clarity
+      - implementability
+      - novelty
       - relevance
 
     # model

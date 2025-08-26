@@ -5,6 +5,7 @@ cartridge:
   save_context: false
   skip_if_completed: false
 
+  force_rebuild_cartridges: false 
   cartridge_score_config: ${hydra:runtime.cwd}/config/scoring/cartridge.yaml
   use_memory_for_fast_prompts: false
   triplets_file: triplet.txt

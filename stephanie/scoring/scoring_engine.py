@@ -55,8 +55,9 @@ class ScoringEngine:
                     scorable=scorable, context=merged_context, llm_fn=self.call_llm
                 )
             else:
+                dimensions= [d["name"] for d in scoring_manager.dimension_specs]
                 score_result = scorer.score(
-                    context, scorable, scoring_manager.dimensions
+                    context, scorable, dimensions
                 )
 
             self.logger.log("ItemScored", score_result.to_dict())
@@ -88,7 +89,7 @@ class ScoringEngine:
                 )
             else:
                 score_result = scorer.score(
-                    context, scorable, scoring_manager.dimensions
+                    context, scorable, scoring_manager.dimension_specs
                 )
 
             self.logger.log("ItemScored", score_result.to_dict())

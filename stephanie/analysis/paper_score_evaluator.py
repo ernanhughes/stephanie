@@ -62,7 +62,7 @@ class PaperScoreEvaluator(ScoringManager):
         """
         combined = {}
 
-        for dim in self.dimensions:
+        for dim in self.dimension_specs:
             name = dim["name"]
             weight = dim.get("weight", 1.0)
 

@@ -114,7 +114,7 @@ class ChainOfThoughtDSPyGeneratorAgent(BaseAgent):
 
         context[self.output_key] = [hyp.to_dict()]
 
-        # 📋 Report: completed OK so
+        # 📋 Report: completed
         self.report({
             "event": "completed",
             "message": "DSPy CoT generation completed",

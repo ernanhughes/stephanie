@@ -1,0 +1,66 @@
+{% if target_type == "triple" %}
+You are scoring a single knowledge triplet for **implementability** in relation to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Triplet
+({{ triplet.subject }}, {{ triplet.predicate }}, {{ triplet.object }})
+
+## Instructions
+
+Implementability means how feasible, actionable, and practically usable the information is for advancing toward the goal. Consider whether the triplet describes relationships or facts that can realistically be tested, operationalized, or applied in practice. Highly implementable triplets describe clear, concrete, and actionable relations.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "cartridge" %}
+
+Evaluate the **implementability** of the following data cartridge in relation to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+### Data cartridge
+Title: {{ cartridge.title }}
+Summary: {{ cartridge.summary }}
+Sections:
+{% for section in cartridge.sections %}
+---
+{{ section }}
+{% endfor %}
+
+Implementability refers to how feasible it would be to apply the knowledge in this cartridge toward achieving the goal. Prefer content that includes practical methods, testable approaches, or clear pathways to application rather than purely abstract or speculative ideas.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% elif target_type == "theorem" %}
+
+Evaluate the **implementability** of the following theorem in relation to the goal.
+
+## Goal
+{{ goal.goal_text }}
+
+## Theorem
+{{ theorem.statement }}
+
+{% if theorem.proof %}
+## Proof
+{{ theorem.proof }}
+{% endif %}
+
+Implementability means how directly the theorem could inform or enable practical action, experimentation, or system design in pursuit of the goal. Consider whether the theorem suggests concrete methods, constructive insights, or usable frameworks versus purely abstract contributions.
+
+Provide your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>  
+score: <0–100>
+
+{% else %}
+Invalid target type: {{ target_type }}
+{% endif %}

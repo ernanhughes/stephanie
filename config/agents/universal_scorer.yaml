@@ -1,0 +1,108 @@
+universal_scorer:
+  name: universal_scorer
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: universal_scorer
+  prompt_mode: file
+  prompt_file: universal_scorer.txt
+
+  hrm:
+    name: universal_hrm
+    model_type: hrm
+    model_version: v1
+    evaluator: hrm
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  contrastive_ranker:
+    name: universal_contrastive_ranker
+    model_type: contrastive_ranker
+    model_version: v1
+    evaluator: contrastive_ranker
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  sicql:
+    name: universal_sicql
+    model_type: sicql
+    model_version: v1
+    evaluator: sicql
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  mrq:
+    name: universal_mrq
+    model_type: mrq
+    model_version: v1
+    evaluator: mrq
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+  svm:
+    name: universal_svm
+    model_type: svm
+    model_version: v1
+    evaluator: svm
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  ebt:
+    name: universal_ebt
+    model_type: ebt
+    model_version: v1
+    evaluator: ebt
+    target_type: document
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
+
+  llm:
+    name: universal_llm
+    model_type: llm
+    evaluator: llm
+    target_type: document
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance

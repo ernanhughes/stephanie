@@ -1,7 +1,6 @@
 # stephanie/agents/knowledge/document_reward_scorer.py
-import random
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from tqdm import tqdm
 

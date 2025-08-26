@@ -9,7 +9,7 @@ from stephanie.builders.triplet_extractor import TripletExtractor
 from stephanie.models.theorem import CartridgeORM
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scoring_engine import ScoringEngine
-
+from tqdm import tqdm
 
 class CartridgeAgent(ScoringMixin, BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
@@ -20,6 +20,7 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
         self.score_triplets = cfg.get("score_triplets", True)
         self.top_k_domains = cfg.get("top_k_domains", 3)
         self.min_classification_score = cfg.get("min_classification_score", 0.6)
+        self.force_rebuild_cartridges = cfg.get("force_rebuild_cartridges", False)
 
         self.domain_classifier = DomainClassifier(
             memory=self.memory,
@@ -70,7 +71,7 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
             "total_documents": total_docs,
         })
 
-        for idx, doc in enumerate(documents, start=1):
+        for idx, doc in enumerate(tqdm(documents, desc="🔨 Building Cartridges", unit="doc"), start=1):            
             try:
                 self.report({
                     "event": "document_start",
@@ -82,6 +83,23 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
 
                 goal = context.get("goal")
 
+                existing = self.memory.cartridges.get_by_source_uri(
+                    uri=str(doc.get("id")), source_type="document"
+                )
+                if existing:
+                    if context.get("pipeline_run_id"):
+                        existing.pipeline_run_id = context["pipeline_run_id"]
+                        self.memory.session.commit()
+
+                    self.report({
+                        "event": "cartridge_skipped_existing",
+                        "step": "CartridgeAgent",
+                        "doc_id": doc.get("id"),
+                        "cartridge_id": existing.id,
+                    })
+                    cartridges.append(existing.to_dict())
+                    continue
+
                 # 1. Build CartridgeORM
                 cartridge = self.builder.build(doc, goal=goal)
                 if not cartridge:
@@ -92,6 +110,21 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                         "reason": "Builder returned None",
                     })
                     continue
+
+                # 🔑 Ensure embedding_id is properly registered in document_embeddings
+                scorable_text = cartridge.markdown_content or (doc.get("summary") or doc.get("content"))
+                if scorable_text:
+                    self.memory.embedding.get_or_create(scorable_text)
+                    embedding_id = self.memory.embedding.get_id_for_text(scorable_text)
+                    if embedding_id:
+                        # Guarantee row exists in document_embeddings
+                        doc_embedding_id = self.memory.document_embeddings.get_or_create(
+                            document_id=str(doc.get("id")),
+                            document_type="document",
+                            embedding_id=embedding_id,
+                            embedding_type=self.memory.embedding.name,
+                        )
+                        cartridge.embedding_id = doc_embedding_id
 
                 self.report({
                     "event": "cartridge_built",
@@ -143,13 +176,28 @@ class CartridgeAgent(ScoringMixin, BaseAgent):
                 })
 
                 for theorem in theorems:
-                    self.memory.embedding.get_or_create(theorem.statement)
-                    theorem.embedding_id = self.memory.embedding.get_id_for_text(
-                        theorem.statement
-                    )
-                    theorem.cartridges.append(cartridge)
+                    # Save theorem first
                     self.memory.session.add(theorem)
+                    self.memory.session.commit()
 
+                    # Create embedding in document_embeddings (doc_id = theorem.id, type = "theorem")
+                    embedding_vector=self.memory.embedding.get_or_create(theorem.statement)
+                    embedding_id = self.memory.embedding.get_id_for_text(theorem.statement)
+                    doc_embedding_id = self.memory.document_embeddings.get_or_create(
+                        document_id=theorem.id,
+                        document_type="theorem",
+                        embedding_type=self.memory.embedding.name,
+                        embedding_id=embedding_id,
+                    )
+
+                    # Update theorem with FK to document_embeddings
+                    theorem.embedding_id = doc_embedding_id
+                    self.memory.session.commit()
+
+                    # Link to cartridge
+                    theorem.cartridges.append(cartridge)
+
+                    # Score theorem
                     theorem_score = self.scoring_engine.score(
                         target_id=theorem.id,
                         target_type=TargetType.THEOREM,

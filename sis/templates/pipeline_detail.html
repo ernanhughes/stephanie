@@ -31,10 +31,19 @@ flowchart LR
 </pre>
 </div>
 
+<a href="/pipeline/{{ run.id }}/cartridges" class="btn btn-sm btn-outline-info">📦 Cartridges</a>
+<a href="/pipeline/{{ run.id }}/theorems" class="btn btn-sm btn-outline-success">📐 Theorems</a>
+
   <!-- Tabs -->
   <ul class="nav nav-tabs mt-4" id="pipelineTabs" role="tablist">
     <li class="nav-item" role="presentation">
       <button class="nav-link active" id="report-tab" data-bs-toggle="tab" data-bs-target="#report" type="button" role="tab">📑 Report</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="cartridges-tab" data-bs-toggle="tab" data-bs-target="#cartridges" type="button" role="tab">📦 Cartridges</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="theorems-tab" data-bs-toggle="tab" data-bs-target="#theorems" type="button" role="tab">📐 Theorems</button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button" role="tab">💬 Prompts</button>
@@ -158,6 +167,46 @@ flowchart LR
       </div>
       {% else %}
       <div class="alert alert-warning">⚠️ No documents found for this pipeline run.</div>
+      {% endif %}
+    </div>
+
+    <!-- Cartridges -->
+  <div class="tab-pane fade" id="cartridges" role="tabpanel">
+    <a class="btn btn-outline-primary mb-3" href="/pipeline/{{ run.id }}/cartridges">🔎 View Full Page</a>
+    {% if cartridges %}
+      <ul class="list-group">
+        {% for c in cartridges[:5] %}
+        <li class="list-group-item">
+          <h6>{{ c.title or "Untitled" }}</h6>
+          <small class="text-muted">{{ c.source_type }} | {{ c.embedding_id }}</small>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if cartridges|length > 5 %}
+      <p class="mt-2 text-muted">…and {{ cartridges|length - 5 }} more</p>
+      {% endif %}
+    {% else %}
+      <p class="text-muted">No cartridges found for this run.</p>
+    {% endif %}
+  </div>
+
+    <!-- Theorems -->
+    <div class="tab-pane fade" id="theorems" role="tabpanel">
+      <a class="btn btn-outline-primary mb-3" href="/pipeline/{{ run.id }}/theorems">🔎 View Full Page</a>
+      {% if theorems %}
+        <table class="table table-sm table-striped">
+          <thead><tr><th>ID</th><th>Statement</th></tr></thead>
+          <tbody>
+          {% for t in theorems[:5] %}
+            <tr><td>{{ t.id }}</td><td>{{ t.statement[:100] }}…</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% if theorems|length > 5 %}
+        <p class="mt-2 text-muted">…and {{ theorems|length - 5 }} more</p>
+        {% endif %}
+      {% else %}
+        <p class="text-muted">No theorems found for this run.</p>
       {% endif %}
     </div>
 

@@ -26,7 +26,7 @@ from stephanie.scoring.score_display import ScoreDisplay
 class ScoringManager(BaseAgent):
     def __init__(
         self,
-        dimensions,
+        dimension_specs,
         prompt_loader,
         cfg,
         logger,
@@ -37,7 +37,7 @@ class ScoringManager(BaseAgent):
         scoring_profile: str = "default",
     ):
         super().__init__(cfg, memory, logger)
-        self.dimensions = dimensions
+        self.dimension_specs = dimension_specs
         self.prompt_loader = prompt_loader
         self.output_format = cfg.get("output_format", "simple")  # default
         self.prompt_renderer = PromptRenderer(prompt_loader, cfg)
@@ -77,7 +77,7 @@ class ScoringManager(BaseAgent):
 
     def dimension_names(self):
         """Returns the names of all dimensions."""
-        return [dim["name"] for dim in self.dimensions]
+        return [dim["name"] for dim in self.dimension_specs]
 
     def filter_dimensions(self, scorable, context):
         """
@@ -85,8 +85,8 @@ class ScoringManager(BaseAgent):
         Override or provide a hook function to filter dynamically.
         """
         if self.dimension_filter_fn:
-            return self.dimension_filter_fn(self.dimensions, scorable, context)
-        return self.dimensions
+            return self.dimension_filter_fn(self.dimension_specs, scorable, context)
+        return self.dimension_specs
 
     @staticmethod
     def get_postprocessor(extra_data):
@@ -111,7 +111,7 @@ class ScoringManager(BaseAgent):
         memory=None,
     ):
         rows = session.query(ScoreDimensionORM).filter_by(stage=stage).all()
-        dimensions = [
+        dimension_specs = [
             {
                 "name": row.name,
                 "prompt_template": row.prompt_template,
@@ -123,7 +123,7 @@ class ScoringManager(BaseAgent):
             for row in rows
         ]
         return cls(
-            dimensions,
+            dimension_specs=dimension_specs,
             prompt_loader=prompt_loader,
             cfg=cfg,
             logger=logger,
@@ -131,7 +131,7 @@ class ScoringManager(BaseAgent):
         )
 
     def get_dimensions(self):
-        return [d["name"] for d in self.dimensions]
+        return [d["name"] for d in self.dimension_specs]
 
     @classmethod
     def from_file(
@@ -150,7 +150,7 @@ class ScoringManager(BaseAgent):
         # Default to 'simple' if not provided
         output_format = data.get("output_format", "simple")
 
-        dimensions = [
+        dimension_specs = [
             {
                 "name": d["name"],
                 "file": d.get("file"),
@@ -188,7 +188,7 @@ class ScoringManager(BaseAgent):
                 cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=llm_fn
             )
         return cls(
-            dimensions=dimensions,
+            dimension_specs=dimension_specs,
             prompt_loader=prompt_loader,
             cfg=cfg,
             logger=logger,
@@ -245,10 +245,10 @@ class ScoringManager(BaseAgent):
         try:
             if self.scorer.name == "llm":
                 score = self.scorer.score(
-                    context, scorable, self.dimensions, llm_fn=llm_fn
+                    context, scorable, self.dimension_specs, llm_fn=llm_fn
                 )
             else:
-                dimensions= [d["name"] for d in self.dimensions]
+                dimensions= [d["name"] for d in self.dimension_specs]
                 score = self.scorer.score(
                     context, scorable, dimensions
                 )

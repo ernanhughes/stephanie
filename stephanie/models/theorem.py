@@ -1,6 +1,5 @@
 # stephanie/models/theorem.py
 from datetime import datetime
-
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, Table, Text
 from sqlalchemy.orm import relationship
 
@@ -21,7 +20,22 @@ class TheoremORM(Base):
     id = Column(Integer, primary_key=True)
     statement = Column(Text, nullable=False)
     proof = Column(Text, nullable=True)
-    embedding_id = Column(Integer, ForeignKey("embeddings.id"), nullable=True)
+
+    # ✅ Embedding now references document_embeddings
+    embedding_id = Column(
+        Integer,
+        ForeignKey("document_embeddings.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # ✅ New: pipeline run reference
+    pipeline_run_id = Column(
+        Integer,
+        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    pipeline_run = relationship("PipelineRunORM", back_populates="theorems")
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationship with Cartridges
@@ -35,6 +49,7 @@ class TheoremORM(Base):
             "statement": self.statement,
             "proof": self.proof,
             "embedding_id": self.embedding_id,
+            "pipeline_run_id": self.pipeline_run_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -58,27 +73,38 @@ class CartridgeORM(Base):
     id = Column(Integer, primary_key=True)
 
     # Association
-    goal_id = Column(
-        Integer, ForeignKey("goals.id"), nullable=True
-    )  # Optional link to goal
+    goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True)
     goal = relationship("GoalORM", back_populates="cartridges")
 
+    # ✅ New: pipeline run reference
+    pipeline_run_id = Column(
+        Integer,
+        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    pipeline_run = relationship("PipelineRunORM", back_populates="cartridges")
+
     # Source metadata
-    source_type = Column(
-        Text, nullable=False
-    )  # e.g., 'document', 'hypothesis', 'response'
-    source_uri = Column(Text)  # Original file / API reference
-    markdown_content = Column(Text, nullable=False)  # Where the rendered content lives
-    embedding_id = Column(Integer)  # <-- New embedding reference
+    source_type = Column(Text, nullable=False)  # e.g. 'document', 'hypothesis'
+    source_uri = Column(Text)
+    markdown_content = Column(Text, nullable=False)
+
+    # ✅ Fix: reference document_embeddings instead of embeddings
+    embedding_id = Column(
+        Integer,
+        ForeignKey("document_embeddings.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    embedding = relationship("DocumentEmbeddingORM")
 
     # Core content
     title = Column(Text)
     summary = Column(Text)
-    sections = Column(JSON)  # {"Intro": "...", "Conclusion": "..."}
-    triples = Column(JSON)  # e.g., [("LLMs", "can be fine-tuned with", "LoRA")]
+    sections = Column(JSON)
+    triples = Column(JSON)
 
     # Domains
-    domain_tags = Column(JSON)  # e.g., ["machine learning", "ethics"]
+    domain_tags = Column(JSON)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -98,6 +124,7 @@ class CartridgeORM(Base):
         return {
             "id": self.id,
             "goal_id": self.goal_id,
+            "pipeline_run_id": self.pipeline_run_id,
             "source_type": self.source_type,
             "source_uri": self.source_uri,
             "markdown_content": self.markdown_content,
@@ -109,6 +136,7 @@ class CartridgeORM(Base):
             "domain_tags": self.domain_tags,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "domains": [
-                {"domain": rel.domain, "score": rel.score} for rel in self.domains_rel
+                {"domain": rel.domain, "score": rel.score}
+                for rel in self.domains_rel
             ],
         }

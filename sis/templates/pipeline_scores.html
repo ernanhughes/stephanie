@@ -2,45 +2,70 @@
 
 {% block content %}
 <div class="container mt-4">
-  <h1>Scores Grid for Pipeline Run {{ pipeline_run_id }}</h1>
+
+  <!-- Header with Back Button -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">📊 Scores Grid</h1>
+    <a href="/pipeline/{{ pipeline_run_id }}" class="btn btn-outline-primary">
+      ⬅ Back to Pipeline
+    </a>
+  </div>
+
+  <p class="text-muted">Pipeline Run ID: <strong>{{ pipeline_run_id }}</strong></p>
 
   {% if rows %}
-  <div class="table-responsive mt-4">
-    <table class="table table-bordered table-striped align-middle">
-      <thead class="table-dark">
-        <tr>
-          <th>Evaluation ID</th>
-          <th>Agent</th>
-          <th>Evaluator</th>
-          <th>Model</th>
-          {% for dim in dimensions %}
-          <th>{{ dim }}</th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          <td>{{ row.id }}</td>
-          <td>{{ row.agent }}</td>
-          <td>{{ row.evaluator }}</td>
-          <td>{{ row.model }}</td>
-          {% for dim in dimensions %}
-          <td>
-            {% if row.scores[dim] is not none %}
-              {{ "%.3f"|format(row.scores[dim]) }}
-            {% else %}
-              <span class="text-muted">–</span>
-            {% endif %}
-          </td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Evaluation Scores</h5>
+      <div class="table-responsive">
+        <table class="table table-hover table-striped align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Evaluation ID</th>
+              <th>Agent</th>
+              <th>Evaluator</th>
+              <th>Model</th>
+              {% for dim in dimensions %}
+              <th>{{ dim }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td>{{ row.id }}</td>
+              <td><span class="badge bg-info text-dark">{{ row.agent }}</span></td>
+              <td>{{ row.evaluator }}</td>
+              <td><code>{{ row.model }}</code></td>
+              {% for dim in dimensions %}
+              <td>
+                {% if row.scores[dim] is not none %}
+                  <span class="fw-bold">{{ "%.3f"|format(row.scores[dim]) }}</span>
+                {% else %}
+                  <span class="text-muted">–</span>
+                {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
+
+  <!-- Second Back Button -->
+  <div class="text-center mt-4">
+    <a href="/pipeline/{{ pipeline_run_id }}" class="btn btn-primary btn-lg">
+      ⬅ Back to Pipeline Details
+    </a>
+  </div>
+
   {% else %}
-  <div class="alert alert-warning">⚠️ No scores found for this pipeline run.</div>
+  <div class="alert alert-warning mt-4">
+    ⚠️ No scores found for this pipeline run.
+  </div>
   {% endif %}
+
 </div>
 {% endblock %}

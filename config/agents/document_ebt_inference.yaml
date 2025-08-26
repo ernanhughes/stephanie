@@ -12,12 +12,12 @@ document_ebt_inference:
     step_size: 0.05
     uncertainty_threshold: 0.8
     
-  dimensions: 
-    - "alignment"
-    - "clarity"
-    - "implementability"
-    - "novelty"
-    - "relevance"
+    dimensions: 
+      - alignment
+      - clarity
+      - implementability
+      - novelty
+      - relevance
 
-  input_key: "documents"
-  output_key: "document_ebt_inference"
+  input_key: documents
+  output_key: document_ebt_inference

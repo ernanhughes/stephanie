@@ -6,16 +6,16 @@ document_llm_inference:
   save_context: false
   skip_if_completed: false
 
-  model_type: "llm"
-  evaluator: "llm"
+  model_type: llm
+  evaluator: llm
   force_rescore: false
-  target_type: "document"
+  target_type: document
   dimensions: 
-    - "alignment"
-    - "clarity"
-    - "implementability"
-    - "novelty"
-    - "relevance"
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
  
   model:
     name: ollama/qwen3

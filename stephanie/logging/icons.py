@@ -141,6 +141,7 @@ PIPELINE_FLOW = {
 # SCORING & EVALUATION
 # =====================
 SCORING = {
+    "ScoringFailed": "❌📊",  # Scoring failed
     "ScoringPaper": "📄⚖️",  # Scoring paper
     "EpistemicPlanExecutorSkipped": "🪸⏭️",  # Epistemic plan executor skipped
     "EpistemicPlanHRMTrainingBatch": "🪸🏋️",  # Training batch

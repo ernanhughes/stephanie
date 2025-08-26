@@ -49,6 +49,7 @@ from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
+from stephanie.memory.theorem_store import TheoremStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 
 
@@ -152,6 +153,7 @@ class MemoryTool:
         self.register_store(PipelineReferenceStore(self.session, logger))
         self.register_store(DocumentEmbeddingStore(self.session, logger))
         self.register_store(ReportStore(self.session, logger))
+        self.register_store(TheoremStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

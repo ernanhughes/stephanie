@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from stephanie.models.theorem import CartridgeORM
+from stephanie.scoring.scorable_factory import ScorableFactory
 
 
 class CartridgeBuilder:
@@ -29,12 +30,11 @@ class CartridgeBuilder:
                 )
             return existing
 
-        title = doc.get("title", f"Document {doc_id}")
-        summary = doc.get("summary", "")
-        text = doc.get("content", doc.get("text", ""))
         goal_id = goal.get("id") if goal else None
 
-        self.memory.embedding.get_or_create(text)
+        scorable = ScorableFactory.from_dict(doc, mode="full")
+        text = scorable.text
+        embedding_vector = self.memory.embedding.get_or_create(text)
         embedding_vector_id = self.memory.embedding.get_id_for_text(text)
         if not embedding_vector_id:
             if self.logger:
@@ -44,7 +44,10 @@ class CartridgeBuilder:
         # Extract sections from the content
         sections = self._split_into_sections(text, goal, context)
         # Generate unified markdown content
+        title = doc.get("title", f"Document {doc_id}")
+        summary = doc.get("summary", "")
         markdown_content = self.format_markdown(title, summary, sections)
+
         cartridge = self.memory.cartridges.add_cartridge(
             {
                 "goal_id": goal_id,
@@ -52,6 +55,7 @@ class CartridgeBuilder:
                 "source_uri": str(doc_id),
                 "title": title,
                 "summary": summary,
+                "pipeline_run_id": context.get("pipeline_run_id"),
                 "sections": sections,
                 "triples": [],
                 "domain_tags": [],
