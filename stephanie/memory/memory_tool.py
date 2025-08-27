@@ -44,6 +44,7 @@ from stephanie.memory.rule_application_store import RuleApplicationStore
 from stephanie.memory.rule_effect_store import RuleEffectStore
 from stephanie.memory.scorable_domain_store import ScorableDomainStore
 from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
+from stephanie.memory.scorable_rank_store import ScorableRankStore
 from stephanie.memory.score_store import ScoreStore
 from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
@@ -154,6 +155,7 @@ class MemoryTool:
         self.register_store(ScorableEmbeddingStore(self.session, logger))
         self.register_store(ReportStore(self.session, logger))
         self.register_store(TheoremStore(self.session, logger))
+        self.register_store(ScorableRankStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

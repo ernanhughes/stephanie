@@ -1292,4 +1292,19 @@ CREATE TABLE IF NOT EXISTS score_attributes (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+
+CREATE TABLE scorable_ranks (
+    id SERIAL PRIMARY KEY,
+    query_text TEXT NOT NULL,
+    scorable_id TEXT NOT NULL,
+    scorable_type TEXT NOT NULL,
+    rank_score FLOAT NOT NULL,
+    components JSONB DEFAULT '{}'::jsonb,
+    embedding_type TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_scorable_ranks_query_text ON scorable_ranks (query_text);
+CREATE INDEX idx_scorable_ranks_scorable ON scorable_ranks (scorable_id, scorable_type);
+
 COMMIT;

@@ -1,0 +1,6 @@
+target_type: "document"
+weights:
+  similarity: 0.4
+  reward: 0.3
+  recency: 0.2
+  adaptability: 0.1
