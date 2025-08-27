@@ -7,6 +7,7 @@ def get_event_icon(event_type: str) -> str:
 # SYSTEM & INITIALIZATION
 # ========================
 SYSTEM_INIT = {
+    "LowDomainScore": "🔽",  # Low domain score
     "EmbeddingBackendSelected": "🔌",  # Embedding backend selected
     "ContextManagerInitialized": "⚙️",  # Context manager initialized
     "UncertaintyEstimated": "🔍",  # Uncertainty estimation

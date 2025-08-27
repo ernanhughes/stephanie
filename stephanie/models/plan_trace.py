@@ -116,7 +116,6 @@ class PlanTraceORM(Base):
             "id": self.id,
             "trace_id": self.trace_id,
             "goal_id": self.goal_id,
-            "goal_text": self.goal_text,
             "goal_embedding_id": self.goal_embedding_id,
             "plan_signature": self.plan_signature,
             "final_output_text": self.final_output_text,

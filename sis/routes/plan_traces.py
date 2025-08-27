@@ -27,6 +27,10 @@ def view_plan_trace(request: Request, run_id: str):
     if not trace:
         return HTMLResponse(f"<h3>❌ PlanTrace not found: {run_id}</h3>", status_code=404)
     
+    stages = memory.pipeline_stages.get_by_run_id(run_id)
+
+    print("Loaded PlanTrace:", trace.to_dict())
+
     # Execution steps are embedded in trace.execution_steps
     steps = trace.execution_steps or []
     
@@ -36,6 +40,7 @@ def view_plan_trace(request: Request, run_id: str):
             "request": request,
             "trace": trace,
             "steps": steps,
+            "stages": stages,
             "active_page": "plan_traces"
         }
     )

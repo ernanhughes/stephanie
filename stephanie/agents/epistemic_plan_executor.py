@@ -149,10 +149,10 @@ class EpistemicPlanExecutorAgent(BaseAgent):
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
 
         existing_goal_ids = {
-            pt.goal_id for pt in self.memory.plan_traces.all()
+            pt.goal_id for pt in self.memory.plan_traces.get_all()
             if pt.goal_id is not None
         }
-        goals = self.memory.goals.get_all_goals()
+        goals = self.memory.goals.get_all()
 
         for goal in goals:
             goal_id = goal.id
@@ -233,7 +233,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
 
                         # --- Score the Step Output ---
                         sicql_scores: ScoreBundle = self.sicql_scorer.score(
-                            goal=goal_dict, scorable=scorable, dimensions=self.dimensions
+                            context={"goal": goal_dict}, scorable=scorable, dimensions=self.dimensions
                         )
                         hrm_scores: Optional[ScoreBundle] = None
                         if self.hrm_scorer:
@@ -289,7 +289,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                     final_scorable_dict = {"text": final_output_text, "id": f"{trace_id}_final"}
                     final_scorable = ScorableFactory.from_dict(final_scorable_dict, TargetType.DOCUMENT)
                     final_scores: ScoreBundle = self.sicql_scorer.score(
-                        {"goal": goal_dict}, scorable=final_scorable, dimensions=self.dimensions
+                        context={"goal": goal_dict}, scorable=final_scorable, dimensions=self.dimensions
                     )
 
                 except Exception as e:

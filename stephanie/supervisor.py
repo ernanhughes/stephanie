@@ -23,7 +23,6 @@ from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
 from stephanie.reports import ReportFormatter
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
-from stephanie.utils.timing import time_function
 from stephanie.utils.report_utils import get_stage_details
 
 
@@ -217,9 +216,9 @@ class Supervisor:
             if name in self.cfg.agents
         ]
 
-    @time_function(logger=None)
     async def _run_pipeline_stages(self, context: dict) -> dict:
         plan_trace_monitor: PlanTraceMonitor = get_registered_component("plan_trace_monitor")
+        final_output_key = ""
         for stage_idx, stage in enumerate(self.pipeline_stages):
             stage_details = {
                 STAGE: stage.name,
@@ -242,6 +241,7 @@ class Supervisor:
             try:
                 cls = hydra.utils.get_class(stage.cls)
                 stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
+                final_output_key = stage_dict.get("output_key", final_output_key)
                 self.rule_applier.apply_to_agent(stage_dict, context)
                 agent_args = {
                     "cfg": stage_dict,
@@ -301,6 +301,14 @@ class Supervisor:
                 stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
                 raise  # Re-raise the exception to be caught by the outer handler
         
+        # After finishing all stages
+        if not context.get("final_output"):
+            self.logger.log("FinalOutputKeyMissing", {
+                "final_output_key": final_output_key,
+                "context_keys": list(context.keys())
+            }) 
+            context["final_output"] = context.get(final_output_key)
+
         self._print_pipeline_summary() 
         return context
 

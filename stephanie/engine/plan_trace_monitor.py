@@ -11,7 +11,6 @@ from omegaconf import OmegaConf
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.utils.serialization import default_serializer
-from stephanie.utils.timing import time_function
 
 
 class PlanTraceMonitor:
@@ -203,7 +202,6 @@ class PlanTraceMonitor:
             "stage_duration": duration
         })
     
-    @time_function()
     async def complete_pipeline(self, context: Dict) -> None:
         """Complete the PlanTrace when pipeline ends"""
         if not self.current_plan_trace:
@@ -249,7 +247,6 @@ class PlanTraceMonitor:
             "total_time": self.current_plan_trace.extra_data["total_time"]
         })
 
-    @time_function()
     async def score_pipeline(self, context: Dict) -> None:
         """Score the completed PlanTrace"""
         if not self.current_plan_trace:
@@ -265,6 +262,13 @@ class PlanTraceMonitor:
             # Score the PlanTrace
             scored_context = await self.plan_trace_scorer.run(scoring_context)
             
+            if not scored_context:
+                self.logger.log("PlanTraceScoringWarning", {
+                    "trace_id": self.current_plan_trace.trace_id,
+                    "reason": "scorer returned None"
+                })
+                return  # or keep current_plan_trace unscored
+
             # Update PlanTrace with scores
             self.current_plan_trace.step_scores = scored_context.get("step_scores", [])
             self.current_plan_trace.pipeline_score = scored_context.get("pipeline_score", {})

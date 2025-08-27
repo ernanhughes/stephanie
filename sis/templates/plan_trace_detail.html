@@ -5,6 +5,28 @@
   <p><strong>Goal:</strong> {{ trace.goal_text }}</p>
   <p><strong>Pipeline:</strong> {{ trace.plan_signature }}</p>
 
+  <!-- Pipeline Stages -->
+<h3 class="mt-4">🔧 Pipeline Stages</h3>
+<div class="bg-light p-3 rounded">
+<pre class="mermaid">
+flowchart LR
+{% for stage in stages %}
+  {# short class name only #}
+  {% set short_class = stage.agent_class.split('.')[-1] if stage.agent_class else "Unknown" %}
+  {% set config_preview = stage.stage_dict if stage.stage_dict else "⚠️ No config found" %}
+  
+  S{{ stage.id }}["{{ stage.stage_name }}<br/><i>{{ short_class }}</i>"]
+
+  click S{{ stage.id }} "javascript:void(0)" "{{ config_preview | tojson | replace('"', '&quot;') }}"
+
+  {% if not loop.last %}
+    S{{ stage.id }} --> S{{ stages[loop.index].id }}
+  {% endif %}
+{% endfor %}
+</pre>
+</div>
+
+  
   <h4 class="mt-4">Execution Steps</h4>
   {% if steps %}
   <table class="table table-bordered">
@@ -19,18 +41,18 @@
       </tr>
     </thead>
     <tbody>
-      {% for step in steps %}
+    {% for step in steps %}
       <tr>
         <td>{{ step.step_order }}</td>
         <td>{{ step.step_type }}</td>
         <td>{{ step.description }}</td>
         <td>{{ "%.2f"|format(step.duration or 0) }}</td>
         <td>
-          {% if step.error %}
+            {% if step.error %}
             <span class="text-danger">❌ {{ step.error.type }}</span>
-          {% else %}
-            ✅ Completed
-          {% endif %}
+            {% else %}
+              ✅ Completed
+            {% endif %}
         </td>
         <td>
           {% if step.scores %}
@@ -45,11 +67,18 @@
         </div>
       </div>
     </div>
-      {% endfor %}
+    {% endfor %}
     </tbody>
   </table>
   {% else %}
   <p class="text-muted">No execution steps recorded for this trace.</p>
   {% endif %}
 </div>
+
+<!-- Mermaid Support -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.10.1/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true });
+</script>
+
 {% endblock %}

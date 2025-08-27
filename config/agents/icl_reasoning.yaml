@@ -10,6 +10,6 @@ icl_reasoning:
     api_key: null
   input_keys: ["goal", "hypotheses"]
   input_key: documents
-  output_key: icl_reasoning
+  output_key: final_output
   prompt_mode: file
   prompt_file: icl_reasoning.txt

@@ -50,7 +50,7 @@ class MARSCalculator(BaseScoreCalculator):
 
         # Configure logging options
         self.log_enabled = self.config.get("log_enabled", True)
-        self.log_path = self.config.get("log_path", "mars_reports")
+        self.log_path = self.config.get("log_path", "reports")
         self.include_full_data = self.config.get("include_full_data", True)
 
         if self.log_enabled and self.logger:

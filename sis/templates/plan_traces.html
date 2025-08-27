@@ -18,10 +18,9 @@
       {% for t in traces %}
       <tr>
         <td>{{ t.trace_id }}</td>
-        <td>{{ t.goal_text[:60] }}…</td>
         <td>{{ t.plan_signature }}</td>
         <td>{{ t.execution_steps|length }}</td>
-        <td>{{ t.extra_data.started_at | datetimeformat }}</td>
+        <td>{{ t.created_at | datetimeformat }}</td>
         <td><a href="/plan_traces/{{ t.trace_id }}" class="btn btn-sm btn-outline-primary">View</a></td>
       </tr>
       {% endfor %}
