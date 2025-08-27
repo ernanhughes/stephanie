@@ -1,9 +1,9 @@
-# stephanie/analysis/domain_classifier.py
+# stephanie/analysis/scorable_classifier.py
 import yaml
 from sklearn.metrics.pairwise import cosine_similarity
 
 
-class DomainClassifier:
+class ScorableClassifier:
     def __init__(self, memory, logger, config_path="config/domain/seeds.yaml"):
         self.memory = memory
         self.logger = logger

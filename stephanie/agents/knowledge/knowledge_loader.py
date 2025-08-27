@@ -73,7 +73,7 @@ class KnowledgeLoaderAgent(BaseAgent):
             doc_text = doc.get("text", "")
             doc_title = doc.get("title", "")
 
-            doc_domains = self.memory.document_domains.get_domains(doc_id)
+            doc_domains = self.memory.scorable_domains.get_domains(doc_id)
 
             for dom in doc_domains[: self.top_k]:
                 if dom.domain == goal_domain and dom.score >= self.threshold:

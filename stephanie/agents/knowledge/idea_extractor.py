@@ -3,7 +3,7 @@
 
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.domain_classifier import DomainClassifier
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.builders.belief_cartridge_builder import BeliefCartridgeBuilder
 from stephanie.scoring.mrq_scorer import \
     MRQScorer  # or wherever your scorer lives
@@ -28,7 +28,7 @@ class LearnableIdeaExtractorAgent(BaseAgent):
         self.idea_parser.memory = self.memory
         
         self.cartridge_builder = BeliefCartridgeBuilder(cfg, memory=memory, logger=logger)
-        self.domain_classifier = DomainClassifier(
+        self.domain_classifier = ScorableClassifier(
             memory=memory,
             logger=logger,
             config_path=cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
@@ -144,7 +144,7 @@ class LearnableIdeaExtractorAgent(BaseAgent):
         """Classify the paper and assign domains."""
         results = self.domain_classifier.classify(text, self.top_k_domains, self.min_classification_score)
         for domain, score in results:
-            self.memory.document_domains.insert(
+            self.memory.scorable_domains.insert(
                 {
                     "document_id": doc_id,
                     "domain": domain,

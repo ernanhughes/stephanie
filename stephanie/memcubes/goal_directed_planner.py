@@ -1,6 +1,8 @@
-from stephanie.models.belief import BeliefORM
-from stephanie.memcubes.world_model import WorldModel
 from typing import List
+
+from stephanie.memcubes.world_model import WorldModel
+from stephanie.models.belief import BeliefORM
+
 
 class GoalDirectedPlanner:
     def __init__(self, world_model: WorldModel):

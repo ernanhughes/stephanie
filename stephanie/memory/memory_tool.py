@@ -14,8 +14,6 @@ from stephanie.memory.cartridge_triple_store import CartridgeTripleStore
 from stephanie.memory.context_store import ContextStore
 from stephanie.memory.document_domain_section_store import \
     DocumentSectionDomainStore
-from stephanie.memory.document_domain_store import DocumentDomainStore
-from stephanie.memory.document_embedding_store import DocumentEmbeddingStore
 from stephanie.memory.document_section_store import DocumentSectionStore
 from stephanie.memory.document_store import DocumentStore
 from stephanie.memory.embedding_store import EmbeddingStore
@@ -44,6 +42,8 @@ from stephanie.memory.reflection_delta_store import ReflectionDeltaStore
 from stephanie.memory.report_store import ReportStore
 from stephanie.memory.rule_application_store import RuleApplicationStore
 from stephanie.memory.rule_effect_store import RuleEffectStore
+from stephanie.memory.scorable_domain_store import ScorableDomainStore
+from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
 from stephanie.memory.score_store import ScoreStore
 from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
@@ -136,7 +136,7 @@ class MemoryTool:
         self.register_store(PromptProgramStore(self.session, logger))
         self.register_store(ScoreStore(self.session, logger))
         self.register_store(DocumentStore(self.session, logger))
-        self.register_store(DocumentDomainStore(self.session, logger))
+        self.register_store(ScorableDomainStore(self.session, logger))
         self.register_store(DocumentSectionStore(self.session, logger))
         self.register_store(DocumentSectionDomainStore(self.session, logger))
         self.register_store(CartridgeDomainStore(self.session, logger))
@@ -151,7 +151,7 @@ class MemoryTool:
         self.register_store(ExecutionStepStore(self.session, logger))
         self.register_store(PlanTraceStore(self.session, logger))
         self.register_store(PipelineReferenceStore(self.session, logger))
-        self.register_store(DocumentEmbeddingStore(self.session, logger))
+        self.register_store(ScorableEmbeddingStore(self.session, logger))
         self.register_store(ReportStore(self.session, logger))
         self.register_store(TheoremStore(self.session, logger))
 

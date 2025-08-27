@@ -47,10 +47,11 @@ Usage:
 
 import os
 import re
+
 import requests
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.domain_classifier import DomainClassifier
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
@@ -76,7 +77,7 @@ class DocumentLoaderAgent(BaseAgent):
             "min_classification_score", 0.6
         )
         self.embed_full_document = cfg.get("embed_full_document", True)
-        self.domain_classifier = DomainClassifier(
+        self.domain_classifier = ScorableClassifier(
             memory=self.memory,
             logger=self.logger,
             config_path=cfg.get(
@@ -130,7 +131,7 @@ class DocumentLoaderAgent(BaseAgent):
                     )
                     # Assign domains if needed
                     if (
-                        not self.memory.document_domains.has_domains(existing.id)
+                        not self.memory.scorable_domains.has_domains(existing.id)
                         or self.force_domain_update
                     ):
                         self.assign_domains_to_document(existing)
@@ -220,7 +221,7 @@ class DocumentLoaderAgent(BaseAgent):
                     embed_text
                 )
 
-                self.memory.document_embeddings.insert(
+                self.memory.scorable_embeddings.insert(
                     {
                         "document_id": doc_id,
                         "document_type": TargetType.DOCUMENT,
@@ -293,7 +294,7 @@ class DocumentLoaderAgent(BaseAgent):
                 text, self.top_k_domains, self.min_classification_score
             )
             for domain, score in results:
-                self.memory.document_domains.insert(
+                self.memory.scorable_domains.insert(
                     {
                         "document_id": document.id,
                         "domain": domain,

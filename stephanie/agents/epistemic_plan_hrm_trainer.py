@@ -1,5 +1,6 @@
 # stephanie/agents/maintenance/epistemic_plan_hrm_trainer_agent.py
 
+import datetime
 import json
 import os
 import traceback
@@ -9,7 +10,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
-import datetime
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import PlanTrace

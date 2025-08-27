@@ -16,7 +16,7 @@ SYSTEM_INIT = {
     "AllEBTModelsLoaded": "📦✅",  # All EBT models loaded
     "SupervisorInit": "👨‍🏫",  # Supervisor initialization
     "DocumentLLMInferenceCompleted": "📰✅",  # Document LLM inference completed
-    "DocumentEmbeddingsBackfilled": "📄🌱",  # Document embeddings backfilled
+    "ScorableEmbeddingsBackfilled": "📄🌱",  # Document embeddings backfilled
     "AgentInitialized": "🤖",  # Agent initialization
     "ContextLoaded": "📂",  # Context loaded
     "ContextSaved": "💾",  # Context saved
@@ -383,8 +383,8 @@ MODELS = {
 # ETHICS & REVIEWS
 # =============
 SPECIAL = {
-    "DocumentEmbeddingInserted": "📄✅",  # Document embedding inserted
-    "DocumentEmbeddingBackfilled": "📄🔄",  # Document embedding backfilled
+    "ScorableEmbeddingInserted": "📄✅",  # Document embedding inserted
+    "ScorableEmbeddingBackfilled": "📄🔄",  # Document embedding backfilled
     "ContextSavedToFile": "📄💾",  # Context saved to file
     "PolicyInsight": "📊💡",  # Policy insight generated
     "PolicyReportSaved": "💾📊",  # Policy report saved

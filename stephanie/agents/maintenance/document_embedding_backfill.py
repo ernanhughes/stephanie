@@ -4,7 +4,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.document import DocumentORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.hypothesis import HypothesisORM
-from stephanie.memory.document_embedding_store import DocumentEmbeddingStore
+from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
 from stephanie.scoring.scorable_factory import ScorableFactory
 from tqdm import tqdm
 
@@ -18,7 +18,7 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.store = DocumentEmbeddingStore(memory.session, logger=logger)
+        self.store = ScorableEmbeddingStore(memory.session, logger=logger)
         self.document_type = cfg.get("document_type", "document")
         self.embed_full_document = cfg.get("embed_full_document", True)
         self.embedding_type = self.memory.embedding.name  # e.g. "hf_embeddings"
@@ -39,7 +39,7 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
         # Wrap in tqdm progress bar
         for doc in tqdm(documents, desc=f"Backfilling {self.document_type} embeddings", unit="doc"):
             # Step 2: Check if embedding already exists in the embedding store
-            exists = self.memory.document_embeddings.get_by_document(
+            exists = self.memory.scorable_embeddings.get_by_document(
                 document_id=str(doc.id),
                 document_type=self.document_type,
                 embedding_type=self.embedding_type,
@@ -64,7 +64,7 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
                     "embedding_type": self.embedding_type,
                 })
 
-                self.logger.log("DocumentEmbeddingBackfilled", {
+                self.logger.log("ScorableEmbeddingBackfilled", {
                     "document_id": str(doc.id),
                     "document_type": self.document_type,
                     "embedding_id": embedding_id,

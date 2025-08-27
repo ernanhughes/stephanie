@@ -128,9 +128,9 @@ class ExecutionStep:
 class PlanTrace:
     """
     Represents the complete execution trace of a reasoning plan.
-    This is the primary input for the EpistemicTraceEncoder and subsequently 
-    the Epistemic Plan HRM model.
+    Extended with fields for introspection and self-repair.
     """
+
     # --- Core Identifiers ---
     trace_id: str # Unique identifier for this specific trace/execution
     
@@ -162,6 +162,13 @@ class PlanTrace:
     # Source of the target quality score (e.g., "llm_judgment", "proxy_metric_avg_sicql_q")
     target_epistemic_quality_source: Optional[str] = None 
 
+    # --- Extended Cognitive Metadata ---
+    retrieved_cases: Optional[List[Dict[str, Any]]] = field(default_factory=list)
+    strategy_used: Optional[str] = None  # e.g. "CBR", "MCTS", "Greedy"
+    reward_signal: Optional[Dict[str, Any]] = field(default_factory=dict)  # structured reward info
+    skills_used: Optional[List[str]] = field(default_factory=list)  # e.g. ["legal_doc_agent", "search_tool"]
+    repair_links: Optional[List[str]] = field(default_factory=list)  # trace_ids of self-repairs
+
     # --- Metadata ---
     created_at: str = "" # ISO format timestamp
     # Any other execution metadata (e.g., time taken, DSPy optimizer version)
@@ -171,7 +178,7 @@ class PlanTrace:
     def to_dict(self) -> dict:
         result = {
             "trace_id": self.trace_id,
-            "pipeline_run_id": self.pipeline_run_id,   
+            "pipeline_run_id": self.pipeline_run_id,
             "goal_text": self.goal_text,
             "goal_id": self.goal_id,
             "input_data": self.input_data,
@@ -181,6 +188,11 @@ class PlanTrace:
             "final_scores": self.final_scores.to_dict() if self.final_scores else None,
             "target_epistemic_quality": self.target_epistemic_quality,
             "target_epistemic_quality_source": self.target_epistemic_quality_source,
+            "retrieved_cases": self.retrieved_cases,
+            "strategy_used": self.strategy_used,
+            "reward_signal": self.reward_signal,
+            "skills_used": self.skills_used,
+            "repair_links": self.repair_links,
             "created_at": self.created_at,
             "extra_data": self.extra_data,
         }
@@ -277,16 +289,22 @@ class PlanTrace:
 
         return cls(
             trace_id=data["trace_id"],
-            pipeline_run_id=data["pipeline_run_id"],
+            pipeline_run_id=data.get("pipeline_run_id"),
             goal_text=data["goal_text"],
             goal_id=data["goal_id"],
             input_data=data["input_data"],
             plan_signature=data["plan_signature"],
             execution_steps=execution_steps,
             final_output_text=data["final_output_text"],
-            final_scores=ScoreBundle.from_dict(data["final_scores"]),
+            final_scores=ScoreBundle.from_dict(data["final_scores"])
+                if data.get("final_scores") else None,
             target_epistemic_quality=data.get("target_epistemic_quality"),
             target_epistemic_quality_source=data.get("target_epistemic_quality_source"),
+            retrieved_cases=data.get("retrieved_cases", []),
+            strategy_used=data.get("strategy_used"),
+            reward_signal=data.get("reward_signal", {}),
+            skills_used=data.get("skills_used", []),
+            repair_links=data.get("repair_links", []),
             created_at=data.get("created_at", ""),
             extra_data=data.get("extra_data", {}),
         )

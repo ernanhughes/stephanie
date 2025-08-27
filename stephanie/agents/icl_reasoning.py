@@ -3,7 +3,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy import case, func
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.domain_classifier import DomainClassifier
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.cartridge_domain import CartridgeDomainORM
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.evaluation import EvaluationORM
@@ -31,7 +31,7 @@ class ICLReasoningAgent(BaseAgent):
         self.prompt_template = cfg.get(
             "icl_prompt_template", "icl_reasoning_prompt.txt"
         )
-        self.domain_classifier = DomainClassifier(
+        self.domain_classifier = ScorableClassifier(
             memory,
             logger,
             cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),

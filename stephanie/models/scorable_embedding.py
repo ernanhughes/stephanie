@@ -7,18 +7,18 @@ from sqlalchemy import Column, DateTime, Integer, String
 from stephanie.models.base import Base
 
 
-class DocumentEmbeddingORM(Base):
-    __tablename__ = "document_embeddings"
+class ScorableEmbeddingORM(Base):
+    __tablename__ = "scorable_embeddings"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    document_id = Column(String, nullable=False)         # string ID
-    document_type = Column(String, nullable=False)       # polymorphic scorable type
+    scorable_id = Column(String, nullable=False)         # string ID
+    scorable_type = Column(String, nullable=False)       # polymorphic scorable type
     embedding_id = Column(Integer, nullable=False)       # FK into hnet/hf/llama embeddings
     embedding_type = Column(String, nullable=False)      # embedding backend
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def __repr__(self):
         return (
-            f"<DocumentEmbeddingORM(doc={self.document_id}, "
-            f"type={self.document_type}, emb_type={self.embedding_type}, emb_id={self.embedding_id})>"
+            f"<ScorableEmbeddingORM(doc={self.scorable_id}, "
+            f"type={self.scorable_type}, emb_type={self.embedding_type}, emb_id={self.embedding_id})>"
         )

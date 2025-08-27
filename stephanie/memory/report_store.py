@@ -1,6 +1,8 @@
-from typing import Optional, List
-from stephanie.models.report import ReportORM
+from typing import List, Optional
+
 from sqlalchemy.orm import Session
+
+from stephanie.models.report import ReportORM
 
 
 class ReportStore:

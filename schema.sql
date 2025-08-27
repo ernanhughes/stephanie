@@ -1245,6 +1245,12 @@ CREATE TABLE IF NOT EXISTS plan_traces (
     target_epistemic_quality DOUBLE PRECISION, -- Label for HRM training
     target_epistemic_quality_source TEXT, -- Source of the HRM training label
     meta JSONB, -- Flexible metadata storage
+    retrieved_cases JSONB DEFAULT '[]',
+    strategy_used TEXT,
+    reward_signal JSONB DEFAULT '{}',
+    skills_used JSONB DEFAULT '[]',
+    repair_links JSONB DEFAULT '[]';
+
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
 );

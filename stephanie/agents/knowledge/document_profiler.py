@@ -2,7 +2,7 @@
 import re
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.domain_classifier import DomainClassifier
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.utils.document_section_parser import DocumentSectionParser
 
 DEFAULT_SECTIONS = ["title", "abstract", "methods", "results", "contributions"]
@@ -24,7 +24,7 @@ class DocumentProfilerAgent(BaseAgent):
         self.top_k_domains = cfg.get("top_k_domains", 3)
         self.min_classification_score = cfg.get("min_classification_score", 0.6)
 
-        self.domain_classifier = DomainClassifier(
+        self.domain_classifier = ScorableClassifier(
             memory,
             logger,
             cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),

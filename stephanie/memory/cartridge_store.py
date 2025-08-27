@@ -1,8 +1,9 @@
 # stephanie/memory/cartridge_store.py
 
 from sqlalchemy.orm import Session
+
+from stephanie.models.scorable_embedding import ScorableEmbeddingORM
 from stephanie.models.theorem import CartridgeORM
-from stephanie.models.document_embedding import DocumentEmbeddingORM
 
 
 class CartridgeStore:
@@ -17,7 +18,7 @@ class CartridgeStore:
         Returns the document_embeddings.id to use in CartridgeORM.
         """
         existing = (
-            self.session.query(DocumentEmbeddingORM)
+            self.session.query(ScorableEmbeddingORM)
             .filter_by(
                 document_id=document_id,
                 document_type=document_type,
@@ -29,7 +30,7 @@ class CartridgeStore:
         if existing:
             return existing.id
 
-        new_de = DocumentEmbeddingORM(
+        new_de = ScorableEmbeddingORM(
             document_id=document_id,
             document_type=document_type,
             embedding_id=embedding_id,

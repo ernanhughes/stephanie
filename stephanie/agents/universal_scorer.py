@@ -1,21 +1,22 @@
-from tqdm import tqdm
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scoring_manager import ScoringManager
 from typing import Any, Dict
 
+from tqdm import tqdm
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.models.cartridge_triple import CartridgeTripleORM
+from stephanie.models.document import DocumentORM
+from stephanie.models.hypothesis import HypothesisORM
+from stephanie.models.prompt import PromptORM
+from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
 from stephanie.scoring.ebt_scorer import EBTScorer
 from stephanie.scoring.hrm_scorer import HRMScorer
 from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.svm_scorer import SVMScorer
-from stephanie.models.document import DocumentORM
-from stephanie.models.prompt import PromptORM
-from stephanie.models.hypothesis import HypothesisORM
-from stephanie.models.theorem import TheoremORM, CartridgeORM
-from stephanie.models.cartridge_triple import CartridgeTripleORM
 
 
 class UniversalScorerAgent(BaseAgent):

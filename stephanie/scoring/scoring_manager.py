@@ -48,8 +48,8 @@ class ScoringManager(BaseAgent):
         if scorer is None:
             from stephanie.scoring.llm_scorer import LLMScorer
             from stephanie.scoring.mrq_scorer import MRQScorer
-            from stephanie.scoring.svm_scorer import SVMScorer
             from stephanie.scoring.sicql_scorer import SICQLScorer
+            from stephanie.scoring.svm_scorer import SVMScorer
 
             svm_scorer = SVMScorer(cfg, memory, logger)
             mrq_scorer = MRQScorer(cfg, memory, logger)
@@ -170,8 +170,8 @@ class ScoringManager(BaseAgent):
 
         from stephanie.scoring.llm_scorer import LLMScorer
         from stephanie.scoring.mrq_scorer import MRQScorer
-        from stephanie.scoring.svm_scorer import SVMScorer
         from stephanie.scoring.sicql_scorer import SICQLScorer
+        from stephanie.scoring.svm_scorer import SVMScorer
 
         if data["scorer"] == "mrq":
             # Use MRQ scoring profile if specified

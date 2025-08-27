@@ -1,5 +1,6 @@
 # stephanie/models/theorem.py
 from datetime import datetime
+
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, Table, Text
 from sqlalchemy.orm import relationship
 
@@ -95,7 +96,7 @@ class CartridgeORM(Base):
         ForeignKey("document_embeddings.id", ondelete="SET NULL"),
         nullable=True,
     )
-    embedding = relationship("DocumentEmbeddingORM")
+    embedding = relationship("ScorableEmbeddingORM")
 
     # Core content
     title = Column(Text)

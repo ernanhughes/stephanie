@@ -79,14 +79,14 @@ class PaperScoreAgent(BaseAgent, PaperScoringMixin):
         and stores results in the document_domains table.
         """
         # Skip if already has domains
-        if self.memory.document_domains.get_domains(document.id):
+        if self.memory.scorable_domains.get_domains(document.id):
             return
 
         text = document.text or ""
         results = self.domain_classifier.classify(text)
 
         for domain, score in results:
-            self.memory.document_domains.insert(
+            self.memory.scorable_domains.insert(
                 {
                     "document_id": document.id,
                     "domain": domain,

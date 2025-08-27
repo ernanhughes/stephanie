@@ -1,8 +1,10 @@
 # stephanie/agents/knowledge/cartridge.py
 
+from tqdm import tqdm
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
-from stephanie.analysis.domain_classifier import DomainClassifier
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.builders.cartridge_builder import CartridgeBuilder
 from stephanie.builders.theorem_extractor import TheoremExtractor
 from stephanie.builders.triplet_extractor import TripletExtractor
@@ -10,10 +12,9 @@ from stephanie.models.theorem import CartridgeORM
 from stephanie.scoring.ebt_scorer import EBTScorer
 from stephanie.scoring.mrq.scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from tqdm import tqdm
-
 from stephanie.scoring.sicql_scorer import SICQLScorer
 from stephanie.scoring.svm_scorer import SVMScorer
+
 
 class CartridgeAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None, full_cfg=None):
@@ -30,7 +31,7 @@ class CartridgeAgent(BaseAgent):
         self.min_classification_score = cfg.get("min_classification_score", 0.6)
         self.force_rebuild_cartridges = cfg.get("force_rebuild_cartridges", False)
 
-        self.domain_classifier = DomainClassifier(
+        self.domain_classifier = ScorableClassifier(
             memory=self.memory,
             logger=self.logger,
             config_path=cfg.get(
@@ -129,7 +130,7 @@ class CartridgeAgent(BaseAgent):
                     embedding_id = self.memory.embedding.get_id_for_text(scorable_text)
                     if embedding_id:
                         # Guarantee row exists in document_embeddings
-                        doc_embedding_id = self.memory.document_embeddings.get_or_create(
+                        doc_embedding_id = self.memory.scorable_embeddings.get_or_create(
                             document_id=str(doc.get("id")),
                             document_type="document",
                             embedding_id=embedding_id,
@@ -193,7 +194,7 @@ class CartridgeAgent(BaseAgent):
                     # Create embedding in document_embeddings (doc_id = theorem.id, type = "theorem")
                     embedding_vector=self.memory.embedding.get_or_create(theorem.statement)
                     embedding_id = self.memory.embedding.get_id_for_text(theorem.statement)
-                    doc_embedding_id = self.memory.document_embeddings.get_or_create(
+                    doc_embedding_id = self.memory.scorable_embeddings.get_or_create(
                         document_id=theorem.id,
                         document_type="theorem",
                         embedding_type=self.memory.embedding.name,
