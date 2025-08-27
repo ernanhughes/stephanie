@@ -1,7 +1,7 @@
 # stephanie/ranking/scorable_ranker.py
 import math
 import time
-from typing import Dict, List, Any
+from typing import Dict, List
 from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.scoring.base_scorer import BaseScorer
@@ -72,44 +72,63 @@ class ScorableRanker(BaseScorer):
         meta = getattr(scorable, "meta", {})
         return float(meta.get("reuse_count", 0)) / float(meta.get("attempt_count", 1))
 
-    # --- Main Ranker ---
-    def score(self, query_text: str, scoreables: List[Scorable]) -> List[Dict[str, Any]]:
+    def score(
+        self,
+        query: str,
+        candidates: List[Scorable],
+        extra_signals: Dict[str, float] = None,
+    ) -> List[Dict]:
         """
-        Return ranked list of scoreables for a given query text.
+        Rank candidates for a query and log results in DB.
+        :param query: the task / state / goal text
+        :param candidates: list of Scorable objects
+        :param extra_signals: optional dict of {signal_name: weight}
         """
-        query_emb = self.memory.embedding.get_or_create(query_text)
+        extra_signals = extra_signals or {}
 
-        ranked = []
-        for sc in scoreables:
-            sim = self._similarity(sc, query_emb)
-            reward = self._reward(sc)
-            recency = self._recency(sc)
-            adaptability = self._adaptability(sc)
+        query_emb = self.memory.embedding.get_or_create(query)
+
+        results = []
+        for cand in candidates:
+            cand_emb = self.memory.embedding.get_or_create(cand.text)
+
+            sim = float(cosine_similarity([query_emb], [cand_emb])[0][0])
+            rew = self._reward(cand)
+            rec = self._recency(cand)
+            adapt = self._adaptability(cand)
 
             score = (
-                self.weights["similarity"] * sim +
-                self.weights["reward"] * reward +
-                self.weights["recency"] * recency +
-                self.weights["adaptability"] * adaptability
+                self.weights["similarity"] * sim
+                + self.weights["reward"] * rew
+                + self.weights["recency"] * rec
+                + self.weights["adaptability"] * adapt
             )
 
-            ranked.append({
-                "scorable": sc,
-                "rank": score,
+            record = {
+                "query_text": query,
+                "scorable_id": str(cand.id),
+                "scorable_type": cand.target_type,
+                "rank_score": score,
                 "components": {
                     "similarity": sim,
-                    "reward": reward,
-                    "recency": recency,
-                    "adaptability": adaptability,
-                }
-            })
+                    "reward": rew,
+                    "recency": rec,
+                    "adaptability": adapt,
+                },
+                "embedding_type": self.embedding_type,
+            }
+            results.append(record)
 
-        ranked = sorted(ranked, key=lambda x: x["rank"], reverse=True)
+        # Sort by score
+        results.sort(key=lambda r: r["rank_score"], reverse=True)
 
-        self.logger.log("ScorableRankCompleted", {
-            "query": query_text[:80],
-            "n_scoreables": len(scoreables),
-            "top_rank": ranked[0]["rank"] if ranked else None
-        })
+        # Persist all ranks
+        self.memory.scorable_ranks.bulk_insert(results)
 
-        return ranked
+        if self.logger:
+            self.logger.log(
+                "ScorableRanked",
+                {"query": query[:80], "count": len(results), "top_score": results[0]["rank_score"]},
+            )
+
+        return results
