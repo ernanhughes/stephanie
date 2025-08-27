@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h1>📂 Logs</h1>
+  <table class="table table-striped">
+    <thead>
+      <tr><th>Filename</th><th>Size</th><th>Modified</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr>
+        <td>{{ f.name }}</td>
+        <td>{{ (f.size / 1024)|round(2) }} KB</td>
+        <td>{{ f.modified | datetimeformat }}</td>
+        <td>
+          <a href="/logs/view/{{ f.name }}" class="btn btn-sm btn-outline-primary">👁 View</a>
+          <a href="/logs/download/{{ f.name }}" class="btn btn-sm btn-outline-secondary">⬇ Download</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -23,7 +23,7 @@ class PreferencePairBuilder:
                     s.score,
                     d.id AS doc_id,
                     d.title,
-                    d.content,
+                    d.text,
                     ROW_NUMBER() OVER (
                         PARTITION BY s.dimension, d.id ORDER BY s.score DESC
                     ) AS rank_high,
@@ -39,7 +39,7 @@ class PreferencePairBuilder:
             SELECT
                 dimension,
                 title,
-                content,
+                text,
                 score,
                 rank_type,
                 doc_id
@@ -47,21 +47,21 @@ class PreferencePairBuilder:
                 SELECT
                     dimension,
                     title,
-                    content,
+                    text,
                     score,
                     'top' AS rank_type,
                     doc_id
                 FROM scored_docs
                 WHERE rank_high = 1
-                AND content IS NOT NULL
-                AND content <> ''
+                AND text IS NOT NULL
+                AND text <> ''
 
                 UNION ALL
 
                 SELECT
                     dimension,
                     title,
-                    content,
+                    text,
                     score,
                     'bottom' AS rank_type,
                     doc_id
@@ -103,8 +103,8 @@ class PreferencePairBuilder:
                 results_by_dimension[dimension].append(
                     {
                         "title": data["top"].title,
-                        "output_a": data["top"].content,
-                        "output_b": data["bottom"].content,
+                        "output_a": data["top"].text,
+                        "output_b": data["bottom"].text,
                         "value_a": float(data["top"].score),
                         "value_b": float(data["bottom"].score),
                     }

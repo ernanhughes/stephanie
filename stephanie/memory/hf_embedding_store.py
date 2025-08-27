@@ -148,9 +148,21 @@ class HuggingFaceEmbeddingStore(BaseStore):
             return []
 
 
-    def search_related_documents(self, query: str, top_k: int = 10):
+    def search_related_documents(self, query: str, top_k: int = 10, document_type: str = "document"):
+        """
+        Search for documents of a given type using embeddings stored in document_embeddings.
+
+        Args:
+            query (str): The search query text.
+            top_k (int): Number of results to return.
+            document_type (str): Type of document ("document", "prompt", "hypothesis", etc.)
+
+        Returns:
+            list[dict]: Matching documents with scores.
+        """
         try:
             embedding = self.get_or_create(query)
+
             with self.conn.cursor() as cur:
                 cur.execute(
                     """
@@ -159,15 +171,17 @@ class HuggingFaceEmbeddingStore(BaseStore):
                         d.title,
                         d.summary,
                         d.content,
-                        d.embedding_id,
+                        de.embedding_id,
                         1 - (e.embedding <-> %s::vector) AS score  -- cosine similarity proxy
-                    FROM documents d
-                    JOIN hf_embeddings e ON d.embedding_id = e.id
-                    WHERE d.embedding_id IS NOT NULL
+                    FROM document_embeddings de
+                    JOIN documents d ON de.document_id::int = d.id
+                    JOIN hf_embeddings e ON de.embedding_id = e.id
+                    WHERE de.document_type = %s
+                    AND de.embedding_type = %s
                     ORDER BY e.embedding <-> %s::vector
                     LIMIT %s;
                     """,
-                    (embedding, embedding, top_k),
+                    (embedding, document_type, self.name, embedding, top_k),
                 )
                 results = cur.fetchall()
 
@@ -179,8 +193,8 @@ class HuggingFaceEmbeddingStore(BaseStore):
                     "content": row[3],
                     "embedding_id": row[4],
                     "score": float(row[5]),
-                    "text": row[2] or row[3],  # Default to summary, fallback to content
-                    "source": "document",
+                    "text": row[2] or row[3],  # Prefer summary, fallback to content
+                    "source": document_type,
                 }
                 for row in results
             ]

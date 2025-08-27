@@ -4,7 +4,6 @@ from datetime import datetime
 from enum import Enum
 
 from stephanie.scoring.scorable import Scorable
-from stephanie.utils.file_utils import hash_text
 
 
 class MemCubeType(Enum):
@@ -24,11 +23,8 @@ class MemCube:
         self,
         scorable: Scorable,
         dimension: str = None,
-        created_at: datetime = None,
-        last_modified: datetime = None,
         source: str = "user_input",
         model: str = "llama3",
-        access_policy: dict = None,
         priority: int = 5,
         original_score: float = None,
         refined_score: float = None,
@@ -53,8 +49,8 @@ class MemCube:
         self.refined_content = refined_content  
         self.ttl = ttl
         self.version = version
-        self.created_at = created_at or datetime.now()
-        self.last_modified = last_modified or self.created_at
+        self.created_at = datetime.now()
+        self.last_modified = datetime.now()
         self.usage_count = usage_count
         self.extra_data = extra_data or {}
 
@@ -131,4 +127,4 @@ class MemCube:
         ts = self.created_at.strftime("%Y%m%d%H%M%S")
         target_type = self.scorable.target_type
         scorable_id = str(self.scorable.id)
-        return f"{ts}_{target_type}_{scorable_id}_{self.version}"
+        return f"{ts}_{target_type}_{scorable_id}_{self.version}" 

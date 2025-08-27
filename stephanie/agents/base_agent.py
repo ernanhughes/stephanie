@@ -49,7 +49,7 @@ class BaseAgent(ABC):
         self._goal_id_cache = {}
         self._prompt_id_cache = {}
         self._hypothesis_id_cache = {}
-        self.report_entries = {} 
+        self.report_entries = {}
         self.logger.log(
             "AgentInitialized",
             {
@@ -364,14 +364,24 @@ class BaseAgent(ABC):
         return hypothesis
 
     def report(self, item: dict):
-        """Add a report entry for the given item."""
+        """
+        Add a report entry for this agent.
+
+        Args:
+            item (dict): Details about the event, should include at least
+                         "event" or "message".
+        """
+        if "timestamp" not in item:
+            item["timestamp"] = datetime.now(timezone.utc).isoformat()
         self.report_entries.setdefault(self.name, []).append(item)
+        self.logger.log("ReportEntry", {"agent": self.name, **item})
 
     def get_report(self, context: dict) -> dict:
-        """Return a dict with reportable information."""
-        return {
-            "summary": f"Ran {self.name}",
-            "metrics": context.get("metrics", {}),
-            "outputs": {k: context[k] for k in ("result",) if k in context},
-            "entries": self.report_entries.get(self.name, []),
-        }
+        """
+        Collect reportable information for this agent.
+        Returns a dict that the report formatter can consume.
+        """
+        entries = self.report_entries.get(self.name, [])
+        # optional: clear after retrieval to avoid duplication
+        self.report_entries[self.name] = []
+        return entries

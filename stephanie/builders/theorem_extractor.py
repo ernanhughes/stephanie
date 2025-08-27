@@ -31,6 +31,7 @@ class TheoremExtractor:
 
             for statement in theorem_statements:
                 theorem = TheoremORM(statement=statement)
+                theorem.pipeline_run_id = context.get("pipeline_run_id")
                 extracted_theorems.append(theorem)
                 self.logger.log("TheoremExtracted", {"statement": statement[:100]})
 

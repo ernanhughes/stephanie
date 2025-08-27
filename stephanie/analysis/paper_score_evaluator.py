@@ -13,10 +13,11 @@ class PaperScoreEvaluator(ScoringManager):
         context: dict,
         document: dict,
         llm_fn=None,
-        text_to_evaluate: str = "content",
+        text_to_evaluate: str = "text",
+        max_tokens: int = 5000
     ) -> dict:
         text = document.get(text_to_evaluate, "")
-        chunks = self.chunk_text(text, max_tokens=1000)  # Adjust token limit as needed
+        chunks = self.chunk_text(text, max_tokens=max_tokens)  # Adjust token limit as needed
         scores_accumulator = []
 
         for chunk in chunks:
@@ -61,7 +62,7 @@ class PaperScoreEvaluator(ScoringManager):
         """
         combined = {}
 
-        for dim in self.dimensions:
+        for dim in self.dimension_specs:
             name = dim["name"]
             weight = dim.get("weight", 1.0)
 

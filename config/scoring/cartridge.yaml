@@ -1,52 +1,20 @@
+# config/scoring/cartridge.yaml
 scoring_profile: cartridge
-scorer: mrq
 prompt_dir: prompts/cartridge
 output_format: simple  # or: simple, json, etc.
+scorer: sicql
 dimensions:
-  - name: relavance
-    file: relavance.txt
+  - name: relevance
+    file: relevance
+    weight: 1.5
+    extra_data: { parser: numeric }
+
+  - name: novelty
+    file: novelty
     weight: 1.2
-    extra_data: 
-      parser: numeric
+    extra_data: { parser: numeric }
 
-  - name: usefullness
-    file: usefullness.txt
-    weight: 1.1
-    extra_data: 
-      parser: numeric
-
-  - name: confidence
-    file: confidence.txt
-    weight: 1.3
-    extra_data: 
-      parser: numeric
-
-  - name: clarity
-    file: clarity.txt
+  - name: implementability
+    file: implementability
     weight: 1.0
-    extra_data: 
-      parser: numeric
-
-  - name: specivity 
-    file: specivity.txt
-    weight: 0.8
-    extra_data: 
-      parser: numeric
-
-  - name: novelty 
-    file: novelty.txt
-    weight: 0.8
-    extra_data: 
-      parser: numeric
-
-  - name: composibility
-    file: composibility.txt 
-    weight: 0.8
-    extra_data: 
-      parser: numeric
-
-  - name: alignment
-    file: alignment.txt
-    weight: 0.8
-    extra_data: 
-      parser: numeric
+    extra_data: { parser: numeric }

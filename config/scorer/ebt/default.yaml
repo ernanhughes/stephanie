@@ -1,0 +1,12 @@
+# config/scorer/ebt/default.yaml
+name: ebt
+model_type: ebt
+model_version: v1
+evaluator: ebt
+target_type: document
+dimensions: 
+  - alignment
+  - clarity
+  - implementability
+  - novelty
+  - relevance

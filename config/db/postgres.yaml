@@ -1,8 +1,8 @@
 # config/db/postgres.yaml
-database: test
-name: test  # it keeps coming back to this
-user: test
-password: test
+database: co
+name: co  # it keeps coming back to this
+user: co
+password: co
 host: localhost
 port: 5432
 

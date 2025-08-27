@@ -572,3 +572,40 @@ class ContextManager:
         # Return them as is.
         else:
             return obj
+
+    def save_to_file(self, directory: str = "logs", prefix: str = "context") -> str:
+        """
+        Save the current context to a JSON file with a date-formatted filename.
+        
+        Args:
+            directory: Directory where to save the context file.
+            prefix: Prefix for the filename.
+
+        Returns:
+            The full path of the saved file.
+        """
+        os.makedirs(directory, exist_ok=True)
+        timestamp = datetime.now().strftime("%d%m%y_%H%M%S%f")
+        filename = f"{prefix}_{timestamp}.json"
+        filepath = os.path.join(directory, filename)
+
+        try:
+            serializable_context = self._strip_non_serializable(self._data)
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(serializable_context, f, indent=2, ensure_ascii=False)
+            
+            if self.logger:
+                self.logger.log("ContextSavedToFile", {
+                    "filepath": filepath,
+                    "run_id": self.run_id,
+                    "size_bytes": os.path.getsize(filepath)
+                })
+        except Exception as e:
+            if self.logger:
+                self.logger.log("ContextSaveToFileFailed", {
+                    "error": str(e),
+                    "run_id": self.run_id
+                })
+            raise
+
+        return filepath

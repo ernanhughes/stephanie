@@ -9,6 +9,7 @@
   </div>
 
   {% if tables %}
+
     <!-- Stats summary -->
     <div class="alert alert-info">
       <strong>Total Tables:</strong> {{ tables|length }} |
@@ -28,17 +29,14 @@
         {% set max_count = (tables | max(attribute='count')).count %}
         {% for table in tables %}
         <tr>
-          <!-- Clickable table name -->
           <td>
             <a href="/db/table/{{ table.name }}" class="fw-bold text-decoration-none">
               📂 {{ table.name }}
             </a>
           </td>
-          <!-- Row count badge -->
           <td>
             <span class="badge bg-primary">{{ table.count }}</span>
           </td>
-          <!-- Relative progress bar -->
           <td>
             <div class="progress" style="height: 20px;">
               <div class="progress-bar bg-success" role="progressbar"

@@ -17,7 +17,7 @@ class DocumentStore:
             source=doc["source"],
             external_id=doc.get("external_id"),
             url=doc.get("url"),
-            content=doc.get("text") or doc.get("content"),  # support both fields
+            text=doc.get("text"), 
             summary=doc.get("summary"),
             goal_id=doc.get("goal_id"),
         )
@@ -32,7 +32,7 @@ class DocumentStore:
                 source=doc["source"],
                 external_id=doc.get("external_id"),
                 url=doc.get("url"),
-                content=doc.get("content"),
+                text=doc.get("text"),
             )
             for doc in documents
         ]
@@ -66,45 +66,3 @@ class DocumentStore:
             .filter(DocumentORM.id.in_(document_ids))
             .all()
         )
-
-    def search_documents_by_id(self, doc_ids: list[int]):
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT 
-                        d.id,
-                        d.title,
-                        d.summary,
-                        d.content,
-                        d.embedding_id,
-                    FROM documents d
-                    JOIN embeddings e ON d.embedding_id = e.id
-                    WHERE d.embedding_id IS NOT NULL
-                    AND d.id = ANY(%s::int[])
-                    """,
-                    (doc_ids),
-                )
-                results = cur.fetchall()
-
-            return [
-                {
-                    "id": row[0],
-                    "title": row[1],
-                    "summary": row[2],
-                    "content": row[3],
-                    "embedding_id": row[4],
-                    "text": row[2] or row[3],  # Default to summary, fallback to content
-                    "source": "document",
-                }
-                for row in results
-            ]
-
-        except Exception as e:
-            if self.logger:
-                self.logger.log(
-                    "DocumentSearchFailed", {"error": str(e), "query": query}
-                )
-            else:
-                print(f"[VectorMemory] Document search failed: {e}")
-            return []

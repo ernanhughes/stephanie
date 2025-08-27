@@ -2,10 +2,14 @@ defaults:
   - _self_
   - db: postgres
 
-  - scorer/sicql/default
-  - scorer/contrastive_ranker/default
+  - scorer/ebt/default
   - scorer/hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
+
 
   - agents/knowledge_db_loader
   - agents/gild_trainer
@@ -35,10 +39,14 @@ goal:
     - "stepwise_reasoning_trace"
     - "annotated_score_vector"
 
-post_judgment:
-  name: pipeline_judge
+plan_monitor:
   enabled: true
-  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
+  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
+  save_output: true
+  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
+  plan_monitoring_interval: 10
+  plan_monitoring_timeout: 60
+
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts

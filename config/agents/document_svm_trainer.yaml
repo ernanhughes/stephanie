@@ -1,11 +1,11 @@
 document_svm_trainer:
   name: document_svm_trainer
   model_path: "${hydra:runtime.cwd}/models"
-  model_type: "svm"
-  target_type: "document"
+  model_type: svm
+  target_type: document
   dimensions: 
-    - "alignment"
-    - "clarity"
-    - "implementability"
-    - "novelty"
-    - "relevance"
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance

@@ -21,16 +21,16 @@ document_reward_scorer:
 
   model_path: "${hydra:runtime.cwd}/models"
   model_prefix: document_rm_
-  embedding_type: "hnet"
-  model_version: "v1"
-  model_type: "rank"
-  target_type: "document"
+  embedding_type: hnet
+  model_version: v1
+  model_type: rank
+  target_type: document
   dimensions: 
-    - "alignment"
-    - "clarity"
-    - "implementability"
-    - "novelty"
-    - "relevance"
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
   dimension_config:
       alignment:
         scale: "0-100"

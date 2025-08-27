@@ -26,7 +26,7 @@ from stephanie.scoring.score_display import ScoreDisplay
 class ScoringManager(BaseAgent):
     def __init__(
         self,
-        dimensions,
+        dimension_specs,
         prompt_loader,
         cfg,
         logger,
@@ -37,7 +37,7 @@ class ScoringManager(BaseAgent):
         scoring_profile: str = "default",
     ):
         super().__init__(cfg, memory, logger)
-        self.dimensions = dimensions
+        self.dimension_specs = dimension_specs
         self.prompt_loader = prompt_loader
         self.output_format = cfg.get("output_format", "simple")  # default
         self.prompt_renderer = PromptRenderer(prompt_loader, cfg)
@@ -49,16 +49,18 @@ class ScoringManager(BaseAgent):
             from stephanie.scoring.llm_scorer import LLMScorer
             from stephanie.scoring.mrq_scorer import MRQScorer
             from stephanie.scoring.svm_scorer import SVMScorer
+            from stephanie.scoring.sicql_scorer import SICQLScorer
 
             svm_scorer = SVMScorer(cfg, memory, logger)
             mrq_scorer = MRQScorer(cfg, memory, logger)
+            sicql_scorer = SICQLScorer(cfg, memory, logger)
             llm_scorer = LLMScorer(cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=self.call_llm)
-
+            
             self.scorer = FallbackScorer(
                 cfg=self.cfg,
                 memory=self.memory,
                 logger=self.logger,
-                scorers=[svm_scorer, mrq_scorer, llm_scorer],
+                scorers=[sicql_scorer, svm_scorer, mrq_scorer, llm_scorer],
                 fallback_order=["svm", "mrq", "llm"],
                 default_fallback="llm",
             )
@@ -75,7 +77,7 @@ class ScoringManager(BaseAgent):
 
     def dimension_names(self):
         """Returns the names of all dimensions."""
-        return [dim["name"] for dim in self.dimensions]
+        return [dim["name"] for dim in self.dimension_specs]
 
     def filter_dimensions(self, scorable, context):
         """
@@ -83,8 +85,8 @@ class ScoringManager(BaseAgent):
         Override or provide a hook function to filter dynamically.
         """
         if self.dimension_filter_fn:
-            return self.dimension_filter_fn(self.dimensions, scorable, context)
-        return self.dimensions
+            return self.dimension_filter_fn(self.dimension_specs, scorable, context)
+        return self.dimension_specs
 
     @staticmethod
     def get_postprocessor(extra_data):
@@ -109,7 +111,7 @@ class ScoringManager(BaseAgent):
         memory=None,
     ):
         rows = session.query(ScoreDimensionORM).filter_by(stage=stage).all()
-        dimensions = [
+        dimension_specs = [
             {
                 "name": row.name,
                 "prompt_template": row.prompt_template,
@@ -121,7 +123,7 @@ class ScoringManager(BaseAgent):
             for row in rows
         ]
         return cls(
-            dimensions,
+            dimension_specs=dimension_specs,
             prompt_loader=prompt_loader,
             cfg=cfg,
             logger=logger,
@@ -129,7 +131,7 @@ class ScoringManager(BaseAgent):
         )
 
     def get_dimensions(self):
-        return [d["name"] for d in self.dimensions]
+        return [d["name"] for d in self.dimension_specs]
 
     @classmethod
     def from_file(
@@ -148,7 +150,7 @@ class ScoringManager(BaseAgent):
         # Default to 'simple' if not provided
         output_format = data.get("output_format", "simple")
 
-        dimensions = [
+        dimension_specs = [
             {
                 "name": d["name"],
                 "file": d.get("file"),
@@ -169,6 +171,7 @@ class ScoringManager(BaseAgent):
         from stephanie.scoring.llm_scorer import LLMScorer
         from stephanie.scoring.mrq_scorer import MRQScorer
         from stephanie.scoring.svm_scorer import SVMScorer
+        from stephanie.scoring.sicql_scorer import SICQLScorer
 
         if data["scorer"] == "mrq":
             # Use MRQ scoring profile if specified
@@ -176,13 +179,16 @@ class ScoringManager(BaseAgent):
         elif data["scorer"] == "svm":
             # Use SVM scoring profile if specified
             scorer = SVMScorer(cfg, memory, logger)
+        elif data["scorer"] == "sicql":
+            # Use SICQL scoring profile if specified
+            scorer = SICQLScorer(cfg, memory, logger)
         else:
             # Default to LLM scoring profile
             scorer = LLMScorer(
                 cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=llm_fn
             )
         return cls(
-            dimensions=dimensions,
+            dimension_specs=dimension_specs,
             prompt_loader=prompt_loader,
             cfg=cfg,
             logger=logger,
@@ -239,11 +245,12 @@ class ScoringManager(BaseAgent):
         try:
             if self.scorer.name == "llm":
                 score = self.scorer.score(
-                    context, scorable, self.dimensions, llm_fn=llm_fn
+                    context, scorable, self.dimension_specs, llm_fn=llm_fn
                 )
             else:
+                dimensions= [d["name"] for d in self.dimension_specs]
                 score = self.scorer.score(
-                    context, scorable, self.dimensions
+                    context, scorable, dimensions
                 )
         except Exception as e:
             self.logger.log(
@@ -399,7 +406,7 @@ class ScoringManager(BaseAgent):
                         data_type=data_type
                     ))
 
-        # Add all scores to database
+        # Add all scores to database I
         memory.session.add_all(score_orms)
         memory.session.flush()  # Get score IDs
         

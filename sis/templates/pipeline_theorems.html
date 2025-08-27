@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1>📐 Theorems for Pipeline Run {{ pipeline_run_id }}</h1>
+
+  <div class="mb-3">
+    <a href="/pipeline/{{ pipeline_run_id }}" class="btn btn-outline-primary">⬅ Back to Pipeline</a>
+    <a href="/" class="btn btn-outline-secondary">🏠 Home</a>
+  </div>
+
+  {% if theorems %}
+  <table class="table table-bordered table-striped mt-4">
+    <thead class="table-dark">
+      <tr>
+        <th>ID</th>
+        <th>Statement</th>
+        <th>Proof</th>
+        <th>Embedding ID</th>
+        <th>Created At</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in theorems %}
+      <tr>
+        <td>{{ t.id }}</td>
+        <td style="max-width: 500px; white-space: pre-wrap;">{{ t.statement }}</td>
+        <td style="max-width: 500px; white-space: pre-wrap;">{{ t.proof or "–" }}</td>
+        <td>{{ t.embedding_id or "–" }}</td>
+        <td>{{ t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "–" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="alert alert-warning mt-4">⚠️ No theorems found for this pipeline run.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -12,7 +12,7 @@ $OutputPath = Join-Path $SubdirPath $OutputFile
 
 # Get all .py files recursively
 $files = Get-ChildItem -Path $SubdirPath -Recurse -File | Where-Object {
-    $_.Extension -in '.py' # O, '.yaml', '.yml'
+    $_.Extension -in '.py', '.yaml', '.yml', '.html'
 } | Sort-Object FullName
 
 foreach ($file in $files) {

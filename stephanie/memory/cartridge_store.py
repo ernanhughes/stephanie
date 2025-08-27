@@ -1,9 +1,8 @@
 # stephanie/memory/cartridge_store.py
 
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
-
 from stephanie.models.theorem import CartridgeORM
+from stephanie.models.document_embedding import DocumentEmbeddingORM
 
 
 class CartridgeStore:
@@ -12,6 +11,34 @@ class CartridgeStore:
         self.logger = logger
         self.name = "cartridges"
 
+    def _ensure_document_embedding(self, embedding_id: int, document_id: str, document_type: str, embedding_type: str) -> int:
+        """
+        Ensure a corresponding entry exists in document_embeddings.
+        Returns the document_embeddings.id to use in CartridgeORM.
+        """
+        existing = (
+            self.session.query(DocumentEmbeddingORM)
+            .filter_by(
+                document_id=document_id,
+                document_type=document_type,
+                embedding_id=embedding_id,
+                embedding_type=embedding_type,
+            )
+            .first()
+        )
+        if existing:
+            return existing.id
+
+        new_de = DocumentEmbeddingORM(
+            document_id=document_id,
+            document_type=document_type,
+            embedding_id=embedding_id,
+            embedding_type=embedding_type,
+        )
+        self.session.add(new_de)
+        self.session.flush()  # ensures new_de.id is populated without commit
+        return new_de.id
+
     def add_cartridge(self, data: dict) -> CartridgeORM:
         existing = (
             self.session.query(CartridgeORM)
@@ -19,41 +46,46 @@ class CartridgeStore:
             .first()
         )
 
-        if existing:
-            # Optionally update content
-            existing.markdown_content = data.get(
-                "markdown_content", existing.markdown_content
+        # Resolve embedding_id into document_embeddings
+        if data.get("embedding_id"):
+            resolved_id = self._ensure_document_embedding(
+                embedding_id=data["embedding_id"],
+                document_id=data.get("source_uri"),   # maps back to document/hypothesis/etc.
+                document_type=data["source_type"],
+                embedding_type=data.get("embedding_type", "unknown"),
             )
-            existing.title = data.get("title", existing.title)
-            existing.summary = data.get("summary", existing.summary)
-            existing.sections = data.get("sections", existing.sections)
-            existing.triples = data.get("triples", existing.triples)
-            existing.domain_tags = data.get("domain_tags", existing.domain_tags)
-            existing.embedding_id = data.get("embedding_id", existing.embedding_id)
+            data["embedding_id"] = resolved_id
+
+        if existing:
+            # Update existing cartridge
+            for field in [
+                "markdown_content", "title", "summary",
+                "sections", "triples", "domain_tags", "embedding_id"
+            ]:
+                if field in data:
+                    setattr(existing, field, data[field])
             self.session.commit()
             return existing
 
+        # Insert new
         cartridge = CartridgeORM(**data)
         self.session.add(cartridge)
         self.session.commit()
         return cartridge
 
     def bulk_add_cartridges(self, items: list[dict]) -> list[CartridgeORM]:
-        cartridges = [
-            CartridgeORM(
-                goal_id=item.get("goal_id"),
-                source_type=item["source_type"],
-                source_uri=item.get("source_uri"),
-                markdown_content=item["markdown_content"],
-                embedding_id=item.get("embedding_id"),
-                title=item.get("title"),
-                summary=item.get("summary"),
-                sections=item.get("sections"),
-                triples=item.get("triples"),
-                domain_tags=item.get("domain_tags"),
-            )
-            for item in items
-        ]
+        cartridges = []
+        for item in items:
+            if item.get("embedding_id"):
+                resolved_id = self._ensure_document_embedding(
+                    embedding_id=item["embedding_id"],
+                    document_id=item.get("source_uri"),
+                    document_type=item["source_type"],
+                    embedding_type=item.get("embedding_type", "unknown"),
+                )
+                item["embedding_id"] = resolved_id
+            cartridges.append(CartridgeORM(**item))
+
         self.session.add_all(cartridges)
         self.session.commit()
         return cartridges

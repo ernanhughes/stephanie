@@ -23,7 +23,7 @@ from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
 from stephanie.reports import ReportFormatter
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
-from stephanie.utils.timing import time_function
+from stephanie.utils.report_utils import get_stage_details
 
 
 class PipelineStage:
@@ -216,24 +216,9 @@ class Supervisor:
             if name in self.cfg.agents
         ]
 
-    def get_stage_report_details(self, stage: dict) -> dict:
-        report_entry = {
-            "stage": stage.name,
-            "display_name": stage.get("display_name", stage.name),
-            "agent": stage.cls.split(".")[-1],
-            "status": "",
-            "summary": stage.description, # short natural-language summary
-            "metrics": {},           # e.g., {"accuracy": 0.91, "loss": 0.08}
-            "outputs": {},           # selected fields from context
-            "start_time": datetime.now().strftime("%H:%M:%S"),
-            "end_time": "",
-        }
-        return report_entry
-
-
-    @time_function(logger=None)
     async def _run_pipeline_stages(self, context: dict) -> dict:
         plan_trace_monitor: PlanTraceMonitor = get_registered_component("plan_trace_monitor")
+        final_output_key = ""
         for stage_idx, stage in enumerate(self.pipeline_stages):
             stage_details = {
                 STAGE: stage.name,
@@ -242,8 +227,9 @@ class Supervisor:
                 "start_time": datetime.now().strftime("%H:%M:%S")
             }
             self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
-            context.setdefault("REPORTS", []).append(self.get_stage_report_details(stage)) 
-            
+            stage_report = get_stage_details(stage, status="⏳ running")
+            context.setdefault("REPORTS", []).append(stage_report)
+
             # Record stage start
             plan_trace_monitor.start_stage(stage.name, context, stage_idx)
             
@@ -255,6 +241,7 @@ class Supervisor:
             try:
                 cls = hydra.utils.get_class(stage.cls)
                 stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
+                final_output_key = stage_dict.get("output_key", final_output_key)
                 self.rule_applier.apply_to_agent(stage_dict, context)
                 agent_args = {
                     "cfg": stage_dict,
@@ -281,7 +268,20 @@ class Supervisor:
                 # Saving context after stage
                 if stage_dict.get(SAVE_CONTEXT, False):
                     self.context.save_to_db(stage_dict)
-                
+
+                try:
+                    stage_entries = agent.get_report(context)   # get agent-level events
+                    if context["REPORTS"]:
+                        context["REPORTS"][-1].setdefault("entries", []).extend(stage_entries)
+                except Exception as rep_e:
+                    self.logger.log("StageReportFailed", {
+                        "stage": stage.name,
+                        "error": str(rep_e)
+                    })
+
+                self.context.save_to_file()
+
+
                 self._save_pipeline_stage(stage, context, stage_dict)
                 self.logger.log("PipelineStageEnd", {STAGE: stage.name})
                 
@@ -301,6 +301,14 @@ class Supervisor:
                 stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
                 raise  # Re-raise the exception to be caught by the outer handler
         
+        # After finishing all stages
+        if not context.get("final_output"):
+            self.logger.log("FinalOutputKeyMissing", {
+                "final_output_key": final_output_key,
+                "context_keys": list(context.keys())
+            }) 
+            context["final_output"] = context.get(final_output_key)
+
         self._print_pipeline_summary() 
         return context
 
@@ -333,6 +341,7 @@ class Supervisor:
 
         }
         self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
+        context.setdefault("REPORTS", []).append(get_stage_details(stage))
 
         if not stage.enabled:
             self.logger.log("PipelineStageSkipped", {STAGE: stage.name})
@@ -433,26 +442,30 @@ class Supervisor:
 
         return self.memory.pipeline_stages.insert(stage_data)
 
-    def generate_report(self, context: dict[str, any], run_id: str) -> str:
+    def generate_report(self, context: dict[str, any]) -> str:
         """Generate a report based on the pipeline context."""
         formatter = ReportFormatter(self.cfg.report.path)
-        report, summary = formatter.format_report(context)
+        report, summary, path = formatter.format_report(context)
+        pipeline_run_id = int(context.get("pipeline_run_id"))
+        goal_text = str(context.get("goal").get("goal_text", ""))
         self.memory.reports.insert(
-             run_id, str(context.get("goal")), summary , self.cfg.report.path, report
+             pipeline_run_id, goal_text, summary , self.cfg.report.path, report
         )
+        print(f"\n📝 Report saved to: {path}\n")
         self.logger.log(
-            "ReportGenerated", {RUN_ID: run_id, "report_snippet": report[:100]}
+            "ReportGenerated", {RUN_ID: pipeline_run_id, "report_snippet": report[:100]}
         )
         return report
 
     def save_context(self, cfg: DictConfig, context: dict):
-        if cfg.get(SAVE_CONTEXT, False):
+        if cfg.get(SAVE_CONTEXT, True):
             self.context.save_to_db()
             self.logger.log("ContextSaved", {
                 NAME: cfg.get(NAME, "UnnamedAgent"),
                 RUN_ID: context.get(RUN_ID),
                 "context_keys": list(context.keys())
             })
+            self.context.save_to_file()
 
     def load_context(self, cfg: DictConfig, goal_id: int):
         if cfg.get(SKIP_IF_COMPLETED, False):
@@ -571,7 +584,7 @@ class Supervisor:
         context = await self._run_pipeline_stages(context)
 
         # Step 5: Generate report (optional)
-        self.generate_report(context, run_id)
+        self.generate_report(context, pipeline_run.id)
 
         self.logger.log("PipelineRerunComplete", {"run_id": run_id})
         return context

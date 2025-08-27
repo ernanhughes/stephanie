@@ -14,6 +14,7 @@ class BeliefORM(Base):
     worldview_id = Column(Integer, ForeignKey("worldviews.id"))
     cartridge_id = Column(Integer, ForeignKey("cartridges.id"), nullable=True)
     summary = Column(Text)
+    text = Column(Text)
     rationale = Column(Text)
     utility_score = Column(Float)
     novelty_score = Column(Float)

@@ -44,12 +44,14 @@ class PipelineRunORM(Base):
     evaluations = relationship("EvaluationORM", back_populates="pipeline_run")
     stages = relationship("PipelineStageORM", back_populates="pipeline_run")
     reports = relationship("ReportORM", back_populates="pipeline_run", cascade="all, delete-orphan")
-
+    theorems = relationship("TheoremORM", back_populates="pipeline_run", cascade="all, delete-orphan")
+    cartridges = relationship("CartridgeORM", back_populates="pipeline_run", cascade="all, delete-orphan")
+    plan_traces = relationship("PlanTraceORM", back_populates="pipeline_run")
+    execution_steps = relationship("ExecutionStepORM", back_populates="pipeline_run")
 
     def __repr__(self):
         return (
             f"<PipelineRunORM(id={self.id}, "
-            f"run_id='{self.run_id}', "
             f"name='{self.name}', "
             f"description='{(self.description[:50] + '...') if self.description and len(self.description) > 50 else self.description}')>"
         )

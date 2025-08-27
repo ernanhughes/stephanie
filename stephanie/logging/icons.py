@@ -7,6 +7,7 @@ def get_event_icon(event_type: str) -> str:
 # SYSTEM & INITIALIZATION
 # ========================
 SYSTEM_INIT = {
+    "LowDomainScore": "🔽",  # Low domain score
     "EmbeddingBackendSelected": "🔌",  # Embedding backend selected
     "ContextManagerInitialized": "⚙️",  # Context manager initialized
     "UncertaintyEstimated": "🔍",  # Uncertainty estimation
@@ -14,7 +15,7 @@ SYSTEM_INIT = {
     "ScoringPolicyCompleted": "✅",  # Scoring policy completed
     "AllEBTModelsLoaded": "📦✅",  # All EBT models loaded
     "SupervisorInit": "👨‍🏫",  # Supervisor initialization
-    "DocumentLLMInferenceCompleted": "📄✅",  # Document LLM inference completed
+    "DocumentLLMInferenceCompleted": "📰✅",  # Document LLM inference completed
     "DocumentEmbeddingsBackfilled": "📄🌱",  # Document embeddings backfilled
     "AgentInitialized": "🤖",  # Agent initialization
     "ContextLoaded": "📂",  # Context loaded
@@ -23,13 +24,14 @@ SYSTEM_INIT = {
     "DomainClassifierInit": "🏷️🧠",  # Domain classifier init
     "DomainConfigLoaded": "🏷️📋",  # Domain config loaded
     "SeedEmbeddingsPrepared": "🌱🧬",  # Seed embeddings prepared
-    "KnowledgeDBLoaded": "📚✅",  # Knowledge database loaded
+    "KnowledgeDBLoaded": "📰✅",  # Knowledge database loaded
 }
 
 # =================
 # AGENT OPERATIONS
 # =================
 AGENT_EVENTS = {
+    "ReportEntry": "📄",
     "AgentInit": "🤖",
     "AgentInitialized": "🤖",  # Agent initialization
     "AgentRunStarted": "🤖▶️",  # Agent run started
@@ -40,7 +42,7 @@ AGENT_EVENTS = {
     "MRQTrainerAgentInitialized": "📊🤖",  # MRQ trainer agent initialized
     "DocumentMRQInferenceAgentInitialized": "📊🤖",  # Document MRQ inference agent initialized
     "DocumentEBTInferenceAgentInitialized": "🧠🚦",  # Inference agent initialized
-    "EpistemicPlanExecutorAgentInitialized": "🪸🤖",  # Epistemic plan executor agent initialized
+    "EpistemicPlanExecutorAgentInitialized": "👾",  # Epistemic plan executor agent initialized
 }
 
 # =================
@@ -140,21 +142,22 @@ PIPELINE_FLOW = {
 # SCORING & EVALUATION
 # =====================
 SCORING = {
+    "ScoringFailed": "❌📊",  # Scoring failed
     "ScoringPaper": "📄⚖️",  # Scoring paper
-    "EpistemicPlanExecutorSkipped": "🪸⏭️",  # Epistemic plan executor skipped
-    "EpistemicPlanHRMTrainingBatch": "🪸🏋️",  # Training batch
-    "EpistemicPlanHRMDataLoaderCreated": "🪸📥",  # Data loader created
-    "EpistemicPlanHRMTrainingEpoch": "🪸🏋️",  # Training epoch
-    "EpistemicPlanHRMModelSaved": "🪸🧮💾",  # Model saved
-    "EpistemicTraceSaved": "🪸💾",  # Epistemic trace saved
+    "EpistemicPlanExecutorSkipped": "👾⏭️",  # Epistemic plan executor skipped
+    "EpistemicPlanHRMTrainingBatch": "👾🏋️",  # Training batch
+    "EpistemicPlanHRMDataLoaderCreated": "👾📥",  # Data loader created
+    "EpistemicPlanHRMTrainingEpoch": "👾🏋️",  # Training epoch
+    "EpistemicPlanHRMModelSaved": "👾💾",  # Model saved
+    "EpistemicTraceSaved": "👾💾",  # Epistemic trace saved
     "HRMScorerEvaluated": "🧠⚖️",  # HRM scorer evaluated
     "HRMScorerModelLoaded": "🧠🧮📥",  # HRM scorer model loaded
     "HRMScorerMetaLoaded": "🧠📄",  # HRM scorer meta loaded
     "LATS_StepStarted": "🧠🔄",  # LATS step started
     "LATS_StepCompleted": "🧠✅",  # LATS step completed
     "LargeDataContextComponentDumped": "📂💾",  # Large data context dumped
-    "EpistemicPlanExecutorStarted": "🪸📄",  # Epistemic plan executor started
-    "EpistemicPlanExecutorCompleted": "🪸✅",  # Epistemic plan executor completed
+    "EpistemicPlanExecutorStarted": "👾📄",  # Epistemic plan executor started
+    "EpistemicPlanExecutorCompleted": "👾✅",  # Epistemic plan executor completed
     "PolicyLogits": "📊⚖️",  # Policy logits computed
     "DocumentScoresAlreadyExist": "📄✅",  # Document scores already exist
     "LLMJudgeScorerDimension": "📝📊",  # LLM judge scoring dimension
@@ -203,12 +206,12 @@ REASONING = {
     "PlanTraceScoringComplete": "📄✅",  # Plan trace scoring completed
     "DocumentScoringProgress": "📄🔄",  # Document scoring progress
     "DocumentScoringCompleted": "📄✅",  # Document scoring completed
-    "EpistemicPlanHRMModelInitialized": "🪸🧠",  # Epistemic Plan HRM model initialized
-    "EpistemicPlanHRMOptimizerInitialized": "🪸⚙️",  # Epistemic Plan HRM optimizer initialized
-    "EpistemicPlanHRMLossInitialized": "🪸📉",  # Epistemic Plan HRM loss initialized
-    "EpistemicPlanHRMTrainingNoTraces": "🪸🚫",  # No traces for training
-    "EpistemicPlanHRMTrainingStarted": "🪸🚀",  # Epistemic Plan HRM training started
-    "EpistemicPlanHRMTrainingDataPrepared": "🪸📊",  # Training data prepared
+    "EpistemicPlanHRMModelInitialized": "👾🧠",  # Epistemic Plan HRM model initialized
+    "EpistemicPlanHRMOptimizerInitialized": "👾⚙️",  # Epistemic Plan HRM optimizer initialized
+    "EpistemicPlanHRMLossInitialized": "👾📉",  # Epistemic Plan HRM loss initialized
+    "EpistemicPlanHRMTrainingNoTraces": "👾🚫",  # No traces for training
+    "EpistemicPlanHRMTrainingStarted": "👾🚀",  # Epistemic Plan HRM training started
+    "EpistemicPlanHRMTrainingDataPrepared": "👾📊",  # Training data prepared
 
     "KeywordsExtracted": "🔑",  # Keywords extracted
     "ProximityAnalysisScored": "📌🗺️",  # Proximity analysis
@@ -229,6 +232,11 @@ REASONING = {
 # TRAINING & MODEL OPS
 # =====================
 TRAINING = {
+    "HRMTrainerInitialized": "🧠🤖",  # HRM trainer initialized
+    "HRMTrainingAgentError": "🚫🧠",  # HRM training agent error
+    "CalibrationStart": "🔧📊",  # Calibration started
+    "CalibrationComplete": "✅📊",  # Calibration complete
+    "TrainingEpochsComplete": "🏋️✅",  # Training epochs complete
     "TrainingStarted": "🏋️▶️",  # Training started
     "CalibrationCompleted": "✅📊",  # Calibration completed
     "ContrastiveRankerTrainingComplete": "🎓📊",  # Contrastive ranker training completed
@@ -360,8 +368,7 @@ ERROR_STATES = {
 # MODEL OPS
 # =============
 MODELS = {
-    "EpistemicPlanHRMScorerModelLoaded": "🪸🧠📥",  # Epistemic Plan HRM scorer model loaded
-
+    "PlanHRMScorerModelLoaded": "👾🧠📥",  # Epistemic Plan HRM scorer model loaded
     "SVMModelSaved": "💾🧮📊",  # SVM model saved
     "SVMModelLoaded": "📥🧮📊",  # SVM model load
     "SVMModelTrainingStarted": "🏋️🧮⚖️",
@@ -376,6 +383,9 @@ MODELS = {
 # ETHICS & REVIEWS
 # =============
 SPECIAL = {
+    "DocumentEmbeddingInserted": "📄✅",  # Document embedding inserted
+    "DocumentEmbeddingBackfilled": "📄🔄",  # Document embedding backfilled
+    "ContextSavedToFile": "📄💾",  # Context saved to file
     "PolicyInsight": "📊💡",  # Policy insight generated
     "PolicyReportSaved": "💾📊",  # Policy report saved
     "PlanTraceCreated": "📄📝",  # Plan trace created

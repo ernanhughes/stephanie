@@ -1,5 +1,6 @@
 # stephanie/analysis/rubric_classifier.py
 from datetime import datetime, timezone
+import json
 
 from stephanie.constants import GOAL
 from stephanie.models import PatternStatORM
@@ -115,3 +116,22 @@ class RubricClassifierMixin:
         except Exception as e:
             print(f"❌ Failed to generate pattern stats: {e}")
             raise
+
+    def _summarize_pattern(self, pattern: dict) -> dict:
+        """
+        Normalize rubric classification pattern.
+        Returns a dict of dimension -> label, with an extra _stats key (serialized).
+        """
+        if not pattern:
+            return {}
+
+        summary = dict(pattern.items())
+
+        stats = {}
+        for label in pattern.values():
+            stats[label] = stats.get(label, 0) + 1
+
+        # Serialize stats dict to JSON string so it can go into a text column
+        summary["_stats"] = json.dumps(stats)
+
+        return summary

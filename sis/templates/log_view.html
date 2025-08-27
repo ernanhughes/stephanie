@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h1>👁 Viewing Log: {{ filename }}</h1>
+  <a href="/logs" class="btn btn-outline-primary mb-3">⬅ Back to Logs</a>
+  <a href="/logs/download/{{ filename }}" class="btn btn-sm btn-outline-secondary">⬇ Download</a>
+  
+  <div class="bg-dark text-light p-3 rounded" style="max-height: 600px; overflow-y: auto; font-family: monospace;">
+    {% for line in lines %}
+      {{ line | e }}<br>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

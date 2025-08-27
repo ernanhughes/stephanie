@@ -73,5 +73,5 @@ class GoalStore:
 
         return self.create(goal_dict)
 
-    def get_all_goals(self) -> list[GoalORM]:
+    def get_all(self) -> list[GoalORM]:
         return self.session.query(GoalORM).all()

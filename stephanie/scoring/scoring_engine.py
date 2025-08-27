@@ -5,7 +5,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scoring_manager import ScoringManager
 
-
+@DeprecationWarning
 class ScoringEngine:
     def __init__(self, cfg, memory, prompt_loader, logger, call_llm):
         self.cfg = cfg
@@ -29,7 +29,7 @@ class ScoringEngine:
                 memory=self.memory,
                 llm_fn=self.call_llm,
             )
-        return self.scoring_managers[scoring_profile]
+        return self.scoring_managers[scoring_profile] 
 
     def score(
         self,
@@ -55,8 +55,9 @@ class ScoringEngine:
                     scorable=scorable, context=merged_context, llm_fn=self.call_llm
                 )
             else:
+                dimensions= [d["name"] for d in scoring_manager.dimension_specs]
                 score_result = scorer.score(
-                    context, scorable, scoring_manager.dimensions
+                    context, scorable, dimensions
                 )
 
             self.logger.log("ItemScored", score_result.to_dict())
@@ -88,7 +89,7 @@ class ScoringEngine:
                 )
             else:
                 score_result = scorer.score(
-                    context, scorable, scoring_manager.dimensions
+                    context, scorable, scoring_manager.dimension_specs
                 )
 
             self.logger.log("ItemScored", score_result.to_dict())

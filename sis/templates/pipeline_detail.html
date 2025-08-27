@@ -2,51 +2,89 @@
 
 {% block content %}
 <div class="container mt-4">
-  <h1>Pipeline Run {{ run.id }}</h1>
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Pipeline Run {{ run.id }}</h1>
+    <div>
+      <a href="/plan_traces/{{ run.id }}" class="btn btn-outline-primary me-2">
+        📋 View Plan Trace
+      </a>
+      <a href="/" class="btn btn-secondary">
+        📊 View All Pipelines
+      </a>
+    </div>
+  </div>
   <p class="text-muted">Tag: {{ run.tag }} | Description: {{ run.description }}</p>
 
-  <!-- Mermaid Diagram -->
-  <h3 class="mt-4">Pipeline Stages</h3>
-  <div class="bg-light p-3 rounded">
-    <pre class="mermaid">
+<!-- Pipeline Stages -->
+<h3 class="mt-4">🔧 Pipeline Stages</h3>
+<div class="bg-light p-3 rounded">
+<pre class="mermaid">
 flowchart LR
-{% for stage in run.stages %}
-  {{ "S" ~ stage.id }}[{{ stage.stage_name }} <br/> {{ stage.agent_class }}]
+{% for stage in stages %}
+  {# short class name only #}
+  {% set short_class = stage.agent_class.split('.')[-1] if stage.agent_class else "Unknown" %}
+  {% set config_preview = stage.stage_dict if stage.stage_dict else "⚠️ No config found" %}
+  
+  S{{ stage.id }}["{{ stage.stage_name }}<br/><i>{{ short_class }}</i>"]
+
+  click S{{ stage.id }} "javascript:void(0)" "{{ config_preview | tojson | replace('"', '&quot;') }}"
+
   {% if not loop.last %}
-    {{ "S" ~ stage.id }} --> {{ "S" ~ run.stages[loop.index].id }}
+    S{{ stage.id }} --> S{{ stages[loop.index].id }}
   {% endif %}
 {% endfor %}
-    </pre>
-  </div>
+</pre>
+</div>
 
-  <a class="btn btn-outline-primary" href="/pipeline/{{ run.id }}/scores">
-      View Scores Grid
-  </a>
-
-  <!-- Tabbed View -->
+  <!-- Tabs -->
   <ul class="nav nav-tabs mt-4" id="pipelineTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button"
-        role="tab">Prompts</button>
+      <button class="nav-link active" id="report-tab" data-bs-toggle="tab" data-bs-target="#report" type="button" role="tab">📑 Report</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="evaluations-tab" data-bs-toggle="tab" data-bs-target="#evaluations" type="button"
-        role="tab">Evaluations</button>
+      <button class="nav-link" id="cartridges-tab" data-bs-toggle="tab" data-bs-target="#cartridges" type="button" role="tab">📦 Cartridges</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button"
-        role="tab">Documents</button>
+      <button class="nav-link" id="theorems-tab" data-bs-toggle="tab" data-bs-target="#theorems" type="button" role="tab">📐 Theorems</button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config" type="button"
-        role="tab">Config</button>
+      <button class="nav-link" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button" role="tab">💬 Prompts</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="evaluations-tab" data-bs-toggle="tab" data-bs-target="#evaluations" type="button" role="tab">📊 Evaluations</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button" role="tab">📚 Documents</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="config-tab" data-bs-toggle="tab" data-bs-target="#config" type="button" role="tab">⚙ Config</button>
     </li>
   </ul>
 
+  <!-- Tab Contents -->
   <div class="tab-content mt-3" id="pipelineTabsContent">
 
-    <!-- Prompts Tab -->
-    <div class="tab-pane fade show active" id="prompts" role="tabpanel">
+    <!-- Report -->
+    <div class="tab-pane fade show active" id="report" role="tabpanel">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="mb-0">Pipeline Report</h4>
+        {% if report %}
+        <a href="/pipeline/{{ run.id }}/report/download" class="btn btn-sm btn-outline-primary">⬇ Download Full Report</a>
+        {% endif %}
+      </div>
+      {% if report %}
+      <div class="bg-light p-3 rounded" style="white-space: pre-wrap;">
+        {{ report | safe }}
+      </div>
+      {% else %}
+      <p class="text-muted">No report available for this run.</p>
+      {% endif %}
+    </div>
+
+    <!-- Prompts -->
+    <div class="tab-pane fade" id="prompts" role="tabpanel">
       {% if run.prompts %}
       <table class="table table-striped">
         <thead>
@@ -73,70 +111,65 @@ flowchart LR
       {% endif %}
     </div>
 
-    <!-- Evaluations Tab -->
+    <!-- Evaluations -->
     <div class="tab-pane fade" id="evaluations" role="tabpanel">
-      {% if run.evaluations %}
-      <div class="accordion" id="evaluationAccordion">
-        {% for eval in run.evaluations %}
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="heading-{{ eval.id }}">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-              data-bs-target="#collapse-{{ eval.id }}">
-              {{ eval.evaluator_name }} ({{ eval.target_id }}, {{ eval.target_type }})
-            </button>
-          </h2>
-          <div id="collapse-{{ eval.id }}" class="accordion-collapse collapse" data-bs-parent="#evaluationAccordion">
-            <div class="accordion-body">
-              <p><strong>Agent:</strong> {{ eval.agent_name or "-" }}</p>
-              <p><strong>Scores:</strong></p>
-              {% if eval.dimension_scores %}
-                <table class="table table-sm table-bordered">
-                  <thead>
-                    <tr>
-                      <th>Dimension</th>
-                      <th>Score</th>
-                      <th>Source</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for score in eval.dimension_scores %}
-                    <tr>
-                      <td>{{ score.dimension }}</td>
-                      <td>{{ "%.3f"|format(score.score) if score.score is not none else "-" }}</td>
-                      <td>{{ score.source or "-" }}</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              {% else %}
-                <p class="text-muted">No scores recorded.</p>
-              {% endif %}
+      <a class="btn btn-outline-primary mb-3" href="/pipeline/{{ run.id }}/scores">
+        📊 View Scores Grid
+      </a>
 
-            </div>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
+      {% if run.evaluations %}
+        <table class="table table-bordered table-striped">
+          <thead class="table-light">
+            <tr>
+              <th>ID</th>
+              <th>Evaluator</th>
+              <th>Agent</th>
+              <th>Target</th>
+              <th>Dimension</th>
+              <th>Score</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for eval in run.evaluations %}
+              {% if eval.dimension_scores %}
+                {% for score in eval.dimension_scores %}
+                <tr>
+                  <td>{{ eval.id }}</td>
+                  <td>{{ eval.evaluator_name }}</td>
+                  <td>{{ eval.agent_name or "-" }}</td>
+                  <td>{{ eval.target_type }} ({{ eval.target_id }})</td>
+                  <td>{{ score.dimension }}</td>
+                  <td>{{ "%.3f"|format(score.score) if score.score is not none else "-" }}</td>
+                  <td>{{ score.source or "-" }}</td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td>{{ eval.id }}</td>
+                  <td>{{ eval.evaluator_name }}</td>
+                  <td>{{ eval.agent_name or "-" }}</td>
+                  <td>{{ eval.target_type }} ({{ eval.target_id }})</td>
+                  <td colspan="3"><span class="text-muted">No scores recorded</span></td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
       {% else %}
-      <p class="text-muted">No evaluations recorded for this pipeline.</p>
+        <p class="text-muted">No evaluations recorded for this pipeline.</p>
       {% endif %}
     </div>
 
-    <!-- Documents Tab -->
+    <!-- Documents -->
     <div class="tab-pane fade" id="documents" role="tabpanel">
-      <h4 class="mb-3">Documents Referenced</h4>
       {% if documents %}
       <div class="list-group">
         {% for key, doc in documents.items() %}
         <div class="list-group-item">
-          <h6>
-            <span class="badge bg-secondary">{{ doc.target_type }}</span>
-            ID: {{ doc.id }}
-          </h6>
+          <h6><span class="badge bg-secondary">{{ doc.target_type }}</span> ID: {{ doc.id }}</h6>
           <p class="mb-1 text-muted small">Target Key: {{ key }}</p>
-          <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;">
-{{ doc.text }}
-            </pre>
+          <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;">{{ doc.text }}</pre>
         </div>
         {% endfor %}
       </div>
@@ -145,25 +178,64 @@ flowchart LR
       {% endif %}
     </div>
 
-  <!-- Config Tab -->
-  <div class="tab-pane fade" id="config" role="tabpanel">
-    <h4 class="mb-3">Pipeline Configuration (YAML)</h4>
-      {% if config_yaml %}
-        <pre class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">
-        {{ config_yaml }}
-        </pre>
-      {% else %}
-        <p class="text-muted">No pipeline configuration available.</p>
+    <!-- Cartridges -->
+  <div class="tab-pane fade" id="cartridges" role="tabpanel">
+    <a class="btn btn-outline-primary mb-3" href="/pipeline/{{ run.id }}/cartridges">🔎 View Full Page</a>
+    {% if cartridges %}
+      <ul class="list-group">
+        {% for c in cartridges[:5] %}
+        <li class="list-group-item">
+          <h6>{{ c.title or "Untitled" }}</h6>
+          <small class="text-muted">{{ c.source_type }} | {{ c.embedding_id }}</small>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if cartridges|length > 5 %}
+      <p class="mt-2 text-muted">…and {{ cartridges|length - 5 }} more</p>
       {% endif %}
+    {% else %}
+      <p class="text-muted">No cartridges found for this run.</p>
+    {% endif %}
   </div>
 
-  </div>
+    <!-- Theorems -->
+    <div class="tab-pane fade" id="theorems" role="tabpanel">
+      <a class="btn btn-outline-primary mb-3" href="/pipeline/{{ run.id }}/theorems">🔎 View Full Page</a>
+      {% if theorems %}
+        <table class="table table-sm table-striped">
+          <thead><tr><th>ID</th><th>Statement</th></tr></thead>
+          <tbody>
+          {% for t in theorems[:5] %}
+            <tr><td>{{ t.id }}</td><td>{{ t.statement[:100] }}…</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% if theorems|length > 5 %}
+        <p class="mt-2 text-muted">…and {{ theorems|length - 5 }} more</p>
+        {% endif %}
+      {% else %}
+        <p class="text-muted">No theorems found for this run.</p>
+      {% endif %}
+    </div>
+
+    <!-- Config -->
+    <div class="tab-pane fade" id="config" role="tabpanel">
+      {% if config_yaml %}
+      <pre class="bg-dark text-light p-3 rounded" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap;">{{ config_yaml }}</pre>
+      {% else %}
+      <p class="text-muted">No pipeline configuration available.</p>
+      {% endif %}
+    </div>
+
+  </div> <!-- end tab-content -->
 
 </div>
 
+
 <!-- Mermaid Support -->
 <script type="module">
-  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.10.1/dist/mermaid.esm.min.mjs";
   mermaid.initialize({ startOnLoad: true });
 </script>
+
 {% endblock %}

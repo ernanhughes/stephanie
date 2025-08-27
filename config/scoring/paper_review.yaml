@@ -2,7 +2,7 @@
 scoring_profile: paper
 prompt_dir: prompts/paper
 output_format: simple
-scorer: mrq
+scorer: sicql
 
 dimensions:
   - name: relevance

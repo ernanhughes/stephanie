@@ -31,12 +31,15 @@ def db_overview(request: Request):
         try:
             count = session.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
         except Exception:
-            count = "N/A"
+            count = 0  # fallback to 0 instead of "N/A" to allow sorting
         table_data.append({"name": table_name, "count": count})
+
+    # 🔑 Sort by row count, descending
+    table_data.sort(key=lambda x: x["count"], reverse=True)
 
     return templates.TemplateResponse(
         "db_overview.html",
-        {"request": request, "tables": table_data,  "active_page": "db"}
+        {"request": request, "tables": table_data, "active_page": "db"}
     )
 
 

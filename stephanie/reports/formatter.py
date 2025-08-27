@@ -9,9 +9,10 @@ class ReportFormatter:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def format_report(self, context):
+    def format_report(self, context: dict):
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
+        # Goal
         item = context.get("goal")
         if isinstance(item, str):
             goal = item
@@ -22,90 +23,70 @@ class ReportFormatter:
         file_name = f"{safe_goal}_{timestamp}_report.md"
         file_path = self.output_dir / file_name
 
-        summary = f"""# 🧪 AI Co-Research Summary Report
+        # Pipeline header (printed once)
+        header = f"""# 📝 Pipeline Report
 
 **🗂️ Run ID:** `{context.get("run_id", "Error No Run_id")}`  
 **🎯 Goal:** *{goal}*  
-**📅 Timestamp:** {timestamp}
-
----
-""" 
-        content = f"""{summary}
-
-### 🔬 Literature:
-{self._format_list(context.get("literature", []))}
-
-
-
-### 🔬 Hypotheses Generated:
-{self._format_list([h if isinstance(h, str) else h.get("text", "") for h in context.get("hypotheses", [])])}
-OK so 
-
-
----
-
-### 🪞 Reflections:
-{self._format_reflections(context.get("reflections", []))}
-
-
----
-
-### 🧠 Persona Reviews:
-{self._format_reviews(context.get("reviews", []))}
-
----
-
-### 🧬 Evolution Outcome:
-- {len(context.get("evolved", []))} hypotheses evolved.
-
----
-
-### 📘 Meta-Review Summary:
-> {context.get("meta_review", "")}
-
-
-### 📘 Feedback:
-{context.get("feedback", "")}
-
-### 📘 DB Matches:
-
+**📅 Timestamp:** {timestamp}  
+**📁 Saved Report:** `{file_path}`
 
 ---
 """
 
+        # Render each stage
+        stage_reports = []
+        for report in context.get("REPORTS", []):
+            stage_reports.append(self._format_stage(report))
+
+        content = header + "\n".join(stage_reports)
         file_path.write_text(content, encoding="utf-8")
-        return content, summary
 
-    def _format_list(self, items):
-        return "\n".join(f"1. **{item.strip()}**" for item in items)
+        return content, header, str(file_path)
 
-    def _format_reviews(self, reviews):
-        if not reviews:
-            return "No reviews recorded."
-        formatted = []
-        for r in reviews:
-            persona = r.get("persona", "Unknown")
-            review = r.get("review", "")
-            formatted.append(f"**{persona}:**\n> {review}")
-        return "\n\n".join(formatted)
+    def _format_stage(self, report: dict) -> str:
+        stage_header = f"## 🔧 Stage: {report.get('stage')} ({report.get('agent')})"
+        status_line = f"- **Status:** {report.get('status', '-')}"
+        summary_line = f"- **Summary:** {report.get('summary','')}"
+        timing_line = f"- **Start:** {report.get('start_time','?')} | **End:** {report.get('end_time','?')}"
 
-    def _format_reflections(self, reflections):
-        if not reflections:
-            return "No reflections recorded."
-        formatted = []
-        for r in reflections:
-            reflection = r.get("reflection", "")
-            formatted.append(f"**Reflection:**\n> {reflection}")
-        return "\n\n".join(formatted)
+        # Entries
+        entries = report.get("entries", [])
+        if entries:
+            formatted_entries = "\n".join(
+                f"  - **{e.get('event','unknown')}**: {self._format_entry(e)}"
+                for e in entries
+            )
+            entries_block = f"\n<details>\n<summary>📜 Events ({len(entries)})</summary>\n\n{formatted_entries}\n</details>\n"
+        else:
+            entries_block = "_No events recorded._"
+
+        return f"""{stage_header}
+{status_line}  
+{summary_line}  
+{timing_line}
+
+{entries_block}
+
+---
+"""
+
+    def _format_entry(self, e: dict) -> str:
+        """Render a single event dict into a compact string"""
+        # Prioritize common keys
+        if "message" in e:
+            return e["message"]
+        if "hypothesis_id" in e:
+            return f"Hypothesis {e['hypothesis_id']} (confidence={e.get('confidence','?')})"
+        if "scores" in e:
+            return f"Scores: {e['scores']}"
+        if "examples" in e:
+            return f"Examples: {e['examples'][:2]}..."
+        return ", ".join(f"{k}={v}" for k, v in e.items() if k != "event")
 
 
 def sanitize_goal_for_filename(goal: str, length: int = 40) -> str:
-    """
-    Converts a goal string into a safe filename:
-    - Replaces non-alphanumeric characters with underscores
-    - Truncates to 100 characters
-    - Appends a UTC timestamp
-    """
-    safe = re.sub(r"[^a-zA-Z0-9]", "_", goal)  # Replace non-alphanumeric
-    safe = safe[:length]  # Limit to (len) characters
+    """Converts a goal string into a safe filename"""
+    safe = re.sub(r"[^a-zA-Z0-9]", "_", goal)
+    safe = safe[:length]
     return safe

@@ -7,7 +7,7 @@ paper_score:
   save_context: false
   skip_if_completed: false
 
-  force_rescore: false
+  force_rescore: true
   use_memory_for_fast_prompts: false
 
 

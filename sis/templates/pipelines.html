@@ -43,7 +43,15 @@
             {% endif %}
           </td>
           <td>
-            <a href="/pipeline/{{ run.id }}" class="btn btn-sm btn-primary">View</a>
+            <div class="d-flex gap-2">
+              <a href="/pipeline/{{ run.id }}" class="btn btn-sm btn-primary">View</a>
+              <a href="/plan_traces/{{ run.id }}" class="btn btn-sm btn-outline-secondary">
+                Plan Traces
+                {% if run.plan_traces %}
+                  <span class="badge bg-info">{{ run.plan_traces|length }}</span>
+                {% endif %}
+              </a>
+            </div>
           </td>
         </tr>
         {% endfor %}

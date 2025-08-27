@@ -29,7 +29,6 @@ from .pipeline_stage_store import PipelineStageStore
 from .prompt_program_store import PromptProgramStore
 from .prompt_store import PromptStore
 from .reflection_delta_store import ReflectionDeltaStore
-from .report_logger import ReportLogger
 from .rule_application_store import RuleApplicationStore
 from .score_store import ScoreStore
 from .scoring_store import ScoringStore

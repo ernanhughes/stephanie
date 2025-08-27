@@ -2,6 +2,15 @@
 defaults:
   - _self_
   - db: postgres
+
+  - scorer/ebt/default
+  - scorer/hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
+  - scorer/epistemic_hrm/default
+
   - agents/arxiv_search
   - agents/cartridge
   - agents/document_loader
@@ -9,12 +18,16 @@ defaults:
   - agents/document_reward_scorer
   - agents/icl_reasoning
   - agents/knowledge_loader
+  - agents/knowledge_db_loader
   - agents/pipeline_judge
   - agents/paper_score
   - logging/json_logger
 
+embeddings:
+  backend: hnet
+
 goal:
-  goal_text: I want to build an AI that continually learns from its own results to solve increasingly complex problems.
+  goal_text: 1. I would like to build an AI that continually learns from its own results to solve increasingly complex problems.
   #goal_text: I want to build an AI that can teach itself to solve complex problems better over time.
   goal_type: "tactical"
   goal_category: "meta_learning"
@@ -26,10 +39,13 @@ goal:
     - "stepwise_reasoning_trace"
     - "annotated_score_vector"
 
-post_judgment:
-  name: pipeline_judge
-  enabled: false
-  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
+plan_monitor:
+  enabled: true
+  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
+  save_output: true
+  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
+  plan_monitoring_interval: 10
+  plan_monitoring_timeout: 60
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -42,16 +58,10 @@ web_search:
   engine: "searxng"
   instance_url: "http://localhost:8080"
 
-
-embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
-
 pipeline:
-  name: rivals
-  tag: "search_arxiv"
-  description: "Search Arxiv for papers related to a goal"
+  name: cartridge
+  tag: "cartridge"
+  description: "Search Arxiv for papers related to a goal generate information cartridges from this knowledge"
   stages:
      - name: arxiv_search
        description: "Search Arxiv for papers related to the goal" 
@@ -78,6 +88,11 @@ pipeline:
        cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
        enabled: true
        iterations: 1
+     - name: knowledge_db_loader
+       description: "Load knowledge from the database"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    
      - name: mrq_trainer
        description: "Build document pairs for training and evaluation" 
        cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent 

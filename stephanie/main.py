@@ -58,7 +58,7 @@ def run(cfg: DictConfig):
             save_json_result(log_path, result)
 
         if cfg.report.generate_report:
-            supervisor.generate_report(result, run_id=run_id)
+            supervisor.generate_report(result)
 
     asyncio.run(main())
 
@@ -99,16 +99,14 @@ def save_json_result(log_path: str, result: dict):
     print(f"✅ JSON result saved to: {report_path}")
 
 
-def save_config_to_timestamped_file(log_path="logs", cfg: DictConfig = None):
-    """
-    Saves the current Hydra config to a timestamped YAML file.
-    """
-    os.makedirs(log_path, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    config_path = os.path.join(log_path, f"config_{timestamp}.yaml")
-    with open(config_path, "w") as f:
+def save_config_to_timestamped_file(cfg, output_dir="logs"):
+    os.makedirs(output_dir, exist_ok=True)
+    timestamped_name = f"config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
+    filepath = os.path.join(output_dir, timestamped_name)
+    with open(filepath, "w", encoding="utf-8") as f:   # 👈 Force UTF-8
         f.write(OmegaConf.to_yaml(cfg))
-    print(f"🔧 Saved config to {config_path}")
+    print(f"🔧 Saved config to {filepath}")
+    return filepath
 
 
 if __name__ == "__main__":

@@ -47,7 +47,6 @@ Usage:
 
 import os
 import re
-
 import requests
 
 from stephanie.agents.base_agent import BaseAgent
@@ -73,12 +72,16 @@ class DocumentLoaderAgent(BaseAgent):
         self.force_domain_update = cfg.get("force_domain_update", False)
         self.top_k_domains = cfg.get("top_k_domains", 3)
         self.download_directory = cfg.get("download_directory", "/tmp")
-        self.min_classification_score = cfg.get("min_classification_score", 0.6)
+        self.min_classification_score = cfg.get(
+            "min_classification_score", 0.6
+        )
         self.embed_full_document = cfg.get("embed_full_document", True)
         self.domain_classifier = DomainClassifier(
             memory=self.memory,
             logger=self.logger,
-            config_path=cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
+            config_path=cfg.get(
+                "domain_seed_config_path", "config/domain/seeds.yaml"
+            ),
         )
 
     async def run(self, context: dict) -> dict:
@@ -89,27 +92,43 @@ class DocumentLoaderAgent(BaseAgent):
         stored_documents = []
         document_domains = []
 
+        # --- Report: start ---
+        self.report(
+            {
+                "event": "start",
+                "step": "DocumentLoader",
+                "details": f"Processing {len(search_results)} search results",
+            }
+        )
+        pipeline_run_id = context.get("pipeline_run_id")
         for result in search_results:
             try:
                 url = result.get("url")
-                external_id = result.get("title")  # A quirk of the search we store the id as the title
                 title = result.get("title")
                 summary = result.get("summary")
 
+                # Skip existing
                 existing = self.memory.document.get_by_url(url)
                 if existing:
-                    self.logger.log("DocumentAlreadyExists", {"url": url})
+                    self.report(
+                        {
+                            "event": "skipped_existing",
+                            "step": "DocumentLoader",
+                            "details": f"Document already exists: {title}",
+                            "url": url,
+                        }
+                    )
                     stored_documents.append(existing.to_dict())
                     self.memory.pipeline_references.insert(
                         {
-                            "pipeline_run_id": context.get("pipeline_run_id"),
+                            "pipeline_run_id": pipeline_run_id,
                             "target_type": TargetType.DOCUMENT,
                             "target_id": existing.id,
-                            "relation_type": "retrieved",
+                            "relation_type": "existing",
                             "source": self.name,
                         }
                     )
-
+                    # Assign domains if needed
                     if (
                         not self.memory.document_domains.has_domains(existing.id)
                         or self.force_domain_update
@@ -121,115 +140,157 @@ class DocumentLoaderAgent(BaseAgent):
                 # Download PDF
                 response = requests.get(url, stream=True)
                 if response.status_code != 200:
-                    self.logger.log(
-                        "DocumentRequestFailed",
-                        {"url": url, "error": f"HTTP {response.status_code}"},
+                    self.report(
+                        {
+                            "event": "download_failed",
+                            "step": "DocumentLoader",
+                            "details": f"HTTP {response.status_code} for {title}",
+                            "url": url,
+                        }
                     )
                     continue
 
-                file_name = result.get("pid") or result.get("arxiv_id")
-                if not file_name:
-                    file_name = self.sanitize_filename(title) or "document"
-                # Save to temporary file
+                file_name = (
+                    result.get("pid")
+                    or result.get("arxiv_id")
+                    or self.sanitize_filename(title)
+                    or "document"
+                )
                 pdf_path = f"{self.download_directory}/{file_name}"
+
                 with open(pdf_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
-                # Extract text
+
                 if not PDFConverter.validate_pdf(pdf_path):
-                    self.logger.log(
-                        "DocumentLoadFailed",
-                        {"url": url, "error": "Invalid PDF format 0x00 byte found"},
+                    self.report(
+                        {
+                            "event": "invalid_pdf",
+                            "step": "DocumentLoader",
+                            "details": f"Invalid PDF format for {title}",
+                            "url": url,
+                        }
                     )
                     os.remove(pdf_path)
                     continue
+
                 text = PDFConverter.pdf_to_text(pdf_path)
                 os.remove(pdf_path)
 
-                pid = result.get("pid") or result.get("arxiv_id") or result.get("title")
+                # Summarize (optional)
                 if self.summarize_documents:
+                    pid = result.get("pid") or result.get("arxiv_id")
                     meta_data = fetch_arxiv_metadata(pid)
                     if meta_data:
                         title = meta_data["title"]
                         summary = meta_data["summary"]
                     else:
                         merged = {"document_text": text, **context}
-                        prompt_text = self.prompt_loader.load_prompt(self.cfg, merged)
+                        prompt_text = self.prompt_loader.load_prompt(
+                            self.cfg, merged
+                        )
                         summary = self.call_llm(prompt_text, context)
                         guessed_title = guess_title_from_text(text)
                         if guessed_title:
                             title = guessed_title
 
-                # Store as DocumentORM
+                # Store document
                 doc = {
                     "goal_id": goal_id,
                     "title": title,
-                    "external_id": external_id,
+                    "external_id": result.get("title"),
                     "summary": summary,
                     "source": self.name,
                     "text": text,
                     "url": url,
                 }
+                stored = self.memory.document.add_document(doc)
+                doc_id = stored.id
 
-                # Save embedding
                 if self.embed_full_document:
                     embed_text = f"{doc['title']}\n\n{doc.get('text', doc.get('summary', ''))}"
                 else:
                     embed_text = f"{doc['title']}\n\n{doc.get('summary', '')}"
-                self.memory.embedding.get_or_create(embed_text)
-                embedding_id = self.memory.embedding.get_id_for_text(embed_text)
 
-                # Save to DB
-                stored = self.memory.document.add_document(doc)
-                doc_id = stored.get("id")
+                embedding_vector = self.memory.embedding.get_or_create(
+                    embed_text
+                )
+                embedding_id = self.memory.embedding.get_id_for_text(
+                    embed_text
+                )
+
                 self.memory.document_embeddings.insert(
                     {
                         "document_id": doc_id,
-                        "document_type": str(TargetType.DOCUMENT),
+                        "document_type": TargetType.DOCUMENT,
                         "embedding_id": embedding_id,
                         "embedding_type": self.memory.embedding.name,
                     }
                 )
                 self.memory.pipeline_references.insert(
                     {
-                        "pipeline_run_id": context.get("pipeline_run_id"),
+                        "pipeline_run_id": pipeline_run_id,
                         "target_type": TargetType.DOCUMENT,
                         "target_id": doc_id,
-                        "relation_type": "stored",
+                        "relation_type": "inserted",
                         "source": self.name,
                     }
                 )
 
                 stored_documents.append(stored.to_dict())
 
-                # Assign + store domain
+                self.report(
+                    {
+                        "event": "stored",
+                        "step": "DocumentLoader",
+                        "details": f"Stored document: {title}",
+                        "doc_id": doc_id,
+                        "url": url,
+                    }
+                )
+
+                # Assign domains
                 self.assign_domains_to_document(stored)
+                self.report(
+                    {
+                        "event": "domains_assigned",
+                        "step": "DocumentLoader",
+                        "details": f"Domains assigned for {title}",
+                    }
+                )
 
             except Exception as e:
-                self.logger.log(
-                    "DocumentLoadFailed", {"url": result.get("url"), "error": str(e)}
+                self.report(
+                    {
+                        "event": "error",
+                        "step": "DocumentLoader",
+                        "details": f"Error loading {result.get('url')}: {str(e)}",
+                    }
                 )
 
         context[self.output_key] = stored_documents
         context["document_ids"] = [doc.get("id") for doc in stored_documents]
         context["document_domains"] = document_domains
+
+        # --- Report: end ---
+        self.report(
+            {
+                "event": "end",
+                "step": "DocumentLoader",
+                "details": f"Stored {len(stored_documents)} new documents",
+            }
+        )
         return context
 
     def sanitize_filename(self, title: str) -> str:
-        return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", title)[
-            :100
-        ]  # truncate to 100 chars
+        return re.sub(r'[<>:"/\\|?*\x00-\x1F]', "_", title)[:100]
 
     def assign_domains_to_document(self, document):
-        """
-        Classifies the document text into one or more domains,
-        and stores results in the document_domains table.
-        """
-        content = document.content
-        if content:
+        text = document.text
+        if text:
             results = self.domain_classifier.classify(
-                content, self.top_k_domains, self.min_classification_score
+                text, self.top_k_domains, self.min_classification_score
             )
             for domain, score in results:
                 self.memory.document_domains.insert(
@@ -239,19 +300,11 @@ class DocumentLoaderAgent(BaseAgent):
                         "score": score,
                     }
                 )
-                self.logger.log(
-                    "DomainAssigned",
-                    {
-                        "title": document.title[:60] if document.title else "",
-                        "domain": domain,
-                        "score": score,
-                    },
-                )
         else:
-            self.logger.log(
-                "DocumentNoContent",
+            self.report(
                 {
-                    "document_id": document.id,
-                    "title": document.title[:60] if document.title else "",
-                },
+                    "event": "no_content",
+                    "step": "DocumentLoader",
+                    "details": f"No content found for document {document.id}",
+                }
             )

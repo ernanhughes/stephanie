@@ -35,8 +35,7 @@
             "console": "integratedTerminal",
             "module": "stephanie.main",
             "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
-            "args": [
-            ]
+            "args": []
         },
         {
             "name": "comparison",
@@ -49,6 +48,39 @@
                 "--config-name",
                 "comparison",
             ]
+        },
+        {
+            "name": "cot",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "cot",
+            ]
+        },
+        {
+            "name": "SIS Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "uvicorn",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python",
+            "args": [
+                "sis.main:app",
+                "--reload",
+                "--port",
+                "8000",
+                "--log-level",
+                "debug"
+            ],
+            "jinja": true,
+            "env": {
+                "SQLALCHEMY_ECHO": "1",
+                "HYDRA_FULL_ERROR": "1"
+            }
         },
         {
             "name": "proximity",
@@ -72,6 +104,18 @@
             "args": [
                 "--config-name",
                 "cartridge",
+            ]
+        },
+        {
+            "name": "maintenance",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "maintenance",
             ]
         },
         {

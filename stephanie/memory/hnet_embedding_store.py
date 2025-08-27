@@ -11,7 +11,7 @@ class HNetEmbeddingStore(BaseStore):
         super().__init__(db, logger)
         self.cfg = cfg
         self.conn = conn
-        self.dim = cfg.get("dim", 1024)  # Default to 2560 if not specified
+        self.dim = cfg.get("dim", 1024)  # Default to 1024 if not specified
         self.hdim = self.dim // 2
         self.name = "hnet_embeddings"
         self.type = "hnet"
@@ -172,9 +172,21 @@ class HNetEmbeddingStore(BaseStore):
                     self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
                 return None
 
-    def search_related_documents(self, query: str, top_k: int = 10):
+    def search_related_documents(self, query: str, top_k: int = 10, document_type: str = "document"):
+        """
+        Search for documents of a given type using embeddings stored in document_embeddings.
+
+        Args:
+            query (str): The search query text.
+            top_k (int): Number of results to return.
+            document_type (str): Type of document ("document", "prompt", "hypothesis", etc.)
+
+        Returns:
+            list[dict]: Matching documents with scores.
+        """
         try:
             embedding = self.get_or_create(query)
+
             with self.conn.cursor() as cur:
                 cur.execute(
                     """
@@ -182,16 +194,18 @@ class HNetEmbeddingStore(BaseStore):
                         d.id,
                         d.title,
                         d.summary,
-                        d.content,
-                        d.embedding_id,
+                        d.text,
+                        de.embedding_id,
                         1 - (e.embedding <-> %s::vector) AS score  -- cosine similarity proxy
-                    FROM documents d
-                    JOIN hnet_embeddings e ON d.embedding_id = e.id
-                    WHERE d.embedding_id IS NOT NULL
+                    FROM document_embeddings de
+                    JOIN documents d ON de.document_id::int = d.id
+                    JOIN hnet_embeddings e ON de.embedding_id = e.id
+                    WHERE de.document_type = %s
+                    AND de.embedding_type = %s
                     ORDER BY e.embedding <-> %s::vector
                     LIMIT %s;
                     """,
-                    (embedding, embedding, top_k),
+                    (embedding, document_type, self.name, embedding, top_k),
                 )
                 results = cur.fetchall()
 
@@ -200,11 +214,10 @@ class HNetEmbeddingStore(BaseStore):
                     "id": row[0],
                     "title": row[1],
                     "summary": row[2],
-                    "content": row[3],
+                    "test": row[3],
                     "embedding_id": row[4],
                     "score": float(row[5]),
-                    "text": row[2] or row[3],  # Default to summary, fallback to content
-                    "source": "document",
+                    "source": document_type,
                 }
                 for row in results
             ]

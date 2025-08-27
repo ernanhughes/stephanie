@@ -2,10 +2,18 @@
 defaults:
   - _self_
   - db: postgres
+
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/mrq/default
+  - scorer/ebt/default
+  - scorer/contrastive_ranker/default
+  - scorer/hrm/default
+  - scorer/epistemic_hrm/default
+
   - agents/generation
   - agents/review
-  - agents/protocol
-  - agents/unified_mrq
+  - agents/cot_generator
   - logging/json_logger
 
 # The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
@@ -23,14 +31,9 @@ goal:
 symbolic:
   enabled: true  # set to false to skip symbolic rule application
 
-#dynamic:
-#  name: lookahead
-#  enabled: false
-#  cls: stephanie.agents.lookahead.LookaheadAgent
-
 planner:
   name: planner
-  enabled: false
+  enabled: true
   cls: stephanie.agents.planner.PipelinePlannerAgent
   dots_enabled: true
   lookahead_enabled: true
@@ -60,25 +63,22 @@ embeddings:
   endpoint: "http://localhost:11434/api/embeddings"
 
 pipeline:
-  name: default_pipeline
-  description: "Default hypothesis generation and refinement pipeline"
+  name: test
+  tag: test
+  description: "Simple test pipeline should always work"
   stages:
-#    - name: cot_generator
-#      cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
-#      enabled: true
-#      iterations: 1
-      - name: protocol
-        cls: stephanie.agents.protocol.ProtocolAgent
+      - name: cot_generator
+        cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
         enabled: true
         iterations: 1
       - name: generation
         cls: stephanie.agents.generation.GenerationAgent
-        enabled: false
+        enabled: true
         iterations: 1
-      # - name: review
-      #   cls: stephanie.agents.review.ReviewAgent
-      #   enabled: true
-      #   iterations: 1
+      - name: review
+        cls: stephanie.agents.review.ReviewAgent
+        enabled: true
+        iterations: 1
       # - name: unified_mrq
       #   cls: stephanie.agents.unified_mrq.UnifiedMRQAgent
       #   enabled: true

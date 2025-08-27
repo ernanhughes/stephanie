@@ -11,7 +11,6 @@ from omegaconf import OmegaConf
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.utils.serialization import default_serializer
-from stephanie.utils.timing import time_function
 
 
 class PlanTraceMonitor:
@@ -58,6 +57,7 @@ class PlanTraceMonitor:
         # Create PlanTrace for this pipeline execution
         self.current_plan_trace = PlanTrace(
             trace_id=str(pipeline_run_id),  # Use pipeline_run_id as trace_id
+            pipeline_run_id=pipeline_run_id,
             goal_id=goal.get("id"),
             goal_text=goal.get("goal_text", ""),
             plan_signature=self._generate_plan_signature(context),
@@ -118,6 +118,7 @@ class PlanTraceMonitor:
         # Create ExecutionStep
         execution_step = ExecutionStep(
             step_id=step_id,
+            pipeline_run_id=self.current_plan_trace.pipeline_run_id,
             step_order=stage_idx + 1,
             step_type=stage_name,
             description=description,
@@ -201,7 +202,6 @@ class PlanTraceMonitor:
             "stage_duration": duration
         })
     
-    @time_function()
     async def complete_pipeline(self, context: Dict) -> None:
         """Complete the PlanTrace when pipeline ends"""
         if not self.current_plan_trace:
@@ -247,7 +247,6 @@ class PlanTraceMonitor:
             "total_time": self.current_plan_trace.extra_data["total_time"]
         })
 
-    @time_function()
     async def score_pipeline(self, context: Dict) -> None:
         """Score the completed PlanTrace"""
         if not self.current_plan_trace:
@@ -263,6 +262,13 @@ class PlanTraceMonitor:
             # Score the PlanTrace
             scored_context = await self.plan_trace_scorer.run(scoring_context)
             
+            if not scored_context:
+                self.logger.log("PlanTraceScoringWarning", {
+                    "trace_id": self.current_plan_trace.trace_id,
+                    "reason": "scorer returned None"
+                })
+                return  # or keep current_plan_trace unscored
+
             # Update PlanTrace with scores
             self.current_plan_trace.step_scores = scored_context.get("step_scores", [])
             self.current_plan_trace.pipeline_score = scored_context.get("pipeline_score", {})

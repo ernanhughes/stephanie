@@ -62,4 +62,3 @@ score: <0–100>
 {% else %}
 Invalid target type: {{ target_type }}
 {% endif %}
-Yeah

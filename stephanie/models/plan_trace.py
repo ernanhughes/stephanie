@@ -12,6 +12,7 @@ from stephanie.models.evaluation import \
     EvaluationORM  # Assuming EvaluationORM exists
 # Assuming GoalORM exists
 from stephanie.models.goal import GoalORM
+from stephanie.models.pipeline_run import PipelineRunORM
 
 # If EmbeddingORM is not directly importable or you just need the ID:
 # You can define a foreign key without the full ORM relationship if not needed for navigation here.
@@ -29,6 +30,14 @@ class PlanTraceORM(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+    pipeline_run_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    
+    pipeline_run: Mapped[Optional["PipelineRunORM"]] = relationship(
+        "PipelineRunORM", back_populates="plan_traces"
+    )
+    
     # Unique identifier for the trace (matches PlanTrace.trace_id)
     trace_id: Mapped[str] = mapped_column(
         String, unique=True, index=True, nullable=False
@@ -107,7 +116,6 @@ class PlanTraceORM(Base):
             "id": self.id,
             "trace_id": self.trace_id,
             "goal_id": self.goal_id,
-            "goal_text": self.goal_text,
             "goal_embedding_id": self.goal_embedding_id,
             "plan_signature": self.plan_signature,
             "final_output_text": self.final_output_text,
@@ -131,12 +139,6 @@ class PlanTraceORM(Base):
         return data
 
 
-# Add this relationship to your GoalORM class definition:
-# class GoalORM(Base):
-#     # ... existing fields ...
-#     plan_traces: Mapped[List[PlanTraceORM]] = relationship("PlanTraceORM", back_populates="goal")
-
-
 class ExecutionStepORM(Base):
     """
     ORM to store metadata for a single step within a PlanTrace.
@@ -155,6 +157,14 @@ class ExecutionStepORM(Base):
         "PlanTraceORM", back_populates="execution_steps"
     )
 
+    # Optional: direct link to pipeline run (redundant but convenient for querying)
+    pipeline_run_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    pipeline_run: Mapped[Optional["PipelineRunORM"]] = relationship(
+        "PipelineRunORM"  # ⚠️ no back_populates here, otherwise it collides with PlanTraceORM.plan_traces
+    )
+
     # Order of the step within the trace
     step_order: Mapped[int] = mapped_column(
         Integer, nullable=False, index=True
@@ -169,42 +179,29 @@ class ExecutionStepORM(Base):
     # Output text of the step
     output_text: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Output embedding reference (assuming EmbeddingORM exists)
-    # output_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("embeddings.id"), nullable=True)
-    # If you just need the ID without ORM relationship for now:
-    output_embedding_id: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
+    # Output embedding reference (optional)
+    output_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # --- Relationships to Scoring ---
-    # Link to the EvaluationORM representing the *scoring* of this step's output.
-    # This is the standard way scores are stored in Stephanie.
     evaluation_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("evaluations.id"), nullable=True, unique=True
     )
     evaluation: Mapped[Optional["EvaluationORM"]] = relationship(
         "EvaluationORM",
         foreign_keys=[evaluation_id],
-        # back_populates="plan_trace_step" # Add this to EvaluationORM if needed for reverse nav
     )
 
-    # Optional: Store simplified scores directly if needed for quick access
-    # (Though EvaluationAttributeORM via evaluation is preferred)
-    # cached_sicql_q: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    # cached_ebt_energy: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-
     # --- Metadata ---
-    # JSON blob for flexible step-specific metadata (matches ExecutionStep.meta)
     meta: Mapped[Dict[str, Any]] = mapped_column(JSON, default={})
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
     def to_dict(self, include_evaluation: bool = False) -> dict:
-        """Convert ORM object to dictionary."""
         data = {
             "id": self.id,
             "plan_trace_id": self.plan_trace_id,
+            "pipeline_run_id": self.pipeline_run_id,
             "step_order": self.step_order,
             "step_id": self.step_id,
             "description": self.description,
@@ -212,13 +209,8 @@ class ExecutionStepORM(Base):
             "output_embedding_id": self.output_embedding_id,
             "evaluation_id": self.evaluation_id,
             "meta": self.meta,
-            "created_at": self.created_at.isoformat()
-            if self.created_at
-            else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
         if include_evaluation and self.evaluation:
-            # Be careful with recursion; EvaluationORM.to_dict might include steps
-            data["evaluation"] = self.evaluation.to_dict(
-                include_relationships=False
-            )
+            data["evaluation"] = self.evaluation.to_dict(include_relationships=False)
         return data

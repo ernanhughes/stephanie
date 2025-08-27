@@ -1,7 +1,7 @@
 # stephanie/memory/score_store.py
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from stephanie.models.score import ScoreORM
 
@@ -103,3 +103,47 @@ class ScoreStore:
                     },
                 )
             return None
+
+
+    def get_scores_for_target(
+        self, target_id: str, target_type: str, dimensions: Optional[list[str]] = None
+    ) -> List[ScoreORM]:
+        from stephanie.models.evaluation import EvaluationORM
+        """
+        Fetch all scores for a given (target_id, target_type).
+        This works for documents, cartridges, theorems, triples, etc.
+
+        Args:
+            target_id (str): ID of the target (document_id, cartridge_id, etc.)
+            target_type (str): Type of the target ("document", "cartridge", "theorem", ...)
+            dimensions (list[str], optional): If provided, restrict to these dimensions.
+
+        Returns:
+            List[ScoreORM]: Score objects with linked evaluations.
+        """
+        try:
+            q = (
+                self.session.query(ScoreORM)
+                .join(EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id)
+                .options(joinedload(ScoreORM.evaluation))
+                .filter(EvaluationORM.target_id == str(target_id))
+                .filter(EvaluationORM.target_type == target_type)
+            )
+
+            if dimensions:
+                q = q.filter(ScoreORM.dimension.in_(dimensions))
+
+            return q.all()
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log(
+                    "GetScoresForTargetError",
+                    {
+                        "target_id": target_id,
+                        "target_type": target_type,
+                        "dimensions": dimensions,
+                        "error": str(e),
+                    },
+                )
+            return []

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 # Import the ORM
 from stephanie.data.plan_trace import PlanTrace
-from stephanie.models.plan_trace import PlanTraceORM
+from stephanie.models.plan_trace import ExecutionStepORM, PlanTraceORM
 
 
 class PlanTraceStore:
@@ -24,19 +24,37 @@ class PlanTraceStore:
     def add(self, plan_trace: PlanTrace) -> int:
         """
         Adds a new PlanTrace to the store.
-        Converts the PlanTrace dataclass to a PlanTraceORM and inserts it.
-        Returns the ID of the inserted record.
+        Converts the PlanTrace dataclass (and its ExecutionSteps) to ORM objects.
         """
         orm_trace = PlanTraceORM(
             trace_id=plan_trace.trace_id,
+            pipeline_run_id=plan_trace.pipeline_run_id,
             goal_id=plan_trace.goal_id,
             plan_signature=plan_trace.plan_signature,
-            target_epistemic_quality=plan_trace.target_epistemic_quality,
             final_output_text=plan_trace.final_output_text,
+            target_epistemic_quality=plan_trace.target_epistemic_quality,
             target_epistemic_quality_source=plan_trace.target_epistemic_quality_source,
             meta=plan_trace.extra_data,
         )
-        return self.insert(orm_trace) 
+
+        # Convert execution steps
+        orm_steps = []
+        for step in plan_trace.execution_steps:
+            orm_step = ExecutionStepORM(
+                plan_trace=orm_trace,   # sets FK automatically
+                pipeline_run_id=plan_trace.pipeline_run_id,
+                step_order=step.step_order or len(orm_steps) + 1,
+                step_id=str(step.step_id),
+                description=step.description,
+                output_text=step.output_text,
+                output_embedding_id=None,
+                meta={**(step.attributes or {}), **(step.extra_data or {})},
+            )
+            orm_steps.append(orm_step)
+
+        orm_trace.execution_steps = orm_steps
+
+        return self.insert(orm_trace)
             
     def insert(self, plan_trace: PlanTraceORM) -> int:
         """
@@ -90,49 +108,46 @@ class PlanTraceStore:
                         "trace_id": plan_trace.trace_id
                     })
                 return False
-            
-            # Update scoring fields
-            if hasattr(plan_trace, 'step_scores') and plan_trace.step_scores is not None:
-                orm_trace.step_scores = plan_trace.step_scores
-            
-            if hasattr(plan_trace, 'pipeline_score') and plan_trace.pipeline_score is not None:
-                orm_trace.pipeline_score = plan_trace.pipeline_score
-            
-            if hasattr(plan_trace, 'mars_analysis') and plan_trace.mars_analysis is not None:
-                orm_trace.mars_analysis = plan_trace.mars_analysis
-            
-            # Update meta data with scoring timestamp
+
+            # === Update scoring fields directly ===
+            orm_trace.step_scores = plan_trace.step_scores
+            orm_trace.pipeline_score = plan_trace.pipeline_score
+            orm_trace.mars_analysis = plan_trace.mars_analysis
+
+            # === Update meta data ===
             if not orm_trace.meta:
                 orm_trace.meta = {}
-            
+
             orm_trace.meta.update({
-                "scored_at": plan_trace.extra_data.get("completed_at", orm_trace.meta.get("completed_at")),
+                "scored_at": plan_trace.extra_data.get(
+                    "completed_at", orm_trace.meta.get("completed_at")
+                ),
                 "scoring_duration": plan_trace.extra_data.get("scoring_duration", 0)
             })
-            
+
             # Commit the changes
             self.session.commit()
-            
+
             if self.logger:
                 self.logger.log("PlanTraceUpdated", {
                     "trace_id": plan_trace.trace_id,
                     "step_count": len(plan_trace.execution_steps),
                     "pipeline_score": plan_trace.pipeline_score
                 })
-            
+
             return True
-            
+
         except Exception as e:
             self.session.rollback()
             error_traceback = traceback.format_exc()
-            
+
             if self.logger:
                 self.logger.log("PlanTraceUpdateError", {
                     "trace_id": plan_trace.trace_id,
                     "error": str(e),
                     "traceback": error_traceback
                 })
-            
+
             return False
 
     def get_by_id(self, trace_id: int) -> Optional[PlanTraceORM]:
@@ -151,6 +166,17 @@ class PlanTraceStore:
         except Exception as e:
             if self.logger:
                 self.logger.log("PlanTraceGetByTraceIdFailed", {"error": str(e), "trace_id": trace_id})
+            return None
+
+
+    def get_by_run_id(self, run_id: str) -> Optional[PlanTraceORM]:
+        """Retrieves a PlanTraceORM by its unique run_id string."""
+        try:
+            print("Retrieving PlanTraceORM by run_id:", run_id)
+            return self.session.query(PlanTraceORM).filter(PlanTraceORM.pipeline_run_id == run_id).first()
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceGetByRunIdFailed", {"error": str(e), "run_id": run_id})
             return None
 
     def get_by_goal_id(self, goal_id: int) -> List[PlanTraceORM]:
@@ -199,11 +225,14 @@ class PlanTraceStore:
                 self.logger.log("PlanTraceGetRecentFailed", {"error": str(e), "limit": limit})
             return []
 
-    def all(self) -> List[PlanTraceORM]:
-        """Returns all PlanTraceORM records."""
+    def get_all(self, limit: int = 100) -> List[PlanTraceORM]:
+        """Returns PlanTraceORM records, limited by default to 100 unless overridden."""
         try:
-            return self.session.query(PlanTraceORM).all()
+            query = self.session.query(PlanTraceORM).order_by(desc(PlanTraceORM.created_at))
+            if limit:
+                query = query.limit(limit)
+            return query.all()
         except Exception as e:
             if self.logger:
-                self.logger.log("PlanTraceGetAllFailed", {"error": str(e)})
+                self.logger.log("PlanTraceGetAllFailed", {"error": str(e), "limit": limit})
             return []

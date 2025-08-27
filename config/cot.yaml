@@ -2,6 +2,15 @@
 defaults:
   - _self_
   - db: postgres
+
+  - scorer/ebt/default
+  - scorer/hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
+  - scorer/epistemic_hrm/default
+
   - agents/literature
   - agents/literature_ranking
   - agents/prompt_tuning
@@ -15,17 +24,62 @@ defaults:
   - agents/proximity
   - agents/sharpening
   - agents/judge
-  - agents/cot_generator
+  - agents/cot_long_generator
   - agents/cot_dspy_generator
+  - agents/pipeline_judge
   - agents/supervisor
   - logging/json_logger
-  - pipeline/cot
 
-# The goal of the pipeline, e.g., "Generate a hypothesis about the impact of climate change on biodiversity."
-# This is a placeholder and should be replaced with the actual goal.
-goal: 
-  goal_text: "How would I og about building a self improving AI?"
-  goal_type: research # Options: math, science, commonsense, factoid, ethical, policy, planning, creative, other, research
+goal:
+  goal_text: | 
+    5. You are tasked with designing an **intelligent reasoning transfer framework** for AI systems.
+    ## 🎯 Problem Statement
+    An AI system is trained on **high-quality reasoning traces** in one scientific domain.  
+    We want the system to **apply and adapt those reasoning strategies** to new, unseen domains, while retaining rigor and clarity.  
+
+    ## 🧭 Core Goal
+    > How can this transfer loop be optimized for **generalization** and **self-improvement**, using symbolic prompts, scoring dimensions, and MR.Q-guided tuning?
+
+    ## 📑 Instructions
+    1. **Analyze** the source reasoning strategies (how they are structured, scored, and represented).  
+    2. **Design a symbolic transfer method** to apply them in new domains.  
+    3. **Integrate scoring & feedback**:
+      - Use multi-dimensional scoring (clarity, novelty, feasibility, etc.).  
+      - Include MR.Q-guided optimization for continual improvement.  
+    4. **Propose a self-improvement loop** that refines transfer strategies over time.  
+
+    ## 📦 Expected Output Formats
+    - **Symbolic Prompt Program**  
+    - **Multi-Dimensional Score Map**  
+    - **Cross-Domain Transfer Loop**  
+
+    ## 🧠 Reasoning Steps
+    - Step 1: Understand the role of symbolic prompts.  
+    - Step 2: Define scoring dimensions that generalize across domains.  
+    - Step 3: Show how MR.Q-guided tuning adjusts transfer strategies.  
+    - Step 4: Illustrate the self-improvement cycle.  
+    - Step 5: Produce the final outputs in the formats above.  
+
+    ⚠️ Be explicit, structured, and creative.  
+    The output should read like a **research-level blueprint**.
+  
+  goal_type: "strategic"
+  goal_category: "ai_transfer_learning"
+  focus_area: "reasoning"
+  strategy: "symbolic_transfer"
+  difficulty: "hard"
+  expected_formats:
+    - "symbolic_prompt_program"
+    - "multi_dimensional_score_map"
+    - "cross_domain_transfer_loop"
+
+plan_monitor:
+  enabled: true
+  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
+  save_output: true
+  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
+  plan_monitoring_interval: 10
+  plan_monitoring_timeout: 60
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -40,7 +94,26 @@ web_search:
 
 
 embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
+  backend: hnet
 
+pipeline:
+  name: long_cot_pipeline
+  version: "1.0"
+  description: "Long COT Pipeline demonstrating X-REASONER integration with CoT agents."
+  stages:
+    - name: cot_long_generator
+      cls: stephanie.agents.cot_generator.ChainOfThoughtGeneratorAgent
+      enabled: false
+      iterations: 1
+    - name: ranking
+      cls: stephanie.agents.ranking.RankingAgent
+      enabled: false
+      iterations: 1
+    - name: cot_dspy_generator
+      cls: stephanie.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
+      enabled: false
+      iterations: 1
+    - name: generation
+      cls: stephanie.agents.generation.GeneratorAgent
+      enabled: false
+      iterations: 1

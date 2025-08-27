@@ -21,10 +21,19 @@ class KnowledgeLoaderAgent(BaseAgent):
         documents = context.get("documents", [])
 
         if not goal_text or not documents:
-            self.logger.log(
-                "DocumentFilterSkipped", {"reason": "Missing goal or documents"}
-            )
+            self.report({
+                "event": "skipped",
+                "step": "KnowledgeLoader",
+                "reason": "Missing goal or documents",
+            })
             return context
+
+        self.report({
+            "event": "start",
+            "step": "KnowledgeLoader",
+            "goal_snippet": goal_text[:120],
+            "doc_count": len(documents),
+        })
 
         # Step 1: Assign domain to the goal
         goal_vector = self.memory.embedding.get_or_create(goal_text)
@@ -35,22 +44,25 @@ class KnowledgeLoaderAgent(BaseAgent):
             for domain, examples in self.domain_seeds.items()
         }
 
-        goal_domain = None
-        goal_domain_score = -1
+        goal_domain, goal_domain_score = None, -1
         domain_scores = []
 
         for domain, vec in domain_vectors.items():
             score = float(cosine_similarity([goal_vector], [vec])[0][0])
             domain_scores.append((domain, score))
             if score > goal_domain_score:
-                goal_domain = domain
-                goal_domain_score = score
+                goal_domain, goal_domain_score = domain, score
 
         context["goal_domain"] = goal_domain
         context["goal_domain_score"] = goal_domain_score
-        self.logger.log(
-            "GoalDomainAssigned", {"domain": goal_domain, "score": goal_domain_score}
-        )
+
+        self.report({
+            "event": "goal_domain_assigned",
+            "step": "KnowledgeLoader",
+            "goal_domain": goal_domain,
+            "score": round(goal_domain_score, 4),
+            "all_scores": {d: round(s, 4) for d, s in domain_scores},
+        })
 
         # Step 2: Filter documents and/or sections
         filtered = []
@@ -63,7 +75,6 @@ class KnowledgeLoaderAgent(BaseAgent):
 
             doc_domains = self.memory.document_domains.get_domains(doc_id)
 
-            # Check whole document first
             for dom in doc_domains[: self.top_k]:
                 if dom.domain == goal_domain and dom.score >= self.threshold:
                     selected_content = (
@@ -79,9 +90,16 @@ class KnowledgeLoaderAgent(BaseAgent):
                             "source": "document",
                         }
                     )
-                    break  # stop at first matching doc-level domain
+                    self.report({
+                        "event": "doc_selected",
+                        "step": "KnowledgeLoader",
+                        "doc_id": doc_id,
+                        "title": doc_title[:80],
+                        "domain": dom.domain,
+                        "score": round(dom.score, 4),
+                    })
+                    break
 
-            # Now check sections if present
             for section in doc.get("sections", []):
                 section_id = section["id"]
                 section_name = section.get("section_name", "Unknown")
@@ -90,10 +108,7 @@ class KnowledgeLoaderAgent(BaseAgent):
 
                 section_domains = self.memory.section_domains.get_domains(section_id)
                 for sec_dom in section_domains[: self.top_k]:
-                    if (
-                        sec_dom.domain == goal_domain
-                        and sec_dom.score >= self.threshold
-                    ):
+                    if sec_dom.domain == goal_domain and sec_dom.score >= self.threshold:
                         selected_content = (
                             section_text if self.include_full_text else section_summary
                         )
@@ -108,10 +123,24 @@ class KnowledgeLoaderAgent(BaseAgent):
                                 "source": "section",
                             }
                         )
-                        break  # stop at first matching section domain
+                        self.report({
+                            "event": "section_selected",
+                            "step": "KnowledgeLoader",
+                            "doc_id": doc_id,
+                            "section": section_name,
+                            "domain": sec_dom.domain,
+                            "score": round(sec_dom.score, 4),
+                        })
+                        break
 
         context[self.output_key] = filtered
         context["filtered_document_ids"] = list({doc["id"] for doc in filtered})
-        self.logger.log("DocumentsFiltered", {"count": len(filtered)})
+
+        self.report({
+            "event": "end",
+            "step": "KnowledgeLoader",
+            "filtered_count": len(filtered),
+            "unique_docs": len(context["filtered_document_ids"]),
+        })
 
         return context

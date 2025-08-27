@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1>📦 Cartridges for Pipeline Run {{ pipeline_run_id }}</h1>
+
+  <div class="mb-3">
+    <a href="/pipeline/{{ pipeline_run_id }}" class="btn btn-outline-primary">⬅ Back to Pipeline</a>
+    <a href="/" class="btn btn-outline-secondary">🏠 Home</a>
+  </div>
+
+  {% if cartridges %}
+  <div class="list-group mt-4">
+    {% for c in cartridges %}
+    <div class="list-group-item">
+      <h5>{{ c.title or "Untitled Cartridge" }}</h5>
+      <p class="text-muted small">
+        <b>Source:</b> {{ c.source_type }} ({{ c.source_uri }}) |
+        <b>Goal:</b> {{ c.goal_id or "–" }} |
+        <b>Embedding:</b> {{ c.embedding_id or "–" }}
+      </p>
+      <p>{{ c.summary or "No summary available." }}</p>
+      <details>
+        <summary>Markdown Content</summary>
+        <pre class="bg-light p-2 rounded">{{ c.markdown_content[:2000] }}</pre>
+      </details>
+      {% if c.domain_tags %}
+      <p><b>Domains:</b> {{ c.domain_tags | join(", ") }}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="alert alert-warning mt-4">⚠️ No cartridges found for this pipeline run.</div>
+  {% endif %}
+</div>
+{% endblock %}
