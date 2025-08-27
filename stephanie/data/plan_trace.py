@@ -154,6 +154,7 @@ class PlanTrace:
     # The scores assigned to the final output by various scorers.
     final_scores: Optional[ScoreBundle] = None
 
+    # --- Epistemic Labels ---
     # --- Target for Epistemic Plan HRM Training ---
     # This is the label the HRM model will try to predict.
     # It represents the "epistemic quality" of this reasoning process.
