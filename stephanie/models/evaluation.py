@@ -27,7 +27,11 @@ class EvaluationORM(Base):
     # Polymorphic target reference
     target_type: Mapped[String] = Column(String, nullable=False)
     target_id: Mapped[String] = Column(String, nullable=False)
-    
+
+    # 🔹 NEW: Polymorphic query (the scorable that defines ranking context)
+    query_type: Mapped[Optional[str]] = Column(String, nullable=True, index=True)
+    query_id: Mapped[Optional[str]] = Column(String, nullable=True, index=True)
+
     embedding_type: Mapped[Optional[str]] = Column(String, nullable=True)
 
     # Optional references to other entities
@@ -89,6 +93,8 @@ class EvaluationORM(Base):
             "model_name": self.model_name,
             "evaluator_name": self.evaluator_name,
             "strategy": self.strategy,
+            "query_type": self.query_type,
+            "query_id": self.query_id,
             "reasoning_strategy": self.reasoning_strategy,
             "scores": self.scores,
             "extra_data": self.extra_data,
@@ -102,14 +108,14 @@ class EvaluationORM(Base):
 
         if include_relationships:
             if self.goal:
-                data["goal"] = self.goal.to_dict() if hasattr(self.goal, "to_dict") else str(self.goal)
+                data["goal"] = self.goal.to_dict()
             if self.hypothesis:
-                data["hypothesis"] = self.hypothesis.to_dict() if hasattr(self.hypothesis, "to_dict") else str(self.hypothesis)
+                data["hypothesis"] = self.hypothesis.to_dict()
             if self.document:
-                data["document"] = self.document.to_dict() if hasattr(self.document, "to_dict") else str(self.document)
+                data["document"] = self.document.to_dict()
             if self.symbolic_rule:
-                data["symbolic_rule"] = self.symbolic_rule.to_dict() if hasattr(self.symbolic_rule, "to_dict") else str(self.symbolic_rule)
+                data["symbolic_rule"] = self.symbolic_rule.to_dict() 
             if self.pipeline_run:
-                data["pipeline_run"] = self.pipeline_run.to_dict() if hasattr(self.pipeline_run, "to_dict") else str(self.pipeline_run)
+                data["pipeline_run"] = self.pipeline_run.to_dict()
 
         return data

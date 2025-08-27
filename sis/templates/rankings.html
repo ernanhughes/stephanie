@@ -1,0 +1,54 @@
+{# sis/templates/rankings.html #}
+{% extends "base.html" %}
+{% block content %}
+<h2>📊 Scorable Rankings Dashboard</h2>
+
+<form method="get" style="margin-bottom: 1em;">
+  <label>Target Type:</label>
+  <input type="text" name="target_type" value="{{ target_type or '' }}">
+  <label>Top-N per Query:</label>
+  <input type="number" name="top_n" value="{{ top_n or 5 }}" min="1" max="20">
+  <button type="submit">Apply</button>
+</form>
+
+{% if grouped_rankings %}
+  {% for query_id, results in grouped_rankings.items() %}
+    <h3>
+      🔍 Query: {{ query_id }}
+      <a href="/rankings/{{ query_id }}">(View full history)</a>
+    </h3>
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Eval ID</th>
+          <th>Target</th>
+          <th>Target ID</th>
+          <th>Rank Score</th>
+          <th>Dimension</th>
+          <th>Component Score</th>
+          <th>Weight</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ r.evaluation_id }}</td>
+          <td>{{ r.target_type }}</td>
+          <td>{{ r.target_id }}</td>
+          <td>{{ r.rank_score }}</td>
+          <td>{{ r.dimension }}</td>
+          <td>{{ r.score }}</td>
+          <td>{{ r.weight }}</td>
+          <td>{{ r.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endfor %}
+{% else %}
+  <p>No rankings found.</p>
+{% endif %}
+{% endblock %}

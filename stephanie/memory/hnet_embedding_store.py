@@ -14,6 +14,7 @@ class HNetEmbeddingStore(BaseStore):
         self.dim = cfg.get("dim", 1024)  # Default to 1024 if not specified
         self.hdim = self.dim // 2
         self.name = "hnet_embeddings"
+        self.table = "hnet_embeddings"
         self.type = "hnet"
 
         self._cache = SimpleLRUCache(max_size=cache_size)
@@ -172,63 +173,80 @@ class HNetEmbeddingStore(BaseStore):
                     self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
                 return None
 
-    def search_related_documents(self, query: str, top_k: int = 10, document_type: str = "document"):
+    def search_related_scorables(
+        self,
+        query: str,
+        target_type: str = "document",
+        top_k: int = 10,
+        with_metadata: bool = True,
+    ):
         """
-        Search for documents of a given type using embeddings stored in document_embeddings.
+        Generic search across any scorable type using pgvector.
+        Assumes embeddings live in scorable_embeddings with (scorable_id, scorable_type).
 
         Args:
-            query (str): The search query text.
+            query (str): Search query text.
+            target_type (str): Scorable type ("document", "prompt", "plan_trace", etc.).
             top_k (int): Number of results to return.
-            document_type (str): Type of document ("document", "prompt", "hypothesis", etc.)
+            with_metadata (bool): If True, join against the target table for extra fields.
 
         Returns:
-            list[dict]: Matching documents with scores.
+            list[dict]: Matching scorables with scores (and optional metadata).
         """
         try:
             embedding = self.get_or_create(query)
 
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT 
-                        d.id,
-                        d.title,
-                        d.summary,
-                        d.text,
-                        de.embedding_id,
-                        1 - (e.embedding <-> %s::vector) AS score  -- cosine similarity proxy
-                    FROM document_embeddings de
-                    JOIN documents d ON de.document_id::int = d.id
-                    JOIN hnet_embeddings e ON de.embedding_id = e.id
-                    WHERE de.document_type = %s
-                    AND de.embedding_type = %s
-                    ORDER BY e.embedding <-> %s::vector
-                    LIMIT %s;
-                    """,
-                    (embedding, document_type, self.name, embedding, top_k),
-                )
-                results = cur.fetchall()
+            base_sql = """
+                SELECT 
+                    se.scorable_id,
+                    se.scorable_type,
+                    se.embedding_id,
+                    1 - (e.embedding <-> %s::vector) AS score
+            """
 
-            return [
-                {
+            join_sql = f"""
+                FROM scorable_embeddings se
+                JOIN {self.table} e ON se.embedding_id = e.id
+            """
+
+            # Optional: join metadata if table exists for this scorable type
+            if with_metadata and target_type == "document":
+                base_sql += ", d.title, d.summary, d.text"
+                join_sql += " JOIN documents d ON se.scorable_id::int = d.id"
+
+            sql = f"""
+                {base_sql}
+                {join_sql}
+                WHERE se.scorable_type = %s
+                ORDER BY e.embedding <-> %s::vector
+                LIMIT %s;
+            """
+
+            with self.conn.cursor() as cur:
+                cur.execute(sql, (embedding, target_type, embedding, top_k))
+                rows = cur.fetchall()
+
+            results = []
+            for row in rows:
+                base_result = {
                     "id": row[0],
-                    "title": row[1],
-                    "summary": row[2],
-                    "test": row[3],
-                    "embedding_id": row[4],
-                    "score": float(row[5]),
-                    "source": document_type,
+                    "scorable_type": row[1],
+                    "embedding_id": row[2],
+                    "score": float(row[3]),
                 }
-                for row in results
-            ]
+                if with_metadata and target_type == "document":
+                    base_result.update(
+                        {"title": row[4], "summary": row[5], "text": row[6]}
+                    )
+                results.append(base_result)
+
+            return results
 
         except Exception as e:
             if self.logger:
-                self.logger.log(
-                    "DocumentSearchFailed", {"error": str(e), "query": query}
-                )
+                self.logger.log("ScorableSearchFailed", {"error": str(e), "query": query})
             else:
-                print(f"[VectorMemory] Document search failed: {e}")
+                print(f"[VectorMemory] Scorable search failed: {e}")
             return []
 
     def find_neighbors(self, embedding: list[float], k: int = 5) -> list[str]:

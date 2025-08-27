@@ -227,6 +227,8 @@ CREATE TABLE IF NOT EXISTS evaluations (
     strategy TEXT,
     reasoning_strategy TEXT,
     run_id TEXT,
+    query_id TEXT,
+    query_text TEXT,
 
     -- Evaluation Metadata
     symbolic_rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE SET NULL,
@@ -1307,4 +1309,4 @@ CREATE TABLE scorable_ranks (
 CREATE INDEX idx_scorable_ranks_query_text ON scorable_ranks (query_text);
 CREATE INDEX idx_scorable_ranks_scorable ON scorable_ranks (scorable_id, scorable_type);
 
-COMMIT;
+COMMIT; 

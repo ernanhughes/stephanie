@@ -1,0 +1,36 @@
+{# sis/templates/ranking_detail.html #}
+{% extends "base.html" %}
+{% block content %}
+<h2>📊 Full Ranking History for Query: {{ query_id }}</h2>
+
+<a href="/rankings">⬅ Back to Dashboard</a>
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Eval ID</th>
+      <th>Target</th>
+      <th>Target ID</th>
+      <th>Rank Score</th>
+      <th>Dimension</th>
+      <th>Component Score</th>
+      <th>Weight</th>
+      <th>Created</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in results %}
+    <tr>
+      <td>{{ r.evaluation_id }}</td>
+      <td>{{ r.target_type }}</td>
+      <td>{{ r.target_id }}</td>
+      <td>{{ r.rank_score }}</td>
+      <td>{{ r.dimension }}</td>
+      <td>{{ r.score }}</td>
+      <td>{{ r.weight }}</td>
+      <td>{{ r.created_at }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
