@@ -15,7 +15,7 @@ SYSTEM_INIT = {
     "ScoringPolicyCompleted": "✅",  # Scoring policy completed
     "AllEBTModelsLoaded": "📦✅",  # All EBT models loaded
     "SupervisorInit": "👨‍🏫",  # Supervisor initialization
-    "DocumentLLMInferenceCompleted": "📄✅",  # Document LLM inference completed
+    "DocumentLLMInferenceCompleted": "📰✅",  # Document LLM inference completed
     "DocumentEmbeddingsBackfilled": "📄🌱",  # Document embeddings backfilled
     "AgentInitialized": "🤖",  # Agent initialization
     "ContextLoaded": "📂",  # Context loaded
@@ -24,7 +24,7 @@ SYSTEM_INIT = {
     "DomainClassifierInit": "🏷️🧠",  # Domain classifier init
     "DomainConfigLoaded": "🏷️📋",  # Domain config loaded
     "SeedEmbeddingsPrepared": "🌱🧬",  # Seed embeddings prepared
-    "KnowledgeDBLoaded": "📚✅",  # Knowledge database loaded
+    "KnowledgeDBLoaded": "📰✅",  # Knowledge database loaded
 }
 
 # =================
@@ -42,7 +42,7 @@ AGENT_EVENTS = {
     "MRQTrainerAgentInitialized": "📊🤖",  # MRQ trainer agent initialized
     "DocumentMRQInferenceAgentInitialized": "📊🤖",  # Document MRQ inference agent initialized
     "DocumentEBTInferenceAgentInitialized": "🧠🚦",  # Inference agent initialized
-    "EpistemicPlanExecutorAgentInitialized": "🪸🤖",  # Epistemic plan executor agent initialized
+    "EpistemicPlanExecutorAgentInitialized": "👾",  # Epistemic plan executor agent initialized
 }
 
 # =================
@@ -144,20 +144,20 @@ PIPELINE_FLOW = {
 SCORING = {
     "ScoringFailed": "❌📊",  # Scoring failed
     "ScoringPaper": "📄⚖️",  # Scoring paper
-    "EpistemicPlanExecutorSkipped": "🪸⏭️",  # Epistemic plan executor skipped
-    "EpistemicPlanHRMTrainingBatch": "🪸🏋️",  # Training batch
-    "EpistemicPlanHRMDataLoaderCreated": "🪸📥",  # Data loader created
-    "EpistemicPlanHRMTrainingEpoch": "🪸🏋️",  # Training epoch
-    "EpistemicPlanHRMModelSaved": "🪸🧮💾",  # Model saved
-    "EpistemicTraceSaved": "🪸💾",  # Epistemic trace saved
+    "EpistemicPlanExecutorSkipped": "👾⏭️",  # Epistemic plan executor skipped
+    "EpistemicPlanHRMTrainingBatch": "👾🏋️",  # Training batch
+    "EpistemicPlanHRMDataLoaderCreated": "👾📥",  # Data loader created
+    "EpistemicPlanHRMTrainingEpoch": "👾🏋️",  # Training epoch
+    "EpistemicPlanHRMModelSaved": "👾💾",  # Model saved
+    "EpistemicTraceSaved": "👾💾",  # Epistemic trace saved
     "HRMScorerEvaluated": "🧠⚖️",  # HRM scorer evaluated
     "HRMScorerModelLoaded": "🧠🧮📥",  # HRM scorer model loaded
     "HRMScorerMetaLoaded": "🧠📄",  # HRM scorer meta loaded
     "LATS_StepStarted": "🧠🔄",  # LATS step started
     "LATS_StepCompleted": "🧠✅",  # LATS step completed
     "LargeDataContextComponentDumped": "📂💾",  # Large data context dumped
-    "EpistemicPlanExecutorStarted": "🪸📄",  # Epistemic plan executor started
-    "EpistemicPlanExecutorCompleted": "🪸✅",  # Epistemic plan executor completed
+    "EpistemicPlanExecutorStarted": "👾📄",  # Epistemic plan executor started
+    "EpistemicPlanExecutorCompleted": "👾✅",  # Epistemic plan executor completed
     "PolicyLogits": "📊⚖️",  # Policy logits computed
     "DocumentScoresAlreadyExist": "📄✅",  # Document scores already exist
     "LLMJudgeScorerDimension": "📝📊",  # LLM judge scoring dimension
@@ -206,12 +206,12 @@ REASONING = {
     "PlanTraceScoringComplete": "📄✅",  # Plan trace scoring completed
     "DocumentScoringProgress": "📄🔄",  # Document scoring progress
     "DocumentScoringCompleted": "📄✅",  # Document scoring completed
-    "EpistemicPlanHRMModelInitialized": "🪸🧠",  # Epistemic Plan HRM model initialized
-    "EpistemicPlanHRMOptimizerInitialized": "🪸⚙️",  # Epistemic Plan HRM optimizer initialized
-    "EpistemicPlanHRMLossInitialized": "🪸📉",  # Epistemic Plan HRM loss initialized
-    "EpistemicPlanHRMTrainingNoTraces": "🪸🚫",  # No traces for training
-    "EpistemicPlanHRMTrainingStarted": "🪸🚀",  # Epistemic Plan HRM training started
-    "EpistemicPlanHRMTrainingDataPrepared": "🪸📊",  # Training data prepared
+    "EpistemicPlanHRMModelInitialized": "👾🧠",  # Epistemic Plan HRM model initialized
+    "EpistemicPlanHRMOptimizerInitialized": "👾⚙️",  # Epistemic Plan HRM optimizer initialized
+    "EpistemicPlanHRMLossInitialized": "👾📉",  # Epistemic Plan HRM loss initialized
+    "EpistemicPlanHRMTrainingNoTraces": "👾🚫",  # No traces for training
+    "EpistemicPlanHRMTrainingStarted": "👾🚀",  # Epistemic Plan HRM training started
+    "EpistemicPlanHRMTrainingDataPrepared": "👾📊",  # Training data prepared
 
     "KeywordsExtracted": "🔑",  # Keywords extracted
     "ProximityAnalysisScored": "📌🗺️",  # Proximity analysis
@@ -368,8 +368,7 @@ ERROR_STATES = {
 # MODEL OPS
 # =============
 MODELS = {
-    "EpistemicPlanHRMScorerModelLoaded": "🪸🧠📥",  # Epistemic Plan HRM scorer model loaded
-
+    "PlanHRMScorerModelLoaded": "👾🧠📥",  # Epistemic Plan HRM scorer model loaded
     "SVMModelSaved": "💾🧮📊",  # SVM model saved
     "SVMModelLoaded": "📥🧮📊",  # SVM model load
     "SVMModelTrainingStarted": "🏋️🧮⚖️",

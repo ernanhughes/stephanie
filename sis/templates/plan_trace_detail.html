@@ -1,7 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container mt-4">
-  <h2>📋 Plan Trace {{ trace.trace_id }}</h2>
+  <!-- Header with navigation buttons -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">📋 Plan Trace {{ trace.trace_id }}</h2>
+    <div>
+      <a href="/pipeline/{{ trace.pipeline_run_id }}" class="btn btn-outline-primary me-2">
+        🔍 View Pipeline Details
+      </a>
+      <a href="/" class="btn btn-secondary">
+        📊 View All Pipelines
+      </a>
+    </div>
+  </div>
   <p><strong>Goal:</strong> {{ trace.goal_text }}</p>
   <p><strong>Pipeline:</strong> {{ trace.plan_signature }}</p>
 
