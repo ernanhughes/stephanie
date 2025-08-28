@@ -77,6 +77,7 @@ class DocumentLoaderAgent(BaseAgent):
             "min_classification_score", 0.6
         )
         self.embed_full_document = cfg.get("embed_full_document", True)
+        self.scorable_type = cfg.get("scorable_type", "document")
         self.domain_classifier = ScorableClassifier(
             memory=self.memory,
             logger=self.logger,
@@ -131,7 +132,7 @@ class DocumentLoaderAgent(BaseAgent):
                     )
                     # Assign domains if needed
                     if (
-                        not self.memory.scorable_domains.has_domains(existing.id)
+                        not self.memory.scorable_domains.has_domains(str(existing.id), self.scorable_type)
                         or self.force_domain_update
                     ):
                         self.assign_domains_to_document(existing)

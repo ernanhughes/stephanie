@@ -27,7 +27,7 @@ class ProximityAgent(ScoringMixin, BaseAgent):
         self.metrics = cfg.get("metrics", {})
 
     async def run(self, context: dict) -> dict:
-        documents = self.get_hypotheses(context)
+        documents = self.get_scorables(context)
         proximity_results = []
 
         # --- score incoming hypotheses against goal

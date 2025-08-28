@@ -29,6 +29,7 @@ from stephanie.utils.report_utils import get_stage_details
 class PipelineStage:
     def __init__(self, name: str, config: dict, stage_dict: dict):
         self.name = name
+        self.agent_role = config.get("agent_role", "")
         self.description = config.get("description", "")
         self.cls = config.get("cls", "")
         self.enabled = config.get("enabled", True)

@@ -120,7 +120,7 @@ class GenericEmbeddingStore(BaseStore):
                 self.logger.log("FindNeighborsFailed", {"error": str(e)})
             return []
 
-    def search_related_documents(
+    def search_related_scorables(
         self,
         query: str,
         top_k: int = 10,

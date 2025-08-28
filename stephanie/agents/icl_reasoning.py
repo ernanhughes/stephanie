@@ -8,7 +8,7 @@ from stephanie.models.cartridge_domain import CartridgeDomainORM
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
-from stephanie.models.theorem import CartridgeORM, TheoremORM
+from stephanie.models.theorem import TheoremORM
 from stephanie.scoring.scorable_factory import TargetType
 
 
@@ -118,7 +118,6 @@ class ICLReasoningAgent(BaseAgent):
         query = (
             session.query(CartridgeTripleORM)
             .join(CartridgeTripleORM.cartridge)
-            .join(CartridgeORM.domains_rel)
             .filter(CartridgeDomainORM.domain.in_(goal_domain_names))
         )  # Create a mapping of dimensions to their weights
 
@@ -174,7 +173,7 @@ class ICLReasoningAgent(BaseAgent):
 
         # Optional: embedding filtering
         if self.use_embeddings:
-            goal_vec = self.memory.embedding.get_or_create(goal["goal_text"])
+            _, goal_vec = self.memory.embedding.get_or_create(goal["goal_text"])
             triplets = [
                 t
                 for t in triplets

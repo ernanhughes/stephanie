@@ -9,7 +9,7 @@ class ReviewAgent(ScoringMixin, BaseAgent):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
-        hypotheses = self.get_hypotheses(context)
+        hypotheses = self.get_scorables(context)
         reviews = []
 
         for hyp in hypotheses:

@@ -14,6 +14,7 @@ class KnowledgeLoaderAgent(BaseAgent):
         self.threshold = cfg.get("domain_threshold", 0.0)
         self.include_full_text = cfg.get("include_full_text", False)
         self.prefer_sections = cfg.get("prefer_sections", True)
+        self.knowledge_type = cfg.get("knowledge_type", "documents")  # or 'cartridges'
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL)
@@ -73,7 +74,7 @@ class KnowledgeLoaderAgent(BaseAgent):
             doc_text = doc.get("text", "")
             doc_title = doc.get("title", "")
 
-            doc_domains = self.memory.scorable_domains.get_domains(doc_id)
+            doc_domains = self.memory.scorable_domains.get_domains(str(doc_id), self.knowledge_type) 
 
             for dom in doc_domains[: self.top_k]:
                 if dom.domain == goal_domain and dom.score >= self.threshold:

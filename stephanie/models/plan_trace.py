@@ -74,7 +74,7 @@ class PlanTraceORM(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc), Right so all right so now I'm
+        default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
@@ -113,7 +113,6 @@ class PlanTraceORM(Base):
             data["goal"] = self.goal.to_dict()
         return data
 
-
 class ExecutionStepORM(Base):
     """
     ORM to store metadata for a single step within a PlanTrace.
@@ -132,18 +131,15 @@ class ExecutionStepORM(Base):
         "PlanTraceORM", back_populates="execution_steps"
     )
 
-    # Optional: direct link to pipeline run (redundant but convenient for querying)
+    # Optional: direct link to pipeline run
     pipeline_run_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=True, index=True
+        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"),
+        nullable=True, index=True
     )
-    pipeline_run: Mapped[Optional["PipelineRunORM"]] = relationship(
-        "PipelineRunORM"  # ⚠️ no back_populates here, otherwise it collides with PlanTraceORM.plan_traces
-    )
+    pipeline_run: Mapped[Optional["PipelineRunORM"]] = relationship("PipelineRunORM")
 
     # Order of the step within the trace
-    step_order: Mapped[int] = mapped_column(
-        Integer, nullable=False, index=True
-    )
+    step_order: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
     # Unique identifier for the step (matches ExecutionStep.step_id)
     step_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -157,13 +153,18 @@ class ExecutionStepORM(Base):
     # Output embedding reference (optional)
     output_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # --- NEW: Agent role ---
+    agent_role: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
+    )
+    # e.g. "retrieve", "reuse", "revise", "retain"
+
     # --- Relationships to Scoring ---
     evaluation_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("evaluations.id"), nullable=True, unique=True
     )
     evaluation: Mapped[Optional["EvaluationORM"]] = relationship(
-        "EvaluationORM",
-        foreign_keys=[evaluation_id],
+        "EvaluationORM", foreign_keys=[evaluation_id]
     )
 
     # --- Metadata ---
@@ -183,6 +184,7 @@ class ExecutionStepORM(Base):
             "output_text": self.output_text,
             "output_embedding_id": self.output_embedding_id,
             "evaluation_id": self.evaluation_id,
+            "agent_role": self.agent_role,  # ✅ include in export
             "meta": self.meta,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

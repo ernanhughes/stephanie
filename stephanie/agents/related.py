@@ -20,7 +20,7 @@ class RelatedAgent(BaseAgent):
         goal_text = goal.get("goal_text")
 
         # Step 1: Search for related documents
-        results = self.memory.embedding.search_related_documents(
+        results = self.memory.embedding.search_related_scorables(
             query=goal_text,
             top_k=self.top_k,
             document_type=self.document_type,

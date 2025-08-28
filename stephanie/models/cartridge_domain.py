@@ -15,9 +15,6 @@ class CartridgeDomainORM(Base):
     domain = Column(String, nullable=False)
     score = Column(Float, nullable=False)
 
-    # Optional: relationship to cartridge
-    cartridge = relationship("CartridgeORM", back_populates="domains_rel")
-
     def to_dict(self):
         return {
             "id": self.id,

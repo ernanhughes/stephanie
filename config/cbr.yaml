@@ -28,17 +28,20 @@ embeddings:
   backend: hnet
 
 goal:
-  goal_text: 1. I would like to build an AI that continually learns from its own results to solve increasingly complex problems.
-  #goal_text: I want to build an AI that can teach itself to solve complex problems better over time.
-  goal_type: "tactical"
-  goal_category: "meta_learning"
-  focus_area: "self_improvement"
-  strategy: "stepwise_decomposition"
-  difficulty: "medium-high"
+  goal_text: >
+    Demonstrate a Case-Based Reasoning (CBR) system that continually learns
+    from its own past cases (PlanTraces, evaluations, cartridges), adapting
+    to solve increasingly complex research tasks.
+  goal_type: "strategic"
+  goal_category: "meta_reasoning"
+  focus_area: "case_based_learning"
+  strategy: "retrieve_reuse_revise_retain"
+  difficulty: "high"
   expected_formats:
-    - "symbolic_prompt_plan"
-    - "stepwise_reasoning_trace"
-    - "annotated_score_vector"
+    - "case_trace"
+    - "scorable_rankings"
+    - "revised_plan"
+    - "retained_cartridge"
 
 plan_monitor:
   enabled: true
@@ -60,62 +63,81 @@ web_search:
   instance_url: "http://localhost:8080"
 
 pipeline:
-  name: cartridge
-  tag: "cartridge"
-  description: "Search Arxiv for papers related to a goal generate information cartridges from this knowledge"
+  name: cbr
+  tag: cbr
+  description: >
+    Implementation of the Case-Based Reasoning (CBR) framework from the 
+    Memento paper (https://arxiv.org/pdf/2508.16153).
+    This pipeline demonstrates the full CBR loop — retrieve, reuse, revise, retain —
+    by grounding reasoning in past cases (PlanTraces, evaluations, scorables),
+    adapting them to new tasks, and storing new cases for continual self-improvement.
   stages:
      - name: arxiv_search
-       description: "Search Arxiv for papers related to the goal" 
+       agent_role: retrieve
+       description: "📥 Retrieve: search Arxiv for candidate documents (knowledge cases)"
        cls: stephanie.agents.knowledge.arxiv_search.ArxivSearchAgent
        enabled: true
        iterations: 1
+
      - name: document_loader
-       description: "Load documents from the search results and summarize them"
+       description: "Load and summarize candidate documents"
        cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
        enabled: true
        iterations: 1
+
      - name: document_profiler
-       description: "Profile the loaded documents to extract key sections"
+       description: "Profile documents into structured sections for reuse"
        cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
        enabled: true
        iterations: 1
+
      - name: paper_score
-       description: "Score the papers based on their relevance and quality"
+       description: "Evaluate case quality: relevance, novelty, clarity"
        cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
        enabled: true
        iterations: 1
+
      - name: planner_reuse
-       description: "Adapt past plans to current goal"
-       cls: stephanie.agents.planning.planner_reuse.PlannerReuseAgent
+       agent_role: reuse
+       description: "♻️ Reuse: adapt past PlanTraces and evaluations to the current goal"
+       cls: stephanie.agents.knowledge.planner_reuse.PlannerReuseAgent
        enabled: true
        iterations: 1
+
      - name: knowledge_loader
-       description: "Load knowledge from the scored papers into the system"
+       agent_role: revise
+       description: "Revise: integrate new evidence into Stephanie’s knowledge base"
        cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
        enabled: true
        iterations: 1
+
      - name: knowledge_db_loader
-       description: "Load knowledge from the database"
+       description: "Load prior retained knowledge from the database for retrieval"
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
        enabled: true
        iterations: 1    
+
      - name: mrq_trainer
-       description: "Build document pairs for training and evaluation" 
+       description: "Train retrieval models (MRQ/SICQL) from document pairs (optional)"
        cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent 
        enabled: false
        iterations: 1
+
      - name: document_reward_scorer
-       description: "Score the documents based on their relevance and quality"
+       description: "Refine document scores using reward models (optional)"
        cls: stephanie.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
        enabled: false
        iterations: 1
+
      - name: cartridge
-       description: "Generate a cartridge from the knowledge"
+       agent_role: retain
+       description: "🧩 Retain: generate reusable cartridges (belief units) from revised knowledge"
        cls: stephanie.agents.knowledge.cartridge.CartridgeAgent
        enabled: true
        iterations: 1
+
      - name: icl_reasoning
-       description: "Use in-context learning to reason about the goal and knowledge" 
+       description: "Apply in-context reasoning to test retained knowledge against the goal"
        cls: stephanie.agents.icl_reasoning.ICLReasoningAgent
        enabled: true
        iterations: 1

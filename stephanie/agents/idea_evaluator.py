@@ -20,7 +20,7 @@ class IdeaEvaluatorAgent(BaseAgent):
         self.top_k = cfg.get("top_k", 5)
 
     async def run(self, context: dict) -> dict:
-        hypotheses = self.get_hypotheses(context)
+        hypotheses = self.get_scorables(context)
         goal = context.get(GOAL)
         baseline = context.get("baseline_hypotheses", {})
 
