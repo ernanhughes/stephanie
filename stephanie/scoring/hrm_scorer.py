@@ -7,7 +7,6 @@ import torch
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.models.score import ScoreORM  # For prompt_hash
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.model.hrm_model import HRMModel
 from stephanie.scoring.scorable import Scorable
@@ -25,7 +24,7 @@ class HRMScorer(BaseScorer):
         self.model_type = "hrm" # This identifies the scorer type
         
         # Use the embedding details from memory
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dim = self.memory.embedding.dim
         # HRM might use a different internal dimension (h_dim), but input is based on self.dim
         # h_dim, l_dim, etc. are loaded from the model's meta file or config

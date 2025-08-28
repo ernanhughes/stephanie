@@ -142,7 +142,7 @@ class ICLReasoningAgent(BaseAgent):
         # Subquery to compute weighted scores per triplet, grouped by Evaluation.target_id
         subq = (
             session.query(
-                EvaluationORM.target_id.label("triplet_id"),
+                EvaluationORM.sccorable_id.label("triplet_id"),
                 func.sum(
                     case(
                         *[
@@ -156,9 +156,9 @@ class ICLReasoningAgent(BaseAgent):
             .join(ScoreORM, ScoreORM.evaluation_id == EvaluationORM.id)
             .filter(
                 EvaluationORM.goal_id == goal_id,
-                EvaluationORM.target_type == TargetType.TRIPLE,
+                EvaluationORM.scorable_type == TargetType.TRIPLE,
             )
-            .group_by(EvaluationORM.target_id)
+            .group_by(EvaluationORM.sccorable_id)
             .subquery()
         )
 

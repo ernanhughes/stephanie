@@ -215,7 +215,7 @@ class DocumentLoaderAgent(BaseAgent):
                 else:
                     embed_text = f"{doc['title']}\n\n{doc.get('summary', '')}"
 
-                embedding_vector = self.memory.embedding.get_or_create(
+                self.memory.embedding.get_or_create(
                     embed_text
                 )
                 embedding_id = self.memory.embedding.get_id_for_text(
@@ -224,8 +224,8 @@ class DocumentLoaderAgent(BaseAgent):
 
                 self.memory.scorable_embeddings.insert(
                     {
-                        "document_id": doc_id,
-                        "document_type": TargetType.DOCUMENT,
+                        "scorable_id": doc_id,
+                        "scorable_type": TargetType.DOCUMENT,
                         "embedding_id": embedding_id,
                         "embedding_type": self.memory.embedding.name,
                     }
@@ -297,7 +297,8 @@ class DocumentLoaderAgent(BaseAgent):
             for domain, score in results:
                 self.memory.scorable_domains.insert(
                     {
-                        "document_id": document.id,
+                        "scorable_id": str(document.id),
+                        "scorable_type": "document",
                         "domain": domain,
                         "score": score,
                     }

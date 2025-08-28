@@ -30,7 +30,7 @@ class GILDTrainerAgent(BaseAgent):
         self.batch_size = cfg.get("batch_size", 32)
         self.model_path = cfg.get("model_path", "models")
         self.target_type = cfg.get("target_type", "plan_trace")
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.version = cfg.get("model_version", "v1")
 
         # --- Paths and Data Handling ---

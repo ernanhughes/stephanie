@@ -5,20 +5,22 @@ from datetime import datetime
 from stephanie.models.base import Base
 
 
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, DateTime, UniqueConstraint
+from sqlalchemy.orm import relationship
+from datetime import datetime
+
+from stephanie.models.base import Base
+
+
 class ScorableDomainORM(Base):
     __tablename__ = "scorable_domains"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    # Link to Scorable (document, plan_trace, prompt, etc.)
-    scorable_id = Column(String, nullable=False, index=True)   # maps to Scorable.id
-    scorable_type = Column(String, nullable=False, index=True) # maps to Scorable.target_type
-
-    # Domain classification
-    domain = Column(String, nullable=False, index=True)
+    id = Column(Integer, primary_key=True)
+    scorable_id = Column(Integer, nullable=False)
+    scorable_type = Column(String, nullable=False)
+    domain = Column(String, nullable=False)
     score = Column(Float, nullable=False)
-
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     __table_args__ = (
         UniqueConstraint("scorable_id", "scorable_type", "domain", name="uq_scorable_domain"),

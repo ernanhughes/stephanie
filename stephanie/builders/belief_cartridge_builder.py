@@ -216,8 +216,8 @@ class BeliefCartridgeBuilder(BaseAgent):
         """Create evaluation record with metadata"""
         return EvaluationORM(
             goal_id=goal.get("id"),
-            target_id=scorable.id,
-            target_type=scorable.target_type,
+            scorable_id=scorable.id,
+            scorable_type=scorable.target_type,
             evaluator_name=scorer_type,
             model_name=f"{scorable.target_type}_{scorer_type}_v1",
             embedding_type=embedding_type,

@@ -24,7 +24,7 @@ class SVMInferenceAgent(BaseAgent):
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
         self.dimensions = cfg.get("dimensions", [])
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dim = self.memory.embedding.dim
         self.hdim = self.memory.embedding.hdim
         self.models = {}

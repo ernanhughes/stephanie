@@ -12,7 +12,7 @@ class RelatedAgent(BaseAgent):
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
         self.document_type = cfg.get("document_type", "document")
-        self.embedding_type = self.memory.embedding.name  # e.g., "hf_embeddings"
+        self.embedding_type = self.memory.embedding.name  # e.g., "hnet"
         self.top_k = cfg.get("top_k", 50)
 
     async def run(self, context: dict) -> dict:

@@ -36,7 +36,7 @@ class KnowledgeDBLoaderAgent(BaseAgent):
             docs = [d.to_dict() for d in docs]
         else:
             docs = self.memory.embedding.search_related_scorables(
-                goal_text, self.top_k
+                goal_text, top_k=self.top_k
             )
             self.logger.log(
                 "DocumentsSearched",

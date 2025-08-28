@@ -19,7 +19,7 @@ class HRMTrainer(BaseTrainer):
         
         # --- HRM Specific Config ---
         self.model_type = "hrm"
-        self.embedding_type = memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         embedding_dim = memory.embedding.dim
         self.input_dim = embedding_dim * 2
         self.h_dim = cfg.get("hrm.h_dim", 256)

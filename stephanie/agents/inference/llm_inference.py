@@ -120,8 +120,8 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
             self.memory.session.query(ScoreORM)
             .join(EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id)
             .filter(
-                EvaluationORM.target_type == "document",
-                EvaluationORM.target_id == str(scorable_id),
+                EvaluationORM.scorable_type == "document",
+                EvaluationORM.sccorable_id == str(scorable_id),
                 EvaluationORM.source == "llm"
             )
             .count()

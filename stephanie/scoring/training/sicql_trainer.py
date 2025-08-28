@@ -30,7 +30,7 @@ class SICQLTrainer(BaseTrainer):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dim = self.memory.embedding.dim
         self.hdim = self.memory.embedding.hdim
         self.root_dir = cfg.get("model_path", "models")

@@ -22,7 +22,7 @@ class MRQScorer(BaseScorer):
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_type = "mrq"
-        self.embedding_type = memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dim = memory.embedding.dim
         self.hdim = memory.embedding.hdim
         self.target_type = cfg.get("target_type", "document")

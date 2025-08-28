@@ -23,7 +23,7 @@ class SICQLScorer(BaseScorer):
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_type = "sicql"
-        self.embedding_type = memory.embedding.name
+        self.embedding_type = self.memory.embedding.name
         self.dim = memory.embedding.dim
         self.hdim = memory.embedding.hdim
 

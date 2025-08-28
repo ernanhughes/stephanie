@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 # Import the ORM
 from stephanie.data.plan_trace import PlanTrace
+from stephanie.models.goal import GoalORM
 from stephanie.models.plan_trace import ExecutionStepORM, PlanTraceORM
 
 
@@ -236,3 +237,27 @@ class PlanTraceStore:
             if self.logger:
                 self.logger.log("PlanTraceGetAllFailed", {"error": str(e), "limit": limit})
             return []
+
+
+    def get_goal_text(self, trace_id: str) -> Optional[str]:
+        """
+        Retrieve the goal text for a given plan_trace (by trace_id) using a direct join.
+        More efficient than loading the full ORM relationship.
+        """
+        try:
+            result = (
+                self.session.query(GoalORM.goal_text)
+                .join(PlanTraceORM, GoalORM.id == PlanTraceORM.goal_id)
+                .filter(PlanTraceORM.trace_id == trace_id)
+                .first()
+            )
+            if result:
+                return result[0]  # since we're selecting only goal_text
+            return None
+        except Exception as e:
+            if self.logger:
+                self.logger.log(
+                    "PlanTraceGetGoalTextError",
+                    {"error": str(e), "trace_id": trace_id},
+                )
+            return None

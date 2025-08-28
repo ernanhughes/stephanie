@@ -26,7 +26,7 @@ class EBTInferenceAgent(BaseAgent):
         self.model_path = cfg.get("model_path", "models")
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
 
         self.dimensions = cfg.get("dimensions", [])
         self.models = {}

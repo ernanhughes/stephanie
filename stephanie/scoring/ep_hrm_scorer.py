@@ -27,7 +27,7 @@ class EpistemicPlanHRMScorer(BaseScorer):
         self.model_type = "epistemic_hrm"  # This identifies the scorer type
 
         # Use the embedding details from memory
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dim = self.memory.embedding.dim
         # HRM might use a different internal dimension (h_dim), but input is based on self.dim
         # h_dim, l_dim, etc. are loaded from the model's meta file or config

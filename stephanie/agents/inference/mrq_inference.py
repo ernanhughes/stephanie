@@ -34,7 +34,7 @@ class MRQInferenceAgent(BaseAgent):
         self.evaluator = "sicql" if self.use_sicql else "mrq"
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dimensions = cfg.get("dimensions", [])
         self.models = {}
         self.model_meta = {}

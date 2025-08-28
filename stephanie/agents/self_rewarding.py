@@ -94,11 +94,11 @@ class SelfRewardingAgent(BaseAgent):
         """Log hypothesis and scores to database"""
         evaluation = EvaluationORM(
             goal_id=hypothesis.get("goal_id"),
-            target_type="hypothesis",
-            hypothesis_id=hypothesis.get("id"),
+            scorable_type="hypothesis",
+            scorable_id=str(hypothesis.get("id")),
             agent_name=self.name,
             model_name=self.model_name,
-            embedding_type=self.memory.embedding.type,
+            embedding_type=self.memory.embedding.name,
             evaluator_name=self.name,
             pipeline_run_id=context.get(PIPELINE_RUN_ID),
         )

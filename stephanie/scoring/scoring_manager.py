@@ -252,18 +252,17 @@ class ScoringManager(BaseAgent):
                 score = self.scorer.score(
                     context, scorable, dimensions
                 )
+                log_key = "CorDimensionEvaluated" if format == "cor" else "DimensionEvaluated"
+                self.logger.log(
+                    log_key ,
+                    {"ScoreCompleted": score.to_dict()},
+                )
         except Exception as e:
             self.logger.log(
                 "MgrScoreParseError",
                 {"scorable": scorable, "error": str(e)},
             )
-        log_key = "CorDimensionEvaluated" if format == "cor" else "DimensionEvaluated"
-        self.logger.log(
-            log_key,
-            {"ScoreCompleted": score.to_dict()},
-        )
-
-        return score
+            return {}
 
     def evaluate_llm(self, context: dict, scorable: Scorable, llm_fn=None):
         if llm_fn is None:
@@ -352,12 +351,14 @@ class ScoringManager(BaseAgent):
         eval_orm = EvaluationORM(
             goal_id=goal.get("id") if goal else None,
             pipeline_run_id=pipeline_run_id,
-            target_type=scorable.target_type,
-            target_id=scorable.id,
+            # 🔹 Updated field names
+            scorable_type=scorable.target_type,
+            scorable_id=str(scorable.id),
             source=source,
+            scores=bundle.to_dict(),
             agent_name=cfg.get("name"),
             model_name=model_name,
-            embedding_type=memory.embedding.type,
+            embedding_type=memory.embedding.name,
             evaluator_name=cfg.get("evaluator", cfg.get("model_type", "ScoreEvaluator")),
             strategy=cfg.get("strategy"),
             reasoning_strategy=cfg.get("reasoning_strategy"),
@@ -371,7 +372,6 @@ class ScoringManager(BaseAgent):
         attribute_orms = []
         
         for result in bundle.results.values():
-            # Create ScoreORM with core fields
             score_orm = ScoreORM(
                 evaluation_id=eval_orm.id,
                 dimension=result.dimension,
@@ -382,10 +382,9 @@ class ScoringManager(BaseAgent):
             )
             score_orms.append(score_orm)
             
-            # Create attributes for ScoreAttributeORM
+            # Handle attributes
             if result.attributes:
                 for key, value in result.attributes.items():
-                    # Determine data type for proper storage
                     if isinstance(value, (int, float)):
                         data_type = "float"
                     elif isinstance(value, (list, tuple, dict)):
@@ -393,33 +392,29 @@ class ScoringManager(BaseAgent):
                     else:
                         data_type = "string"
                     
-                    # Convert to string representation
-                    if data_type == "json":
-                        value_str = json.dumps(value)
-                    else:
-                        value_str = str(value)
+                    value_str = (
+                        json.dumps(value) if data_type == "json" else str(value)
+                    )
                     
                     attribute_orms.append(ScoreAttributeORM(
-                        score_id=None,  # Will be set after score_orm is committed
+                        score_id=None,  # linked after flush
                         key=key,
                         value=value_str,
                         data_type=data_type
                     ))
 
-        # Add all scores to database I
+        # Persist scores
         memory.session.add_all(score_orms)
-        memory.session.flush()  # Get score IDs
-        
-        # Update attribute_orms with score IDs and add to session
-        score_id_map = {score_orm.dimension: score_orm.id for score_orm in score_orms}
-        for attr_orm in attribute_orms:
-            # Find corresponding score ID (simplified for this example)
-            # In practice, you'd need a better mapping strategy
-            attr_orm.score_id = next(
-                (id for dim, id in score_id_map.items() if dim == result.dimension), 
-                None
-            )
-        
+        memory.session.flush()
+
+        # Link attributes to scores
+        score_id_map = {s.dimension: s.id for s in score_orms}
+        for result in bundle.results.values():
+            if result.attributes:
+                for attr in attribute_orms:
+                    if attr.key in result.attributes:  # match attribute to score dimension
+                        attr.score_id = score_id_map.get(result.dimension)
+
         memory.session.add_all(attribute_orms)
         memory.session.commit()
 
@@ -429,20 +424,16 @@ class ScoringManager(BaseAgent):
             "ScoreSavedToMemory",
             {
                 "goal_id": goal.get("id") if goal else None,
-                "target_id": scorable.id,
-                "target_type": scorable.target_type,
+                "scorable_id": scorable.id,
+                "scorable_type": scorable.target_type,
                 "scores": scores_json,
             },
         )
         
-        # Calculate weighted score for display
         weighted_score = bundle.aggregate()
-        
-        # Log score delta (if applicable)
         if goal and "id" in goal:
             ScoreDeltaCalculator(cfg, memory, logger).log_score_delta(
                 scorable, weighted_score, goal["id"]
             )
         
-        # Display score
         ScoreDisplay.show(scorable, bundle.to_dict(), weighted_score)

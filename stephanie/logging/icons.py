@@ -142,6 +142,8 @@ PIPELINE_FLOW = {
 # SCORING & EVALUATION
 # =====================
 SCORING = {
+    "ScorableRankerInitialized": "🔗✅",  # Scorable ranker initialized
+
     "ScoringFailed": "❌📊",  # Scoring failed
     "ScoringPaper": "📄⚖️",  # Scoring paper
     "EpistemicPlanExecutorSkipped": "👾⏭️",  # Epistemic plan executor skipped
@@ -190,6 +192,10 @@ SCORING = {
     "PolicyAnalysis": "📊🔍",  # Policy analysis
     "NoSICQLDataFound": "🚫📊",  # No SI-CQL data found
     "DimensionEvaluated": "📏✅",  # Dimension evaluated
+}
+
+REPORTING = {
+    "MARSReportSaved": "📄💾"
 }
 
 # =====================
@@ -408,6 +414,7 @@ EVENT_ICONS = {
     **KNOWLEDGE_OPS,
     **PIPELINE_FLOW,
     **SCORING,
+    **REPORTING,
     **REASONING,
     **TRAINING,
     **HYPOTHESIS_OPS,

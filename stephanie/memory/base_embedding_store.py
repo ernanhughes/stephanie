@@ -50,7 +50,7 @@ class BaseEmbeddingStore(BaseStore):
             if self.logger:
                 self.logger.log("EmbeddingFetchFailed", {"error": str(e)})
 
-        embedding = self.get_embed_fn(text, self.cfg)
+        embedding = self.embed_fn(text, self.cfg)
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -87,7 +87,7 @@ class BaseEmbeddingStore(BaseStore):
 
     def search_related_scorables(self, query: str, target_type: str = "document", top_k: int = 10, with_metadata: bool = True):
         try:
-            _, query_emb = self.get_or_create(query)
+            query_emb = self.get_or_create(query)
 
             base_sql = """
                 SELECT se.scorable_id, se.scorable_type, se.embedding_id,

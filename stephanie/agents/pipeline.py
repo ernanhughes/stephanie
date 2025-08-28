@@ -99,11 +99,11 @@ class PipelineJudgeAgent(BaseAgent):
 
         score_obj = EvaluationORM(
             goal_id=self.get_goal_id(goal),
-            target_type="hypothesis",
-            target_id=self.get_hypothesis_id(top_hypo),
+            scorable_type="hypothesis",
+            scorable_id=str(self.get_hypothesis_id(top_hypo)),
             agent_name=self.name,
             model_name=self.model_name,
-            embedding_type=self.memory.embedding.type,
+            embedding_type=self.memory.embedding.name,
             evaluator_name="PipelineJudgeAgent",
             score_type="pipeline_judgment",
             score=score,

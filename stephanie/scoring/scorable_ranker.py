@@ -1,19 +1,21 @@
 import math
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
-
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
 
 class ScorableRanker(BaseScorer):
     """
     Universal ranking engine for all Scoreables (documents, prompts, plan traces, etc.).
-    Produces an EvaluationORM per candidate with component signals stored as ScoreORMs.
+    Integrates with the standard BaseScorer API:
+      - score(context, scorable, dimensions) → dict
+      - rank(query, candidates, extra_signals) → List[EvaluationORM]
     """
 
     def __init__(self, cfg, memory, logger):
@@ -21,7 +23,7 @@ class ScorableRanker(BaseScorer):
         self.model_type = "scorable_rank"
 
         # Embedding backend
-        self.embedding_type = memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dim = memory.embedding.dim
         self.hdim = memory.embedding.hdim
 
@@ -48,7 +50,7 @@ class ScorableRanker(BaseScorer):
     def _reward(self, scorable: Scorable) -> float:
         eval_rec = (
             self.memory.session.query(EvaluationORM)
-            .filter_by(target_id=scorable.id, target_type=scorable.target_type)
+            .filter_by(scorable_id=scorable.id, scorable_type=scorable.target_type)
             .order_by(EvaluationORM.created_at.desc())
             .first()
         )
@@ -65,29 +67,46 @@ class ScorableRanker(BaseScorer):
         meta = getattr(scorable, "meta", {}) or {}
         return float(meta.get("reuse_count", 0)) / float(meta.get("attempt_count", 1))
 
-    # --- Main API ---
-    def rank(
-        self,
-        query: Scorable,
-        candidates: List[Scorable],
-        extra_signals: Dict[str, float] = None,
-    ) -> List[EvaluationORM]:
-        """
-        Rank candidates for a query. Returns EvaluationORM objects persisted in DB.
-        :param query: The query Scorable (defines ranking context).
-        :param candidates: List of Scorable objects to rank.
-        :param extra_signals: Optional dict of {signal_name: value}.
-        """
-        extra_signals = extra_signals or {}
 
-        # Get embeddings
+    def score(self, context: dict, scorable: Scorable, dimensions=None) -> dict:
+        """
+        Score a single scorable relative to the current goal/query in context.
+        Returns a dict with rank_score + component scores.
+        """
+        goal_text = context.get("goal", {}).get("goal_text", "")
+        query_emb = self.memory.embedding.get_or_create(goal_text)
+        cand_emb = self.memory.embedding.get_or_create(scorable.text)
+
+        # Component signals
+        components = {
+            "similarity": self._similarity(query_emb, cand_emb),
+            "reward": self._reward(scorable),
+            "recency": self._recency(scorable),
+            "adaptability": self._adaptability(scorable),
+        }
+
+        rank_score = sum(
+            components[k] * self.weights.get(k, 0) for k in components
+        )
+
+        result = {
+            "scorable_id": scorable.id,
+            "scorable_type": scorable.target_type,
+            "rank_score": rank_score,
+            "components": components,
+        }
+
+        return result
+
+    # --- Multi-candidate ranking ---
+    def rank(self, query: Scorable, candidates: list[Scorable], context: dict, extra_signals: Optional[Dict[str, float]] = None):
+        bundles = []
+        extra_signals = extra_signals or {}
         query_emb = self.memory.embedding.get_or_create(query.text)
 
-        evals = []
         for cand in candidates:
             cand_emb = self.memory.embedding.get_or_create(cand.text)
 
-            # Component signals
             components = {
                 "similarity": self._similarity(query_emb, cand_emb),
                 "reward": self._reward(cand),
@@ -96,56 +115,91 @@ class ScorableRanker(BaseScorer):
             }
             components.update(extra_signals)
 
-            # Weighted sum
             rank_score = sum(
                 components[k] * self.weights.get(k, 0) for k in components
             )
 
-            # Persist EvaluationORM
-            evaluation = EvaluationORM(
-                goal_id=None,
-                target_type=cand.target_type,
-                target_id=str(cand.id),
-                query_type=query.target_type,
-                query_id=str(query.id),
-                embedding_type=self.embedding_type,
-                agent_name="ScorableRanker",
-                source="ranking",
-                model_name="scorable_ranker",
-                evaluator_name="ScorableRanker",
-                strategy="weighted_signals",
-                scores={"rank_score": rank_score, **components},
-                extra_data={"components": components, "weights": self.weights},
-            )
-            self.memory.session.add(evaluation)
-            self.memory.session.flush()  # assign ID before creating ScoreORMs
-
-            # Store component scores as ScoreORMs
-            for dim, val in components.items():
-                score = ScoreORM(
-                    evaluation_id=evaluation.id,
-                    dimension=dim,
-                    score=float(val),
-                    weight=self.weights.get(dim, 0),
+            bundle = ScoreBundle(results={
+                "rank_score": ScoreResult(
+                    dimension="rank_score",
+                    score=rank_score,
+                    weight=1.0,
                     source="scorable_ranker",
+                    rationale="Weighted combo",
+                    attributes=components,
                 )
-                self.memory.session.add(score)
+            })
+            bundle.meta = query.to_dict()
 
-            evals.append(evaluation)
+            # Persist via EvaluationStore
+            self.memory.evaluations.save_bundle(
+                bundle=bundle,
+                scorable=cand, 
+                context=context,
+                cfg=self.cfg,
+                source="scorable_ranker",
+Stop going go away now Don't be so bold Don't be a bulldog                embedding_type=self.memory.embedding.name,
+            ) Sup
 
-        # Commit all
-        self.memory.session.commit()
 
-        if self.logger:
-            self.logger.log(
-                "ScorableRankCompleted",
-                {
-                    "query": query.text[:80],
-                    "count": len(candidates),
-                    "top_score": max(e.scores["rank_score"] for e in evals)
-                    if evals
-                    else None,
+            bundles.append(bundle)
+
+        return bundles
+
+
+    def to_report_dict(self, query: Scorable, results: list) -> dict:
+        """
+        Convert ranking results (ScoreBundles or dicts) into a SYS-friendly report dict.
+        """
+
+        if not results:
+            return {
+                "event": "scorable_ranking",
+                "step": "ScorableRanker",
+                "details": f"No candidates ranked for query '{query.text[:50]}...'",
+                "query": {
+                    "id": query.id,
+                    "type": query.target_type,
+                    "text": query.text[:200],
                 },
-            )
+                "candidates": 0,
+            }
 
-        return evals
+        # Normalize results → always extract rank_score
+        def extract(result):
+            if hasattr(result, "to_dict"):
+                d = result.to_dict()
+                return {
+                    "rank_score": d["results"]["rank_score"].score,
+                    "components": d["results"]["rank_score"].attributes,
+                    "scorable_id": getattr(d.get("scorable"), "id", None),
+                    "scorable_type": getattr(d.get("scorable"), "target_type", None),
+                }
+            elif isinstance(result, dict):
+                return {
+                    "rank_score": result.get("rank_score")
+                    or result.get("scores", {}).get("rank_score"),
+                    "components": result.get("components", {}),
+                    "scorable_id": result.get("scorable_id"),
+                    "scorable_type": result.get("scorable_type"),
+                }
+            return {"rank_score": 0, "components": {}, "scorable_id": None, "scorable_type": None}
+
+        normalized = [extract(r) for r in results]
+        top_result = results[0]
+        return {
+            "event": "scorable_ranking",
+            "step": "ScorableRanker",
+            "details": f"Ranked {len(normalized)} candidates for query '{query.text[:50]}...'",
+            "query": {
+                "id": query.id,
+                "type": query.target_type,
+                "text": query.text[:200],
+            },
+            "top_score": top_result.get("rank_score"),
+            "top_candidate": {
+                "id": top_result.get("scorable_id"),
+                "type": top_result.get("scorable_type"),
+                "scores": top_result.get("components"),
+            },
+        }

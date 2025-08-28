@@ -14,7 +14,7 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         self.memory = memory
         self.logger = logger
 
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dim = self.memory.embedding.dim
         self.hdim = self.memory.embedding.hdim
 
@@ -51,5 +51,5 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         raise NotImplementedError("Subclasses must implement score()")
 
     def log_event(self, event: str, data: dict):
-        if self.logger:
-            self.logger.log(event, data)
+        self.logger.log(event, data)
+

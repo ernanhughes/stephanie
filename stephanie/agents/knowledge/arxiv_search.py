@@ -62,10 +62,14 @@ class ArxivSearchAgent(BaseAgent):
             )
             context["raw_arxiv_results"] = results
 
+            len_results = 0
+            if results:
+                len_results = len(results)
+
             self.report({
                 "event": "search_complete",
                 "step": "ArxivSearch",
-                "details": f"Fetched {len(results)} papers",
+                "details": f"Fetched {len_results} papers",
                 "sample_titles": [r['title'] for r in results[:3]],  # just first 3
             })
         except Exception as e:
@@ -141,43 +145,118 @@ class ArxivSearchAgent(BaseAgent):
 
         return " AND ".join(filters)
 
+
     def fetch_arxiv_results(
         self, context: dict, query: str, max_results: int = 50
     ) -> list[dict]:
-        search = arxiv.Search(
-            query=query,
-            max_results=max_results,
-            sort_by=arxiv.SortCriterion.Relevance,
-            sort_order=arxiv.SortOrder.Descending,
-        )
-
-        results = []
+        """
+        Fetch papers from arXiv matching the query. 
+        Handles transient empty page errors, malformed results, and missing fields.
+        Always returns a list (possibly empty).
+        """
+        results: list[dict] = []
         goal = context.get("goal", {})
         goal_id = goal.get("id", "")
         parent_goal = goal.get("goal_text")
         strategy = goal.get("strategy")
         focus_area = goal.get("focus_area")
 
-        for result in search.results():
-            arxiv_url = result.entry_id
-            pid = arxiv_url.split("/")[-1]
-            results.append(
-                {
-                    "query": query,
-                    "source": self.name,
-                    "result_type": "paper",
-                    "title": result.title.strip(),
-                    "summary": result.summary.strip(),
-                    "url": f"https://arxiv.org/pdf/{pid}.pdf",
-                    "goal_id": goal_id,
-                    "parent_goal": parent_goal,
-                    "strategy": strategy,
-                    "focus_area": focus_area,
-                    "authors": [a.name for a in result.authors],
-                    "published": result.published.isoformat(),
-                    "pid": pid,
-                    "primary_category": result.primary_category,
-                }
+        # Clamp to safe max_results
+        max_results = min(max_results or self.max_results, 100)
+
+        try:
+            search = arxiv.Search(
+                query=query,
+                max_results=max_results,
+                sort_by=arxiv.SortCriterion.Relevance,
+                sort_order=arxiv.SortOrder.Descending,
+            )
+
+            # --- Retry loop for transient arxiv errors ---
+            for attempt in range(3):
+                try:
+                    for result in search.results():
+                        try:
+                            arxiv_url = getattr(result, "entry_id", "") or ""
+                            pid = arxiv_url.split("/")[-1] if "/" in arxiv_url else None
+                            if not pid:
+                                continue  # skip malformed
+
+                            # Safe extraction of fields
+                            title = (getattr(result, "title", "") or "Unknown").strip()
+                            summary = (getattr(result, "summary", "") or "").strip()
+                            published = getattr(result, "published", None)
+                            published_str = (
+                                published.isoformat() if published else ""
+                            )
+                            authors = [
+                                a.name for a in getattr(result, "authors", []) or []
+                            ]
+                            primary_category = getattr(
+                                result, "primary_category", "unknown"
+                            )
+
+                            results.append(
+                                {
+                                    "query": query,
+                                    "source": self.name,
+                                    "result_type": "paper",
+                                    "title": title,
+                                    "summary": summary,
+                                    "url": f"https://arxiv.org/pdf/{pid}.pdf",
+                                    "goal_id": goal_id,
+                                    "parent_goal": parent_goal,
+                                    "strategy": strategy,
+                                    "focus_area": focus_area,
+                                    "authors": authors,
+                                    "published": published_str,
+                                    "pid": pid,
+                                    "primary_category": primary_category,
+                                }
+                            )
+                        except Exception as parse_err:
+                            self.logger.log(
+                                "ArxivResultParseError",
+                                {
+                                    "error": str(parse_err),
+                                    "entry_id": getattr(result, "entry_id", "unknown"),
+                                },
+                            )
+                            continue  # skip this one, continue loop
+
+                    # ✅ Success: break retry loop
+                    break  
+
+                except arxiv.UnexpectedEmptyPageError as e:
+                    self.logger.log(
+                        "ArxivEmptyPageRetry",
+                        {"query": query, "attempt": attempt + 1, "error": str(e)},
+                    )
+                    if attempt < 2:
+                        import time
+                        time.sleep(2 ** attempt)  # exponential backoff
+                        continue
+                    else:
+                        # Fail after retries
+                        return []
+
+        except Exception as e:
+            self.logger.log(
+                "ArxivSearchFailed",
+                {"query": query, "error": str(e)},
+            )
+            return []
+
+        # --- Final reporting ---
+        if not results:
+            self.logger.log(
+                "ArxivNoResults",
+                {"query": query, "goal_id": goal_id, "parent_goal": parent_goal},
+            )
+        else:
+            self.logger.log(
+                "ArxivResultsFetched",
+                {"query": query, "count": len(results), "first_title": results[0]["title"]},
             )
 
         return results

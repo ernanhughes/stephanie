@@ -163,7 +163,7 @@ class Supervisor:
             "tag": self.cfg.get("pipeline", {}).get("tag", "default"),
             "description": self.cfg.get("pipeline", {}).get("description", ""),
             "goal_id": goal_dict.get("id"),
-            "embedding_type": self.memory.embedding.type,
+            "embedding_type": self.memory.embedding.name,
             "embedding_dimensions": self.memory.embedding.dim,
             "run_id": run_id,
             "pipeline": pipeline_list,  # Should be list of strings like ["generation", "judge"]

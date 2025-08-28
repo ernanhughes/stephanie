@@ -131,8 +131,8 @@ class CartridgeAgent(BaseAgent):
                     if embedding_id:
                         # Guarantee row exists in document_embeddings
                         doc_embedding_id = self.memory.scorable_embeddings.get_or_create(
-                            document_id=str(doc.get("id")),
-                            document_type="document",
+                            scorable_id=str(doc.get("id")),
+                            scorable_type="document",
                             embedding_id=embedding_id,
                             embedding_type=self.memory.embedding.name,
                         )
@@ -192,7 +192,7 @@ class CartridgeAgent(BaseAgent):
                     self.memory.session.commit()
 
                     # Create embedding in document_embeddings (doc_id = theorem.id, type = "theorem")
-                    embedding_vector=self.memory.embedding.get_or_create(theorem.statement)
+                    self.memory.embedding.get_or_create(theorem.statement)
                     embedding_id = self.memory.embedding.get_id_for_text(theorem.statement)
                     doc_embedding_id = self.memory.scorable_embeddings.get_or_create(
                         document_id=theorem.id,

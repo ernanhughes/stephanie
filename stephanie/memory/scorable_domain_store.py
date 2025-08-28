@@ -39,7 +39,7 @@ class ScorableDomainStore:
         inserted_id = result.scalar()
         self.session.commit()
 
-        if inserted_id and self.logger:
+        if inserted_id:
             self.logger.log("DomainUpserted", data)
 
         return (

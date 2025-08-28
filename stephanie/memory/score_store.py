@@ -126,8 +126,8 @@ class ScoreStore:
                 self.session.query(ScoreORM)
                 .join(EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id)
                 .options(joinedload(ScoreORM.evaluation))
-                .filter(EvaluationORM.target_id == str(target_id))
-                .filter(EvaluationORM.target_type == target_type)
+                .filter(EvaluationORM.sccorable_id == str(target_id))
+                .filter(EvaluationORM.scorable_type == target_type)
             )
 
             if dimensions:

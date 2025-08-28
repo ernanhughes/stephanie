@@ -185,8 +185,8 @@ class PolicyAnalyzer:
             "score": score.score,
             "dimension": score.dimension,
             "source": eval_obj.source,
-            "target_type": eval_obj.target_type,
-            "target_id": eval_obj.target_id,
+            "target_type": eval_obj.scorable_type,
+            "target_id": eval_obj.sccorable_id,
         }
 
     def _analyze_policy_patterns(self, sicql_data: List[Dict]) -> Dict[str, Any]:
