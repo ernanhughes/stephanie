@@ -2,6 +2,11 @@
 {% block content %}
 <h1>{{ title }}</h1>
 
+<a href="/documents/{{ document.id }}/profile" class="btn btn-outline-primary">
+  🧩 View Profile
+</a>
+
+
 <p><strong>ID:</strong> {{ document.id }}</p>
 <p><strong>Title:</strong> {{ document.title }}</p>
 <p><strong>Summary:</strong> {{ document.summary }}</p>

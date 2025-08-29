@@ -43,20 +43,20 @@ embeddings:
 #     - "revised_plan"
 #     - "retained_cartridge"
 
-goal:
-  goal_text: >
-    Explore how Case-Based Reasoning (CBR) can accelerate scientific
-    discovery by reusing past reasoning traces to solve novel problems
-    across multiple domains.
-  goal_type: "strategic"
-  goal_category: "meta_reasoning"
-  focus_area: "cross_domain_adaptation"
-  strategy: "retrieve_reuse_revise_retain"
-  difficulty: "high"
-  expected_formats:
-    - "case_trace"
-    - "adapted_plan"
-    - "cross_domain_comparison"
+# goal:
+#   goal_text: >
+#     Explore how Case-Based Reasoning (CBR) can accelerate scientific
+#     discovery by reusing past reasoning traces to solve novel problems
+#     across multiple domains.
+#   goal_type: "strategic"
+#   goal_category: "meta_reasoning"
+#   focus_area: "cross_domain_adaptation"
+#   strategy: "retrieve_reuse_revise_retain"
+#   difficulty: "high"
+#   expected_formats:
+#     - "case_trace"
+#     - "adapted_plan"
+#     - "cross_domain_comparison"
 
 # goal:
 #   goal_text: >
@@ -73,19 +73,19 @@ goal:
 #     - "trace_evolution_report"
 
 
-# goal:
-#   goal_text: >
-#     Test retention policies in CBR by comparing outcomes when keeping all
-#     traces, keeping only the top-K traces, or discarding failed ones.
-#   goal_type: "experimental"
-#   goal_category: "system_behavior"
-#   focus_area: "retention_policy"
-#   strategy: "keep_all_vs_prune"
-#   difficulty: "medium"
-#   expected_formats:
-#     - "case_trace_set"
-#     - "policy_comparison"
-#     - "retention_report"
+goal:
+  goal_text: >
+    Test retention policies in CBR by comparing outcomes when keeping all
+    traces, keeping only the top-K traces, or discarding failed ones.
+  goal_type: "experimental"
+  goal_category: "system_behavior"
+  focus_area: "retention_policy"
+  strategy: "keep_all_vs_prune"
+  difficulty: "medium"
+  expected_formats:
+    - "case_trace_set"
+    - "policy_comparison"
+    - "retention_report"
 
 # goal:
 #   goal_text: >

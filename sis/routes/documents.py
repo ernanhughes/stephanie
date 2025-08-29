@@ -71,3 +71,41 @@ def document_detail(request: Request, doc_id: int):
             "embedding": emb,
         },
     )
+
+
+@router.get("/documents/{doc_id}/profile", response_class=HTMLResponse)
+def document_profile(doc_id: int, request: Request):
+    """
+    Show structured sections of a document (profiled by DocumentProfilerAgent).
+    """
+    memory = request.app.state.memory
+    templates = request.app.state.templates
+
+    logger.info(f"[SIS] Fetching document profile: {doc_id}")
+
+    doc = memory.documents.get_by_id(doc_id)
+    if not doc:
+        return templates.TemplateResponse(
+            "errors/not_found.html",
+            {"request": request, "title": "Document Not Found", "id": doc_id},
+            status_code=404,
+        )
+
+    # Fetch profiled sections
+    sections = memory.document_sections.get_by_document(doc_id)
+    sections = [
+        {
+            **s.to_dict(),
+            "domains": [d.domain if hasattr(d, "domain") else d["domain"] for d in s.domains] if s.domains else []
+        }
+        for s in sections
+    ]
+
+    return templates.TemplateResponse(
+        "documents/profile.html",
+        {
+            "request": request,
+            "document": doc,
+            "sections": sections,
+        },
+    )

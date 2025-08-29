@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ document.title }}</h1>
+<p><strong>Summary:</strong> {{ document.summary }}</p>
+<p><a href="{{ document.url }}" target="_blank">🔗 Source</a></p>
+
+<!-- Domains summary across top -->
+{% if document.domains %}
+<div class="mb-3">
+  <span class="badge bg-primary me-1">Domains:</span>
+  {% for d in document.domains %}
+    <span class="badge bg-secondary">{{ d }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Tabs -->
+<ul class="nav nav-tabs" id="docTab" role="tablist">
+  {% for section in sections %}
+    <li class="nav-item" role="presentation">
+      <button class="nav-link {% if loop.first %}active{% endif %}" 
+              id="tab-{{ section.id }}" 
+              data-bs-toggle="tab" 
+              data-bs-target="#section-{{ section.id }}" 
+              type="button" 
+              role="tab">
+        {{ section.section_name }}
+      </button>
+    </li>
+  {% endfor %}
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content mt-3" id="docTabContent">
+  {% for section in sections %}
+  <div class="tab-pane fade {% if loop.first %}show active{% endif %}" 
+       id="section-{{ section.id }}" 
+       role="tabpanel">
+    <h5>{{ section.section_name }}</h5>
+    
+    {% if section.domains %}
+      <p>
+        {% for d in section.domains %}
+          <span class="badge bg-info text-dark">{{ d }}</span>
+        {% endfor %}
+      </p>
+    {% endif %}
+    
+    {% if section.summary %}
+      <p><strong>Summary:</strong> {{ section.summary }}</p>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-body">
+        <pre style="white-space: pre-wrap;">{{ section.section_text }}</pre>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

@@ -8,14 +8,13 @@ from stephanie.models.base import Base
 class DocumentSectionDomainORM(Base):
     __tablename__ = "document_section_domains"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     document_section_id = Column(
         Integer, ForeignKey("document_sections.id", ondelete="CASCADE"), nullable=False
     )
     domain = Column(String, nullable=False)
     score = Column(Float, nullable=False)
 
-    # Correct relationship name and back_populates link
     document_section = relationship("DocumentSectionORM", back_populates="domains")
 
     def to_dict(self):
