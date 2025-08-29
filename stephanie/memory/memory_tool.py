@@ -86,7 +86,7 @@ class MemoryTool:
         self.register_store(hf)
 
         # Choose embedding backend based on config
-        selected_backend = embedding_cfg.get("backend", "mxbai")
+        selected_backend = embedding_cfg.get("backend", "hnet")
         if selected_backend == "hnet":
             self.embedding = hnet
         elif selected_backend == "huggingface":

@@ -1,3 +1,4 @@
+from typing import List
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -105,3 +106,13 @@ class ScorableDomainStore:
             .first()
         )
         return exists is not None
+
+
+    def get_by_scorable(self, scorable_id: str, scorable_type: str) -> List[ScorableDomainORM]:
+        """
+        Check if the given scorable has any domain classifications.
+        """
+        result = self.session.query(ScorableDomainORM) \
+            .filter_by(scorable_id=scorable_id, scorable_type=scorable_type).all()
+        self.logger.log("FetchedScorableDomain", {"scorable_id": scorable_id, "scorable_type": scorable_type, "result": result})
+        return result

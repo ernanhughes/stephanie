@@ -389,6 +389,7 @@ MODELS = {
 # ETHICS & REVIEWS
 # =============
 SPECIAL = {
+    "FetchedScorableDomain": "📄🔍",  # Fetched scorable domain
     "ScorableEmbeddingInserted": "📄✅",  # Document embedding inserted
     "ScorableEmbeddingBackfilled": "📄🔄",  # Document embedding backfilled
     "ContextSavedToFile": "📄💾",  # Context saved to file

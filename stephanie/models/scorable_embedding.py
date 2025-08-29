@@ -1,4 +1,3 @@
-# stephanie/models/scorable_embedding.py
 from datetime import datetime
 from sqlalchemy import Column, DateTime, Integer, String, Index
 from stephanie.models.base import Base
@@ -28,3 +27,14 @@ class ScorableEmbeddingORM(Base):
             f"<ScorableEmbeddingORM(scorable={self.scorable_type}:{self.scorable_id}, "
             f"emb={self.embedding_type}:{self.embedding_id})>"
         )
+
+    def to_dict(self) -> dict:
+        """Serialize the ORM object into a dictionary."""
+        return {
+            "id": self.id,
+            "scorable_id": self.scorable_id,
+            "scorable_type": self.scorable_type,
+            "embedding_id": self.embedding_id,
+            "embedding_type": self.embedding_type,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
