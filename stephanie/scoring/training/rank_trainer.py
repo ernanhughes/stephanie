@@ -13,7 +13,7 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 
 class ContrastiveRankerTrainer(BaseTrainer):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.embedding_type = self.memory.embedding.name
         self.dim = self.memory.embedding.dim

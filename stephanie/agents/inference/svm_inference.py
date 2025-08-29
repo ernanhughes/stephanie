@@ -17,7 +17,7 @@ from stephanie.utils.model_locator import ModelLocator
 
 
 class SVMInferenceAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_path = cfg.get("model_path", "models")
         self.model_type = cfg.get("model_type", "svm")

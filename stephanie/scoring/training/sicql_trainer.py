@@ -25,7 +25,7 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 class SICQLTrainer(BaseTrainer):
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.cfg = cfg
         self.memory = memory

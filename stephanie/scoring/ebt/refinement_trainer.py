@@ -78,7 +78,7 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
     Trainer for EBT models using refinement examples
     Trains EBT to assign lower energy to refined documents
     """
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         """
         Args:
             cfg: Configuration dict with:

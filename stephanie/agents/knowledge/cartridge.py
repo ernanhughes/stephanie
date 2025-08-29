@@ -18,7 +18,7 @@ from stephanie.scoring.svm_scorer import SVMScorer
 
 
 class CartridgeAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None, full_cfg=None):
+    def __init__(self, cfg, memory, logger, full_cfg=None):
         super().__init__(cfg, memory, logger)
 
         self.input_key = cfg.get("input_key", "documents")

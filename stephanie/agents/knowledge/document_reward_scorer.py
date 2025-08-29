@@ -30,7 +30,7 @@ class DocumentRewardScorerAgent(BaseAgent):
     to evaluate consistency across scoring models using the tensor-based architecture.
     """
     
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", ["helpfulness", "truthfulness", "reasoning_quality"])
         self.include_mars = cfg.get("include_mars", True)
@@ -47,7 +47,7 @@ class DocumentRewardScorerAgent(BaseAgent):
         
         # Initialize MARS calculator with dimension-specific configurations
         dimension_config = cfg.get("dimension_config", {})
-        self.mars_calculator = MARSCalculator(dimension_config, self.logger)
+        self.mars_calculator = MARSCalculator(dimension_config, self.memory, self.logger)
         
         self.logger.log("DocumentRewardScorerInitialized", {
             "dimensions": self.dimensions,
@@ -152,7 +152,7 @@ class DocumentRewardScorerAgent(BaseAgent):
         # Run MARS analysis if requested
         mars_results = {}
         if self.include_mars and all_bundles:
-            mars_results = self.mars_calculator.calculate(corpus)
+            mars_results = self.mars_calculator.calculate(corpus, context=context)
             context["mars_analysis"] = {
                 "summary": mars_results,
                 "recommendations": self.mars_calculator.generate_recommendations(mars_results)

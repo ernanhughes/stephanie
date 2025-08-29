@@ -12,7 +12,7 @@ class RankingAgent(BaseAgent):
     The Ranking agent simulates scientific debate between hypotheses using a tournament-style approach.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.elo_scores = {}
         self.strategy = cfg.get("strategy", "debate")

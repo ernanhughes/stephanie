@@ -7,7 +7,7 @@ from stephanie.utils.token_counter import TokenCounter
 
 
 class FinalAssemblerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.token_limit = cfg.get("token_limit", 2048)
         self.scorer = MRQScorer(cfg, memory, logger)

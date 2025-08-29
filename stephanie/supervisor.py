@@ -36,9 +36,8 @@ class PipelineStage:
         self.iterations = config.get("iterations", 1)
         self.stage_dict = stage_dict
 
-
 class Supervisor:
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         self.memory = memory or MemoryTool(cfg=cfg.db, logger=logger)
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)

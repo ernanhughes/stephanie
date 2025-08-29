@@ -17,7 +17,7 @@ class ProximityAgent(ScoringMixin, BaseAgent):
       - clusters of related hypotheses (graft candidates)
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.similarity_threshold = cfg.get("similarity_threshold", 0.75)
         self.max_graft_candidates = cfg.get("max_graft_candidates", 3)

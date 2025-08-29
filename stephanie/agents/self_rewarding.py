@@ -29,7 +29,7 @@ class SelfRewardingAgent(BaseAgent):
     and optionally updates symbolic rules or training data.
     """
 
-    def __init__(self, cfg: SelfRewardingConfig, memory=None, logger=None):
+    def __init__(self, cfg: SelfRewardingConfig, memory, logger):
         super().__init__(cfg, memory, logger)
         self.cfg = cfg
         self.prompt_loader = PromptLoader(cfg.get("prompt_dir", "prompts"))

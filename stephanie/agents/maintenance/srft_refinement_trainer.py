@@ -17,7 +17,7 @@ from stephanie.utils.model_locator import ModelLocator
 
 
 class SRFTRefinementTrainer(BaseAgent, EBTMixin):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         BaseAgent.__init__(self, cfg, memory, logger)
         EBTMixin.__init__(self, cfg.get("ebt", {}))
 

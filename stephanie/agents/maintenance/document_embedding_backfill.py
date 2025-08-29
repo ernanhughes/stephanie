@@ -16,7 +16,7 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
         "hypothesis": HypothesisORM,
     }
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.document_type = cfg.get("document_type", "document")
         self.embed_full_document = cfg.get("embed_full_document", True)

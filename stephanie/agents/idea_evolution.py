@@ -22,7 +22,7 @@ class IdeaEvolutionAgent(BaseAgent):
     "NOVELSEEK: When Agent Becomes the Scientist – Building Closed-Loop System from Hypothesis to Verification"
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.use_grafting = cfg.get("use_grafting", False)
         self.max_variants_per_idea = cfg.get("max_variants", 3)

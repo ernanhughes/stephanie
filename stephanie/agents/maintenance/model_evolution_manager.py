@@ -9,7 +9,7 @@ from stephanie.scoring.ebt.refinement_trainer import EBTRefinementTrainer
 
 
 class ModelEvolutionManager(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_dir = cfg.get("model_dir", "models")
         self.min_improvement = cfg.get(

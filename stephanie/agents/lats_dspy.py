@@ -190,7 +190,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
     - DSPy optimization
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.max_depth = cfg.get("max_depth", 5)
         self.branching_factor = cfg.get("branching_factor", 3)

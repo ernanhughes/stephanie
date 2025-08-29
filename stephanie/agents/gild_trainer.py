@@ -20,7 +20,7 @@ from stephanie.scoring.sicql_scorer import SICQLScorer
 
 
 class GILDTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.beta = cfg.get("beta", 1.0)  # Temperature for advantage weighting
         self.learning_rate = cfg.get("learning_rate", 1e-4)

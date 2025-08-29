@@ -16,7 +16,7 @@ SCORER_REGISTRY = {
 }
 
 
-def get_scorer(scorer_type: str, cfg: dict, memory=None, logger=None):
+def get_scorer(scorer_type: str, cfg: dict, memory, logger):
     """
     Factory function to get a scorer instance by type.
 

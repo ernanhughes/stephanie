@@ -8,7 +8,7 @@ from stephanie.models import SymbolicRuleORM
 
 
 class AutoTunerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.eval_threshold = cfg.get("eval_threshold", 50)
         self.max_rules = cfg.get("max_rules_to_consider", 10)

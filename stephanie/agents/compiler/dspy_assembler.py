@@ -39,7 +39,7 @@ class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
     DSPyAssembler uses DSPy to merge and refine multiple prompt variants into one optimal prompt.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.scorer = MRQScorer(cfg, memory, logger)
         self.scorer.load_models()

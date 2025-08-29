@@ -4,7 +4,7 @@ from stephanie.core.knowledge_cartridge import KnowledgeCartridge
 
 
 class CartridgeScorer:
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         self.memory = memory
         self.logger = logger
         self.cfg = cfg

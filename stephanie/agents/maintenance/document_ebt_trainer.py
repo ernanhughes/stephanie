@@ -45,7 +45,7 @@ class DocumentEBTDataset(Dataset):
 
 
 class DocumentEBTTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         """
         Unified EBT trainer with versioning and evolution management
         

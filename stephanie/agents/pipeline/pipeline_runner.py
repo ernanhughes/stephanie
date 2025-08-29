@@ -4,7 +4,7 @@ from stephanie.utils.pipeline_runner import PipelineRunner
 
 
 class PipelineRunnerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None, full_cfg=None):
+    def __init__(self, cfg, memory, logger, full_cfg=None):
         super().__init__(cfg, memory, logger)
         self.full_cfg = full_cfg
         self.runner = PipelineRunner(full_cfg, memory=memory, logger=logger)

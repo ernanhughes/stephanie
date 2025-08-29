@@ -16,7 +16,7 @@ class GILDSelectorAgent(BaseAgent):
     Ingests precomputed efficiency scores from CostBenefitAnalyzerAgent.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger or logging.getLogger(__name__))
 
         self.strategy = cfg.get("selection_strategy", "greedy")  

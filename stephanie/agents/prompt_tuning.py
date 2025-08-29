@@ -60,7 +60,7 @@ class DSPyEvaluator(BaseEvaluator):
 
 # Main agent class responsible for training and tuning prompts using DSPy
 class PromptTuningAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.agent_name = cfg.get("name", "prompt_tuning")
         self.prompt_key = cfg.get("prompt_key", "default")

@@ -3,7 +3,7 @@ from stephanie.agents import DOTSPlannerAgent, LookaheadAgent
 
 
 class PipelinePlannerAgent:
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

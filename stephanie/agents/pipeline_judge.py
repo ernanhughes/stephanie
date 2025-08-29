@@ -14,7 +14,7 @@ from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
 class PipelineJudgeAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.print_results = cfg.get("print_results", True)
 

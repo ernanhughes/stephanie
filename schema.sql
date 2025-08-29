@@ -1310,4 +1310,36 @@ CREATE INDEX idx_scorable_ranks_query_text ON scorable_ranks (query_text);
 CREATE INDEX idx_scorable_ranks_scorable ON scorable_ranks (scorable_id, scorable_type);
 
 
+-- 🚀 Create table: mars_results
+CREATE TABLE mars_results (
+    id SERIAL PRIMARY KEY,
+
+    -- Links
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+    plan_trace_id VARCHAR REFERENCES plan_traces(trace_id) ON DELETE CASCADE,
+
+    -- Core analysis
+    dimension VARCHAR NOT NULL,
+    agreement_score DOUBLE PRECISION NOT NULL,
+    std_dev DOUBLE PRECISION NOT NULL,
+    preferred_model VARCHAR,
+    primary_conflict JSONB,
+    delta DOUBLE PRECISION,
+
+    high_disagreement BOOLEAN NOT NULL DEFAULT FALSE,
+    explanation TEXT,
+
+    -- Extended metrics
+    scorer_metrics JSONB,
+    metric_correlations JSONB,
+
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
+);
+
+-- 🚦 Indexes for quick lookup
+CREATE INDEX idx_mars_results_plan_trace ON mars_results(plan_trace_id);
+CREATE INDEX idx_mars_results_pipeline_run ON mars_results(pipeline_run_id);
+CREATE INDEX idx_mars_results_dimension ON mars_results(dimension);
+
+
 COMMIT; 

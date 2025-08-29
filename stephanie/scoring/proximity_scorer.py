@@ -43,7 +43,7 @@ class ProximityScorer:
     Uses multiple similarity/distance metrics as dimensions.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

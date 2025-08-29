@@ -7,7 +7,7 @@ from stephanie.constants import GOAL
 
 
 class KnowledgeLoaderAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.domain_seeds = cfg.get("domain_seeds", {})
         self.top_k = cfg.get("top_k", 3)

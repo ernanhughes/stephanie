@@ -16,7 +16,7 @@ from stephanie.agents.knowledge import KnowledgeRetriever
 from stephanie.agents.knowledge.arxiv_search import ArxivSearchAgent
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 # Import reasoning components
-from stephanie.agents.reasoning import ReasoningAgent
+from stephanie.agents.icl_reasoning import ICLReasoningAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
@@ -27,7 +27,7 @@ from stephanie.utils.serialization import to_serializable
 class HNetValidationExperiment(BaseAgent):
     """Comprehensive validation of HNet and PlanTrace system in one end-to-end experiment"""
     
-    def __init__(self, cfg=None, memory=None, logger=None):
+    def __init__(self, cfg=None, memory, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
@@ -35,8 +35,8 @@ class HNetValidationExperiment(BaseAgent):
         # Initialize core components
         self.plan_trace_monitor = PlanTraceMonitor(self.cfg, self.memory, self.logger)
         self.plan_trace_scorer = PlanTraceScorerAgent(self.cfg, self.memory, self.logger)
-        self.mars_calculator = MARSCalculator(self.cfg, self.logger)
-        
+        self.mars_calculator = MARSCalculator(self.cfg, self.memory, self.logger)
+        self.num_papers = cfg.get("num_papers", 100)
         # Initialize embedding approaches
         self.embedding_approaches = {
             "ollama_summary": {
@@ -66,7 +66,7 @@ class HNetValidationExperiment(BaseAgent):
         }
         
         # Initialize reasoning agent
-        self.reasoning_agent = ReasoningAgent(self.cfg, self.memory, self.logger)
+        self.reasoning_agent = ICLReasoningAgent(self.cfg, self.memory, self.logger)
         self.knowledge_retriever = KnowledgeRetriever(self.cfg, self.memory, self.logger)
         
         # Results storage
@@ -112,16 +112,16 @@ class HNetValidationExperiment(BaseAgent):
 
 
 
-    def run(self, num_papers=100):
+    def run(self, context):
         """Run the complete HNet validation experiment"""
         try:
             self.logger.log("ExperimentStart", {
                 "message": "Starting HNet validation experiment",
-                "num_papers": num_papers
+                "num_papers": self.num_papers
             })
             
             # 1. Load arXiv papers (100 papers on self-improving AI)
-            papers = self._load_arxiv_papers(num_papers)
+            papers = self._load_arxiv_papers(self.num_papers)
             self.logger.log("PapersLoaded", {
                 "count": len(papers),
                 "sample_titles": [p["title"][:50] + "..." for p in papers[:3]]
@@ -137,8 +137,8 @@ class HNetValidationExperiment(BaseAgent):
             scored_traces = self._score_traces(all_traces)
             
             # 4. Analyze results with ScoreCorpus and MARS
-            self._analyze_results(scored_traces)
-            
+            self._analyze_results(scored_traces, context)
+
             # 5. Demonstrate self-improvement by applying insights
             self._demonstrate_self_improvement(papers)
             
@@ -396,8 +396,8 @@ class HNetValidationExperiment(BaseAgent):
                 "error": str(e)
             })
             raise
-    
-    def _analyze_results(self, traces: List[PlanTrace]):
+
+    def _analyze_results(self, traces: List[PlanTrace], context: dict):
         """Analyze results using ScoreCorpus and MARS"""
         self.logger.log("AnalysisStart", {
             "message": "Starting results analysis"
@@ -410,8 +410,8 @@ class HNetValidationExperiment(BaseAgent):
                 corpus.add_trace(trace)
             
             # Run MARS analysis
-            mars_results = self.mars_calculator.calculate(corpus)
-            
+            mars_results = self.mars_calculator.calculate(corpus, context)
+
             # Analyze by approach
             approach_results = {}
             for approach in self.embedding_approaches.keys():

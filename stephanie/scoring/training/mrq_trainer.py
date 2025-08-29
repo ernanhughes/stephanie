@@ -14,7 +14,7 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 
 class MRQTrainer(BaseTrainer):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
         self.early_stopping_patience = cfg.get("patience", 3)

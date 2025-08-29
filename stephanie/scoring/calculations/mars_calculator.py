@@ -28,7 +28,7 @@ class MARSCalculator(BaseScoreCalculator):
     to detect reliability patterns rather than just computing an average score.
     """
 
-    def __init__(self, config: Dict = None, logger=None):
+    def __init__(self, cfg, memory, logger):
         """
         Initialize MARS calculator with configuration
 
@@ -39,19 +39,20 @@ class MARSCalculator(BaseScoreCalculator):
                 - dimensions: Dimension-specific configurations
                 - metrics: Which metrics to analyze (default: ["score"] for core score)
         """
-        self.config = config or {}
+        self.cfg = cfg
+        self.memory = memory
         self.logger = logger
-        self.trust_reference = self.config.get("trust_reference", "llm")
-        self.variance_threshold = self.config.get("variance_threshold", 0.15)
-        self.metrics = self.config.get(
+        self.trust_reference = self.cfg.get("trust_reference", "llm")
+        self.variance_threshold = self.cfg.get("variance_threshold", 0.15)
+        self.metrics = self.cfg.get(
             "metrics", ["score"]
         )  # Core score by default
-        self.dimension_configs = self.config.get("dimensions", {})
+        self.dimension_configs = self.cfg.get("dimensions", {})
 
         # Configure logging options
-        self.log_enabled = self.config.get("log_enabled", True)
-        self.log_path = self.config.get("log_path", "reports")
-        self.include_full_data = self.config.get("include_full_data", True)
+        self.log_enabled = self.cfg.get("log_enabled", True)
+        self.log_path = self.cfg.get("log_path", "reports")
+        self.include_full_data = self.cfg.get("include_full_data", True)
 
         if self.log_enabled and self.logger:
             self.logger.log("MARSLoggerConfigured", {
@@ -116,7 +117,7 @@ class MARSCalculator(BaseScoreCalculator):
                 })
 
 
-    def calculate(self, corpus: "ScoreCorpus") -> Dict[str, Any]:
+    def calculate(self, corpus: "ScoreCorpus", context: dict) -> Dict[str, Any]:
         """
         Calculate MARS metrics across all scoring models in the corpus
 
@@ -126,15 +127,20 @@ class MARSCalculator(BaseScoreCalculator):
         Returns:
             Dictionary containing comprehensive MARS analysis metrics
         """
-        # Calculate MARS metrics for each dimension
         mars_results = {}
         for dimension in corpus.dimensions:
-            mars_results[dimension] = self._calculate_dimension_mars(
-                corpus, dimension
-            )
+            result = self._calculate_dimension_mars(corpus, dimension)
+            mars_results[dimension] = result
 
-        if self.log_enabled:
-            self._write_json_report(mars_results, corpus)
+            try:
+                self.memory.mars_results.add(
+                    pipeline_run_id=context.get("pipeline_run_id"),
+                    plan_trace_id=context.get("plan_trace_id"), 
+                    result=result
+                )
+            except Exception as e:
+                if self.logger:
+                    self.logger.log("MARSResultPersistenceError", {"error": str(e)})
         return mars_results
 
     def _get_dimension_config(self, dimension: str) -> Dict:
@@ -201,7 +207,6 @@ class MARSCalculator(BaseScoreCalculator):
         primary_conflict = (max_valuer, min_valuer)
 
         # Determine which model aligns best with trust reference
-        preferred_model = "unknown"
         if trust_ref in matrix.columns:
             trust_scores = matrix[trust_ref]
             closest = None

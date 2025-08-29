@@ -17,7 +17,7 @@ class TaskGeneratorAgent(BaseAgent):
     Uses LADDER-style recursive decomposition and prompt engineering.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.difficulty_levels = ["easy", "medium", "hard"]
 

@@ -16,7 +16,7 @@ from stephanie.scoring.svm_scorer import SVMScorer
 
 
 class ScoringPolicyAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.cfg = cfg
         self.memory = memory

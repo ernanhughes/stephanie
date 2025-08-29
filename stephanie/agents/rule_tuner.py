@@ -19,7 +19,7 @@ class RuleTunerAgent(BaseAgent):
     Also generates new symbolic rules for repeated high-performing configurations.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.score_target = cfg.get(
             "score_target", "correctness"

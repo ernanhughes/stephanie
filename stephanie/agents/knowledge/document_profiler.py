@@ -55,7 +55,7 @@ REQUIRED_SECTIONS = ["title", "summary"]
 class DocumentProfilerAgent(BaseAgent):
     """Agent responsible for structuring documents into standardized sections with domain classification"""
     
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         # Configuration parameters
         self.summary_prompt_file = cfg.get("summary_prompt_file", "summarize.txt")

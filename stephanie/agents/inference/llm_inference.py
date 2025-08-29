@@ -18,7 +18,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
     using configured reward model (e.g., SVM-based or regression-based).
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_type = "llm"
         self.evaluator = "llm"

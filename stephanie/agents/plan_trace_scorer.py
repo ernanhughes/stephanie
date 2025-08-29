@@ -28,7 +28,7 @@ class PlanTraceScorerAgent(BaseAgent):
     to enable self-tuning of pipeline execution patterns.
     """
     
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", [])
         self.include_mars = cfg.get("include_mars", True)
@@ -43,7 +43,7 @@ class PlanTraceScorerAgent(BaseAgent):
         
         # Initialize MARS calculator
         dimension_config = cfg.get("dimension_config", {})
-        self.mars_calculator = MARSCalculator(dimension_config, self.logger)
+        self.mars_calculator = MARSCalculator(dimension_config, self.memory, self.logger)
         
         # Pattern extraction parameters
         self.high_agreement_threshold = cfg.get("high_agreement_threshold", 0.8)
@@ -158,7 +158,7 @@ class PlanTraceScorerAgent(BaseAgent):
             # Run MARS analysis across all steps
             mars_results = {}
             if self.include_mars:
-                mars_results = self.mars_calculator.calculate(corpus)
+                mars_results = self.mars_calculator.calculate(corpus, context)
                 
                 # Log MARS analysis metrics
                 self.logger.log("MARSAnalysisCompleted", {

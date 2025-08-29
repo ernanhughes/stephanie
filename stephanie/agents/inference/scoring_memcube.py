@@ -12,7 +12,7 @@ from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class ScoringMemcubeAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.ebt_refine_threshold = cfg.get("ebt_refine_threshold", 0.7)
         self.llm_fallback_threshold = cfg.get("llm_fallback_threshold", 0.9)

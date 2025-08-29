@@ -13,7 +13,7 @@ import arxiv
 from stephanie.agents.base_agent import BaseAgent
 
 class ArxivSearchAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         # Configuration with defaults
         self.year_start = cfg.get("year_start", 2021)

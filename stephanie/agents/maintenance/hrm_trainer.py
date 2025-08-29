@@ -11,7 +11,7 @@ class HRMTrainerAgent(BaseAgent):
     Agent to train the Hierarchical Reasoning Model (HRM) for multiple dimensions.
     Uses SICQL Q-values as training targets for each goal/document pair.
     """
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", [])  # e.g., ["alignment", "relevance"]
 

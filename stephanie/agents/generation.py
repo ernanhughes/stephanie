@@ -7,7 +7,7 @@ from stephanie.utils.parser_utils import extract_hypotheses
 
 
 class GenerationAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:

@@ -18,7 +18,7 @@ from stephanie.utils.model_utils import get_model_path, save_model_with_version
 
 
 class TrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_type = cfg.get("model_type", "ebt")
         self.output_key = cfg.get("output_key", "training_pairs")

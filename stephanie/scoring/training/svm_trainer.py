@@ -8,7 +8,7 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 
 class SVMTrainer(BaseTrainer):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.kernel = cfg.get("kernel", "rbf")
         self.C = cfg.get("C", 1.0)
