@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.utils.serialization import default_serializer
 
 
@@ -35,6 +36,8 @@ class PlanTraceMonitor:
         if self.enabled:
             self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, logger)
             self.stage_start_times: Dict[int, float] = {}
+        self.retention_policy = monitor_cfg.get("retention_policy", "keep_all")
+        self.reuse_links = []  # (parent_trace_id, child_trace_id)
         
         self.logger.log("PlanTraceMonitorInitialized", {
             "enabled": self.enabled,
@@ -42,6 +45,39 @@ class PlanTraceMonitor:
             "cfg_keys": list(cfg.keys())
         })
     
+    def link_reuse(self, parent_trace_id: str, child_trace_id: str):
+        self.memory.plan_traces.add_reuse_link(parent_trace_id, child_trace_id)
+
+    def revise_trace(self, trace_id: str, revision: dict):
+        """Apply revision notes (feedback, corrections) to a stored trace."""
+        trace = self.memory.plan_traces.get_by_trace_id(trace_id)
+        if not trace:
+            return
+        trace.extra_data.setdefault("revisions", []).append({
+            "timestamp": time.time(),
+            **revision
+        })
+        self.memory.plan_traces.update(trace)
+        self.logger.log("PlanTraceRevised", {"trace_id": trace_id, "revision": revision})
+    
+    def apply_retention_policy(self):
+        """Decide which traces to retain after scoring/feedback."""
+        if self.retention_policy == "keep_all":
+            return
+        elif self.retention_policy == "keep_top_k":
+            top_k = self.cfg["plan_monitor"].get("retain_k", 100)
+            traces = self.memory.plan_traces.get_all()
+            sorted_traces = sorted(traces, key=lambda t: t.pipeline_score.get("overall", 0), reverse=True)
+            for t in sorted_traces[top_k:]:
+                self.memory.plan_traces.delete(t.trace_id)
+                self.logger.log("PlanTraceDiscarded", {"trace_id": t.trace_id})
+        elif self.retention_policy == "discard_failed":
+            failed = self.memory.plan_traces.get_failed()
+            for t in failed:
+                self.memory.plan_traces.delete(t.trace_id)
+                self.logger.log("PlanTraceDiscarded", {"trace_id": t.trace_id, "reason": "failed"})
+
+
     def start_pipeline(self, context: Dict, pipeline_run_id: str) -> None:
         if not self.enabled:
             self.logger.log("PlanTraceMonitorDisabled", {})
@@ -231,6 +267,8 @@ class PlanTraceMonitor:
         # Store in memory
         try:
             self.memory.plan_traces.add(self.current_plan_trace)
+            scorable = ScorableFactory.from_orm(self.current_plan_trace)
+            self.memory.scorable_embeddings.get_or_create(scorable)
             self.logger.log("PlanTraceStored", {
                 "trace_id": self.current_plan_trace.trace_id,
                 "step_count": len(self.current_plan_trace.execution_steps)

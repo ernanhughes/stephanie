@@ -1309,4 +1309,5 @@ CREATE TABLE scorable_ranks (
 CREATE INDEX idx_scorable_ranks_query_text ON scorable_ranks (query_text);
 CREATE INDEX idx_scorable_ranks_scorable ON scorable_ranks (scorable_id, scorable_type);
 
+
 COMMIT; 

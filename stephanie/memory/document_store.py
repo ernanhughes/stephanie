@@ -9,7 +9,7 @@ class DocumentStore:
     def __init__(self, session: Session, logger=None):
         self.session = session
         self.logger = logger
-        self.name = "document"
+        self.name = "documents"
 
     def add_document(self, doc: dict) -> DocumentORM:
         document = DocumentORM(

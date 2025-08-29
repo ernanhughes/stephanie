@@ -29,8 +29,13 @@ class HRMTrainerAgent(BaseAgent):
                 "message": "No documents provided for training.",
                 "input_key": self.input_key
             })
-            context[self.output_key] = {"status": "failed", "reason": "no documents"}
-            return context
+
+        documents = [d.to_dict() for d in self.memory.documents.get_all(limit=100)]
+        self.logger.log("HRMTrainingAgentInfo", {
+            "message": "Retrieved documents for training.",
+            "input_key": self.input_key,
+            "num_documents": len(documents)
+        })
 
         dimensional_training_samples = {dim: [] for dim in self.dimensions}
 
@@ -39,14 +44,14 @@ class HRMTrainerAgent(BaseAgent):
                 scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
 
                 score_bundle = self.scorer.score(
-                    goal=goal,
+                    context=context,
                     scorable=scorable,
                     dimensions=self.dimensions
                 )
 
                 for dimension in self.dimensions:
                     score_result = score_bundle.results.get(dimension)
-                    if not score_result or score_result.q_value is None:
+                    if not score_result:
                         self.logger.log("HRMTrainingAgentWarning", {
                             "message": f"Missing q_value for dimension '{dimension}'",
                             "doc_id": scorable.id
@@ -56,7 +61,7 @@ class HRMTrainerAgent(BaseAgent):
                     dimensional_training_samples[dimension].append({
                         "context_text": goal_text,
                         "document_text": scorable.text,
-                        "target_score": score_result.q_value
+                        "target_score": score_result.attributes.get("q_value")
                     })
 
             except Exception as e:

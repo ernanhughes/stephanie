@@ -25,7 +25,7 @@ class KnowledgeDBLoaderAgent(BaseAgent):
                 self.logger.log("NoDocumentIdsProvided", "No document ids to score.")
                 return context
 
-            docs = self.memory.document.get_by_ids(self.doc_ids)
+            docs = self.memory.documents.get_by_ids(self.doc_ids)
             if not docs:
                 self.logger.log("NoDocumentsFound", {"ids": self.doc_ids})
                 return context

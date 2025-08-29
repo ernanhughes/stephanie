@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from stephanie.data.plan_trace import PlanTrace
 from stephanie.models.goal import GoalORM
 from stephanie.models.plan_trace import ExecutionStepORM, PlanTraceORM
+from stephanie.models.plan_trace_reuse_link import PlanTraceReuseLinkORM
 
 
 class PlanTraceStore:
@@ -261,3 +262,97 @@ class PlanTraceStore:
                     {"error": str(e), "trace_id": trace_id},
                 )
             return None
+
+
+
+    def get_similar_traces(self, query_text: str, top_k: int = 10, embedding=None) -> List[PlanTraceORM]:
+        """
+        Retrieve PlanTraces most similar to the given query_text using embeddings.
+        Requires `embedding` backend (defaults to memory.embedding).
+        """
+        try:
+            if embedding is None:
+                embedding = self.session.bind.memory.embedding  # fallback if memory is globally bound
+            query_emb = embedding.get_or_create(query_text)
+
+            traces = self.get_all(limit=500)  # pull candidates
+            scored = []
+            for t in traces:
+                candidate_text = (t.final_output_text or "") + " " + (t.plan_signature or "")
+                cand_emb = embedding.get_or_create(candidate_text)
+                sim = float(query_emb @ cand_emb / ( (query_emb**2).sum()**0.5 * (cand_emb**2).sum()**0.5 ))
+                scored.append((sim, t))
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [t for _, t in scored[:top_k]]
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceSimilarityError", {"error": str(e), "query": query_text})
+            return []
+
+    def get_by_goal_type(self, goal_type: str, limit: int = 50) -> List[PlanTraceORM]:
+        """Retrieve traces linked to a specific goal type (via GoalORM.goal_type)."""
+        try:
+            return (
+                self.session.query(PlanTraceORM)
+                .join(GoalORM, GoalORM.id == PlanTraceORM.goal_id)
+                .filter(GoalORM.goal_type == goal_type)
+                .order_by(desc(PlanTraceORM.created_at))
+                .limit(limit)
+                .all()
+            )
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceGetByGoalTypeError", {"error": str(e), "goal_type": goal_type})
+            return []
+
+    def get_by_outcome(self, min_score: Optional[float] = None, success_only: bool = False, limit: int = 50) -> List[PlanTraceORM]:
+        """
+        Retrieve traces by outcome.
+        - If min_score is set, filter by pipeline_score['overall'] >= min_score.
+        - If success_only=True, filter traces with no error in meta.
+        """
+        try:
+            query = self.session.query(PlanTraceORM)
+
+            if min_score is not None:
+                query = query.filter(
+                    PlanTraceORM.pipeline_score["overall"].astext.cast(float) >= min_score
+                )
+            if success_only:
+                query = query.filter(~PlanTraceORM.meta.has_key("error"))  # noqa: E711
+
+            return query.order_by(desc(PlanTraceORM.created_at)).limit(limit).all()
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceGetByOutcomeError", {
+                    "error": str(e),
+                    "min_score": min_score,
+                    "success_only": success_only
+                })
+            return []
+
+    def add_reuse_link(self, parent_trace_id: str, child_trace_id: str):
+        link = PlanTraceReuseLinkORM(
+            parent_trace_id=parent_trace_id,
+            child_trace_id=child_trace_id
+        )
+        self.session.add(link)
+        self.session.commit()
+        if self.logger:
+            self.logger.log("PlanTraceReuseLinkCreated", {
+                "parent": parent_trace_id,
+                "child": child_trace_id
+            })
+        return link.id
+
+    def get_reuse_links_for_trace(self, trace_id: str):
+        return (
+            self.session.query(PlanTraceReuseLinkORM)
+            .filter(
+                (PlanTraceReuseLinkORM.parent_trace_id == trace_id) |
+                (PlanTraceReuseLinkORM.child_trace_id == trace_id)
+            )
+            .all()
+        )

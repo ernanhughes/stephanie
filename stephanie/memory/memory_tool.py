@@ -152,7 +152,7 @@ class MemoryTool:
         self.register_store(ExecutionStepStore(self.session, logger))
         self.register_store(PlanTraceStore(self.session, logger))
         self.register_store(PipelineReferenceStore(self.session, logger))
-        self.register_store(ScorableEmbeddingStore(self.session, logger))
+        self.register_store(ScorableEmbeddingStore(self.session, logger, self.embedding))
         self.register_store(ReportStore(self.session, logger))
         self.register_store(TheoremStore(self.session, logger))
         self.register_store(ScorableRankStore(self.session, logger))

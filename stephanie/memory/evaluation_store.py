@@ -170,7 +170,7 @@ class EvaluationStore:
         return {
             "id": row.id,
             "goal_id": row.goal_id,
-            "scorable_id": row.sccorable_id,
+            "scorable_id": row.scorable_id,
             "scorable_type": row.scorable_type,
             "agent_name": row.agent_name,
             "model_name": row.model_name,

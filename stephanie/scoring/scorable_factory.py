@@ -1,5 +1,6 @@
 # stephanie/scoring/scorable_factory.py
 from enum import Enum as PyEnum
+import trace
 from typing import Optional
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
@@ -85,6 +86,15 @@ class ScorableFactory:
         elif isinstance(obj, DocumentORM):
             text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
             return Scorable(id=obj.id, text=text, target_type=TargetType.DOCUMENT)
+
+        elif isinstance(obj, PlanTrace):
+            text = " ".join([
+                obj.plan_signature or "",
+                obj.final_output_text or "",
+            " ".join([s.output_text for s in obj.execution_steps[:3]])  # optional context
+            ])
+            return Scorable(id=obj.trace_id, text=text, target_type=TargetType.PLAN_TRACE)
+
 
         else:
             raise ValueError(f"Unsupported ORM type for scoring: {type(obj)}")
@@ -212,7 +222,7 @@ class ScorableFactory:
         """ 
         orm = None
         if target_type == TargetType.DOCUMENT:
-            orm = memory.document.get_by_id(target_id)
+            orm = memory.documents.get_by_id(target_id)
         elif target_type == TargetType.HYPOTHESIS:
             orm = memory.hypothesis.get_by_id(target_id)
         elif target_type == TargetType.CARTRIDGE:

@@ -55,7 +55,6 @@ class PlannerReuseAgent(BaseAgent):
         top = ranked[:self.top_k]  # take top k
 
         # --- 2. Gather top examples ---
-        # --- 2. Gather top examples ---
         examples = []
         for bundle, cand in zip(top, candidates):  
             # Match bundles back to the original candidate
@@ -94,7 +93,42 @@ class PlannerReuseAgent(BaseAgent):
             "goal_text": goal_text,
             "plan": parsed["plan"],
             "confidence_score": parsed["score"],
-            "based_on": [ev.sccorable_id for ev in top],
+        })
+
+        self.report({
+            "event": "planner_reuse",
+            "step": "PlannerReuse",
+            "details": "New plan adapted from past traces",
+            "goal_text": goal_text,
+            "plan": parsed["plan"],
+            "confidence_score": parsed["score"],
+        })
+
+        # --- 5. Record reuse links in DB ---
+        try:
+            # We need the trace_id of the *new* plan being generated.
+            # Assume Supervisor/Monitor has already created a PlanTrace in memory.
+            new_trace_id = context.get("pipeline_run_id")
+
+            if new_trace_id:
+                for ex in examples:
+                    parent_trace_id = ex.get("trace_id") or None
+                    if parent_trace_id:
+                        self.memory.plan_traces.add_reuse_link(
+                            parent_trace_id=parent_trace_id,
+                            child_trace_id=new_trace_id
+                        )
+                self.logger.log("PlannerReuseLinksCreated", {
+                    "child": new_trace_id,
+                    "parents": [ex.get("trace_id") for ex in examples if ex.get("trace_id")]
+                })
+        except Exception as e:
+            self.logger.log("PlannerReuseLinkError", {"error": str(e)})
+
+        self.logger.log("PlannerReuseGenerated", {
+            "goal_text": goal_text,
+            "plan": parsed["plan"],
+            "confidence_score": parsed["score"],
         })
 
         self.report({

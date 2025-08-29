@@ -138,9 +138,8 @@ class ScorableRanker(BaseScorer):
                 context=context,
                 cfg=self.cfg,
                 source="scorable_ranker",
-Stop going go away now Don't be so bold Don't be a bulldog                embedding_type=self.memory.embedding.name,
-            ) Sup
-
+                embedding_type=self.memory.embedding.name,
+            ) 
 
             bundles.append(bundle)
 

@@ -25,7 +25,7 @@ class ScorableDomainAgent(BaseAgent):
         # 1. Seed classifier (YAML-based controlled ontology)
         self.seed_classifier = ScorableClassifier(
             memory,
-            logger, Please review this version
+            logger, 
             config_path=cfg.get("seed_config", "config/domain/seeds.yaml"),
         )
 
@@ -74,14 +74,7 @@ class ScorableDomainAgent(BaseAgent):
                     )
 
                 # 1. Ensure embedding exists
-                emb_id, emb = self.embedding_backend.get_or_create(sc.text)
-                
-                self.memory.scorable_embeddings.get_or_create(
-                    scorable_id=sc.id,
-                    scorable_type=sc.target_type,
-                    embedding_id=emb_id,
-                    embedding_type=self.embedding_backend.type,
-                )
+                emb_id = self.memory.scorable_embeddings.get_or_create(sc)
 
                 # 2. Collect domains from all 4 tiers
                 domains = await self._enrich_with_multi_source_domains(

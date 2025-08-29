@@ -13,11 +13,11 @@ class BaseEmbeddingStore(BaseStore):
         self.dim = cfg.get("dim", 1024)
         self.hdim = self.dim // 2
         self.table = table
-        self.name  = name
+        self.name = name
         self.type = cfg.get("type", name)  # e.g. "hnet", "hf"
         self.embed_fn = embed_fn
 
-        # Cache: {hash -> (id, embedding)}
+        # Cache: {hash -> (embedding_id, embedding_vector)}
         self._cache = SimpleLRUCache(max_size=cache_size)
 
     def name(self) -> str:
@@ -30,62 +30,81 @@ class BaseEmbeddingStore(BaseStore):
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     def get_or_create(self, text: str):
+        """Return embedding vector for text, caching both id + embedding."""
         text_hash = self.get_text_hash(text)
 
         cached = self._cache.get(text_hash)
         if cached:
-            return cached
+            return cached[1]  # embedding vector
 
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
-                    "SELECT embedding FROM hnet_embeddings WHERE text_hash  = %s",
+                    f"SELECT id, embedding FROM {self.table} WHERE text_hash = %s",
                     (text_hash,),
                 )
                 row = cur.fetchone()
                 if row:
-                    return row[0]  # Force conversion to list of floats
+                    embedding_id, embedding = row
+                    self._cache.set(text_hash, (embedding_id, embedding))
+                    return embedding
         except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("EmbeddingFetchFailed", {"error": str(e)})
 
+        # Not found → create
         embedding = self.embed_fn(text, self.cfg)
+        embedding_id = None
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
-                    """
-                    INSERT INTO hnet_embeddings (text, text_hash, embedding)
+                    f"""
+                    INSERT INTO {self.table} (text, text_hash, embedding)
                     VALUES (%s, %s, %s)
                     ON CONFLICT (text_hash) DO NOTHING
-                    RETURNING text_hash;
-                """,
+                    RETURNING id;
+                    """,
                     (text, text_hash, embedding),
                 )
+                row = cur.fetchone()
+                if row:
+                    embedding_id = row[0]
+            self.conn.commit()
         except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
             if self.logger:
                 self.logger.log("EmbeddingInsertFailed", {"error": str(e)})
-        self._cache.set(text_hash, embedding)
+
+        # Fall back: lookup id if INSERT didn’t return
+        if embedding_id is None:
+            embedding_id = self.get_id_for_text(text)
+
+        self._cache.set(text_hash, (embedding_id, embedding))
         return embedding
 
     def get_id_for_text(self, text: str) -> int | None:
+        """Return embedding id for a text, cached if available."""
         text_hash = self.get_text_hash(text)
         cached = self._cache.get(text_hash)
         if cached:
-            return cached[0]
+            return cached[0]  # embedding_id
 
         try:
             with self.conn.cursor() as cur:
                 cur.execute(f"SELECT id FROM {self.table} WHERE text_hash = %s", (text_hash,))
                 row = cur.fetchone()
-                return row[0] if row else None
+                if row:
+                    embedding_id = row[0]
+                    self._cache.set(text_hash, (embedding_id, None))  # no vector
+                    return embedding_id
         except Exception as e:
             if self.logger:
                 self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
-            return None
+        return None
 
     def search_related_scorables(self, query: str, target_type: str = "document", top_k: int = 10, with_metadata: bool = True):
+        """
+        Search for scorables (documents, plan_traces, etc.) similar to the query.
+        """
         try:
             query_emb = self.get_or_create(query)
 
@@ -129,6 +148,9 @@ class BaseEmbeddingStore(BaseStore):
             return []
 
     def find_neighbors(self, embedding, k: int = 5):
+        """
+        Given an embedding vector, return nearest neighbor texts from the table.
+        """
         if isinstance(embedding, torch.Tensor):
             embedding = embedding.detach().cpu().tolist()
 
@@ -136,7 +158,7 @@ class BaseEmbeddingStore(BaseStore):
             with self.conn.cursor() as cur:
                 cur.execute(
                     f"""
-                    SELECT e.text, 1 - (e.embedding <-> %s::vector) AS score
+                    SELECT e.id, e.text, 1 - (e.embedding <-> %s::vector) AS score
                     FROM {self.table} e
                     WHERE e.embedding IS NOT NULL
                     ORDER BY e.embedding <-> %s::vector
@@ -145,7 +167,10 @@ class BaseEmbeddingStore(BaseStore):
                     (embedding, embedding, k),
                 )
                 rows = cur.fetchall()
-            return [row[0] for row in rows]
+            return [
+                {"id": row[0], "text": row[1], "score": float(row[2])}
+                for row in rows
+            ]
         except Exception as e:
             if self.logger:
                 self.logger.log("FindNeighborsFailed", {"error": str(e)})

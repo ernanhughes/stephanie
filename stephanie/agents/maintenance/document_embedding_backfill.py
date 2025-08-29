@@ -18,7 +18,6 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, logger=None):
         super().__init__(cfg, memory, logger)
-        self.store = ScorableEmbeddingStore(memory.session, logger=logger)
         self.document_type = cfg.get("document_type", "document")
         self.embed_full_document = cfg.get("embed_full_document", True)
         self.embedding_type = self.memory.embedding.name  # e.g. "hf_embeddings"
@@ -52,26 +51,18 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
             scorable = ScorableFactory.from_orm(doc, mode="full")
 
             # Step 4: Generate embedding
-            embedding_vector = self.memory.embedding.get_or_create(scorable.text)
-            embedding_id = self.memory.embedding.get_id_for_text(scorable.text)
 
             # Step 5: Insert into store
-            if embedding_id:
-                self.store.insert({
-                    "document_id": str(doc.id),
-                    "document_type": self.document_type,
-                    "embedding_id": embedding_id,
-                    "embedding_type": self.embedding_type,
-                })
+            embedding_id = self.memory.scorable_embeddings.get_or_create(scorable)
 
-                self.logger.log("ScorableEmbeddingBackfilled", {
-                    "document_id": str(doc.id),
-                    "document_type": self.document_type,
-                    "embedding_id": embedding_id,
-                    "embedding_type": self.embedding_type,
-                })
+            self.logger.log("ScorableEmbeddingBackfilled", {
+                "document_id": str(doc.id),
+                "document_type": self.document_type,
+                "embedding_id": embedding_id,
+                "embedding_type": self.embedding_type,
+            })
 
-                updated += 1
+            updated += 1
 
         session.commit()
 

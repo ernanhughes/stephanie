@@ -2,6 +2,7 @@
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.utils.token_counter import TokenCounter
 
 
@@ -12,7 +13,8 @@ class FinalAssemblerAgent(BaseAgent):
         self.scorer = MRQScorer(cfg, memory, logger)
         self.token_counter = TokenCounter(model_name="qwen:7b")
         self.max_steps = cfg.get("max_steps", 15)  # Limit on how many steps to include
-
+        self.dimensions = cfg.get("dimensions", ["relevance"])
+        
     async def run(self, context: dict) -> dict:
         goal = self.extract_goal_text(context.get(GOAL))
         steps = context.get("step_outputs", [])
@@ -34,8 +36,9 @@ class FinalAssemblerAgent(BaseAgent):
         final_score = None
         try:
             output = self.call_llm(final_prompt, context={"goal": goal})
+            scorable = ScorableFactory.from_text(output, TargetType.RESPONSE)
             score_obj = self.scorer.score(
-                hypothesis={"text": output}, context={"goal": goal}
+                context={"goal": goal}, scorable=scorable, dimensions=self.dimensions
             )
             final_score = score_obj.aggregate()
         except Exception as e:

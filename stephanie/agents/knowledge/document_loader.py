@@ -53,6 +53,7 @@ import requests
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.constants import GOAL
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 from stephanie.tools.pdf_tools import PDFConverter
@@ -110,7 +111,7 @@ class DocumentLoaderAgent(BaseAgent):
                 summary = result.get("summary")
 
                 # Skip existing
-                existing = self.memory.document.get_by_url(url)
+                existing = self.memory.documents.get_by_url(url)
                 if existing:
                     self.report(
                         {
@@ -207,7 +208,7 @@ class DocumentLoaderAgent(BaseAgent):
                     "text": text,
                     "url": url,
                 }
-                stored = self.memory.document.add_document(doc)
+                stored = self.memory.documents.add_document(doc)
                 doc_id = stored.id
 
                 if self.embed_full_document:
@@ -215,21 +216,12 @@ class DocumentLoaderAgent(BaseAgent):
                 else:
                     embed_text = f"{doc['title']}\n\n{doc.get('summary', '')}"
 
-                self.memory.embedding.get_or_create(
-                    embed_text
+                scorable = Scorable(
+                    id=doc_id,
+                    text=embed_text,
+                    target_type=TargetType.DOCUMENT,
                 )
-                embedding_id = self.memory.embedding.get_id_for_text(
-                    embed_text
-                )
-
-                self.memory.scorable_embeddings.insert(
-                    {
-                        "scorable_id": doc_id,
-                        "scorable_type": TargetType.DOCUMENT,
-                        "embedding_id": embedding_id,
-                        "embedding_type": self.memory.embedding.name,
-                    }
-                )
+                self.memory.scorable_embeddings.get_or_create(scorable)
                 self.memory.pipeline_references.insert(
                     {
                         "pipeline_run_id": pipeline_run_id,

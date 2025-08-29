@@ -24,6 +24,7 @@ def view_plan_trace(request: Request, run_id: str):
     print("Fetching PlanTrace for run_id:", run_id)
     
     trace = memory.plan_traces.get_by_run_id(run_id)
+    goal_text = memory.plan_traces.get_goal_text(run_id)
     if not trace:
         return HTMLResponse(f"<h3>❌ PlanTrace not found: {run_id}</h3>", status_code=404)
     
@@ -35,12 +36,13 @@ def view_plan_trace(request: Request, run_id: str):
     steps = trace.execution_steps or []
     
     return templates.TemplateResponse(
-        "plan_trace_detail.html",
+        "plan_trace.html",
         {
             "request": request,
             "trace": trace,
             "steps": steps,
             "stages": stages,
+            "goal_text": goal_text,
             "active_page": "plan_traces"
         }
     )

@@ -340,6 +340,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
 
                 # --- Store the PlanTrace and ExecutionSteps in Memory ---
                 plan_trace_id = self.memory.plan_traces.add(executed_trace)
+                
                 for i, step in enumerate(execution_steps):
                     step.plan_trace_id = plan_trace_id
                     step.step_order = i + 1
