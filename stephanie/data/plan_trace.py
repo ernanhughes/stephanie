@@ -32,7 +32,7 @@ class ExecutionStep:
     # e.g. "retrieve", "reuse", "revise", "retain", or domain-specific roles
 
     attributes: Optional[Dict[str, Any]] = field(default_factory=dict) 
-    extra_data: Optional[Dict[str, Any]] = field(default_factory=dict) 
+    meta: Optional[Dict[str, Any]] = field(default_factory=dict) 
    
     agent_config: Optional[Dict] = None
     input_type: Optional[str] = None
@@ -164,7 +164,7 @@ class PlanTrace:
     # --- Metadata ---
     created_at: str = "" # ISO format timestamp
     # Any other execution metadata (e.g., time taken, DSPy optimizer version)
-    extra_data: Optional[Dict[str, Any]] = field(default_factory=dict) 
+    meta: Optional[Dict[str, Any]] = field(default_factory=dict) 
 
 
     def to_dict(self) -> dict:
@@ -186,7 +186,7 @@ class PlanTrace:
             "skills_used": self.skills_used,
             "repair_links": self.repair_links,
             "created_at": self.created_at,
-            "extra_data": self.extra_data,
+            "meta": self.meta,
         }
         return result
 
@@ -277,7 +277,7 @@ class PlanTrace:
                 scores=ScoreBundle.from_dict(step["scores"]),
                 plan_trace_id=step.get("plan_trace_id"),
                 step_order=step.get("step_order"),
-                extra_data=step.get("extra_data", {}),
+                meta=step.get("extra_data", {}),
                 agent_config=step.get("agent_config"),
                 agent_role=step.get("agent_role"),
                 input_type=step.get("input_type"),

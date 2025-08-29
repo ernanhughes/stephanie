@@ -34,7 +34,7 @@ class ExecutionStepStore:
             step_order=step.step_order,  
             description=step.description,
             output_text=step.output_text,
-            meta=step.extra_data,
+            meta=step.meta,
         )
         return self.insert(orm_step)
 

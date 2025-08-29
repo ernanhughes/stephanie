@@ -103,17 +103,16 @@ class MemoryTool:
         else:
             self.embedding = mxbai
 
-        if self.logger:
-            self.logger.log(
-                "EmbeddingBackendSelected",
-                {
-                    "backend": selected_backend,
-                    "db_host": db_cfg.get("host"),
-                    "db_name": db_cfg.get("name"),
-                    "db_port": db_cfg.get("port"),
-                    "conn_id": id(self.conn),  # unique Python object ID
-                },
-            )
+        self.logger.log(
+            "EmbeddingBackendSelected",
+            {
+                "backend": selected_backend,
+                "db_host": db_cfg.get("host"),
+                "db_name": db_cfg.get("name"),
+                "db_port": db_cfg.get("port"),
+                "conn_id": id(self.conn),  # unique Python object ID
+            },
+        )
 
 
         # Register stores

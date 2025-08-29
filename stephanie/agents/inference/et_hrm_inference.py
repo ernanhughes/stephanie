@@ -50,10 +50,11 @@ class EpistemicTraceHRMInferenceAgent(BaseAgent):
             return context
 
         results = []
+        goal_text = context.get("goal", {}).get("goal_text", "")
         for trace in traces:
             score_bundle: ScoreBundle = self.scorer.score(trace, self.dimensions)
 
-            scorable = ScorableFactory.from_plan_trace(trace, mode="default")
+            scorable = ScorableFactory.from_plan_trace(trace, goal_text=goal_text)
             # Save to memory
             ScoringManager.save_score_to_memory(
                 bundle=score_bundle,

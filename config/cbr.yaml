@@ -153,25 +153,25 @@ pipeline:
        agent_role: retrieve
        description: "📥 Retrieve: search Arxiv for candidate documents (knowledge cases)"
        cls: stephanie.agents.knowledge.arxiv_search.ArxivSearchAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: document_loader
        description: "Load and summarize candidate documents"
        cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: document_profiler
        description: "Profile documents into structured sections for reuse"
        cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: paper_score
        description: "Evaluate case quality: relevance, novelty, clarity"
        cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: planner_reuse

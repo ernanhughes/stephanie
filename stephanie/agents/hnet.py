@@ -13,6 +13,7 @@ from tqdm import tqdm
 # Import our core PlanTrace components
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge import KnowledgeRetriever
+from stephanie.agents.knowledge.arxiv_search import ArxivSearchAgent
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 # Import reasoning components
 from stephanie.agents.reasoning import ReasoningAgent
@@ -27,9 +28,9 @@ class HNetValidationExperiment(BaseAgent):
     """Comprehensive validation of HNet and PlanTrace system in one end-to-end experiment"""
     
     def __init__(self, cfg=None, memory=None, logger=None):
-        self.cfg = cfg or get_default_cfg()
+        self.cfg = cfg
         self.memory = memory
-        self.logger = logger or JSONLogger()
+        self.logger = logger
         
         # Initialize core components
         self.plan_trace_monitor = PlanTraceMonitor(self.cfg, self.memory, self.logger)
@@ -39,27 +40,27 @@ class HNetValidationExperiment(BaseAgent):
         # Initialize embedding approaches
         self.embedding_approaches = {
             "ollama_summary": {
-                "embedder": OllamaEmbedder(self.cfg),
+                "embedder": self.memory.ollama,
                 "content_type": "summary"
             },
             "ollama_full": {
-                "embedder": OllamaEmbedder(self.cfg),
+                "embedder": self.memory.ollama,
                 "content_type": "full"
             },
             "hf_summary": {
-                "embedder": HuggingFaceEmbedder(self.cfg),
+                "embedder": self.memory.hf,
                 "content_type": "summary"
             },
             "hf_full": {
-                "embedder": HuggingFaceEmbedder(self.cfg),
+                "embedder": self.memory.hf,
                 "content_type": "full"
             },
             "hnet_summary": {
-                "embedder": HNetEmbedder(self.cfg),
+                "embedder": self.memory.hnet,
                 "content_type": "summary"
             },
-            "hnet_full": {I
-                "embedder": HNetEmbedder(self.cfg),
+            "hnet_full": {
+                "embedder": self.memory.hnet,
                 "content_type": "full"
             }
         }
@@ -84,7 +85,7 @@ class HNetValidationExperiment(BaseAgent):
     async def run_old(self, context: dict) -> Dict:
         
         # Run experiment
-        experiment = HNetValidationExperiment(memory=memory, logger=logger)
+        experiment = HNetValidationExperiment(memory=self.memory, logger=self.logger)
         results = experiment.run(num_papers=100)
         
         # Print key findings
@@ -160,6 +161,9 @@ class HNetValidationExperiment(BaseAgent):
             raise
     
     def _load_arxiv_papers(self, count=100) -> List[Dict]:
+
+        agent = ArxivSearchAgent(self.cfg, self.memory, self.logger)
+        
         """Load arXiv papers on self-improving AI (cs.AI category)"""
         # In a real implementation, this would fetch papers from arXiv API
         # For this demo, we'll simulate loading papers

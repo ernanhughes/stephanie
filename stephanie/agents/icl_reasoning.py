@@ -1,15 +1,11 @@
 # stephanie/agents/icl_reasoning.py
 from sklearn.metrics.pairwise import cosine_similarity
-from sqlalchemy import case, func
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.cartridge_domain import CartridgeDomainORM
 from stephanie.models.cartridge_triple import CartridgeTripleORM
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
 from stephanie.models.theorem import TheoremORM
-from stephanie.scoring.scorable_factory import TargetType
 
 
 class ICLReasoningAgent(BaseAgent):
@@ -19,7 +15,7 @@ class ICLReasoningAgent(BaseAgent):
         self.min_value_threshold = cfg.get("min_triplet_score", 0.6)
         self.use_embeddings = cfg.get("use_triplet_embeddings", False)
         self.score_weights = cfg.get(
-            "score_weights",
+            "score_weights", 
             {
                 "usefulness": 0.4,
                 "clarity": 0.2,
@@ -117,9 +113,10 @@ class ICLReasoningAgent(BaseAgent):
 
         query = (
             session.query(CartridgeTripleORM)
-            .join(CartridgeTripleORM.cartridge)
+            .join(CartridgeTripleORM.cartridge)  # link to cartridge
+            .join(CartridgeDomainORM, CartridgeDomainORM.cartridge_id == CartridgeTripleORM.cartridge_id)  # link to domains
             .filter(CartridgeDomainORM.domain.in_(goal_domain_names))
-        )  # Create a mapping of dimensions to their weights
+        )
 
         triplets = query.distinct().all()
 
@@ -133,54 +130,6 @@ class ICLReasoningAgent(BaseAgent):
         )
 
         return triplets[: self.top_k_triplets] if self.top_k_triplets else triplets
-
-    def retrieve_top_triplets_by_score(self, goal: dict) -> list[CartridgeTripleORM]:
-        session = self.memory.session
-        goal_id = goal["id"]
-        weight_map = self.score_weights  # e.g., {"usefulness": 0.5, "clarity": 0.3}
-
-        # Subquery to compute weighted scores per triplet, grouped by Evaluation.target_id
-        subq = (
-            session.query(
-                EvaluationORM.sccorable_id.label("triplet_id"),
-                func.sum(
-                    case(
-                        *[
-                            (ScoreORM.dimension == dim, ScoreORM.score * weight)
-                            for dim, weight in weight_map.items()
-                        ],
-                        else_=0,
-                    )
-                ).label("weighted_score"),
-            )
-            .join(ScoreORM, ScoreORM.evaluation_id == EvaluationORM.id)
-            .filter(
-                EvaluationORM.goal_id == goal_id,
-                EvaluationORM.scorable_type == TargetType.TRIPLE,
-            )
-            .group_by(EvaluationORM.sccorable_id)
-            .subquery()
-        )
-
-        # Join back with CartridgeTripleORM
-        query = (
-            session.query(CartridgeTripleORM)
-            .join(subq, subq.c.triplet_id == CartridgeTripleORM.id)
-            .order_by(subq.c.weighted_score.desc())
-        )
-
-        triplets = query.all()
-
-        # Optional: embedding filtering
-        if self.use_embeddings:
-            _, goal_vec = self.memory.embedding.get_or_create(goal["goal_text"])
-            triplets = [
-                t
-                for t in triplets
-                if self.similarity(goal_vec, t) >= self.min_value_threshold
-            ]
-
-        return triplets[: self.top_k_triplets]
 
     def similarity(self, goal_vec, text: str) -> float:
         vec = self.memory.embedding.get_or_create(text)

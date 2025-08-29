@@ -14,3 +14,11 @@ class PlanTraceReuseLinkORM(Base):
 
     parent_trace = relationship("PlanTraceORM", foreign_keys=[parent_trace_id])
     child_trace = relationship("PlanTraceORM", foreign_keys=[child_trace_id])
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "parent_trace_id": self.parent_trace_id,
+            "child_trace_id": self.child_trace_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

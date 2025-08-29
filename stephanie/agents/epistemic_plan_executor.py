@@ -258,7 +258,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                             description=step_description,
                             output_text=step_output_text,
                             scores=sicql_scores, # Primary scores for the trace
-                            extra_data=step_meta,
+                            meta=step_meta,
                         )
                         execution_steps.append(exec_step)
 
@@ -324,7 +324,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                     target_epistemic_quality=final_scores.aggregate(), # To be filled later
                     target_epistemic_quality_source=self.sicql_scorer.model_type,
                     created_at="", # Can be set to current timestamp
-                    extra_data={
+                    meta={
                         "goal_id": goal_id, 
                         "executor_agent": self.__class__.__name__,
                         "source": "simplified_lats_execution",

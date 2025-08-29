@@ -91,6 +91,7 @@ class PlanTraceScorerAgent(BaseAgent):
             ) 
             raw_traces_data = load_plan_traces_from_export_dir(self.export_dir)
 
+        goal_text = context.get("goal", {}).get("goal_text", "")
         for raw_trace in raw_traces_data:
             # Convert raw trace data to PlanTrace object
             if isinstance(raw_trace, dict):
@@ -116,7 +117,8 @@ class PlanTraceScorerAgent(BaseAgent):
             for step in pbar:
                 # Create scorable for this step
                 scorable = ScorableFactory.from_plan_trace(
-                    plan_trace, 
+                    plan_trace,
+                    goal_text=goal_text,
                     mode="single_step",
                     step=step
                 )
@@ -147,7 +149,7 @@ class PlanTraceScorerAgent(BaseAgent):
                 pbar.set_postfix({"steps": f"{len(step_results)}/{len(plan_trace.execution_steps)}"})
             
             # Score the complete pipeline
-            full_scorable = ScorableFactory.from_plan_trace(plan_trace, mode="full_trace")
+            full_scorable = ScorableFactory.from_plan_trace(plan_trace, goal_text=goal_text, mode="full_trace")
             full_bundle = self._score_scorable(full_scorable, plan_trace.goal_text)
             
             # Create ScoreCorpus for MARS analysis

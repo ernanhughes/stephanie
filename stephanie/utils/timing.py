@@ -63,10 +63,6 @@ def time_function(logger=None, threshold: Optional[float] = None, name: Optional
                             "status": "completed"
                         }
                         
-                        # Add pipeline context if available
-                        if obj and hasattr(obj, "current_plan_trace") and obj.current_plan_trace:
-                            log_data["pipeline_run_id"] = obj.current_plan_trace.trace_id
-                        
                         if obj and hasattr(obj, "trace"):
                             log_data["trace_length"] = len(getattr(obj, "trace", []))
                         
@@ -96,10 +92,6 @@ def time_function(logger=None, threshold: Optional[float] = None, name: Optional
                         "error_type": type(e).__name__,
                         "error_message": str(e)
                     }
-                    
-                    # Add pipeline context if available
-                    if obj and hasattr(obj, "current_plan_trace") and obj.current_plan_trace:
-                        error_log_data["pipeline_run_id"] = obj.current_plan_trace.trace_id
                     
                     if obj and hasattr(obj, "trace"):
                         error_log_data["trace_length"] = len(getattr(obj, "trace", []))
@@ -144,10 +136,6 @@ def time_function(logger=None, threshold: Optional[float] = None, name: Optional
                             "status": "completed"
                         }
                         
-                        # Add pipeline context if available
-                        if obj and hasattr(obj, "current_plan_trace") and obj.current_plan_trace:
-                            log_data["pipeline_run_id"] = obj.current_plan_trace.trace_id
-                        
                         if obj and hasattr(obj, "trace"):
                             log_data["trace_length"] = len(getattr(obj, "trace", []))
                         
@@ -177,10 +165,6 @@ def time_function(logger=None, threshold: Optional[float] = None, name: Optional
                         "error_type": type(e).__name__,
                         "error_message": str(e)
                     }
-                    
-                    # Add pipeline context if available
-                    if obj and hasattr(obj, "current_plan_trace") and obj.current_plan_trace:
-                        error_log_data["pipeline_run_id"] = obj.current_plan_trace.trace_id
                     
                     if obj and hasattr(obj, "trace"):
                         error_log_data["trace_length"] = len(getattr(obj, "trace", []))

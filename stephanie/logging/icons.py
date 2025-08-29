@@ -389,6 +389,7 @@ MODELS = {
 # ETHICS & REVIEWS
 # =============
 SPECIAL = {
+    "PlannerReuseCandidate": "📈🔄",  # Planner reuse candidate created
     "FetchedScorableDomain": "📄🔍",  # Fetched scorable domain
     "ScorableEmbeddingInserted": "📄✅",  # Document embedding inserted
     "ScorableEmbeddingBackfilled": "📄🔄",  # Document embedding backfilled

@@ -114,3 +114,10 @@ class CartridgeStore:
             self.session.commit()
             return True
         return False
+
+    def get_run_id(self, pipeline_run_id: int) -> list[CartridgeORM]:
+        return (
+            self.session.query(CartridgeORM)
+            .filter_by(pipeline_run_id=pipeline_run_id)
+            .all()
+        )   

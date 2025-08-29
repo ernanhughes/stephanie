@@ -141,7 +141,7 @@ class ScorableFactory:
         return Scorable(id="", text=text, target_type=target_type)
 
     @staticmethod
-    def from_plan_trace(trace: PlanTrace, mode: str = "default", step: Optional[ExecutionStep] = None) -> Scorable:
+    def from_plan_trace(trace: PlanTrace, goal_text: str, mode: str = "default", step: Optional[ExecutionStep] = None) -> Scorable:
         """
         Convert a PlanTrace into a Scorable object for scoring.
         Mode can be used to customize how the trace is represented as text.
@@ -178,7 +178,7 @@ class ScorableFactory:
         
         elif mode == "full_trace":
             # Format the complete trace for scoring
-            trace_text = f"Goal: {trace.goal_text or 'No goal text'}\n\n"
+            trace_text = f"Goal: {goal_text or 'No goal text'}\n\n"
             trace_text += "Pipeline Execution Steps:\n\n"
             
             # Add all steps
@@ -205,7 +205,6 @@ class ScorableFactory:
         
         else:
             # Default mode - goal + final output
-            goal_text = trace.goal_text or ""
             final_output = trace.final_output_text or ""
             
             return Scorable(

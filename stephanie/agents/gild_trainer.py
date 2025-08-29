@@ -92,7 +92,7 @@ class GILDTrainerAgent(BaseAgent):
                 execution_steps=[],
                 target_epistemic_quality=None,
                 target_epistemic_quality_source=None,
-                extra_data={
+                meta={
                     "agent_name": self.__class__.__name__,
                     "started_at": datetime.now().isoformat() + "Z",
                 },
@@ -119,7 +119,7 @@ class GILDTrainerAgent(BaseAgent):
                     description="Load and prepare GILD training data.",
                     output_text="",
                     scores=None,  # Assuming no scores yet
-                    extra_data={},
+                    meta={},
                 )
                 # self.execution_step_store.add(data_prep_step)
                 # Assuming insert returns the ID or you can get it
@@ -216,7 +216,7 @@ class GILDTrainerAgent(BaseAgent):
             context["gild_error"] = str(e)
             if gild_trace:
                 gild_trace.final_output_text = f"Failed during data prep: {e}"
-                gild_trace.extra_data["completed_at"] = (
+                gild_trace.meta["completed_at"] = (
                     datetime.now().isoformat() + "Z"
                 )
                 self.plan_trace_store.session.commit()
@@ -277,7 +277,7 @@ class GILDTrainerAgent(BaseAgent):
                         description=f"Start GILD training for dimension '{dimension}'.",
                         output_text="",
                         scores=None,  # Assuming no scores yet
-                        extra_data={
+                        meta={
                             "trainable_params": sum(
                                 p.numel() for p in pi_head.parameters()
                             )
@@ -339,7 +339,7 @@ class GILDTrainerAgent(BaseAgent):
                             description=f"Completed GILD training for dimension '{dimension}'.",
                             output_text=f"Final average loss: {final_avg_loss:.6f}",
                             scores=None,  # Assuming no scores yet
-                            extra_data={"final_loss": final_avg_loss,
+                            meta={"final_loss": final_avg_loss,
                                          "epochs": self.epochs,
                                          "dimension": dimension},
                         )
@@ -421,10 +421,10 @@ class GILDTrainerAgent(BaseAgent):
                     "proxy_final_loss_normalized"
                 )
                 gild_trace.final_output_text = f"GILD run {final_status}. Overall final average loss: {overall_final_loss:.6f}. Assigned proxy epistemic quality: {normalized_loss_quality:.4f}."
-                gild_trace.extra_data["completed_at"] = (
+                gild_trace.meta["completed_at"] = (
                     datetime.now().isoformat() + "Z"
                 )
-                gild_trace.extra_data["final_metrics"] = {
+                gild_trace.meta["final_metrics"] = {
                     "overall_final_loss": overall_final_loss,
                     "proxy_epistemic_quality": normalized_loss_quality,
                     "epochs_run": self.epochs,
@@ -446,7 +446,7 @@ class GILDTrainerAgent(BaseAgent):
                     gild_trace.final_output_text += (
                         f" [Trace Finalization Error: {e}]"
                     )
-                    gild_trace.extra_data["trace_finalization_error"] = str(e)
+                    gild_trace.meta["trace_finalization_error"] = str(e)
 
         # --- 6. Score the Trace with Epistemic HRM (as per suggestions) ---
         quality_pred = None

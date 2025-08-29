@@ -1,13 +1,13 @@
 # stephanie/agents/planning/planner_reuse.py
 import re
-import json
-import time
+from tqdm import tqdm
 
+
+from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.scorable_ranker import ScorableRanker
 from stephanie.scoring.scorable import Scorable
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models.report import ReportORM
-
+from stephanie.constants import PLAN_TRACE_ID
 
 class PlannerReuseAgent(BaseAgent):
     def __init__(self, cfg, memory, logger):
@@ -23,7 +23,16 @@ class PlannerReuseAgent(BaseAgent):
 
         # --- 1. Retrieve candidate past traces ---
         candidates = []
-        for pt in self.memory.plan_traces.get_all(limit=200):
+        all_traces = self.memory.plan_traces.get_all(limit=500)
+        pbar = tqdm(all_traces, desc="Embedding Candidates", disable=not self.cfg.get("progress", True))
+        for idx, pt in enumerate(pbar, start=1):
+            scorable = ScorableFactory.from_plan_trace(pt, goal_text=goal_text)
+            embed_id = self.memory.scorable_embeddings.get_or_create(scorable)
+            self.logger.log("PlannerReuseCandidate", {
+                "scorable_id": scorable.id,
+                "embedding_id": embed_id
+            })
+
             # Build hybrid text: goal + final output (+ step outputs if wanted)
             trace_text_parts = [pt.goal.goal_text if pt.goal else "", pt.final_output_text]
             if self.cfg.get("include_steps", False):
@@ -33,6 +42,7 @@ class PlannerReuseAgent(BaseAgent):
             candidates.append(
                 Scorable(id=pt.trace_id, text=candidate_text, target_type="plan_trace")
             )
+            pbar.set_postfix({"candidates": f"{idx}/{len(all_traces)}"})
 
         if not candidates:
             self.logger.log("PlannerReuseNoCandidates", {"goal_text": goal_text})
@@ -56,17 +66,20 @@ class PlannerReuseAgent(BaseAgent):
 
         # --- 2. Gather top examples ---
         examples = []
-        for bundle, cand in zip(top, candidates):  
+        pbar = tqdm(zip(top, candidates), total=len(top), desc="Collecting Top Examples", disable=not self.cfg.get("progress", True))
+        for bundle, cand in pbar:
             # Match bundles back to the original candidate
             # (since rank() processed them in the same order)
             pt = self.memory.plan_traces.get_by_trace_id(cand.id)
             goal_text = self.memory.plan_traces.get_goal_text(cand.id)
             if pt:
                 examples.append({
+                    "trace_id": pt.trace_id,
                     "goal": goal_text,
                     "plan": pt.plan_signature,
                     "rank_score": bundle.results["rank_score"].score,
                 })
+                pbar.set_postfix({"examples": f"{len(examples)}/{len(top)}"})
 
         self.report({
             "event": "planner_reuse",
@@ -108,7 +121,7 @@ class PlannerReuseAgent(BaseAgent):
         try:
             # We need the trace_id of the *new* plan being generated.
             # Assume Supervisor/Monitor has already created a PlanTrace in memory.
-            new_trace_id = context.get("pipeline_run_id")
+            new_trace_id = context.get(PLAN_TRACE_ID)
 
             if new_trace_id:
                 for ex in examples:
@@ -170,3 +183,4 @@ class PlannerReuseAgent(BaseAgent):
             result["plan"] = [s.strip() for s in steps if s.strip()]
 
         return result
+

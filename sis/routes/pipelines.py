@@ -203,12 +203,16 @@ def pipeline_cartridges(request: Request, pipeline_id: int):
     memory = request.app.state.memory
     templates = request.app.state.templates
 
+    cartridges = memory.cartridges.get_run_id(pipeline_id)
 
-    cartridges = memory.cartridges.get_all()
-    # # fetch cartridges linked to pipeline
-    # cartridges = memory.cartridges.session.query(
-    #     memory.cartridges.session.registry.mapped["CartridgeORM"]
-    # ).filter_by(pipeline_run_id=pipeline_id).all()
+    # Expand with triples
+    cartridges = [
+        {
+            **c.to_dict(),
+            "triples": [t.to_dict() for t in c.triples_rel] if c.triples_rel else []
+        }
+        for c in cartridges
+    ]
 
     return templates.TemplateResponse(
         "pipeline_cartridges.html",

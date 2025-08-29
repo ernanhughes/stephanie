@@ -67,7 +67,7 @@ def view_plan_trace(request: Request, trace_id: str):
         steps = trace.execution_steps or []
 
         return templates.TemplateResponse(
-            "plan_trace.html",
+            "/plan_traces/plan_trace.html",
             {
                 "request": request,
                 "trace": trace,

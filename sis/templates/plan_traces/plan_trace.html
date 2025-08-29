@@ -48,10 +48,27 @@ flowchart LR
 
   <!-- Reuse Links -->
   <h4 class="mt-4">🔗 Reuse Links</h4>
-  {% if trace.reuse_links %}
+  {% if links %}
     <ul>
-      {% for parent, child in trace.reuse_links %}
-        <li>{{ parent }} → {{ child }}</li>
+      {% for parent_trace_id, child_trace_id, created_at in links %}
+        <li>
+          {% if parent_trace_id == trace.trace_id %}
+            <strong class="text-primary">{{ parent_trace_id }}</strong>
+          {% else %}
+            <a href="/plan_traces/{{ parent_trace_id }}">
+              {{ parent_trace_id }}
+            </a>
+          {% endif %}
+          → 
+          {% if child_trace_id == trace.trace_id %}
+            <strong class="text-success">{{ child_trace_id }}</strong>
+          {% else %}
+            <a href="/plan_traces/{{ child_trace_id }}">
+              {{ child_trace_id }}
+            </a>
+          {% endif %}
+          ({{ created_at.strftime('%Y-%m-%d %H:%M:%S') }})
+        </li>
       {% endfor %}
     </ul>
   {% else %}

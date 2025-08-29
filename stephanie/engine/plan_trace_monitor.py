@@ -1,5 +1,6 @@
 # stephanie/engine/plan_trace_monitor.py
 import json
+from multiprocessing import context
 import os
 import time
 import traceback
@@ -10,8 +11,10 @@ from omegaconf import OmegaConf
 
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.models.plan_trace import PlanTraceORM
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.utils.serialization import default_serializer
+from stephanie.constants import PLAN_TRACE_ID
 
 
 class PlanTraceMonitor:
@@ -50,10 +53,10 @@ class PlanTraceMonitor:
 
     def revise_trace(self, trace_id: str, revision: dict):
         """Apply revision notes (feedback, corrections) to a stored trace."""
-        trace = self.memory.plan_traces.get_by_trace_id(trace_id)
+        trace: PlanTraceORM = self.memory.plan_traces.get_by_trace_id(trace_id)
         if not trace:
             return
-        trace.extra_data.setdefault("revisions", []).append({
+        trace.meta.setdefault("revisions", []).append({
             "timestamp": time.time(),
             **revision
         })
@@ -102,13 +105,18 @@ class PlanTraceMonitor:
             execution_steps=[],
             target_epistemic_quality=None,
             target_epistemic_quality_source=None,
-            extra_data={
+            meta={
                 "agent_name": "PlanTraceMonitor",
                 "started_at": time.time(),
                 "pipeline_run_id": pipeline_run_id,
                 "pipeline_config": essential_config
             }
         )
+
+        # After creating self.current_plan_trace
+        self.memory.plan_traces.add(self.current_plan_trace)
+        context[PLAN_TRACE_ID] = self.current_plan_trace.trace_id
+
         
         # Log PlanTrace creation
         self.logger.log("PlanTraceCreated", {
@@ -255,18 +263,18 @@ class PlanTraceMonitor:
             self.current_plan_trace.final_output_text = str(final_output)[:1000] + "..."
         
         # Set completion time
-        self.current_plan_trace.extra_data["completed_at"] = time.time()
+        self.current_plan_trace.meta["completed_at"] = time.time()
         
         # Calculate total pipeline time
-        start_time = self.current_plan_trace.extra_data.get("started_at", time.time())
-        self.current_plan_trace.extra_data["total_time"] = time.time() - start_time
+        start_time = self.current_plan_trace.meta.get("started_at", time.time())
+        self.current_plan_trace.meta["total_time"] = time.time() - start_time
         
         if self.enabled and self.save_output:
             self.save_plan_trace_to_json(self.current_plan_trace)
 
         # Store in memory
         try:
-            self.memory.plan_traces.add(self.current_plan_trace)
+            self.memory.plan_traces.update(self.current_plan_trace)
             scorable = ScorableFactory.from_orm(self.current_plan_trace)
             self.memory.scorable_embeddings.get_or_create(scorable)
             self.logger.log("PlanTraceStored", {
@@ -282,7 +290,7 @@ class PlanTraceMonitor:
         self.logger.log("PlanTraceCompleted", {
             "trace_id": self.current_plan_trace.trace_id,
             "step_count": len(self.current_plan_trace.execution_steps),
-            "total_time": self.current_plan_trace.extra_data["total_time"]
+            "total_time": self.current_plan_trace.meta["total_time"]
         })
 
     async def score_pipeline(self, context: Dict) -> None:
@@ -334,16 +342,16 @@ class PlanTraceMonitor:
             
         # Update PlanTrace with error information
         self.current_plan_trace.final_output_text = f"Pipeline failed: {str(error)}"
-        self.current_plan_trace.extra_data["error"] = {
+        self.current_plan_trace.meta["error"] = {
             "type": type(error).__name__,
             "message": str(error),
             "traceback": traceback.format_exc()
         }
-        self.current_plan_trace.extra_data["completed_at"] = time.time()
+        self.current_plan_trace.meta["completed_at"] = time.time()
         
         # Store in memory
         try:
-            self.memory.plan_traces.add(self.current_plan_trace)
+            self.memory.plan_traces.update(self.current_plan_trace)
         except Exception as e:
             self.logger.log("PlanTraceSaveError", {
                 "trace_id": self.current_plan_trace.trace_id,

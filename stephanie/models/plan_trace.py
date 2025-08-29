@@ -14,6 +14,7 @@ from stephanie.models.evaluation import \
 # Assuming GoalORM exists
 from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
+from stephanie.models.plan_trace_revision import PlanTraceRevisionORM
 
 # If EmbeddingORM is not directly importable or you just need the ID:
 # You can define a foreign key without the full ORM relationship if not needed for navigation here.
@@ -45,6 +46,13 @@ class PlanTraceORM(Base):
     )
     goal: Mapped[Optional["GoalORM"]] = relationship(
         "GoalORM", back_populates="plan_traces"
+    )
+
+    revisions: Mapped[List["PlanTraceRevisionORM"]] = relationship(
+        "PlanTraceRevisionORM",
+        back_populates="plan_trace",
+        cascade="all, delete-orphan",
+        order_by="PlanTraceRevisionORM.created_at"
     )
 
     goal_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

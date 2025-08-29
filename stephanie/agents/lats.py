@@ -8,7 +8,6 @@ from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.utils.timing import time_function
 
 
 class LATSNode:
@@ -122,7 +121,6 @@ class LATSAgent(ScoringMixin, BaseAgent):
         return await proximity_agent.run(context)
 
     # Set up LATSComponent
-    @time_function(logger=None)
     def _generate_completions(self, node: LATSNode, context: dict):
         merged = {
             **context,
@@ -177,7 +175,6 @@ class LATSAgent(ScoringMixin, BaseAgent):
 
         return completions[:self.branching_factor]
 
-    @time_function(logger=None)
     def _fallback_parsing(self, response: str):
         """Fallback parser for raw text responses"""
         # Match Thought N: patterns
@@ -203,7 +200,6 @@ class LATSAgent(ScoringMixin, BaseAgent):
         
         return completions
 
-    @time_function(logger=None)
     def _update_state(self, state, action: str):
         """Update state with new action"""
         if isinstance(state, dict):
@@ -219,13 +215,11 @@ class LATSAgent(ScoringMixin, BaseAgent):
             "trace": [action]
         }
 
-    @time_function(logger=None)
     def _score_hypothesis(self, hypothesis: dict, context: dict, metrics: str = "lats_node"):
         """Use dimensional scoring system"""
         scorable = ScorableFactory.from_dict(hypothesis, TargetType.HYPOTHESIS)
         return super().score_hypothesis(scorable, context, metrics)
 
-    @time_function(logger=None)
     def _simulate(self, node: LATSNode, context: dict):
         """Simulate until terminal state"""
         current = node
@@ -243,7 +237,6 @@ class LATSAgent(ScoringMixin, BaseAgent):
         # Evaluate final node
         return self._get_value(current)
 
-    @time_function(logger=None)
     def _get_value(self, node: LATSNode):
         """Hybrid value function using LM + self-consistency"""
         if self.cfg.get("use_environment", False):
@@ -263,7 +256,6 @@ class LATSAgent(ScoringMixin, BaseAgent):
         )
         return score_result.aggregate() / 100  # Normalize
 
-    @time_function(logger=None)
     def _build_prompt(self, node, context:dict, mode="reason"):
         """Build prompt from node state"""
         if isinstance(node.state, dict):
