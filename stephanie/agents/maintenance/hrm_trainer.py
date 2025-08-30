@@ -1,4 +1,5 @@
 # stephanie/agents/maintenance/hrm_trainer_agent.py
+from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
@@ -11,18 +12,28 @@ class HRMTrainerAgent(BaseAgent):
     Agent to train the Hierarchical Reasoning Model (HRM) for multiple dimensions.
     Uses SICQL Q-values as training targets for each goal/document pair.
     """
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, logger, full_cfg):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", [])  # e.g., ["alignment", "relevance"]
 
-        self.trainer = HRMTrainer(cfg.get("hrm", {}), memory, logger)
-        self.scorer = SICQLScorer(cfg.get("sicql", {}), memory, logger)
-
+        self.trainer = HRMTrainer(full_cfg.scorer.hrm, memory, logger)
+        self.scorer = SICQLScorer(full_cfg.scorer.sicql, memory, logger)
+        self.use_context_for_training = cfg.get("use_context_for_training", False)
+        self.max_documents = cfg.get("max_documents", 500)
 
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {})
         goal_text = goal.get("goal_text", "")
-        documents = context.get(self.input_key, [])
+        if self.use_context_for_training:
+            documents = context.get(self.input_key, [])
+            if documents:
+                self.logger.log("HRMTrainingAgentInfo", {
+                    "message": "Using context for training.",
+                    "input_key": self.input_key,
+                    "num_documents": len(documents)
+                })
+        else:
+            documents = self.memory.documents.get_all(limit=self.max_documents)
 
         if not documents:
             self.logger.log("HRMTrainingAgentError", {
@@ -30,7 +41,7 @@ class HRMTrainerAgent(BaseAgent):
                 "input_key": self.input_key
             })
 
-        documents = [d.to_dict() for d in self.memory.documents.get_all(limit=100)]
+        documents = [d.to_dict() for d in self.memory.documents.get_all(limit=self.max_documents)]
         self.logger.log("HRMTrainingAgentInfo", {
             "message": "Retrieved documents for training.",
             "input_key": self.input_key,
@@ -39,10 +50,9 @@ class HRMTrainerAgent(BaseAgent):
 
         dimensional_training_samples = {dim: [] for dim in self.dimensions}
 
-        for doc in documents:
+        for doc in tqdm(documents, desc="HRM Training: Processing documents", unit="doc"):
             try:
                 scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
-
                 score_bundle = self.scorer.score(
                     context=context,
                     scorable=scorable,
@@ -59,8 +69,8 @@ class HRMTrainerAgent(BaseAgent):
                         continue
 
                     dimensional_training_samples[dimension].append({
-                        "context_text": goal_text,
-                        "document_text": scorable.text,
+                        "goal_text": goal_text,
+                        "scorable_text": scorable.text,
                         "target_score": score_result.attributes.get("q_value")
                     })
 

@@ -1,9 +1,14 @@
 # stephanie/memory/score_store.py
+import json
 from typing import List, Optional
 
 from sqlalchemy.orm import Session, joinedload
 
+from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
+from typing import Any, Dict, Optional
+from stephanie.models.score import ScoreORM
+from stephanie.models.score_attribute import ScoreAttributeORM
 
 
 class ScoreStore:
@@ -126,7 +131,7 @@ class ScoreStore:
                 self.session.query(ScoreORM)
                 .join(EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id)
                 .options(joinedload(ScoreORM.evaluation))
-                .filter(EvaluationORM.sccorable_id == str(target_id))
+                .filter(EvaluationORM.scorable_id == str(target_id))
                 .filter(EvaluationORM.scorable_type == target_type)
             )
 
@@ -147,3 +152,97 @@ class ScoreStore:
                     },
                 )
             return []
+
+
+
+    def add_dimension_score(
+        self,
+        evaluation_id: int,
+        dimension: str,
+        score: float,
+        *,
+        weight: float = 1.0,
+        source: Optional[str] = None,
+        rationale: Optional[str] = None,
+        attributes: Optional[Dict[str, Any]] = None,
+    ) -> ScoreORM:
+        """Convenience: add a single ScoreORM row (e.g., 'hrm', 'rank_score')."""
+        row = ScoreORM(
+            evaluation_id=evaluation_id,
+            dimension=dimension,
+            score=score,
+            weight=weight,
+            source=source,
+            rationale=rationale,
+        )
+        self.session.add(row)
+        self.session.flush()
+
+        if attributes:
+            for k, v in attributes.items():
+                self.session.add(ScoreAttributeORM(
+                    score_id=row.id,
+                    key=k,
+                    value=json.dumps(v) if isinstance(v, (list, dict)) else str(v),
+                    data_type="json" if isinstance(v, (list, dict)) else
+                             "float" if isinstance(v, (int, float)) else "string"
+                ))
+
+        self.session.commit()
+        self.session.refresh(row)
+        return row
+
+    def get_latest_for_target_dimension(
+        self, target_id: str, target_type: str, dimension: str
+    ) -> Optional[ScoreORM]:
+        """Return latest ScoreORM for (target_id, target_type, dimension)."""
+        return (
+            self.session.query(ScoreORM)
+            .join(EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id)
+            .filter(EvaluationORM.scorable_id == str(target_id))
+            .filter(EvaluationORM.scorable_type == target_type)
+            .filter(ScoreORM.dimension == dimension)
+            .order_by(EvaluationORM.created_at.desc(), ScoreORM.id.desc())
+            .first()
+        )
+
+    def get_value_signal_for_target(
+        self,
+        target_id: str,
+        target_type: str,
+        prefer: tuple[str, ...] = ("hrm", "HRM", "rank_score"),
+        *,
+        normalize: bool = True,
+        default: float = 0.0,
+    ) -> float:
+        """Return a scalar value in [0,1] for ranking.
+        Prefers HRM, then rank_score; falls back to EvaluationORM.scores['avg'].
+        """
+        # try preferred dimensions in order
+        for dim in prefer:
+            row = self.get_latest_for_target_dimension(target_id, target_type, dim)
+            if row:
+                val = float(row.score)
+                if normalize:
+                    # legacy guard: if it looks like 0–100, squash to 0–1
+                    if val > 5.0:
+                        val = min(val / 100.0, 1.0)
+                    # clamp
+                    val = max(0.0, min(1.0, val))
+                return val
+
+        # fallback: EvaluationORM.scores["avg"]
+        eval_rec = (
+            self.session.query(EvaluationORM)
+            .filter(EvaluationORM.scorable_id == str(target_id),
+                    EvaluationORM.scorable_type == target_type)
+            .order_by(EvaluationORM.created_at.desc())
+            .first()
+        )
+        try:
+            raw = float((eval_rec.scores or {}).get("avg", default)) if eval_rec else default
+            if normalize and raw > 5.0:
+                raw = min(raw / 100.0, 1.0)
+            return max(0.0, min(1.0, raw))
+        except Exception:
+            return default

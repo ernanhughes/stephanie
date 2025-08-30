@@ -68,8 +68,6 @@ KNOWLEDGE_OPS = {
     "NotEnoughHypothesesForRanking": "❌💡",  # Not enough hypotheses for ranking
     "PromptLookup": "🔍📝",  # Prompt lookup
     "RubricClassified": "🏷️📄",  # Rubric classified
-    "PlanTraceStored": "📄💾",  # Plan trace stored
-    "PromptGenerated": "📝✨",  # Prompt generated
     "PatternStatsStored": "📊💾",  # Pattern stats stored
     "LLMJudgeResults": "📝⚖️",  # LLM judge results
     "RubricPatternsStored": "📊💾",  # Rubric patterns stored
@@ -143,7 +141,6 @@ PIPELINE_FLOW = {
 # =====================
 SCORING = {
     "ScorableRankerInitialized": "🔗✅",  # Scorable ranker initialized
-
     "ScoringFailed": "❌📊",  # Scoring failed
     "ScoringPaper": "📄⚖️",  # Scoring paper
     "EpistemicPlanExecutorSkipped": "👾⏭️",  # Epistemic plan executor skipped
@@ -202,22 +199,8 @@ REPORTING = {
 # REASONING & ANALYSIS
 # =====================
 REASONING = {
-    "PlanTraceMonitorDisabled": "📄🔧",  # Plan trace monitoring disabled
-    "PlanTraceSavedToFile": "📄💾",  # Plan trace saved to file
-    "PlanTraceCompleted": "📄✅",  # Plan trace completed
-    "MARSAnalysisCompleted": "📊✅",  # MARS analysis completed
-    "PlanTraceScoringCompleted": "📄✅",  # Plan trace scoring completed
-    "PlanTraceUpdated": "📄🔄",  # Plan trace updated
-    "PlanTraceScored": "📄⚖️",  # Plan trace scored
-    "PlanTraceScoringComplete": "📄✅",  # Plan trace scoring completed
     "DocumentScoringProgress": "📄🔄",  # Document scoring progress
     "DocumentScoringCompleted": "📄✅",  # Document scoring completed
-    "EpistemicPlanHRMModelInitialized": "👾🧠",  # Epistemic Plan HRM model initialized
-    "EpistemicPlanHRMOptimizerInitialized": "👾⚙️",  # Epistemic Plan HRM optimizer initialized
-    "EpistemicPlanHRMLossInitialized": "👾📉",  # Epistemic Plan HRM loss initialized
-    "EpistemicPlanHRMTrainingNoTraces": "👾🚫",  # No traces for training
-    "EpistemicPlanHRMTrainingStarted": "👾🚀",  # Epistemic Plan HRM training started
-    "EpistemicPlanHRMTrainingDataPrepared": "👾📊",  # Training data prepared
 
     "KeywordsExtracted": "🔑",  # Keywords extracted
     "ProximityAnalysisScored": "📌🗺️",  # Proximity analysis
@@ -238,6 +221,7 @@ REASONING = {
 # TRAINING & MODEL OPS
 # =====================
 TRAINING = {
+    "HRMTrainingAgentInfo": "📊ℹ️",  # HRM training agent info
     "HRMTrainerInitialized": "🧠🤖",  # HRM trainer initialized
     "HRMTrainingAgentError": "🚫🧠",  # HRM training agent error
     "CalibrationStart": "🔧📊",  # Calibration started
@@ -309,6 +293,7 @@ HYPOTHESIS_OPS = {
 # PROMPT OPERATIONS
 # =================
 PROMPTS = {
+    "PromptGenerated": "📝✨",  # Prompt generated
     "PromptLoaded": "📄✅",  # Prompt loaded
     "PromptStored": "💾📄",  # Prompt stored
     "PromptExecuted": "💬▶️",  # Prompt executed
@@ -317,6 +302,38 @@ PROMPTS = {
     "CoTGenerated": "⛓️💭",  # Chain-of-Thought generated
     "LLMCacheHit": "💾⚡",  # LLM cache hit
 }
+
+PLAN_TRACE = {
+    "PlannerReuseHRMScore": "📊🔄",  # Planner reuse HRM score
+    "PlannerReuseFilteredTrace": "📑🔍",  # Planner reuse filtered trace
+    "HRMTrainingDataPrepared": "📊📄",  # HRM training data prepared
+    "HRMTrainingStarted": "📊🚀",  # HRM training started
+    "HRMDataLoaderCreated": "📊📦",  # HRM data loader created
+    "HRMTrainingEpoch": "📊🏋️",  # HRM training epoch
+    "HRMTrainingStep": "📊🔄",  # HRM training step
+    "HRMTrainingCompleted": "📊✅",  # HRM training completed
+    "MARSResultStored": "📊💾",  # MARS result stored
+    "MARSCalculationStarted": "📊🔄",  # MARS calculation started
+    "MARSAnalysisCompleted": "📊✅",  # MARS analysis completed
+    "PlanTraceCreated": "📄📝",  # Plan trace created
+    "PlanTraceScorerInitialized": "📊🤖🪸",  # Plan trace scorer initialized
+    "PlanTraceMonitorInitialized": "📊🤖🪸",  # Plan trace monitor initialized
+    "PlanTraceStored": "📄💾",  # Plan trace stored
+    "PlanTraceMonitorDisabled": "📄🔧",  # Plan trace monitoring disabled
+    "PlanTraceSavedToFile": "📄💾",  # Plan trace saved to file
+    "PlanTraceCompleted": "📄✅",  # Plan trace completed
+    "PlanTraceScoringCompleted": "📄✅",  # Plan trace scoring completed
+    "PlanTraceUpdated": "📄🔄",  # Plan trace updated
+    "PlanTraceScored": "📄⚖️",  # Plan trace scored
+    "PlanTraceScoringComplete": "📄✅",  # Plan trace scoring completed
+    "EpistemicPlanHRMModelInitialized": "👾🧠",  # Epistemic Plan HRM model initialized
+    "EpistemicPlanHRMOptimizerInitialized": "👾⚙️",  # Epistemic Plan HRM optimizer initialized
+    "EpistemicPlanHRMLossInitialized": "👾📉",  # Epistemic Plan HRM loss initialized
+    "EpistemicPlanHRMTrainingNoTraces": "👾🚫",  # No traces for training
+    "EpistemicPlanHRMTrainingStarted": "👾🚀",  # Epistemic Plan HRM training started
+    "EpistemicPlanHRMTrainingDataPrepared": "👾📊",  # Training data prepared
+
+}   
 
 # =================
 # RESEARCH & DATA
@@ -396,9 +413,6 @@ SPECIAL = {
     "ContextSavedToFile": "📄💾",  # Context saved to file
     "PolicyInsight": "📊💡",  # Policy insight generated
     "PolicyReportSaved": "💾📊",  # Policy report saved
-    "PlanTraceCreated": "📄📝",  # Plan trace created
-    "PlanTraceScorerInitialized": "📊🤖🪸",  # Plan trace scorer initialized
-    "PlanTraceMonitorInitialized": "📊🤖🪸",  # Plan trace monitor initialized
     "GILDProcessTraceStarted": "📊▶️",  # GILD process trace started
     "SICQLAdvantageExtracted": "📊📈",  # SICQL advantage extracted
     "SICQLAdvantageWarning": "⚠️📊",  # SICQL advantage warning
@@ -420,6 +434,7 @@ EVENT_ICONS = {
     **REASONING,
     **TRAINING,
     **HYPOTHESIS_OPS,
+    **PLAN_TRACE,
     **PROMPTS,
     **RESEARCH,
     **DEBUGGING,
