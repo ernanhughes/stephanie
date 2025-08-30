@@ -26,6 +26,8 @@ class EvaluationORM(Base):
 
     # Goal reference (optional)
     goal_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("goals.id"))
+    plan_trace_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("plan_traces.id", ondelete="CASCADE"), index=True, nullable=True)
+
 
     scorable_type: Mapped[str] = Column(String, nullable=False, index=True)
     scorable_id: Mapped[str] = Column(String, nullable=False, index=True)

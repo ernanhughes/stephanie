@@ -1320,6 +1320,8 @@ CREATE TABLE mars_results (
 
     -- Core analysis
     dimension VARCHAR NOT NULL,
+    source TEXT, 
+    average_score DOUBLE PRECISION NOT NULL,
     agreement_score DOUBLE PRECISION NOT NULL,
     std_dev DOUBLE PRECISION NOT NULL,
     preferred_model VARCHAR,

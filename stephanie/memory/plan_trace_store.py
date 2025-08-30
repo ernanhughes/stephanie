@@ -1,6 +1,6 @@
 # stephanie/memory/plan_trace_store.py
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -333,6 +333,13 @@ class PlanTraceStore:
             return []
 
     def add_reuse_link(self, parent_trace_id: str, child_trace_id: str):
+        if parent_trace_id == child_trace_id:
+            if self.logger:
+                self.logger.log("PlanTraceReuseLinkSkipped", {
+                    "reason": "parent == child",
+                    "trace_id": parent_trace_id
+                })
+            return None
         link = PlanTraceReuseLinkORM(
             parent_trace_id=parent_trace_id,
             child_trace_id=child_trace_id

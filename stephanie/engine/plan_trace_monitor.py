@@ -188,33 +188,40 @@ class PlanTraceMonitor:
         """Update ExecutionStep when stage completes"""
         if not self.current_plan_trace or stage_idx >= len(self.current_plan_trace.execution_steps):
             return
-            
+
         # Calculate duration
         start_time = self.stage_start_times.get(stage_idx, time.time())
         duration = time.time() - start_time
-        
+
         # Update the current step
         step = self.current_plan_trace.execution_steps[stage_idx]
         step.end_time = time.time()
         step.duration = duration
-        
-        # Capture output preview
-        output_keys = list(context.keys())
-        output_preview = "Context keys: " + ", ".join(output_keys[:3])
-        if len(output_keys) > 3:
-            output_preview += f" + {len(output_keys) - 3} more"
-        
-        step.output_text = output_preview
-        step.output_keys = output_keys
-        step.output_size = len(str(context))
-        
+
+        # --- Only record scorable details if the agent flagged itself ---
+        agent_obj = context.get("agent_obj")  # supervisor should pass the instance
+        if agent_obj and getattr(agent_obj, "is_scorable", False):
+            details = getattr(agent_obj, "scorable_details", {})
+            step.input_text = details.get("input_text", "")
+            step.output_text = details.get("output_text", "")
+            step.description = details.get("description", f"Scorable output from {agent_obj.name}")
+        else:
+            # fallback breadcrumb only (not for scoring)
+            output_keys = list(context.keys())
+            preview = "Context keys: " + ", ".join(output_keys[:3])
+            if len(output_keys) > 3:
+                preview += f" + {len(output_keys) - 3} more"
+            step.output_text = preview
+            step.output_keys = output_keys
+            step.output_size = len(str(context))
+
         # Log stage completion
         self.logger.log("PipelineStageCompleted", {
             "trace_id": self.current_plan_trace.trace_id,
             "stage_idx": stage_idx + 1,
             "stage_name": stage_name,
             "stage_time": duration,
-            "output_keys": output_keys
+            "is_scorable": getattr(agent_obj, "is_scorable", False)
         })
     
     def handle_stage_error(self, stage_name: str, error: Exception, stage_idx: int) -> None:

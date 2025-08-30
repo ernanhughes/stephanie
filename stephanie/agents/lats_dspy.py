@@ -14,7 +14,7 @@ from stephanie.agents.rule_tuner import RuleTunerAgent
 from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.mrq.scorer import MRQScorer
+from stephanie.scoring.mrq.scorer import MRQScorerDoNotUse
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.graph_tools import (build_mermaid_graph, compare_graphs,
                                          save_mermaid_to_file)
@@ -232,7 +232,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         self.completed_nodes = 0
         self.total_estimated_nodes = 1  # Start with 1 to avoid division by zero
         self.dimensions = self.get_dimensions("lats_reflection")
-        self.scorer = MRQScorer(
+        self.scorer = MRQScorerDoNotUse(
             self.cfg, memory=self.memory, logger=self.logger, dimensions=self.dimensions
         )
         # self.scorer.train_from_database(cfg=self.cfg)

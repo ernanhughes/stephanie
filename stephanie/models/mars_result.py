@@ -14,7 +14,9 @@ class MARSResultORM(Base):
 
     # Dimension scored (e.g., relevance, clarity, epistemic_quality)
     dimension = Column(String, nullable=False)
+    source = Column(String, nullable=True)
 
+    average_score = Column(Float, nullable=True)
     agreement_score = Column(Float, nullable=False)
     std_dev = Column(Float, nullable=False)
     preferred_model = Column(String, nullable=True)
@@ -36,6 +38,7 @@ class MARSResultORM(Base):
             "pipeline_run_id": self.pipeline_run_id,
             "plan_trace_id": self.plan_trace_id,
             "dimension": self.dimension,
+            "source": self.source,
             "agreement_score": self.agreement_score,
             "std_dev": self.std_dev,
             "preferred_model": self.preferred_model,

@@ -1,8 +1,10 @@
 # stephanie/agents/planning/planner_reuse.py
 import re
+from typing import List
 from tqdm import tqdm
 
 
+from stephanie.data.plan_trace import PlanTrace
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.scorable_ranker import ScorableRanker
 from stephanie.scoring.scorable import Scorable
@@ -14,6 +16,7 @@ class PlannerReuseAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.ranker = ScorableRanker(cfg, memory, logger)
         self.top_k = cfg.get("top_k", 5)
+        self.candidate_limit = cfg.get("candidate_limit", 500)
 
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {})
@@ -22,8 +25,8 @@ class PlannerReuseAgent(BaseAgent):
             return context
 
         # --- 1. Retrieve candidate past traces ---
-        candidates = []
-        all_traces = self.memory.plan_traces.get_all(limit=500)
+        candidates = [] 
+        all_traces = self.memory.plan_traces.get_all(limit=self.candidate_limit)
         pbar = tqdm(all_traces, desc="Embedding Candidates", disable=not self.cfg.get("progress", True))
         for idx, pt in enumerate(pbar, start=1):
             scorable = ScorableFactory.from_plan_trace(pt, goal_text=goal_text)
@@ -184,3 +187,24 @@ class PlannerReuseAgent(BaseAgent):
 
         return result
 
+    # stephanie/agents/planning/planner_reuse.py
+    def retrieve_similar_traces(self, current_goal: str, k: int = 5) -> List[PlanTrace]:
+        """Find past reasoning traces similar to current goal using existing infrastructure"""
+        # Leverage your existing H-Net embedding system
+        goal_embedding = self.embedding_store.get_embedding(current_goal, backend="hnet")
+        
+        # Use your existing similarity search (already works with PlanTraces)
+        return self.memory.plan_traces.find_similar(
+            embedding=goal_embedding,
+            k=k,
+            min_hrm=0.6  # Only reuse high-quality reasoning
+        )
+    
+    def adapt_plan(self, current_goal: str) -> Plan:
+        similar_traces = self.retrieve_similar_traces(current_goal)
+        
+        # Your existing prompt already handles this pattern
+        return self.prompt_engineer.create_adapted_plan(
+            current_goal, 
+            similar_traces
+        )

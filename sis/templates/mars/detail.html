@@ -1,0 +1,29 @@
+<h2>MARS Result: {{ mars.dimension }}</h2>
+<p><b>Agreement:</b> {{ mars.agreement_score }} |
+   <b>Std Dev:</b> {{ mars.std_dev }} |
+   <b>Preferred Model:</b> {{ mars.preferred_model }}</p>
+<p><b>Explanation:</b> {{ mars.explanation }}</p>
+
+<h3>Underlying Scores</h3>
+<table class="table-auto border-collapse border border-gray-400">
+  <thead>
+    <tr>
+      <th class="border px-2 py-1">Scorable ID</th>
+      <th class="border px-2 py-1">Scorer</th>
+      <th class="border px-2 py-1">Score</th>
+      <th class="border px-2 py-1">Attributes</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for bundle in score_bundles %}
+    {% for dim, result in bundle.results.items() if dim == mars.dimension %}
+      <tr>
+        <td class="border px-2 py-1">{{ bundle.scorable_id }}</td>
+        <td class="border px-2 py-1">{{ result.source }}</td>
+        <td class="border px-2 py-1">{{ result.score }}</td>
+        <td class="border px-2 py-1"><pre>{{ result.attributes | tojson(indent=2) }}</pre></td>
+      </tr>
+    {% endfor %}
+  {% endfor %}
+  </tbody>
+</table>

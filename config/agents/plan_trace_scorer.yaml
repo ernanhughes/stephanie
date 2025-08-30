@@ -12,6 +12,7 @@ plan_trace_scorer:
     - sicql
     - svm
     - mrq
+    - ebt
 
   dimensions: 
     - alignment

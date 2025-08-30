@@ -2,7 +2,8 @@
 defaults:
   - _self_
   - db: postgres
-
+  - plan_monitor: default
+  
   - scorer/ebt/default
   - scorer/hrm/default
   - scorer/mrq/default
@@ -73,19 +74,19 @@ embeddings:
 #     - "trace_evolution_report"
 
 
-goal:
-  goal_text: >
-    Test retention policies in CBR by comparing outcomes when keeping all
-    traces, keeping only the top-K traces, or discarding failed ones.
-  goal_type: "experimental"
-  goal_category: "system_behavior"
-  focus_area: "retention_policy"
-  strategy: "keep_all_vs_prune"
-  difficulty: "medium"
-  expected_formats:
-    - "case_trace_set"
-    - "policy_comparison"
-    - "retention_report"
+# goal:
+#   goal_text: >
+#     Test retention policies in CBR by comparing outcomes when keeping all
+#     traces, keeping only the top-K traces, or discarding failed ones.
+#   goal_type: "experimental"
+#   goal_category: "system_behavior"
+#   focus_area: "retention_policy"
+#   strategy: "keep_all_vs_prune"
+#   difficulty: "medium"
+#   expected_formats:
+#     - "case_trace_set"
+#     - "policy_comparison"
+#     - "retention_report"
 
 # goal:
 #   goal_text: >
@@ -101,31 +102,19 @@ goal:
 #     - "scorable_rankings"
 #     - "retrieval_quality_report"
 
-# goal:
-#   goal_text: >
-#     Show how revision notes turn failed or suboptimal traces into assets,
-#     creating feedback-driven improvements in future planning cycles.
-#   goal_type: "demonstration"
-#   goal_category: "feedback_learning"
-#   focus_area: "trace_revision"
-#   strategy: "revise_and_retain"
-#   difficulty: "medium"
-#   expected_formats:
-#     - "case_trace"
-#     - "revision_history"
-#     - "improvement_curve"
-
-
-
-plan_monitor:
-  enabled: true
-  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
-  save_output: true
-  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
-  plan_monitoring_interval: 10
-  plan_monitoring_timeout: 60
-  retention_policy: "discard_failed"
-  retain_k: 50
+goal:
+  goal_text: >
+    Show how revision notes turn failed or suboptimal traces into assets,
+    creating feedback-driven improvements in future planning cycles.
+  goal_type: "demonstration"
+  goal_category: "feedback_learning"
+  focus_area: "trace_revision"
+  strategy: "revise_and_retain"
+  difficulty: "medium"
+  expected_formats:
+    - "case_trace"
+    - "revision_history"
+    - "improvement_curve"
 
 
 paths:
@@ -168,19 +157,6 @@ pipeline:
        enabled: false
        iterations: 1
 
-     - name: paper_score
-       description: "Evaluate case quality: relevance, novelty, clarity"
-       cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
-       enabled: false
-       iterations: 1
-
-     - name: planner_reuse
-       agent_role: reuse
-       description: "♻️ Reuse: adapt past PlanTraces and evaluations to the current goal"
-       cls: stephanie.agents.knowledge.planner_reuse.PlannerReuseAgent
-       enabled: true
-       iterations: 1
-
      - name: knowledge_loader
        agent_role: revise
        description: "Revise: integrate new evidence into Stephanie’s knowledge base"
@@ -194,10 +170,17 @@ pipeline:
        enabled: true
        iterations: 1    
 
-     - name: mrq_trainer
-       description: "Train retrieval models (MRQ/SICQL) from document pairs (optional)"
-       cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent 
-       enabled: false
+     - name: paper_score
+       description: "Evaluate case quality: relevance, novelty, clarity"
+       cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
+       enabled: true
+       iterations: 1
+
+     - name: planner_reuse
+       agent_role: reuse
+       description: "♻️ Reuse: adapt past PlanTraces and evaluations to the current goal"
+       cls: stephanie.agents.knowledge.planner_reuse.PlannerReuseAgent
+       enabled: true
        iterations: 1
 
      - name: document_reward_scorer

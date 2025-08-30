@@ -91,7 +91,7 @@ class ICLReasoningAgent(BaseAgent):
 
             # --- Step 3: Generate reasoning
             prompt = self.prompt_loader.load_prompt(self.cfg, merged_context)
-            response = await self.call_llm(prompt, context=context)
+            response = self.call_llm(prompt, context=context)
 
             self.report({
                 "event": "reasoning_generated",

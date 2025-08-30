@@ -6,7 +6,7 @@ from .model_io import MRQModelIO
 from .training import MRQTraining
 
 
-class MRQScorer(MRQCoreScoring, MRQTraining, MRQModelIO):
+class MRQScorerDoNotUse(MRQCoreScoring, MRQTraining, MRQModelIO):
     def __init__(self, cfg, memory, logger, dimensions=None):
         self.cfg = cfg
         self.memory = memory

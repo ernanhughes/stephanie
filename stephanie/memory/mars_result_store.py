@@ -23,5 +23,24 @@ class MARSResultStore:
     def get_by_trace(self, trace_id: str):
         return self.session.query(MARSResultORM).filter_by(plan_trace_id=trace_id).all()
 
-    def get_by_pipeline(self, run_id: int):
-        return self.session.query(MARSResultORM).filter_by(pipeline_run_id=run_id).all()
+    def get_by_run_id(self, run_id: int):
+        return (
+            self.session.query(MARSResultORM)
+            .filter(MARSResultORM.pipeline_run_id == run_id)
+            .all()
+        )
+
+    def get_by_plan_trace(self, trace_id: str):
+        return (
+            self.session.query(MARSResultORM)
+            .filter(MARSResultORM.plan_trace_id == trace_id)
+            .all()
+        )
+
+    def get_recent(self, limit: int = 50):
+        return (
+            self.session.query(MARSResultORM)
+            .order_by(MARSResultORM.created_at.desc())
+            .limit(limit)
+            .all()
+        )

@@ -5,7 +5,6 @@ import numpy as np
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
-from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.scoring.ebt.buffer import EBTTrainingBuffer
 from stephanie.scoring.ebt_scorer import EBTScorer
 from stephanie.scoring.llm_scorer import LLMScorer
@@ -199,7 +198,6 @@ class ScoringPolicyAgent(BaseAgent):
             plt.savefig(f"reports/score_dist_{dim}.png")
             plt.close()
 
-import numpy as np
 
 
 def generate_summary_report(self, results: list):

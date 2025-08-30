@@ -30,7 +30,6 @@ class BaseAgent(ABC):
         agent_key = self.__class__.__name__.replace(AGENT, "").lower()
         self.name = cfg.get(NAME, agent_key)
         self.description = cfg.get("description", "")
-        self.is_scorable = False
         self.memory = memory
         self.logger = logger
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
@@ -51,6 +50,12 @@ class BaseAgent(ABC):
         self._prompt_id_cache = {}
         self._hypothesis_id_cache = {}
         self.report_entries = {}
+        self.scorable_details: Dict[str, str] = {
+            "input_text": "",
+            "output_text": "",
+            "description": f"Output from {self.__class__.__name__}"
+        }
+        self.is_scorable = False  # default
 
         self.rule_applier = SymbolicRuleApplier(cfg, memory, logger)
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
@@ -176,6 +181,18 @@ class BaseAgent(ABC):
             )
 
             # Optionally add to context history
+            if updated_cfg.get("add_prompt_to_history", True):
+                self.add_to_prompt_history(
+                    context, prompt, {"response": response_cleaned}
+                )
+
+            self.is_scorable = True
+            self.scorable_details = {
+                "input_text": prompt,
+                "output_text": response_cleaned,
+                "description": f"LLM output from {self.name}"
+            }
+
             if updated_cfg.get("add_prompt_to_history", True):
                 self.add_to_prompt_history(
                     context, prompt, {"response": response_cleaned}
@@ -391,63 +408,15 @@ class BaseAgent(ABC):
         self.report_entries[self.name] = []
         return entries
 
-    def record_stage(
-        self,
-        context: dict,
-        stage_idx: int,
-        input_text: str = "",
-        output_text: str = "",
-        logs: Optional[List[dict]] = None,
-        errors: Optional[str] = None,
-        meta: Optional[Dict[str, Any]] = None,
-    ) -> dict:
-        """
-        Record per-stage execution details into the pipeline context.
-
-        Args:
-            context: The shared pipeline context (dict).
-            stage_idx: Integer index of the stage in the pipeline.
-            input_text: Raw input text for this stage (if any).
-            output_text: Raw output text from this stage (if any).
-            logs: List of log records specific to this stage.
-            errors: Error message or traceback if this stage failed.
-            meta: Optional dict with extra metadata (timestamps, embeddings, etc.).
-
-        Returns:
-            Updated context dict with stage details added under context["stage_details"].
-        """
-        context.setdefault("stage_details", {})
-
-        context["stage_details"][stage_idx] = {
-            "agent": self.__class__.__name__,
-            "name": self.name,
-            "description": self.description,
-            "agent_role": getattr(self, "agent_role", None),
-            "input_text": input_text or "",
-            "output_text": output_text or "",
-            "logs": logs or [],
-            "errors": errors,
-            "meta": meta or {},
+    def set_scorable_details(self, input_text: str = "", output_text: str = "", description: str = None):
+        """Agents call this to update what can be scored."""
+        self.scorable_details = {
+            "input_text": input_text,
+            "output_text": output_text,
+            "description": description or f"Output from {self.__class__.__name__}"
         }
-        self.logger.log("StageRecorded", {
-            "stage_idx": stage_idx,
-            "agent": self.__class__.__name__,
-            "input_len": len(input_text or ""),
-            "output_len": len(output_text or ""),
-            "has_error": bool(errors),
-        })
-        return context
+        self.is_scorable = True
 
-    def get_scoreable_details(self, context: dict, stage_idx: int) -> dict:
-        """
-        Extract scoreable content from stage_details.
-        Override in agents that produce meaningful reasoning.
-        """
-        if not self.IS_SCOREABLE:
-            return {}
-        stage_ctx = context.get("stage_details", {}).get(stage_idx, {})
-        return {
-            "input_text": stage_ctx.get("input_text", ""),
-            "output_text": stage_ctx.get("output_text", ""),
-            "description": f"Output from {self.__class__.__name__}"
-        }
+    def get_scorable_details(self) -> Dict[str, str]:
+        """Retrieve scorable details if set."""
+        return self.scorable_details if self.is_scorable else {}

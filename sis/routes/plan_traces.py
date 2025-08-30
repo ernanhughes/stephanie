@@ -12,7 +12,7 @@ def list_plan_traces(request: Request):
     traces = memory.plan_traces.get_all(limit=50)  # implement in your store
     
     return templates.TemplateResponse(
-        "/plan_trace/plan_traces.html",
+        "/plan_traces/plan_traces.html",
         {"request": request, "traces": traces, "active_page": "plan_traces"}
     )
 
@@ -26,7 +26,6 @@ def view_plan_trace(request: Request, run_id: str):
     trace = memory.plan_traces.get_by_run_id(run_id)
     links = memory.plan_traces.get_reuse_links_for_trace(trace.trace_id)
     links = [(link.parent_trace_id, link.child_trace_id, link.created_at) for link in links]
-    print("Reuse links found:", links)
     goal_text = memory.plan_traces.get_goal_text(run_id)
     if not trace:
         return HTMLResponse(f"<h3>❌ PlanTrace not found: {run_id}</h3>", status_code=404)

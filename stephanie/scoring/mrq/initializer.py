@@ -4,8 +4,8 @@ from stephanie.evaluator.hypothesis_value_predictor import \
 from stephanie.evaluator.mrq_trainer import MRQTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
-from ..model.text_encoder import TextEncoder
-from .model import MRQModel
+from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.scoring.mrq.model import MRQModel
 
 
 def initialize_dimension(self, dimension):
@@ -25,7 +25,7 @@ def initialize_dimension(self, dimension):
         device=self.device,
     )
     self.models[dimension] = MRQModel(
-        self.encoder, self.value_predictor, device=self.device
+        self.encoder, self.value_predictor, self.memory.embedding.name, device=self.device
     )
     self.min_value_by_dim[dimension] = 0.0
     self.max_value_by_dim[dimension] = 1.0

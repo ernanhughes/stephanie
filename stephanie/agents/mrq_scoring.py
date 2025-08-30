@@ -56,6 +56,7 @@ class MRQScoringAgent(BaseAgent):
                 evaluator_name=self.evaluator.__class__.__name__,
                 scores=result,
                 pipeline_run_id=context.get("pipeline_run_id"),
+                plan_trace_id=context.get("plan_trace_id"),
                 extra_data=self.cfg,
                 dimensions=dimensions,
             )

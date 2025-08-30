@@ -128,6 +128,10 @@ class MARSCalculator(BaseScoreCalculator):
             Dictionary containing comprehensive MARS analysis metrics
         """
         mars_results = {}
+
+        self.logger.log("MARSCalculationStarted", {"document_count": len(corpus.bundles),
+                "dimensions": list(corpus.dimensions),
+                "Matrix head": corpus.get_dimension_matrix("clarity").head()})
         for dimension in corpus.dimensions:
             result = self._calculate_dimension_mars(corpus, dimension)
             mars_results[dimension] = result
@@ -193,7 +197,7 @@ class MARSCalculator(BaseScoreCalculator):
         # Calculate basic statistics
         avg_score = matrix.mean().mean()  # Overall average score
         std_dev = (
-            matrix.std().mean()
+            matrix.std().mean() 
         )  # Average standard deviation across documents
 
         # Calculate agreement score (1.0 = perfect agreement)
@@ -279,52 +283,59 @@ class MARSCalculator(BaseScoreCalculator):
 
         explanation = " | ".join(explanation_parts)
 
-        return {
-            "dimension": dimension,
-            "agreement_score": round(agreement_score, 3),
-            "std_dev": round(std_dev, 3),
-            "preferred_model": preferred_model,
-            "primary_conflict": primary_conflict,
-            "delta": round(delta, 3),
-            "high_disagreement": high_disagreement,
+        result = {
+            "dimension": str(dimension),
+            "agreement_score": float(agreement_score),
+            "std_dev": float(std_dev),
+            "preferred_model": str(preferred_model),
+            "primary_conflict": list(primary_conflict),  # will serialize to JSON
+            "delta": float(delta),
+            "high_disagreement": bool(high_disagreement),
             "explanation": explanation,
-            "scorer_metrics": scorer_metrics,
-            "metric_correlations": metric_correlations,
+            "scorer_metrics": _to_python(scorer_metrics),
+            "metric_correlations": _to_python(metric_correlations),
             "source": "mars",
-            "average_score": round(avg_score, 3),
+            "average_score": float(avg_score),
         }
+        return result
 
     def _analyze_scorer_metrics(
         self, corpus: "ScoreCorpus", dimension: str, metrics: List[str]
     ) -> Dict[str, Dict[str, float]]:
         """
-        Analyze extended metrics for each scorer in this dimension
+        Analyze extended metrics for each scorer in this dimension.
         """
         scorer_metrics = {}
 
         for scorer in corpus.scorers:
             # Get all attribute values for this scorer and dimension
-            metric_values = corpus.get_metric_values(
-                dimension, scorer, metrics
-            )
+            metric_values = corpus.get_metric_values(dimension, scorer, metrics)
 
-            # Calculate statistics for each metric
             metrics_stats = {}
             for metric, values in metric_values.items():
+                if metric == "scorable_id":  # skip IDs
+                    continue
                 if not values:
                     continue
 
-                # Filter out None/NaN values
-                valid_values = [v for v in values if v is not None]
-                if not valid_values:
+                # Coerce to float where possible, drop Nones
+                cleaned = []
+                for v in values:
+                    try:
+                        if v is not None and v != "":
+                            cleaned.append(float(v))
+                    except (TypeError, ValueError):
+                        continue
+
+                if not cleaned:
                     continue
 
                 metrics_stats[metric] = {
-                    "mean": float(np.mean(valid_values)),
-                    "std": float(np.std(valid_values)),
-                    "min": float(min(valid_values)),
-                    "max": float(max(valid_values)),
-                    "count": len(valid_values),
+                    "mean": float(np.mean(cleaned)),
+                    "std": float(np.std(cleaned)),
+                    "min": float(np.min(cleaned)),
+                    "max": float(np.max(cleaned)),
+                    "count": len(cleaned),
                 }
 
             if metrics_stats:
@@ -542,3 +553,13 @@ class MARSCalculator(BaseScoreCalculator):
             )
 
         return recommendations
+
+
+def _to_python(value):
+    if isinstance(value, (np.generic,)):  # catches np.float64, np.bool_, etc.
+        return value.item()
+    if isinstance(value, (list, tuple)):
+        return [_to_python(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _to_python(v) for k, v in value.items()}
+    return value

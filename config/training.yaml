@@ -36,11 +36,6 @@ embeddings:
 
 plan_monitor:
   enabled: false
-  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
-  save_output: true
-  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
-  plan_monitoring_interval: 10
-  plan_monitoring_timeout: 60
 
 goal:
   goal_text: I want to build an AI that can teach itself to solve complex problems better over time.

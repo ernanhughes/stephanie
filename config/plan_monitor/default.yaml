@@ -1,0 +1,20 @@
+enabled: true
+cls: stephanie.engine.plan_trace_monitor.PlanTraceMonitor  # <- use the monitor we just edited
+save_output: true
+output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
+plan_monitoring_interval: 10
+plan_monitoring_timeout: 60
+retention_policy: discard_failed
+retain_k: 50
+
+self_improve:
+  enabled: true
+  hrm_gate: 0.6
+  reward_weights:
+    HRM: 0.55
+    MRQ: 0.2
+    SICQL: 0.2
+    EBT: 0.05
+  retain: true
+  train: true
+  rank_default_top_k: 5

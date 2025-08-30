@@ -11,9 +11,12 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
+from stephanie.scoring.ebt_scorer import EBTScorer
 from stephanie.scoring.hrm_scorer import HRMScorer
+from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.sicql_scorer import SICQLScorer
+from stephanie.scoring.svm_scorer import SVMScorer
 from stephanie.utils.trace_utils import load_plan_traces_from_export_dir
 
 
@@ -35,7 +38,7 @@ class PlanTraceScorerAgent(BaseAgent):
         
         # Configure which scorers to use
         self.scorer_types = cfg.get("scorer_types", [
-            "hrm", "sicql", "contrastive_ranker"
+            "hrm", "sicql", "contrastive_ranker", "ebt", "mrq", "svm"
         ])
         
         # Initialize scorers
@@ -62,18 +65,34 @@ class PlanTraceScorerAgent(BaseAgent):
     def _initialize_scorers(self) -> Dict[str, Any]:
         """Initialize all configured scorers"""
         scorers = {}
-        
-        if "hrm" in self.scorer_types:
-            scorers["hrm"] = HRMScorer(self.cfg.scorer.hrm, memory=self.memory, logger=self.logger)
+
+        if "svm" in self.scorer_types:
+            scorers["svm"] = SVMScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+        if "mrq" in self.scorer_types:
+            scorers["mrq"] = MRQScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
         if "sicql" in self.scorer_types:
-            scorers["sicql"] = SICQLScorer(self.cfg.scorer.sicql, memory=self.memory, logger=self.logger)
+            scorers["sicql"] = SICQLScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+        if "ebt" in self.scorer_types:
+            scorers["ebt"] = EBTScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+        if "hrm" in self.scorer_types:
+            scorers["hrm"] = HRMScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
         if "contrastive_ranker" in self.scorer_types:
             scorers["contrastive_ranker"] = ContrastiveRankerScorer(
-                self.cfg.scorer.contrastive_ranker, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, logger=self.logger
             )
-            
-        return scorers
 
+        return scorers
+    
     async def run(self, context: dict) -> dict:
         """Score pipeline execution traces with self-tuning capability"""
         start_time = time.time()
@@ -115,6 +134,16 @@ class PlanTraceScorerAgent(BaseAgent):
             )
             
             for step in pbar:
+                # Skip if step has no scorable content
+                if not step.input_text and not step.output_text:
+                    self.logger.log("StepSkippedNoScorable", {
+                        "trace_id": plan_trace.trace_id,
+                        "step_id": step.step_id,
+                        "step_order": step.step_order,
+                        "reason": "No input/output text to score"
+                    })
+                    continue
+
                 # Create scorable for this step
                 scorable = ScorableFactory.from_plan_trace(
                     plan_trace,
@@ -122,11 +151,20 @@ class PlanTraceScorerAgent(BaseAgent):
                     mode="single_step",
                     step=step
                 )
-                
+
+                if not scorable or not scorable.text.strip():
+                    self.logger.log("StepSkippedEmptyScorable", {
+                        "trace_id": plan_trace.trace_id,
+                        "step_id": step.step_id,
+                        "step_order": step.step_order,
+                        "reason": "Scorable text empty"
+                    })
+                    continue
+
                 # Score the step
                 step_bundle = self._score_scorable(scorable, plan_trace.goal_text)
                 all_step_bundles[step.step_id] = step_bundle
-                
+
                 # Prepare results for reporting
                 step_scores = {
                     dim: {
@@ -135,7 +173,7 @@ class PlanTraceScorerAgent(BaseAgent):
                         "source": result.source
                     } for dim, result in step_bundle.results.items()
                 }
-                
+
                 step_results.append({
                     "step_id": step.step_id,
                     "step_order": step.step_order,
@@ -144,8 +182,7 @@ class PlanTraceScorerAgent(BaseAgent):
                     "description": step.description,
                     "scores": step_scores
                 })
-                
-                # Update progress bar
+
                 pbar.set_postfix({"steps": f"{len(step_results)}/{len(plan_trace.execution_steps)}"})
             
             # Score the complete pipeline

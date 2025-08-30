@@ -1,0 +1,7 @@
+trust_reference: HRM
+variance_threshold: 0.15
+metrics: ["score", "uncertainty", "q_value", "energy"]
+log_enabled: true
+log_path: ${hydra:runtime.cwd}/reports/mars
+include_full_data: true
+dimensions: {}

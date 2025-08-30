@@ -4,12 +4,11 @@ import os
 
 import torch
 
-from stephanie.constants import GOAL, GOAL_TEXT
+from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
-from stephanie.models.score import ScoreORM
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.mrq.model import MRQModel

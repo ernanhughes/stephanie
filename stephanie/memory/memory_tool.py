@@ -28,6 +28,7 @@ from stephanie.memory.hnet_embedding_store import HNetEmbeddingStore
 from stephanie.memory.hypothesis_store import HypothesisStore
 from stephanie.memory.idea_store import IdeaStore
 from stephanie.memory.lookahead_store import LookaheadStore
+from stephanie.memory.mars_result_store import MARSResultStore
 from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
 from stephanie.memory.mrq_store import MRQStore
@@ -155,6 +156,7 @@ class MemoryTool:
         self.register_store(ReportStore(self.session, logger))
         self.register_store(TheoremStore(self.session, logger))
         self.register_store(ScorableRankStore(self.session, logger))
+        self.register_store(MARSResultStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):
