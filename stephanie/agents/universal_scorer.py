@@ -127,6 +127,7 @@ class UniversalScorerAgent(BaseAgent):
                     self.logger,
                     source="universal_scorer",
                     model_name="ensemble",
+                    evaluator_name=str(self.scorers.keys()
                 )
 
                 self.report({

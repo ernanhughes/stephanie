@@ -4,6 +4,19 @@ planner_reuse:
   save_prompt: true
   save_context: false
   skip_if_completed: false
+
+  top_k: 500
+  min_hrm: 0.6
+  use_db_knn: true
+  rerank_with_scorable_ranker: false
+
+  dimensions: 
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434

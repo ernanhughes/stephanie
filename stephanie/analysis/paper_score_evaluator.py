@@ -42,8 +42,15 @@ class PaperScoreEvaluator(ScoringManager):
         final_bundle = ScoreBundle.from_dict(final_scores)
         scorable = ScorableFactory.from_dict(document, TargetType.DOCUMENT)
         ScoringManager.save_score_to_memory(
-            final_bundle, scorable, context, self.cfg, self.memory, self.logger,
-            source="paper_score_evaluator"
+            final_bundle, 
+            scorable, 
+            context, 
+            self.cfg, 
+            self.memory, 
+            self.logger,
+            source="paper_score_evaluator", 
+            model_name="ensemble", 
+            evaluator_name=str(self.scorer.name())
         )
         return final_scores
 

@@ -1,5 +1,6 @@
 # stephanie/memory/evaluation_store.py
 # stores/score_store.py
+from datetime import datetime
 import json
 from typing import Optional
 
@@ -263,3 +264,51 @@ class EvaluationStore:
 
         self.session.commit()
         return eval_orm
+
+    def get_by_scorable(
+        self,
+        scorable_id: str | int,
+        scorable_type: str,
+        *,
+        evaluator_name: Optional[str] = None,
+        since: Optional[datetime] = None,
+        limit: Optional[int] = 100,
+        newest_first: bool = True,
+    ) -> list[dict]:
+        """
+        Return evaluations for a specific (scorable_id, scorable_type), with optional filters.
+
+        Args:
+            scorable_id: The scorable identifier (will be coerced to str for comparison).
+            scorable_type: The scorable type string (e.g., "plan_trace", "hypothesis").
+            evaluator_name: If provided, filter by evaluator name.
+            since: If provided, only evaluations created on/after this datetime.
+            limit: Maximum number of rows to return (None for no limit).
+            newest_first: Sort order by created_at. True => DESC, False => ASC.
+
+        Returns:
+            A list of dicts (via _orm_to_dict).
+        """
+        q = (
+            self.session.query(EvaluationORM)
+            .filter(
+                EvaluationORM.scorable_id == str(scorable_id),
+                EvaluationORM.scorable_type == scorable_type,
+            )
+        )
+
+        if evaluator_name:
+            q = q.filter(EvaluationORM.evaluator_name == evaluator_name)
+
+        if since:
+            q = q.filter(EvaluationORM.created_at >= since)
+
+        q = q.order_by(
+            EvaluationORM.created_at.desc() if newest_first else EvaluationORM.created_at.asc()
+        )
+
+        if limit is not None:
+            q = q.limit(int(limit))
+
+        rows = q.all()
+        return [self._orm_to_dict(r) for r in rows]

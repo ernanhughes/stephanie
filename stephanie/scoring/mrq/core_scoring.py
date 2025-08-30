@@ -41,6 +41,8 @@ class MRQCoreScoring:
             memory=self.memory,
             logger=self.logger,
             source="mrq",
+            model_name="mrq",
+            evaluator_name="mrq_old"
         )
         return bundle
 

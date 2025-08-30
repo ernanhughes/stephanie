@@ -161,6 +161,7 @@ class SVMInferenceAgent(BaseAgent):
                 self.logger,
                 source=self.model_type,
                 model_name=self.get_model_name(),
+                evaluator_name=self.model_type
             )
 
             results.append(

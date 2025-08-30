@@ -52,7 +52,7 @@ def mars_result_detail(request: Request, pipeline_run_id: int):
             if isinstance(e, dict)
             else e.evaluator_name,
             "model": e["model_name"] if isinstance(e, dict) else e.model_name,
-            "scores": {dim: None for dim in dimensions},
+            "scores": dict.fromkeys(dimensions),
         }
 
         # Attach scores for this eval
@@ -69,5 +69,7 @@ def mars_result_detail(request: Request, pipeline_run_id: int):
             "request": request,
             "mars": mars_result,
             "score_bundles": score_bundles,
+            "rows": rows,
+            "dimensions": dimensions,
         },
     )

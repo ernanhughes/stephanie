@@ -320,9 +320,15 @@ class ScoringManager(BaseAgent):
 
         bundle = ScoreBundle(results={r.dimension: r for r in results})
         self.save_score_to_memory(
-            bundle=bundle, scorable=scorable,
-            context=context, cfg=self.cfg, memory=self.memory, logger=self.logger,
-            source=self.scorer.name
+            bundle=bundle, 
+            scorable=scorable,
+            context=context, 
+            cfg=self.cfg, 
+            memory=self.memory, 
+            logger=self.logger,
+            source=self.scorer.name, 
+            model_name=self.scorer.model_type, 
+            evaluator_name=self.scorer.name
         )
         return bundle
 
@@ -341,6 +347,7 @@ class ScoringManager(BaseAgent):
         logger,
         source,
         model_name=None,
+        evaluator_name=None
     ):
         goal = context.get("goal")
         pipeline_run_id = context.get("pipeline_run_id")
@@ -359,7 +366,7 @@ class ScoringManager(BaseAgent):
             agent_name=cfg.get("name"),
             model_name=model_name,
             embedding_type=memory.embedding.name,
-            evaluator_name=cfg.get("evaluator", cfg.get("model_type", "ScoreEvaluator")),
+            evaluator_name=evaluator_name,
             strategy=cfg.get("strategy"),
             reasoning_strategy=cfg.get("reasoning_strategy"),
             extra_data={"source": source},

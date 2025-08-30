@@ -1,38 +1,59 @@
 # stephanie/agents/planning/planner_reuse.py
 import re
-from typing import List
 from tqdm import tqdm
 
 
-from stephanie.data.plan_trace import PlanTrace
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.scorable_ranker import ScorableRanker
 from stephanie.scoring.scorable import Scorable
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PLAN_TRACE_ID
+from stephanie.scoring.hrm_scorer import HRMScorer
+from stephanie.scoring.scorable_factory import TargetType
+
 
 class PlannerReuseAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, logger, full_cfg):
         super().__init__(cfg, memory, logger)
         self.ranker = ScorableRanker(cfg, memory, logger)
-        self.top_k = cfg.get("top_k", 5)
-        self.candidate_limit = cfg.get("candidate_limit", 500)
+        self.top_k = cfg.get("top_k", 100)
+        self.min_hrm = cfg.get("min_hrm", 0.6)
+        self.use_db_knn = cfg.get("use_db_knn", True)
+        self.rerank_with_scorable_ranker = cfg.get("rerank_with_scorable_ranker", False)
+        self.dimensions = cfg.get("dimensions", ["alignment"])
+        self.scorer = HRMScorer(full_cfg["scorer"]["hrm"], memory=self.memory, logger=self.logger)
 
     async def run(self, context: dict) -> dict:
-        goal = context.get("goal", {})
-        goal_text = goal.get("goal_text", "")
-        if not goal_text:
-            return context
+        goal_text = context.get("goal", {}).get("goal_text", "")
 
         # --- 1. Retrieve candidate past traces ---
-        candidates = [] 
-        all_traces = self.memory.plan_traces.get_all(limit=self.candidate_limit)
-        pbar = tqdm(all_traces, desc="Embedding Candidates", disable=not self.cfg.get("progress", True))
+        candidates = []
+
+        filtered_traces = []
+
+        # get ids of matching traces
+        related_scorables = self.memory.embedding.search_related_scorables(goal_text, TargetType.PLAN_TRACE, self.top_k)
+        for scorable in related_scorables:
+            pt = self.memory.plan_traces.get_by_trace_id(scorable.get("id"))
+            if not pt:
+                continue
+            to_score = ScorableFactory.from_plan_trace(pt, goal_text=goal_text)
+            bundle = self.scorer.score(context, to_score, self.dimensions)
+            score = bundle.aggregate()
+            self.logger.log("PlannerReuseHRMScore", {"score": score, "trace_id": pt.trace_id})
+            if bundle.aggregate() >= self.min_hrm:
+                filtered_traces.append(pt)
+            else: 
+                self.logger.log("PlannerReuseFilteredTrace", {"trace_id": pt.trace_id})
+
+        # filter list based upon hrm score
+
+        pbar = tqdm(filtered_traces, desc="Embedding Candidates", disable=not self.cfg.get("progress", True))
         for idx, pt in enumerate(pbar, start=1):
-            scorable = ScorableFactory.from_plan_trace(pt, goal_text=goal_text)
-            embed_id = self.memory.scorable_embeddings.get_or_create(scorable)
+            related_scorables = ScorableFactory.from_plan_trace(pt, goal_text=goal_text)
+            embed_id = self.memory.scorable_embeddings.get_or_create(related_scorables)
             self.logger.log("PlannerReuseCandidate", {
-                "scorable_id": scorable.id,
+                "scorable_id": related_scorables.id,
                 "embedding_id": embed_id
             })
 
@@ -45,7 +66,7 @@ class PlannerReuseAgent(BaseAgent):
             candidates.append(
                 Scorable(id=pt.trace_id, text=candidate_text, target_type="plan_trace")
             )
-            pbar.set_postfix({"candidates": f"{idx}/{len(all_traces)}"})
+            pbar.set_postfix({"candidates": f"{idx}/{len(filtered_traces)}"})
 
         if not candidates:
             self.logger.log("PlannerReuseNoCandidates", {"goal_text": goal_text})
@@ -186,25 +207,3 @@ class PlannerReuseAgent(BaseAgent):
             result["plan"] = [s.strip() for s in steps if s.strip()]
 
         return result
-
-    # stephanie/agents/planning/planner_reuse.py
-    def retrieve_similar_traces(self, current_goal: str, k: int = 5) -> List[PlanTrace]:
-        """Find past reasoning traces similar to current goal using existing infrastructure"""
-        # Leverage your existing H-Net embedding system
-        goal_embedding = self.embedding_store.get_embedding(current_goal, backend="hnet")
-        
-        # Use your existing similarity search (already works with PlanTraces)
-        return self.memory.plan_traces.find_similar(
-            embedding=goal_embedding,
-            k=k,
-            min_hrm=0.6  # Only reuse high-quality reasoning
-        )
-    
-    def adapt_plan(self, current_goal: str) -> Plan:
-        similar_traces = self.retrieve_similar_traces(current_goal)
-        
-        # Your existing prompt already handles this pattern
-        return self.prompt_engineer.create_adapted_plan(
-            current_goal, 
-            similar_traces
-        )

@@ -75,7 +75,8 @@ class ScoringMemcubeAgent(BaseAgent):
                 self.memory,
                 self.logger,
                 source=source,
-                model_name=f"memcube_{source}"
+                model_name=f"memcube_{source}",
+                evaluator_name="memcube"
             )
 
             # Save MemCube to DB

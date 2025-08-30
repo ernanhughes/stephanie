@@ -245,6 +245,7 @@ class ScorerAgent(BaseAgent):
             self.logger,
             source="document_reward",
             model_name="ensemble",
+            evaluator_name=str(self.scorers.keys()
         )
 
         # Prepare results for reporting

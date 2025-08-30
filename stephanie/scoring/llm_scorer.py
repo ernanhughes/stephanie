@@ -101,6 +101,7 @@ class LLMScorer(BaseScorer):
             self.memory,
             self.logger,
             source="llm",
+            evaluator_name=self.model_type
         )
         return bundle
 

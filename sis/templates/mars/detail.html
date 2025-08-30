@@ -1,29 +1,79 @@
-<h2>MARS Result: {{ mars.dimension }}</h2>
-<p><b>Agreement:</b> {{ mars.agreement_score }} |
-   <b>Std Dev:</b> {{ mars.std_dev }} |
-   <b>Preferred Model:</b> {{ mars.preferred_model }}</p>
-<p><b>Explanation:</b> {{ mars.explanation }}</p>
+{% extends "base.html" %}
 
-<h3>Underlying Scores</h3>
-<table class="table-auto border-collapse border border-gray-400">
-  <thead>
-    <tr>
-      <th class="border px-2 py-1">Scorable ID</th>
-      <th class="border px-2 py-1">Scorer</th>
-      <th class="border px-2 py-1">Score</th>
-      <th class="border px-2 py-1">Attributes</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for bundle in score_bundles %}
-    {% for dim, result in bundle.results.items() if dim == mars.dimension %}
-      <tr>
-        <td class="border px-2 py-1">{{ bundle.scorable_id }}</td>
-        <td class="border px-2 py-1">{{ result.source }}</td>
-        <td class="border px-2 py-1">{{ result.score }}</td>
-        <td class="border px-2 py-1"><pre>{{ result.attributes | tojson(indent=2) }}</pre></td>
-      </tr>
-    {% endfor %}
-  {% endfor %}
-  </tbody>
-</table>
+{% block content %}
+<div class="container my-4">
+
+  <!-- Summary Card -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h2 class="card-title">MARS Result: {{ mars.dimension }}</h2>
+      <p class="mb-1"><b>Agreement:</b>
+        <span class="badge bg-success">{{ "%.3f"|format(mars.agreement_score) }}</span>
+      </p>
+      <p class="mb-1"><b>Std Dev:</b>
+        <span class="badge bg-warning text-dark">{{ "%.3f"|format(mars.std_dev) }}</span>
+      </p>
+      <p class="mb-1"><b>Preferred Model:</b>
+        <code>{{ mars.preferred_model }}</code>
+      </p>
+      <p><b>Explanation:</b> {{ mars.explanation }}</p>
+    </div>
+  </div>
+
+  <!-- Underlying Scores -->
+  {% if rows %}
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Underlying Evaluation Scores</h5>
+      <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+        <table class="table table-hover table-striped align-middle table-sm">
+          <thead class="table-dark sticky-top">
+            <tr>
+              <th>ID</th>
+              <th>Agent</th>
+              <th>Evaluator</th>
+              <th>Model</th>
+              {% for dim in dimensions %}
+                <th>{{ dim }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td><span class="text-muted">#{{ row.id }}</span></td>
+              <td><span class="badge bg-info text-dark">{{ row.agent }}</span></td>
+              <td>{{ row.evaluator }}</td>
+              <td><code>{{ row.model }}</code></td>
+              {% for dim in dimensions %}
+                {% set score = row.scores[dim] %}
+                <td>
+                  {% if score is not none %}
+                    {% if score >= 0.75 %}
+                      <span class="badge bg-success">{{ "%.3f"|format(score) }}</span>
+                    {% elif score >= 0.5 %}
+                      <span class="badge bg-warning text-dark">{{ "%.3f"|format(score) }}</span>
+                    {% else %}
+                      <span class="badge bg-danger">{{ "%.3f"|format(score) }}</span>
+                    {% endif %}
+                  {% else %}
+                    <span class="text-muted">–</span>
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Navigation -->
+  <div class="mt-4">
+    <a href="/mars" class="btn btn-secondary">&larr; Back to MARS Results</a>
+  </div>
+
+</div>
+{% endblock %}

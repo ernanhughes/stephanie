@@ -66,6 +66,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
                 self.memory,
                 self.logger,
                 source="llm",
+                evaluator_name=self.model_name,
             )
 
         self.logger.log("DocumentLLMInferenceCompleted", {
@@ -107,6 +108,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
             self.memory,
             self.logger,
             source="llm",
+            evaluator_name=self.model_name,
         )
 
         return result

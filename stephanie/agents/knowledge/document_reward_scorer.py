@@ -220,7 +220,8 @@ class DocumentRewardScorerAgent(BaseAgent):
             self.memory,
             self.logger,
             source="document_reward",
-            model_name="ensemble"
+            model_name="ensemble",
+            evaluator_name=str(self.scorers.keys())
         )
         
         # Prepare results for reporting

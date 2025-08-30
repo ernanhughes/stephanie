@@ -138,6 +138,7 @@ class PaperScoreAgent(BaseAgent):
             self.logger,
             source="paper_score",
             model_name="ensemble",
+            evaluator_name=str(self.scorers.keys())
         )
 
         report_scores = {
