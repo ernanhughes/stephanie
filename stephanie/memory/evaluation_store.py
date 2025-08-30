@@ -219,7 +219,7 @@ class EvaluationStore:
         return None
 
 
-    def save_bundle(self, bundle: ScoreBundle, scorable, context, cfg, source, embedding_type="hnet"):
+    def save_bundle(self, bundle: ScoreBundle, scorable, context, cfg, source, embedding_type="hnet", evaluator=None):
         """Persist a full bundle (Evaluation + Scores + Attributes) into the DB."""
         goal = context.get("goal")
         pipeline_run_id = context.get("pipeline_run_id")
@@ -233,7 +233,7 @@ class EvaluationStore:
             agent_name=cfg.get("name"),
             model_name=cfg.get("model", {}).get("name", "UnknownModel"),
             embedding_type=embedding_type,
-            evaluator_name=cfg.get("evaluator", "ScoreEvaluator"),
+            evaluator_name=evaluator or "ScoreEvaluator",
             strategy=cfg.get("strategy"),
             reasoning_strategy=cfg.get("reasoning_strategy"),
         )

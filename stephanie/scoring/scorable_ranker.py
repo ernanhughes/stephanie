@@ -139,6 +139,7 @@ class ScorableRanker(BaseScorer):
                 cfg=self.cfg,
                 source="scorable_ranker",
                 embedding_type=self.memory.embedding.name,
+                evaluator=self.model_type
             ) 
 
             bundles.append(bundle)
