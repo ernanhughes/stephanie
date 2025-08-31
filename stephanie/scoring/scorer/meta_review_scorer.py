@@ -1,8 +1,8 @@
 # stephanie/scoring/meta_review_scorer.py
 
-from stephanie.scoring.base_scorer import BaseScorer
-from stephanie.scoring.llm_scorer import LLMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer  # formerly MRQEvaluator
+from stephanie.scoring.scorer.base_scorer import BaseScorer
+from stephanie.scoring.scorer.llm_scorer import LLMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer  # formerly MRQEvaluator
 
 
 class MetaReviewScorer(BaseScorer):

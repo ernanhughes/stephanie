@@ -23,18 +23,18 @@ from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
 from stephanie.reports import ReportFormatter
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
-from stephanie.scoring.service import ScoringService
+from stephanie.scoring.scoring_service import ScoringService
 from stephanie.utils.report_utils import get_stage_details
 
 
 class PipelineStage:
-    def __init__(self, name: str, config: dict, stage_dict: dict):
+    def __init__(self, name: str, cfg: dict, stage_dict: dict):
         self.name = name
-        self.agent_role = config.get("agent_role", "")
-        self.description = config.get("description", "")
-        self.cls = config.get("cls", "")
-        self.enabled = config.get("enabled", True)
-        self.iterations = config.get("iterations", 1)
+        self.agent_role = cfg.get("agent_role", "")
+        self.description = cfg.get("description", "")
+        self.cls = cfg.get("cls", "")
+        self.enabled = cfg.get("enabled", True)
+        self.iterations = cfg.get("iterations", 1)
         self.stage_dict = stage_dict
 
 class Supervisor:
@@ -62,11 +62,11 @@ class Supervisor:
             # Insert actual training logic here
 
         # Stub judgment and reward model evaluators
-        def reward_model_fn(goal, doc_a, doc_b):
-            return "a" if len(doc_a) >= len(doc_b) else "b"
+        def reward_model_fn(context, doc_a, doc_b):
+            return scoring_service.compare_documents(context, doc_a, doc_b)
 
-        def llm_judge_fn(goal, doc_a, doc_b):
-            return "a"  # Placeholder logic
+        def llm_judge_fn(context, doc_a, doc_b):
+            return scoring_service.compare_documents(context, doc_a, doc_b) 
 
         validator = SelfValidationEngine(
             cfg=cfg,

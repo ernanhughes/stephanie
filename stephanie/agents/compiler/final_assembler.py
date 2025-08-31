@@ -1,7 +1,7 @@
 # stephanie/agents/compiler/final_assembler.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.utils.token_counter import TokenCounter
 

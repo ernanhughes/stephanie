@@ -7,7 +7,7 @@ from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.models.score import ScoreORM
-from stephanie.scoring.base_scorer import BaseScorer
+from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.model.in_context_q import InContextQModel
 from stephanie.scoring.model.policy_head import PolicyHead
 from stephanie.scoring.model.q_head import QHead

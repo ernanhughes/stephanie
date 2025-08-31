@@ -5,7 +5,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.base_scorer import BaseScorer
+from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.utils import compute_similarity_matrix
 
 

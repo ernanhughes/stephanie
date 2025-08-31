@@ -10,13 +10,13 @@ from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
-from stephanie.scoring.ebt_scorer import EBTScorer
-from stephanie.scoring.hrm_scorer import HRMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.contrastive_ranker_scorer import ContrastiveRankerScorer
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.hrm_scorer import HRMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
 from stephanie.utils.trace_utils import load_plan_traces_from_export_dir
 
 

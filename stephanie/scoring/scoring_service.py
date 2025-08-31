@@ -1,4 +1,32 @@
 # stephanie/scoring/service.py
+"""
+Scoring Service (central gateway)
+=================================
+
+What this is
+------------
+A single, opinionated entrypoint for all scoring I/O across the system.
+
+- **Registration**: Auto-register scorers from `cfg.scorer.*` (or explicit list in `cfg.scoring.enabled_scorers`).
+- **Compute**: Call model scorers uniformly (goal-conditioned or not), get back a ScoreBundle.
+- **Persist**: When you want, persist bundles through EvaluationStore so Scores + Attributes are consistently written.
+- **Single-dimension I/O**: Canonical helpers for HRM and SICQL Q; generic `save_score`/`get_score` passthroughs too.
+- **Pairwise**: Built-in pairwise compare (native if scorer supports it; otherwise aggregate fallback with optional tie-breaks).
+- **Readiness**: Introspect scorer model readiness, with optional auto-train hook.
+
+Design notes
+------------
+- We treat **HRM** as a *dimension* (`scores.dimension = "hrm"`). It’s ubiquitous and normalized to [0,1].
+- We treat **SICQL Q** as an **attribute** row (source="sicql", field `q_value`) so we don’t lose its rich diagnostics.
+- We DO NOT use `EvaluationORM.scores` JSON anymore (it caused drift & confusion).
+- Scorer `score(...)` is assumed to be **goal-conditioned** and expects a `goal=dict` (not a whole `context`).
+  The service extracts `goal` from `context` and passes it down correctly.
+
+You get:
+- Uniform API: register → score → (optional) persist → query point-values when you need them.
+- One place to adjust normalization / fallbacks / tie-break behavior.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Callable, List
@@ -7,16 +35,7 @@ from typing import Any, Dict, Optional, Callable, List
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory
 
-# Stores
-from stephanie.memory.score_store import ScoreStore
-
-# Scorers (imported lazily in _build_scorer)
-# - HRMScorer
-# - SICQLScorer
-# - SVMScorer
-# - MRQScorer
-# - EBTScorer
-# - ContrastiveRankerScorer
+# NOTE: We don’t import ScoreStore here directly; we use `self.memory.scores` (already a ScoreStore).
 
 class ScoringService:
     """
@@ -47,15 +66,28 @@ class ScoringService:
     # ------------------------------------------------------------------ #
     # Initialization / registration
     # ------------------------------------------------------------------ #
+    def _cfg_get(self, *keys, default=None):
+        """Config-safe getter that works for dicts and OmegaConf."""
+        cur = self.cfg
+        for k in keys:
+            try:
+                # OmegaConf supports attribute access, but dict.get works for both
+                cur = cur.get(k, None) if isinstance(cur, dict) else getattr(cur, k)
+            except Exception:
+                cur = None
+            if cur is None:
+                return default
+        return cur
+
     def _resolve_scorer_names(self, cfg: Dict[str, Any]) -> List[str]:
         names = []
         try:
-            scoring_cfg = cfg.get("scoring", {})
-            explicit = scoring_cfg.get("enabled_scorers")
+            scoring_cfg = cfg.get("scoring", {}) if isinstance(cfg, dict) else getattr(cfg, "scoring", {})
+            explicit = scoring_cfg.get("enabled_scorers") if isinstance(scoring_cfg, dict) else getattr(scoring_cfg, "enabled_scorers", None)
             if explicit:
                 return list(explicit)
 
-            scorer_block = cfg.get("scorer", {})
+            scorer_block = cfg.get("scorer", {}) if isinstance(cfg, dict) else getattr(cfg, "scorer", {})
             if isinstance(scorer_block, dict):
                 # use the section names under cfg.scorer.*
                 names = [k for k, v in scorer_block.items() if isinstance(v, (dict,))]
@@ -79,7 +111,7 @@ class ScoringService:
 
     def _get_scorer_cfg(self, name: str) -> Dict[str, Any]:
         try:
-            block = self.cfg.get("scorer", {}).get(name, {})
+            block = self._cfg_get("scorer", name, default={})
             return block if isinstance(block, dict) else {}
         except Exception:
             return {}
@@ -90,22 +122,23 @@ class ScoringService:
         """
         try:
             if name == "hrm":
-                from stephanie.scoring.hrm_scorer import HRMScorer
+                from stephanie.scoring.scorer.hrm_scorer import HRMScorer
                 return HRMScorer(scorer_cfg, memory=self.memory, logger=self.logger)
             if name == "sicql":
-                from stephanie.scoring.sicql_scorer import SICQLScorer
+                from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
                 return SICQLScorer(scorer_cfg, memory=self.memory, logger=self.logger)
             if name == "svm":
-                from stephanie.scoring.svm_scorer import SVMScorer
+                from stephanie.scoring.scorer.svm_scorer import SVMScorer
                 return SVMScorer(scorer_cfg, memory=self.memory, logger=self.logger)
             if name == "mrq":
-                from stephanie.scoring.mrq_scorer import MRQScorer
+                from stephanie.scoring.scorer.mrq_scorer import MRQScorer
                 return MRQScorer(scorer_cfg, memory=self.memory, logger=self.logger)
             if name == "ebt":
-                from stephanie.scoring.ebt_scorer import EBTScorer
+                from stephanie.scoring.scorer.ebt_scorer import EBTScorer
                 return EBTScorer(scorer_cfg, memory=self.memory, logger=self.logger)
-            if name in ("contrastive_ranker", "contrastive"):
-                from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
+            if name in ("contrastive_ranker", "contrastive", "reward"):
+                # We allow "reward" to be an alias for contrastive pairwise scorer.
+                from stephanie.scoring.scorer.contrastive_ranker_scorer import ContrastiveRankerScorer
                 return ContrastiveRankerScorer(scorer_cfg, memory=self.memory, logger=self.logger)
         except Exception as e:
             if self.logger:
@@ -137,11 +170,17 @@ class ScoringService:
         """
         Call the underlying scorer and return its ScoreBundle.
         Does not persist automatically.
+
+        HOT: Our scorers typically expect **goal-only** (not full context).
+             We extract goal and call `scorer.score(goal=..., scorable, dimensions)`.
         """
         scorer = self._scorers.get(scorer_name)
         if not scorer:
             raise ValueError(f"Scorer '{scorer_name}' not registered")
-        return scorer.score(context=context, scorable=scorable, dimensions=dimensions)
+
+        # Extract goal the way all scorers expect
+        goal = (context or {}).get("goal", {}) if isinstance(context, dict) else {}
+        return scorer.score(goal, scorable, dimensions)
 
     def score_and_persist(
         self,
@@ -169,7 +208,7 @@ class ScoringService:
                 source=source or scorer_name,
                 embedding_type=embedding_type or getattr(self.memory.embedding, "name", None),
                 evaluator=evaluator or scorer_name,
-                model_name=model_name or self.cfg.get("model", {}).get("name", "unknown"),
+                model_name=model_name or (self._cfg_get("model", "name", default="unknown")),
             )
         except Exception as e:
             if self.logger:
@@ -180,6 +219,59 @@ class ScoringService:
                     "error": str(e)
                 })
         return bundle
+
+    # ------------------------------------------------------------------ #
+    # Generic single-dimension I/O (passthrough to ScoreStore)
+    # ------------------------------------------------------------------ #
+    def save_score(
+        self,
+        *,
+        scorable_id: str,
+        scorable_type: str,
+        score_type: str,
+        score_value: float,
+        weight: float = 1.0,
+        rationale: Optional[str] = None,
+        source: Optional[str] = None,
+        attributes: Optional[Dict[str, Any]] = None,
+        **evaluation_kwargs,   # goal_id, plan_trace_id, pipeline_run_id, agent_name, etc.
+    ):
+        """Convenience: persist a single dimension row (delegates to ScoreStore.save_score)."""
+        return self.memory.scores.save_score(
+            scorable_id=scorable_id,
+            scorable_type=scorable_type,
+            score_type=score_type,
+            score_value=score_value,
+            weight=weight,
+            rationale=rationale,
+            source=source,
+            attributes=attributes,
+            **evaluation_kwargs,
+        )
+
+    def get_score(
+        self,
+        *,
+        scorable_id: str,
+        scorable_type: str,
+        score_type: str,
+        normalize: bool = False,
+        attribute_sources: tuple[str, ...] = ("hrm", "mars", "sicql"),
+        attribute_field: Optional[str] = None,
+        dimension_filter: Optional[str] = None,
+        fallback_to_scores_json: bool = False,  # kept for legacy compat (no-op if you removed JSON)
+    ) -> Optional[float]:
+        """Unified read backed by ScoreStore (ScoreORM → Attribute)."""
+        return self.memory.scores.get_score(
+            scorable_id=scorable_id,
+            scorable_type=scorable_type,
+            score_type=score_type,
+            normalize=normalize,
+            attribute_sources=attribute_sources,
+            attribute_field=attribute_field,
+            dimension_filter=dimension_filter,
+            fallback_to_scores_json=fallback_to_scores_json,
+        )
 
     # ------------------------------------------------------------------ #
     # Canonical HRM helpers (dimension row in scores)
@@ -232,7 +324,7 @@ class ScoringService:
         if not scorable:
             return None
 
-        bundle = scorer.score(context=ctx, scorable=scorable, dimensions=dimensions or ["alignment"])
+        bundle = scorer.score(ctx.get("goal", {}), scorable, dimensions or ["alignment"])
         hrm = float(bundle.aggregate())
 
         # persist canonical HRM
@@ -256,9 +348,7 @@ class ScoringService:
         dimension: str = "alignment",
         **evaluation_kwargs,
     ):
-        """
-        Store SICQL Q-value in EvaluationAttribute (source='sicql').
-        """
+        """Store SICQL Q-value as an EvaluationAttribute (source='sicql')."""
         return self.memory.scores.save_sicql_q(
             scorable_id=scorable_id,
             scorable_type=scorable_type,
@@ -280,8 +370,9 @@ class ScoringService:
             dimension=dimension,
         )
 
-
-    # -------- Model readiness / lifecycle --------
+    # ------------------------------------------------------------------ #
+    # Model readiness / lifecycle
+    # ------------------------------------------------------------------ #
     def get_model_status(self, name: str) -> dict:
         s = self._scorers.get(name)
         if not s:
@@ -318,18 +409,124 @@ class ScoringService:
         self.logger and self.logger.log("ScoringEnsureReadyReport", report)
         return report
 
-    # -------- Pairwise reward convenience --------
+    # ------------------------------------------------------------------ #
+    # Pairwise reward convenience
+    # ------------------------------------------------------------------ #
+    def _coerce_scorable(self, x, default_type: str = "document"):
+        """Accept str|Scorable, return Scorable (text only is fine for pairwise)."""
+        if isinstance(x, Scorable):
+            return x
+        return Scorable(id=None, text=str(x), target_type=default_type)
+
     def compare_pair(
         self,
+        *,
         scorer_name: str,
-        goal_text: str,
-        doc_a: str,
-        doc_b: str,
-        target_type: str = "text",
-        dimensions: Optional[list[str]] = None,
-    ):
-        """Score doc_a and doc_b with the registered 'reward' (or any) scorer."""
-        ctx = {"goal": {"goal_text": goal_text}}
-        sa = self.score(scorer_name, Scorable(id="A", text=doc_a, target_type=target_type), ctx, dimensions).aggregate()
-        sb = self.score(scorer_name, Scorable(id="B", text=doc_b, target_type=target_type), ctx, dimensions).aggregate()
-        return ("a" if sa >= sb else "b"), float(sa), float(sb)
+        context: dict,
+        a,
+        b,
+        dimensions: list[str] | None = None,
+        margin: float | None = None,
+    ) -> dict:
+        """
+        Generic pairwise compare via registered scorer.
+        Returns a rich dict: {winner, score_a, score_b, per_dimension, ...}
+
+        HOT: If the scorer implements `compare(...)`, we use it. Otherwise we
+             fall back to “score vs score” aggregation across dimensions.
+        """
+        scorer = self._scorers.get(scorer_name)
+        if not scorer:
+            raise ValueError(f"No scorer registered under '{scorer_name}'")
+
+        a_s = self._coerce_scorable(a)
+        b_s = self._coerce_scorable(b)
+
+        # If scorer exposes native pairwise compare, use it.
+        if hasattr(scorer, "compare"):
+            res = scorer.compare(context=context, a=a_s, b=b_s, dimensions=dimensions)
+        else:
+            # Fallback: score each against the goal and prefer higher aggregate
+            dims = dimensions or getattr(scorer, "dimensions", []) or ["alignment"]
+            bundle_a = scorer.score((context or {}).get("goal", {}), a_s, dims)
+            bundle_b = scorer.score((context or {}).get("goal", {}), b_s, dims)
+
+            sa = sum(sr.score for sr in bundle_a.results.values()) / max(1, len(bundle_a.results))
+            sb = sum(sr.score for sr in bundle_b.results.values()) / max(1, len(bundle_b.results))
+            res = {
+                "winner": "a" if sa >= sb else "b",
+                "score_a": float(sa),
+                "score_b": float(sb),
+                "mode": "aggregate_fallback",
+                "scorer": scorer_name,
+                "per_dimension": [
+                    {"dimension": d, "score_a": float(bundle_a.results[d].score), "score_b": float(bundle_b.results[d].score)}
+                    for d in bundle_a.results.keys()
+                ],
+            }
+
+        # Optional margin-based tie-break (goal similarity)
+        if margin is not None and abs(res["score_a"] - res["score_b"]) < float(margin):
+            gtxt = ((context or {}).get("goal") or {}).get("goal_text", "") or ""
+            try:
+                gemb = self.memory.embedding.get_or_create(gtxt)
+                def _sim(scorable_or_text):
+                    s = self._coerce_scorable(scorable_or_text)
+                    return self.memory.embedding.cosine(gemb, self.memory.embedding.get_or_create(s.text))
+                res["winner"] = "a" if _sim(a_s) >= _sim(b_s) else "b"
+                res["tie_break"] = "goal_similarity"
+            except Exception:
+                # leave as-is if embeddings not available
+                pass
+
+        self.logger and self.logger.log("ScoringServicePairwise", {
+            "scorer": scorer_name,
+            "winner": res.get("winner"),
+            "score_a": res.get("score_a"),
+            "score_b": res.get("score_b"),
+            "mode": res.get("mode"),
+        })
+        return res
+
+    def reward_compare(
+        self,
+        *,
+        context: dict,
+        a,
+        b,
+        dimensions: list[str] | None = None,
+        margin: float | None = None,
+    ) -> dict:
+        """
+        Convenience: compare using the 'reward' scorer registration.
+        """
+        # allow defaulting from cfg if not provided
+        if dimensions is None:
+            dims_cfg = self._cfg_get("scorer", "reward", "dimensions", default=None)
+            dimensions = list(dims_cfg) if isinstance(dims_cfg, (list, tuple)) else None
+        if margin is None:
+            margin = float(self._cfg_get("scorer", "reward", "margin", default=0.05) or 0.05)
+
+        return self.compare_pair(
+            scorer_name="reward",
+            context=context,
+            a=a,
+            b=b,
+            dimensions=dimensions,
+            margin=margin,
+        )
+
+    def reward_decide(self, context: dict, a, b) -> str:
+        """
+        Minimal API that returns just 'a' or 'b'.
+        (Useful to plug into components that expect a simple callable.)
+        """
+        try:
+            res = self.reward_compare(context=context, a=a, b=b)
+            return "a" if res.get("winner") == "a" else "b"
+        except Exception as e:
+            # Deterministic last-resort fallback
+            self.logger and self.logger.log("ScoringServiceRewardFallback", {"error": str(e)})
+            la = len(getattr(a, "text", str(a)))
+            lb = len(getattr(b, "text", str(b)))
+            return "a" if la >= lb else "b"

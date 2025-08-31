@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import litellm
-from stephanie.scoring.service import ScoringService
+from stephanie.scoring.scoring_service import ScoringService
 import torch
 
 from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,

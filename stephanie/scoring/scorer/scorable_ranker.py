@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 from sklearn.metrics.pairwise import cosine_similarity
 
-from stephanie.scoring.base_scorer import BaseScorer
+from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.data.score_bundle import ScoreBundle

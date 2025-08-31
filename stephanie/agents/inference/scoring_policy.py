@@ -6,12 +6,12 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
 from stephanie.scoring.ebt.buffer import EBTTrainingBuffer
-from stephanie.scoring.ebt_scorer import EBTScorer
-from stephanie.scoring.llm_scorer import LLMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.llm_scorer import LLMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
 
 class ScoringPolicyAgent(BaseAgent):

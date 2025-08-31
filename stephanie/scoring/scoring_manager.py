@@ -18,7 +18,7 @@ from stephanie.prompts.prompt_renderer import PromptRenderer
 from stephanie.scoring.calculations.score_delta import ScoreDeltaCalculator
 from stephanie.scoring.calculations.weighted_average import \
     WeightedAverageCalculator
-from stephanie.scoring.fallback_scorer import FallbackScorer
+from stephanie.scoring.scorer.fallback_scorer import FallbackScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.score_display import ScoreDisplay
 
@@ -46,10 +46,10 @@ class ScoringManager(BaseAgent):
         self.scoring_profile = scoring_profile
          # Initialize fallback scorer if not provided
         if scorer is None:
-            from stephanie.scoring.llm_scorer import LLMScorer
-            from stephanie.scoring.mrq_scorer import MRQScorer
-            from stephanie.scoring.sicql_scorer import SICQLScorer
-            from stephanie.scoring.svm_scorer import SVMScorer
+            from stephanie.scoring.scorer.llm_scorer import LLMScorer
+            from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+            from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+            from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
             svm_scorer = SVMScorer(cfg, memory, logger)
             mrq_scorer = MRQScorer(cfg, memory, logger)
@@ -168,10 +168,10 @@ class ScoringManager(BaseAgent):
         cfg = cfg.copy()
         cfg["output_format"] = output_format
 
-        from stephanie.scoring.llm_scorer import LLMScorer
-        from stephanie.scoring.mrq_scorer import MRQScorer
-        from stephanie.scoring.sicql_scorer import SICQLScorer
-        from stephanie.scoring.svm_scorer import SVMScorer
+        from stephanie.scoring.scorer.llm_scorer import LLMScorer
+        from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+        from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+        from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
         if data["scorer"] == "mrq":
             # Use MRQ scoring profile if specified

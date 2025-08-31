@@ -4,11 +4,11 @@ from tqdm import tqdm
 
 
 from stephanie.scoring.scorable_factory import ScorableFactory
-from stephanie.scoring.scorable_ranker import ScorableRanker
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 from stephanie.scoring.scorable import Scorable
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PLAN_TRACE_ID
-from stephanie.scoring.hrm_scorer import HRMScorer
+from stephanie.scoring.scorer.hrm_scorer import HRMScorer
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
