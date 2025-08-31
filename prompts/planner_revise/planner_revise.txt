@@ -53,7 +53,7 @@ Return **only** these sections, in this order, with the numeric value on the sam
 ## issues:
 - bullet list of detected issues (omit if none)
 
-## plan:
+## revised plan:
 1. step
 2. step
 (leave empty if no revision is needed)

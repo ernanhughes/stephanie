@@ -408,7 +408,14 @@ class HNetValidationExperiment(BaseAgent):
             corpus = ScoreCorpus()
             for trace in traces:
                 corpus.add_trace(trace)
-            
+
+            self.logger.log("ScoreCorpusSummary", {
+                "dims": corpus.dimensions,
+                "scorers": corpus.scorers,
+                "shape_example": corpus.get_dimension_matrix(self.dimensions[0]).shape
+            })
+
+
             # Run MARS analysis
             mars_results = self.mars_calculator.calculate(corpus, context)
 

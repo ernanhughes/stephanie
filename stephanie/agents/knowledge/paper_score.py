@@ -37,12 +37,10 @@ class PaperScoreAgent(BaseAgent):
             ["svm", "mrq", "sicql", "ebt", "hrm", "contrastive_ranker"],
         )
 
-        # Initialize scorers dynamically
-        self.scorers = self._initialize_scorers()
-
         # Initialize MARS calculator
         dimension_config = cfg.get("dimension_config", {})
         self.mars_calculator = MARSCalculator(dimension_config, self.memory, self.logger)
+        self.enabled_scorers = cfg.get("enabled_scorers", [])
 
         self.logger.log(
             "PaperScoreAgentInitialized",
@@ -52,22 +50,6 @@ class PaperScoreAgent(BaseAgent):
                 "include_mars": self.include_mars,
             },
         )
-
-    def _initialize_scorers(self) -> Dict[str, Any]:
-        scorers = {}
-        if "svm" in self.scorer_types:
-            scorers["svm"] = SVMScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "mrq" in self.scorer_types:
-            scorers["mrq"] = MRQScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "sicql" in self.scorer_types:
-            scorers["sicql"] = SICQLScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "ebt" in self.scorer_types:
-            scorers["ebt"] = EBTScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "hrm" in self.scorer_types:
-            scorers["hrm"] = HRMScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "contrastive_ranker" in self.scorer_types:
-            scorers["contrastive_ranker"] = ContrastiveRankerScorer(self.cfg, memory=self.memory, logger=self.logger)
-        return scorers
 
     async def run(self, context: dict) -> dict:
         """Score all papers in the context"""
@@ -97,6 +79,12 @@ class PaperScoreAgent(BaseAgent):
         # Run MARS analysis
         if self.include_mars and all_bundles:
             corpus = ScoreCorpus(bundles=all_bundles)
+            self.logger.log("ScoreCorpusSummary", {
+                "dims": corpus.dimensions,
+                "scorers": corpus.scorers,
+                "shape_example": corpus.get_dimension_matrix(self.dimensions[0]).shape
+            })
+
             mars_results = self.mars_calculator.calculate(corpus, context=context)
             context["mars_analysis"] = {
                 "summary": mars_results,
@@ -117,16 +105,30 @@ class PaperScoreAgent(BaseAgent):
         scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
 
         score_results = {}
-        for scorer_name, scorer in self.scorers.items():
+
+        for scorer_name in self.enabled_scorers:
             try:
-                bundle = scorer.score(context, scorable=scorable, dimensions=self.dimensions)
+                bundle = self.scoring.score(
+                    scorer_name,
+                    context=context,
+                    scorable=scorable,
+                    dimensions=self.dimensions
+                )
                 for dim, result in bundle.results.items():
-                    score_results[dim] = result
+                    # ensure the result carries its dimension and source
+                    if not getattr(result, "dimension", None):
+                        result.dimension = dim
+                    if not getattr(result, "source", None):
+                        result.source = scorer_name  # fallback if scorer didn't set it
+
+                    # use a composite key to avoid overwriting, but keep result.dimension == dim
+                    key = f"{dim}::{result.source}"
+                    score_results[key] = result
             except Exception as e:
                 self.logger.log("ScorerError", {"scorer": scorer_name, "doc_id": doc_id, "error": str(e)})
                 continue
 
-        bundle = ScoreBundle(results=score_results)
+        bundle = ScoreBundle(results=dict(score_results))
 
         # Save to memory
         ScoringManager.save_score_to_memory(
@@ -138,7 +140,7 @@ class PaperScoreAgent(BaseAgent):
             self.logger,
             source="paper_score",
             model_name="ensemble",
-            evaluator_name=str(self.scorers.keys())
+            evaluator_name=str(self.enabled_scorers)
         )
 
         report_scores = {

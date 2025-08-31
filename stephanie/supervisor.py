@@ -155,7 +155,7 @@ class Supervisor:
         pipeline_list = [stage.name for stage in self.pipeline_stages]
 
         # Initialize context via ContextManager
-        self.context["goal"] = goal_dict
+        self.context[GOAL] = goal_dict
         self.context[RUN_ID] = run_id
         self.context[PIPELINE] = pipeline_list
         self.context[PROMPT_DIR] = self.cfg.paths.prompts

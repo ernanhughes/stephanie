@@ -31,8 +31,9 @@ class PlannerReuseAgent(BaseAgent):
         self.scorer = HRMScorer(
             full_cfg["scorer"]["hrm"], memory=self.memory, logger=self.logger
         )
-        self.hrm_by_id = {} 
-        self.knn_by_id = {} 
+        self.hrm_scorer = "hrm"
+        self.hrm_by_id = {}
+        self.knn_by_id = {}
 
     async def run(self, context: dict) -> dict:
         goal_text = context.get("goal", {}).get("goal_text", "")
@@ -52,9 +53,9 @@ class PlannerReuseAgent(BaseAgent):
                 continue
             self.knn_by_id[str(pt.trace_id)] = float(
                 scorable.get("score", 0.0)
-            )  # keep KNN sim
+            )  # keep KNN sim Wait stop this this is
             to_score = ScorableFactory.from_plan_trace(pt, goal_text=goal_text)
-            bundle = self.scorer.score(context, to_score, self.dimensions)
+            bundle = self.scoring.score(self.hrm_scorer, context=context, scorable=to_score, dimensions=self.dimensions)
             score = bundle.aggregate()
             self.logger.log(
                 "PlannerReuseHRMScore",

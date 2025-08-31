@@ -36,30 +36,34 @@ class ScoreCorpus:
         self._results_by_dimension_scorer = self._index_results()
 
     def _index_results(self) -> Dict[str, Dict[str, List[Tuple[str, Any]]]]:
-        """Index results by dimension and scorer."""
         index = defaultdict(lambda: defaultdict(list))
         for scorable_id, bundle in self.bundles.items():
-            for dimension, result in bundle.results.items():
-                index[dimension][result.source].append((scorable_id, result))
+            for key, result in bundle.results.items():
+                dim = getattr(result, "dimension", key)
+                src = getattr(result, "source", "unknown")
+                index[dim][src].append((scorable_id, result))
         return index
-
-    # ---------------- Properties ----------------
 
     @property
     def dimensions(self) -> List[str]:
         if self._dimensions is None:
             self._dimensions = sorted({
-                dim for bundle in self.bundles.values() for dim in bundle.results.keys()
+                getattr(result, "dimension", key)
+                for bundle in self.bundles.values()
+                for key, result in bundle.results.items()
             })
         return self._dimensions
 
     @property
     def scorers(self) -> List[str]:
-        if self._scorers is None:
-            self._scorers = sorted({
-                result.source for bundle in self.bundles.values() for result in bundle.results.values()
-            })
+        self._scorers = sorted({
+            getattr(result, "source", "unknown")
+            for bundle in self.bundles.values()
+            for result in bundle.results.values()
+        })
         return self._scorers
+
+    # ---------------- Properties ----------------
 
     @property
     def metrics(self) -> Set[str]:

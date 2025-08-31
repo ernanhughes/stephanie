@@ -28,13 +28,23 @@ class PlannerReviseAgent(BaseAgent):
         )
         # Optional: custom prompt template via PromptLoader; fallback text if not set
         self.prompt_key = cfg.get("revise_prompt_template", "revise_plan_prompt.txt")
+        self.judge_on_low = cfg.get("judge_on_low", True)          # enable pairwise judge when score is low
+        self.judge_scorer = cfg.get("judge_scorer", "reward")      # 'reward' or 'llm_judge' (registered in ScoringService)
+        self.judge_dimensions = cfg.get("judge_dimensions", None)  # optional dimension list for judge
+        self.judge_margin = cfg.get("judge_margin", 0.05)          # tie-break margin
+        self.on_fail = cfg.get("on_fail", "replan")                # 'replan' | 'retry' | 'none' | 'ask_human'
+        self.max_revise_attempts = cfg.get("max_revise_attempts", 1)
+
 
     async def run(self, context: dict) -> dict:
-        goal = context.get("goal", {})
-        goal_text = goal.get("goal_text", "")
+        goal_text = context.get("goal", {}).get("goal_text", "")
+
+        attempt = int(context.get("revise_attempts", 0))
+        context["revise_attempts"] = attempt + 1
 
         # Input: pull plan from either configured input_key or the conventional 'plan'
         candidate_plan: List[str] = context.get(self.input_key)
+
         examples = context.get("examples", [])  # from planner_reuse
         if not candidate_plan:
             self.logger.log("PlanReviseNoPlan", {"detail": "No plan found in context"})
@@ -70,10 +80,54 @@ class PlannerReviseAgent(BaseAgent):
         revised_plan = parsed.get("revised_plan", []) if self.enable_edit else []
         adopted = False
         final_plan = candidate_plan
+        judge_res = None
 
-        if self.enable_edit and isinstance(revise_score, (int, float)) and revise_score >= self.min_revise_score and revised_plan:
-            final_plan = revised_plan
-            adopted = True
+        # Optional judge when score is low but we HAVE a revision to compare
+        if (self.judge_on_low 
+            and self.enable_edit 
+            and revised_plan 
+            and (not isinstance(revise_score, (int, float)) or revise_score < self.min_revise_score)):
+
+            try:
+                a_text = "\n".join(candidate_plan)
+                b_text = "\n".join(revised_plan)
+                judge_res = self.scoring.compare_pair(
+                    scorer_name=self.judge_scorer,
+                    context=context,  # carries goal + prefs, etc.
+                    a=Scorable(id="candidate", text=a_text, target_type="plan"),
+                    b=Scorable(id="revised",  text=b_text, target_type="plan"),
+                    dimensions=self.judge_dimensions,
+                    margin=self.judge_margin,
+                )
+                self.logger.log("PlanReviseJudgeResult", judge_res)
+            except Exception as e:
+                self.logger.log("PlanReviseJudgeError", {"error": str(e)})
+                judge_res = None
+
+        adopt_reason = None
+        if self.enable_edit and revised_plan:
+            if isinstance(revise_score, (int, float)) and revise_score >= self.min_revise_score:
+                final_plan = revised_plan
+                adopted = True
+                adopt_reason = "revise_score"
+            elif judge_res and judge_res.get("winner") == "b":
+                # Revised beats original by the pairwise judge
+                final_plan = revised_plan
+                adopted = True
+                adopt_reason = f"judge:{self.judge_scorer}"
+
+        # If we didn’t adopt, set recall/next-action flags for the pipeline
+        if not adopted:
+            context["revise_outcome"] = {
+                "adopted": False,
+                "reason": ("low_score" if not isinstance(revise_score, (int, float)) or revise_score < self.min_revise_score else "no_revision"),
+                "action": self.on_fail,
+                "attempt": context["revise_attempts"],
+            }
+            if self.on_fail == "replan":
+                context["recall_planner"] = True
+            elif self.on_fail == "ask_human":
+                context["needs_review"] = True
 
         # Persist evaluation + scores
         try:
@@ -86,6 +140,7 @@ class PlannerReviseAgent(BaseAgent):
         context[f"{self.output_key}_meta"] = {
             "source": "revise_agent",
             "adopted": adopted,
+            "adopt_reason": adopt_reason,
             "revise_score": revise_score,
             "issues_count": len(parsed.get("issues", [])),
         }
@@ -183,6 +238,15 @@ class PlannerReviseAgent(BaseAgent):
         except Exception:
             return False
 
+    def _to_float(self, x, default=None):
+        try: 
+            if x is None:
+                return default
+            # allow numeric strings like "0.82" and ints
+            return float(x)
+        except (TypeError, ValueError):
+            return default
+
 
     def _persist_revise_scores(self, context: dict, orig_plan: list[str], parsed: dict, adopted: bool) -> None:
         """
@@ -226,20 +290,33 @@ class PlannerReviseAgent(BaseAgent):
 
         # Optional sub-dimensions (if you included them in the prompt/response JSON)
         subs = parsed.get("subscores") or {}
-        for dim in self.revise_dimensions:
-            v = subs.get(dim)
-            try:
-                v = float(v)
-            except (TypeError, ValueError):
-                v = None
-            if v is not None:
-                results[dim] = ScoreResult(
-                    dimension=dim,
-                    score=v,
-                    weight=1.0,
-                    source="plan_revise",
-                    rationale=f"Subscore: {dim}",
-                )
+        if not isinstance(subs, dict):
+            subs = {}
+
+        # Prefer configured keys, but also accept any other numeric subscores returned
+        wanted_dims = list(self.revise_dimensions or [])
+        extra_dims = [d for d in subs.keys() if d not in wanted_dims]
+        all_dims = wanted_dims + extra_dims
+
+        for dim in all_dims:
+            raw = subs.get(dim, None)
+            v = self._to_float(raw, default=None)
+            if v is None:
+                # Log once per missing/invalid subscore, but don’t crash
+                self.logger.log("PlanReviseSubscoreSkipped", {
+                    "dimension": dim,
+                    "raw_value": raw,
+                    "reason": "missing_or_non_numeric"
+                })
+                continue
+
+            results[dim] = ScoreResult(
+                dimension=dim,
+                score=v,
+                weight=1.0,
+                source="plan_revise",
+                rationale=f"Subscore: {dim}",
+            )
 
         bundle = ScoreBundle(results=results)
 
@@ -261,3 +338,4 @@ class PlannerReviseAgent(BaseAgent):
             "revise_score": results["revise_score"].score,
             "subscores": {k: v.score for k, v in results.items() if k != "revise_score"}
         })
+

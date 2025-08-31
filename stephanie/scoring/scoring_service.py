@@ -30,6 +30,7 @@ You get:
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Callable, List
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Core types
 from stephanie.scoring.scorable import Scorable
@@ -51,12 +52,13 @@ class ScoringService:
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
+        self.embedding_type = self.memory.embedding.name
         self._scorers: Dict[str, Any] = {}   # name -> scorer instance
 
         # Which scorers to enable:
-        # 1) explicit list in scoring.enabled_scorers
+        # 1) explicit list in cfg.enabled_scorers
         # 2) else all keys present under cfg.scorer.*
-        self.enabled_scorer_names: List[str] = self._resolve_scorer_names(cfg)
+        self.enabled_scorer_names: List[str] = self._resolve_scorer_names()
 
         # Auto-register
         self.register_from_cfg(self.enabled_scorer_names)
@@ -79,18 +81,17 @@ class ScoringService:
                 return default
         return cur
 
-    def _resolve_scorer_names(self, cfg: Dict[str, Any]) -> List[str]:
+    def _resolve_scorer_names(self) -> List[str]:
         names = []
         try:
-            scoring_cfg = cfg.get("scoring", {}) if isinstance(cfg, dict) else getattr(cfg, "scoring", {})
-            explicit = scoring_cfg.get("enabled_scorers") if isinstance(scoring_cfg, dict) else getattr(scoring_cfg, "enabled_scorers", None)
+            # use /scoring/service if available
+            scoring_cfg = self.cfg.get("scoring", {}).get("service", {})
+            explicit = scoring_cfg.get("enabled_scorers")
             if explicit:
                 return list(explicit)
-
-            scorer_block = cfg.get("scorer", {}) if isinstance(cfg, dict) else getattr(cfg, "scorer", {})
-            if isinstance(scorer_block, dict):
-                # use the section names under cfg.scorer.*
-                names = [k for k, v in scorer_block.items() if isinstance(v, (dict,))]
+            scorer_block = self.cfg.get("scorer", {})
+            # use the section names under cfg.scorer.*
+            names = list(scorer_block)
         except Exception as e:
             if self.logger:
                 self.logger.log("ScoringServiceResolveNamesError", {"error": str(e)})
@@ -104,17 +105,10 @@ class ScoringService:
         for name in names:
             if name in self._scorers:
                 continue
-            scorer_cfg = self._get_scorer_cfg(name)
+            scorer_cfg = self.cfg.scorer[name]
             scorer = self._build_scorer(name, scorer_cfg)
             if scorer:
                 self.register_scorer(name, scorer)
-
-    def _get_scorer_cfg(self, name: str) -> Dict[str, Any]:
-        try:
-            block = self._cfg_get("scorer", name, default={})
-            return block if isinstance(block, dict) else {}
-        except Exception:
-            return {}
 
     def _build_scorer(self, name: str, scorer_cfg: Dict[str, Any]):
         """
@@ -178,9 +172,7 @@ class ScoringService:
         if not scorer:
             raise ValueError(f"Scorer '{scorer_name}' not registered")
 
-        # Extract goal the way all scorers expect
-        goal = (context or {}).get("goal", {}) if isinstance(context, dict) else {}
-        return scorer.score(goal, scorable, dimensions)
+        return scorer.score(context, scorable, dimensions)
 
     def score_and_persist(
         self,
@@ -192,7 +184,6 @@ class ScoringService:
         source: Optional[str] = None,
         evaluator: Optional[str] = None,
         model_name: Optional[str] = None,
-        embedding_type: Optional[str] = None,
     ):
         """
         Compute and persist using EvaluationStore.save_bundle (so ScoreORM + EvalAttributes
@@ -206,7 +197,7 @@ class ScoringService:
                 context=context,
                 cfg=self.cfg,
                 source=source or scorer_name,
-                embedding_type=embedding_type or getattr(self.memory.embedding, "name", None),
+                embedding_type=self.embedding_type,
                 evaluator=evaluator or scorer_name,
                 model_name=model_name or (self._cfg_get("model", "name", default="unknown")),
             )
@@ -324,7 +315,7 @@ class ScoringService:
         if not scorable:
             return None
 
-        bundle = scorer.score(ctx.get("goal", {}), scorable, dimensions or ["alignment"])
+        bundle = scorer.score(ctx, scorable, dimensions or ["alignment"])
         hrm = float(bundle.aggregate())
 
         # persist canonical HRM
@@ -448,8 +439,8 @@ class ScoringService:
         else:
             # Fallback: score each against the goal and prefer higher aggregate
             dims = dimensions or getattr(scorer, "dimensions", []) or ["alignment"]
-            bundle_a = scorer.score((context or {}).get("goal", {}), a_s, dims)
-            bundle_b = scorer.score((context or {}).get("goal", {}), b_s, dims)
+            bundle_a = scorer.score(context=context, scorable=a_s, dimensions=dims)
+            bundle_b = scorer.score(context=context, scorable=b_s, dimensions=dims)
 
             sa = sum(sr.score for sr in bundle_a.results.values()) / max(1, len(bundle_a.results))
             sb = sum(sr.score for sr in bundle_b.results.values()) / max(1, len(bundle_b.results))
@@ -472,7 +463,7 @@ class ScoringService:
                 gemb = self.memory.embedding.get_or_create(gtxt)
                 def _sim(scorable_or_text):
                     s = self._coerce_scorable(scorable_or_text)
-                    return self.memory.embedding.cosine(gemb, self.memory.embedding.get_or_create(s.text))
+                    return cosine_similarity(gemb, self.memory.embedding.get_or_create(s.text))
                 res["winner"] = "a" if _sim(a_s) >= _sim(b_s) else "b"
                 res["tie_break"] = "goal_similarity"
             except Exception:

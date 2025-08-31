@@ -159,6 +159,12 @@ class ScorerAgent(BaseAgent):
         # Create ScoreCorpus for MARS analysis
         corpus = ScoreCorpus(bundles=all_bundles)
 
+        self.logger.log("ScoreCorpusSummary", {
+            "dims": corpus.dimensions,
+            "scorers": corpus.scorers,
+            "shape_example": corpus.get_dimension_matrix(self.dimensions[0]).shape
+        })
+
         # Save corpus to context for potential future analysis
         context["score_corpus"] = corpus.to_dict()
 

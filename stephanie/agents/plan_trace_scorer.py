@@ -192,6 +192,12 @@ class PlanTraceScorerAgent(BaseAgent):
             # Create ScoreCorpus for MARS analysis
             corpus = ScoreCorpus(bundles=all_step_bundles)
             
+            self.logger.log("ScoreCorpusSummary", {
+                "dims": corpus.dimensions,
+                "scorers": corpus.scorers,
+                "shape_example": corpus.get_dimension_matrix(self.dimensions[0]).shape
+            })
+
             # Run MARS analysis across all steps
             mars_results = {}
             if self.include_mars:

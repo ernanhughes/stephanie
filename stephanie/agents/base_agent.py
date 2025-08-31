@@ -34,11 +34,12 @@ class BaseAgent(ABC):
         self.memory = memory
         self.logger = logger
         self.scoring: Optional[ScoringService] = None
+
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
         self.embedding_type = self.memory.embedding.name
         self.model_config = cfg.get(MODEL, {})
         self.prompt_match_re = cfg.get(PROMPT_MATCH_RE, "")
-        self.llm = self.init_llm()  # TODO do we need to init here?
+        self.llm = self.init_llm()  
         self.strategy = cfg.get(STRATEGY, "default")
         self.model_name = self.llm.get(NAME, "")
         self.source = cfg.get(SOURCE, CONTEXT)
