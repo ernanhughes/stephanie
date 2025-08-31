@@ -1,5 +1,6 @@
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.scoring.training.svm_trainer import SVMTrainer
 
 

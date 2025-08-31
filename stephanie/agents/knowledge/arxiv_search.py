@@ -9,8 +9,11 @@ query construction, and result processing capabilities.
 
 import re
 from datetime import datetime, timedelta
+
 import arxiv
+
 from stephanie.agents.base_agent import BaseAgent
+
 
 class ArxivSearchAgent(BaseAgent):
     def __init__(self, cfg, memory, logger):

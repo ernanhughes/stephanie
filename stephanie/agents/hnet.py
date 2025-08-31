@@ -1,6 +1,7 @@
 # stephanie/validation/hnet_validation.py
 import json
 import os
+import time
 import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -12,11 +13,11 @@ from tqdm import tqdm
 
 # Import our core PlanTrace components
 from stephanie.agents.base_agent import BaseAgent
+# Import reasoning components
+from stephanie.agents.icl_reasoning import ICLReasoningAgent
 from stephanie.agents.knowledge import KnowledgeRetriever
 from stephanie.agents.knowledge.arxiv_search import ArxivSearchAgent
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
-# Import reasoning components
-from stephanie.agents.icl_reasoning import ICLReasoningAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
@@ -27,15 +28,18 @@ from stephanie.utils.serialization import to_serializable
 class HNetValidationExperiment(BaseAgent):
     """Comprehensive validation of HNet and PlanTrace system in one end-to-end experiment"""
     
-    def __init__(self, cfg=None, memory, logger):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
         
         # Initialize core components
         self.plan_trace_monitor = PlanTraceMonitor(self.cfg, self.memory, self.logger)
+        self.plan_trace_monitor.scoring = self.scoring
         self.plan_trace_scorer = PlanTraceScorerAgent(self.cfg, self.memory, self.logger)
+        self.plan_trace_monitor.scoring = self.scoring
         self.mars_calculator = MARSCalculator(self.cfg, self.memory, self.logger)
+        self.mars_calculator.scoring = self.scoring
         self.num_papers = cfg.get("num_papers", 100)
         # Initialize embedding approaches
         self.embedding_approaches = {

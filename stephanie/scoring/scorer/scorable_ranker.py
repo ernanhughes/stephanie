@@ -5,12 +5,12 @@ from typing import Dict, List, Optional
 
 from sklearn.metrics.pairwise import cosine_similarity
 
-from stephanie.scoring.scorer.base_scorer import BaseScorer
-from stephanie.scoring.scorable import Scorable
-from stephanie.models.evaluation import EvaluationORM
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM  # NEW
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorer.base_scorer import BaseScorer
 
 
 class ScorableRanker(BaseScorer):

@@ -1,5 +1,5 @@
 # stephanie/models/document_section.py
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import JSON, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base

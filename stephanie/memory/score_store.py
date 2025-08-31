@@ -1,12 +1,10 @@
 # stephanie/memory/score_store.py
 import json
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session, joinedload
 
 from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
-from typing import Any, Dict, Optional
 from stephanie.models.score import ScoreORM
 from stephanie.models.score_attribute import ScoreAttributeORM
 

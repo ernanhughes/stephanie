@@ -1,13 +1,13 @@
 # stephanie/agents/base_agent.py
 import random
 import re
+import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import litellm
-from stephanie.scoring.scoring_service import ScoringService
 import torch
 
 from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
@@ -18,8 +18,8 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
 from stephanie.rules import SymbolicRuleApplier
+from stephanie.scoring.scoring_service import ScoringService
 
-import time
 
 def remove_think_blocks(text: str) -> str:
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()

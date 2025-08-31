@@ -1,9 +1,10 @@
 # stephanie/agents/maintenance/mrq_trainer_agent.py
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.training.mrq_trainer import MRQTrainer
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 
 
 class MRQTrainerAgent(BaseAgent):

@@ -1,15 +1,17 @@
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Float
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+                        String)
 from sqlalchemy.orm import Mapped, relationship
 
 from stephanie.models.base import Base
+from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
 from stephanie.models.score import ScoreORM
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.symbolic_rule import SymbolicRuleORM
+
 
 class EvaluationORM(Base):
     """

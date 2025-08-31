@@ -1,6 +1,9 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Integer, String, Index
+
+from sqlalchemy import Column, DateTime, Index, Integer, String
+
 from stephanie.models.base import Base
+
 
 class ScorableEmbeddingORM(Base):
     __tablename__ = "scorable_embeddings"

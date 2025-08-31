@@ -11,12 +11,13 @@ from sqlalchemy import text
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.scorer.ep_hrm_scorer import \
     EpistemicPlanHRMScorer  # Adjust import
 from stephanie.scoring.scorer.hrm_scorer import HRMScorer
-from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
-from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 
 
 class GILDTrainerAgent(BaseAgent):

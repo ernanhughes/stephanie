@@ -29,7 +29,8 @@ You get:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Callable, List
+from typing import Any, Callable, Dict, List, Optional
+
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Core types
@@ -132,7 +133,8 @@ class ScoringService:
                 return EBTScorer(scorer_cfg, memory=self.memory, logger=self.logger)
             if name in ("contrastive_ranker", "contrastive", "reward"):
                 # We allow "reward" to be an alias for contrastive pairwise scorer.
-                from stephanie.scoring.scorer.contrastive_ranker_scorer import ContrastiveRankerScorer
+                from stephanie.scoring.scorer.contrastive_ranker_scorer import \
+                    ContrastiveRankerScorer
                 return ContrastiveRankerScorer(scorer_cfg, memory=self.memory, logger=self.logger)
         except Exception as e:
             if self.logger:

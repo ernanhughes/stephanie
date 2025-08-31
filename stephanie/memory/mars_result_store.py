@@ -1,6 +1,8 @@
 # stephanie/memory/mars_result_store.py
 from sqlalchemy.orm import Session
+
 from stephanie.models.mars_result import MARSResultORM
+
 
 class MARSResultStore:
     def __init__(self, session: Session, logger=None):

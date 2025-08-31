@@ -2,7 +2,8 @@
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
-from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.scoring.training.sicql_trainer import SICQLTrainer
 
 

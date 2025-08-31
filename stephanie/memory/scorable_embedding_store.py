@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from stephanie.models.scorable_embedding import ScorableEmbeddingORM
 from stephanie.scoring.scorable import Scorable
 
+
 class ScorableEmbeddingStore:
     """
     Store for embeddings linked to any Scorable

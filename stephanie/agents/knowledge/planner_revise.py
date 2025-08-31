@@ -4,9 +4,9 @@ from typing import Any, List
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PLAN_TRACE_ID
-from stephanie.scoring.scorable import Scorable
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.scorable import Scorable
 
 
 class PlannerReviseAgent(BaseAgent):

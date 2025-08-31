@@ -11,8 +11,9 @@ from stephanie.agents.maintenance.model_evolution_manager import \
     ModelEvolutionManager
 from stephanie.scoring.model.ebt_model import EBTModel
 from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
 from stephanie.scoring.model.value_predictor import ValuePredictor
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.model_utils import get_model_path, save_model_with_version
 

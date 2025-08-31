@@ -2,6 +2,7 @@
 
 from torch import nn
 
+
 class ValuePredictor(nn.Module):
     """Predicts a quality score for a document given its contextual embedding."""
 

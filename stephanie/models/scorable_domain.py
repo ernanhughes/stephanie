@@ -1,13 +1,9 @@
 # stephanie/models/scorable_domain.py
-from sqlalchemy import Column, Float, Integer, String, UniqueConstraint, DateTime
 from datetime import datetime
 
-from stephanie.models.base import Base
-
-
-from sqlalchemy import Column, Float, ForeignKey, Integer, String, DateTime, UniqueConstraint
+from sqlalchemy import (Column, DateTime, Float, ForeignKey, Integer, String,
+                        UniqueConstraint)
 from sqlalchemy.orm import relationship
-from datetime import datetime
 
 from stephanie.models.base import Base
 

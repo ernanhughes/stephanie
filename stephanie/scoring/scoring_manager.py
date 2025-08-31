@@ -18,9 +18,9 @@ from stephanie.prompts.prompt_renderer import PromptRenderer
 from stephanie.scoring.calculations.score_delta import ScoreDeltaCalculator
 from stephanie.scoring.calculations.weighted_average import \
     WeightedAverageCalculator
-from stephanie.scoring.scorer.fallback_scorer import FallbackScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.score_display import ScoreDisplay
+from stephanie.scoring.scorer.fallback_scorer import FallbackScorer
 
 
 class ScoringManager(BaseAgent):

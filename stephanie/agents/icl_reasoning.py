@@ -1,9 +1,10 @@
 # stephanie/agents/icl_reasoning.py
-import numpy as np
-from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import joinedload
+from typing import Any, Dict, List, Optional
 
-from sklearn.metrics.pairwise import cosine_similarity  # optional, can drop if pref np.dot
+import numpy as np
+from sklearn.metrics.pairwise import \
+    cosine_similarity  # optional, can drop if pref np.dot
+from sqlalchemy.orm import joinedload
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier

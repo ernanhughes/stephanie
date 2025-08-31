@@ -1,8 +1,11 @@
 # stephanie/models/plan_trace_reuse_link.py
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
 from datetime import datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+
 from stephanie.models.base import Base
+
 
 class PlanTraceReuseLinkORM(Base):
     __tablename__ = "plan_trace_reuse_links"

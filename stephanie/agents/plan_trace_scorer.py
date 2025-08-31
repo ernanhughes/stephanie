@@ -10,11 +10,12 @@ from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.scorer.contrastive_ranker_scorer import ContrastiveRankerScorer
+from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorer.contrastive_ranker_scorer import \
+    ContrastiveRankerScorer
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
 from stephanie.scoring.scorer.hrm_scorer import HRMScorer
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
-from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
 from stephanie.utils.trace_utils import load_plan_traces_from_export_dir
@@ -32,12 +33,12 @@ class PlanTraceScorerAgent(BaseAgent):
     """
 
     def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.dimensions = cfg.get("dimensions", [])
-        self.include_mars = cfg.get("include_mars", True)
-        
+        super().__init__(cfg.get("agents", {}).get("plan_trace_scorer", {}), memory, logger)
+        self.dimensions = self.cfg.get("dimensions", [])
+        self.include_mars = self.cfg.get("include_mars", True)
+
         # Configure which scorers to use
-        self.scorer_types = cfg.get("scorer_types", [
+        self.scorer_types = self.cfg.get("scorer_types", [
             "hrm", "sicql", "contrastive_ranker", "ebt", "mrq", "svm"
         ])
         
@@ -45,15 +46,15 @@ class PlanTraceScorerAgent(BaseAgent):
         self.scorers = self._initialize_scorers()
         
         # Initialize MARS calculator
-        dimension_config = cfg.get("dimension_config", {})
+        dimension_config = self.cfg.get("dimension_config", {})
         self.mars_calculator = MARSCalculator(dimension_config, self.memory, self.logger)
         
         # Pattern extraction parameters
-        self.high_agreement_threshold = cfg.get("high_agreement_threshold", 0.8)
-        self.low_uncertainty_threshold = cfg.get("low_uncertainty_threshold", 0.2)
-        self.pattern_min_count = cfg.get("pattern_min_count", 3)
-        
-        self.export_dir = cfg.get("export_dir", "exports/plan_traces")
+        self.high_agreement_threshold = self.cfg.get("high_agreement_threshold", 0.8)
+        self.low_uncertainty_threshold = self.cfg.get("low_uncertainty_threshold", 0.2)
+        self.pattern_min_count = self.cfg.get("pattern_min_count", 3)
+
+        self.export_dir = self.cfg.get("export_dir", "exports/plan_traces")
 
         self.logger.log("PlanTraceScorerInitialized", {
             "dimensions": self.dimensions,

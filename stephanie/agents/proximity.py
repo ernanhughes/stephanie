@@ -4,8 +4,8 @@ import numpy as np
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT
-from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
 
 
 class ProximityAgent(ScoringMixin, BaseAgent):

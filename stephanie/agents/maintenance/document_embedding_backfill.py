@@ -1,12 +1,13 @@
 # stephanie/agents/maintenance/document_embedding_backfill.py
 
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.models.document import DocumentORM
-from stephanie.models.prompt import PromptORM
-from stephanie.models.hypothesis import HypothesisORM
-from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
-from stephanie.scoring.scorable_factory import ScorableFactory
 from tqdm import tqdm
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
+from stephanie.models.document import DocumentORM
+from stephanie.models.hypothesis import HypothesisORM
+from stephanie.models.prompt import PromptORM
+from stephanie.scoring.scorable_factory import ScorableFactory
 
 
 class DocumentEmbeddingBackfillAgent(BaseAgent):

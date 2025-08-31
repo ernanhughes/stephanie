@@ -8,8 +8,8 @@ from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
-from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorer.base_scorer import BaseScorer
 
 
 @dataclass

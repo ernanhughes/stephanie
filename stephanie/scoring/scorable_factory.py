@@ -1,6 +1,6 @@
 # stephanie/scoring/scorable_factory.py
-from enum import Enum as PyEnum
 import trace
+from enum import Enum as PyEnum
 from typing import Optional
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace

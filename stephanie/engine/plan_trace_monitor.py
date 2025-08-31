@@ -1,20 +1,20 @@
 # stephanie/engine/plan_trace_monitor.py
 import json
-from multiprocessing import context
 import os
 import time
 import traceback
 from datetime import datetime
+from multiprocessing import context
 from typing import Dict, Optional
 
 from omegaconf import OmegaConf
 
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
+from stephanie.constants import PLAN_TRACE_ID
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.utils.serialization import default_serializer
-from stephanie.constants import PLAN_TRACE_ID
 
 
 class PlanTraceMonitor:

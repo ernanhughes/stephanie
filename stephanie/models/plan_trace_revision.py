@@ -1,8 +1,11 @@
 # stephanie/models/plan_trace_revision.py
 from datetime import datetime
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, DateTime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from stephanie.models.base import Base
+
 
 class PlanTraceRevisionORM(Base):
     __tablename__ = "plan_trace_revisions"

@@ -1,5 +1,6 @@
 # stephanie/memory/scorable_rank_store.py
 from sqlalchemy.orm import Session
+
 from stephanie.models.scorable_rank import ScorableRankORM
 
 

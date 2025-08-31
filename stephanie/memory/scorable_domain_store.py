@@ -1,4 +1,5 @@
 from typing import List
+
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 

@@ -1,7 +1,7 @@
 # stephanie/memory/evaluation_store.py
 # stores/score_store.py
-from datetime import datetime
 import json
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session

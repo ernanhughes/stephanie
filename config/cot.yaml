@@ -12,6 +12,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/plan_trace_scorer
   - agents/literature
   - agents/literature_ranking
   - agents/prompt_tuning

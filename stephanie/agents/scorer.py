@@ -8,14 +8,15 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.scorer.contrastive_ranker_scorer import ContrastiveRankerScorer
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorer.contrastive_ranker_scorer import \
+    ContrastiveRankerScorer
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
 from stephanie.scoring.scorer.hrm_scorer import HRMScorer
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
+from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class ScorerAgent(BaseAgent):

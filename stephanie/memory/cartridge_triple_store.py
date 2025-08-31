@@ -1,10 +1,10 @@
 # stephanie/memory/cartridge_triple_store.py
 
-from sqlalchemy import func, case
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
-from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.cartridge_domain import CartridgeDomainORM
+from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable_factory import TargetType

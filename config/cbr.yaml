@@ -27,6 +27,7 @@ defaults:
   - agents/knowledge_db_loader
   - agents/pipeline_judge
   - agents/paper_score
+  - agents/plan_trace_scorer
   - logging/json_logger
 
 embeddings:

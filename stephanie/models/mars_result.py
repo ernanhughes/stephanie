@@ -1,7 +1,11 @@
 # stephanie/models/mars_result.py
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, JSON
+
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+                        String)
+
 from stephanie.models.base import Base
+
 
 class MARSResultORM(Base):
     __tablename__ = "mars_results"

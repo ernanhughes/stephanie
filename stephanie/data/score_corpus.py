@@ -1,7 +1,7 @@
 # stephanie/scoring/score_corpus.py
 import warnings
-from typing import Any, Dict, List, Set, Tuple
 from collections import defaultdict
+from typing import Any, Dict, List, Set, Tuple
 
 import numpy as np
 import pandas as pd

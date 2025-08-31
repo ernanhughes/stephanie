@@ -1,7 +1,8 @@
 # stephanie/analysis/scorable_classifier.py
 
+from typing import Dict, List, Optional, Tuple
+
 import yaml
-from typing import List, Tuple, Optional, Dict
 from sklearn.metrics.pairwise import cosine_similarity
 
 

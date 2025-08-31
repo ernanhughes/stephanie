@@ -1,6 +1,8 @@
 # stephanie/memory/base_embedding_store.py
 import hashlib
+
 import torch
+
 from stephanie.memory import BaseStore
 from stephanie.utils.lru_cache import SimpleLRUCache
 

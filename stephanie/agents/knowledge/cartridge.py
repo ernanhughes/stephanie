@@ -8,10 +8,10 @@ from stephanie.builders.cartridge_builder import CartridgeBuilder
 from stephanie.builders.theorem_extractor import TheoremExtractor
 from stephanie.builders.triplet_extractor import TripletExtractor
 from stephanie.models.theorem import CartridgeORM
-from stephanie.scoring.scorer.ebt_scorer import EBTScorer
-from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
 

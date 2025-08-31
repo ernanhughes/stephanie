@@ -1,7 +1,9 @@
 # stephanie/models/theorem.py
 from datetime import datetime
+
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, Table, Text
 from sqlalchemy.orm import relationship
+
 from stephanie.models.base import Base
 
 theorem_cartridges = Table(
