@@ -304,6 +304,8 @@ PROMPTS = {
 }
 
 PLAN_TRACE = {
+    "EmptyPlanTrace": "📄❌",  # Empty plan trace
+    "PlanTraceScoringWarning": "⚠️📄",  # Plan trace scoring warning
     "PlannerReuseGenerated": "🔄📋",  # Planner reuse generated
     "PlanTraceReuseLinkCreated": "🔗📋",  # Plan trace reuse link
     "PlanRevisePersisted": "📄💾",  # Plan revision persisted
