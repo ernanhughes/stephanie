@@ -10,8 +10,7 @@ planner_revise:
     api_base: http://localhost:11434
     api_key: null
   input_keys: ["goal", "hypotheses"]
-  input_key: documents
-
+  input_key: planner_reuse  # note the output_key of the planner_reuse agent
   output_key: planner_revise
 
   prompt_mode: file

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import litellm
+from stephanie.scoring.service import ScoringService
 import torch
 
 from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
@@ -32,6 +33,7 @@ class BaseAgent(ABC):
         self.description = cfg.get("description", "")
         self.memory = memory
         self.logger = logger
+        self.scoring: Optional[ScoringService] = None
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
         self.embedding_type = self.memory.embedding.name
         self.model_config = cfg.get(MODEL, {})

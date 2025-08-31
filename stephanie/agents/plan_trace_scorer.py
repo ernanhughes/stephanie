@@ -30,7 +30,7 @@ class PlanTraceScorerAgent(BaseAgent):
     Uses HRM as primary reasoning quality scorer with MARS meta-analysis
     to enable self-tuning of pipeline execution patterns.
     """
-    
+
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", [])

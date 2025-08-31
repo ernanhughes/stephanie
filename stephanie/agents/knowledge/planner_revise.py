@@ -9,7 +9,7 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 
 
-class PlanReviseAgent(BaseAgent):
+class PlannerReviseAgent(BaseAgent):
     """
     Post-plan 'Revise' pass:
       - Critique candidate plan
@@ -34,7 +34,7 @@ class PlanReviseAgent(BaseAgent):
         goal_text = goal.get("goal_text", "")
 
         # Input: pull plan from either configured input_key or the conventional 'plan'
-        candidate_plan: List[str] = context.get(self.input_key) or context.get("plan") or []
+        candidate_plan: List[str] = context.get(self.input_key)
         examples = context.get("examples", [])  # from planner_reuse
         if not candidate_plan:
             self.logger.log("PlanReviseNoPlan", {"detail": "No plan found in context"})
@@ -44,7 +44,6 @@ class PlanReviseAgent(BaseAgent):
             "event": "revise_start",
             "step": "PlanRevise",
             "goal": goal_text[:300],
-            "plan_len": len(candidate_plan),
             "num_examples": len(examples),
         })
 

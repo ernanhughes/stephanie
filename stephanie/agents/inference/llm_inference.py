@@ -123,7 +123,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
             .join(EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id)
             .filter(
                 EvaluationORM.scorable_type == "document",
-                EvaluationORM.sccorable_id == str(scorable_id),
+                EvaluationORM.scorable_id == str(scorable_id),
                 EvaluationORM.source == "llm"
             )
             .count()

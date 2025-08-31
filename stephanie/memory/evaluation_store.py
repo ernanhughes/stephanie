@@ -110,7 +110,7 @@ class EvaluationStore:
     ) -> list[dict]:
         """Returns all scores associated with a specific hypothesis, optionally filtered by evaluator source."""
         query = self.session.query(EvaluationORM).filter(
-            EvaluationORM.sccorable_id == str(hypothesis_id)
+            EvaluationORM.scorable_id == str(hypothesis_id)
             and EvaluationORM.scorable_type == "hypothesis"
         )
 

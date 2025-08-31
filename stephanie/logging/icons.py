@@ -304,6 +304,9 @@ PROMPTS = {
 }
 
 PLAN_TRACE = {
+    "PlannerReuseGenerated": "🔄📋",  # Planner reuse generated
+    "PlanTraceReuseLinkCreated": "🔗📋",  # Plan trace reuse link
+    "PlanRevisePersisted": "📄💾",  # Plan revision persisted
     "PlannerReuseHRMScore": "📊🔄",  # Planner reuse HRM score
     "PlannerReuseFilteredTrace": "📑🔍",  # Planner reuse filtered trace
     "HRMTrainingDataPrepared": "📊📄",  # HRM training data prepared

@@ -3,14 +3,13 @@
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.builders.cartridge_builder import CartridgeBuilder
 from stephanie.builders.theorem_extractor import TheoremExtractor
 from stephanie.builders.triplet_extractor import TripletExtractor
 from stephanie.models.theorem import CartridgeORM
 from stephanie.scoring.ebt_scorer import EBTScorer
-from stephanie.scoring.mrq.scorer import MRQScorerDoNotUse
+from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.sicql_scorer import SICQLScorer
@@ -74,7 +73,7 @@ class CartridgeAgent(BaseAgent):
                 full_cfg.scorer.sicql, memory=self.memory, logger=self.logger
             )
         if scorer_type == "mrq":
-            return MRQScorerDoNotUse(
+            return MRQScorer(
                 full_cfg.scorer.mrq, memory=self.memory, logger=self.logger
             )
         if scorer_type == "svm":

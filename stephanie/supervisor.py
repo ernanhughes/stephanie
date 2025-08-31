@@ -23,6 +23,7 @@ from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
 from stephanie.reports import ReportFormatter
 from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
+from stephanie.scoring.service import ScoringService
 from stephanie.utils.report_utils import get_stage_details
 
 
@@ -54,6 +55,11 @@ class Supervisor:
         # Initialize and register core components
         state_tracker = StateTracker(cfg, self.memory, self.logger)
         confidence_tracker = MetaConfidenceTracker(cfg, self.memory, self.logger)
+        scoring_service = ScoringService(cfg, self.memory, self.logger)
+
+        def trainer_fn(goal, dimension):
+            print(f"[TRAIN] Training RM for goal: {goal}, dimension: {dimension}")
+            # Insert actual training logic here
 
         # Stub judgment and reward model evaluators
         def reward_model_fn(goal, doc_a, doc_b):
@@ -70,10 +76,6 @@ class Supervisor:
             llm_judge=llm_judge_fn,
         )
 
-        def trainer_fn(goal, dimension):
-            print(f"[TRAIN] Training RM for goal: {goal}, dimension: {dimension}")
-            # Insert actual training logic here
-
         training_controller = TrainingController(
             cfg=cfg,
             memory=self.memory,
@@ -83,6 +85,7 @@ class Supervisor:
             trainer_fn=trainer_fn,
         )
 
+        register("scoring_service", scoring_service)
         register("state_tracker", state_tracker)
         register("confidence_tracker", confidence_tracker)
         register("cycle_watcher", CycleWatcher(cfg, self.memory, self.logger))
@@ -221,6 +224,7 @@ class Supervisor:
         final_output_key = ""
         for stage_idx, stage in enumerate(self.pipeline_stages):
             stage_details = {
+                "index": stage_idx, 
                 STAGE: stage.name,
                 "agent": stage.cls.split(".")[-1],
                 "status": "⏳ running", 
@@ -251,6 +255,8 @@ class Supervisor:
                 if "full_cfg" in cls.__init__.__code__.co_varnames:
                     agent_args["full_cfg"] = self.cfg
                 agent = cls(**agent_args)
+                agent.scoring = get_registered_component("scoring_service")
+
                 self.logger.log("PipelineStageStart", {STAGE: stage.name})
                 
                 for i in range(stage.iterations or 1): 

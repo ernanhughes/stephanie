@@ -37,7 +37,7 @@ class PlanTraceMonitor:
         self.current_plan_trace: Optional[PlanTrace] = None
    
         if self.enabled:
-            self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, logger)
+            self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, logger, self.sco)
             self.stage_start_times: Dict[int, float] = {}
         self.retention_policy = monitor_cfg.get("retention_policy", "keep_all")
         self.reuse_links = []  # (parent_trace_id, child_trace_id)

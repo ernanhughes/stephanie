@@ -1,0 +1,2 @@
+# config/scoring/service/default.yaml
+create_missing_evaluations: true

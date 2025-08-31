@@ -32,8 +32,8 @@ embeddings:
 
 goal:
   goal_text: >
-    Demonstrate a Case-Based Reasoning (CBR) system that continually learns
-    from its own past cases (PlanTraces, evaluations, cartridges), adapting
+    How can I use Case-Based Reasoning (CBR) to build a system that continually learns
+    from its own past cases, adapting
     to solve increasingly complex research tasks.
   goal_type: "strategic"
   goal_category: "meta_reasoning"
@@ -45,6 +45,22 @@ goal:
     - "scorable_rankings"
     - "revised_plan"
     - "retained_cartridge"
+
+# goal:
+#   goal_text: >
+#     Demonstrate a Case-Based Reasoning (CBR) system that continually learns
+#     from its own past cases (PlanTraces, evaluations, cartridges), adapting
+#     to solve increasingly complex research tasks.
+#   goal_type: "strategic"
+#   goal_category: "meta_reasoning"
+#   focus_area: "case_based_learning"
+#   strategy: "retrieve_reuse_revise_retain"
+#   difficulty: "high"
+#   expected_formats:
+#     - "case_trace"
+#     - "scorable_rankings"
+#     - "revised_plan"
+#     - "retained_cartridge"
 
 # goal:
 #   goal_text: >

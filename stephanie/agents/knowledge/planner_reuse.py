@@ -12,6 +12,9 @@ from stephanie.scoring.hrm_scorer import HRMScorer
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+import json, hashlib
+from stephanie.models.evaluation import EvaluationORM
+from stephanie.models.score import ScoreORM
 
 
 class PlannerReuseAgent(BaseAgent):
@@ -183,6 +186,7 @@ class PlannerReuseAgent(BaseAgent):
 
         # --- 4. Update context ---
         context[self.output_key] = parsed["plan"]
+        
         context["examples"] = examples
         context[f"{self.output_key}_meta"] = {
             "rationale": parsed["rationale"],
