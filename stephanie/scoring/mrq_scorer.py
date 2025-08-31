@@ -11,7 +11,7 @@ from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
 from stephanie.scoring.base_scorer import BaseScorer
 from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.mrq.model import MRQModel
+from stephanie.scoring.model.mrq_model import MRQModel
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator

@@ -1,10 +1,6 @@
 # stephanie/scoring/mrq/value_predictor.py
-import logging
 
 from torch import nn
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 class ValuePredictor(nn.Module):
     """Predicts a quality score for a document given its contextual embedding."""

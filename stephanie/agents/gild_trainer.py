@@ -14,7 +14,7 @@ from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.scoring.ep_hrm_scorer import \
     EpistemicPlanHRMScorer  # Adjust import
 from stephanie.scoring.hrm_scorer import HRMScorer
-from stephanie.scoring.mrq.preference_pair_builder import PreferencePairBuilder
+from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.sicql_scorer import SICQLScorer
 
