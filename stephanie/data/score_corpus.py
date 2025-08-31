@@ -183,6 +183,28 @@ class ScoreCorpus:
                             tensor[s_idx, dim_idx, scorer_idx, metric_idx] = np.nan
         return tensor
 
+    def get_high_disagreement_scorables(self, dimension: str, threshold: float) -> List[str]:
+        """
+        Convenience wrapper used by plan_trace_scorer.
+        Returns scorable IDs whose *across-scorers* std-dev for `dimension` exceeds `threshold`.
+        """
+        matrix = self.get_dimension_matrix(dimension)  # [scorable x scorer]
+        if matrix.empty:
+            return []
+        disagreement = matrix.std(axis=1)              # per scorable row
+        return disagreement[disagreement > threshold].index.tolist()
+
+    def get_summary(self) -> dict:
+        """
+        Lightweight summary (MARSCalculator’s writer calls this).
+        """
+        return {
+            "scorable_count": len(self.bundles),
+            "dimensions": list(self.dimensions),
+            "scorers": list(self.scorers),
+            "metrics": list(self.metrics),
+        }
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "scorable_ids": list(self.bundles.keys()),
@@ -200,3 +222,4 @@ class ScoreCorpus:
                 f"dimensions={len(self.dimensions)}, "
                 f"scorers={len(self.scorers)}, "
                 f"metrics={len(self.metrics)})>")
+

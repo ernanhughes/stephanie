@@ -28,9 +28,9 @@ You get:
 """
 
 from __future__ import annotations
-
 from typing import Any, Callable, Dict, List, Optional
 
+import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Core types
@@ -460,17 +460,19 @@ class ScoringService:
 
         # Optional margin-based tie-break (goal similarity)
         if margin is not None and abs(res["score_a"] - res["score_b"]) < float(margin):
-            gtxt = ((context or {}).get("goal") or {}).get("goal_text", "") or ""
+            gtxt = (context.get("goal") or {}).get("goal_text", "") or ""
             try:
-                gemb = self.memory.embedding.get_or_create(gtxt)
-                def _sim(scorable_or_text):
-                    s = self._coerce_scorable(scorable_or_text)
-                    return cosine_similarity(gemb, self.memory.embedding.get_or_create(s.text))
+                gvec = np.asarray(self.memory.embedding.get_or_create(gtxt), dtype=float).reshape(1, -1)
+
+                def _sim(x):
+                    s = self._coerce_scorable(x)
+                    v = np.asarray(self.memory.embedding.get_or_create(s.text), dtype=float).reshape(1, -1)
+                    return float(cosine_similarity(gvec, v)[0, 0])
+
                 res["winner"] = "a" if _sim(a_s) >= _sim(b_s) else "b"
                 res["tie_break"] = "goal_similarity"
             except Exception:
-                # leave as-is if embeddings not available
-                pass
+                pass  # leave result as-is if embeddings/tie-break fails
 
         self.logger and self.logger.log("ScoringServicePairwise", {
             "scorer": scorer_name,
@@ -523,3 +525,12 @@ class ScoringService:
             la = len(getattr(a, "text", str(a)))
             lb = len(getattr(b, "text", str(b)))
             return "a" if la >= lb else "b"
+
+    def _cos1d(self, a, b) -> float:
+        a = np.asarray(a, dtype=float)
+        b = np.asarray(b, dtype=float)
+        na = np.linalg.norm(a)
+        nb = np.linalg.norm(b)
+        if na == 0.0 or nb == 0.0:
+            return 0.0
+        return float(np.dot(a, b) / (na * nb))

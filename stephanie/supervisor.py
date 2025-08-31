@@ -285,7 +285,7 @@ class Supervisor:
                         "error": str(rep_e)
                     })
 
-                self.context.save_to_file(prefix=f"context_{stage.name}")
+                # self.context.save_to_file(prefix=f"context_{stage.name}")
 
 
                 self._save_pipeline_stage(stage, context, stage_dict)
