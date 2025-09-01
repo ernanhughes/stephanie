@@ -30,9 +30,11 @@ def get_high_scoring_runs(
     # Step 2: Filter out those with rule applications
     valid_runs = []
     for evaluation in evaluations:
+        if not evaluation.scorable_id:
+            continue 
         rule_applied = (
             session.query(RuleApplicationORM)
-            .filter_by(hypothesis_id=evaluation.hypothesis_id)
+            .filter_by(hypothesis_id=int(evaluation.scorable_id))
             .first()
         )
         if rule_applied:

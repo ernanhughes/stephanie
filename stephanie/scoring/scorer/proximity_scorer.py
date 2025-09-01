@@ -199,7 +199,7 @@ class ProximityScorer:
 
     def _compute_db_proximity(self, target_text):
         """Compute database match metrics for hypothesis proximity."""
-        matches = self.memory.embedding.search_related(
+        matches = self.memory.embedding.search_related_scorables(
             target_text, top_k=self.top_k_db
         )
         if not matches:
@@ -221,7 +221,7 @@ class ProximityScorer:
                 },
             }
 
-        scores = [m.similarity for m in matches]
+        scores = [m.get("score") for m in matches]
         avg_match = float(np.mean(scores))
         overlap_count = sum(1 for s in scores if s >= self.similarity_threshold)
         db_div = float(np.std(scores))  # diversity from DB history

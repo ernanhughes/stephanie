@@ -197,7 +197,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         self.ucb_weight = cfg.get("ucb_weight", 1.41)
         self.num_simulations = cfg.get("num_simulations", 50)
         self.lambda_weight = cfg.get("lambda", 0.5)
-
+        self.scorer_name = cfg.get("scorer_name", "sicql")
         # Node tracking
         self.nodes = []
         self.N = defaultdict(int)  # visit count
@@ -231,13 +231,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         self.score_map = {}
         self.completed_nodes = 0
         self.total_estimated_nodes = 1  # Start with 1 to avoid division by zero
-        self.dimensions = self.get_dimensions("lats_reflection")
-        self.scorer = SICQLScorer(
-            self.cfg, memory=self.memory, logger=self.logger, dimensions=self.dimensions
-        )
-        # self.scorer.train_from_database(cfg=self.cfg)
-        # self.scorer.save_models()
-        self.scorer.load_models()
+        self.dimensions = self.cfg.get("dimensions", ["alignment", "clarity", "implementability", "novelty", "relevance"])
 
     async def run(self, context: dict) -> dict:
         """Main LATS search loop"""
@@ -428,9 +422,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             # Score using dimensional scorers
             scorable = Scorable(text=comp)
 
-            score_result = self.score_item(
-                scorable, scoring_context, metrics="lats_node", scorer=self.scorer
-            )
+            score_result = self.scoring.score(self.scorer_name, scorable=scorable, context=scoring_context, dimensions=self.dimensions)
             node_path = self.build_node_path(node)
             aggregated_result = score_result.aggregate()
             print(f"Scoring result for {node_path}: {aggregated_result}")
@@ -514,8 +506,8 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         # Fallback: dimensional scoring
         print(node)
         scorable = Scorable(text="\n".join(node["trace"]))
-        score_result = self.score_item(
-            scorable, context, metrics="lats_reflection", scorer=self.scorer
+        score_result = self.scoring.score(
+           self.scorer_name, scorable=scorable, context=context, dimensions=self.dimensions
         )
         return score_result.aggregate() / 100, score_result
 
@@ -643,11 +635,11 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         scorable = Scorable(text="\n".join(trace))
 
         # Score using dimensional scorers
-        score_result = self.score_item(
-            scorable,
-            {"goal": {"goal_text": goal_text}},  # Always a dict
-            metrics="lats_reflection",
-            scorer=self.scorer,
+        score_result = self.scoring.score(
+            self.scorer_name,
+            scorable=scorable,
+            context={"goal": {"goal_text": goal_text}},  # Always a dict
+            dimensions=self.dimensions
         )
 
         return score_result.aggregate() / 100  # Normalize
@@ -716,11 +708,11 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         scorable = Scorable(text="\n".join(trace))
 
         # Score across dimensions
-        score_result = self.score_item(
-            scorable,
-            {"goal": {"goal_text": trace["goal"]}},
-            metrics="lats_reflection",
-            scorer=self.scorer,
+        score_result = self.scoring.score(
+            self.scorer_name,
+            scorable=scorable,
+            context={"goal": {"goal_text": trace["goal"]}},
+            dimensions=self.dimensions
         )
         return score_result.aggregate() / 100  # Normalize
 
@@ -756,7 +748,10 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
     def _get_dimension_scores(self, trace) -> ScoreBundle:
         """Get scores across all dimensions"""
         hyp = {"text": "\n".join(trace)}
-        return self.score_item(hyp, {}, metrics="lats_node", scorer=self.scorer)
+        return self.scoring.score(self.scorer_name, 
+                                  scorable=hyp, 
+                                  context={"goal": {"goal_text": trace["goal"]}}, 
+                                  dimensions=["lats_node"])
 
     def _generate_reflection(self, node):
         """Generate reflection for failed trajectory"""

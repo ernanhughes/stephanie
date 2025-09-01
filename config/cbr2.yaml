@@ -15,6 +15,7 @@ defaults:
   - scorer/epistemic_hrm/default
 
   - agents/arxiv_search
+  - agents/lats_dspy
   - agents/generation
   - agents/cbr_dspy
   - agents/cartridge
@@ -143,6 +144,12 @@ pipeline:
      - name: generation
        description: "Generate new candidate documents based on existing knowledge"
        cls: stephanie.agents.generation.GenerationAgent
+       enabled: true
+       iterations: 1
+
+     - name: lats_dspy
+       description: "Generate hypotheses from documents using the LATS framework"
+       cls: stephanie.agents.lats_dspy.LATSDSPyAgent
        enabled: true
        iterations: 1
 
