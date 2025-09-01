@@ -1,6 +1,4 @@
 # stephanie/agents/planning/planner_reuse.py
-import hashlib
-import json
 import re
 
 from tqdm import tqdm
@@ -9,16 +7,13 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PLAN_TRACE_ID
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scorer.hrm_scorer import HRMScorer
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 
 class PlannerReuseAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger, full_cfg):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.ranker = ScorableRanker(cfg, memory, logger)
         self.top_k = cfg.get("top_k", 100)
@@ -28,9 +23,6 @@ class PlannerReuseAgent(BaseAgent):
             "rerank_with_scorable_ranker", False
         )
         self.dimensions = cfg.get("dimensions", ["alignment"])
-        self.scorer = HRMScorer(
-            full_cfg["scorer"]["hrm"], memory=self.memory, logger=self.logger
-        )
         self.hrm_scorer = "hrm"
         self.hrm_by_id = {}
         self.knn_by_id = {}
@@ -113,7 +105,7 @@ class PlannerReuseAgent(BaseAgent):
             )
             pbar.set_postfix({"candidates": f"{idx}/{len(filtered_traces)}"})
 
-        if not candidates:
+        if not candidates: 
             self.logger.log(
                 "PlannerReuseNoCandidates", {"goal_text": goal_text}
             )

@@ -17,7 +17,7 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
-from stephanie.rules import SymbolicRuleApplier
+from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.scoring.scoring_service import ScoringService
 
 

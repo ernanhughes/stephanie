@@ -22,7 +22,7 @@ from stephanie.memory import MemoryTool
 from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
 from stephanie.reports import ReportFormatter
-from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
+from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.scoring.scoring_service import ScoringService
 from stephanie.utils.report_utils import get_stage_details
 
@@ -292,13 +292,12 @@ class Supervisor:
                 self.logger.log("PipelineStageEnd", {STAGE: stage.name})
                 
                 # Record stage completion
-                plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
+                await plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
                 
                 stage_details["status"] = "✅ completed"
                 stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
                 
             except Exception as e:
-                # Record stage error
                 plan_trace_monitor.handle_stage_error(stage.name, e, stage_idx)
                 
                 self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})

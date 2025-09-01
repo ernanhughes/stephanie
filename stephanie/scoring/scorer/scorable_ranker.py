@@ -20,6 +20,7 @@ class ScorableRanker(BaseScorer):
       - score(context, scorable, dimensions) → dict
       - rank(query, candidates, extra_signals) → List[EvaluationORM]
     """
+
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_type = "scorable_rank"
@@ -31,7 +32,7 @@ class ScorableRanker(BaseScorer):
 
         # Config
         self.target_type = cfg.get("target_type", "document")
-        
+
         # CBR literature weights: sim=0.45, value=0.30, recency=0.10, diversity=0.10, adapt=0.05
         self.weights = cfg.get(
             "weights",
@@ -40,15 +41,17 @@ class ScorableRanker(BaseScorer):
                 "value": 0.30,
                 "recency": 0.10,
                 "diversity": 0.10,
-                "adaptability": 0.05
+                "adaptability": 0.05,
             },
         )
-        
+
         # CBR-specific parameters
-        self.lambda_recency = cfg.get("rank_recency_lambda", 0.02)  # days decay
-        self.epsilon = cfg.get("rank_epsilon", 0.10)                # exploration probability
-        self.top_k = cfg.get("rank_top_k", 8)                      # max to return
-        self.normalize_similarity = cfg.get("normalize_similarity", True) 
+        self.lambda_recency = cfg.get(
+            "rank_recency_lambda", 0.02
+        )  # days decay
+        self.epsilon = cfg.get("rank_epsilon", 0.10)  # exploration probability
+        self.top_k = cfg.get("rank_top_k", 8)  # max to return
+        self.normalize_similarity = cfg.get("normalize_similarity", True)
         self.logger.log(
             "ScorableRankerInitialized",
             {
@@ -59,8 +62,8 @@ class ScorableRanker(BaseScorer):
                 "cbr_parameters": {
                     "lambda_recency": self.lambda_recency,
                     "epsilon": self.epsilon,
-                    "top_k": self.top_k
-                }
+                    "top_k": self.top_k,
+                },
             },
         )
 
@@ -74,7 +77,9 @@ class ScorableRanker(BaseScorer):
     def _reward(self, scorable: Scorable) -> float:
         eval_rec = (
             self.memory.session.query(EvaluationORM)
-            .filter_by(scorable_id=scorable.id, scorable_type=scorable.target_type)
+            .filter_by(
+                scorable_id=scorable.id, scorable_type=scorable.target_type
+            )
             .order_by(EvaluationORM.created_at.desc())
             .first()
         )
@@ -86,32 +91,38 @@ class ScorableRanker(BaseScorer):
         base = 0.5
         meta = getattr(scorable, "meta", {}) or {}
         if "reuse_count" in meta and "attempt_count" in meta:
-            base = float(meta["reuse_count"]) / max(1, float(meta["attempt_count"]))
-        
+            base = float(meta["reuse_count"]) / max(
+                1, float(meta["attempt_count"])
+            )
+
         # Tool compatibility (if context is provided)
         tool_compat = 1.0
         if context:
             tool_compat = self._tool_compatibility(scorable, context)
-        
+
         # Weighted combination
         return 0.7 * base + 0.3 * tool_compat
 
-    def _diversity(self, scorable: Scorable, selected: List[Scorable]) -> float:
+    def _diversity(
+        self, scorable: Scorable, selected: List[Scorable]
+    ) -> float:
         """Maximal Marginal Relevance (MMR) diversity penalty"""
         if not selected:
             return 1.0
-            
+
         # Get similarity to most similar already-selected case
-        selected_embs = [self.memory.embedding.get_or_create(s.text) for s in selected]
+        selected_embs = [
+            self.memory.embedding.get_or_create(s.text) for s in selected
+        ]
         cand_emb = self.memory.embedding.get_or_create(scorable.text)
-        
+
         # Handle potential embedding retrieval failures
         if cand_emb is None or not selected_embs:
             return 1.0
-            
+
         similarities = cosine_similarity([cand_emb], selected_embs)[0]
         max_sim = float(max(similarities))
-        
+
         # Diversity = 1 - max similarity to selected
         return 1.0 - max_sim
 
@@ -119,20 +130,24 @@ class ScorableRanker(BaseScorer):
         """Measure compatibility with current available tools"""
         # Extract available tools from context
         available_tools = context.get("available_tools", [])
-        
+
         # Get tools used in this scorable (if it's a plan trace)
         used_tools = []
         if hasattr(scorable, "meta") and scorable.meta:
             used_tools = scorable.meta.get("tools", [])
         elif hasattr(scorable, "tools"):
             used_tools = scorable.tools
-        
+
         if not used_tools:
             return 1.0
-            
-        return len(set(available_tools) & set(used_tools)) / len(set(used_tools))
 
-    def score(self, context: dict, scorable: Scorable, dimensions=None) -> dict:
+        return len(set(available_tools) & set(used_tools)) / len(
+            set(used_tools)
+        )
+
+    def score(
+        self, context: dict, scorable: Scorable, dimensions=None
+    ) -> dict:
         """
         Score a single scorable relative to the current goal/query in context.
         Returns a dict with rank_score + component scores.
@@ -163,29 +178,39 @@ class ScorableRanker(BaseScorer):
         return result
 
     # --- Multi-candidate ranking ---
-    def rank(self, query: Scorable, candidates: list[Scorable], context: dict, extra_signals: Optional[Dict[str, float]] = None):
+    def rank(
+        self,
+        query: Scorable,
+        candidates: list[Scorable],
+        context: dict,
+        extra_signals: Optional[Dict[str, float]] = None,
+    ):
         # Precompute query embedding once
         query_emb = self.memory.embedding.get_or_create(query.text)
         if query_emb is None:
-            self.logger.log("RankingError", {"error": "Failed to get query embedding"})
+            self.logger.log(
+                "RankingError", {"error": "Failed to get query embedding"}
+            )
             return []
-        
+
         # Score all candidates
         scored = []
         for cand in candidates:
             cand_emb = self.memory.embedding.get_or_create(cand.text)
             if cand_emb is None:
                 continue
-                
+
             components = {
                 "similarity": self._similarity(query_emb, cand_emb),
-                "value": self._value(cand),  # Renamed from "reward" for clarity
+                "value": self._value(
+                    cand
+                ),  # Renamed from "reward" for clarity
                 "recency": self._recency(cand),
-                "adaptability": self._adaptability(cand, context)
+                "adaptability": self._adaptability(cand, context),
             }
-            
+
             scored.append((cand, components))
-        
+
         if not scored:
             return []
 
@@ -193,45 +218,58 @@ class ScorableRanker(BaseScorer):
         selected = []
         remaining = scored.copy()
         bundles = []
-        
+
         # We'll select up to top_k candidates
         while remaining and len(selected) < self.top_k:
             if random.random() < self.epsilon:
                 # Exploration: pick randomly from top 20%
-                top_20 = sorted(remaining, key=lambda x: self._calculate_rank_score(x[1]), reverse=True)[:max(1, len(remaining)//5)]
+                top_20 = sorted(
+                    remaining,
+                    key=lambda x: self._calculate_rank_score(x[1]),
+                    reverse=True,
+                )[: max(1, len(remaining) // 5)]
                 pick = random.choice(top_20)
                 remaining.remove(pick)
                 selected.append(pick)
             else:
                 # Exploitation: pick highest score with diversity penalty
                 best = None
-                best_score = -float('inf')
-                
+                best_score = -float("inf")
+
                 for cand, components in remaining:
                     # Diversity penalty: reduce score based on similarity to already-picked
                     if selected:
-                        selected_embs = [self.memory.embedding.get_or_create(s[0].text) for s in selected if self.memory.embedding.get_or_create(s[0].text) is not None]
-                        cand_emb = self.memory.embedding.get_or_create(cand.text)
-                        
+                        selected_embs = [
+                            self.memory.embedding.get_or_create(s[0].text)
+                            for s in selected
+                            if self.memory.embedding.get_or_create(s[0].text)
+                            is not None
+                        ]
+                        cand_emb = self.memory.embedding.get_or_create(
+                            cand.text
+                        )
+
                         if cand_emb is not None and selected_embs:
-                            similarities = cosine_similarity([cand_emb], selected_embs)[0]
+                            similarities = cosine_similarity(
+                                [cand_emb], selected_embs
+                            )[0]
                             div_penalty = float(max(similarities))
                             diversity = 1.0 - div_penalty
                         else:
                             diversity = 1.0
                     else:
                         diversity = 1.0
-                    
+
                     # Store diversity for final scoring
                     components["diversity"] = diversity
-                    
+
                     # Calculate final score with diversity
                     score = self._calculate_rank_score(components)
-                    
+
                     if score > best_score:
                         best = (cand, components)
                         best_score = score
-                
+
                 if best:
                     remaining.remove(best)
                     selected.append(best)
@@ -239,31 +277,33 @@ class ScorableRanker(BaseScorer):
         # Convert selected items to ScoreBundles
         for cand, components in selected:
             rank_score = self._calculate_rank_score(components)
-            
+
             # Create ScoreBundle with all component signals
-            bundle = ScoreBundle(results={
-                "rank_score": ScoreResult(
-                    dimension="rank_score",
-                    score=rank_score,
-                    weight=1.0,
-                    source="scorable_ranker",
-                    rationale="Weighted combo with diversity",
-                    attributes=components,
-                )
-            })
+            bundle = ScoreBundle(
+                results={
+                    "rank_score": ScoreResult(
+                        dimension="rank_score",
+                        score=rank_score,
+                        weight=1.0,
+                        source="scorable_ranker",
+                        rationale="Weighted combo with diversity",
+                        attributes=components,
+                    )
+                }
+            )
             bundle.meta = query.to_dict()
 
             # Persist via EvaluationStore
             self.memory.evaluations.save_bundle(
                 bundle=bundle,
-                scorable=cand, 
+                scorable=cand,
                 context=context,
                 cfg=self.cfg,
                 source="scorable_ranker",
                 embedding_type=self.memory.embedding.name,
-                evaluator=self.model_type
-            ) 
-            
+                evaluator=self.model_type,
+            )
+
             bundles.append(bundle)
 
         return bundles
@@ -294,7 +334,9 @@ class ScorableRanker(BaseScorer):
                     "rank_score": d["results"]["rank_score"].score,
                     "components": d["results"]["rank_score"].attributes,
                     "scorable_id": getattr(d.get("scorable"), "id", None),
-                    "scorable_type": getattr(d.get("scorable"), "target_type", None),
+                    "scorable_type": getattr(
+                        d.get("scorable"), "target_type", None
+                    ),
                 }
             elif isinstance(result, dict):
                 return {
@@ -304,7 +346,12 @@ class ScorableRanker(BaseScorer):
                     "scorable_id": result.get("scorable_id"),
                     "scorable_type": result.get("scorable_type"),
                 }
-            return {"rank_score": 0, "components": {}, "scorable_id": None, "scorable_type": None}
+            return {
+                "rank_score": 0,
+                "components": {},
+                "scorable_id": None,
+                "scorable_type": None,
+            }
 
         normalized = [extract(r) for r in results]
         top_result = normalized[0]  # <-- use normalized, not results
@@ -335,15 +382,15 @@ class ScorableRanker(BaseScorer):
             default=0.0,
         )
 
-
     def _calculate_rank_score(self, components: dict) -> float:
         """Calculate final rank score with proper weighting"""
         return (
-            self.weights["similarity"] * components.get("similarity", 0.0) +
-            self.weights["value"] * components.get("value", 0.0) +
-            self.weights["recency"] * components.get("recency", 0.0) +
-            self.weights["diversity"] * components.get("diversity", 0.0) +
-            self.weights["adaptability"] * components.get("adaptability", 0.0)
+            self.weights["similarity"] * components.get("similarity", 0.0)
+            + self.weights["value"] * components.get("value", 0.0)
+            + self.weights["recency"] * components.get("recency", 0.0)
+            + self.weights["diversity"] * components.get("diversity", 0.0)
+            + self.weights["adaptability"]
+            * components.get("adaptability", 0.0)
         )
 
     def _recency(self, scorable: Scorable) -> float:
@@ -374,7 +421,7 @@ class ScorableRanker(BaseScorer):
                     self.memory.session.query(EvaluationORM)
                     .filter_by(
                         scorable_id=str(scorable.id),
-                        scorable_type=scorable.target_type
+                        scorable_type=scorable.target_type,
                     )
                     .order_by(EvaluationORM.created_at.desc())
                     .first()

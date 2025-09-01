@@ -28,6 +28,7 @@ You get:
 """
 
 from __future__ import annotations
+
 from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np

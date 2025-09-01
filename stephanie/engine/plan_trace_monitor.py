@@ -10,6 +10,7 @@ from typing import Dict, Optional
 from omegaconf import OmegaConf
 
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
+from stephanie.agents.agent_scorer import AgentScorerAgent
 from stephanie.constants import PLAN_TRACE_ID
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
@@ -38,6 +39,7 @@ class PlanTraceMonitor:
    
         if self.enabled:
             self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, logger)
+            self.agent_scorer = AgentScorerAgent(cfg, memory, logger)
             self.stage_start_times: Dict[int, float] = {}
         self.retention_policy = monitor_cfg.get("retention_policy", "keep_all")
         self.reuse_links = []  # (parent_trace_id, child_trace_id)
@@ -184,7 +186,7 @@ class PlanTraceMonitor:
             "stage_name": stage_name
         })
     
-    def complete_stage(self, stage_name: str, context: Dict, stage_idx: int) -> None:
+    async def complete_stage(self, stage_name: str, context: Dict, stage_idx: int) -> None:
         """Update ExecutionStep when stage completes"""
         if not self.current_plan_trace or stage_idx >= len(self.current_plan_trace.execution_steps):
             return
@@ -205,6 +207,7 @@ class PlanTraceMonitor:
             step.input_text = details.get("input_text", "")
             step.output_text = details.get("output_text", "")
             step.description = details.get("description", f"Scorable output from {agent_obj.name}")
+            context = await self.agent_scorer.run(context)
         else:
             # fallback breadcrumb only (not for scoring)
             output_keys = list(context.keys())

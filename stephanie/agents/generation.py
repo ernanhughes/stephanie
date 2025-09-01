@@ -2,7 +2,7 @@
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import (FEEDBACK, GOAL, GOAL_TEXT, HYPOTHESES,
-                                 LITERATURE)
+                                 SCORABLES)
 from stephanie.utils.parser_utils import extract_hypotheses
 
 
@@ -16,12 +16,12 @@ class GenerationAgent(BaseAgent):
         self.logger.log("GenerationStart", {GOAL: goal})
 
         # Load literature if available
-        literature = context.get(LITERATURE, {})
+        scorables = context.get(SCORABLES, {})
 
         # Build context for prompt
         render_context = {
             GOAL: goal.get(GOAL_TEXT),
-            LITERATURE: literature,
+            SCORABLES: scorables,
             FEEDBACK: context.get(FEEDBACK, {}),
             HYPOTHESES: context.get(HYPOTHESES, []),
         }

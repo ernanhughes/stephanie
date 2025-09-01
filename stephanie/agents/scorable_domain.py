@@ -1,12 +1,11 @@
 # agents/domain/multi_source_domain_agent.py
 
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.scoring.scorable import Scorable
-from stephanie.utils.llm import LLMClient  # assumed available
 
 
 class ScorableDomainAgent(BaseAgent):
@@ -39,15 +38,6 @@ class ScorableDomainAgent(BaseAgent):
 
         # 3. Embedding + clustering backend
         self.embedding_backend = memory.embedding
-        self.clustering_backend = ClusteringBackend(
-            memory.embedding,
-            logger,
-            cluster_threshold=cfg.get("cluster_threshold", 0.65),
-            max_clusters=cfg.get("max_emergent_domains", 2),
-        )
-
-        # 4. LLM for labeling emergent clusters
-        self.llm = LLMClient(cfg.get("llm")) if cfg.get("use_llm_for_emergent", True) else None
 
         # 5. Config flags
         self.report_enabled = cfg.get("report", True)

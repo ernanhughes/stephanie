@@ -6,7 +6,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List 
 
 from stephanie.logging.icons import get_event_icon
 

@@ -2,6 +2,20 @@
 defaults:
   - _self_
   - db: postgres
+
+  - plan_monitor: default
+  - scoring/service/default
+
+  - scorer/reward/default
+  - scorer/ebt/default
+  - scorer/hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
+  - scorer/epistemic_hrm/default
+
+
   - agents/generation
   - agents/pipeline_judge
   - agents/lats

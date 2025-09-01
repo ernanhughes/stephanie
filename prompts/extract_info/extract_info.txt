@@ -1,0 +1,51 @@
+You are a helpful assistant
+
+Based upon this goal:
+Goal: {{ goal.goal_text }}
+
+{% if preferences %}
+And these preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+{% if instructions %}
+Additional instructions: 
+{% for i in instructions %}
+- {{ i }}
+{% endfor %}
+{% endif %}
+
+
+You are an expert in reasoning systems and knowledge extraction.  
+I will provide you with one or more documents.  
+
+Your tasks are:
+
+1. **Extract a Strong Hypothesis**  
+   - Review the documents carefully and extract **one or more strong hypotheses** that relate directly to the application of Case-Based Reasoning (CBR).  
+   - A strong hypothesis is one that is clear, testable, and actionable towards building a self-improving system.  
+   - Focus on hypotheses that would help improve pipeline execution, agent scoring, or knowledge reuse.  
+
+   ✅ Example of a good hypothesis:  
+   "If each execution step in the pipeline is stored as a case and scored, then similar future steps can be retrieved and reused, improving decision quality over time."  
+
+2. **Explain Case-Based Reasoning (CBR)**  
+   - Briefly explain what CBR is in simple terms.  
+   - Example explanation:  
+   "Case-Based Reasoning (CBR) is an approach where a system learns by remembering past cases, retrieving the most similar one for a new problem, adapting it to the current context, and revising the outcome. For example, if the system previously succeeded in using Agent A for document summarization under similar goals, it can try Agent A again for a new summarization task and adapt based on feedback."  
+
+3. **Output Format**  
+   Use the following structure in your response:
+
+   ---
+   ## Strong Hypotheses
+   - Hypothesis 1: ...
+   - Hypothesis 2: ...
+
+   ## What CBR Means Here
+   [Your short explanation + example]
+   ---
+
+Please ensure clarity and keep hypotheses directly tied to the goal of applying CBR for self-improvement.

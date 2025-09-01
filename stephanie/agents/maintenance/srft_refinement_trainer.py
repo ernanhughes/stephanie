@@ -1,11 +1,10 @@
 # stephanie/scoring/ebt/srft_refinement_trainer.py
 
-import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
 import torch
-from torch import nn, optim
+from torch import optim
 from torch.utils.data import DataLoader
 
 from stephanie.agents.base_agent import BaseAgent

@@ -33,19 +33,19 @@ TEMPLATE_CONFIG = '''{{ agent_name }}:
 TEMPLATE_PROMPT = '''You are a helpful assistant
 
 Based upon this goal:
-Goal: {{ '{{' }} goal.goal_text {{ '}}' }}
+Goal: {{ goal.goal_text }}
 
 {% if preferences %}
 And these preferences:
 {% for p in preferences %}
-- {{ '{{' }} p {{ '}}' }}
+- {{ p }}
 {% endfor %}
 {% endif %}
 
 {% if instructions %}
 Additional instructions: 
 {% for i in instructions %}
-- {{ '{{' }} i {{ '}}' }}
+- {{ i }}
 {% endfor %}
 {% endif %}
 '''

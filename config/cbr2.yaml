@@ -14,6 +14,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/cbr_dspy
   - agents/arxiv_search
   - agents/cartridge
   - agents/document_loader
@@ -36,20 +37,36 @@ embeddings:
 
 goal:
   goal_text: >
-    # How can I use Case-Based Reasoning (CBR) to build a system that continually learns
-    # from its own past cases, adapting
-    # to solve increasingly complex research tasks.
-    Design a CBR-driven research agent that learns from prior cases and adapts its plans to tackle progressively harder problems. What core components and data flows should it have?
+      You are an expert in reasoning systems and knowledge extraction.  
+      I will provide you with one or more documents.  
 
-    # How would you architect a continual-learning CBR loop (retrieve→reuse→revise) so the system improves with every research task it completes?”
-    # Propose a CBR framework that mines past traces, ranks them, and adapts them to new goals, enabling lifelong learning for complex research workflows.”
-    # Outline a case-based planner that reuses successful plans, scores results, and updates its memory to solve increasingly challenging research objectives.”
-    # Give me a step-by-step method to build a CBR system that retrieves similar cases, adapts them, and logs outcomes to steadily raise performance on research tasks.”
-    # What would a scalable CBR architecture look like for an autonomous research agent that continuously learns from prior experiments and plans?”
-    # Explain how to implement retrieval + adaptation + retention so a CBR agent can handle harder research problems over time using its own history.”
-    # How can a research assistant use CBR to select relevant past plans, adapt them, and record feedback signals to drive continual improvement?”
-    # Propose an evaluation-first CBR loop where past cases are ranked by similarity and value, adapted to a new goal, and the results are persisted for future reuse.”
-    # Describe a practical blueprint for a CBR-based planner that leverages embeddings, ranking, and revision to iteratively improve at open-ended research tasks.”
+      Case-Based Reasoning (CBR) is an approach where a system learns by remembering past cases, retrieving the most similar one for a new problem, adapting it to the current context, and revising the outcome. For example, if the system previously succeeded in using Agent A for document summarization under similar goals, it can try Agent A again for a new summarization task and adapt based on feedback.
+
+      Your task is:
+
+      **Extract Strong Hypotheses**  
+      - Review the documents carefully and extract **1–3 strong hypotheses** that relate directly to the application of Case-Based Reasoning (CBR).  
+      - A strong hypothesis is one that is **clear, testable, and actionable** towards building a self-improving system.  
+      - Focus on hypotheses that would help improve **pipeline execution, agent scoring, or knowledge reuse**.  
+      - Keep your output **concise and focused**.  
+
+      ✅ Example of a good hypothesis:  
+      "If each execution step in the pipeline is stored as a case and scored, then similar future steps can be retrieved and reused, improving decision quality over time."  
+
+      **Output Format**  
+      Use the following structure in your response:
+
+      ---
+      ## Score [0–100]  
+      [Your confidence in the quality and relevance of the hypotheses]
+
+      ## Rationale  
+      [Brief explanation of why these hypotheses are strong and how they connect to CBR]
+
+      ## Strong Hypotheses  
+      - Hypothesis 1: ...  
+      - Hypothesis 2: ...  
+
 
   goal_type: "strategic"
   goal_category: "meta_reasoning"
@@ -61,37 +78,6 @@ goal:
     - "scorable_rankings"
     - "revised_plan"
     - "retained_cartridge"
-
-# goal:
-#   goal_text: >
-#     Demonstrate a Case-Based Reasoning (CBR) system that continually learns
-#     from its own past cases (PlanTraces, evaluations, cartridges), adapting
-#     to solve increasingly complex research tasks.
-#   goal_type: "strategic"
-#   goal_category: "meta_reasoning"
-#   focus_area: "case_based_learning"
-#   strategy: "retrieve_reuse_revise_retain"
-#   difficulty: "high"
-#   expected_formats:
-#     - "case_trace"
-#     - "scorable_rankings"
-#     - "revised_plan"
-#     - "retained_cartridge"
-
-# goal:
-#   goal_text: >
-#     Explore how Case-Based Reasoning (CBR) can accelerate scientific
-#     discovery by reusing past reasoning traces to solve novel problems
-#     across multiple domains.
-#   goal_type: "strategic"
-#   goal_category: "meta_reasoning"
-#   focus_area: "cross_domain_adaptation"
-#   strategy: "retrieve_reuse_revise_retain"
-#   difficulty: "high"
-#   expected_formats:
-#     - "case_trace"
-#     - "adapted_plan"
-#     - "cross_domain_comparison"
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -113,6 +99,7 @@ pipeline:
     This pipeline demonstrates the full CBR loop — retrieve, reuse, revise, retain —
     by grounding reasoning in past cases (PlanTraces, evaluations, scorables),
     adapting them to new tasks, and storing new cases for continual self-improvement.
+    To test we are using various agents for hypothesis generation and testing.
   stages:
      - name: arxiv_search
        agent_role: retrieve
@@ -143,6 +130,12 @@ pipeline:
      - name: knowledge_db_loader
        description: "Load prior retained knowledge from the database for retrieval"
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    
+
+     - name: cbr_dspy
+       description: "Generate hypotheses from documents using a dspy process"
+       cls: stephanie.agents.cbr.cbr_dspy.CBRHypothesisDSPyAgent
        enabled: true
        iterations: 1    
 
@@ -189,5 +182,5 @@ pipeline:
      - name: icl_reasoning
        description: "Apply in-context reasoning to test retained knowledge against the goal"
        cls: stephanie.agents.icl_reasoning.ICLReasoningAgent
-       enabled: true
+       enabled: false
        iterations: 1
