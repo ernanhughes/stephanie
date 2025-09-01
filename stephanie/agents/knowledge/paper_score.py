@@ -1,16 +1,18 @@
 # stephanie/agents/knowledge/paper_score.py
 
 import time
+from typing import Dict
 
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_manager import ScoringManager
 
+import logging
+logger = logging.getLogger(__name__)
 
 class PaperScoreAgent(BaseAgent):
     """
@@ -18,8 +20,8 @@ class PaperScoreAgent(BaseAgent):
     Similar design to DocumentRewardScorer, but specialized for research papers.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, log):
+        super().__init__(cfg, memory, log)
         self.dimensions = cfg.get(
             "dimensions",
             ["novelty", "clarity", "relevance", "implementability", "alignment"],
@@ -31,20 +33,16 @@ class PaperScoreAgent(BaseAgent):
         )
 
         # Initialize MARS calculator
-        dimension_config = cfg.get("dimension_config", {})
-        self.mars_calculator = MARSCalculator(dimension_config, self.memory, self.logger)
         self.enabled_scorers = cfg.get("enabled_scorers", [])
 
-        self.logger.log(
-            "PaperScoreAgentInitialized",
-            {
-                "dimensions": self.dimensions,
-                "scorers": self.scorer_types,
-                "include_mars": self.include_mars,
-            },
+        logger.debug(
+            "PaperScoreAgentInitialized:"
+            f"dimensions={self.dimensions}, "
+            f"scorers={self.scorer_types}, "
+            f"include_mars={self.include_mars}"
         )
 
-    async def run(self, context: dict) -> dict:
+    async def run(self, context: Dict) -> Dict:
         """Score all papers in the context"""
         start_time = time.time()
         documents = context.get(self.input_key, [])

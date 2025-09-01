@@ -4,14 +4,13 @@ import os
 import time
 import traceback
 from datetime import datetime
-from multiprocessing import context
 from typing import Dict, Optional
 
 from omegaconf import OmegaConf
 
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.agents.agent_scorer import AgentScorerAgent
-from stephanie.constants import PLAN_TRACE_ID
+from stephanie.constants import PLAN_TRACE_ID, SCORABLE_DETAILS
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
 from stephanie.scoring.scorable_factory import ScorableFactory
@@ -25,7 +24,7 @@ class PlanTraceMonitor:
     It creates PlanTraces at pipeline start, tracks stage execution, and scores completed traces.
     """
 
-    def __init__(self, cfg: Dict, memory, logger):
+    def __init__(self, cfg: Dict, memory, logger, scoring_service=None):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
@@ -40,6 +39,7 @@ class PlanTraceMonitor:
         if self.enabled:
             self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, logger)
             self.agent_scorer = AgentScorerAgent(cfg, memory, logger)
+            self.agent_scorer.scoring = scoring_service
             self.stage_start_times: Dict[int, float] = {}
         self.retention_policy = monitor_cfg.get("retention_policy", "keep_all")
         self.reuse_links = []  # (parent_trace_id, child_trace_id)
@@ -186,8 +186,13 @@ class PlanTraceMonitor:
             "stage_name": stage_name
         })
     
-    async def complete_stage(self, stage_name: str, context: Dict, stage_idx: int) -> None:
-        """Update ExecutionStep when stage completes"""
+    async def complete_stage(
+        self,
+        stage_name: str,
+        context: Dict,
+        stage_idx: int,
+    ) -> None:
+        """Update ExecutionStep when stage completes."""
         if not self.current_plan_trace or stage_idx >= len(self.current_plan_trace.execution_steps):
             return
 
@@ -200,16 +205,18 @@ class PlanTraceMonitor:
         step.end_time = time.time()
         step.duration = duration
 
-        # --- Only record scorable details if the agent flagged itself ---
-        agent_obj = context.get("agent_obj")  # supervisor should pass the instance
-        if agent_obj and getattr(agent_obj, "is_scorable", False):
-            details = getattr(agent_obj, "scorable_details", {})
-            step.input_text = details.get("input_text", "")
-            step.output_text = details.get("output_text", "")
-            step.description = details.get("description", f"Scorable output from {agent_obj.name}")
+        scorable_details = context.get(SCORABLE_DETAILS, {})
+        if scorable_details.get("output_text"):
+            step.input_text = scorable_details.get("input_text", "")
+            step.output_text = scorable_details.get("output_text", "")
+            step.description = scorable_details.get(
+                "description", f"Scorable output from {stage_name}"
+            )
+
+            # Kick scoring agent
             context = await self.agent_scorer.run(context)
         else:
-            # fallback breadcrumb only (not for scoring)
+            # Fallback breadcrumb
             output_keys = list(context.keys())
             preview = "Context keys: " + ", ".join(output_keys[:3])
             if len(output_keys) > 3:
@@ -218,13 +225,12 @@ class PlanTraceMonitor:
             step.output_keys = output_keys
             step.output_size = len(str(context))
 
-        # Log stage completion
         self.logger.log("PipelineStageCompleted", {
             "trace_id": self.current_plan_trace.trace_id,
             "stage_idx": stage_idx + 1,
             "stage_name": stage_name,
             "stage_time": duration,
-            "is_scorable": getattr(agent_obj, "is_scorable", False)
+            "is_scorable": bool(scorable_details)
         })
     
     def handle_stage_error(self, stage_name: str, error: Exception, stage_idx: int) -> None:

@@ -1344,4 +1344,18 @@ CREATE INDEX idx_mars_results_pipeline_run ON mars_results(pipeline_run_id);
 CREATE INDEX idx_mars_results_dimension ON mars_results(dimension);
 
 
+CREATE TABLE mars_conflicts (
+    id SERIAL PRIMARY KEY,
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+    plan_trace_id VARCHAR REFERENCES plan_traces(trace_id) ON DELETE CASCADE,
+    dimension VARCHAR NOT NULL,
+    primary_conflict JSON NOT NULL,
+    delta FLOAT NOT NULL,
+    agreement_score FLOAT,
+    preferred_model VARCHAR,
+    explanation TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
 COMMIT; 

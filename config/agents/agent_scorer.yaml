@@ -12,6 +12,8 @@ agent_scorer:
     - svm
     - mrq
     - ebt
+    - contrastive_ranker
+
   include_ranking: true
   rank_top_k: 5
 

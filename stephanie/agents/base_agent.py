@@ -53,11 +53,7 @@ class BaseAgent(ABC):
         self._prompt_id_cache = {}
         self._hypothesis_id_cache = {}
         self.report_entries = {}
-        self.scorable_details: Dict[str, str] = {
-            "input_text": "",
-            "output_text": "",
-            "description": f"Output from {self.__class__.__name__}"
-        }
+        self.scorable_details = {}
         self.is_scorable = False  # default
 
         self.rule_applier = SymbolicRuleApplier(cfg, memory, logger)
@@ -189,12 +185,11 @@ class BaseAgent(ABC):
                     context, prompt, {"response": response_cleaned}
                 )
 
-            self.is_scorable = True
-            self.scorable_details = {
-                "input_text": prompt,
-                "output_text": response_cleaned,
-                "description": f"LLM output from {self.name}"
-            }
+            self.set_scorable_details(
+                input_text=prompt,
+                output_text=response_cleaned,
+                description=f"LLM output from {self.name}"
+            )
 
             if updated_cfg.get("add_prompt_to_history", True):
                 self.add_to_prompt_history(
@@ -415,6 +410,7 @@ class BaseAgent(ABC):
         """Agents call this to update what can be scored."""
         self.scorable_details = {
             "input_text": input_text,
+            "agent_name": self.name,
             "output_text": output_text,
             "description": description or f"Output from {self.__class__.__name__}"
         }

@@ -25,6 +25,7 @@ from stephanie.reports import ReportFormatter
 from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.scoring.scoring_service import ScoringService
 from stephanie.utils.report_utils import get_stage_details
+from stephanie.constants import SCORABLE_DETAILS
 
 
 class PipelineStage:
@@ -91,7 +92,7 @@ class Supervisor:
         register("cycle_watcher", CycleWatcher(cfg, self.memory, self.logger))
         register("training_controller", training_controller)
         register("self_validation", validator)
-        register("plan_trace_monitor", PlanTraceMonitor(cfg, self.memory, self.logger))
+        register("plan_trace_monitor", PlanTraceMonitor(cfg, self.memory, self.logger, scoring_service))
         self.logger.log(
             "SupervisorComponentsRegistered",
             {
@@ -290,7 +291,9 @@ class Supervisor:
 
                 self._save_pipeline_stage(stage, context, stage_dict)
                 self.logger.log("PipelineStageEnd", {STAGE: stage.name})
-                
+
+                context[SCORABLE_DETAILS] = agent.get_scorable_details()
+
                 # Record stage completion
                 await plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
                 

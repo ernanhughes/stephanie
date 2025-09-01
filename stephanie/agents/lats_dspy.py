@@ -311,7 +311,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         dimension_scores = best_child.get("dimension_scores", {})
 
         # 4. Create final hypothesis
-        hypothesis = self.save_hypothesis(
+        hypothesis = self.memory.save_hypothesis(
             {
                 "prompt_id": prompt_id,
                 "text": "\n".join(best_trace),

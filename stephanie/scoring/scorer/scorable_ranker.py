@@ -8,7 +8,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM  # NEW
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 
@@ -161,7 +160,7 @@ class ScorableRanker(BaseScorer):
             "similarity": self._similarity(query_emb, cand_emb),
             "reward": self._reward(scorable),
             "recency": self._recency(scorable),
-            "adaptability": self._adaptability(scorable),
+            "adaptability": self._adaptability(scorable, context=context),
         }
 
         rank_score = sum(
@@ -274,11 +273,11 @@ class ScorableRanker(BaseScorer):
                     remaining.remove(best)
                     selected.append(best)
 
-        # Convert selected items to ScoreBundles
+        # Convert selected items to dicts
         for cand, components in selected:
             rank_score = self._calculate_rank_score(components)
 
-            # Create ScoreBundle with all component signals
+            # Create ScoreBundle (still persist in memory)
             bundle = ScoreBundle(
                 results={
                     "rank_score": ScoreResult(
@@ -292,8 +291,6 @@ class ScorableRanker(BaseScorer):
                 }
             )
             bundle.meta = query.to_dict()
-
-            # Persist via EvaluationStore
             self.memory.evaluations.save_bundle(
                 bundle=bundle,
                 scorable=cand,
@@ -304,7 +301,14 @@ class ScorableRanker(BaseScorer):
                 evaluator=self.model_type,
             )
 
-            bundles.append(bundle)
+            # Append normalized dict instead of raw bundle
+            bundles.append({
+                "scorable_id": cand.id,
+                "scorable_type": cand.target_type,
+                "agent_name": getattr(cand, "meta", {}).get("agent_name"),
+                "rank_score": rank_score,
+                "components": components,
+            })
 
         return bundles
 

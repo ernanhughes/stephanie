@@ -14,8 +14,9 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
-  - agents/cbr_dspy
   - agents/arxiv_search
+  - agents/generation
+  - agents/cbr_dspy
   - agents/cartridge
   - agents/document_loader
   - agents/document_profiler
@@ -135,9 +136,15 @@ pipeline:
 
      - name: cbr_dspy
        description: "Generate hypotheses from documents using a dspy process"
-       cls: stephanie.agents.cbr.cbr_dspy.CBRHypothesisDSPyAgent
+       cls: stephanie.agents.cbr.cbr_dspy.CBRDSPyAgent
        enabled: true
        iterations: 1    
+
+     - name: generation
+       description: "Generate new candidate documents based on existing knowledge"
+       cls: stephanie.agents.generation.GenerationAgent
+       enabled: true
+       iterations: 1
 
      - name: paper_score
        description: "Evaluate case quality: relevance, novelty, clarity"

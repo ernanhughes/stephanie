@@ -14,6 +14,7 @@ from stephanie.scoring.scorable import Scorable
 
 # Enum defining all the supported types of scoreable targets
 class TargetType:
+    AGENT_OUTPUT = "agent_output"
     DOCUMENT = "document"
     HYPOTHESIS = "hypothesis"
     CARTRIDGE = "cartridge"

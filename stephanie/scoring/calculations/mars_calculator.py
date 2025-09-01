@@ -48,6 +48,7 @@ class MARSCalculator(BaseScoreCalculator):
             "metrics", ["score"]
         )  # Core score by default
         self.dimension_configs = self.cfg.get("dimensions", {})
+        self.save_conflicts = self.cfg.get("save_conflicts", True)
 
         # Configure logging options
         self.log_enabled = self.cfg.get("log_enabled", True)
@@ -133,7 +134,7 @@ class MARSCalculator(BaseScoreCalculator):
                 "dimensions": list(corpus.dimensions),
                 "Matrix head": corpus.get_dimension_matrix("clarity").head()})
         for dimension in corpus.dimensions:
-            result = self._calculate_dimension_mars(corpus, dimension)
+            result = self._calculate_dimension_mars(corpus, dimension, context)
             mars_results[dimension] = result
 
             try:
@@ -159,7 +160,7 @@ class MARSCalculator(BaseScoreCalculator):
         )
 
     def _calculate_dimension_mars(
-        self, corpus: "ScoreCorpus", dimension: str
+        self, corpus: "ScoreCorpus", dimension: str, context: dict 
     ) -> Dict[str, Any]:
         """
         Calculate MARS metrics for a specific dimension
@@ -180,7 +181,7 @@ class MARSCalculator(BaseScoreCalculator):
         matrix = corpus.get_dimension_matrix(dimension)
 
         # If no data for this dimension, return empty results
-        if matrix.empty:
+        if matrix.empty or matrix.shape[0] == 0:
             return {
                 "dimension": dimension,
                 "agreement_score": 0.0,
@@ -194,21 +195,26 @@ class MARSCalculator(BaseScoreCalculator):
                 "metric_correlations": {},
             }
 
-        # Calculate basic statistics
-        avg_score = matrix.mean().mean()  # Overall average score
-        std_dev = (
-            matrix.std().mean() 
-        )  # Average standard deviation across documents
+        # Calculate basic statistics safely
+        avg_score = float(matrix.mean().mean(skipna=True) or 0.0)
+        std_dev = float(matrix.std(ddof=0, skipna=True).mean(skipna=True) or 0.0)
 
-        # Calculate agreement score (1.0 = perfect agreement)
-        agreement_score = 1.0 - min(std_dev, 1.0)
+        # Agreement score = 1 - std_dev (bounded to [0,1])
+        agreement_score = max(0.0, min(1.0, 1.0 - std_dev))
 
         # Identify primary conflict (largest average score difference)
-        scorer_means = matrix.mean()
-        max_valuer = scorer_means.idxmax()
-        min_valuer = scorer_means.idxmin()
-        delta = scorer_means[max_valuer] - scorer_means[min_valuer]
-        primary_conflict = (max_valuer, min_valuer)
+        scorer_means = matrix.mean(skipna=True).fillna(0.0)
+
+        if scorer_means.empty:
+            primary_conflict = ("none", "none")
+            delta = 0.0
+        else:
+            max_valuer = scorer_means.idxmax()
+            min_valuer = scorer_means.idxmin()
+            delta = float(scorer_means[max_valuer] - scorer_means[min_valuer])
+            primary_conflict = (max_valuer, min_valuer)
+            delta = scorer_means[max_valuer] - scorer_means[min_valuer]
+            primary_conflict = (max_valuer, min_valuer)
 
         # Determine which model aligns best with trust reference
         if trust_ref in matrix.columns:
@@ -288,7 +294,7 @@ class MARSCalculator(BaseScoreCalculator):
             "agreement_score": float(agreement_score),
             "std_dev": float(std_dev),
             "preferred_model": str(preferred_model),
-            "primary_conflict": list(primary_conflict),  # will serialize to JSON
+            "primary_conflict": list(primary_conflict),
             "delta": float(delta),
             "high_disagreement": bool(high_disagreement),
             "explanation": explanation,
@@ -297,7 +303,32 @@ class MARSCalculator(BaseScoreCalculator):
             "source": "mars",
             "average_score": float(avg_score),
         }
+
+        # 🚨 Conflict persistence
+        if self.save_conflicts and result["primary_conflict"] != ["none", "none"]:
+            self.memory.mars_conflicts.add(
+                pipeline_run_id=context.get("pipeline_run_id"),
+                plan_trace_id=context.get("plan_trace_id"),
+                dimension=result["dimension"],
+                conflict=result["primary_conflict"],
+                delta=result["delta"],
+                explanation=result["explanation"],
+                agreement_score=result["agreement_score"],
+                preferred_model=result["preferred_model"],
+            )
+            if self.logger:
+                self.logger.log("MARSConflictStored", {
+                    "pipeline_run_id": context.get("pipeline_run_id"),
+                    "plan_trace_id": context.get("plan_trace_id"),
+                    "dimension": result["dimension"],
+                    "conflict": result["primary_conflict"],
+                    "delta": result["delta"],
+                    "explanation": result["explanation"],
+                    "agreement_score": result["agreement_score"],
+                    "preferred_model": result["preferred_model"],
+                })
         return result
+
 
     def _analyze_scorer_metrics(
         self, corpus: "ScoreCorpus", dimension: str, metrics: List[str]

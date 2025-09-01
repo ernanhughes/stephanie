@@ -15,6 +15,8 @@ from stephanie.memory import MemoryTool
 from stephanie.supervisor import Supervisor
 from stephanie.utils import generate_run_id, get_log_file_path
 
+import logging
+logger = logging.getLogger(__name__)
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def run(cfg: DictConfig):
@@ -42,9 +44,9 @@ def run(cfg: DictConfig):
             return
 
         # ✅ Single goal mode
-        print(f"🟢 Running pipeline with run_id={run_id}")
-        print(f"🧠 Goal: {cfg.goal}")
-        print(f"📁 Config source: {str(cfg)[:100]}...")
+        logger.info(f"🟢 Running pipeline with run_id={run_id}")
+        logger.info(f"🧠 Goal: {cfg.goal}")
+        logger.info(f"📁 Config source: {str(cfg)[:100]}...")
 
         goal = OmegaConf.to_container(cfg.goal, resolve=True)
         context = {
@@ -67,7 +69,7 @@ def save_yaml_result(log_path: str, result: dict):
     report_path = log_path.replace(".jsonl", ".yaml")
     with open(report_path, "w", encoding="utf-8") as f:
         yaml.dump(result, f, allow_unicode=True, sort_keys=False)
-    print(f"✅ Result saved to: {report_path}")
+    logger.info(f"✅ Result saved to: {report_path}")
 
 
 
@@ -96,7 +98,7 @@ def save_json_result(log_path: str, result: dict):
     report_path = log_path.replace(".jsonl", "_report.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=default_serializer)
-    print(f"✅ JSON result saved to: {report_path}")
+    logger.info(f"✅ JSON result saved to: {report_path}")
 
 
 def save_config_to_timestamped_file(cfg, output_dir="logs"):
@@ -105,7 +107,7 @@ def save_config_to_timestamped_file(cfg, output_dir="logs"):
     filepath = os.path.join(output_dir, timestamped_name)
     with open(filepath, "w", encoding="utf-8") as f:   # 👈 Force UTF-8
         f.write(OmegaConf.to_yaml(cfg))
-    print(f"🔧 Saved config to {filepath}")
+    logger.info(f"🔧 Saved config to {filepath}")
     return filepath
 
 
