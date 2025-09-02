@@ -224,20 +224,4 @@ class CBRDSPyAgent(BaseAgent):
                 },
             )
 
-        context[self.output_key] = hypotheses
-        self.set_scorable_details(
-            input_text=docs_text,
-            output_text="\n\n".join(hyp["text"] for hyp in hypotheses),
-            description=f"CBR hypotheses for goal: {goal.get(GOAL_TEXT, '')}",
-        )
-
-        self.report(
-            {
-                "event": "cbr_hypotheses_extracted",
-                "count": len(hypotheses),
-                "goal_id": goal.get("id", "unknown"),
-                "examples": [h["text"] + "\n\n" for h in hypotheses[:2]],
-            }
-        )
-
         return context

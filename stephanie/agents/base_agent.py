@@ -1,4 +1,5 @@
 # stephanie/agents/base_agent.py
+from multiprocessing import context
 import random
 import re
 import time
@@ -34,6 +35,7 @@ class BaseAgent(ABC):
         self.memory = memory
         self.logger = logger
         self.scoring: Optional[ScoringService] = None
+        self.enabled_scorers = self.cfg.get("enabled_scorers", ["sicql"])
 
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
         self.embedding_type = self.memory.embedding.name
@@ -419,3 +421,67 @@ class BaseAgent(ABC):
     def get_scorable_details(self) -> Dict[str, str]:
         """Retrieve scorable details if set."""
         return self.scorable_details if self.is_scorable else {}
+
+    def _score(self, context: dict, scorable) -> tuple:
+        from stephanie.data.score_bundle import ScoreBundle
+        from stephanie.scoring.scorable import Scorable
+        from stephanie.scoring.scoring_manager import ScoringManager
+        """Score one paper with all scorers"""
+        assert isinstance(scorable, Scorable), "Expected a Scorable instance"
+        goal = context.get("goal", {"goal_text": ""})
+        score_results = {}
+
+        for scorer_name in self.enabled_scorers:
+            try:
+                bundle = self.scoring.score(
+                    scorer_name,
+                    context=context,
+                    scorable=scorable,
+                    dimensions=self.dimensions,
+                )
+                for dim, result in bundle.results.items():
+                    # ensure the result carries its dimension and source
+                    if not getattr(result, "dimension", None):
+                        result.dimension = dim
+                    if not getattr(result, "source", None):
+                        result.source = (
+                            scorer_name  # fallback if scorer didn't set it
+                        )
+
+                    # use a composite key to avoid overwriting, but keep result.dimension == dim
+                    key = f"{dim}::{result.source}"
+                    score_results[key] = result
+            except Exception as e:
+                self.logger.log(
+                    "ScorerError", {"scorer": scorer_name, "error": str(e)}
+                )
+                continue
+
+        bundle = ScoreBundle(results=dict(score_results))
+
+        # Save to memory
+        ScoringManager.save_score_to_memory(
+            bundle,
+            scorable,
+            context,
+            self.cfg,
+            self.memory,
+            self.logger,
+            source="paper_score",
+            model_name="ensemble",
+            evaluator_name=str(self.enabled_scorers),
+        )
+
+        report_scores = {
+            dim: {
+                "score": result.score,
+                "rationale": result.rationale,
+                "source": result.source,
+            }
+            for dim, result in score_results.items()
+        }
+
+        return {
+            "scores": report_scores,
+            "goal_text": goal.get("goal_text", ""),
+        }, bundle

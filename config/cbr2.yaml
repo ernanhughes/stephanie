@@ -137,7 +137,7 @@ pipeline:
 
      - name: cbr_dspy
        description: "Generate hypotheses from documents using a dspy process"
-       cls: stephanie.agents.cbr.cbr_dspy.CBRDSPyAgent
+       cls: stephanie.agents.dspy.cbr_dspy.CBRDSPyAgent
        enabled: true
        iterations: 1    
 
@@ -149,7 +149,7 @@ pipeline:
 
      - name: lats_dspy
        description: "Generate hypotheses from documents using the LATS framework"
-       cls: stephanie.agents.dspy.mcts_reasoning_agent.MCTSReasoningAgent
+       cls: stephanie.agents.dspy.memento.MementoAgent
        enabled: true
        iterations: 1
 

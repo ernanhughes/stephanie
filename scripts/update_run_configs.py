@@ -44,7 +44,7 @@ for run in session.query(PipelineRunORM).all():
             run.pipeline = json.loads(run.pipeline)
             updated = True
         except json.JSONDecodeError:
-            print(f"Invalid JSON in pipeline for run_id {run.run_id}")
+            print(f"Invalid JSON in pipeline for run_id {run.run_id}\n{run.pipeline}")
 
     if updated:
         fix_count += 1

@@ -196,7 +196,6 @@ SCORING = {
 }
 
 REPORTING = {
-    "MARSReportSaved": "📄💾"
 }
 
 # =====================
@@ -225,6 +224,8 @@ REASONING = {
 # TRAINING & MODEL OPS
 # =====================
 TRAINING = {
+    "ContrastiveRankerDimReady": "📏✅",  # Contrastive ranker dimension ready
+
     "HRMTrainingAgentInfo": "📊ℹ️",  # HRM training agent info
     "HRMTrainerInitialized": "🧠🤖",  # HRM trainer initialized
     "HRMTrainingAgentError": "🚫🧠",  # HRM training agent error
@@ -323,9 +324,6 @@ PLAN_TRACE = {
     "HRMTrainingEpoch": "📊🏋️",  # HRM training epoch
     "HRMTrainingStep": "📊🔄",  # HRM training step
     "HRMTrainingCompleted": "📊✅",  # HRM training completed
-    "MARSResultStored": "📊💾",  # MARS result stored
-    "MARSCalculationStarted": "📊🔄",  # MARS calculation started
-    "MARSAnalysisCompleted": "📊✅",  # MARS analysis completed
     "PlanTraceCreated": "📄📝",  # Plan trace created
     "PlanTraceScorerInitialized": "📊🤖🪸",  # Plan trace scorer initialized
     "PlanTraceMonitorInitialized": "📊🤖🪸",  # Plan trace monitor initialized
@@ -348,6 +346,11 @@ PLAN_TRACE = {
 
 MARS = {
     "MARSConflictStored": "🌕🔄📁",  # MARS conflict stored
+    "MARSLoggerConfigured": "🌕🔧📁",  # MARS logger configured    
+    "MARSCalculationStarted": "🌕📊🔄",  # MARS calculation started
+    "MARSAnalysisCompleted": "🌕📊✅",  # MARS analysis completed
+    "MARSResultStored": "🌕📊💾",  # MARS result stored
+    "MARSReportSaved": "📄💾"
 }
 
 # =================
@@ -421,7 +424,17 @@ MODELS = {
 # ETHICS & REVIEWS
 # ============= 
 SPECIAL = {
+    "ScoringServiceScorerRegistered": "📊✅",  # Scoring service scorer registered
+    "ScoringServiceInitialized": "📊🔧",  # Scoring service initialized
+    "CBRRank": "📊📈",  # CBR ranking started
+    "CBRRetrieve": "🔍📚",  # CBR retrieval started
+    "CBRReuse": "♻️📚",  # CBR reuse started
+    "MCTSReasoningProgress": "🔄🧠",  # MCTS reasoning in progress
+    "MCTSReasoningAgentComplete": "✅🧠",  # MCTS reasoning agent complete
+    "ScoreCorpusSummary": "📊🔍",  # Scoring corpus summary
+    "FinalOutputKeyMissing": "❌❌",  # Final output key missing
     "info": "ℹ️",  # Information message
+    "error": "❌❌",  # Error message
     "PlannerReuseCandidate": "📈🔄",  # Planner reuse candidate created
     "FetchedScorableDomain": "📄🔍",  # Fetched scorable domain
     "ScorableEmbeddingInserted": "📄✅",  # Document embedding inserted

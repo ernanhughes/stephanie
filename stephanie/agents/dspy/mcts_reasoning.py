@@ -143,8 +143,8 @@ class MCTSReasoningAgent(BaseAgent):
     - Best-scoring hypothesis (reasoning trace)
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, log):
+        super().__init__(cfg, memory, log)
         self.max_depth = cfg.get("max_depth", 4)
         self.branching_factor = cfg.get("branching_factor", 2)
         self.num_simulations = cfg.get("num_simulations", 20)

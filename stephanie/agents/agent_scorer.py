@@ -50,9 +50,6 @@ class AgentScorerAgent(BaseAgent):
             ],
         )
         self.include_mars = self.cfg.get("include_mars", True)
-        self.enabled_scorers = self.cfg.get(
-            "enabled_scorers", ["sicql", "mrq", "ebt"]
-        )
 
         self.include_ranking = self.cfg.get("include_ranking", True)
         self.rank_top_k = self.cfg.get("rank_top_k", 5)
@@ -142,19 +139,6 @@ class AgentScorerAgent(BaseAgent):
                 "alternatives": alternatives,
             }
 
-            # Persist via ScoringManager
-            ScoringManager.save_score_to_memory(
-                bundle=bundle,
-                scorable=scorable,
-                context=context,
-                cfg=self.cfg,
-                memory=self.memory,
-                logger=self.logger,
-                source="agent_scorer",
-                model_name="ensemble",
-                evaluator_name=str(self.enabled_scorers),
-            )
-
             self.logger.log(
                 "AgentScored",
                 {
@@ -187,62 +171,4 @@ class AgentScorerAgent(BaseAgent):
                 alternatives.append(r)
         return alternatives
 
-    def _score(self, context: dict, scorable: Scorable) -> tuple:
-        """Score one paper with all scorers"""
-        goal = context.get("goal", {"goal_text": ""})
-        score_results = {}
-
-        for scorer_name in self.enabled_scorers:
-            try:
-                bundle = self.scoring.score(
-                    scorer_name,
-                    context=context,
-                    scorable=scorable,
-                    dimensions=self.dimensions,
-                )
-                for dim, result in bundle.results.items():
-                    # ensure the result carries its dimension and source
-                    if not getattr(result, "dimension", None):
-                        result.dimension = dim
-                    if not getattr(result, "source", None):
-                        result.source = (
-                            scorer_name  # fallback if scorer didn't set it
-                        )
-
-                    # use a composite key to avoid overwriting, but keep result.dimension == dim
-                    key = f"{dim}::{result.source}"
-                    score_results[key] = result
-            except Exception as e:
-                self.logger.log(
-                    "ScorerError", {"scorer": scorer_name, "error": str(e)}
-                )
-                continue
-
-        bundle = ScoreBundle(results=dict(score_results))
-
-        # Save to memory
-        ScoringManager.save_score_to_memory(
-            bundle,
-            scorable,
-            context,
-            self.cfg,
-            self.memory,
-            self.logger,
-            source="paper_score",
-            model_name="ensemble",
-            evaluator_name=str(self.enabled_scorers),
-        )
-
-        report_scores = {
-            dim: {
-                "score": result.score,
-                "rationale": result.rationale,
-                "source": result.source,
-            }
-            for dim, result in score_results.items()
-        }
-
-        return {
-            "scores": report_scores,
-            "goal_text": goal.get("goal_text", ""),
-        }, bundle
+ 

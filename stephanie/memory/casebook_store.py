@@ -1,5 +1,5 @@
 # stephanie/memory/casebook_store.py
-from scripts.update_run_configs import Session
+from sqlalchemy.orm import Session
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 
 class CaseBookStore:

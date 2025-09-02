@@ -16,6 +16,7 @@ from stephanie.scoring.scorable import Scorable
 class TargetType:
     AGENT_OUTPUT = "agent_output"
     DOCUMENT = "document"
+    GOAL = "goal"
     HYPOTHESIS = "hypothesis"
     CARTRIDGE = "cartridge"
     TRIPLE = "triple"
