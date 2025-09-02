@@ -42,7 +42,7 @@ class TrainingController:
         if cooldown > 0:
             self.retrain_state[key] = cooldown - 1
             if self.logger:
-                self.logger.info(
+                self.logger.log(
                     "RetrainOnCooldown",
                     extra={
                         "goal": goal,
@@ -55,7 +55,7 @@ class TrainingController:
         # Step 3: Trigger training if needed
         if self.tracker.should_retrain(goal, dimension):
             if self.logger:
-                self.logger.info(
+                self.logger.log(
                     "TriggeringRetraining", extra={"goal": goal, "dimension": dimension}
                 )
             self.trainer_fn(goal=goal, dimension=dimension)
@@ -63,7 +63,7 @@ class TrainingController:
 
         else:
             if self.logger:
-                self.logger.info(
+                self.logger.log(
                     "RetrainingSkipped",
                     extra={
                         "goal": goal,

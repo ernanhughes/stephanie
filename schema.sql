@@ -1375,7 +1375,7 @@ CREATE TABLE cases (
     agent_name VARCHAR(128) NOT NULL,
     mars_summary JSONB,
     scores JSONB,
-    metadata JSONB,
+    meta JSONB,
     created_at TIMESTAMP DEFAULT NOW()
 );
 

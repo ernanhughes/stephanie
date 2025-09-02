@@ -34,11 +34,13 @@ from stephanie.scoring.scorable import Scorable
 
 logger = logging.getLogger(__name__)
 
+
 # -------------------------------------------------------------------------
 # DSPy Signatures
 # -------------------------------------------------------------------------
 class TraceStep(Signature):
     """Defines the prediction of the *next reasoning step* given state + trace"""
+
     state = InputField(desc="Current problem state")
     trace = InputField(desc="History of thoughts/actions so far")
     next_step = OutputField(desc="Next reasoning step")
@@ -46,6 +48,7 @@ class TraceStep(Signature):
 
 class ValueEstimator(Signature):
     """Estimates value of a reasoning path (LM-powered heuristic score)"""
+
     state = InputField(desc="Current problem state")
     trace = InputField(desc="Reasoning steps taken")
     goal = InputField(desc="Goal text")
@@ -58,11 +61,13 @@ class LoggingLM(dspy.LM):
     Wrapper around DSPy LM that logs requests and responses.
     Helpful for debugging model behavior inside the search loop.
     """
+
     def __call__(self, *args, **kwargs):
         logger.debug("📡 Sending request to LLM...")
         result = super().__call__(*args, **kwargs)
         logger.debug(f"✅ Received response: {result}")
         return result
+
 
 # -------------------------------------------------------------------------
 # Node + Program
@@ -72,6 +77,7 @@ class MCTSReasoningNode:
     Represents a node in the reasoning tree.
     Stores state, trace, statistics, children, and scoring info.
     """
+
     def __init__(self, state, trace, parent=None):
         self.id = uuid.uuid4().hex[:6]
         self.state = state
@@ -88,7 +94,9 @@ class MCTSReasoningNode:
         if self.visits == 0:
             return float("inf")
         exploitation = self.reward / self.visits
-        exploration = ucb_weight * math.sqrt(math.log(parent_visits) / self.visits)
+        exploration = ucb_weight * math.sqrt(
+            math.log(parent_visits) / self.visits
+        )
         return exploitation + exploration
 
 
@@ -97,6 +105,7 @@ class MCTSReasoningProgram(dspy.Module):
     DSPy program wrapper used for *step generation* (TraceStep)
     and optional value estimation (ValueEstimator).
     """
+
     def __init__(self, cfg):
         super().__init__()
         self.generator = Predict(TraceStep)
@@ -116,6 +125,7 @@ class MCTSReasoningProgram(dspy.Module):
         next_step = prediction.next_step.strip()
         new_trace = trace + [next_step]
         return self.__call__(state, new_trace, depth + 1)
+
 
 # -------------------------------------------------------------------------
 # Agent
@@ -142,7 +152,13 @@ class MCTSReasoningAgent(BaseAgent):
         self.scorer_name = cfg.get("scorer_name", "sicql")
         self.dimensions = cfg.get(
             "dimensions",
-            ["alignment", "clarity", "implementability", "novelty", "relevance"],
+            [
+                "alignment",
+                "clarity",
+                "implementability",
+                "novelty",
+                "relevance",
+            ],
         )
 
         self.nodes = []
@@ -159,6 +175,14 @@ class MCTSReasoningAgent(BaseAgent):
         lm = LoggingLM(model_name, api_base=api_base, api_key=api_key)
         dspy.configure(lm=lm)
 
+        logger.debug(
+            "MCTSInitialized The **** going on"
+            f"model_name: {model_name}, api_base: {api_base}, api_key: {api_key}"
+            f"dimensions: {self.dimensions}"
+            f"max_depth: {self.max_depth}, branching_factor: {self.branching_factor}"
+            f"num_simulations: {self.num_simulations}, ucb_weight: {self.ucb_weight}"
+        )
+
     # ---------------------------------------------------------------------
     # Main Loop
     # ---------------------------------------------------------------------
@@ -170,7 +194,7 @@ class MCTSReasoningAgent(BaseAgent):
         goal = context["goal"]["goal_text"]
         root = self._create_node(state=goal, trace=[], parent=None)
 
-        self.logger.info("MCTSReasoningAgentStart", {"goal": goal})
+        logger.info(f"MCTSReasoningAgentStart goal: {goal}")
 
         for sim in range(self.num_simulations):
             node = self._select(root)
@@ -189,12 +213,15 @@ class MCTSReasoningAgent(BaseAgent):
         # Update context
         context.setdefault("hypotheses", []).append(result)
 
-        self.logger.info("MCTSReasoningAgentComplete", {
-            "goal": goal,
-            "best_score": round(best.score, 3),
-            "trace_length": len(best.trace),
-            "nodes_explored": len(self.nodes)
-        })
+        self.logger.log(
+            "MCTSReasoningAgentComplete",
+            {
+                "goal": goal,
+                "best_score": round(best.score, 3),
+                "trace_length": len(best.trace),
+                "nodes_explored": len(self.nodes),
+            },
+        )
 
         return context
 
@@ -222,16 +249,18 @@ class MCTSReasoningAgent(BaseAgent):
         children = []
         for comp in completions:
             child = self._create_node(
-                state=f"{node.state}\n{comp}", trace=node.trace + [comp], parent=node
+                state=f"{node.state}\n{comp}",
+                trace=node.trace + [comp],
+                parent=node,
             )
             self.children[node.id].append(child)
             children.append(child)
 
-        self.logger.debug("MCTSExpand", {
-            "node_id": node.id,
-            "new_children": [c.id for c in children],
-            "completions": completions
-        })
+        logger.debug(
+            "MCTSExpand: "
+            f"node_id: {node.id} \nnew_children: {[c.id for c in children]},"
+            f"\ncompletions: {completions}"
+        )
 
         return children[0] if children else node
 
@@ -243,18 +272,22 @@ class MCTSReasoningAgent(BaseAgent):
         else:
             scorable = Scorable(text=text)
             score_result = self.scoring.score(
-                self.scorer_name, scorable=scorable, context=context, dimensions=self.dimensions
+                self.scorer_name,
+                scorable=scorable,
+                context=context,
+                dimensions=self.dimensions,
             )
             score = score_result.aggregate() / 100
             self.score_cache[text] = score
         node.score = score
         node.reward += score
 
-        self.logger.debug("MCTSEvaluate", {
-            "node_id": node.id,
-            "trace_preview": node.trace[-2:],
-            "score": round(score, 3)
-        })
+        logger.debug(
+            "MCTSEvaluate"
+            f"node_id {node.id}"
+            f"trace_preview: {node.trace[-2:]}"
+            f"score: {round(score, 3)}"
+        )
 
         return score
 
@@ -269,7 +302,9 @@ class MCTSReasoningAgent(BaseAgent):
         """Choose best child using UCT (exploration vs exploitation)"""
         return max(
             self.children[node.id],
-            key=lambda c: c.uct_value(node.visits, ucb_weight or self.ucb_weight)
+            key=lambda c: c.uct_value(
+                node.visits, ucb_weight or self.ucb_weight
+            ),
         )
 
     def _is_terminal(self, node):
@@ -281,9 +316,9 @@ class MCTSReasoningAgent(BaseAgent):
         best = self._best_child(root, 0) if self.children[root.id] else root
         msg = {
             "simulation": sim + 1,
-            "percent_complete": f"{(sim+1)/self.num_simulations*100:.1f}%",
+            "percent_complete": f"{(sim + 1) / self.num_simulations * 100:.1f}%",
             "nodes_explored": len(self.nodes),
             "best_score": round(best.score, 3),
             "trace_preview": best.trace[-3:],
         }
-        self.logger.info("MCTSReasoningProgress", msg)
+        self.logger.log("MCTSReasoningProgress", msg)

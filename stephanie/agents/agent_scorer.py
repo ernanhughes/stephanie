@@ -89,7 +89,7 @@ class AgentScorerAgent(BaseAgent):
             )
 
             if not output_text:
-                self.logger.info(
+                self.logger.log(
                     "AgentScorerSkipped",
                     {"reason": "No output text available"},
                 )
@@ -155,7 +155,7 @@ class AgentScorerAgent(BaseAgent):
                 evaluator_name=str(self.enabled_scorers),
             )
 
-            self.logger.info(
+            self.logger.log(
                 "AgentScored",
                 {
                     "agent": scorable_details.get("agent_name"),
@@ -166,7 +166,7 @@ class AgentScorerAgent(BaseAgent):
                 },
             )
 
-            self.logger.info(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
+            logger.info(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
             return context
 
         except Exception as e:

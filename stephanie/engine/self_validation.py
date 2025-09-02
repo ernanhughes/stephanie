@@ -69,7 +69,7 @@ class SelfValidationEngine:
             logs.append(log_entry)
 
             if self.logger:
-                self.logger.info("SelfValidationResult", extra=log_entry)
+                self.logger.log("SelfValidationResult", extra=log_entry)
 
         agreement = matches / validated if validated else 0.0
 
