@@ -4,6 +4,7 @@ defaults:
   - db: postgres
   - plan_monitor: default
   - scoring/service/default
+  - mars/default
 
   - scorer/reward/default
   - scorer/ebt/default
@@ -14,7 +15,13 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+
+
   - agents/arxiv_search
+  - agents/modular_memento
+  - agents/memento
+  - agents/generation
+  - agents/cbr_dspy
   - agents/cartridge
   - agents/document_loader
   - agents/document_profiler
@@ -146,6 +153,30 @@ pipeline:
        enabled: true
        iterations: 1    
 
+     - name: cbr_dspy
+       description: "Generate hypotheses from documents using a dspy process"
+       cls: stephanie.agents.dspy.cbr_dspy.CBRDSPyAgent
+       enabled: true
+       iterations: 1    
+
+     - name: generation
+       description: "Generate new candidate documents based on existing knowledge"
+       cls: stephanie.agents.generation.GenerationAgent
+       enabled: true
+       iterations: 1
+
+     - name: memento
+       description: "Generate hypotheses from documents using the Memento framework"
+       cls: stephanie.agents.dspy.memento.MementoAgent
+       enabled: true
+       iterations: 1
+
+     - name: modular_memento
+       description: "Generate hypotheses from documents using the Modular Memento framework"
+       cls: stephanie.agents.dspy.modular_memento.ModularMementoAgent
+       enabled: true
+       iterations: 1    
+
      - name: paper_score
        description: "Evaluate case quality: relevance, novelty, clarity"
        cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
@@ -189,5 +220,5 @@ pipeline:
      - name: icl_reasoning
        description: "Apply in-context reasoning to test retained knowledge against the goal"
        cls: stephanie.agents.icl_reasoning.ICLReasoningAgent
-       enabled: true
+       enabled: false
        iterations: 1

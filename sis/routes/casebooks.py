@@ -38,64 +38,118 @@ def _get_attr(x: Any, key: str, default=None):
     return getattr(x, key, default)
 
 
-# -----------------
-# Casebooks
-# -----------------
-
 @router.get("/casebooks", response_class=HTMLResponse)
 def list_casebooks(
     request: Request,
-    agent: Optional[str] = Query(default=None),
-    tag: Optional[str] = Query(default=None),
-    pipeline_run_id: Optional[int] = Query(default=None),
+    agent: Optional[str] = Query(default=None, description="Filter by agent_name"),
+    tag: Optional[str] = Query(default=None, description="Filter by casebook tag"),
+    pipeline_run_id: Optional[int] = Query(default=None, description="Filter by pipeline_run_id"),
+    limit: int = Query(default=200, ge=1, le=1000),
 ):
-    """
-    List casebooks with optional filters.
-    """
     memory = request.app.state.memory
     templates = request.app.state.templates
 
-    # Try ORM query for flexibility
-    try:
-        cb_cls = memory.casebooks.session.registry._class_registry.get("CaseBookORM")  # type: ignore
-        q = memory.casebooks.session.query(cb_cls)
-        if agent is not None:
-            q = q.filter(cb_cls.agent_name == agent)  # type: ignore
-        if tag is not None:
-            q = q.filter(cb_cls.tag == tag)  # type: ignore
-        if pipeline_run_id is not None:
-            q = q.filter(cb_cls.pipeline_run_id == pipeline_run_id)  # type: ignore
-        casebooks = q.order_by(getattr(cb_cls, "created_at", getattr(cb_cls, "id")) .desc()).all()  # type: ignore
-    except Exception:
-        # Fallback: no filters
-        try:
-            casebooks = memory.casebooks.session.query(memory.casebooks.session.registry._class_registry["CaseBookORM"]).all()  # type: ignore
-        except Exception:
-            casebooks = []
+    # 1) Pull from the store with filters
+    casebooks = memory.casebooks.list_casebooks(
+        agent_name=agent,
+        tag=tag,
+        pipeline_run_id=pipeline_run_id,
+        limit=limit,
+    )
 
-    # Enrich with counts if possible
-    enriched = []
+    # 2) Convert to dicts for the template (include case_count w/o heavy joins)
+    items = []
     for cb in casebooks:
-        d = _to_dict(cb)
-        try:
-            cases = getattr(cb, "cases", None)
-            if cases is not None:
-                d["case_count"] = len(cases)
-            else:
-                CaseORM = memory.casebooks.session.registry._class_registry.get("CaseORM")  # type: ignore
-                if CaseORM:
-                    cnt = memory.casebooks.session.query(CaseORM).filter_by(casebook_id=_get_attr(cb, "id")).count()  # type: ignore
-                    d["case_count"] = cnt
-        except Exception:
-            d.setdefault("case_count", None)
-        enriched.append(d)
+        d = cb.to_dict(include_cases=False, include_counts=True)
+        items.append(d)
 
+    # 3) Render
     return templates.TemplateResponse(
         "/casebooks/list.html",
         {
             "request": request,
-            "casebooks": enriched,
-            "filters": {"agent": agent, "tag": tag, "pipeline_run_id": pipeline_run_id},
+            "casebooks": items,
+            "filters": {
+                "agent": agent,
+                "tag": tag,
+                "pipeline_run_id": pipeline_run_id,
+                "limit": limit,
+            },
+        },
+    )
+
+
+def _count_by_goal(cases) -> list[Dict[str, Any]]:
+    counts: Dict[str, int] = {}
+    for c in cases:
+        gid = getattr(c, "goal_id", None) if not isinstance(c, dict) else c.get("goal_id")
+        counts[gid] = counts.get(gid, 0) + 1
+    return [{"goal_id": gid, "count": n} for gid, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0] or ""))]
+
+@router.get("/casebooks/{run_id}", response_class=HTMLResponse)
+def casebook_for_run(
+    request: Request,
+    run_id: int,
+    goal: Optional[str] = Query(default=None, description="Filter cases by goal_id"),
+    limit: int = Query(default=500, ge=1, le=2000),
+):
+    """
+    Show the casebook **for a pipeline run** and its recent cases.
+    This matches links like: <a href="/casebooks/{{ run.id }}">.
+    """
+    memory = request.app.state.memory
+    templates = request.app.state.templates
+
+    cb = memory.casebooks.get_for_run_id(run_id)
+    if not cb:
+        return PlainTextResponse("Casebook not found for run", status_code=404)
+
+    # Fetch cases via the store with optional goal filter
+    cases = memory.casebooks.list_cases(
+        casebook_id=cb.id,
+        goal_id=goal,
+        limit=limit,
+    )
+
+    return templates.TemplateResponse(
+        "/casebooks/detail.html",
+        {
+            "request": request,
+            "casebook": cb.to_dict(include_cases=False, include_counts=True),
+            "cases": [c.to_dict(include_scorables=False) for c in cases],
+            "goals": _count_by_goal(cases),
+            "goal_filter": goal,
+        },
+    )
+
+@router.get("/casebooks/id/{casebook_id}", response_class=HTMLResponse)
+def casebook_detail_by_id(
+    request: Request,
+    casebook_id: int,
+    goal: Optional[str] = Query(default=None, description="Filter cases by goal_id"),
+    limit: int = Query(default=500, ge=1, le=2000),
+):
+    memory = request.app.state.memory
+    templates = request.app.state.templates
+
+    cb = memory.casebooks.get_casebook(casebook_id)
+    if not cb:
+        return PlainTextResponse("Casebook not found", status_code=404)
+
+    cases = memory.casebooks.list_cases(
+        casebook_id=cb.id,
+        goal_id=goal,
+        limit=limit,
+    )
+
+    return templates.TemplateResponse(
+        "/casebooks/detail.html",
+        {
+            "request": request,
+            "casebook": cb.to_dict(include_cases=False, include_counts=True),
+            "cases": [c.to_dict(include_scorables=False) for c in cases],
+            "goals": _count_by_goal(cases),
+            "goal_filter": goal,
         },
     )
 
@@ -103,7 +157,7 @@ def list_casebooks(
 @router.get("/casebooks/{casebook_id}", response_class=HTMLResponse)
 def casebook_detail(
     request: Request,
-    casebook_id: int,
+    run_id: int,
     goal: Optional[str] = Query(default=None, description="Filter cases by goal_id"),
 ):
     """
@@ -112,10 +166,8 @@ def casebook_detail(
     memory = request.app.state.memory
     templates = request.app.state.templates
 
-    # Load casebook
     try:
-        cb_cls = memory.casebooks.session.registry._class_registry["CaseBookORM"]  # type: ignore
-        casebook = memory.casebooks.session.get(cb_cls, casebook_id)  # type: ignore
+        casebook = memory.casebooks.get_for_run_id(run_id)  # type: ignore
     except Exception:
         casebook = None
     if not casebook:
@@ -123,11 +175,7 @@ def casebook_detail(
 
     # Load cases
     try:
-        CaseORM = memory.casebooks.session.registry._class_registry["CaseORM"]  # type: ignore
-        q = memory.casebooks.session.query(CaseORM).filter_by(casebook_id=casebook_id)  # type: ignore
-        if goal:
-            q = q.filter(CaseORM.goal_id == goal)  # type: ignore
-        cases = q.order_by(getattr(CaseORM, "created_at", getattr(CaseORM, "id")) .desc()).limit(200).all()  # type: ignore
+        cases = memory.casebooks.get_cases_for_casebook(casebook_id=casebook.id)  # type: ignore
     except Exception:
         cases = getattr(casebook, "cases", []) or []
 
@@ -167,24 +215,18 @@ def list_cases(
     memory = request.app.state.memory
     templates = request.app.state.templates
 
-    try:
-        CaseORM = memory.casebooks.session.registry._class_registry["CaseORM"]  # type: ignore
-        q = memory.casebooks.session.query(CaseORM)
-        if casebook_id is not None:
-            q = q.filter(CaseORM.casebook_id == casebook_id)  # type: ignore
-        if agent is not None:
-            q = q.filter(CaseORM.agent_name == agent)  # type: ignore
-        if goal is not None:
-            q = q.filter(CaseORM.goal_id == goal)  # type: ignore
-        cases = q.order_by(getattr(CaseORM, "created_at", getattr(CaseORM, "id")) .desc()).limit(limit).all()  # type: ignore
-    except Exception:
-        cases = []
+    cases = memory.casebooks.list_cases(
+        casebook_id=casebook_id,
+        agent_name=agent,
+        goal_id=goal,
+        limit=limit,
+    )
 
     return templates.TemplateResponse(
         "/cases/list.html",
         {
             "request": request,
-            "cases": [_to_dict(c) for c in cases],
+            "cases": [c.to_dict(include_scorables=False) for c in cases],
             "filters": {"casebook_id": casebook_id, "agent": agent, "goal": goal, "limit": limit},
         },
     )
@@ -202,27 +244,19 @@ def case_detail(request: Request, case_id: int):
     memory = request.app.state.memory
     templates = request.app.state.templates
 
-    try:
-        CaseORM = memory.casebooks.session.registry._class_registry["CaseORM"]  # type: ignore
-        case = memory.casebooks.session.get(CaseORM, case_id)  # type: ignore
-    except Exception:
-        case = None
+    case = memory.casebooks.get_case_by_id(case_id)
     if not case:
         return PlainTextResponse("Case not found", status_code=404)
 
-    case_d = _to_dict(case)
+    case_d = case.to_dict(include_scorables=False)
 
     # Scorables (role/rank/text/mars_confidence if present in meta)
     scorables = []
-    try:
-        scs = getattr(case, "scorables", []) or []
-    except Exception:
-        scs = []
-    for s in scs:
-        sd = _to_dict(s)
+    for s in (getattr(case, "scorables", []) or []):
+        sd = s.to_dict()
         meta = sd.get("meta") or {}
+        # meta should already be a dict (SA_JSON), but be defensive:
         if isinstance(meta, str):
-            # if JSON serialized string
             try:
                 import json
                 meta = json.loads(meta)
@@ -238,7 +272,6 @@ def case_detail(request: Request, case_id: int):
     msum = case_d.get("mars_summary") or {}
     if isinstance(msum, dict):
         for k, v in msum.items():
-            # v is per-hypothesis? per-dimension? Accept both shapes
             if isinstance(v, dict) and ("agreement_score" in v or "dimension" in v):
                 mars_cards.append({
                     "dimension": v.get("dimension", k),

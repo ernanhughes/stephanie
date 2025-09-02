@@ -31,11 +31,20 @@ class CaseBookStore:
         self.session.commit()
         return cb
 
+    def get_all_casebooks(self, limit: int = 100) -> List[CaseBookORM]:
+        return self.session.query(CaseBookORM).limit(limit).all()
+
     def get_cases_for_goal(self, goal_id):
         return self.session.query(CaseORM).filter_by(goal_id=goal_id).all()
 
     def get_cases_for_agent(self, agent_name):
         return self.session.query(CaseORM).filter_by(agent_name=agent_name).all()
+
+    def get_for_run_id(self, run_id: int):
+        return self.session.query(CaseBookORM).filter_by(pipeline_run_id=run_id).first()
+
+    def get_cases_for_casebook(self, casebook_id: int):
+        return self.session.query(CaseORM).filter_by(casebook_id=casebook_id).all()
 
     # in CaseBookStore
     def get_goal_state(self, casebook_id: int, goal_id: str):
@@ -475,3 +484,68 @@ class CaseBookStore:
 
         self.session.commit()
         return case
+
+    def list_casebooks(
+        self,
+        *,
+        agent_name: Optional[str] = None,
+        tag: Optional[str] = None,
+        pipeline_run_id: Optional[int] = None,
+        limit: int = 200,
+    ) -> List[CaseBookORM]:
+        """
+        Filterable list of casebooks, newest first.
+        Any filter left as None is ignored.
+        """
+        q = self.session.query(CaseBookORM)
+
+        if agent_name is not None:
+            q = q.filter(CaseBookORM.agent_name == agent_name)
+
+        if tag is not None:
+            q = q.filter(CaseBookORM.tag == tag)
+
+        if pipeline_run_id is not None:
+            q = q.filter(CaseBookORM.pipeline_run_id == pipeline_run_id)
+
+        # Prefer newest first
+        order_col = getattr(CaseBookORM, "created_at", None)
+        if order_col is not None:
+            q = q.order_by(order_col.desc())
+        else:
+            q = q.order_by(CaseBookORM.id.desc())
+
+        return q.limit(limit).all()
+
+    def get_casebook(self, casebook_id: int) -> Optional[CaseBookORM]:
+        """Load a casebook by its primary key."""
+        return self.session.get(CaseBookORM, casebook_id)
+
+    def list_cases(
+        self,
+        *,
+        casebook_id: Optional[int] = None,
+        agent_name: Optional[str] = None,
+        goal_id: Optional[str] = None,
+        limit: int = 200,
+    ) -> List[CaseORM]:
+        """List recent cases with optional filters, newest first."""
+        q = self.session.query(CaseORM)
+        if casebook_id is not None:
+            q = q.filter(CaseORM.casebook_id == casebook_id)
+        if agent_name is not None:
+            q = q.filter(CaseORM.agent_name == agent_name)
+        if goal_id is not None:
+            q = q.filter(CaseORM.goal_id == goal_id)
+
+        order_col = getattr(CaseORM, "created_at", None)
+        if order_col is not None:
+            q = q.order_by(order_col.desc())
+        else:
+            q = q.order_by(CaseORM.id.desc())
+
+        return q.limit(limit).all()
+
+    def get_case_by_id(self, case_id: int) -> Optional[CaseORM]:
+        """Load a single case with its relationships."""
+        return self.session.get(CaseORM, case_id)

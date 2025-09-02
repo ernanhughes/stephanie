@@ -35,7 +35,7 @@
           <td>{{ cb.pipeline_run_id or '—' }}</td>
           <td><span class="badge bg-primary">{{ cb.case_count or 0 }}</span></td>
           <td class="text-muted">{{ cb.created_at or '—' }}</td>
-          <td><a class="btn btn-sm btn-outline-secondary" href="/casebooks/{{ cb.id }}">Open</a></td>
+          <td><a class="btn btn-sm btn-outline-secondary" href="/casebooks/{{ cb.pipeline_run_id }}">Open</a></td>
         </tr>
       {% endfor %}
       </tbody>
