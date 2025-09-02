@@ -41,14 +41,12 @@ class PlanTraceScorerAgent(BaseAgent):
         self.scorer_types = self.cfg.get("scorer_types", [
             "hrm", "sicql", "contrastive_ranker", "ebt", "mrq", "svm"
         ])
-        
         # Initialize scorers
         self.scorers = self._initialize_scorers()
         
         # Initialize MARS calculator
-        dimension_config = self.cfg.get("dimension_config", {})
-        self.mars_calculator = MARSCalculator(dimension_config, self.memory, self.logger)
-        
+        self.mars_calculator = MARSCalculator(cfg.get("mars", {}), self.memory, self.logger)
+
         # Pattern extraction parameters
         self.high_agreement_threshold = self.cfg.get("high_agreement_threshold", 0.8)
         self.low_uncertainty_threshold = self.cfg.get("low_uncertainty_threshold", 0.2)

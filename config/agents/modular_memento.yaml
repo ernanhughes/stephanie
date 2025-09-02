@@ -1,7 +1,7 @@
-# configs/agents/memento.yaml
+# configs/agents/modular_memento.yaml
 
-memento:
-  name: memento
+modular_memento:
+  name: modular_memento
 
   max_depth: 5
   branching_factor: 3
@@ -33,7 +33,6 @@ memento:
   prompt_mode: file
   prompt_file: lats.txt
 
-  # --- MARS / dimension config ---
 
   # Global defaults (used by each dimension via merge)
   trust_reference: llm           # or "hrm" / "mrq" — your upstream reference scorer
@@ -42,6 +41,14 @@ memento:
     - agreement
     - dispersion
     - confidence
+
+  scorer_types:
+    - svm
+    - mrq
+    - sicql
+    - ebt
+    - hrm
+    - contrastive_ranker
 
   # Active dimensions
   dimensions:
@@ -87,13 +94,15 @@ memento:
       weight: 0.8
       description: "Topical fit to the goal and retrieved context."
 
-  ab_validation:
-    mode: periodic         # off | periodic | always
-    period: 5              # every Nth run per (pipeline×agent×goal)
-    control_tag: "control" # where to store baseline provenance (if you want)
-    delta_eps: 1e-6        # min improvement to count as better
-    seed_lock: true        # use same seed for baseline & cbr
-    freeze_training: true  # disable online learning during baseline
+    ab_validation:
+      mode: periodic         # off | periodic | always
+      period: 5              # every Nth run per (pipeline×agent×goal)
+      control_tag: "control" # where to store baseline provenance (if you want)
+      delta_eps: 1e-6        # min improvement to count as better
+      seed_lock: true        # use same seed for baseline & cbr
+      freeze_training: true  # disable online learning during baseline
+
+
 
   proximity:   
     name: proximity

@@ -14,18 +14,14 @@ Meta-agent that scores the outputs of other agents.
 
 import traceback
 from typing import Dict, List
-from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable
 from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scoring_manager import ScoringManager
+from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.constants import SCORABLE_DETAILS
-from stephanie.scoring.scorable_factory import TargetType
 import time
 from uuid import uuid4
 

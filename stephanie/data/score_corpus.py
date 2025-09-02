@@ -130,6 +130,57 @@ class ScoreCorpus:
         self._metric_matrix_cache[cache_key] = df
         return df
 
+    # ---------------- New aggregation APIs (MARS expects these) ----------------
+
+    def _aggregate_rows(self, df: pd.DataFrame, agg: str = "mean") -> pd.Series:
+        """
+        Aggregate across scorers (columns) per scorable (row).
+        NaN-safe for common reducers.
+        """
+        agg = (agg or "mean").lower()
+        if df.empty:
+            # Return a Series aligned to the expected index if possible
+            return pd.Series([np.nan] * len(self.bundles), index=list(self.bundles.keys()), dtype=float)
+
+        if agg == "mean":
+            return df.mean(axis=1, skipna=True)
+        if agg == "median":
+            return df.median(axis=1, skipna=True)
+        if agg == "max":
+            return df.max(axis=1, skipna=True)
+        if agg == "min":
+            return df.min(axis=1, skipna=True)
+        if agg == "sum":
+            return df.sum(axis=1, skipna=True)
+        if agg == "first_non_nan":
+            return df.apply(lambda r: next((x for x in r.values if not (isinstance(x, float) and np.isnan(x))), np.nan), axis=1)
+
+        warnings.warn(f"Unknown agg '{agg}', defaulting to mean.")
+        return df.mean(axis=1, skipna=True)
+
+    def get_values_for_metric(self, dimension: str, metric: str, agg: str = "mean") -> List[float]:
+        """
+        Returns a list of values for `metric` across all scorables, aggregating across scorers.
+        Order matches insertion order of `bundles.keys()`.
+        Missing/invalid values are NaN and will be handled by downstream code.
+        """
+        df = self.get_metric_matrix(dimension, metric)
+        # Ensure row order matches bundles insertion order
+        desired_index = list(self.bundles.keys())
+        df = df.reindex(index=desired_index)
+        series = self._aggregate_rows(df, agg=agg)
+        # Ensure order and convert to Python floats
+        series = series.reindex(desired_index)
+        return [float(x) if x is not None and not (isinstance(x, float) and np.isnan(x)) else np.nan for x in series.tolist()]
+
+    def get_all_metric_values(self, dimension: str, metrics: List[str], agg: str = "mean") -> Dict[str, List[float]]:
+        """
+        Returns { metric_name: [values_per_scorable_in_order] } for the given dimension,
+        aggregating across scorers with the provided reducer (default: mean).
+        """
+        metrics = metrics or ["score"]
+        return {m: self.get_values_for_metric(dimension, m, agg=agg) for m in metrics}
+
     # ---------------- Utility methods ----------------
 
     def get_metric_values(self, dimension: str, scorer: str, metrics: List[str]) -> Dict[str, List[Any]]:
@@ -222,4 +273,3 @@ class ScoreCorpus:
                 f"dimensions={len(self.dimensions)}, "
                 f"scorers={len(self.scorers)}, "
                 f"metrics={len(self.metrics)})>")
-

@@ -4,6 +4,7 @@ defaults:
   - db: postgres
   - plan_monitor: default
   - scoring/service/default
+  - mars/default
 
   - scorer/reward/default
   - scorer/ebt/default
@@ -15,7 +16,9 @@ defaults:
   - scorer/epistemic_hrm/default
 
 
+
   - agents/arxiv_search
+  - agents/modular_memento
   - agents/memento
   - agents/generation
   - agents/cbr_dspy
@@ -151,6 +154,12 @@ pipeline:
      - name: memento
        description: "Generate hypotheses from documents using the Memento framework"
        cls: stephanie.agents.dspy.memento.MementoAgent
+       enabled: false
+       iterations: 1
+
+     - name: modular_memento
+       description: "Generate hypotheses from documents using the Modular Memento framework"
+       cls: stephanie.agents.dspy.modular_memento.ModularMementoAgent
        enabled: true
        iterations: 1
 
