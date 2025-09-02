@@ -116,6 +116,9 @@ KNOWLEDGE_OPS = {
 # PIPELINE CONTROL
 # =================
 PIPELINE_FLOW = {
+    "PipelineStageError": "🖇️❌",  # Pipeline stage error
+    "PipelineRunFailed": "🖇️▶️❌",  # Pipeline run failed
+    "PlanTraceError": "🖇️🔍❌",  # Plan trace error
     "PipelineReferenceInserted": "🖇️📄➕",  # Pipeline reference inserted
     "PipelineStageCompleted": "🖇️✅",  # Pipeline stage completed
     "PipelineStageStarted": "🖇️▶️",  # Pipeline stage started

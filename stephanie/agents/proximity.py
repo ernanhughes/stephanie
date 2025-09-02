@@ -38,7 +38,7 @@ class ProximityAgent(ScoringMixin, BaseAgent):
                 scorable=scorable,
                 metrics=self.metrics,
             )
-            self.logger.log("ProximityScoreComputed", score)
+            self.logger.log("ProximityScoreComputed", score.to_dict())
             proximity_results.append(score.to_dict())
 
         # --- fetch DB-side neighbors for the goal

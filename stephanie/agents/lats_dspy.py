@@ -14,8 +14,10 @@ from stephanie.agents.rule_tuner import RuleTunerAgent
 from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_corpus import ScoreCorpus
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 from stephanie.utils.graph_tools import (build_mermaid_graph, compare_graphs,
                                          save_mermaid_to_file)
 
@@ -228,6 +230,9 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
 
         # Symbolic impact analyzer
         self.impact_analyzer = SymbolicImpactAnalyzer(self._get_score)
+        self.ranker = ScorableRanker(cfg, memory, logger)
+        self.mars = MARSCalculator(cfg, memory, logger)
+        
         self.score_map = {}
         self.completed_nodes = 0
         self.total_estimated_nodes = 1  # Start with 1 to avoid division by zero
@@ -305,7 +310,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         dimension_scores = best_child.get("dimension_scores", {})
 
         # 4. Create final hypothesis
-        hypothesis = self.memory.save_hypothesis(
+        hypothesis = self.save_hypothesis(
             {
                 "prompt_id": prompt_id,
                 "text": "\n".join(best_trace),
@@ -322,6 +327,13 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         )
         context.setdefault("lats_result", []).append(hypothesis.to_dict())
         context.setdefault("hypotheses", []).append(hypothesis.to_dict())
+
+        mars_results = self.mars.calculate(
+            ScoreCorpus.from_nodes(self.nodes, scorers=["sicql", "mrq", "ebt"]),
+            context=context
+        )
+        context["mars_results"] = mars_results
+
         return context
 
     def create_node(self, state, trace, parent=None):
@@ -401,9 +413,24 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             state=node["state"], trace=node["trace"], depth=0
         )
 
+        # 2b. Rank completions with ScorableRanker
+        query_scorable = Scorable(
+            id=f"node-{node['id']}",
+            text=node["state"]["current"],
+            target_type="lats_node",
+            metadata={"agent_name": "LATSDSPyAgent"}
+        )
+        cand_scorables = [
+            Scorable(text=comp, target_type="lats_child", metadata={"agent_name": "LATSDSPyAgent"})
+            for comp in completions
+        ]
+        ranked_bundles = self.ranker.rank(query_scorable, cand_scorables, context)
+        ranked_completions = [r["scorable_id"] for r in ranked_bundles]
+
+
         # 3. Apply proximity-based refinement
         refined_completions = []
-        for comp in completions:
+        for comp in ranked_completions:
             refined = self._apply_proximity_guidance(comp, proximity_context)
             refined_completions.append(refined)
 
