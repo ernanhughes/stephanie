@@ -49,6 +49,7 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "DocumentsTruncated": "📄✂️",  # Documents truncated
     "IdeaSharpeningFailed": "🧑‍🏫❌",
     "EvaluatorInit": "🧑‍🏫",
     "GenerationStarted": "🧑‍🧒‍🧒▶️",
@@ -277,6 +278,7 @@ TRAINING = {
 # HYPOTHESIS WORKFLOW
 # =================
 HYPOTHESIS_OPS = {
+    "HypothesisExtracted": "💡✨",  # Hypothesis extracted
     "GoalCreated": "🎯✨",  # Goal created
     "GoalDomainAssigned": "🎯🏷️",  # Goal domain assigned
     "GeneratedHypotheses": "💡✨",  # Hypotheses generated
@@ -343,6 +345,10 @@ PLAN_TRACE = {
     "EpistemicPlanHRMTrainingDataPrepared": "👾📊",  # Training data prepared
 
 }   
+
+MARS = {
+    "MARSConflictStored": "🌕🔄📁",  # MARS conflict stored
+}
 
 # =================
 # RESEARCH & DATA
@@ -413,8 +419,9 @@ MODELS = {
 
 # =============
 # ETHICS & REVIEWS
-# =============
+# ============= 
 SPECIAL = {
+    "info": "ℹ️",  # Information message
     "PlannerReuseCandidate": "📈🔄",  # Planner reuse candidate created
     "FetchedScorableDomain": "📄🔍",  # Fetched scorable domain
     "ScorableEmbeddingInserted": "📄✅",  # Document embedding inserted
@@ -439,6 +446,7 @@ EVENT_ICONS = {
     **KNOWLEDGE_OPS,
     **PIPELINE_FLOW,
     **SCORING,
+    **MARS,
     **REPORTING,
     **REASONING,
     **TRAINING,

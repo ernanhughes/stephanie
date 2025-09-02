@@ -36,3 +36,6 @@ from .symbolic_rule import SymbolicRuleORM
 from .theorem import CartridgeORM, TheoremORM
 from .training_stats import TrainingStatsORM
 from .unified_mrq import UnifiedMRQModelORM
+from .pipeline_run import PipelineRunORM
+from .pipeline_stage import PipelineStageORM
+from .report import ReportORM

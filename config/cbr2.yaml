@@ -149,7 +149,7 @@ pipeline:
 
      - name: lats_dspy
        description: "Generate hypotheses from documents using the LATS framework"
-       cls: stephanie.agents.lats_dspy.LATSDSPyAgent
+       cls: stephanie.agents.dspy.mcts_reasoning_agent.MCTSReasoningAgent
        enabled: true
        iterations: 1
 

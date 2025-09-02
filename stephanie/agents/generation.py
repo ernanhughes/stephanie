@@ -76,13 +76,11 @@ class GenerationAgent(BaseAgent):
         # Update context
         context[self.output_key] = hypotheses_saved
 
-        self.logger.log(
-            "GeneratedHypotheses",
+        self.report(
             {
-                GOAL: goal,
-                "count": len(hypotheses),
-                "examples": [h["text"] for h in hypotheses_saved[:2]],
-            },
+                "event": "GeneratedHypotheses",
+                "step": "Generation",
+                "details": [h["text"] for h in hypotheses_saved[:2]],
+            }
         )
-
         return context

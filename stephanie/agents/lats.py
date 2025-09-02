@@ -28,7 +28,7 @@ class LATSNode:
         return len(self.children) == 0
 
 
-class LATSAgent(ScoringMixin, BaseAgent): 
+class LATSAgent(BaseAgent): 
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
@@ -339,7 +339,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             
             child = self.create_node(new_state, new_trace, parent=node)
             child.score = score_result.aggregate()
-            child.dimension_scores = score_result.
+            child.dimension_scores = score_result.to_dict()
             child.reward = child.score  # Initialize reward
             node.children.append(child)
 

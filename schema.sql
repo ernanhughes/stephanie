@@ -1358,4 +1358,36 @@ CREATE TABLE mars_conflicts (
 );
 
 
+-- casebook table: identifies different "books"
+CREATE TABLE casebooks (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- cases table: each reasoning experience
+CREATE TABLE cases (
+    id SERIAL PRIMARY KEY,
+    casebook_id INT NOT NULL REFERENCES casebooks(id) ON DELETE CASCADE,
+    goal_id VARCHAR(64) NOT NULL,
+    goal_text TEXT NOT NULL,
+    agent_name VARCHAR(128) NOT NULL,
+    mars_summary JSONB,
+    scores JSONB,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- mapping: many-to-many between cases and scorables
+CREATE TABLE case_scorables (
+    id SERIAL PRIMARY KEY,
+    case_id INT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    scorable_id VARCHAR(64) NOT NULL,
+    scorable_type VARCHAR(64),
+    role VARCHAR(64),   -- e.g. "input", "output", "supporting"
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
 COMMIT; 
