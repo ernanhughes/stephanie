@@ -171,6 +171,7 @@ class ScorableRanker(BaseScorer):
             "scorable_id": scorable.id,
             "scorable_type": scorable.target_type,
             "rank_score": rank_score,
+            "text": scorable.text,
             "components": components,
         }
 
@@ -307,6 +308,7 @@ class ScorableRanker(BaseScorer):
                 "scorable_type": cand.target_type,
                 "agent_name": getattr(cand, "meta", {}).get("agent_name"),
                 "rank_score": rank_score,
+                "text": cand.text,
                 "components": components,
             })
 

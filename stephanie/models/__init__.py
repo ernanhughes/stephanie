@@ -39,3 +39,4 @@ from .unified_mrq import UnifiedMRQModelORM
 from .pipeline_run import PipelineRunORM
 from .pipeline_stage import PipelineStageORM
 from .report import ReportORM
+from .case_goal_state import CaseGoalStateORM

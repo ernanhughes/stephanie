@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from uuid import uuid4
+import uuid
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -18,7 +19,7 @@ from stephanie.engine.self_validation import SelfValidationEngine
 from stephanie.engine.state_tracker import StateTracker
 from stephanie.engine.training_controller import TrainingController
 from stephanie.logging.json_logger import JSONLogger
-from stephanie.memory import MemoryTool
+from stephanie.memory.memory_tool import MemoryTool
 from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
 from stephanie.reports import ReportFormatter
@@ -281,7 +282,7 @@ class Supervisor:
                     if context["REPORTS"]:
                         context["REPORTS"][-1].setdefault("entries", []).extend(stage_entries)
                 except Exception as rep_e:
-                    self.logger.log("StageReportFailed", {
+                    self.logger.log("StageReportFail Right well that should work but it didn't ed", {
                         "stage": stage.name,
                         "error": str(rep_e)
                     })
@@ -577,6 +578,17 @@ class Supervisor:
             "strategy": pipeline_run.strategy,
             "model_config": pipeline_run.run_config,
             PROMPT_DIR: self.cfg.paths.prompts,
+            "trace": [],
+            "REPORTS": [],
+            "LOGS": [],
+            "METRICS": [],
+            "metadata": {
+                "run_id": run_id or str(uuid.uuid4()),
+                "start_time": datetime.now().isoformat(),
+                "last_modified": datetime.now().isoformat(),
+                "token_count": 0,
+                "components": {}
+            },
         }
 
         # Optional: override pipeline stages to match recorded run

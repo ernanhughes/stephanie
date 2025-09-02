@@ -408,13 +408,14 @@ class BaseAgent(ABC):
         self.report_entries[self.name] = []
         return entries
 
-    def set_scorable_details(self, input_text: str = "", output_text: str = "", description: str = None):
+    def set_scorable_details(self, input_text: str = "", output_text: str = "", description: str = None, meta: Dict[str, Any] = None):
         """Agents call this to update what can be scored."""
         self.scorable_details = {
             "input_text": input_text,
             "agent_name": self.name,
             "output_text": output_text,
-            "description": description or f"Output from {self.__class__.__name__}"
+            "description": description or f"Output from {self.__class__.__name__}",
+            "meta": meta or {}
         }
         self.is_scorable = True
 

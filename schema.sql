@@ -1375,6 +1375,7 @@ CREATE TABLE cases (
     agent_name VARCHAR(128) NOT NULL,
     mars_summary JSONB,
     scores JSONB,
+    rank JSONB,
     meta JSONB,
     created_at TIMESTAMP DEFAULT NOW()
 );
@@ -1388,6 +1389,65 @@ CREATE TABLE case_scorables (
     role VARCHAR(64),   -- e.g. "input", "output", "supporting"
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS case_goal_state (
+  id                SERIAL PRIMARY KEY,
+  casebook_id       INTEGER      NOT NULL,
+  goal_id           TEXT         NOT NULL,
+  champion_case_id  INTEGER      NULL,
+  champion_quality  DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+  run_ix            INTEGER      NOT NULL DEFAULT 0,
+  wins              INTEGER      NOT NULL DEFAULT 0,
+  losses            INTEGER      NOT NULL DEFAULT 0,
+  avg_delta         DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+  trust             DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+
+-- Core lake of learning signals (pairwise + pointwise in one table)
+CREATE TABLE IF NOT EXISTS training_events (
+  id            BIGSERIAL PRIMARY KEY,
+  -- Target & scope
+  model_key     TEXT NOT NULL,           -- e.g., "ranker.sicql.v1" or "retriever.mrq.v2"
+  dimension     TEXT NOT NULL,           -- e.g., "alignment", "relevance"
+  goal_id       TEXT,                    -- optional: tie back to goal
+  pipeline_run_id  INTEGER,                    -- optional: which pipeline
+  agent_name    TEXT,                    -- who emitted it
+
+  -- Event kind
+  kind          TEXT NOT NULL CHECK (kind IN ('pairwise','pointwise')),
+
+  -- Pairwise fields (use when kind='pairwise')
+  query_text    TEXT,
+  pos_text      TEXT,
+  neg_text      TEXT,
+
+  -- Pointwise fields (use when kind='pointwise')
+  cand_text     TEXT,
+  label         SMALLINT,                -- 1 or 0 for pointwise; (optional) -1/0/1 for pairwise
+
+  -- Weights/quality
+  weight        DOUBLE PRECISION DEFAULT 1.0,
+  trust         DOUBLE PRECISION DEFAULT 0.0,    -- optional: confidence from MARS, A/B margin, etc.
+
+  -- Provenance
+  source        TEXT DEFAULT 'memento',
+  meta          JSONB DEFAULT '{}'::jsonb,
+
+  -- Dedup
+  fp            CHAR(40) UNIQUE,         -- SHA1 fingerprint
+
+  -- Lifecycle
+  processed     BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS ix_te_target ON training_events (model_key, dimension, kind);
+CREATE INDEX IF NOT EXISTS ix_te_recent ON training_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_te_unprocessed ON training_events (processed) WHERE processed = false;
 
 
 COMMIT; 

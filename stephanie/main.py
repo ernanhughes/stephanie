@@ -11,7 +11,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.logging import JSONLogger
-from stephanie.memory import MemoryTool
+from stephanie.memory.memory_tool import MemoryTool
 from stephanie.supervisor import Supervisor
 from stephanie.utils import generate_run_id, get_log_file_path
 

@@ -52,6 +52,9 @@ class ContextManager:
         # Initialize context dictionary
         self._data = {
             "trace": [],
+            "REPORTS": [],
+            "LOGS": [],
+            "METRICS": [],
             "metadata": {
                 "run_id": run_id or str(uuid.uuid4()),
                 "start_time": datetime.now().isoformat(),

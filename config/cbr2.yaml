@@ -14,8 +14,9 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+
   - agents/arxiv_search
-  - agents/lats_dspy
+  - agents/memento
   - agents/generation
   - agents/cbr_dspy
   - agents/cartridge
@@ -138,17 +139,17 @@ pipeline:
      - name: cbr_dspy
        description: "Generate hypotheses from documents using a dspy process"
        cls: stephanie.agents.dspy.cbr_dspy.CBRDSPyAgent
-       enabled: true
+       enabled: false
        iterations: 1    
 
      - name: generation
        description: "Generate new candidate documents based on existing knowledge"
        cls: stephanie.agents.generation.GenerationAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
-     - name: lats_dspy
-       description: "Generate hypotheses from documents using the LATS framework"
+     - name: memento
+       description: "Generate hypotheses from documents using the Memento framework"
        cls: stephanie.agents.dspy.memento.MementoAgent
        enabled: true
        iterations: 1
