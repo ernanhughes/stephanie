@@ -1,7 +1,7 @@
 import json
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.reports.comparison import ComparisonReporter
+from stephanie.reporting.comparison import ComparisonReporter
 
 
 class CompareAgent(BaseAgent):

@@ -1,112 +1,457 @@
-# stephanie/cbr/middleware.py
-from typing import Dict, Any, Callable, Awaitable, List
-from stephanie.cbr.ab_validator import DefaultABValidator
-from stephanie.cbr.rank_and_analyze import DefaultRankAndAnalyze
-from stephanie.constants import GOAL, AGENT_NAME
+# add imports
+from multiprocessing import context
+from typing import Dict, Any, Callable, Awaitable, List, Optional
+from stephanie.cbr.adaptor import DefaultAdaptor
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
+from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
+
 
 class CBRMiddleware:
-    def __init__(self, cfg, memory, logger,
-                 ns, scope_mgr, selector, ranker, retention, assessor,
-                 promoter, tracker, ab_validator, micro_learner):
-        self.cfg = cfg 
-        self.memory = memory 
+    def __init__(
+        self,
+        cfg,
+        memory,
+        logger,
+        ns,
+        scope_mgr,
+        selector,
+        ranker,
+        retention,
+        assessor,
+        promoter,
+        tracker,
+        ab_validator,
+        micro_learner,
+        scoring_service=None,
+        adaptor: Optional[DefaultAdaptor] = None,
+        reporter: Reporter | None = None,
+    ):
+        self.cfg = cfg
+        self.memory = memory
         self.logger = logger
         self.ns = ns
         self.scope_mgr = scope_mgr
         self.selector = selector
-        self.ranker: DefaultRankAndAnalyze = ranker
+        self.ranker = ranker
         self.retention = retention
         self.assessor = assessor
         self.promoter = promoter
         self.tracker = tracker
-        self.ab: DefaultABValidator = ab_validator
+        self.ab = ab_validator
         self.micro = micro_learner
+
+        self.scoring = scoring_service  # may be None if ranker exposes a score_one; see _score_scorable below
+        self.adaptor = adaptor or DefaultAdaptor(
+            cfg.get("adapt", {}), logger=self.logger
+        )
+
         self.tag = cfg.get("casebook_tag", "default")
-        self.retrieval_mode = cfg.get("retrieval_mode","fallback")
-        self.reuse_budget = int(cfg.get("reuse_budget",16))
-        self.novelty_k = int(cfg.get("novelty_k",6))
-        self.exploration_eps = float(cfg.get("exploration_eps",0.1))
+        self.retrieval_mode = cfg.get("retrieval_mode", "fallback")
+        self.reuse_budget = int(cfg.get("reuse_budget", 16))
+        self.novelty_k = int(cfg.get("novelty_k", 6))
+        self.exploration_eps = float(cfg.get("exploration_eps", 0.1))
         self.ab_cfg = cfg.get("ab_validation", {}) or {}
 
-    async def run(self, context: Dict[str, Any], base_agent_run: Callable[[Dict], Awaitable[Dict]], output_key: str) -> Dict[str, Any]:
-        # minimal info for scope mgr
-        context[AGENT_NAME] = context.get(AGENT_NAME) or "UnknownAgent"
+        # Adapt config
+        a = cfg.get("adapt", {}) or {}
+        self.adapt_enabled = bool(a.get("enabled", True))
+        self.adapt_top_k = int(a.get("top_k", 1))
+        self.adapt_improv_eps = float(a.get("improv_eps", 0.01))
+        self.adapt_dimensions = a.get(
+            "dimensions"
+        )  # None → let scorer defaults apply
+        self.adapt_scorer_name = a.get(
+            "scorer_name"
+        )  # None → use ranker/scoring defaults
 
-        # Decide A/B
-        casebook_id = self.scope_mgr.home_casebook_id(context, context[AGENT_NAME], self.tag)
-        goal_id = context[GOAL]["id"]
+        # Reporting
+        self.reporter = self._init_reporter(cfg, logger, reporter)
+
+        # ensure reporter task started
+        try:
+            import asyncio
+
+            asyncio.create_task(self.reporter.start())
+        except Exception:
+            pass
+
+    def _init_reporter(self, cfg, logger, reporter):
+        """
+        Initialize the reporter, using config or provided reporter.
+        """
+
+        if reporter is not None:
+            return reporter
+        rep_cfg = (
+            (cfg.get("cbr", {}).get("reporting", {}))
+            if isinstance(cfg, dict)
+            else {}
+        )
+        path = (rep_cfg or {}).get("path", "reports/cbr_events.jsonl")
+        sample_rate = float((rep_cfg or {}).get("sample_rate", 1.0))
+        return Reporter(
+            sinks=[JsonlSink(path), LoggerSink(logger)],
+            enabled=bool((rep_cfg or {}).get("enabled", True)),
+            sample_rate=sample_rate,
+        )
+
+    async def run(
+        self,
+        context: Dict[str, Any],
+        base_agent_run: Callable[[Dict], Awaitable[Dict]],
+        output_key: str,
+    ) -> Dict[str, Any]:
+        await self.reporter.emit(
+            ctx=context,
+            stage="start",
+            note="CBR entry",
+            tag=self.tag,
+            retrieval_mode=self.retrieval_mode,
+        )
+        context_key_agent = "agent_name"
+        context[context_key_agent] = (
+            context.get(context_key_agent) or "UnknownAgent"
+        )
+
+        casebook_id = self.scope_mgr.home_casebook_id(
+            context, context[context_key_agent], self.tag
+        )
+        goal_id = context["goal"]["id"]
         run_ix = self.tracker.bump_run_ix(casebook_id, goal_id)
-        do_ab = self.tracker.should_run_ab(run_ix, self.ab_cfg.get("mode","periodic"), int(self.ab_cfg.get("period",5)))
+        do_ab = self.tracker.should_run_ab(
+            run_ix,
+            self.ab_cfg.get("mode", "periodic"),
+            int(self.ab_cfg.get("period", 5)),
+        )
 
-        async def _run_variant(variant: str, use_casebook: bool, retain: bool, train_enabled: bool):
+        async def _run_variant(
+            variant: str, use_casebook: bool, retain: bool, train_enabled: bool
+        ):
             vb = self.ns.variant_bucket(context, variant)
-            cases = self.scope_mgr.get_cases(context, self.retrieval_mode, self.tag) if use_casebook else []
-            reuse_candidates = self.selector.build_reuse_candidates(casebook_id, goal_id, cases, self.reuse_budget, self.novelty_k, self.exploration_eps) if use_casebook else []
+            cases = (
+                self.scope_mgr.get_cases(
+                    context, self.retrieval_mode, self.tag
+                )
+                if use_casebook
+                else []
+            )
+            reuse_candidates = (
+                self.selector.build_reuse_candidates(
+                    casebook_id,
+                    goal_id,
+                    cases,
+                    self.reuse_budget,
+                    self.novelty_k,
+                    self.exploration_eps,
+                )
+                if use_casebook
+                else []
+            )
 
-            # expose reuse_candidates only temporarily
-            with self.ns.temp_key(context, "reuse_candidates", reuse_candidates), self._variant_output_redirect(context, variant, output_key):
-                # 1) run base agent (will look at context["reuse_candidates"] if it wants)
+            with (
+                self.ns.temp_key(
+                    context, "reuse_candidates", reuse_candidates
+                ),
+                self._variant_output_redirect(context, variant, output_key),
+            ):
+                await self.reporter.emit(
+                    ctx=context,
+                    stage="variant_begin",
+                    variant=variant,
+                    use_casebook=use_casebook,
+                )
+                # 1) Base agent produces a fresh scorable (or few)
                 result = await base_agent_run(context)
-                # Notice we pass the output_key of the base agent
-                scorables = result.get(output_key, []) or []
-                scorables = self._ensure_ids(scorables)
+                produced = result.get(output_key, []) or []
 
-                # 2) rank + analyze
-                ranked, corpus, mars, recs, scores = self.ranker.run(context, scorables)
+                # Ensure IDs
+                produced = self._ensure_ids(produced)
+                await self.reporter.emit(
+                    ctx=context,
+                    stage="agent_output",
+                    variant=variant,
+                    produced=len(produced),
+                    preview=_safe_texts(produced),
+                )
+
+                # 2) Rank + analyze (fresh + retrieved-as-scorables — ranker.run should already merge if you pass both)
+                #    If your ranker expects the consolidated list, combine explicitly:
+                seeds = produced  # fresh
+                # Convert 'reuse_candidates' (cases) to scorables if needed:
+                seeds += [self._case_to_scorable(c) for c in reuse_candidates]
+                ranked, corpus, mars, recs, scores = self.ranker.run(
+                    context, seeds
+                )
                 for r in ranked:
-                    rid = r.get("id"); r["mars_confidence"] = (mars.get(rid, {}) or {}).get("agreement_score")
+                    rid = r.get("id")
+                    r["mars_confidence"] = (mars.get(rid, {}) or {}).get(
+                        "agreement_score"
+                    )
 
-                # 3) retain & micro-learn
-                retained_case_id = self.retention.retain(context, ranked, mars, scores) if retain else None
-                if train_enabled: self.micro.learn(context, ranked, mars)
+                await self.reporter.emit(
+                    ctx=context,
+                    stage="rank_done",
+                    variant=variant,
+                    n_ranked=len(ranked),
+                    top_ids=[r.get("id") for r in ranked[:3]],
+                    mars_dims=len(mars or {}),
+                )
 
-                # 4) quality
+                # 3) ADAPT/REVISE (NEW): take top-k, produce revised items, score them, include if improved
+                if self.adapt_enabled and ranked:
+                    revised = await self._adapt_top_k(
+                        context, ranked, top_k=self.adapt_top_k
+                    )
+                    if revised:
+                        # re-rank with revised included
+                        combined = ranked + revised
+                        ranked, corpus, mars, recs, scores = self.ranker.run(
+                            context, combined
+                        )
+                        for r in ranked:
+                            rid = r.get("id")
+                            r["mars_confidence"] = (
+                                mars.get(rid, {}) or {}
+                            ).get("agreement_score")
+                        await self.reporter.emit(
+                            ctx=context,
+                            stage="rerank_after_adapt",
+                            variant=variant,
+                            n_ranked=len(ranked),
+                        )
+
+                # 4) retain & micro-learn
+                retained_case_id = (
+                    self.retention.retain(context, ranked, mars, scores)
+                    if retain
+                    else None
+                )
+                await self.reporter.emit(
+                    ctx=context,
+                    stage="retain",
+                    variant=variant,
+                    retained=bool(retained_case_id),
+                )
+                if train_enabled:
+                    self.micro.learn(context, ranked, mars)
+                    await self.reporter.emit(ctx=context, stage="micro_learn",
+                                             variant=variant)
+
+
+                # 5) quality
                 q = self.assessor.quality(mars, scores)
-                vb.update(dict(
-                    reuse_candidates=reuse_candidates, ranked=ranked,
-                    mars_results=mars, recommendations=recs, retained_case=retained_case_id,
-                    metrics={"quality": float(q), "variant": variant}
-                ))
+                await self.reporter.emit(ctx=context, stage="quality",
+                                         variant=variant, quality=float(q))
+                vb.update(
+                    dict(
+                        reuse_candidates=reuse_candidates,
+                        ranked=ranked,
+                        mars_results=mars,
+                        recommendations=recs,
+                        retained_case=retained_case_id,
+                        metrics={"quality": float(q), "variant": variant},
+                    )
+                )
                 return vb
 
         if do_ab:
-            # baseline vs cbr
-            base_res = await _run_variant("baseline", use_casebook=False, retain=False, train_enabled=not bool(self.ab_cfg.get("freeze_training",True)))
-            cbr_res  = await _run_variant("cbr",      use_casebook=True,  retain=True,  train_enabled=True)
-            winner, cmp = await self.ab.run_two(context, lambda: self._noop(base_res), lambda: self._noop(base_res))  # NOTE: plug real comparison if you want different policy
-            # prefer the actual comparison:
-            q_base, q_cbr = base_res["metrics"]["quality"], cbr_res["metrics"]["quality"]
-            improved = q_cbr > q_base + float(self.ab_cfg.get("delta_eps",1e-6))
+            base_res = await _run_variant(
+                "baseline",
+                use_casebook=False,
+                retain=False,
+                train_enabled=not bool(
+                    self.ab_cfg.get("freeze_training", True)
+                ),
+            )
+            cbr_res = await _run_variant(
+                "cbr", use_casebook=True, retain=True, train_enabled=True
+            )
+            winner, _cmp = await self.ab.run_two(
+                context,
+                lambda: self._noop(base_res),
+                lambda: self._noop(base_res),
+            )
+            q_base, q_cbr = (
+                base_res["metrics"]["quality"],
+                cbr_res["metrics"]["quality"],
+            )
+            improved = q_cbr > q_base + float(
+                self.ab_cfg.get("delta_eps", 1e-6)
+            )
             winner = "cbr" if improved else "baseline"
-            # champion promote only if CBR improved
-            if improved: self.promoter.maybe_promote(casebook_id, goal_id, cbr_res.get("retained_case"), float(q_cbr))
-            context[output_key] = context.get(self.ns.variant_output_key(winner), [])
+            if improved:
+                self.promoter.maybe_promote(
+                    casebook_id,
+                    goal_id,
+                    cbr_res.get("retained_case"),
+                    float(q_cbr),
+                )
+            context[output_key] = context.get(
+                self.ns.variant_output_key(winner), []
+            )
             return context
 
-        # Single CBR
-        cbr_res = await _run_variant("cbr", use_casebook=True, retain=True, train_enabled=True)
-        context[output_key] = context.get(self.ns.variant_output_key("cbr"), [])
+        cbr_res = await _run_variant(
+            "cbr", use_casebook=True, retain=True, train_enabled=True
+        )
+        context[output_key] = context.get(
+            self.ns.variant_output_key("cbr"), []
+        )
         return context
 
+    async def _adapt_top_k(
+        self, context: Dict[str, Any], ranked: List[Dict[str, Any]], top_k: int
+    ) -> List[Dict[str, Any]]:
+        """Take top-k ranked items; for each, adapt it using the most relevant retrieved text (if any)."""
+        goal_text = (context.get("goal") or {}).get("goal_text", "") or ""
+        out: List[Dict[str, Any]] = []
+
+        # pick the text to adapt *from*. Heuristic: top non-produced item or the next best text in ranked
+        # If your ranker tags provenance, you can pick a retrieved-vs-produced explicitly.
+        k = min(max(1, top_k), len(ranked))
+        for i in range(k):
+            base = ranked[i]
+            base_text = (base.get("text") or "").strip()
+            if not base_text:
+                continue
+
+            # choose a "retrieved" donor (fallback to next-best if no explicit retrieved)
+            donor = (
+                ranked[i + 1]
+                if (i + 1) < len(ranked)
+                else (ranked[0] if len(ranked) > 1 else None)
+            )
+            donor_text = (donor.get("text") or "").strip() if donor else ""
+
+            # LLM edit-critique
+            rev = self.adaptor.revise(
+                goal_text=goal_text,
+                candidate_text=base_text,
+                retrieved_text=donor_text,
+            )
+            revised_text = (rev.get("revised") or "").strip()
+            rationale = rev.get("rationale")
+
+            if not revised_text or revised_text == base_text:
+                # skip if nothing changed (or keep with a tiny tag if you prefer)
+                continue
+
+            revised = {
+                "id": None,  # will be filled by _ensure_ids
+                "text": revised_text,
+                "target_type": base.get("target_type")
+                or TargetType.HYPOTHESIS,
+                "metadata": {
+                    "provenance": {
+                        "type": "revised",
+                        "from": [
+                            base.get("id"),
+                            donor.get("id") if donor else None,
+                        ],
+                        "rationale": rationale,
+                    }
+                },
+            }
+
+            # score revised
+            agg_revised = self._score_scorable(context, revised)
+            agg_base = base.get("aggregate_score") or base.get("score") or 0.0
+            # Only keep if improved by epsilon
+            if agg_revised >= float(agg_base) + self.adapt_improv_eps:
+                revised["aggregate_score"] = float(agg_revised)
+                out.append(self._ensure_ids([revised])[0])
+
+        self.logger and self.logger.log(
+            "CBRAdaptSummary",
+            {
+                "requested": top_k,
+                "produced": len(out),
+                "eps": self.adapt_improv_eps,
+            },
+        )
+        return out
+
+    def _score_scorable(
+        self, context: Dict[str, Any], scorable_dict: Dict[str, Any]
+    ) -> float:
+        """
+        Score a single scorable dict using either an injected scoring service or the ranker if it exposes one.
+        Returns a 0..1 aggregate score (align with your ScoringService aggregate convention).
+        """
+        try:
+            text = scorable_dict.get("text") or ""
+            scorable = Scorable(
+                text=text,
+                id=scorable_dict.get("id") or "",
+                target_type=scorable_dict.get("target_type") or "custom",
+            )
+            scorer_name = self.adapt_scorer_name or "sicql"
+            dims = self.adapt_dimensions  # None → scorer default
+            if self.scoring:
+                bundle = self.scoring.score(
+                    scorer_name,
+                    scorable=scorable,
+                    context=context,
+                    dimensions=dims,
+                )
+                return float(bundle.aggregate()) / 100.0
+            # fallback: if ranker exposes a similar primitive
+            score_one = getattr(self.ranker, "score_one", None)
+            if callable(score_one):
+                agg = score_one(context, scorable, scorer_name, dims)
+                return float(agg)
+        except Exception as e:
+            self.logger and self.logger.log(
+                "CBRScoreRevisedError", {"error": str(e)}
+            )
+        return 0.0
+
+    def _case_to_scorable(self, case: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert a retrieved case record to the scorable dict shape expected by the ranker.
+        Implement this to map your case schema → {'id','text','target_type','metadata'}
+        """
+        return {
+            "id": case.get("id"),
+            "text": case.get("text") or case.get("content") or "",
+            "target_type": case.get("target_type") or TargetType.HYPOTHESIS,
+            "metadata": {
+                "provenance": {
+                    "type": "retrieved",
+                    "source": "casebook",
+                    "casebook_id": case.get("casebook_id"),
+                }
+            },
+        }
+
     # -- helpers
-    async def _noop(self, x): 
+    async def _noop(self, x):
         return x
 
     def _ensure_ids(self, scorables: List[dict]) -> List[dict]:
         import hashlib, random
+
         out = []
         for h in scorables:
-            if h.get("id"): 
-                out.append(h) 
+            if h.get("id"):
+                out.append(h)
                 continue
             text = (h.get("text") or "").strip()
-            sid = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16] if text else hashlib.sha1(str(random.random()).encode("utf-8")).hexdigest()[:16]
+            sid = (
+                hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+                if text
+                else hashlib.sha1(
+                    str(random.random()).encode("utf-8")
+                ).hexdigest()[:16]
+            )
             nh = dict(h)
             nh["id"] = sid
             out.append(nh)
         return out
 
     from contextlib import contextmanager
+
     @contextmanager
     def _variant_output_redirect(self, ctx, variant: str, output_key: str):
         prev = output_key
@@ -115,3 +460,15 @@ class CBRMiddleware:
             yield
         finally:
             pass
+
+
+def _safe_texts(items, max_items=2, max_len=140):
+    out = []
+    for it in items[:max_items]:
+        t = (it.get("text") or "") if isinstance(it, dict) else str(it)
+        if t:
+            out.append(
+                t[:max_len].replace("\n", " ")
+                + ("…" if len(t) > max_len else "")
+            )
+    return out

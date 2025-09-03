@@ -6,7 +6,7 @@ from evolution_selector import EvolutionarySelector
 from slave_system import ResearchSlave
 
 from stephanie.agents.evolution.instruction_engine import InstructionEngine
-from stephanie.reports.report_generator import ReportGenerator
+from stephanie.reporting.report_generator import ReportGenerator
 
 
 class ResearchOrchestrator:

@@ -23,7 +23,7 @@ from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
-from stephanie.reports import ReportFormatter
+from stephanie.reporting import ReportFormatter
 from stephanie.scoring.scoring_service import ScoringService
 from stephanie.utils.report_utils import get_stage_details
 

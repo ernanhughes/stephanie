@@ -3,24 +3,40 @@
 modular_memento:
   name: modular_memento
 
+  include_mars: true
+  casebook_tag: default
+  retrieval_mode: fallback
+  reuse_budget: 16
+  novelty_k: 6
+  exploration_eps: 0.1
+  ab_validation:
+    mode: periodic      # off | periodic | always
+    period: 5
+    control_tag: control
+    delta_eps: 1e-6
+    seed_lock: true
+    freeze_training: true
+  quality_weights:
+    mars: 1.0
+    hrm: 0.5
+    reward: 2.0
+    llm: 0.25
+  training:
+    dimension: alignment
+    buffers:
+      model_key_ranker: ranker.sicql.v1
+      model_key_retriever: retriever.mrq.v1
+
   max_depth: 5
   branching_factor: 3
   ucb_weight: 1.41
   num_simulations: 50
   use_memory_for_fast_prompts: true
 
-  reuse_budget: 16
   casebook_budget: 200
   artifact_budget: 20
   min_diversity: 0.25
   improve_eps: 1e-6
-  exploration_eps: 0.1
-  retrieval_mode: fallback   # strict|fallback|union
-  quality_weights:
-    mars: 1.0
-    hrm: 0.5
-    reward: 2.0
-    llm: 0.25
   prune_after_runs: 1        # run pruning every N runs
 
   # mcts settings
@@ -161,6 +177,13 @@ modular_memento:
     # Key that it store the results of those reflections
     output_key: "tuning"
 
+  adapt:
+    enabled: true
+    top_k: 1            # adapt the top-1 item
+    improv_eps: 0.01    # keep only if revised improves ≥ 0.01
+    scorer_name: sicql  # optional; defaults to sicql
+    dimensions: null    # optional; null → default scorer dims
+
   mrq:
     similarity_threshold: 0.85
     top_k_similar: 20
@@ -197,3 +220,9 @@ modular_memento:
       - experimental_validity
       - novelty
       - simplicity
+
+  reporting:
+    enabled: true
+    path: reports/cbr_events.jsonl
+    sample_rate: 1.0   # set <1.0 to sample (if you add RNG)
+
