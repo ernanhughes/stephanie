@@ -104,7 +104,7 @@ pipeline:
       enabled: false
       iterations: 1
     - name: cot_dspy_generator
-      cls: stephanie.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
+      cls: stephanie.agents.dspy.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
       enabled: false
       iterations: 1
     - name: generation

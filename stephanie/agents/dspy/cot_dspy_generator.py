@@ -1,4 +1,4 @@
-# stephanie/agents/cot_dspy_generator.py
+# stephanie/agents/dspy/cot_dspy_generator.py
 """
 ChainOfThoughtDSPyGeneratorAgent
 
