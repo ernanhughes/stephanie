@@ -1,5 +1,7 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, JSON
+
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+                        String)
 
 from stephanie.models.base import Base
 

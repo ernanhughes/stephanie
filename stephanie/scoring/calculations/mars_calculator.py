@@ -1,8 +1,8 @@
 # stephanie/scoring/calculations/mars_calculator.py
 
 import json
-import os
 import math
+import os
 import traceback
 from datetime import datetime
 from statistics import mean
@@ -13,8 +13,8 @@ from scipy import stats
 
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.base_calculator import BaseScoreCalculator
-from stephanie.utils.serialization import default_serializer
 from stephanie.utils.json_sanitize import json_sanitize
+from stephanie.utils.serialization import default_serializer
 
 
 def _safe_scalar(x: Any) -> float | None:

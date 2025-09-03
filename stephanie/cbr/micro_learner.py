@@ -1,6 +1,7 @@
 # stephanie/cbr/micro_learner.py
 from typing import Dict, List
 
+
 class DefaultMicroLearner:
     def __init__(self, cfg, memory, logger):
         self.cfg, self.memory, self.logger = cfg, memory, logger

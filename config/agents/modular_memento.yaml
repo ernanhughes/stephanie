@@ -23,26 +23,39 @@ modular_memento:
     llm: 0.25
   prune_after_runs: 1        # run pruning every N runs
 
+  # mcts settings
+  scorer_name: sicql
+  eval_at: leaf
+  eval_stride: 2
+  value_estimator:
+    enabled: false
+  caching:
+    enabled: true
+    lru_size: 4096
+    tail_len: 8
+  max_lm_calls: 32
+  debug_prompts: false
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
 
   input_keys: ["goal"]   # add nodes
-  output_key: lats  # change
+  output_key: modular_memento  # change
   prompt_mode: file
-  prompt_file: lats.txt
+  prompt_file: modular_memento.txt
 
 
   # Global defaults (used by each dimension via merge)
-  trust_reference: llm           # or "hrm" / "mrq" — your upstream reference scorer
+  trust_reference: hrm           # or "hrm" / "llm" — your upstream reference scorer
   variance_threshold: 0.05       # collapse/ignore dims with very low variance
   metrics:                       # default metrics each dimension will compute/aggregate
     - agreement
     - dispersion
     - confidence
 
-  scorer_types:
+  enabled_scorers:
     - svm
     - mrq
     - sicql

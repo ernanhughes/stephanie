@@ -1,8 +1,10 @@
 # stephanie/engine/training_controller.py
 from __future__ import annotations
-from typing import Callable, Dict, List, Tuple, Optional
-from dataclasses import dataclass, field
+
 import time
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Tuple
+
 
 @dataclass
 class RetrainPolicy:

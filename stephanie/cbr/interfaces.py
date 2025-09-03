@@ -1,7 +1,8 @@
 # stephanie/cbr/interfaces.py
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 Context = Dict[str, Any]
 ScorableLike = Dict[str, Any]  # {id, text, ...}

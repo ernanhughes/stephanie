@@ -1,6 +1,8 @@
 # stephanie/cbr/retention_policy.py
 from typing import Dict, List, Optional
+
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
+
 
 class DefaultRetentionPolicy:
     def __init__(self, cfg, memory, logger, casebook_scope_mgr):

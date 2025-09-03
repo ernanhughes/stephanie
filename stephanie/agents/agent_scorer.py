@@ -12,20 +12,19 @@ Meta-agent that scores the outputs of other agents.
 - Suggests alternative agent options for improvement
 """
 
+import logging
+import time
 import traceback
 from typing import Dict, List
-
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable import Scorable
-from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.scoring.scorable_factory import TargetType
-from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
-from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.constants import SCORABLE_DETAILS
-import time
 from uuid import uuid4
 
-import logging
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.constants import SCORABLE_DETAILS
+from stephanie.data.score_corpus import ScoreCorpus
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 logger = logging.getLogger(__name__)
 

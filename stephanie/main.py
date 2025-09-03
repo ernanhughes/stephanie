@@ -15,7 +15,6 @@ from stephanie.memory.memory_tool import MemoryTool
 from stephanie.supervisor import Supervisor
 from stephanie.utils import generate_run_id, get_log_file_path
 
-import logging
 logger = logging.getLogger(__name__)
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
@@ -26,19 +25,19 @@ def run(cfg: DictConfig):
         # Setup logger and memory
         run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
         log_path = get_log_file_path(run_id, cfg)
-        logger = JSONLogger(log_path=log_path)
-        memory = MemoryTool(cfg=cfg, logger=logger)
+        log = JSONLogger(log_path=log_path)
+        memory = MemoryTool(cfg=cfg, logger=log)
 
         # Create supervisor
-        supervisor = Supervisor(cfg=cfg, memory=memory, logger=logger)
+        supervisor = Supervisor(cfg=cfg, memory=memory, logger=log)
 
         # ✅ Batch Mode: input_file provided
         if "input_file" in cfg and cfg.input_file:
-            print(f"📂 Batch mode: Loading from file: {cfg.input_file}")
+            logger.info(f"📂 Batch mode: Loading from file: {cfg.input_file}")
             result = await supervisor.run_pipeline_config(
                 {"input_file": cfg.input_file}
             )
-            print(
+            logger.info(
                 f"✅ Batch run completed for file: {cfg.input_file}: {str(result)[:100]}"
             )
             return

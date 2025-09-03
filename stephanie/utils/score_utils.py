@@ -1,8 +1,8 @@
 
+import logging
+
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable
-
-import logging
 
 logger = logging.getLogger(__name__)
 

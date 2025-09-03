@@ -1,6 +1,7 @@
 # stephanie/scoring/scorable.py
 from typing import Any, Dict
 
+
 class Scorable:
     def __init__(self, text: str, id: str = "", target_type: str = "custom", metadata: Dict[str, Any] = None):
         self._id = id

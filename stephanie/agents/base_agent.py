@@ -1,12 +1,10 @@
 # stephanie/agents/base_agent.py
-from multiprocessing import context
 import random
 import re
-import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import litellm
 import torch
@@ -16,9 +14,9 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
+from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
-from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.scoring.scoring_service import ScoringService
 
 

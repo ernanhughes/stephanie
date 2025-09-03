@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import (
-    Column, Integer, String, Float, DateTime,
-    ForeignKey, UniqueConstraint, Index
-)
+
+from sqlalchemy import (Column, DateTime, Float, ForeignKey, Index, Integer,
+                        String, UniqueConstraint)
 
 from stephanie.models.base import Base
 

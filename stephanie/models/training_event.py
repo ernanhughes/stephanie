@@ -1,9 +1,14 @@
 # stephanie/models/training_event.py
 from __future__ import annotations
+
 from datetime import datetime
-from sqlalchemy import Column, BigInteger, Integer, String, Text, Boolean, DateTime, Float
+
+from sqlalchemy import (BigInteger, Boolean, Column, DateTime, Float, Integer,
+                        String, Text)
 from sqlalchemy.dialects.postgresql import JSONB
+
 from stephanie.models.base import Base
+
 
 class TrainingEventORM(Base):
     __tablename__ = "training_events"

@@ -40,8 +40,8 @@ class ScorerAgent(BaseAgent):
             "embedding_types", ["hnet", "hf", "mxbai"]
         )
         # Configure which scorers to use
-        self.scorer_types = cfg.get(
-            "scorer_types",
+        self.enabled_scorers = cfg.get(
+            "enabled_scorers",
             ["svm", "mrq", "sicql", "ebt", "hrm", "contrastive_ranker"],
         )
 
@@ -56,7 +56,7 @@ class ScorerAgent(BaseAgent):
             "DocumentRewardScorerInitialized",
             {
                 "dimensions": self.dimensions,
-                "scorers": self.scorer_types,
+                "scorers": self.enabled_scorers,
                 "include_mars": self.include_mars,
                 "test_mode": self.test_mode,
             },
@@ -66,27 +66,27 @@ class ScorerAgent(BaseAgent):
         """Initialize all configured scorers"""
         scorers = {}
 
-        if "svm" in self.scorer_types:
+        if "svm" in self.enabled_scorers:
             scorers["svm"] = SVMScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "mrq" in self.scorer_types:
+        if "mrq" in self.enabled_scorers:
             scorers["mrq"] = MRQScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "sicql" in self.scorer_types:
+        if "sicql" in self.enabled_scorers:
             scorers["sicql"] = SICQLScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "ebt" in self.scorer_types:
+        if "ebt" in self.enabled_scorers:
             scorers["ebt"] = EBTScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "hrm" in self.scorer_types:
+        if "hrm" in self.enabled_scorers:
             scorers["hrm"] = HRMScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "contrastive_ranker" in self.scorer_types:
+        if "contrastive_ranker" in self.enabled_scorers:
             scorers["contrastive_ranker"] = ContrastiveRankerScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )

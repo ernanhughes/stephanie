@@ -1,6 +1,8 @@
 # stephanie/cbr/casebook_scope_manager.py
 from typing import Any, Dict, List, Optional
+
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
+
 
 class DefaultCasebookScopeManager:
     def __init__(self, cfg, memory, logger):

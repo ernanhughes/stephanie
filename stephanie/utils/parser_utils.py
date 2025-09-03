@@ -1,6 +1,6 @@
 # stephanie/utils/parser_utils.py
 import re
-from typing import List, Dict
+from typing import Dict, List
 
 
 def extract_hypotheses(text: str):

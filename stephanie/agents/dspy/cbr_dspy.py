@@ -11,14 +11,15 @@ Key features:
 - Returns hypotheses as Scorables for downstream scoring/ranking
 """
 
+import re
+from typing import List
+
 import dspy
 from dspy import InputField, OutputField, Signature
-from typing import List
-import re
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable import Scorable
 from stephanie.constants import GOAL, GOAL_TEXT
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 
 

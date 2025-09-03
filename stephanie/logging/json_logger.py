@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
-from logging.handlers import RotatingFileHandler
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, List 
+from typing import Any, Dict, List
 
 from stephanie.logging.icons import get_event_icon
 

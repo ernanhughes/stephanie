@@ -1,4 +1,5 @@
 # stephanie/memory/pipeline_reference_store.py
+import logging
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -6,8 +7,6 @@ from sqlalchemy.orm import Session
 from stephanie.models.pipeline_reference import PipelineReferenceORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory
-
-import logging
 
 logger = logging.getLogger(__name__)
 

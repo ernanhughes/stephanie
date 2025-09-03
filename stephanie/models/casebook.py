@@ -1,11 +1,12 @@
 # stephanie/models/casebook.py
 from __future__ import annotations
+
 from datetime import datetime
 
-from sqlalchemy import (
-    Column, Integer, String, DateTime, ForeignKey, Text, JSON as SA_JSON
-)
+from sqlalchemy import JSON as SA_JSON
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from stephanie.models.base import Base
 
 # If you’re on Postgres and prefer JSONB:

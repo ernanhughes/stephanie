@@ -2,7 +2,9 @@
 
 # ==== Context Keys ====
 AGENT = "Agent"
+AGENT_NAME = "agent_name"
 API_BASE = "api_base"
+INCLUDE_MARS = "include_mars"
 API_KEY = "api_key"
 BATCH_SIZE = "batch_size"
 CONTEXT = "context"

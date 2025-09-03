@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 
-def migrate_scores_from_json(session: Session, logger=None):
+def migrate_scores_from_json(session: Session):
     evaluations = session.query(EvaluationORM).all()
     count_inserted = 0
 
@@ -40,8 +40,6 @@ def migrate_scores_from_json(session: Session, logger=None):
             count_inserted += 1
 
     session.commit()
-    if logger:
-        logger.log("ScoreMigration", {"inserted": count_inserted})
     print(f"✅ Migration complete. Inserted {count_inserted} dimension scores.")
 
 

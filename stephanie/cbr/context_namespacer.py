@@ -1,7 +1,8 @@
 # stephanie/cbr/context_namespacer.py
 from __future__ import annotations
+
 from contextlib import contextmanager
-from typing import Dict, Any
+from typing import Any, Dict
 
 CTX_NS = "_MEMENTO"
 VARIANTS = "variants"

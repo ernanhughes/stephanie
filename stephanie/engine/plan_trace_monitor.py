@@ -8,8 +8,8 @@ from typing import Dict, Optional
 
 from omegaconf import OmegaConf
 
-from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.agents.agent_scorer import AgentScorerAgent
+from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.constants import PLAN_TRACE_ID, SCORABLE_DETAILS
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
@@ -92,7 +92,7 @@ class PlanTraceMonitor:
         goal = context.get("goal", {})
         essential_config = {
             k: v for k, v in OmegaConf.to_container(self.cfg, resolve=True).items()
-            if k in ["pipeline", "model", "scorer", "dimensions", "scorer_types"]
+            if k in ["pipeline", "model", "scorer", "dimensions", "enabled_scorers"]
         }
         
         # Create PlanTrace for this pipeline execution

@@ -1,9 +1,15 @@
 # stephanie/memory/training_store.py
 from __future__ import annotations
-import hashlib, time, random
-from typing import Iterable, List, Optional, Tuple, Dict
+
+import hashlib
+import random
+import time
+from typing import Dict, Iterable, List, Optional, Tuple
+
 from sqlalchemy.orm import Session
+
 from stephanie.models.training_event import TrainingEventORM
+
 
 def _sha1(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()

@@ -38,7 +38,7 @@ class PlanTraceScorerAgent(BaseAgent):
         self.include_mars = self.cfg.get("include_mars", True)
 
         # Configure which scorers to use
-        self.scorer_types = self.cfg.get("scorer_types", [
+        self.enabled_scorers = self.cfg.get("enabled_scorers", [
             "hrm", "sicql", "contrastive_ranker", "ebt", "mrq", "svm"
         ])
         # Initialize scorers
@@ -56,7 +56,7 @@ class PlanTraceScorerAgent(BaseAgent):
 
         self.logger.log("PlanTraceScorerInitialized", {
             "dimensions": self.dimensions,
-            "scorers": self.scorer_types,
+            "scorers": self.enabled_scorers,
             "high_agreement_threshold": self.high_agreement_threshold,
             "low_uncertainty_threshold": self.low_uncertainty_threshold
         })
@@ -65,27 +65,27 @@ class PlanTraceScorerAgent(BaseAgent):
         """Initialize all configured scorers"""
         scorers = {}
 
-        if "svm" in self.scorer_types:
+        if "svm" in self.enabled_scorers:
             scorers["svm"] = SVMScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "mrq" in self.scorer_types:
+        if "mrq" in self.enabled_scorers:
             scorers["mrq"] = MRQScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "sicql" in self.scorer_types:
+        if "sicql" in self.enabled_scorers:
             scorers["sicql"] = SICQLScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "ebt" in self.scorer_types:
+        if "ebt" in self.enabled_scorers:
             scorers["ebt"] = EBTScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "hrm" in self.scorer_types:
+        if "hrm" in self.enabled_scorers:
             scorers["hrm"] = HRMScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
-        if "contrastive_ranker" in self.scorer_types:
+        if "contrastive_ranker" in self.enabled_scorers:
             scorers["contrastive_ranker"] = ContrastiveRankerScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )

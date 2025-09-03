@@ -1,11 +1,14 @@
 # stephanie/memory/casebook_store.py
-from typing import List, Optional, Sequence
-from sqlalchemy.orm import Session
-from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
-from stephanie.models.case_goal_state import CaseGoalStateORM
+import hashlib
 # stephanie/memory/casebook_store.py
 import uuid
-import hashlib
+from typing import List, Optional, Sequence
+
+from sqlalchemy.orm import Session
+
+from stephanie.models.case_goal_state import CaseGoalStateORM
+from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+
 
 class CaseBookStore:
     def __init__(self, session: Session, logger=None):

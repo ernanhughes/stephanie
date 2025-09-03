@@ -108,7 +108,7 @@ class HRMScorer(BaseScorer):
             except Exception as e:
                 self.logger.log("HRMScorerInitError", {
                     "message": "Failed to load HRM model.",
-                    "dimension": self.hrm_dimension,
+                    "model_type": self.model_type,
                     "error": str(e)
                 })
                 self.model = None # Ensure model is None on failure
@@ -146,7 +146,11 @@ class HRMScorer(BaseScorer):
             model = self.models.get(dimension)
             if not model:
                 self.logger.log("HRMScorerError", {
-                    "message": f"HRM model not found for dimension '{dimension}'. Skipping.",
+                    "message": f"HRM model not found for dimension '{dimension}'"
+                    f" {self.memory.embedding.name}"
+                    f" {self.target_type}"
+                    f" {self.model_path}"
+                    f" {self.version}. Skipping.",
                     "goal_id": goal.get("id", "unknown"),
                     "scorable_id": scorable.id
                 })

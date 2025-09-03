@@ -1,5 +1,6 @@
 # stephanie/cbr/ab_validator.py
-from typing import Callable, Tuple, Dict
+from typing import Callable, Dict, Tuple
+
 
 class DefaultABValidator:
     def __init__(self, cfg, memory, logger, ns, assessor):

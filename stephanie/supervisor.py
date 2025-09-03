@@ -1,8 +1,8 @@
 # stephanie/supervisor.py
 
+import uuid
 from datetime import datetime, timezone
 from uuid import uuid4
-import uuid
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -10,23 +10,22 @@ from tabulate import tabulate
 
 from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
-                                 SKIP_IF_COMPLETED, STAGE)
+                                 SCORABLE_DETAILS, SKIP_IF_COMPLETED, STAGE)
 from stephanie.engine.context_manager import ContextManager
 from stephanie.engine.cycle_watcher import CycleWatcher
 from stephanie.engine.meta_confidence import MetaConfidenceTracker
 from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
 from stephanie.engine.self_validation import SelfValidationEngine
 from stephanie.engine.state_tracker import StateTracker
+from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.engine.training_controller import TrainingController
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
 from stephanie.reports import ReportFormatter
-from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.scoring.scoring_service import ScoringService
 from stephanie.utils.report_utils import get_stage_details
-from stephanie.constants import SCORABLE_DETAILS
 
 
 class PipelineStage:
@@ -65,10 +64,10 @@ class Supervisor:
 
         # Stub judgment and reward model evaluators
         def reward_model_fn(context, doc_a, doc_b):
-            return scoring_service.compare_documents(context, doc_a, doc_b)
+            return scoring_service.reward_compare("reward", context, doc_a, doc_b)
 
         def llm_judge_fn(context, doc_a, doc_b):
-            return scoring_service.compare_documents(context, doc_a, doc_b) 
+            return scoring_service.compare_pair("reward", context, doc_a, doc_b)
 
         validator = SelfValidationEngine(
             cfg=cfg,

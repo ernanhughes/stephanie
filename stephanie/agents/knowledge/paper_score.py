@@ -1,5 +1,6 @@
 # stephanie/agents/knowledge/paper_score.py
 
+import logging
 import time
 from typing import Dict
 
@@ -11,7 +12,6 @@ from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_manager import ScoringManager
 
-import logging
 logger = logging.getLogger(__name__)
 
 class PaperScoreAgent(BaseAgent):
@@ -27,8 +27,8 @@ class PaperScoreAgent(BaseAgent):
             ["novelty", "clarity", "relevance", "implementability", "alignment"],
         )
         self.include_mars = cfg.get("include_mars", True)
-        self.scorer_types = cfg.get(
-            "scorer_types",
+        self.enabled_scorers = cfg.get(
+            "enabled_scorers",
             ["svm", "mrq", "sicql", "ebt", "hrm", "contrastive_ranker"],
         )
 
@@ -38,7 +38,7 @@ class PaperScoreAgent(BaseAgent):
         logger.debug(
             "PaperScoreAgentInitialized:"
             f"dimensions={self.dimensions}, "
-            f"scorers={self.scorer_types}, "
+            f"scorers={self.enabled_scorers}, "
             f"include_mars={self.include_mars}"
         )
 

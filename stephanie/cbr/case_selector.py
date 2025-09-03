@@ -2,6 +2,7 @@
 import random
 from typing import List
 
+
 class DefaultCaseSelector:
     def __init__(self, cfg, memory, logger):
         self.cfg, self.memory, self.logger = cfg, memory, logger

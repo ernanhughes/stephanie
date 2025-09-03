@@ -50,7 +50,7 @@ def bundle_package(output_zip:str=None):
 
         logger.info(f"[+] Successfully created {output_zip}")
     except PermissionError as e:
-        logger.error(f"[!] Permission denied when trying to write {output_zip}. Try running as admin or changing output path.")
+        logger.error(f"[!] Permission denied when trying to write {output_zip} - {e}. Try running as admin or changing output path.")
     except Exception as e:
         logger.error(f"[!] Error during bundling: {e}", exc_info=True)
 

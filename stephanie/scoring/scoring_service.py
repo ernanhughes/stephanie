@@ -204,7 +204,7 @@ class ScoringService:
                 evaluator=evaluator or scorer_name,
                 model_name=model_name or (self._cfg_get("model", "name", default="unknown")),
             )
-        except Exception as e:
+        except Exception as e: 
             if self.logger:
                 self.logger.log("ScoringServicePersistError", {
                     "scorer": scorer_name,
@@ -329,40 +329,6 @@ class ScoringService:
             **{k: ctx.get(k) for k in ("goal_id", "plan_trace_id", "pipeline_run_id") if k in ctx},
         )
         return hrm
-
-    # ------------------------------------------------------------------ #
-    # SICQL Q helpers (EvaluationAttribute row with source='sicql')
-    # ------------------------------------------------------------------ #
-    def save_sicql_q(
-        self,
-        *,
-        scorable_id: str,
-        scorable_type: str,
-        q_value: float,
-        dimension: str = "alignment",
-        **evaluation_kwargs,
-    ):
-        """Store SICQL Q-value as an EvaluationAttribute (source='sicql')."""
-        return self.memory.scores.save_sicql_q(
-            scorable_id=scorable_id,
-            scorable_type=scorable_type,
-            q_value=q_value,
-            dimension=dimension,
-            **evaluation_kwargs,
-        )
-
-    def get_sicql_q(
-        self,
-        *,
-        scorable_id: str,
-        scorable_type: str,
-        dimension: Optional[str] = None,
-    ) -> Optional[float]:
-        return self.memory.scores.get_sicql_q(
-            scorable_id=scorable_id,
-            scorable_type=scorable_type,
-            dimension=dimension,
-        )
 
     # ------------------------------------------------------------------ #
     # Model readiness / lifecycle
@@ -532,6 +498,6 @@ class ScoringService:
         b = np.asarray(b, dtype=float)
         na = np.linalg.norm(a)
         nb = np.linalg.norm(b)
-        if na == 0.0 or nb == 0.0:
+        if np.isclose(na, 0.0) or np.isclose(nb, 0.0):
             return 0.0
         return float(np.dot(a, b) / (na * nb))

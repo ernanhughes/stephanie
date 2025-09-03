@@ -23,14 +23,13 @@ import traceback
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
-
 from stephanie.agents.dspy.mcts_reasoning import MCTSReasoningAgent
+from stephanie.constants import GOAL, GOAL_TEXT, PIPELINE_RUN_ID
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
-from stephanie.constants import GOAL, GOAL_TEXT, PIPELINE_RUN_ID
 
 # Namespace keys (all internal writes go under this)
 CTX_NS = "_MEMENTO"

@@ -1,18 +1,22 @@
 # stephanie/cbr/rank_and_analyze.py
 from typing import Dict, List, Tuple
-from stephanie.utils.score_utils import score_scorable
+
+from stephanie.constants import GOAL
+from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.constants import GOAL
+from stephanie.utils.score_utils import score_scorable
 
 
 class DefaultRankAndAnalyze:
     def __init__(self, cfg, memory, logger, ranker, mars=None):
-        self.cfg, self.memory, self.logger = cfg, memory, logger
-        self.ranker, self.mars = ranker, mars
+        self.cfg = cfg 
+        self.memory = memory
+        self.logger = logger
+        self.ranker = ranker
+        self.mars = mars
         self.dimensions = cfg.get("dimensions", ["alignment"])
-        self.enabled_scorers = cfg.get("enabled_scorers", ["sicql"])
+        self.enabled_scorers = cfg.get("enabled_scorers", ["sicql", "hrm"])
         self.scoring = None
 
     def _normalize(self, item) -> dict:
@@ -28,12 +32,12 @@ class DefaultRankAndAnalyze:
         }
 
     def run(
-        self, context, hypotheses: List[dict]
+        self, context, scorables: List[dict]
     ) -> Tuple[List[dict], Dict, Dict, List[str], Dict]:
         goal = context[GOAL]
         ranked, bundles = [], {}
 
-        if hypotheses:
+        if scorables:
             query = Scorable(
                 id=goal["id"],
                 text=goal["goal_text"],
@@ -43,9 +47,9 @@ class DefaultRankAndAnalyze:
                 Scorable(
                     id=h.get("id"),
                     text=h.get("text", ""),
-                    target_type=TargetType.HYPOTHESIS,
+                    target_type=h.get("target_type", TargetType.HYPOTHESIS),
                 )
-                for h in hypotheses
+                for h in scorables
             ]
             ranked_raw = (
                 self.ranker.rank(

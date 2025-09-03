@@ -1,15 +1,25 @@
 # stephanie/cbr/middleware.py
 from typing import Dict, Any, Callable, Awaitable, List
-from stephanie.constants import GOAL
+from stephanie.cbr.ab_validator import DefaultABValidator
+from stephanie.cbr.rank_and_analyze import DefaultRankAndAnalyze
+from stephanie.constants import GOAL, AGENT_NAME
 
 class CBRMiddleware:
     def __init__(self, cfg, memory, logger,
                  ns, scope_mgr, selector, ranker, retention, assessor,
                  promoter, tracker, ab_validator, micro_learner):
-        self.cfg, self.memory, self.logger = cfg, memory, logger
-        self.ns, self.scope_mgr, self.selector = ns, scope_mgr, selector
-        self.ranker, self.retention, self.assessor = ranker, retention, assessor
-        self.promoter, self.tracker, self.ab = promoter, tracker, ab_validator
+        self.cfg = cfg 
+        self.memory = memory 
+        self.logger = logger
+        self.ns = ns
+        self.scope_mgr = scope_mgr
+        self.selector = selector
+        self.ranker: DefaultRankAndAnalyze = ranker
+        self.retention = retention
+        self.assessor = assessor
+        self.promoter = promoter
+        self.tracker = tracker
+        self.ab: DefaultABValidator = ab_validator
         self.micro = micro_learner
         self.tag = cfg.get("casebook_tag", "default")
         self.retrieval_mode = cfg.get("retrieval_mode","fallback")
@@ -20,10 +30,10 @@ class CBRMiddleware:
 
     async def run(self, context: Dict[str, Any], base_agent_run: Callable[[Dict], Awaitable[Dict]], output_key: str) -> Dict[str, Any]:
         # minimal info for scope mgr
-        context["agent_name"] = context.get("agent_name") or context.get("AGENT_NAME") or "UnknownAgent"
+        context[AGENT_NAME] = context.get(AGENT_NAME) or "UnknownAgent"
 
         # Decide A/B
-        casebook_id = self.scope_mgr.home_casebook_id(context, context["agent_name"], self.tag)
+        casebook_id = self.scope_mgr.home_casebook_id(context, context[AGENT_NAME], self.tag)
         goal_id = context[GOAL]["id"]
         run_ix = self.tracker.bump_run_ix(casebook_id, goal_id)
         do_ab = self.tracker.should_run_ab(run_ix, self.ab_cfg.get("mode","periodic"), int(self.ab_cfg.get("period",5)))
@@ -36,12 +46,13 @@ class CBRMiddleware:
             # expose reuse_candidates only temporarily
             with self.ns.temp_key(context, "reuse_candidates", reuse_candidates), self._variant_output_redirect(context, variant, output_key):
                 # 1) run base agent (will look at context["reuse_candidates"] if it wants)
-                lats_result = await base_agent_run(context)
-                hypos = lats_result.get("hypotheses", []) or []
-                hypos = self._ensure_ids(hypos)
+                result = await base_agent_run(context)
+                # Notice we pass the output_key of the base agent
+                scorables = result.get(output_key, []) or []
+                scorables = self._ensure_ids(scorables)
 
                 # 2) rank + analyze
-                ranked, corpus, mars, recs, scores = self.ranker.run(context, hypos)
+                ranked, corpus, mars, recs, scores = self.ranker.run(context, scorables)
                 for r in ranked:
                     rid = r.get("id"); r["mars_confidence"] = (mars.get(rid, {}) or {}).get("agreement_score")
 
@@ -78,16 +89,21 @@ class CBRMiddleware:
         return context
 
     # -- helpers
-    async def _noop(self, x): return x
+    async def _noop(self, x): 
+        return x
 
-    def _ensure_ids(self, hypos: List[dict]) -> List[dict]:
+    def _ensure_ids(self, scorables: List[dict]) -> List[dict]:
         import hashlib, random
         out = []
-        for h in hypos:
-            if h.get("id"): out.append(h); continue
+        for h in scorables:
+            if h.get("id"): 
+                out.append(h) 
+                continue
             text = (h.get("text") or "").strip()
             sid = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16] if text else hashlib.sha1(str(random.random()).encode("utf-8")).hexdigest()[:16]
-            nh = dict(h); nh["id"] = sid; out.append(nh)
+            nh = dict(h)
+            nh["id"] = sid
+            out.append(nh)
         return out
 
     from contextlib import contextmanager
