@@ -79,8 +79,7 @@ class CBRMiddleware:
     def _init_reporter(self, cfg, logger, reporter):
         """
         Initialize the reporter, using config or provided reporter.
-        """
-
+        """ 
         if reporter is not None:
             return reporter
         rep_cfg = (
@@ -128,6 +127,7 @@ class CBRMiddleware:
         async def _run_variant(
             variant: str, use_casebook: bool, retain: bool, train_enabled: bool
         ):
+            stage_name = f"variant:{variant}"
             vb = self.ns.variant_bucket(context, variant)
             cases = (
                 self.scope_mgr.get_cases(
@@ -157,13 +157,22 @@ class CBRMiddleware:
             ):
                 await self.reporter.emit(
                     ctx=context,
-                    stage="variant_begin",
-                    variant=variant,
+                    stage=stage_name,
+                    status="running",
+                    summary=f"Variant {variant} begin",
+                    event="variant_begin",
                     use_casebook=use_casebook,
                 )
                 # 1) Base agent produces a fresh scorable (or few)
                 result = await base_agent_run(context)
                 produced = result.get(output_key, []) or []
+                await self.reporter.emit(
+                    ctx=context,
+                    stage=stage_name,
+                    event="agent_output",
+                    produced=len(produced),
+                    preview=_safe_texts(produced),
+                )
 
                 # Ensure IDs
                 produced = self._ensure_ids(produced)
@@ -191,8 +200,8 @@ class CBRMiddleware:
 
                 await self.reporter.emit(
                     ctx=context,
-                    stage="rank_done",
-                    variant=variant,
+                    stage=stage_name,
+                    event="rank_done",
                     n_ranked=len(ranked),
                     top_ids=[r.get("id") for r in ranked[:3]],
                     mars_dims=len(mars or {}),
@@ -229,20 +238,32 @@ class CBRMiddleware:
                 )
                 await self.reporter.emit(
                     ctx=context,
-                    stage="retain",
-                    variant=variant,
+                    stage=stage_name,
+                    event="retain",
                     retained=bool(retained_case_id),
+                    retained_case_id=retained_case_id,
                 )
                 if train_enabled:
                     self.micro.learn(context, ranked, mars)
-                    await self.reporter.emit(ctx=context, stage="micro_learn",
-                                             variant=variant)
-
+                    await self.reporter.emit(
+                        ctx=context, stage="micro_learn", variant=variant
+                    )
 
                 # 5) quality
                 q = self.assessor.quality(mars, scores)
-                await self.reporter.emit(ctx=context, stage="quality",
-                                         variant=variant, quality=float(q))
+                await self.reporter.emit(
+                    ctx=context,
+                    stage=stage_name,
+                    event="quality",
+                    quality=float(q),
+                )
+                await self.reporter.emit(
+                    ctx=context,
+                    stage=stage_name,
+                    status="done",
+                    summary=f"quality={q:.3f}, retained={bool(retained_case_id)}",
+                    finalize=True,
+                )
                 vb.update(
                     dict(
                         reuse_candidates=reuse_candidates,
@@ -290,6 +311,15 @@ class CBRMiddleware:
             context[output_key] = context.get(
                 self.ns.variant_output_key(winner), []
             )
+            await self.reporter.emit(
+                ctx=context,
+                stage="CBR",
+                event="ab_decision",
+                q_base=float(q_base),
+                q_cbr=float(q_cbr),
+                winner=winner,
+                improved=bool(improved),
+            )
             return context
 
         cbr_res = await _run_variant(
@@ -298,6 +328,14 @@ class CBRMiddleware:
         context[output_key] = context.get(
             self.ns.variant_output_key("cbr"), []
         )
+        await self.reporter.emit(
+            ctx=context,
+            stage="CBR",
+            status="done",
+            summary="CBR middleware finished",
+            finalize=True,
+        )
+
         return context
 
     async def _adapt_top_k(
@@ -462,13 +500,12 @@ class CBRMiddleware:
             pass
 
 
+# helper for tiny previews
 def _safe_texts(items, max_items=2, max_len=140):
     out = []
     for it in items[:max_items]:
         t = (it.get("text") or "") if isinstance(it, dict) else str(it)
         if t:
-            out.append(
-                t[:max_len].replace("\n", " ")
-                + ("…" if len(t) > max_len else "")
-            )
+            t = t.replace("\n", " ")
+            out.append(t[:max_len] + ("…" if len(t) > max_len else ""))
     return out
