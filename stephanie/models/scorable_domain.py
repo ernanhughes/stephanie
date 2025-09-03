@@ -1,9 +1,8 @@
 # stephanie/models/scorable_domain.py
 from datetime import datetime
 
-from sqlalchemy import (Column, DateTime, Float, ForeignKey, Integer, String,
+from sqlalchemy import (Column, DateTime, Float, Integer, String,
                         UniqueConstraint)
-from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
 

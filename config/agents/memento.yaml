@@ -87,11 +87,35 @@ memento:
       weight: 0.8
       description: "Topical fit to the goal and retrieved context."
 
+
+  casebook_tag: default
+  novelty_k: 6
+  quality_threshold: 0.72
+  retain_dedup_sim: 0.92
+  shadow_rollout: true
+
+  mcts:
+    num_simulations: 24
+    branching_factor: 2
+    top_k_leaves: 3
+    max_lm_calls: 48
+    eval_at: leaf
+    target_score: 0.78   # early stop
+    expand_mode: single_step
+    samples_per_expand: 2
+
+  selector:
+    rerank:
+      w_goal_sim: 0.55
+      w_quality: 0.30
+      w_recency_decay: 0.10
+      w_novelty_bonus: 0.05
+
   ab_validation:
     mode: periodic         # off | periodic | always
     period: 5              # every Nth run per (pipeline×agent×goal)
     control_tag: "control" # where to store baseline provenance (if you want)
-    delta_eps: 1e-6        # min improvement to count as better
+    delta_eps: 0.002        # min improvement to count as better
     seed_lock: true        # use same seed for baseline & cbr
     freeze_training: true  # disable online learning during baseline
 

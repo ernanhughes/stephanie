@@ -364,7 +364,7 @@ class CaseBookStore:
         # Base query for this scoped goal
         q = (
             self.session.query(CaseORM)
-            .filter(CaseORM.casebook_id == casebook_id, CaseORM.goal_id == goal_id)
+            .filter(CaseORM.casebook_id != casebook_id, CaseORM.goal_id == goal_id)
         )
 
         if excl:

@@ -31,7 +31,7 @@ class TraceStep(Signature):
 class ValueEstimator(Signature):
     state = InputField(desc="Current problem state")
     trace = InputField(desc="Reasoning steps taken")
-    goal  = InputField(desc="Goal text")
+    goal = InputField(desc="Goal text")
     score = OutputField(desc="Normalized score (0–1)")
     rationale = OutputField(desc="Why this path is promising")
 
@@ -49,12 +49,18 @@ class LoggingLM(dspy.LM):
             prompt = kwargs.get("prompt")
             messages = kwargs.get("messages")
             if prompt:
-                logger.debug("=== DSPy PROMPT ===\n%s\n====================", prompt)
+                logger.debug(
+                    "=== DSPy PROMPT ===\n%s\n====================", prompt
+                )
             if messages:
-                logger.debug("=== DSPy MESSAGES ===\n%s\n====================", messages)
+                logger.debug(
+                    "=== DSPy MESSAGES ===\n%s\n====================", messages
+                )
         result = super().__call__(*args, **kwargs)
         if self._debug_prompts:
-            logger.debug("=== DSPy RESPONSE ===\n%s\n====================", result)
+            logger.debug(
+                "=== DSPy RESPONSE ===\n%s\n====================", result
+            )
         return result
 
 
@@ -77,7 +83,9 @@ class MCTSReasoningNode:
         if self.visits == 0:
             return float("inf")
         exploitation = self.reward / max(1, self.visits)
-        exploration = ucb_weight * math.sqrt(max(1e-9, math.log(max(1, parent_visits)) / self.visits))
+        exploration = ucb_weight * math.sqrt(
+            max(1e-9, math.log(max(1, parent_visits)) / self.visits)
+        )
         return exploitation + exploration
 
 
@@ -107,14 +115,25 @@ class MCTSReasoningAgent(BaseAgent):
 
         self.scorer_name = cfg.get("scorer_name", "sicql")
         self.scorable_type = cfg.get("scorable_type", TargetType.HYPOTHESIS)
-        self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "implementability", "novelty", "relevance"])
+        self.dimensions = cfg.get(
+            "dimensions",
+            [
+                "alignment",
+                "clarity",
+                "implementability",
+                "novelty",
+                "relevance",
+            ],
+        )
 
         # evaluation schedule
-        self.eval_at = str(cfg.get("eval_at", "leaf"))   # "leaf" | "every_k"
+        self.eval_at = str(cfg.get("eval_at", "leaf"))  # "leaf" | "every_k"
         self.eval_stride = int(cfg.get("eval_stride", 2))
         ve_cfg = cfg.get("value_estimator", {}) or {}
         self.value_estimator_enabled = bool(ve_cfg.get("enabled", False))
-        self.value_estimator_at_leaf_only = bool(ve_cfg.get("at_leaf_only", True))
+        self.value_estimator_at_leaf_only = bool(
+            ve_cfg.get("at_leaf_only", True)
+        )
 
         # runtime containers
         self.nodes = []
@@ -133,8 +152,14 @@ class MCTSReasoningAgent(BaseAgent):
         dspy.configure(lm=lm)
 
         # expansion controls
-        self.expand_mode = str(cfg.get("expand_mode", "single_step"))  # "single_step" | "rollout"
-        self.samples_per_expand = int(cfg.get("samples_per_expand", max(1, cfg.get("branching_factor", 2))))
+        self.expand_mode = str(
+            cfg.get("expand_mode", "single_step")
+        )  # "single_step" | "rollout"
+        self.samples_per_expand = int(
+            cfg.get(
+                "samples_per_expand", max(1, cfg.get("branching_factor", 2))
+            )
+        )
 
         # budgets / caching (kept on the agent)
         self.max_lm_calls = int(cfg.get("max_lm_calls", 12))
@@ -146,23 +171,32 @@ class MCTSReasoningAgent(BaseAgent):
         self._cache_tail_len = int(cache_cfg.get("tail_len", 6))
 
         # early stopping if we hit an acceptable score
-        t = cfg.get("early_stop_threshold", None)                # e.g., 0.75 or 75
+        t = cfg.get("early_stop_threshold", None)  # e.g., 0.75 or 75
         self.early_stop_threshold = None if t is None else float(t)
-        if self.early_stop_threshold is not None and self.early_stop_threshold > 1.0:
-            self.early_stop_threshold /= 100.0                  # accept 75 as 0.75
+        if (
+            self.early_stop_threshold is not None
+            and self.early_stop_threshold > 1.0
+        ):
+            self.early_stop_threshold /= 100.0  # accept 75 as 0.75
 
-        self._best_so_far = (float("-inf"), None)               # (score, node)
-
+        self._best_so_far = (float("-inf"), None)  # (score, node)
+        self.top_k = int(cfg.get("top_k_leaves", 3))
 
         logger.debug(
             "MCTSInitialized depth=%s bf=%s sims=%s ucb=%s dims=%s max_lm_calls=%s eval_at=%s stride=%s",
-            self.max_depth, self.branching_factor, self.num_simulations, self.ucb_weight,
-            self.dimensions, self.max_lm_calls, self.eval_at, self.eval_stride
+            self.max_depth,
+            self.branching_factor,
+            self.num_simulations,
+            self.ucb_weight,
+            self.dimensions,
+            self.max_lm_calls,
+            self.eval_at,
+            self.eval_stride,
         )
 
     # ---------------- cache helpers ----------------
     def _cache_key(self, state: str, trace: list[str]) -> tuple:
-        return (hash(state), tuple(trace[-self._cache_tail_len:]))
+        return (hash(state), tuple(trace[-self._cache_tail_len :]))
 
     def _cache_get(self, key):
         if not self.cache_enabled:
@@ -191,7 +225,11 @@ class MCTSReasoningAgent(BaseAgent):
         # 👉 call the program's generator
         pred = self.lats_program.generator(state=state, trace=trace)
         self.calls_used += 1
-        nxt = pred.next_step.strip() if (pred and getattr(pred, "next_step", None)) else ""
+        nxt = (
+            pred.next_step.strip()
+            if (pred and getattr(pred, "next_step", None))
+            else ""
+        )
         self._cache_put(key, nxt)
         return nxt
 
@@ -204,36 +242,47 @@ class MCTSReasoningAgent(BaseAgent):
         root = self._create_node(state=goal_text, trace=[], parent=None)
         self.logger.log("MCTSReasoningAgentStart", {"goal": goal_text})
 
+        # best_so_far: (score, node). Ensure initialized each run.
+        self._best_so_far = (float("-inf"), None)
+
+        # MCTS loop
         for sim in range(self.num_simulations):
             node = self._select(root)
             if not self._is_terminal(node):
                 node = await self._expand(node, context)
+
             reward = self._evaluate(node, context)
+            # make robust if _evaluate returns None
+            reward = 0.0 if reward is None else float(reward)
+
             self._backpropagate(node, reward)
+
+            # update best-so-far (based on the just-evaluated node)
+            if reward > self._best_so_far[0]:
+                self._best_so_far = (reward, node)
+
             if (sim + 1) % 5 == 0:
                 self._log_progress(sim, root)
+
             # early stopping if we hit an acceptable score
-            if (
-                self.early_stop_threshold is not None
-                and self._best_so_far[0] >= self.early_stop_threshold
-            ):
-                self.logger.log("MCTSEarlyStop", {
-                    "after_sim": sim + 1,
-                    "score": round(self._best_so_far[0], 3),
-                    "threshold": self.early_stop_threshold,
-                })
+            if getattr(self, "early_stop_threshold", None) is not None and self._best_so_far[0] >= float(self.early_stop_threshold):
+                self.logger.log(
+                    "MCTSEarlyStop",
+                    {
+                        "after_sim": sim + 1,
+                        "score": round(self._best_so_far[0], 3),
+                        "threshold": float(self.early_stop_threshold),
+                    },
+                )
                 break
 
+        # choose best node if loop ended without updating best
+        best_node = self._best_so_far[1] or (self._best_child(root, 0) if self.children[root.id] else root)
 
-        best_node = (
-            self._best_so_far[1]
-            or (self._best_child(root, 0) if self.children[root.id] else root)
-        )
-        best_text = "\n".join(best_node.trace)
-
-        # optional LM value estimator
+        # Optional LM value estimator (for best node only; multi-candidate handled below)
         ve_score = None
         ve_rationale = None
+        best_text = "\n".join(best_node.trace)
         if self.value_estimator_enabled and (not self.value_estimator_at_leaf_only or self._is_terminal(best_node)):
             try:
                 ve = self.lats_program.value_estimator(state=best_node.state, trace=best_text, goal=goal_text)
@@ -242,46 +291,72 @@ class MCTSReasoningAgent(BaseAgent):
             except Exception as e:
                 self.logger.log("MCTSValueEstimatorError", {"error": str(e)})
 
-        # parse block (safe fallback to full text)
-        try:
-            parsed = parse_scored_block(best_text) or {}
-        except Exception:
-            parsed = {}
-        parsed_content = parsed.get("content") or best_text
+        # ---- MULTI-CANDIDATE EMISSION (top-K leaves) ----
+        top_k = int(getattr(self, "top_k", getattr(self, "top_k_leaves", 3)) or 3)
 
-        result = Scorable(
-            id=best_node.id,
-            text=parsed_content,
-            target_type=self.scorable_type,
-            metadata={
-                "mcts": {
-                    "best_node_score": float(best_node.score),
-                    "depth": int(len(best_node.trace)),
-                    "nodes_explored": int(len(self.nodes)),
-                    "lm_calls_used": int(self.calls_used),
+        leaves = self._collect_leaves(root)
+        for n in leaves:
+            self._ensure_scored(n, context)
+
+        leaves_sorted = sorted(leaves, key=lambda n: (n.score or 0.0), reverse=True)
+        picked = leaves_sorted[: max(1, top_k)]
+
+        scorables_out = []
+        for rank, n in enumerate(picked, start=1):
+            leaf_text = "\n".join(n.trace)
+            # parse block (safe fallback to full text)
+            try:
+                parsed = parse_scored_block(leaf_text) or {}
+            except Exception:
+                parsed = {}
+            content = parsed.get("content") or leaf_text
+
+            sc = Scorable(
+                id=n.id,
+                text=content,
+                target_type=self.scorable_type,
+                metadata={
+                    "mcts": {
+                        "rank": rank,
+                        "best_node_score": float(n.score or 0.0),
+                        "depth": int(len(n.trace)),
+                        "nodes_explored": int(len(self.nodes)),
+                        "lm_calls_used": int(getattr(self, "calls_used", 0)),
+                    },
+                    "llm_self_report": {
+                        "score": parsed.get("llm_score"),
+                        "rationale": parsed.get("rationale"),
+                        "bullets": parsed.get("bullets"),
+                    },
+                    # only attach VE details to rank 1 to keep payloads small
+                    "value_estimator": {
+                        "enabled": self.value_estimator_enabled if rank == 1 else False,
+                        "score": ve_score if rank == 1 else None,
+                        "rationale": ve_rationale if rank == 1 else None,
+                    },
+                    "raw_block": leaf_text,
                 },
-                "llm_self_report": {
-                    "score": parsed.get("llm_score"),
-                    "rationale": parsed.get("rationale"),
-                    "bullets": parsed.get("bullets"),
-                },
-                "value_estimator": {
-                    "enabled": self.value_estimator_enabled,
-                    "score": ve_score,
-                    "rationale": ve_rationale,
-                },
-                "raw_block": best_text,
+            )
+            scorables_out.append(sc.to_dict())
+
+        context.setdefault(self.output_key, []).extend(scorables_out)
+
+        # compact summary
+        self.logger.log(
+            "MCTSReasoningAgentComplete",
+            {
+                "goal": goal_text,
+                "produced": len(scorables_out),
+                "top_score": round(picked[0].score, 3) if picked else None,
+                "top_depth": len(picked[0].trace) if picked else None,
+                "nodes_explored": len(self.nodes),
+                "lm_calls_used": int(getattr(self, "calls_used", 0)),
+                "early_stop_hit": bool(
+                    getattr(self, "early_stop_threshold", None) is not None
+                    and self._best_so_far[0] >= float(self.early_stop_threshold)
+                ),
             },
         )
-
-        context.setdefault(self.output_key, []).append(result.to_dict())
-        self.logger.log("MCTSReasoningAgentComplete", {
-            "goal": goal_text,
-            "best_score": round(best_node.score, 3),
-            "trace_length": len(best_node.trace),
-            "nodes_explored": len(self.nodes),
-            "lm_calls_used": self.calls_used,
-        })
         return context
 
     # ---------------- core MCTS ----------------
@@ -327,7 +402,11 @@ class MCTSReasoningAgent(BaseAgent):
                     break
                 rollout_steps.append(step)
                 cur_trace.append(step)
-            completions = rollout_steps[-self.branching_factor:] if rollout_steps else []
+            completions = (
+                rollout_steps[-self.branching_factor :]
+                if rollout_steps
+                else []
+            )
             for comp in completions:
                 child = self._create_node(
                     state=f"{node.state}\n{comp}",
@@ -337,11 +416,14 @@ class MCTSReasoningAgent(BaseAgent):
                 self.children[node.id].append(child)
                 children.append(child)
 
-        self.logger.log("MCTSExpand", {
-            "node_id": node.id,
-            "new_children": [c.id for c in children],
-            "completions": completions,
-        })
+        self.logger.log(
+            "MCTSExpand",
+            {
+                "node_id": node.id,
+                "new_children": [c.id for c in children],
+                "completions": completions,
+            },
+        )
         return children[0] if children else node
 
     def _should_eval(self, node: MCTSReasoningNode) -> bool:
@@ -377,11 +459,14 @@ class MCTSReasoningAgent(BaseAgent):
 
         node.score = score
         node.reward += score
-        self.logger.log("MCTSEvaluate", {
-            "node_id": node.id,
-            "trace_len": len(node.trace),
-            "score": round(score, 3),
-        })
+        self.logger.log(
+            "MCTSEvaluate",
+            {
+                "node_id": node.id,
+                "trace_len": len(node.trace),
+                "score": round(score, 3),
+            },
+        )
         return score
 
     def _backpropagate(self, node, reward):
@@ -398,18 +483,58 @@ class MCTSReasoningAgent(BaseAgent):
             node = node.parent
 
     def _best_child(self, node, ucb_weight=None):
-        return max(self.children[node.id], key=lambda c: c.uct_value(node.visits, ucb_weight or self.ucb_weight))
+        return max(
+            self.children[node.id],
+            key=lambda c: c.uct_value(
+                node.visits, ucb_weight or self.ucb_weight
+            ),
+        )
 
     def _is_terminal(self, node):
         return len(node.trace) >= self.max_depth
 
     def _log_progress(self, sim, root):
         best = self._best_child(root, 0) if self.children[root.id] else root
-        self.logger.log("MCTSReasoningProgress", {
-            "simulation": sim + 1,
-            "percent_complete": f"{(sim + 1) / self.num_simulations * 100:.1f}%",
-            "nodes_explored": len(self.nodes),
-            "best_score": round(best.score, 3),
-            "trace_preview": best.trace[-3:],
-            "lm_calls_used": self.calls_used,
-        })
+        self.logger.log(
+            "MCTSReasoningProgress",
+            {
+                "simulation": sim + 1,
+                "percent_complete": f"{(sim + 1) / self.num_simulations * 100:.1f}%",
+                "nodes_explored": len(self.nodes),
+                "best_score": round(best.score, 3),
+                "trace_preview": best.trace[-3:],
+                "lm_calls_used": self.calls_used,
+            },
+        )
+
+    def _collect_leaves(self, root) -> list:
+        """DFS to collect nodes with no children (frontier leaves)."""
+        leaves, stack = [], [root]
+        while stack:
+            n = stack.pop()
+            kids = self.children.get(n.id, [])
+            if not kids:
+                leaves.append(n)
+            else:
+                stack.extend(kids)
+        return leaves
+
+    def _ensure_scored(self, node, context) -> float:
+        """Guarantee node.score is a float. If missing, evaluate on-demand."""
+        if node.score is not None and abs(node.score) > 1e-9:
+            return float(node.score)
+        text = "\n".join(node.trace)
+        if text in self.score_cache:
+            score = self.score_cache[text]
+        else:
+            sc = Scorable(text=text, target_type=self.scorable_type)
+            bundle = self.scoring.score(
+                self.scorer_name,
+                scorable=sc,
+                context=context,
+                dimensions=self.dimensions,
+            )
+            score = float(bundle.aggregate()) / 100.0
+            self.score_cache[text] = score
+        node.score = score
+        return score

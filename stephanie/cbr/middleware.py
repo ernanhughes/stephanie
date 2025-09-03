@@ -1,5 +1,5 @@
 # add imports
-from multiprocessing import context
+import numpy as np
 from typing import Dict, Any, Callable, Awaitable, List, Optional
 from stephanie.cbr.adaptor import DefaultAdaptor
 from stephanie.scoring.scorable import Scorable
@@ -184,9 +184,15 @@ class CBRMiddleware:
                     preview=_safe_texts(produced),
                 )
 
-                # 2) Rank + analyze (fresh + retrieved-as-scorables — ranker.run should already merge if you pass both)
+                # 2) Deduplicate semantically
+                seeds = _dedupe_semantic(produced, self.memory.embedding, thresh=0.92)
+
+
+                # 3) Rank + analyze (fresh + retrieved-as-scorables — ranker.run should already merge if you pass both)
                 #    If your ranker expects the consolidated list, combine explicitly:
-                seeds = produced  # fresh
+
+
+
                 # Convert 'reuse_candidates' (cases) to scorables if needed:
                 seeds += [self._case_to_scorable(c) for c in reuse_candidates]
                 ranked, corpus, mars, recs, scores = self.ranker.run(
@@ -207,7 +213,7 @@ class CBRMiddleware:
                     mars_dims=len(mars or {}),
                 )
 
-                # 3) ADAPT/REVISE (NEW): take top-k, produce revised items, score them, include if improved
+                # 4) ADAPT/REVISE (NEW): take top-k, produce revised items, score them, include if improved
                 if self.adapt_enabled and ranked:
                     revised = await self._adapt_top_k(
                         context, ranked, top_k=self.adapt_top_k
@@ -230,7 +236,7 @@ class CBRMiddleware:
                             n_ranked=len(ranked),
                         )
 
-                # 4) retain & micro-learn
+                # 5) retain & micro-learn
                 retained_case_id = (
                     self.retention.retain(context, ranked, mars, scores)
                     if retain
@@ -249,7 +255,7 @@ class CBRMiddleware:
                         ctx=context, stage="micro_learn", variant=variant
                     )
 
-                # 5) quality
+                # 6) quality
                 q = self.assessor.quality(mars, scores)
                 await self.reporter.emit(
                     ctx=context,
@@ -445,21 +451,36 @@ class CBRMiddleware:
             )
         return 0.0
 
-    def _case_to_scorable(self, case: Dict[str, Any]) -> Dict[str, Any]:
+    def _case_to_scorable(self, case):
         """
-        Convert a retrieved case record to the scorable dict shape expected by the ranker.
-        Implement this to map your case schema → {'id','text','target_type','metadata'}
+        Normalize case (could be str ID, dict, or ORM) into a Scorable dict.
         """
+        # Case is just an ID string
+        if isinstance(case, str):
+            return {
+                "id": case,
+                "text": "",  # text will be resolved later
+                "target_type": "document",
+                "metadata": {},
+            }
+
+        # Case is already a dict
+        if isinstance(case, dict):
+            return {
+                "id": case.get("id"),
+                "text": case.get("text", ""),
+                "target_type": case.get("target_type", "document"),
+                "metadata": case.get("metadata", {}),
+            }
+
+        # Case is an ORM or object
         return {
-            "id": case.get("id"),
-            "text": case.get("text") or case.get("content") or "",
-            "target_type": case.get("target_type") or TargetType.HYPOTHESIS,
+            "id": getattr(case, "id", None),
+            "text": getattr(case, "text", ""),
+            "target_type": getattr(case, "target_type", "document"),
             "metadata": {
-                "provenance": {
-                    "type": "retrieved",
-                    "source": "casebook",
-                    "casebook_id": case.get("casebook_id"),
-                }
+                "rank": getattr(case, "rank", None),
+                "role": getattr(case, "role", None),
             },
         }
 
@@ -500,6 +521,16 @@ class CBRMiddleware:
             pass
 
 
+def _dedupe_semantic(scorables, embed, thresh=0.92):
+    kept, vecs = [], []
+    for s in scorables:
+        txt = (s.get("text") or "").strip()
+        v = np.asarray(embed.get_or_create(txt), dtype=float)
+        if vecs and max(_cos(v, u) for u in vecs) >= thresh:
+            continue
+        vecs.append(v); kept.append(s)
+    return kept
+
 # helper for tiny previews
 def _safe_texts(items, max_items=2, max_len=140):
     out = []
@@ -509,3 +540,11 @@ def _safe_texts(items, max_items=2, max_len=140):
             t = t.replace("\n", " ")
             out.append(t[:max_len] + ("…" if len(t) > max_len else ""))
     return out
+
+
+
+def _cos(a, b):
+    na = np.linalg.norm(a); nb = np.linalg.norm(b)
+    if na == 0 or nb == 0: return 0.0
+    return float(np.dot(a, b) / (na * nb))
+

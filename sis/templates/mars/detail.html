@@ -9,7 +9,8 @@
     <div class="card-body">
       <div class="d-flex align-items-baseline justify-content-between flex-wrap">
         <h2 class="card-title mb-2">MARS Results — Run #{{ pipeline_run_id }}</h2>
-        <a href="/mars" class="btn btn-outline-secondary btn-sm">Back to all results</a>
+        <a href="/pipeline/{{ pipeline_run_id }}" class="btn btn-outline-secondary btn-sm">⬅ Back to pipeline</a>
+        <a href="/mars" class="btn btn-outline-secondary btn-sm">🪐All MARS results</a>
       </div>
       <div class="text-muted">Dimensions in this view:
         {% if mars_list %}

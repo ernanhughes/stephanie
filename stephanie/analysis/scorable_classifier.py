@@ -113,4 +113,4 @@ class ScorableClassifier:
             for key in self.domain_keys:
                 if key in context and isinstance(context[key], (list, tuple)):
                     return [str(t).strip() for t in context[key] if t]
-        return []
+I

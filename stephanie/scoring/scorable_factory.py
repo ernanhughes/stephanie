@@ -5,6 +5,7 @@ from typing import Optional
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
+from stephanie.models.casebook import CaseORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
@@ -17,6 +18,7 @@ class TargetType:
     AGENT_OUTPUT = "agent_output"
     DOCUMENT = "document"
     GOAL = "goal"
+    CASE = "case"
     HYPOTHESIS = "hypothesis"
     CARTRIDGE = "cartridge"
     TRIPLE = "triple"
@@ -88,6 +90,10 @@ class ScorableFactory:
         elif isinstance(obj, DocumentORM):
             text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
             return Scorable(id=obj.id, text=text, target_type=TargetType.DOCUMENT)
+
+        elif isinstance(obj, CaseORM):
+            text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
+            return Scorable(id=obj.id, text=text, target_type=TargetType.CASE)
 
         elif isinstance(obj, PlanTrace):
             text = " ".join([

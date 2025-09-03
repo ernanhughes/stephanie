@@ -7,7 +7,7 @@ class DefaultCaseSelector:
     def __init__(self, cfg, memory, logger):
         self.cfg, self.memory, self.logger = cfg, memory, logger
 
-    @staticmethod
+    @staticmethod 
     def _top_scorables_from_case(case, k=3) -> List[str]:
         out = []
         try:

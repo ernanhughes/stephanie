@@ -5,7 +5,7 @@ from sqlalchemy import Column, DateTime, Index, Integer, String
 from stephanie.models.base import Base
 
 
-class ScorableEmbeddingORM(Base):
+class ScorableEmbeddingORM(Base): 
     __tablename__ = "scorable_embeddings"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -18,7 +18,7 @@ class ScorableEmbeddingORM(Base):
     embedding_id = Column(Integer, nullable=False)
     embedding_type = Column(String, nullable=False)               # e.g., 'hnet', 'hf', 'ollama'
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     __table_args__ = (
         Index("ix_scorable_owner", "scorable_type", "scorable_id"),

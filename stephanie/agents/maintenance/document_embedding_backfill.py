@@ -4,44 +4,48 @@ from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
+from stephanie.models.casebook import CaseORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
+from stephanie.models.plan_trace import PlanTraceORM
 from stephanie.models.prompt import PromptORM
 from stephanie.scoring.scorable_factory import ScorableFactory
 
 
-class DocumentEmbeddingBackfillAgent(BaseAgent):
+class ScorableEmbeddingBackfillAgent(BaseAgent):
     ORM_MAP = {
         "document": DocumentORM,
         "prompt": PromptORM,
         "hypothesis": HypothesisORM,
+        "case": CaseORM,
+        "plan_trace": PlanTraceORM
     }
 
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
-        self.document_type = cfg.get("document_type", "document")
+        self.scorable_type = cfg.get("scorable_type", "case")
         self.embed_full_document = cfg.get("embed_full_document", True)
         self.embedding_type = self.memory.embedding.name  # e.g. "hf_embeddings"
 
-        if self.document_type not in self.ORM_MAP:
-            raise ValueError(f"Unsupported document_type: {self.document_type}")
+        if self.scorable_type not in self.ORM_MAP:
+            raise ValueError(f"Unsupported scorable_type: {self.scorable_type}")
 
-        self.orm_cls = self.ORM_MAP[self.document_type]
+        self.orm_cls = self.ORM_MAP[self.scorable_type]
 
     async def run(self, context: dict) -> dict:
         session = self.memory.session
         updated, skipped = 0, 0
 
         # Step 1: Fetch all documents of the given type
-        documents = session.query(self.orm_cls).all()
-        total_docs = len(documents)
+        scorables = session.query(self.orm_cls).all()
+        total_docs = len(scorables)
 
         # Wrap in tqdm progress bar
-        for doc in tqdm(documents, desc=f"Backfilling {self.document_type} embeddings", unit="doc"):
+        for scorable in tqdm(scorables, desc=f"Backfilling {self.scorable_type} embeddings", unit="doc"):
             # Step 2: Check if embedding already exists in the embedding store
-            exists = self.memory.scorable_embeddings.get_by_document(
-                document_id=str(doc.id),
-                document_type=self.document_type,
+            exists = self.memory.scorable_embeddings.get_by_scorable(
+                document_id=str(scorable.id),
+                document_type=self.scorable_type,
                 embedding_type=self.embedding_type,
             )
             if exists:
@@ -49,7 +53,7 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
                 continue
 
             # Step 3: Choose text for embedding
-            scorable = ScorableFactory.from_orm(doc, mode="full")
+            scorable = ScorableFactory.from_orm(scorable, mode="full")
 
             # Step 4: Generate embedding
 
@@ -57,7 +61,7 @@ class DocumentEmbeddingBackfillAgent(BaseAgent):
             embedding_id = self.memory.scorable_embeddings.get_or_create(scorable)
 
             self.logger.log("ScorableEmbeddingBackfilled", {
-                "document_id": str(doc.id),
+                "document_id": str(scorable.id),
                 "document_type": self.document_type,
                 "embedding_id": embedding_id,
                 "embedding_type": self.embedding_type,

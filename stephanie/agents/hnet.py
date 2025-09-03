@@ -662,7 +662,7 @@ class HNetValidationExperiment(BaseAgent):
         # Generate visualizations
         self._generate_visualizations(report)
         
-        self.logger.log("ReportGenerated", {
+        self.logger.log("HNetReportGenerated", {
             "report_path": report_path
         })
         
