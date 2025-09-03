@@ -4,8 +4,8 @@ import numpy as np
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT
-from stephanie.scoring.proximity_scorer import ProximityScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
 
 
 class ProximityAgent(ScoringMixin, BaseAgent):
@@ -17,7 +17,7 @@ class ProximityAgent(ScoringMixin, BaseAgent):
       - clusters of related hypotheses (graft candidates)
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.similarity_threshold = cfg.get("similarity_threshold", 0.75)
         self.max_graft_candidates = cfg.get("max_graft_candidates", 3)
@@ -27,7 +27,7 @@ class ProximityAgent(ScoringMixin, BaseAgent):
         self.metrics = cfg.get("metrics", {})
 
     async def run(self, context: dict) -> dict:
-        documents = self.get_hypotheses(context)
+        documents = self.get_scorables(context)
         proximity_results = []
 
         # --- score incoming hypotheses against goal
@@ -38,7 +38,7 @@ class ProximityAgent(ScoringMixin, BaseAgent):
                 scorable=scorable,
                 metrics=self.metrics,
             )
-            self.logger.log("ProximityScoreComputed", score)
+            self.logger.log("ProximityScoreComputed", score.to_dict())
             proximity_results.append(score.to_dict())
 
         # --- fetch DB-side neighbors for the goal

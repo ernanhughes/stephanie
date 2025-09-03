@@ -11,20 +11,21 @@ from stephanie.agents.maintenance.model_evolution_manager import \
     ModelEvolutionManager
 from stephanie.scoring.model.ebt_model import EBTModel
 from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.mrq.preference_pair_builder import PreferencePairBuilder
-from stephanie.scoring.mrq.value_predictor import ValuePredictor
+from stephanie.scoring.model.value_predictor import ValuePredictor
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.model_utils import get_model_path, save_model_with_version
 
 
 class TrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_type = cfg.get("model_type", "ebt")
         self.output_key = cfg.get("output_key", "training_pairs")
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.encoder = TextEncoder().to(self.device)
         self.value_predictor = ValuePredictor().to(self.device)

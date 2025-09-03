@@ -1,0 +1,224 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: default
+  - scoring/service/default
+  - mars/default
+
+  - scorer/reward/default
+  - scorer/ebt/default
+  - scorer/hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
+  - scorer/epistemic_hrm/default
+
+
+
+  - agents/arxiv_search
+  - agents/modular_memento
+  - agents/memento
+  - agents/generation
+  - agents/cbr_dspy
+  - agents/cartridge
+  - agents/document_loader
+  - agents/document_profiler
+  - agents/hrm_trainer
+  - agents/document_reward_scorer
+  - agents/icl_reasoning
+  - agents/knowledge_loader
+  - agents/planner_reuse
+  - agents/planner_revise
+  - agents/knowledge_db_loader
+  - agents/pipeline_judge
+  - agents/paper_score
+  - agents/agent_scorer
+  - agents/plan_trace_scorer
+  - logging/json_logger
+
+embeddings:
+  backend: hnet
+
+goal:
+  goal_text: >
+    # How can I use Case-Based Reasoning (CBR) to build a system that continually learns
+    # from its own past cases, adapting
+    # to solve increasingly complex research tasks.
+    Design a CBR-driven research agent that learns from prior cases and adapts its plans to tackle progressively harder problems. What core components and data flows should it have?
+
+    # How would you architect a continual-learning CBR loop (retrieve→reuse→revise) so the system improves with every research task it completes?”
+    # Propose a CBR framework that mines past traces, ranks them, and adapts them to new goals, enabling lifelong learning for complex research workflows.”
+    # Outline a case-based planner that reuses successful plans, scores results, and updates its memory to solve increasingly challenging research objectives.”
+    # Give me a step-by-step method to build a CBR system that retrieves similar cases, adapts them, and logs outcomes to steadily raise performance on research tasks.”
+    # What would a scalable CBR architecture look like for an autonomous research agent that continuously learns from prior experiments and plans?”
+    # Explain how to implement retrieval + adaptation + retention so a CBR agent can handle harder research problems over time using its own history.”
+    # How can a research assistant use CBR to select relevant past plans, adapt them, and record feedback signals to drive continual improvement?”
+    # Propose an evaluation-first CBR loop where past cases are ranked by similarity and value, adapted to a new goal, and the results are persisted for future reuse.”
+    # Describe a practical blueprint for a CBR-based planner that leverages embeddings, ranking, and revision to iteratively improve at open-ended research tasks.”
+
+  goal_type: "strategic"
+  goal_category: "meta_reasoning"
+  focus_area: "case_based_learning"
+  strategy: "retrieve_reuse_revise_retain"
+  difficulty: "high"
+  expected_formats:
+    - "case_trace"
+    - "scorable_rankings"
+    - "revised_plan"
+    - "retained_cartridge"
+
+# goal:
+#   goal_text: >
+#     Demonstrate a Case-Based Reasoning (CBR) system that continually learns
+#     from its own past cases (PlanTraces, evaluations, cartridges), adapting
+#     to solve increasingly complex research tasks.
+#   goal_type: "strategic"
+#   goal_category: "meta_reasoning"
+#   focus_area: "case_based_learning"
+#   strategy: "retrieve_reuse_revise_retain"
+#   difficulty: "high"
+#   expected_formats:
+#     - "case_trace"
+#     - "scorable_rankings"
+#     - "revised_plan"
+#     - "retained_cartridge"
+
+# goal:
+#   goal_text: >
+#     Explore how Case-Based Reasoning (CBR) can accelerate scientific
+#     discovery by reusing past reasoning traces to solve novel problems
+#     across multiple domains.
+#   goal_type: "strategic"
+#   goal_category: "meta_reasoning"
+#   focus_area: "cross_domain_adaptation"
+#   strategy: "retrieve_reuse_revise_retain"
+#   difficulty: "high"
+#   expected_formats:
+#     - "case_trace"
+#     - "adapted_plan"
+#     - "cross_domain_comparison"
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+pipeline:
+  name: cbr
+  tag: cbr
+  description: >
+    Implementation of the Case-Based Reasoning (CBR) framework from the 
+    Memento paper (https://arxiv.org/pdf/2508.16153).
+    This pipeline demonstrates the full CBR loop — retrieve, reuse, revise, retain —
+    by grounding reasoning in past cases (PlanTraces, evaluations, scorables),
+    adapting them to new tasks, and storing new cases for continual self-improvement.
+  stages:
+     - name: arxiv_search
+       agent_role: retrieve
+       description: "📥 Retrieve: search Arxiv for candidate documents (knowledge cases)"
+       cls: stephanie.agents.knowledge.arxiv_search.ArxivSearchAgent
+       enabled: false
+       iterations: 1
+
+     - name: document_loader
+       description: "Load and summarize candidate documents"
+       cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
+       enabled: false
+       iterations: 1
+
+     - name: document_profiler
+       description: "Profile documents into structured sections for reuse"
+       cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
+       enabled: false
+       iterations: 1
+
+     - name: knowledge_loader
+       agent_role: revise
+       description: "Revise: integrate new evidence into Stephanie’s knowledge base"
+       cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
+       enabled: false
+       iterations: 1
+
+     - name: knowledge_db_loader
+       description: "Load prior retained knowledge from the database for retrieval"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    
+
+     - name: cbr_dspy
+       description: "Generate hypotheses from documents using a dspy process"
+       cls: stephanie.agents.dspy.cbr_dspy.CBRDSPyAgent
+       enabled: true
+       iterations: 1    
+
+     - name: generation
+       description: "Generate new candidate documents based on existing knowledge"
+       cls: stephanie.agents.generation.GenerationAgent
+       enabled: true
+       iterations: 1
+
+     - name: memento
+       description: "Generate hypotheses from documents using the Memento framework"
+       cls: stephanie.agents.dspy.memento.MementoAgent
+       enabled: true
+       iterations: 1
+
+     - name: modular_memento
+       description: "Generate hypotheses from documents using the Modular Memento framework"
+       cls: stephanie.agents.dspy.modular_memento.ModularMementoAgent
+       enabled: true
+       iterations: 1    
+
+     - name: paper_score
+       description: "Evaluate case quality: relevance, novelty, clarity"
+       cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
+       enabled: false
+       iterations: 1
+
+     # HRM Training if you have specific documents you may want to retrain the model Don't understand
+     - name: hrm_trainer
+       description: "Train a model to predict document values based on HRM"
+       cls: stephanie.agents.maintenance.hrm_trainer.HRMTrainerAgent
+       enabled: false
+       iterations: 1
+
+     - name: planner_reuse
+       agent_role: reuse
+       description: "♻️ Reuse: adapt past PlanTraces and evaluations to the current goal"
+       cls: stephanie.agents.knowledge.planner_reuse.PlannerReuseAgent
+       enabled: false
+       iterations: 1
+
+     - name: planner_revise
+       agent_role: revise
+       description: "🔀 Revise: improve candidate plans based on feedback"
+       cls: stephanie.agents.knowledge.planner_revise.PlannerReviseAgent
+       enabled: false
+       iterations: 1
+
+     - name: document_reward_scorer
+       description: "Refine document scores using reward models (optional)"
+       cls: stephanie.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
+       enabled: false
+       iterations: 1
+
+     - name: cartridge
+       agent_role: retain
+       description: "🧩 Retain: generate reusable cartridges (belief units) from revised knowledge"
+       cls: stephanie.agents.knowledge.cartridge.CartridgeAgent
+       enabled: false
+       iterations: 1
+
+     - name: icl_reasoning
+       description: "Apply in-context reasoning to test retained knowledge against the goal"
+       cls: stephanie.agents.icl_reasoning.ICLReasoningAgent
+       enabled: false
+       iterations: 1

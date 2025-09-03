@@ -60,11 +60,11 @@ class BaseTrainer:
         def model_exists(self) -> bool:
             return False
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.embedding_type = memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dim = memory.embedding.dim
         self.hdim = memory.embedding.hdim
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

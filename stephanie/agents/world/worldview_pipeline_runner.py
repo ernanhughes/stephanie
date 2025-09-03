@@ -14,7 +14,7 @@ class WorldviewPipelineRunner(BaseAgent):
     Orchestrates execution based on worldview goals and configuration.
     """
 
-    def __init__(self, cfg, memory=None, logger=None, full_cfg=None):
+    def __init__(self, cfg, memory, logger, full_cfg=None):
         super().__init__(cfg, memory, logger)
         self.full_cfg = full_cfg
         self.pipeline_registry_path = cfg.get(

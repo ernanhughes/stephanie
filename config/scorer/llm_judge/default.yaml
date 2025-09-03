@@ -1,0 +1,12 @@
+name: llm_judge
+dimension: quality
+
+All right prompt_pair: prompts/eval/llm_judge_pair.jinja
+prompt_single: prompts/eval/llm_judge_single.jinja
+
+comparison_notes: ""
+
+model:
+  name: ollama/qwen3
+  api_base: http://localhost:11434
+  api_key: null

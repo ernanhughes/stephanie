@@ -2,7 +2,7 @@ from stephanie.agents.ranking import RankingAgent
 
 @pytest.mark.asyncio
 async def test_ranking_agent_returns_sorted():
-    agent = RankingAgent(cfg={}, memory=None, logger=None)
+    agent = RankingAgent(cfg={}, memory, logger)
 
     input_data = {
         "hypotheses": [

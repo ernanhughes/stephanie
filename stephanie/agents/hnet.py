@@ -1,6 +1,7 @@
 # stephanie/validation/hnet_validation.py
 import json
 import os
+import time
 import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -12,10 +13,11 @@ from tqdm import tqdm
 
 # Import our core PlanTrace components
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.knowledge import KnowledgeRetriever
-from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 # Import reasoning components
-from stephanie.agents.reasoning import ReasoningAgent
+from stephanie.agents.icl_reasoning import ICLReasoningAgent
+from stephanie.agents.knowledge import KnowledgeRetriever
+from stephanie.agents.knowledge.arxiv_search import ArxivSearchAgent
+from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
@@ -26,46 +28,49 @@ from stephanie.utils.serialization import to_serializable
 class HNetValidationExperiment(BaseAgent):
     """Comprehensive validation of HNet and PlanTrace system in one end-to-end experiment"""
     
-    def __init__(self, cfg=None, memory=None, logger=None):
-        self.cfg = cfg or get_default_cfg()
+    def __init__(self, cfg, memory, logger):
+        self.cfg = cfg
         self.memory = memory
-        self.logger = logger or JSONLogger()
+        self.logger = logger
         
         # Initialize core components
         self.plan_trace_monitor = PlanTraceMonitor(self.cfg, self.memory, self.logger)
+        self.plan_trace_monitor.scoring = self.scoring
         self.plan_trace_scorer = PlanTraceScorerAgent(self.cfg, self.memory, self.logger)
-        self.mars_calculator = MARSCalculator(self.cfg, self.logger)
-        
+        self.plan_trace_monitor.scoring = self.scoring
+        self.mars_calculator = MARSCalculator(self.cfg, self.memory, self.logger)
+        self.mars_calculator.scoring = self.scoring
+        self.num_papers = cfg.get("num_papers", 100)
         # Initialize embedding approaches
         self.embedding_approaches = {
             "ollama_summary": {
-                "embedder": OllamaEmbedder(self.cfg),
+                "embedder": self.memory.ollama,
                 "content_type": "summary"
             },
             "ollama_full": {
-                "embedder": OllamaEmbedder(self.cfg),
+                "embedder": self.memory.ollama,
                 "content_type": "full"
             },
             "hf_summary": {
-                "embedder": HuggingFaceEmbedder(self.cfg),
+                "embedder": self.memory.hf,
                 "content_type": "summary"
             },
             "hf_full": {
-                "embedder": HuggingFaceEmbedder(self.cfg),
+                "embedder": self.memory.hf,
                 "content_type": "full"
             },
             "hnet_summary": {
-                "embedder": HNetEmbedder(self.cfg),
+                "embedder": self.memory.hnet,
                 "content_type": "summary"
             },
-            "hnet_full": {I
-                "embedder": HNetEmbedder(self.cfg),
+            "hnet_full": {
+                "embedder": self.memory.hnet,
                 "content_type": "full"
             }
         }
         
         # Initialize reasoning agent
-        self.reasoning_agent = ReasoningAgent(self.cfg, self.memory, self.logger)
+        self.reasoning_agent = ICLReasoningAgent(self.cfg, self.memory, self.logger)
         self.knowledge_retriever = KnowledgeRetriever(self.cfg, self.memory, self.logger)
         
         # Results storage
@@ -84,7 +89,7 @@ class HNetValidationExperiment(BaseAgent):
     async def run_old(self, context: dict) -> Dict:
         
         # Run experiment
-        experiment = HNetValidationExperiment(memory=memory, logger=logger)
+        experiment = HNetValidationExperiment(memory=self.memory, logger=self.logger)
         results = experiment.run(num_papers=100)
         
         # Print key findings
@@ -111,16 +116,16 @@ class HNetValidationExperiment(BaseAgent):
 
 
 
-    def run(self, num_papers=100):
+    def run(self, context):
         """Run the complete HNet validation experiment"""
         try:
             self.logger.log("ExperimentStart", {
                 "message": "Starting HNet validation experiment",
-                "num_papers": num_papers
+                "num_papers": self.num_papers
             })
             
             # 1. Load arXiv papers (100 papers on self-improving AI)
-            papers = self._load_arxiv_papers(num_papers)
+            papers = self._load_arxiv_papers(self.num_papers)
             self.logger.log("PapersLoaded", {
                 "count": len(papers),
                 "sample_titles": [p["title"][:50] + "..." for p in papers[:3]]
@@ -136,8 +141,8 @@ class HNetValidationExperiment(BaseAgent):
             scored_traces = self._score_traces(all_traces)
             
             # 4. Analyze results with ScoreCorpus and MARS
-            self._analyze_results(scored_traces)
-            
+            self._analyze_results(scored_traces, context)
+
             # 5. Demonstrate self-improvement by applying insights
             self._demonstrate_self_improvement(papers)
             
@@ -160,6 +165,9 @@ class HNetValidationExperiment(BaseAgent):
             raise
     
     def _load_arxiv_papers(self, count=100) -> List[Dict]:
+
+        agent = ArxivSearchAgent(self.cfg, self.memory, self.logger)
+        
         """Load arXiv papers on self-improving AI (cs.AI category)"""
         # In a real implementation, this would fetch papers from arXiv API
         # For this demo, we'll simulate loading papers
@@ -392,8 +400,8 @@ class HNetValidationExperiment(BaseAgent):
                 "error": str(e)
             })
             raise
-    
-    def _analyze_results(self, traces: List[PlanTrace]):
+
+    def _analyze_results(self, traces: List[PlanTrace], context: dict):
         """Analyze results using ScoreCorpus and MARS"""
         self.logger.log("AnalysisStart", {
             "message": "Starting results analysis"
@@ -404,10 +412,17 @@ class HNetValidationExperiment(BaseAgent):
             corpus = ScoreCorpus()
             for trace in traces:
                 corpus.add_trace(trace)
-            
+
+            self.logger.log("ScoreCorpusSummary", {
+                "dims": corpus.dimensions,
+                "scorers": corpus.scorers,
+                "shape_example": corpus.get_dimension_matrix(self.dimensions[0]).shape
+            })
+
+
             # Run MARS analysis
-            mars_results = self.mars_calculator.calculate(corpus)
-            
+            mars_results = self.mars_calculator.calculate(corpus, context)
+
             # Analyze by approach
             approach_results = {}
             for approach in self.embedding_approaches.keys():
@@ -647,7 +662,7 @@ class HNetValidationExperiment(BaseAgent):
         # Generate visualizations
         self._generate_visualizations(report)
         
-        self.logger.log("ReportGenerated", {
+        self.logger.log("HNetReportGenerated", {
             "report_path": report_path
         })
         

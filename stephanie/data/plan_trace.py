@@ -19,21 +19,20 @@ class ExecutionStep:
     output_text: str  # The textual output or result of this step
 
     # The scores assigned to this step's output by various scorers (SICQL, EBT, etc.)
-    # against the original goal. 
     scores: Optional[ScoreBundle] 
 
     pipeline_run_id: Optional[int] = None
-    input_text: Optional[str] = None  # Optional input text for this step, if applicable
-    agent_name: Optional[str] = None  # Name of the agent that executed this step, if applicable
-    plan_trace_id: Optional[int] = None  # Foreign key to the PlanTrace this step belongs to
-    step_order: Optional[int] = None  # Foreign key to the PlanTrace this step belongs to
-    # Optional: Embedding of the output_text. Can be computed on demand if not stored.
+    input_text: Optional[str] = None  
+    agent_name: Optional[str] = None  
+    plan_trace_id: Optional[int] = None  
+    step_order: Optional[int] = None  
 
-    # Optional: Any other metadata specific to this step
+    # --- NEW ---
+    agent_role: Optional[str] = None  
+    # e.g. "retrieve", "reuse", "revise", "retain", or domain-specific roles
+
     attributes: Optional[Dict[str, Any]] = field(default_factory=dict) 
-    
-    # Optional: Any other metadata specific to this step
-    extra_data: Optional[Dict[str, Any]] = field(default_factory=dict) 
+    meta: Optional[Dict[str, Any]] = field(default_factory=dict) 
    
     agent_config: Optional[Dict] = None
     input_type: Optional[str] = None
@@ -50,7 +49,6 @@ class ExecutionStep:
     zsa: Optional[Union[List[float], Dict]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization"""
         result = {
             "step_id": self.step_id,
             "pipeline_run_id": self.pipeline_run_id,
@@ -60,6 +58,7 @@ class ExecutionStep:
             "input_text": self.input_text,
             "output_text": self.output_text,
             "agent_name": self.agent_name,
+            "agent_role": self.agent_role,   
             "input_type": self.input_type,
             "output_type": self.output_type,
             "start_time": self.start_time,
@@ -69,22 +68,16 @@ class ExecutionStep:
             "output_size": self.output_size,
             "policy_logits": self.policy_logits,
             "uncertainty": self.uncertainty,
-            "entropy": self.entropy
+            "entropy": self.entropy,
         }
-        
-        # Handle agent_config safely
         if self.agent_config:
             result["agent_config"] = self.agent_config
-            
-        # Handle error information
         if self.error:
             result["error"] = self.error
-            
-        # Handle scores
         if self.scores:
-            result["scores"] = self.scores.to_dict() if hasattr(self.scores, "to_dict") else self.scores
-            
-        # Handle zsa (can be complex tensor data)
+            result["scores"] = (
+                self.scores.to_dict() if hasattr(self.scores, "to_dict") else self.scores
+            )
         if self.zsa is not None:
             if isinstance(self.zsa, list):
                 result["zsa"] = self.zsa
@@ -92,21 +85,20 @@ class ExecutionStep:
                 result["zsa"] = self.zsa.tolist()
             else:
                 result["zsa"] = str(self.zsa)
-                
         return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ExecutionStep":
-        """Create from dictionary"""
         return cls(
             step_id=data["step_id"],
-            pipeline_run_id=data["pipeline_run_id"],
-            step_order=data["step_order"],
+            pipeline_run_id=data.get("pipeline_run_id"),
+            step_order=data.get("step_order"),
             step_type=data["step_type"],
             description=data["description"],
             input_text=data.get("input_text"),
             output_text=data.get("output_text"),
             agent_name=data.get("agent_name"),
+            agent_role=data.get("agent_role"), 
             agent_config=data.get("agent_config"),
             input_type=data.get("input_type"),
             output_type=data.get("output_type"),
@@ -120,7 +112,7 @@ class ExecutionStep:
             policy_logits=data.get("policy_logits"),
             uncertainty=data.get("uncertainty"),
             entropy=data.get("entropy"),
-            zsa=data.get("zsa")
+            zsa=data.get("zsa"),
         )
 
 
@@ -128,9 +120,9 @@ class ExecutionStep:
 class PlanTrace:
     """
     Represents the complete execution trace of a reasoning plan.
-    This is the primary input for the EpistemicTraceEncoder and subsequently 
-    the Epistemic Plan HRM model.
+    Extended with fields for introspection and self-repair.
     """
+
     # --- Core Identifiers ---
     trace_id: str # Unique identifier for this specific trace/execution
     
@@ -154,6 +146,7 @@ class PlanTrace:
     # The scores assigned to the final output by various scorers.
     final_scores: Optional[ScoreBundle] = None
 
+    # --- Epistemic Labels ---
     # --- Target for Epistemic Plan HRM Training ---
     # This is the label the HRM model will try to predict.
     # It represents the "epistemic quality" of this reasoning process.
@@ -161,16 +154,23 @@ class PlanTrace:
     # Source of the target quality score (e.g., "llm_judgment", "proxy_metric_avg_sicql_q")
     target_epistemic_quality_source: Optional[str] = None 
 
+    # --- Extended Cognitive Metadata ---
+    retrieved_cases: Optional[List[Dict[str, Any]]] = field(default_factory=list)
+    strategy_used: Optional[str] = None  # e.g. "CBR", "MCTS", "Greedy"
+    reward_signal: Optional[Dict[str, Any]] = field(default_factory=dict)  # structured reward info
+    skills_used: Optional[List[str]] = field(default_factory=list)  # e.g. ["legal_doc_agent", "search_tool"]
+    repair_links: Optional[List[str]] = field(default_factory=list)  # trace_ids of self-repairs
+
     # --- Metadata ---
     created_at: str = "" # ISO format timestamp
     # Any other execution metadata (e.g., time taken, DSPy optimizer version)
-    extra_data: Optional[Dict[str, Any]] = field(default_factory=dict) 
+    meta: Optional[Dict[str, Any]] = field(default_factory=dict) 
 
 
     def to_dict(self) -> dict:
         result = {
             "trace_id": self.trace_id,
-            "pipeline_run_id": self.pipeline_run_id,   
+            "pipeline_run_id": self.pipeline_run_id,
             "goal_text": self.goal_text,
             "goal_id": self.goal_id,
             "input_data": self.input_data,
@@ -180,8 +180,13 @@ class PlanTrace:
             "final_scores": self.final_scores.to_dict() if self.final_scores else None,
             "target_epistemic_quality": self.target_epistemic_quality,
             "target_epistemic_quality_source": self.target_epistemic_quality_source,
+            "retrieved_cases": self.retrieved_cases,
+            "strategy_used": self.strategy_used,
+            "reward_signal": self.reward_signal,
+            "skills_used": self.skills_used,
+            "repair_links": self.repair_links,
             "created_at": self.created_at,
-            "extra_data": self.extra_data,
+            "meta": self.meta,
         }
         return result
 
@@ -210,12 +215,29 @@ class PlanTrace:
         lines = [f"## Plan Trace: {self.trace_id}", f"**Goal:** {self.goal_text}\n"]
         for step in self.execution_steps:
             step_id_str = str(step.step_id) if step.step_id is not None else "N/A"
-            lines.append(f"### Step {step_id_str}: {step.description} ({step.step_type}) ")
+            
+            # Include agent_role if present
+            role_str = f"[role: {step.agent_role}]" if step.agent_role else ""
+            
+            lines.append(
+                f"### Step {step_id_str}: {step.description} "
+                f"({step.step_type}) {role_str}"
+            )
             lines.append(f"Output: `{step.output_text}`")
-            lines.append(step.scores.to_report(f"Step {step_id_str}: Scores"))
+            
+            if step.scores:
+                # Only call .to_report if scores is a ScoreBundle
+                if hasattr(step.scores, "to_report"):
+                    lines.append(step.scores.to_report(f"Step {step_id_str}: Scores"))
+                else:
+                    lines.append(f"Scores: {step.scores}")
+        
         lines.append(f"\n**Final Output:** `{self.final_output_text}`")
         lines.append("Final Scores:")
-        lines.append(self.final_scores.to_report("Trace Final Scores") if self.final_scores else "No final scores available.")
+        if self.final_scores:
+            lines.append(self.final_scores.to_report("Trace Final Scores"))
+        else:
+            lines.append("No final scores available.")
         return "\n".join(lines)
 
     def save_as_markdown(self, reports_dir: str = "reports") -> str:
@@ -255,8 +277,9 @@ class PlanTrace:
                 scores=ScoreBundle.from_dict(step["scores"]),
                 plan_trace_id=step.get("plan_trace_id"),
                 step_order=step.get("step_order"),
-                extra_data=step.get("extra_data", {}),
+                meta=step.get("extra_data", {}),
                 agent_config=step.get("agent_config"),
+                agent_role=step.get("agent_role"),
                 input_type=step.get("input_type"),
                 output_type=step.get("output_type"),
                 start_time=step.get("start_time"),
@@ -276,16 +299,22 @@ class PlanTrace:
 
         return cls(
             trace_id=data["trace_id"],
-            pipeline_run_id=data["pipeline_run_id"],
+            pipeline_run_id=data.get("pipeline_run_id"),
             goal_text=data["goal_text"],
             goal_id=data["goal_id"],
             input_data=data["input_data"],
             plan_signature=data["plan_signature"],
             execution_steps=execution_steps,
             final_output_text=data["final_output_text"],
-            final_scores=ScoreBundle.from_dict(data["final_scores"]),
+            final_scores=ScoreBundle.from_dict(data["final_scores"])
+                if data.get("final_scores") else None,
             target_epistemic_quality=data.get("target_epistemic_quality"),
             target_epistemic_quality_source=data.get("target_epistemic_quality_source"),
+            retrieved_cases=data.get("retrieved_cases", []),
+            strategy_used=data.get("strategy_used"),
+            reward_signal=data.get("reward_signal", {}),
+            skills_used=data.get("skills_used", []),
+            repair_links=data.get("repair_links", []),
             created_at=data.get("created_at", ""),
             extra_data=data.get("extra_data", {}),
         )

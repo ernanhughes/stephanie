@@ -12,9 +12,9 @@ import dspy
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.hrm_scorer import HRMScorer  # Optional
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.hrm_scorer import HRMScorer  # Optional
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 
 
 # Define a Signature for a single LATS-style reasoning step
@@ -258,7 +258,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                             description=step_description,
                             output_text=step_output_text,
                             scores=sicql_scores, # Primary scores for the trace
-                            extra_data=step_meta,
+                            meta=step_meta,
                         )
                         execution_steps.append(exec_step)
 
@@ -324,7 +324,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                     target_epistemic_quality=final_scores.aggregate(), # To be filled later
                     target_epistemic_quality_source=self.sicql_scorer.model_type,
                     created_at="", # Can be set to current timestamp
-                    extra_data={
+                    meta={
                         "goal_id": goal_id, 
                         "executor_agent": self.__class__.__name__,
                         "source": "simplified_lats_execution",
@@ -340,6 +340,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
 
                 # --- Store the PlanTrace and ExecutionSteps in Memory ---
                 plan_trace_id = self.memory.plan_traces.add(executed_trace)
+                
                 for i, step in enumerate(execution_steps):
                     step.plan_trace_id = plan_trace_id
                     step.step_order = i + 1

@@ -13,14 +13,14 @@ class IdeaEvaluatorAgent(BaseAgent):
     - Preference learning via MR.Q Self Evaluator
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.strategy = cfg.get("strategy", "llm")  # llm | mrq
         self.evaluator = self._init_evaluator()
         self.top_k = cfg.get("top_k", 5)
 
     async def run(self, context: dict) -> dict:
-        hypotheses = self.get_hypotheses(context)
+        hypotheses = self.get_scorables(context)
         goal = context.get(GOAL)
         baseline = context.get("baseline_hypotheses", {})
 

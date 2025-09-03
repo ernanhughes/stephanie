@@ -1,5 +1,6 @@
 # stephanie/supervisor.py
 
+import uuid
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -9,35 +10,36 @@ from tabulate import tabulate
 
 from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
-                                 SKIP_IF_COMPLETED, STAGE)
+                                 SCORABLE_DETAILS, SKIP_IF_COMPLETED, STAGE)
 from stephanie.engine.context_manager import ContextManager
 from stephanie.engine.cycle_watcher import CycleWatcher
 from stephanie.engine.meta_confidence import MetaConfidenceTracker
 from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
 from stephanie.engine.self_validation import SelfValidationEngine
 from stephanie.engine.state_tracker import StateTracker
+from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.engine.training_controller import TrainingController
 from stephanie.logging.json_logger import JSONLogger
-from stephanie.memory import MemoryTool
+from stephanie.memory.memory_tool import MemoryTool
 from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
-from stephanie.reports import ReportFormatter
-from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
+from stephanie.reporting import ReportFormatter
+from stephanie.scoring.scoring_service import ScoringService
 from stephanie.utils.report_utils import get_stage_details
 
 
 class PipelineStage:
-    def __init__(self, name: str, config: dict, stage_dict: dict):
+    def __init__(self, name: str, cfg: dict, stage_dict: dict):
         self.name = name
-        self.description = config.get("description", "")
-        self.cls = config.get("cls", "")
-        self.enabled = config.get("enabled", True)
-        self.iterations = config.get("iterations", 1)
+        self.agent_role = cfg.get("agent_role", "")
+        self.description = cfg.get("description", "")
+        self.cls = cfg.get("cls", "")
+        self.enabled = cfg.get("enabled", True)
+        self.iterations = cfg.get("iterations", 1)
         self.stage_dict = stage_dict
 
-
 class Supervisor:
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         self.memory = memory or MemoryTool(cfg=cfg.db, logger=logger)
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
@@ -54,13 +56,18 @@ class Supervisor:
         # Initialize and register core components
         state_tracker = StateTracker(cfg, self.memory, self.logger)
         confidence_tracker = MetaConfidenceTracker(cfg, self.memory, self.logger)
+        scoring_service = ScoringService(cfg, self.memory, self.logger)
+
+        def trainer_fn(goal, dimension):
+            print(f"[TRAIN] Training RM for goal: {goal}, dimension: {dimension}")
+            # Insert actual training logic here
 
         # Stub judgment and reward model evaluators
-        def reward_model_fn(goal, doc_a, doc_b):
-            return "a" if len(doc_a) >= len(doc_b) else "b"
+        def reward_model_fn(context, doc_a, doc_b):
+            return scoring_service.reward_compare("reward", context, doc_a, doc_b)
 
-        def llm_judge_fn(goal, doc_a, doc_b):
-            return "a"  # Placeholder logic
+        def llm_judge_fn(context, doc_a, doc_b):
+            return scoring_service.compare_pair("reward", context, doc_a, doc_b)
 
         validator = SelfValidationEngine(
             cfg=cfg,
@@ -69,10 +76,6 @@ class Supervisor:
             reward_model=reward_model_fn,
             llm_judge=llm_judge_fn,
         )
-
-        def trainer_fn(goal, dimension):
-            print(f"[TRAIN] Training RM for goal: {goal}, dimension: {dimension}")
-            # Insert actual training logic here
 
         training_controller = TrainingController(
             cfg=cfg,
@@ -83,12 +86,13 @@ class Supervisor:
             trainer_fn=trainer_fn,
         )
 
+        register("scoring_service", scoring_service)
         register("state_tracker", state_tracker)
         register("confidence_tracker", confidence_tracker)
         register("cycle_watcher", CycleWatcher(cfg, self.memory, self.logger))
         register("training_controller", training_controller)
         register("self_validation", validator)
-        register("plan_trace_monitor", PlanTraceMonitor(cfg, self.memory, self.logger))
+        register("plan_trace_monitor", PlanTraceMonitor(cfg, self.memory, self.logger, scoring_service))
         self.logger.log(
             "SupervisorComponentsRegistered",
             {
@@ -152,7 +156,7 @@ class Supervisor:
         pipeline_list = [stage.name for stage in self.pipeline_stages]
 
         # Initialize context via ContextManager
-        self.context["goal"] = goal_dict
+        self.context[GOAL] = goal_dict
         self.context[RUN_ID] = run_id
         self.context[PIPELINE] = pipeline_list
         self.context[PROMPT_DIR] = self.cfg.paths.prompts
@@ -162,7 +166,7 @@ class Supervisor:
             "tag": self.cfg.get("pipeline", {}).get("tag", "default"),
             "description": self.cfg.get("pipeline", {}).get("description", ""),
             "goal_id": goal_dict.get("id"),
-            "embedding_type": self.memory.embedding.type,
+            "embedding_type": self.memory.embedding.name,
             "embedding_dimensions": self.memory.embedding.dim,
             "run_id": run_id,
             "pipeline": pipeline_list,  # Should be list of strings like ["generation", "judge"]
@@ -221,6 +225,7 @@ class Supervisor:
         final_output_key = ""
         for stage_idx, stage in enumerate(self.pipeline_stages):
             stage_details = {
+                "index": stage_idx, 
                 STAGE: stage.name,
                 "agent": stage.cls.split(".")[-1],
                 "status": "⏳ running", 
@@ -251,6 +256,8 @@ class Supervisor:
                 if "full_cfg" in cls.__init__.__code__.co_varnames:
                     agent_args["full_cfg"] = self.cfg
                 agent = cls(**agent_args)
+                agent.scoring = get_registered_component("scoring_service")
+
                 self.logger.log("PipelineStageStart", {STAGE: stage.name})
                 
                 for i in range(stage.iterations or 1): 
@@ -274,25 +281,26 @@ class Supervisor:
                     if context["REPORTS"]:
                         context["REPORTS"][-1].setdefault("entries", []).extend(stage_entries)
                 except Exception as rep_e:
-                    self.logger.log("StageReportFailed", {
+                    self.logger.log("StageReportFail Right well that should work but it didn't ed", {
                         "stage": stage.name,
                         "error": str(rep_e)
                     })
 
-                self.context.save_to_file()
+                # self.context.save_to_file(prefix=f"context_{stage.name}")
 
 
                 self._save_pipeline_stage(stage, context, stage_dict)
                 self.logger.log("PipelineStageEnd", {STAGE: stage.name})
-                
+
+                context[SCORABLE_DETAILS] = agent.get_scorable_details()
+
                 # Record stage completion
-                plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
+                await plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
                 
                 stage_details["status"] = "✅ completed"
                 stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
                 
             except Exception as e:
-                # Record stage error
                 plan_trace_monitor.handle_stage_error(stage.name, e, stage_idx)
                 
                 self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
@@ -569,6 +577,17 @@ class Supervisor:
             "strategy": pipeline_run.strategy,
             "model_config": pipeline_run.run_config,
             PROMPT_DIR: self.cfg.paths.prompts,
+            "trace": [],
+            "REPORTS": [],
+            "LOGS": [],
+            "METRICS": [],
+            "metadata": {
+                "run_id": run_id or str(uuid.uuid4()),
+                "start_time": datetime.now().isoformat(),
+                "last_modified": datetime.now().isoformat(),
+                "token_count": 0,
+                "components": {}
+            },
         }
 
         # Optional: override pipeline stages to match recorded run

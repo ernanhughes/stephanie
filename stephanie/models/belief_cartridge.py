@@ -35,9 +35,6 @@ class BeliefCartridgeORM(Base):
     memcube_id = Column(String, index=True)  # Reference to MemCube
     debug_log = Column(JSON)  # Dictionary of debug info
 
-    # Relationships
-    evaluations = relationship("EvaluationORM", back_populates="belief_cartridge", cascade="all, delete-orphan")
-
     def latest_score_dict(self) -> Optional[dict]:
         """
         Return the most recent EvaluationORM's dimension scores as a dictionary.

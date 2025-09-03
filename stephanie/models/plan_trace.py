@@ -3,7 +3,8 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (ARRAY, JSON, DateTime, Float, ForeignKey, Integer,
+                        String, Text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from stephanie.models.base import Base
@@ -13,6 +14,7 @@ from stephanie.models.evaluation import \
 # Assuming GoalORM exists
 from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
+from stephanie.models.plan_trace_revision import PlanTraceRevisionORM
 
 # If EmbeddingORM is not directly importable or you just need the ID:
 # You can define a foreign key without the full ORM relationship if not needed for navigation here.
@@ -21,9 +23,6 @@ from stephanie.models.pipeline_run import PipelineRunORM
 class PlanTraceORM(Base):
     """
     ORM to store metadata and key data for a PlanTrace object.
-    The full serialized PlanTrace (including steps) can be stored separately
-    (e.g., in a file or a large text/blob column) and linked via path or ID.
-    This ORM focuses on queryable metadata and relationships.
     """
 
     __tablename__ = "plan_traces"
@@ -31,58 +30,52 @@ class PlanTraceORM(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     pipeline_run_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=True, index=True
+        Integer,
+        ForeignKey("pipeline_runs.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
-    
     pipeline_run: Mapped[Optional["PipelineRunORM"]] = relationship(
         "PipelineRunORM", back_populates="plan_traces"
     )
-    
-    # Unique identifier for the trace (matches PlanTrace.trace_id)
-    trace_id: Mapped[str] = mapped_column(
-        String, unique=True, index=True, nullable=False
-    )
 
-    # Link to the original goal
+    trace_id: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+
     goal_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("goals.id"), nullable=True
     )
-    goal: Mapped[Optional[GoalORM]] = relationship(
+    goal: Mapped[Optional["GoalORM"]] = relationship(
         "GoalORM", back_populates="plan_traces"
-    )  # Add plan_traces to GoalORM
-
-    # Goal embedding reference (assuming EmbeddingORM exists)
-    # goal_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("embeddings.id"), nullable=True)
-    # If you just need the ID without ORM relationship for now:
-    goal_embedding_id: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
     )
 
-    # Signature of the plan that generated this trace
+    revisions: Mapped[List["PlanTraceRevisionORM"]] = relationship(
+        "PlanTraceRevisionORM",
+        back_populates="plan_trace",
+        cascade="all, delete-orphan",
+        order_by="PlanTraceRevisionORM.created_at"
+    )
+
+    goal_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     plan_signature: Mapped[str] = mapped_column(String, nullable=False)
 
-    # Final output text (cached for easy access)
     final_output_text: Mapped[str] = mapped_column(Text, nullable=False)
+    final_output_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    # Final output embedding reference (assuming EmbeddingORM exists)
-    # final_output_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("embeddings.id"), nullable=True)
-    # If you just need the ID without ORM relationship for now:
-    final_output_embedding_id: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )
+    # --- Epistemic Quality ---
+    target_epistemic_quality: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    target_epistemic_quality_source: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
-    # --- Target for Epistemic Plan HRM Training ---
-    # The score the HRM model should predict for this trace's epistemic quality.
-    target_epistemic_quality: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    # Source of the target quality score (e.g., "llm_judgment", "proxy_metric_avg_sicql_q")
-    target_epistemic_quality_source: Mapped[Optional[str]] = mapped_column(
-        String, nullable=True
-    )
+    # --- Extended Cognitive Metadata ---
+    retrieved_cases: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    strategy_used: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    reward_signal: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    skills_used: Mapped[List[str]] = mapped_column(JSON, default=list)
+    repair_links: Mapped[List[str]] = mapped_column(JSON, default=list)
+
+    domains: Mapped[List[str]] = mapped_column(ARRAY(String), default=list)  # <-- NEW
 
     # --- Metadata ---
-    # JSON blob for flexible metadata (matches PlanTrace.meta)
     meta: Mapped[Dict[str, Any]] = mapped_column(JSON, default={})
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
@@ -95,23 +88,14 @@ class PlanTraceORM(Base):
     )
 
     # --- Relationships ---
-    # Link to Execution Steps
     execution_steps: Mapped[List["ExecutionStepORM"]] = relationship(
         "ExecutionStepORM",
         back_populates="plan_trace",
-        cascade="all, delete-orphan",  # If a trace is deleted, delete its steps
-        order_by="ExecutionStepORM.step_order",  # Order steps by their sequence
+        cascade="all, delete-orphan",
+        order_by="ExecutionStepORM.step_order",
     )
 
-    # Optional: Link to the EvaluationORM representing the *scoring* of the final output
-    # This connects the trace's outcome to the standard scoring system.
-    # final_evaluation_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("evaluations.id"), nullable=True)
-    # final_evaluation: Mapped[Optional["EvaluationORM"]] = relationship("EvaluationORM", foreign_keys=[final_evaluation_id])
-
-    def to_dict(
-        self, include_steps: bool = False, include_goal: bool = False
-    ) -> dict:
-        """Convert ORM object to dictionary, optionally including related data."""
+    def to_dict(self, include_steps: bool = False, include_goal: bool = False) -> dict:
         data = {
             "id": self.id,
             "trace_id": self.trace_id,
@@ -122,22 +106,20 @@ class PlanTraceORM(Base):
             "final_output_embedding_id": self.final_output_embedding_id,
             "target_epistemic_quality": self.target_epistemic_quality,
             "target_epistemic_quality_source": self.target_epistemic_quality_source,
+            "retrieved_cases": self.retrieved_cases,
+            "strategy_used": self.strategy_used,
+            "reward_signal": self.reward_signal,
+            "skills_used": self.skills_used,
+            "repair_links": self.repair_links,
             "meta": self.meta,
-            "created_at": self.created_at.isoformat()
-            if self.created_at
-            else None,
-            "updated_at": self.updated_at.isoformat()
-            if self.updated_at
-            else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
         if include_steps:
-            data["execution_steps"] = [
-                step.to_dict() for step in self.execution_steps
-            ]
+            data["execution_steps"] = [step.to_dict() for step in self.execution_steps]
         if include_goal and self.goal:
             data["goal"] = self.goal.to_dict()
         return data
-
 
 class ExecutionStepORM(Base):
     """
@@ -157,18 +139,15 @@ class ExecutionStepORM(Base):
         "PlanTraceORM", back_populates="execution_steps"
     )
 
-    # Optional: direct link to pipeline run (redundant but convenient for querying)
+    # Optional: direct link to pipeline run
     pipeline_run_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=True, index=True
+        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"),
+        nullable=True, index=True
     )
-    pipeline_run: Mapped[Optional["PipelineRunORM"]] = relationship(
-        "PipelineRunORM"  # ⚠️ no back_populates here, otherwise it collides with PlanTraceORM.plan_traces
-    )
+    pipeline_run: Mapped[Optional["PipelineRunORM"]] = relationship("PipelineRunORM")
 
     # Order of the step within the trace
-    step_order: Mapped[int] = mapped_column(
-        Integer, nullable=False, index=True
-    )
+    step_order: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
     # Unique identifier for the step (matches ExecutionStep.step_id)
     step_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -182,13 +161,18 @@ class ExecutionStepORM(Base):
     # Output embedding reference (optional)
     output_embedding_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
+    # --- NEW: Agent role ---
+    agent_role: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
+    )
+    # e.g. "retrieve", "reuse", "revise", "retain"
+
     # --- Relationships to Scoring ---
     evaluation_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("evaluations.id"), nullable=True, unique=True
     )
     evaluation: Mapped[Optional["EvaluationORM"]] = relationship(
-        "EvaluationORM",
-        foreign_keys=[evaluation_id],
+        "EvaluationORM", foreign_keys=[evaluation_id]
     )
 
     # --- Metadata ---
@@ -208,6 +192,7 @@ class ExecutionStepORM(Base):
             "output_text": self.output_text,
             "output_embedding_id": self.output_embedding_id,
             "evaluation_id": self.evaluation_id,
+            "agent_role": self.agent_role,  # ✅ include in export
             "meta": self.meta,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

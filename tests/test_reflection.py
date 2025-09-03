@@ -4,7 +4,7 @@ from stephanie.agents.reflection import ReflectionAgent
 
 @pytest.mark.asyncio
 async def test_reflection_agent_returns_reviews():
-    agent = ReflectionAgent(cfg={}, memory=None, logger=None)
+    agent = ReflectionAgent(cfg={}, memory, logger)
     agent.call_llm = AsyncMock(return_value="This is a review.")
 
     result = await agent.run({"hypotheses": ["Hypothesis 1"]})

@@ -9,7 +9,7 @@ from stephanie.agents.master_pupil.trainer import TrainerAgent
 
 
 class EvaluatorAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.master = MasterAgent(cfg, memory, logger)
         self.pupil = PupilAgent(cfg, memory, logger)

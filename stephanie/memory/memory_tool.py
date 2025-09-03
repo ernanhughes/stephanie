@@ -11,11 +11,10 @@ from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
 from stephanie.memory.cartridge_triple_store import CartridgeTripleStore
+from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.memory.context_store import ContextStore
 from stephanie.memory.document_domain_section_store import \
     DocumentSectionDomainStore
-from stephanie.memory.document_domain_store import DocumentDomainStore
-from stephanie.memory.document_embedding_store import DocumentEmbeddingStore
 from stephanie.memory.document_section_store import DocumentSectionStore
 from stephanie.memory.document_store import DocumentStore
 from stephanie.memory.embedding_store import EmbeddingStore
@@ -30,6 +29,8 @@ from stephanie.memory.hnet_embedding_store import HNetEmbeddingStore
 from stephanie.memory.hypothesis_store import HypothesisStore
 from stephanie.memory.idea_store import IdeaStore
 from stephanie.memory.lookahead_store import LookaheadStore
+from stephanie.memory.mars_conflict_store import MARSConflictStore
+from stephanie.memory.mars_result_store import MARSResultStore
 from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
 from stephanie.memory.mrq_store import MRQStore
@@ -44,6 +45,9 @@ from stephanie.memory.reflection_delta_store import ReflectionDeltaStore
 from stephanie.memory.report_store import ReportStore
 from stephanie.memory.rule_application_store import RuleApplicationStore
 from stephanie.memory.rule_effect_store import RuleEffectStore
+from stephanie.memory.scorable_domain_store import ScorableDomainStore
+from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
+from stephanie.memory.scorable_rank_store import ScorableRankStore
 from stephanie.memory.score_store import ScoreStore
 from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
@@ -85,7 +89,7 @@ class MemoryTool:
         self.register_store(hf)
 
         # Choose embedding backend based on config
-        selected_backend = embedding_cfg.get("backend", "mxbai")
+        selected_backend = embedding_cfg.get("backend", "hnet")
         if selected_backend == "hnet":
             self.embedding = hnet
         elif selected_backend == "huggingface":
@@ -102,17 +106,16 @@ class MemoryTool:
         else:
             self.embedding = mxbai
 
-        if self.logger:
-            self.logger.log(
-                "EmbeddingBackendSelected",
-                {
-                    "backend": selected_backend,
-                    "db_host": db_cfg.get("host"),
-                    "db_name": db_cfg.get("name"),
-                    "db_port": db_cfg.get("port"),
-                    "conn_id": id(self.conn),  # unique Python object ID
-                },
-            )
+        self.logger.log(
+            "EmbeddingBackendSelected",
+            {
+                "backend": selected_backend,
+                "db_host": db_cfg.get("host"),
+                "db_name": db_cfg.get("name"),
+                "db_port": db_cfg.get("port"),
+                "conn_id": id(self.conn),  # unique Python object ID
+            },
+        )
 
 
         # Register stores
@@ -136,7 +139,7 @@ class MemoryTool:
         self.register_store(PromptProgramStore(self.session, logger))
         self.register_store(ScoreStore(self.session, logger))
         self.register_store(DocumentStore(self.session, logger))
-        self.register_store(DocumentDomainStore(self.session, logger))
+        self.register_store(ScorableDomainStore(self.session, logger))
         self.register_store(DocumentSectionStore(self.session, logger))
         self.register_store(DocumentSectionDomainStore(self.session, logger))
         self.register_store(CartridgeDomainStore(self.session, logger))
@@ -151,9 +154,13 @@ class MemoryTool:
         self.register_store(ExecutionStepStore(self.session, logger))
         self.register_store(PlanTraceStore(self.session, logger))
         self.register_store(PipelineReferenceStore(self.session, logger))
-        self.register_store(DocumentEmbeddingStore(self.session, logger))
+        self.register_store(ScorableEmbeddingStore(self.session, logger, self.embedding))
         self.register_store(ReportStore(self.session, logger))
         self.register_store(TheoremStore(self.session, logger))
+        self.register_store(ScorableRankStore(self.session, logger))
+        self.register_store(MARSResultStore(self.session, logger))
+        self.register_store(MARSConflictStore(self.session, logger))
+        self.register_store(CaseBookStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

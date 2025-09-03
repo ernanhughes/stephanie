@@ -1,7 +1,10 @@
+import logging
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+_logger = logging.getLogger(__name__)
 
 class RMSNorm(nn.Module):
     """
@@ -13,7 +16,7 @@ class RMSNorm(nn.Module):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
-        print(f"RMSNorm initialized with dim={dim}, eps={eps}")
+        _logger.debug(f"RMSNorm initialized with dim={dim}, eps={eps}")
 
     def _norm(self, x):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
@@ -32,7 +35,7 @@ class RecurrentBlock(nn.Module):
         self.name = name
         self.rnn_cell = nn.GRUCell(input_dim, hidden_dim)
         self.norm = RMSNorm(hidden_dim)
-        print(f"{self.name} initialized with input_dim={input_dim}, hidden_dim={hidden_dim}")
+        _logger.debug(f"{self.name} initialized with input_dim={input_dim}, hidden_dim={hidden_dim}")
 
     def forward(self, z_prev, input_combined):
         """
@@ -58,7 +61,7 @@ class InputProjector(nn.Module):
         super().__init__()
         self.project = nn.Linear(input_dim, hidden_dim)
         self.norm = RMSNorm(hidden_dim)
-        print(f"InputProjector initialized with input_dim={input_dim}, hidden_dim={hidden_dim}")
+        _logger.debug(f"InputProjector initialized with input_dim={input_dim}, hidden_dim={hidden_dim}")
 
     def forward(self, x):
         x_proj = self.project(x)
@@ -73,7 +76,7 @@ class OutputProjector(nn.Module):
     def __init__(self, h_dim, output_dim):
         super().__init__()
         self.project = nn.Linear(h_dim, output_dim)
-        print(f"OutputProjector initialized with h_dim={h_dim}, output_dim={output_dim}")
+        _logger.debug(f"OutputProjector initialized with h_dim={h_dim}, output_dim={output_dim}")
 
     def forward(self, zH_final):
         return self.project(zH_final)
@@ -114,7 +117,7 @@ class HRMModel(nn.Module):
 
         # Output layer from final zH
         self.output_projector = OutputProjector(self.h_dim, self.output_dim)
-        print(f"HRMModel initialized with input_dim={self.input_dim}, h_dim={self.h_dim}, l_dim={self.l_dim}, output_dim={self.output_dim}, n_cycles={self.n_cycles}, t_steps={self.t_steps}")
+        _logger.debug(f"HRMModel initialized with input_dim={self.input_dim}, h_dim={self.h_dim}, l_dim={self.l_dim}, output_dim={self.output_dim}, n_cycles={self.n_cycles}, t_steps={self.t_steps}")
 
     def forward(self, x):
         """

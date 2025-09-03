@@ -23,7 +23,7 @@ class EvolutionAgent(BaseAgent):
     "The Evolution agent continuously refines and improves existing hypotheses..."
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.use_grafting = cfg.get("use_grafting", False)
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
@@ -94,7 +94,7 @@ class EvolutionAgent(BaseAgent):
         """
         Graft pairs of highly similar hypotheses into unified versions.
         """
-        hypotheses = self.get_hypotheses(context)
+        hypotheses = self.get_scorables(context)
         # TODO: use memory
         embeddings = [get_embedding(h, self.cfg) for h in hypotheses]
         used = set()

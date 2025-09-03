@@ -1,18 +1,17 @@
 # stephanie/models/theorem.py
 from datetime import datetime
+
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, Table, Text
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
 
-# Association table for many-to-many relationship
 theorem_cartridges = Table(
     "theorem_cartridges",
     Base.metadata,
     Column("theorem_id", Integer, ForeignKey("theorems.id"), primary_key=True),
     Column("cartridge_id", Integer, ForeignKey("cartridges.id"), primary_key=True),
 )
-
 
 class TheoremORM(Base):
     __tablename__ = "theorems"
@@ -21,24 +20,14 @@ class TheoremORM(Base):
     statement = Column(Text, nullable=False)
     proof = Column(Text, nullable=True)
 
-    # ✅ Embedding now references document_embeddings
-    embedding_id = Column(
-        Integer,
-        ForeignKey("document_embeddings.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+    # Soft pointer to scorable_embeddings.id (no FK)
+    embedding_id = Column(Integer, nullable=True)
 
-    # ✅ New: pipeline run reference
-    pipeline_run_id = Column(
-        Integer,
-        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id", ondelete="SET NULL"), nullable=True)
     pipeline_run = relationship("PipelineRunORM", back_populates="theorems")
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationship with Cartridges
     cartridges = relationship(
         "CartridgeORM", secondary=theorem_cartridges, back_populates="theorems"
     )
@@ -52,18 +41,11 @@ class TheoremORM(Base):
             "pipeline_run_id": self.pipeline_run_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
-
         if include_cartridges:
             data["cartridges"] = [
-                {
-                    "id": c.id,
-                    "title": c.title,
-                    "source_type": c.source_type,
-                    "source_uri": c.source_uri,
-                }
+                {"id": c.id, "title": c.title, "source_type": c.source_type, "source_uri": c.source_uri}
                 for c in self.cartridges
             ]
-
         return data
 
 
@@ -72,45 +54,25 @@ class CartridgeORM(Base):
 
     id = Column(Integer, primary_key=True)
 
-    # Association
     goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True)
     goal = relationship("GoalORM", back_populates="cartridges")
 
-    # ✅ New: pipeline run reference
-    pipeline_run_id = Column(
-        Integer,
-        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+    pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id", ondelete="SET NULL"), nullable=True)
     pipeline_run = relationship("PipelineRunORM", back_populates="cartridges")
 
-    # Source metadata
-    source_type = Column(Text, nullable=False)  # e.g. 'document', 'hypothesis'
+    source_type = Column(Text, nullable=False)  # e.g., 'document', 'hypothesis'
     source_uri = Column(Text)
     markdown_content = Column(Text, nullable=False)
 
-    # ✅ Fix: reference document_embeddings instead of embeddings
-    embedding_id = Column(
-        Integer,
-        ForeignKey("document_embeddings.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    embedding = relationship("DocumentEmbeddingORM")
+    # Soft pointer to scorable_embeddings.id (no FK / no relationship)
+    embedding_id = Column(Integer, nullable=True)
 
-    # Core content
     title = Column(Text)
     summary = Column(Text)
     sections = Column(JSON)
     triples = Column(JSON)
-
-    # Domains
     domain_tags = Column(JSON)
-
     created_at = Column(DateTime, default=datetime.utcnow)
-
-    domains_rel = relationship(
-        "CartridgeDomainORM", back_populates="cartridge", cascade="all, delete-orphan"
-    )
 
     triples_rel = relationship(
         "CartridgeTripleORM", back_populates="cartridge", cascade="all, delete-orphan"
@@ -135,8 +97,4 @@ class CartridgeORM(Base):
             "triples": self.triples,
             "domain_tags": self.domain_tags,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "domains": [
-                {"domain": rel.domain, "score": rel.score}
-                for rel in self.domains_rel
-            ],
         }

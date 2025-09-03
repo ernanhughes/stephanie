@@ -1,0 +1,228 @@
+# configs/agents/modular_memento.yaml
+
+modular_memento:
+  name: modular_memento
+
+  include_mars: true
+  casebook_tag: default
+  retrieval_mode: fallback
+  reuse_budget: 16
+  novelty_k: 6
+  exploration_eps: 0.1
+  ab_validation:
+    mode: periodic      # off | periodic | always
+    period: 5
+    control_tag: control
+    delta_eps: 1e-6
+    seed_lock: true
+    freeze_training: true
+  quality_weights:
+    mars: 1.0
+    hrm: 0.5
+    reward: 2.0
+    llm: 0.25
+  training:
+    dimension: alignment
+    buffers:
+      model_key_ranker: ranker.sicql.v1
+      model_key_retriever: retriever.mrq.v1
+
+  max_depth: 5
+  branching_factor: 3
+  ucb_weight: 1.41
+  num_simulations: 50
+  use_memory_for_fast_prompts: true
+
+  casebook_budget: 200
+  artifact_budget: 20
+  min_diversity: 0.25
+  improve_eps: 1e-6
+  prune_after_runs: 1        # run pruning every N runs
+
+  # mcts settings
+  scorer_name: sicql
+  eval_at: leaf
+  eval_stride: 2
+  value_estimator:
+    enabled: false
+  caching:
+    enabled: true
+    lru_size: 4096
+    tail_len: 8
+  max_lm_calls: 32
+  debug_prompts: false
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  input_keys: ["goal"]   # add nodes
+  output_key: modular_memento  # change
+  prompt_mode: file
+  prompt_file: modular_memento.txt
+
+
+  # Global defaults (used by each dimension via merge)
+  trust_reference: hrm           # or "hrm" / "llm" — your upstream reference scorer
+  variance_threshold: 0.05       # collapse/ignore dims with very low variance
+  metrics:                       # default metrics each dimension will compute/aggregate
+    - agreement
+    - dispersion
+    - confidence
+
+  enabled_scorers:
+    - svm
+    - mrq
+    - sicql
+    - ebt
+    - hrm
+    - contrastive_ranker
+
+  # Active dimensions
+  dimensions:
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+
+  dimension_configs:
+    _defaults: &dim_defaults
+      trust_reference: llm
+      variance_threshold: 0.05
+      metrics: 
+        - agreement
+        - dispersion
+        - confidence
+
+
+    alignment:
+      <<: *dim_defaults
+      weight: 1.0
+      description: "How well the response aligns with the user's goal."
+
+    clarity:
+      <<: *dim_defaults
+      weight: 0.5
+      description: "The clarity of the response."
+
+    implementability:
+      <<: *dim_defaults
+      weight: 0.25
+      description: "How easily the response can be implemented."
+
+    novelty:
+      <<: *dim_defaults
+      metrics: [diversity, surprise, dispersion]   # override if you like
+      weight: 0.1
+      description: "The novelty of the response."
+
+    relevance:
+      <<: *dim_defaults
+      weight: 0.8
+      description: "Topical fit to the goal and retrieved context."
+
+    ab_validation:
+      mode: periodic         # off | periodic | always
+      period: 5              # every Nth run per (pipeline×agent×goal)
+      control_tag: "control" # where to store baseline provenance (if you want)
+      delta_eps: 1e-6        # min improvement to count as better
+      seed_lock: true        # use same seed for baseline & cbr
+      freeze_training: true  # disable online learning during baseline
+
+
+
+  proximity:   
+    name: proximity
+
+    similarity_threshold: 0.75  # Only show pairs with at least 75% similarity
+    max_graft_candidates: 3   # Max number of pairs to suggest for grafting
+    use_database_search: true # Whether to pull past hypotheses from DB
+    top_k_database_matches: 10  # How many prior hypotheses to retrieve
+
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Key that it will iterate over ot generate reflections
+    input_key: "hypotheses"
+    # Key that it store the results of those reflections
+    output_key: "proximity"  # change
+
+    save_prompt: true
+    strategy:
+    prompt_mode: file
+    prompt_file: proximity.txt
+
+    preferences:
+    - goal_consistency
+    - biological_plausibility
+    - experimental_validity
+    - novelty
+    - simplicity
+
+  rule_tuner:
+    name: rule_tuner
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Required keys for the agent ot effectively process the context
+    required_keys: ["goal", "hypotheses"]   # add nodes
+    # Key that it will iterate over ot generate reflections
+    input_key: "hypotheses"
+    # Key that it store the results of those reflections
+    output_key: "tuning"
+
+  adapt:
+    enabled: true
+    top_k: 1            # adapt the top-1 item
+    improv_eps: 0.01    # keep only if revised improves ≥ 0.01
+    scorer_name: sicql  # optional; defaults to sicql
+    dimensions: null    # optional; null → default scorer dims
+
+  mrq:
+    similarity_threshold: 0.85
+    top_k_similar: 20
+    min_value_difference: 10
+    model_output_dir: ./outputs/unified_mrq
+    target_dimensions:
+      - correctness
+      - originality
+      - clarity
+      - relevance
+
+    # model
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Required keys for the agent ot effectively process the context
+    required_keys: ["goal", "hypotheses"] # add nodes
+    # Key that it will iterate over ot generate reflections
+    input_key: hypotheses
+    # Key that it store the results of those reflections
+    output_key: ranking # change
+
+    # prompt
+    save_prompt: true
+    prompt_mode: file
+    strategy: debate
+    prompt_file: debate.txt
+    # preferences
+    preferences:
+      - goal_consistency
+      - biological_plausibility
+      - experimental_validity
+      - novelty
+      - simplicity
+
+  reporting:
+    enabled: true
+    path: reports/cbr_events.jsonl
+    sample_rate: 1.0   # set <1.0 to sample (if you add RNG)
+

@@ -1,5 +1,6 @@
 # stephanie/utils/parser_utils.py
 import re
+from typing import Dict, List
 
 
 def extract_hypotheses(text: str):
@@ -23,5 +24,55 @@ def extract_hypotheses(text: str):
         cleaned = part.strip()
         if cleaned:
             hypotheses.append(f"Hypothesis {i} {cleaned}")
+
+    return hypotheses
+
+
+
+def extract_hypotheses_with_score(text: str) -> List[Dict]:
+    """
+    Extract hypotheses with rationale and score from model output.
+
+    Expected format:
+        rationale: <brief explanation>
+        score: <0–100>
+
+        # Hypothesis N
+        <hypothesis text>
+
+    Returns:
+        List of dicts: [{"rationale": str, "score": float, "text": str}, ...]
+    """
+    hypotheses = []
+
+    # Split into sections by Hypothesis headers
+    blocks = re.split(r"#\s*Hypothesis\s*\d+", text, flags=re.IGNORECASE)
+    headers = re.findall(r"#\s*Hypothesis\s*\d+", text, flags=re.IGNORECASE)
+
+    for i, block in enumerate(blocks[1:]):  # skip text before first hypothesis
+        header = headers[i] if i < len(headers) else f"Hypothesis {i+1}"
+
+        # Extract rationale
+        rationale_match = re.search(r"rationale\s*:\s*(.+)", block, re.IGNORECASE)
+        rationale = rationale_match.group(1).strip() if rationale_match else ""
+
+        # Extract score (coerce to float, fallback 0)
+        score_match = re.search(r"score\s*:\s*([\d\.]+)", block, re.IGNORECASE)
+        try:
+            score = float(score_match.group(1)) if score_match else 0.0
+        except ValueError:
+            score = 0.0
+
+        # Extract main hypothesis text (strip rationale/score lines)
+        cleaned = re.sub(r"rationale\s*:.+", "", block, flags=re.IGNORECASE)
+        cleaned = re.sub(r"score\s*:.+", "", cleaned, flags=re.IGNORECASE)
+        hypothesis_text = cleaned.strip()
+
+        hypotheses.append({
+            "rationale": rationale,
+            "score": score,
+            "text": hypothesis_text,
+            "header": header.strip()
+        })
 
     return hypotheses

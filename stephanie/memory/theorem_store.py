@@ -62,3 +62,6 @@ class TheoremStore:
             self.session.commit()
             return True
         return False
+
+    def get_by_run_id(self, run_id: int) -> list[TheoremORM]:
+        return self.session.query(TheoremORM).filter_by(pipeline_run_id=run_id).all()

@@ -1,21 +1,23 @@
-from tqdm import tqdm
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scoring_manager import ScoringManager
 from typing import Any, Dict
 
-from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
-from stephanie.scoring.ebt_scorer import EBTScorer
-from stephanie.scoring.hrm_scorer import HRMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.svm_scorer import SVMScorer
-from stephanie.models.document import DocumentORM
-from stephanie.models.prompt import PromptORM
-from stephanie.models.hypothesis import HypothesisORM
-from stephanie.models.theorem import TheoremORM, CartridgeORM
+from tqdm import tqdm
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.cartridge_triple import CartridgeTripleORM
+from stephanie.models.document import DocumentORM
+from stephanie.models.hypothesis import HypothesisORM
+from stephanie.models.prompt import PromptORM
+from stephanie.models.theorem import CartridgeORM, TheoremORM
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorer.contrastive_ranker_scorer import \
+    ContrastiveRankerScorer
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.hrm_scorer import HRMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
+from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class UniversalScorerAgent(BaseAgent):
@@ -34,10 +36,10 @@ class UniversalScorerAgent(BaseAgent):
     if not already scored. Uses ensemble of configured scorers.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "relevance"])
-        self.scorer_types = cfg.get("scorer_types", ["sicql"])
+        self.enabled_scorers = cfg.get("enabled_scorers", ["sicql"])
         self.progress = cfg.get("progress", True)
         self.force_rescore = cfg.get("force_rescore", False)
         self.target_types = cfg.get(
@@ -54,17 +56,17 @@ class UniversalScorerAgent(BaseAgent):
     def _initialize_scorers(self) -> Dict[str, Any]:
         """Initialize all configured scorers"""
         scorers = {}
-        if "svm" in self.scorer_types:
+        if "svm" in self.enabled_scorers:
             scorers["svm"] = SVMScorer(self.cfg.get("svm"), memory=self.memory, logger=self.logger)
-        if "mrq" in self.scorer_types:
+        if "mrq" in self.enabled_scorers:
             scorers["mrq"] = MRQScorer(self.cfg.get("mrq"), memory=self.memory, logger=self.logger)
-        if "sicql" in self.scorer_types:
+        if "sicql" in self.enabled_scorers:
             scorers["sicql"] = SICQLScorer(self.cfg.get("sicql"), memory=self.memory, logger=self.logger)
-        if "ebt" in self.scorer_types:
+        if "ebt" in self.enabled_scorers:
             scorers["ebt"] = EBTScorer(self.cfg.get("ebt"), memory=self.memory, logger=self.logger)
-        if "hrm" in self.scorer_types:
+        if "hrm" in self.enabled_scorers:
             scorers["hrm"] = HRMScorer(self.cfg.get("hrm"), memory=self.memory, logger=self.logger)
-        if "contrastive_ranker" in self.scorer_types:
+        if "contrastive_ranker" in self.enabled_scorers:
             scorers["contrastive_ranker"] = ContrastiveRankerScorer(
                 self.cfg.get("contrastive_ranker"), memory=self.memory, logger=self.logger
             )
@@ -126,6 +128,7 @@ class UniversalScorerAgent(BaseAgent):
                     self.logger,
                     source="universal_scorer",
                     model_name="ensemble",
+                    evaluator_name=str(self.scorers.keys()
                 )
 
                 self.report({

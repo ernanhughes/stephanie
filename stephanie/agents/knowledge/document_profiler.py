@@ -1,30 +1,78 @@
 # stephanie/agents/knowledge/document_profiler.py
+"""
+Document Profiler Agent Module
+
+This module provides the DocumentProfilerAgent class for analyzing and structuring
+research documents into standardized sections with domain classification. It transforms
+unstructured document text into organized, categorized content for better analysis
+and retrieval in the research pipeline.
+
+Key Features:
+    - Multi-method document parsing (unstructured parsing + LLM fallback)
+    - Section-based document analysis (title, abstract, methods, results, etc.)
+    - Domain classification for document sections
+    - Content quality evaluation and selection
+    - Persistent storage of structured document sections
+    - Comprehensive error handling and reporting
+
+Classes:
+    DocumentProfilerAgent: Main agent class for document profiling and structuring
+
+Configuration Options:
+    - summary_prompt_file: Prompt file for document summarization
+    - use_unstructured: Enable/disable unstructured parsing
+    - fallback_to_llm: Enable LLM fallback when parsing fails
+    - store_inline: Enable inline storage of parsed sections
+    - output_sections: List of sections to extract from documents
+    - required_sections: Minimum required sections for successful parsing
+    - min_chars_per_section: Minimum character threshold for section quality
+    - force_domain_update: Force re-classification of existing documents
+    - top_k_domains: Number of top domains to assign per section
+    - min_classification_score: Minimum confidence score for domain classification
+
+Dependencies:
+    - BaseAgent: Core agent functionality and LLM integration
+    - ScorableClassifier: Domain classification and scoring
+    - DocumentSectionParser: Section extraction from unstructured text
+
+Usage:
+    Typically used after document loading to structure and categorize documents
+    for further analysis, hypothesis generation, or knowledge extraction.
+"""
+
 import re
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.domain_classifier import DomainClassifier
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.utils.document_section_parser import DocumentSectionParser
 
+# Default sections to extract from documents
 DEFAULT_SECTIONS = ["title", "abstract", "methods", "results", "contributions"]
+# Minimum required sections for document processing
 REQUIRED_SECTIONS = ["title", "summary"]
 
 
 class DocumentProfilerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    """Agent responsible for structuring documents into standardized sections with domain classification"""
+    
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
+        # Configuration parameters
         self.summary_prompt_file = cfg.get("summary_prompt_file", "summarize.txt")
         self.use_unstructured = cfg.get("use_unstructured", True)
         self.fallback_to_llm = cfg.get("fallback_to_llm", False)
         self.store_inline = cfg.get("store_inline", True)
         self.output_sections = cfg.get("output_sections", DEFAULT_SECTIONS)
         self.required_sections = cfg.get("required_sections", REQUIRED_SECTIONS)
-        self.min_chars_per_sec = cfg.get("min_chars_per_section", 120)  # quality
+        self.min_chars_per_sec = cfg.get("min_chars_per_section", 120)  # quality threshold
 
+        # Domain classification settings
         self.force_domain_update = cfg.get("force_domain_update", False)
         self.top_k_domains = cfg.get("top_k_domains", 3)
         self.min_classification_score = cfg.get("min_classification_score", 0.6)
 
-        self.domain_classifier = DomainClassifier(
+        # Initialize classifiers and parsers
+        self.domain_classifier = ScorableClassifier(
             memory,
             logger,
             cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
@@ -32,21 +80,25 @@ class DocumentProfilerAgent(BaseAgent):
         self.section_parser = DocumentSectionParser(cfg, logger)
 
     async def run(self, context: dict) -> dict:
+        """Main execution method for document profiling pipeline"""
         documents = context.get(self.input_key, [])
         profiled = []
 
+        # Start profiling process
         self.report({
             "event": "start",
             "step": "DocumentProfiler",
             "details": f"Profiling {len(documents)} documents",
         })
 
+        # Process each document
         for doc in documents:
             try:
                 doc_id = doc["id"]
                 title = doc.get("title", "")
 
-                existing_sections = self.memory.document_section.get_by_document(doc_id)
+                # Check if document already profiled
+                existing_sections = self.memory.document_sections.get_by_document(doc_id)
                 if existing_sections and not self.force_domain_update:
                     self.report({
                         "event": "skipped_existing",
@@ -60,7 +112,7 @@ class DocumentProfilerAgent(BaseAgent):
                 summary = doc.get("summary")
                 text = doc.get("content", doc.get("text", ""))
 
-                # STEP 1: Unstructured parsing
+                # STEP 1: Try unstructured parsing first
                 unstruct_data = {}
                 if self.use_unstructured:
                     unstruct_data = self.section_parser.parse(text)
@@ -72,7 +124,7 @@ class DocumentProfilerAgent(BaseAgent):
                         "sections": list(unstruct_data.keys()),
                     })
 
-                # STEP 2: Fallback if needed
+                # STEP 2: Use LLM fallback if unstructured parsing is insufficient
                 if self.fallback_to_llm and self.needs_fallback(unstruct_data):
                     llm_data = await self.extract_with_prompt(text, context)
                     chosen = self.merge_outputs(unstruct_data, llm_data)
@@ -86,21 +138,22 @@ class DocumentProfilerAgent(BaseAgent):
                 else:
                     chosen = unstruct_data
 
-                # Ensure title/summary filled
+                # Ensure required sections are present
                 if title:
                     chosen["title"] = title
                 if summary:
                     chosen["summary"] = summary
                 else:
+                    # Generate summary if missing
                     prompt = self.prompt_loader.from_file(
                         self.summary_prompt_file, self.cfg, context
                     )
                     chosen["summary"] = self.call_llm(prompt, context)
 
-                # STEP 3: Persist sections
+                # STEP 3: Persist sections to memory
                 section_summaries = []
                 for section, text in chosen.items():
-                    existing = self.memory.document_section.upsert(
+                    existing = self.memory.document_sections.upsert(
                         {
                             "document_id": doc_id,
                             "section_name": section,
@@ -110,13 +163,12 @@ class DocumentProfilerAgent(BaseAgent):
                         }
                     )
 
-                    # -- STEP 4 : Domain detection ---------------------------------
-                    # Classify domain for the section
+                    # STEP 4: Domain classification for each section
                     section_domains = self.domain_classifier.classify(
                         text, self.top_k_domains, self.min_classification_score
                     )
 
-                    # Insert classified domains for this section
+                    # Store domain classifications
                     for domain, score in section_domains:
                         self.memory.document_section_domains.insert(
                             {
@@ -133,6 +185,7 @@ class DocumentProfilerAgent(BaseAgent):
                             ],
                         })
 
+                # Add to results
                 profiled.append(
                     {
                         "id": doc_id,
@@ -161,6 +214,7 @@ class DocumentProfilerAgent(BaseAgent):
 
         context[self.output_key] = profiled
 
+        # Completion report
         self.report({
             "event": "end",
             "step": "DocumentProfiler",
@@ -169,6 +223,7 @@ class DocumentProfilerAgent(BaseAgent):
         return context
 
     async def extract_with_prompt(self, text: str, context: dict) -> dict:
+        """Extract document sections using LLM prompt-based approach"""
         prompt_ctx = {
             "text": text[: self.cfg.get("llm_max_chars", 12000)],
             "sections": ", ".join(self.output_sections),
@@ -177,14 +232,15 @@ class DocumentProfilerAgent(BaseAgent):
         raw = self.call_llm(prompt, context)
         headings = self.parse_headings_from_response(raw)
 
-        # 🧠 Heuristic split of text into chunks between headings
+        # Split text into sections based on detected headings
         return self.split_text_by_headings(text, headings)
 
     def needs_fallback(self, data: dict) -> bool:
         """
-        Simple heuristic:
-            • Missing any requested section
-            • OR any section (except 'title') shorter than min_chars
+        Determine if LLM fallback is needed based on parsing quality
+        
+        Returns:
+            True if any required section is missing or too short
         """
         if not data:
             return True
@@ -199,15 +255,18 @@ class DocumentProfilerAgent(BaseAgent):
 
     def evaluate_content_quality(self, text: str) -> float:
         """
-        Evaluate content quality using a simple heuristic:
-            - Length
-            - Sentence coherence (number of periods)
-            - Word complexity (average word length)
-        Can be replaced with an LLM-based scorer later.
+        Evaluate content quality using heuristic measures
+        
+        Args:
+            text: Text content to evaluate
+            
+        Returns:
+            Quality score between 0.0 and 1.0
         """
         if not text:
             return 0.0
 
+        # Calculate basic text metrics
         sentences = text.split(".")
         avg_word_len = (
             sum(len(word) for word in text.split()) / len(text.split())
@@ -218,7 +277,7 @@ class DocumentProfilerAgent(BaseAgent):
             1, len(sentences)
         )
 
-        # Combine into a basic score
+        # Combine metrics into quality score
         score = (
             0.4 * min(1.0, len(text) / 500)  # Normalize length
             + 0.4 * sentence_score
@@ -229,10 +288,14 @@ class DocumentProfilerAgent(BaseAgent):
 
     def merge_outputs(self, primary: dict, fallback: dict) -> dict:
         """
-        Merges primary and fallback outputs by comparing both:
-            - Uses length threshold as a gate
-            - Compares semantic quality if both exist
-            - Picks best version, not just longest
+        Merge results from different parsing methods, selecting the best version
+        
+        Args:
+            primary: Results from primary parsing method
+            fallback: Results from fallback parsing method
+            
+        Returns:
+            Merged results with best version of each section
         """
         merged = {}
 
@@ -240,11 +303,11 @@ class DocumentProfilerAgent(BaseAgent):
             p_txt = primary.get(sec, "")
             f_txt = fallback.get(sec, "")
 
-            # If neither exists, skip
+            # Skip if neither method found this section
             if not p_txt and not f_txt:
                 continue
 
-            # If only one exists, take it
+            # Use available result if only one method found it
             if not p_txt:
                 merged[sec] = f_txt
                 continue
@@ -252,16 +315,16 @@ class DocumentProfilerAgent(BaseAgent):
                 merged[sec] = p_txt
                 continue
 
-            # Both exist — decide which is better
+            # Both methods found this section - select the better one
             p_len = len(p_txt)
             f_len = len(f_txt)
 
-            # First check: does primary meet minimum length?
+            # Check if primary meets minimum length requirement
             if p_len >= self.min_chars_per_sec:
                 p_score = self.evaluate_content_quality(p_txt)
                 f_score = self.evaluate_content_quality(f_txt)
 
-                # Decide winner
+                # Select version with higher quality score
                 if p_score >= f_score:
                     merged[sec] = p_txt
                 else:
@@ -270,16 +333,20 @@ class DocumentProfilerAgent(BaseAgent):
                         f"[QUALITY WIN] Fallback used for '{sec}' (P: {p_score}, F: {f_score})"
                     )
             else:
-                # Primary doesn't meet threshold — always use fallback
+                # Primary doesn't meet threshold - use fallback
                 merged[sec] = f_txt
 
         return merged
 
     def parse_headings_from_response(self, response: str) -> list[str]:
         """
-        Extract a list of clean headings from the LLM response.
-        Strips bullets, numbers, markdown, etc.
-        Focuses on the final lines in case of trailing blocks.
+        Extract headings from LLM response text
+        
+        Args:
+            response: Raw LLM response text
+            
+        Returns:
+            List of cleaned heading strings
         """
         lines = response.strip().splitlines()
         candidates = []
@@ -297,6 +364,16 @@ class DocumentProfilerAgent(BaseAgent):
         return candidates
 
     def split_text_by_headings(self, text: str, headings: list[str]) -> dict:
+        """
+        Split text into sections based on detected headings
+        
+        Args:
+            text: Full document text
+            headings: List of section headings
+            
+        Returns:
+            Dictionary of section names to section text
+        """
         sections = {}
         current = None
         lines = text.splitlines()

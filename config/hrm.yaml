@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - db: postgres
+  - plan_monitor: default
 
   - scorer/ebt/default
   - scorer/hrm/default
@@ -38,15 +39,6 @@ goal:
     - "symbolic_prompt_plan"
     - "stepwise_reasoning_trace"
     - "annotated_score_vector"
-
-plan_monitor:
-  enabled: true
-  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
-  save_output: true
-  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
-  plan_monitoring_interval: 10
-  plan_monitoring_timeout: 60
-
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts

@@ -2,13 +2,14 @@
 import logging
 from typing import Any, Optional
 
+logger = logging.getLogger(__name__)
 
 class LordAttackModule:
     def __init__(
         self,
         cfg: dict[str, Any],
         memory: callable,
-        logger: Optional[logging.Logger] = None,
+        log: Optional[logging.Logger] = None,
     ):
         """
         A modular class for implementing LoRD-based model extraction attacks.
@@ -20,16 +21,16 @@ class LordAttackModule:
         """
         self.cfg = cfg
         self.memory = memory
-        self.logger = logger
+        self.logger = log
 
         # Initialize memory/store objects using the provided memory function
         try:
             self.embedding_store = memory("embedding")
             self.prompt_store = memory("prompt")
             self.hypothesis_store = memory("hypothesis")
-            self.logger.info("✅ Memory stores initialized.")
+            logger.info("✅ Memory stores initialized.")
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize memory stores: {e}")
+            logger.error(f"❌ Failed to initialize memory stores: {e}")
             raise
 
         # Load config parameters
@@ -42,8 +43,8 @@ class LordAttackModule:
         self.max_tokens = cfg.get("lord", {}).get("max_tokens", 256)
         self.log_frequency = cfg.get("lord", {}).get("log_frequency", 1)
 
-        self.logger.debug("Intialized LordAttackModule with config:")
-        self.logger.debug(self.cfg)
+        logger.debug("Initialized LordAttackModule with config:")
+        logger.debug(self.cfg)
 
     def log_event(self, event_type: str, message: str, level: str = "info"):
         """
@@ -56,13 +57,13 @@ class LordAttackModule:
         }
         if self.logger:
             if level == "debug":
-                self.logger.debug(log_data)
+                logger.debug(log_data)
             elif level == "warning":
-                self.logger.warning(log_data)
+                logger.warning(log_data)
             elif level == "error":
-                self.logger.error(log_data)
+                logger.error(log_data)
             else:
-                self.logger.info(log_data)
+                logger.info(log_data)
         else:
             print(f"[{event_type}] {message}")
 

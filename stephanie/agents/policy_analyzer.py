@@ -7,7 +7,7 @@ from stephanie.analysis.policy_analyzer import PolicyAnalyzer
 
 
 class PolicyAnalysisAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "novelty"])
         self.analyzer = PolicyAnalyzer(memory.session, logger)

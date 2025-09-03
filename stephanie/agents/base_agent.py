@@ -4,6 +4,7 @@ import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 import litellm
 import torch
@@ -13,10 +14,10 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
-from stephanie.logging import JSONLogger
+from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
-from stephanie.rules import SymbolicRuleApplier
+from stephanie.scoring.scoring_service import ScoringService
 
 
 def remove_think_blocks(text: str) -> str:
@@ -24,19 +25,21 @@ def remove_think_blocks(text: str) -> str:
 
 
 class BaseAgent(ABC):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         agent_key = self.__class__.__name__.replace(AGENT, "").lower()
         self.name = cfg.get(NAME, agent_key)
+        self.description = cfg.get("description", "")
         self.memory = memory
-        self.logger = logger or JSONLogger()
+        self.logger = logger
+        self.scoring: Optional[ScoringService] = None
+        self.enabled_scorers = self.cfg.get("enabled_scorers", ["sicql"])
+
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
-        self.embedding_type = self.memory.embedding.type
-        self.rule_applier = SymbolicRuleApplier(cfg, memory, logger)
+        self.embedding_type = self.memory.embedding.name
         self.model_config = cfg.get(MODEL, {})
-        self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
         self.prompt_match_re = cfg.get(PROMPT_MATCH_RE, "")
-        self.llm = self.init_llm()  # TODO do we need to init here?
+        self.llm = self.init_llm()  
         self.strategy = cfg.get(STRATEGY, "default")
         self.model_name = self.llm.get(NAME, "")
         self.source = cfg.get(SOURCE, CONTEXT)
@@ -50,6 +53,12 @@ class BaseAgent(ABC):
         self._prompt_id_cache = {}
         self._hypothesis_id_cache = {}
         self.report_entries = {}
+        self.scorable_details = {}
+        self.is_scorable = False  # default
+
+        self.rule_applier = SymbolicRuleApplier(cfg, memory, logger)
+        self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
+
         self.logger.log(
             "AgentInitialized",
             {
@@ -95,7 +104,7 @@ class BaseAgent(ABC):
             prompt = self.memory.prompt.get_from_text(prompt_text)
         if prompt is None:
             raise ValueError(
-                f"Please check this prompe: {prompt_text}. "
+                f"Please check this prompt: {prompt_text}. "
                 "Ensure it is saved before use."
             )
         return prompt
@@ -176,6 +185,17 @@ class BaseAgent(ABC):
                     context, prompt, {"response": response_cleaned}
                 )
 
+            self.set_scorable_details(
+                input_text=prompt,
+                output_text=response_cleaned,
+                description=f"LLM output from {self.name}"
+            )
+
+            if updated_cfg.get("add_prompt_to_history", True):
+                self.add_to_prompt_history(
+                    context, prompt, {"response": response_cleaned}
+                )
+
             return response_cleaned
 
         except Exception as e:
@@ -210,22 +230,22 @@ class BaseAgent(ABC):
             entry.update(metadata)
         context["prompt_history"][self.name].append(entry)
 
-    def get_hypotheses(self, context: dict) -> list[dict]:
+    def get_scorables(self, context: dict) -> list[dict]:
         try:
             if self.source == "context":
-                hypothesis_dicts = context.get(self.input_key, [])
-                if not hypothesis_dicts:
-                    self.logger.log("NoHypothesesInContext", {"agent": self.name})
-                return hypothesis_dicts
+                scorable_dicts = context.get(self.input_key, [])
+                if not scorable_dicts:
+                    self.logger.log("NoScorablesInContext", {"agent": self.name})
+                return scorable_dicts
 
             elif self.source == "database":
                 goal = context.get(GOAL)
-                hypotheses = self.get_hypotheses_from_db(goal.get("goal_text"))
-                if not hypotheses:
+                scorables = self.get_scorables_from_db(goal.get("goal_text"))
+                if not scorables:
                     self.logger.log(
-                        "NoHypothesesInDatabase", {"agent": self.name, "goal": goal}
+                        "NoScorablesInDatabase", {"agent": self.name, "goal": goal}
                     )
-                return [h.to_dict() for h in hypotheses] if hypotheses else []
+                return [h.to_dict() for h in scorables] if scorables else []
 
             else:
                 self.logger.log(
@@ -234,13 +254,13 @@ class BaseAgent(ABC):
         except Exception as e:
             print(f"❌ Exception: {type(e).__name__}: {e}")
             self.logger.log(
-                "HypothesisFetchError",
+                "ScorableFetchError",
                 {"agent": self.name, "source": self.source, "error": str(e)},
             )
 
         return []
 
-    def get_hypotheses_from_db(self, goal_text: str):
+    def get_scorables_from_db(self, goal_text: str):
         return self.memory.hypotheses.get_latest(goal_text, self.batch_size)
 
     @staticmethod
@@ -385,3 +405,82 @@ class BaseAgent(ABC):
         # optional: clear after retrieval to avoid duplication
         self.report_entries[self.name] = []
         return entries
+
+    def set_scorable_details(self, input_text: str = "", output_text: str = "", description: str = None, meta: Dict[str, Any] = None):
+        """Agents call this to update what can be scored."""
+        self.scorable_details = {
+            "input_text": input_text,
+            "agent_name": self.name,
+            "output_text": output_text,
+            "description": description or f"Output from {self.__class__.__name__}",
+            "meta": meta or {}
+        }
+        self.is_scorable = True
+
+    def get_scorable_details(self) -> Dict[str, str]:
+        """Retrieve scorable details if set."""
+        return self.scorable_details if self.is_scorable else {}
+
+    def _score(self, context: dict, scorable) -> tuple:
+        from stephanie.data.score_bundle import ScoreBundle
+        from stephanie.scoring.scorable import Scorable
+        from stephanie.scoring.scoring_manager import ScoringManager
+        """Score one paper with all scorers"""
+        assert isinstance(scorable, Scorable), "Expected a Scorable instance"
+        goal = context.get("goal", {"goal_text": ""})
+        score_results = {}
+
+        for scorer_name in self.enabled_scorers:
+            try:
+                bundle = self.scoring.score(
+                    scorer_name,
+                    context=context,
+                    scorable=scorable,
+                    dimensions=self.dimensions,
+                )
+                for dim, result in bundle.results.items():
+                    # ensure the result carries its dimension and source
+                    if not getattr(result, "dimension", None):
+                        result.dimension = dim
+                    if not getattr(result, "source", None):
+                        result.source = (
+                            scorer_name  # fallback if scorer didn't set it
+                        )
+
+                    # use a composite key to avoid overwriting, but keep result.dimension == dim
+                    key = f"{dim}::{result.source}"
+                    score_results[key] = result
+            except Exception as e:
+                self.logger.log(
+                    "ScorerError", {"scorer": scorer_name, "error": str(e)}
+                )
+                continue
+
+        bundle = ScoreBundle(results=dict(score_results))
+
+        # Save to memory
+        ScoringManager.save_score_to_memory(
+            bundle,
+            scorable,
+            context,
+            self.cfg,
+            self.memory,
+            self.logger,
+            source="paper_score",
+            model_name="ensemble",
+            evaluator_name=str(self.enabled_scorers),
+        )
+
+        report_scores = {
+            dim: {
+                "score": result.score,
+                "rationale": result.rationale,
+                "source": result.source,
+            }
+            for dim, result in score_results.items()
+        }
+
+        return {
+            "scores": report_scores,
+            "goal_text": goal.get("goal_text", ""),
+        }, bundle

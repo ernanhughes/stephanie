@@ -4,7 +4,7 @@ from stephanie.agents.generation import GenerationAgent
 
 @pytest.mark.asyncio
 async def test_generation_agent_returns_hypotheses():
-    agent = GenerationAgent(cfg={}, memory=None, logger=None)
+    agent = GenerationAgent(cfg={}, memory, logger)
     agent.call_llm = AsyncMock(return_value="1. Hypothesis A\n2. Hypothesis B")
 
     result = await agent.run({"goal": "AI and finance"})

@@ -33,7 +33,7 @@ idea_evaluator:
 
   remove_think: false # we require "thinking" part of the prompt
 
-  device: cpu # How many epochs to wait after no improvement
+  device: cpu # device
   limit: 1000 # max training data
   epochs: 20  # how much to train
   patience: 3  # How many epochs to wait after no improvement

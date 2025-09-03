@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-from stephanie.reports.comparison import ComparisonReporter
+from stephanie.reporting.comparison import ComparisonReporter
 
 
 @click.command()

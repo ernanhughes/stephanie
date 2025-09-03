@@ -1,14 +1,14 @@
 # stephanie/memory/generic_embedding_store.py
 import hashlib
+
 import torch
 
 from stephanie.memory import BaseStore
-from stephanie.utils.lru_cache import SimpleLRUCache
-
+from stephanie.tools import get_embedding as get_ollama_embedding
 # Backend map – each embedding type points to its generator
 from stephanie.tools.hf_embedding import get_embedding as get_hf_embedding
 from stephanie.tools.hnet_embedder import get_embedding as get_hnet_embedding
-from stephanie.tools import get_embedding as get_ollama_embedding
+from stephanie.utils.lru_cache import SimpleLRUCache
 
 BACKENDS = {
     "huggingface": get_hf_embedding,
@@ -120,7 +120,7 @@ class GenericEmbeddingStore(BaseStore):
                 self.logger.log("FindNeighborsFailed", {"error": str(e)})
             return []
 
-    def search_related_documents(
+    def search_related_scorables(
         self,
         query: str,
         top_k: int = 10,

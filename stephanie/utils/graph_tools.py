@@ -1,6 +1,5 @@
 # stephanie/utils/graph_tools.py
 
-
 def build_mermaid_graph(node, depth=0, max_depth=5, visited=None):
     """
     Recursively builds a Mermaid graph from a reasoning tree node.

@@ -817,7 +817,7 @@ CREATE SEQUENCE public.document_domains_id_seq
 -- Name: document_domains_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.document_domains_id_seq OWNED BY public.document_domains.id;
+ALTER SEQUENCE public.document_domains_id_seq OWNED BY public.scorable_domains.id;
 
 
 --

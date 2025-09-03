@@ -15,7 +15,7 @@ from stephanie.models.comparison_preference import ComparisonPreferenceORM
 
 
 class PipelineComparisonAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.print_results = cfg.get("print_results", True)
         self.tags = cfg.get("tags", [])
@@ -215,12 +215,12 @@ class PipelineComparisonAgent(ScoringMixin, BaseAgent):
         # Step 1: Get latest evaluation per unique target
         subquery = (
             self.memory.session.query(
-                EvaluationORM.target_type,
-                EvaluationORM.target_id,
+                EvaluationORM.scorable_type,
+                EvaluationORM.sccorable_id,
                 func.max(EvaluationORM.id).label("latest_eval_id"),
             )
             .filter(EvaluationORM.pipeline_run_id == pipeline_run_id)
-            .group_by(EvaluationORM.target_type, EvaluationORM.target_id)
+            .group_by(EvaluationORM.scorable_type, EvaluationORM.sccorable_id)
             .subquery()
         )
 

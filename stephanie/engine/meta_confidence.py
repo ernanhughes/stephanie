@@ -30,7 +30,7 @@ class MetaConfidenceTracker:
         self.history[key].append(validation_result)
 
         if self.logger:
-            self.logger.info(
+            self.logger.log(
                 "MetaConfidenceUpdated",
                 extra={
                     "goal": goal,

@@ -16,7 +16,7 @@ SYSTEM_INIT = {
     "AllEBTModelsLoaded": "📦✅",  # All EBT models loaded
     "SupervisorInit": "👨‍🏫",  # Supervisor initialization
     "DocumentLLMInferenceCompleted": "📰✅",  # Document LLM inference completed
-    "DocumentEmbeddingsBackfilled": "📄🌱",  # Document embeddings backfilled
+    "ScorableEmbeddingsBackfilled": "📄🌱",  # Document embeddings backfilled
     "AgentInitialized": "🤖",  # Agent initialization
     "ContextLoaded": "📂",  # Context loaded
     "ContextSaved": "💾",  # Context saved
@@ -49,6 +49,7 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "DocumentsTruncated": "📄✂️",  # Documents truncated
     "IdeaSharpeningFailed": "🧑‍🏫❌",
     "EvaluatorInit": "🧑‍🏫",
     "GenerationStarted": "🧑‍🧒‍🧒▶️",
@@ -68,8 +69,6 @@ KNOWLEDGE_OPS = {
     "NotEnoughHypothesesForRanking": "❌💡",  # Not enough hypotheses for ranking
     "PromptLookup": "🔍📝",  # Prompt lookup
     "RubricClassified": "🏷️📄",  # Rubric classified
-    "PlanTraceStored": "📄💾",  # Plan trace stored
-    "PromptGenerated": "📝✨",  # Prompt generated
     "PatternStatsStored": "📊💾",  # Pattern stats stored
     "LLMJudgeResults": "📝⚖️",  # LLM judge results
     "RubricPatternsStored": "📊💾",  # Rubric patterns stored
@@ -118,6 +117,9 @@ KNOWLEDGE_OPS = {
 # PIPELINE CONTROL
 # =================
 PIPELINE_FLOW = {
+    "PipelineStageError": "🖇️❌",  # Pipeline stage error
+    "PipelineRunFailed": "🖇️▶️❌",  # Pipeline run failed
+    "PlanTraceError": "🖇️🔍❌",  # Plan trace error
     "PipelineReferenceInserted": "🖇️📄➕",  # Pipeline reference inserted
     "PipelineStageCompleted": "🖇️✅",  # Pipeline stage completed
     "PipelineStageStarted": "🖇️▶️",  # Pipeline stage started
@@ -142,6 +144,7 @@ PIPELINE_FLOW = {
 # SCORING & EVALUATION
 # =====================
 SCORING = {
+    "ScorableRankerInitialized": "🔗✅",  # Scorable ranker initialized
     "ScoringFailed": "❌📊",  # Scoring failed
     "ScoringPaper": "📄⚖️",  # Scoring paper
     "EpistemicPlanExecutorSkipped": "👾⏭️",  # Epistemic plan executor skipped
@@ -192,26 +195,15 @@ SCORING = {
     "DimensionEvaluated": "📏✅",  # Dimension evaluated
 }
 
+REPORTING = {
+}
+
 # =====================
 # REASONING & ANALYSIS
 # =====================
 REASONING = {
-    "PlanTraceMonitorDisabled": "📄🔧",  # Plan trace monitoring disabled
-    "PlanTraceSavedToFile": "📄💾",  # Plan trace saved to file
-    "PlanTraceCompleted": "📄✅",  # Plan trace completed
-    "MARSAnalysisCompleted": "📊✅",  # MARS analysis completed
-    "PlanTraceScoringCompleted": "📄✅",  # Plan trace scoring completed
-    "PlanTraceUpdated": "📄🔄",  # Plan trace updated
-    "PlanTraceScored": "📄⚖️",  # Plan trace scored
-    "PlanTraceScoringComplete": "📄✅",  # Plan trace scoring completed
     "DocumentScoringProgress": "📄🔄",  # Document scoring progress
     "DocumentScoringCompleted": "📄✅",  # Document scoring completed
-    "EpistemicPlanHRMModelInitialized": "👾🧠",  # Epistemic Plan HRM model initialized
-    "EpistemicPlanHRMOptimizerInitialized": "👾⚙️",  # Epistemic Plan HRM optimizer initialized
-    "EpistemicPlanHRMLossInitialized": "👾📉",  # Epistemic Plan HRM loss initialized
-    "EpistemicPlanHRMTrainingNoTraces": "👾🚫",  # No traces for training
-    "EpistemicPlanHRMTrainingStarted": "👾🚀",  # Epistemic Plan HRM training started
-    "EpistemicPlanHRMTrainingDataPrepared": "👾📊",  # Training data prepared
 
     "KeywordsExtracted": "🔑",  # Keywords extracted
     "ProximityAnalysisScored": "📌🗺️",  # Proximity analysis
@@ -232,6 +224,9 @@ REASONING = {
 # TRAINING & MODEL OPS
 # =====================
 TRAINING = {
+    "ContrastiveRankerDimReady": "📏✅",  # Contrastive ranker dimension ready
+
+    "HRMTrainingAgentInfo": "📊ℹ️",  # HRM training agent info
     "HRMTrainerInitialized": "🧠🤖",  # HRM trainer initialized
     "HRMTrainingAgentError": "🚫🧠",  # HRM training agent error
     "CalibrationStart": "🔧📊",  # Calibration started
@@ -284,6 +279,7 @@ TRAINING = {
 # HYPOTHESIS WORKFLOW
 # =================
 HYPOTHESIS_OPS = {
+    "HypothesisExtracted": "💡✨",  # Hypothesis extracted
     "GoalCreated": "🎯✨",  # Goal created
     "GoalDomainAssigned": "🎯🏷️",  # Goal domain assigned
     "GeneratedHypotheses": "💡✨",  # Hypotheses generated
@@ -303,6 +299,7 @@ HYPOTHESIS_OPS = {
 # PROMPT OPERATIONS
 # =================
 PROMPTS = {
+    "PromptGenerated": "📝✨",  # Prompt generated
     "PromptLoaded": "📄✅",  # Prompt loaded
     "PromptStored": "💾📄",  # Prompt stored
     "PromptExecuted": "💬▶️",  # Prompt executed
@@ -310,6 +307,50 @@ PROMPTS = {
     "PromptFileLoaded": "📄✅",  # Prompt file loaded
     "CoTGenerated": "⛓️💭",  # Chain-of-Thought generated
     "LLMCacheHit": "💾⚡",  # LLM cache hit
+}
+
+PLAN_TRACE = {
+    "PlannerReuseLinksCreated": "🔗📋",  # Planner reuse links created
+    "EmptyPlanTrace": "📄❌",  # Empty plan trace
+    "PlanTraceScoringWarning": "⚠️📄",  # Plan trace scoring warning
+    "PlannerReuseGenerated": "🔄📋",  # Planner reuse generated
+    "PlanTraceReuseLinkCreated": "🔗📋",  # Plan trace reuse link
+    "PlanRevisePersisted": "📄💾",  # Plan revision persisted
+    "PlannerReuseHRMScore": "📊🔄",  # Planner reuse HRM score
+    "PlannerReuseFilteredTrace": "📑🔍",  # Planner reuse filtered trace
+    "HRMTrainingDataPrepared": "📊📄",  # HRM training data prepared
+    "HRMTrainingStarted": "📊🚀",  # HRM training started
+    "HRMDataLoaderCreated": "📊📦",  # HRM data loader created
+    "HRMTrainingEpoch": "📊🏋️",  # HRM training epoch
+    "HRMTrainingStep": "📊🔄",  # HRM training step
+    "HRMTrainingCompleted": "📊✅",  # HRM training completed
+    "PlanTraceCreated": "📄📝",  # Plan trace created
+    "PlanTraceScorerInitialized": "📊🤖🪸",  # Plan trace scorer initialized
+    "PlanTraceMonitorInitialized": "📊🤖🪸",  # Plan trace monitor initialized
+    "PlanTraceStored": "📄💾",  # Plan trace stored
+    "PlanTraceMonitorDisabled": "📄🔧",  # Plan trace monitoring disabled
+    "PlanTraceSavedToFile": "📄💾",  # Plan trace saved to file
+    "PlanTraceCompleted": "📄✅",  # Plan trace completed
+    "PlanTraceScoringCompleted": "📄✅",  # Plan trace scoring completed
+    "PlanTraceUpdated": "📄🔄",  # Plan trace updated
+    "PlanTraceScored": "📄⚖️",  # Plan trace scored
+    "PlanTraceScoringComplete": "📄✅",  # Plan trace scoring completed
+    "EpistemicPlanHRMModelInitialized": "👾🧠",  # Epistemic Plan HRM model initialized
+    "EpistemicPlanHRMOptimizerInitialized": "👾⚙️",  # Epistemic Plan HRM optimizer initialized
+    "EpistemicPlanHRMLossInitialized": "👾📉",  # Epistemic Plan HRM loss initialized
+    "EpistemicPlanHRMTrainingNoTraces": "👾🚫",  # No traces for training
+    "EpistemicPlanHRMTrainingStarted": "👾🚀",  # Epistemic Plan HRM training started
+    "EpistemicPlanHRMTrainingDataPrepared": "👾📊",  # Training data prepared
+
+}   
+
+MARS = {
+    "MARSConflictStored": "🌕🔄📁",  # MARS conflict stored
+    "MARSLoggerConfigured": "🌕🔧📁",  # MARS logger configured    
+    "MARSCalculationStarted": "🌕📊🔄",  # MARS calculation started
+    "MARSAnalysisCompleted": "🌕📊✅",  # MARS analysis completed
+    "MARSResultStored": "🌕📊💾",  # MARS result stored
+    "MARSReportSaved": "📄💾"
 }
 
 # =================
@@ -381,16 +422,26 @@ MODELS = {
 
 # =============
 # ETHICS & REVIEWS
-# =============
+# ============= 
 SPECIAL = {
-    "DocumentEmbeddingInserted": "📄✅",  # Document embedding inserted
-    "DocumentEmbeddingBackfilled": "📄🔄",  # Document embedding backfilled
+    "ScoringServiceScorerRegistered": "📊✅",  # Scoring service scorer registered
+    "ScoringServiceInitialized": "📊🔧",  # Scoring service initialized
+    "CBRRank": "📊📈",  # CBR ranking started
+    "CBRRetrieve": "🔍📚",  # CBR retrieval started
+    "CBRReuse": "♻️📚",  # CBR reuse started
+    "MCTSReasoningProgress": "🔄🧠",  # MCTS reasoning in progress
+    "MCTSReasoningAgentComplete": "✅🧠",  # MCTS reasoning agent complete
+    "ScoreCorpusSummary": "📊🔍",  # Scoring corpus summary
+    "FinalOutputKeyMissing": "❌❌",  # Final output key missing
+    "info": "ℹ️",  # Information message
+    "error": "❌❌",  # Error message
+    "PlannerReuseCandidate": "📈🔄",  # Planner reuse candidate created
+    "FetchedScorableDomain": "📄🔍",  # Fetched scorable domain
+    "ScorableEmbeddingInserted": "📄✅",  # Document embedding inserted
+    "ScorableEmbeddingBackfilled": "📄🔄",  # Document embedding backfilled
     "ContextSavedToFile": "📄💾",  # Context saved to file
     "PolicyInsight": "📊💡",  # Policy insight generated
     "PolicyReportSaved": "💾📊",  # Policy report saved
-    "PlanTraceCreated": "📄📝",  # Plan trace created
-    "PlanTraceScorerInitialized": "📊🤖🪸",  # Plan trace scorer initialized
-    "PlanTraceMonitorInitialized": "📊🤖🪸",  # Plan trace monitor initialized
     "GILDProcessTraceStarted": "📊▶️",  # GILD process trace started
     "SICQLAdvantageExtracted": "📊📈",  # SICQL advantage extracted
     "SICQLAdvantageWarning": "⚠️📊",  # SICQL advantage warning
@@ -408,9 +459,12 @@ EVENT_ICONS = {
     **KNOWLEDGE_OPS,
     **PIPELINE_FLOW,
     **SCORING,
+    **MARS,
+    **REPORTING,
     **REASONING,
     **TRAINING,
     **HYPOTHESIS_OPS,
+    **PLAN_TRACE,
     **PROMPTS,
     **RESEARCH,
     **DEBUGGING,

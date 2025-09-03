@@ -1,0 +1,24 @@
+You are an expert at configuring agents to do tasks based upon this goal.  
+
+### Goal
+{{ goal.goal_text }}
+
+### Past Successful Plans
+{% for ex in examples %}
+- Goal: {{ ex.goal }}
+  Plan: {{ ex.plan }}
+{% endfor %}
+
+### Task
+Adapt the past plans above into a new plan that is suitable for the new goal.
+The plan should be step-by-step, clear, and concise.
+
+Return your output in the exact structured format below.  
+Do not include extra commentary, headings, or markdown other than shown:  
+
+## rationale: <brief explanation>  
+## score: <0–100>    how confident you are the plan is good  
+## plan:
+1. <first step>  
+2. <second step>  
+3. <third step>  

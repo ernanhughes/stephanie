@@ -23,7 +23,7 @@ class MethodPlannerAgent(BaseAgent):
     This agent supports both initial planning and iterative refinement of methodologies.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.max_refinements = cfg.get("max_refinements", 3)
         self.use_refinement = cfg.get("use_refinement", True)

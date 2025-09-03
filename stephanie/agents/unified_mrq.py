@@ -8,12 +8,11 @@ import numpy as np
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.evaluator.mrq_trainer import MRQTrainer
 from stephanie.models.unified_mrq import UnifiedMRQModelORM
-from stephanie.utils.similarity_utils import compute_similarity_matrix
 
 
 class UnifiedMRQAgent(BaseAgent):
     """
-    Unified Multidimensional MR.Q Agent Right sure Much yep and a man get there Yeah yeah I'd love it but I can't guess
+    Unified Multidimensional MR.Q Agent 
     - Collects scores across all pipelines and dimensions.
     - Builds contrastive training pairs.
     - Trains a multidimensional preference model.
@@ -35,7 +34,7 @@ class UnifiedMRQAgent(BaseAgent):
         self.logger.log("UnifiedMRQStarted", {})
 
         # Step 1: Load hypotheses and scores
-        hypotheses = self.get_hypotheses(context)
+        hypotheses = self.get_scorables(context)
         if not hypotheses:
             self.logger.log("NoHypothesesFound", {})
             return context

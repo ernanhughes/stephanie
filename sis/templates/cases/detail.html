@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+
+  <!-- Header -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start flex-wrap">
+        <div>
+          <h2 class="mb-1">Case #{{ case.id }}</h2>
+          <div class="text-muted small">
+            Casebook: <a href="/casebooks/{{ case.casebook_id }}">#{{ case.casebook_id }}</a>
+            <span class="mx-2">|</span>
+            Agent: <span class="badge bg-info text-dark">{{ case.agent_name or '—' }}</span>
+            <span class="mx-2">|</span>
+            Created: {{ case.created_at or '—' }}
+          </div>
+        </div>
+        <a href="/cases" class="btn btn-sm btn-outline-secondary">Back</a>
+      </div>
+      <hr>
+      <div class="mb-1 small text-muted">Goal</div>
+      <div class="mb-2"><code>{{ case.goal_id }}</code></div>
+      <div class="text-truncate" style="max-width: 100%;">{{ case.goal_text }}</div>
+    </div>
+  </div>
+
+  <!-- MARS cards (if any) -->
+  {% if mars_cards and mars_cards|length > 0 %}
+    {% for m in mars_cards %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Dimension: <span class="text-primary">{{ m.dimension }}</span></h5>
+          <div>
+            {% if m.high_disagreement %}
+              <span class="badge bg-danger">High Disagreement</span>
+            {% else %}
+              <span class="badge bg-success">Stable</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="row mt-2 g-3">
+          <div class="col-sm-3">
+            <div class="small text-muted">Agreement</div>
+            <div class="fs-6"><span class="badge bg-success">{{ "%.3f"|format(m.agreement_score or 0.0) }}</span></div>
+          </div>
+          <div class="col-sm-3">
+            <div class="small text-muted">Std Dev</div>
+            <div class="fs-6"><span class="badge bg-warning text-dark">{{ "%.3f"|format(m.std_dev or 0.0) }}</span></div>
+          </div>
+          <div class="col-sm-3">
+            <div class="small text-muted">Preferred Model</div>
+            <div class="fs-6"><code>{{ m.preferred_model or "—" }}</code></div>
+          </div>
+          <div class="col-sm-3">
+            <div class="small text-muted">Conflict</div>
+            <div class="fs-6">
+              {% set pc = m.primary_conflict or [] %}
+              {% if pc and pc|length >= 2 %}
+                <span class="badge bg-secondary">{{ pc[0] }}</span>
+                <span class="mx-1">vs</span>
+                <span class="badge bg-secondary">{{ pc[1] }}</span>
+                <span class="ms-2 text-muted">Δ {{ "%.3f"|format(m.delta or 0.0) }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% if m.explanation %}
+          <div class="mt-2">
+            <div class="small text-muted">Explanation</div>
+            <p class="mb-0">{{ m.explanation }}</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  {% endif %}
+
+  <!-- Scorables -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h5 class="mb-2">Scorables</h5>
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Role</th>
+              <th>Rank</th>
+              <th>MARS Conf.</th>
+              <th>Text</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for s in scorables %}
+            <tr>
+              <td><code>{{ s.scorable_id or '—' }}</code></td>
+              <td>{{ s.scorable_type or '—' }}</td>
+              <td><span class="badge bg-secondary">{{ s.role or '—' }}</span></td>
+              <td>{{ s.rank or '—' }}</td>
+              <td>
+                {% if s.mars_confidence is not none %}
+                  <span class="badge bg-success">{{ "%.3f"|format(s.mars_confidence) }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-truncate" style="max-width: 800px;">{{ s.text or '—' }}</td>
+            </tr>
+          {% endfor %}
+          {% if not scorables %}
+            <tr><td colspan="6" class="text-muted">No scorables stored.</td></tr>
+          {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raw payloads -->
+  <div class="accordion" id="rawAccordion">
+    {% set blocks = [
+      ('mars_summary', case.mars_summary),
+      ('scores', case.scores),
+      ('meta', case.meta)
+    ] %}
+    {% for title, payload in blocks %}
+    <div class="accordion-item">
+      <h2 class="accordion-header" id="hdr-{{ title }}">
+        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#col-{{ title }}" aria-expanded="false">
+          {{ title }}
+        </button>
+      </h2>
+      <div id="col-{{ title }}" class="accordion-collapse collapse" data-bs-parent="#rawAccordion">
+        <div class="accordion-body">
+          <pre class="mb-0"><code>{{ payload | tojson(indent=2) }}</code></pre>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="my-4">
+    <a href="/casebooks/{{ case.casebook_id }}" class="btn btn-secondary">&larr; Back to Casebook</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,10 +1,9 @@
 # stephanie/agents/master_pupil/pupil.py
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.utils.timing import time_function
 
 
 class PupilAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
@@ -16,6 +15,5 @@ class PupilAgent(BaseAgent):
         self.logger.log("PupilAnswerGenerated", f"Answered: {answer[:50]}...")
         return context
 
-    @time_function(logger=None)
     def answer(self, question, context):
         return self.call_llm(question, context, self.cfg.get("pupil_model"))

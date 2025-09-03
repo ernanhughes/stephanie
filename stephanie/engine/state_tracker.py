@@ -35,7 +35,7 @@ class StateTracker:
             self.state[key]["status"] = "active"
 
         if self.logger:
-            self.logger.info(
+            self.logger.log(
                 "GoalStateUpdated",
                 extra={
                     "goal": goal,

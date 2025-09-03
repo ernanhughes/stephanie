@@ -78,7 +78,7 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
     Trainer for EBT models using refinement examples
     Trains EBT to assign lower energy to refined documents
     """
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         """
         Args:
             cfg: Configuration dict with:
@@ -102,7 +102,7 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
         self.model_type = "ebt"
         self.target_type = "document"
         self.model_version = cfg.get("model_version", "v1")
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         

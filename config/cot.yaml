@@ -2,7 +2,8 @@
 defaults:
   - _self_
   - db: postgres
-
+  - plan_monitor: default
+  
   - scorer/ebt/default
   - scorer/hrm/default
   - scorer/mrq/default
@@ -11,6 +12,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/plan_trace_scorer
   - agents/literature
   - agents/literature_ranking
   - agents/prompt_tuning
@@ -73,14 +75,6 @@ goal:
     - "multi_dimensional_score_map"
     - "cross_domain_transfer_loop"
 
-plan_monitor:
-  enabled: true
-  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
-  save_output: true
-  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
-  plan_monitoring_interval: 10
-  plan_monitoring_timeout: 60
-
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
@@ -110,7 +104,7 @@ pipeline:
       enabled: false
       iterations: 1
     - name: cot_dspy_generator
-      cls: stephanie.agents.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
+      cls: stephanie.agents.dspy.cot_dspy_generator.ChainOfThoughtDSPyGeneratorAgent
       enabled: false
       iterations: 1
     - name: generation

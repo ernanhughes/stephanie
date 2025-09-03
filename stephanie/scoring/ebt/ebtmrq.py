@@ -86,7 +86,7 @@ class EnergyTunedMRQ:
             refined = True
             source = "ebt"
             
-            self.logger.info("DocumentRefined", {
+            self.logger.log("DocumentRefined", {
                 "dimension": dimension,
                 "steps_used": refinement_steps,
                 "energy_trace": energy_trace
@@ -194,7 +194,7 @@ class EnergyTunedMRQ:
         # Train MRQ using preference pairs
         if training_pairs:
             self.mrq.train_multidimensional_model(training_pairs)
-            self.logger.info("MRQRetrained", {
+            self.logger.log("MRQRetrained", {
                 "examples_used": len(training_pairs),
                 "dimensions_updated": set(e["dimension"] for e in training_pairs)
             })
@@ -234,7 +234,7 @@ class EnergyTunedMRQ:
                 before_score, after_score
             )
             improvement = after_score - before_score
-            self.logger.info("MRQTuned", {
+            self.logger.log("MRQTuned", {
                 "dimension": dimension,
                 "improvement": improvement,
                 "before": before_score,

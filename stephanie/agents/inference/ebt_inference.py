@@ -19,14 +19,13 @@ from stephanie.utils.model_locator import ModelLocator
 
 
 class EBTInferenceAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_type = "ebt"
-        self.evaluator = "ebt"
         self.model_path = cfg.get("model_path", "models")
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
 
         self.dimensions = cfg.get("dimensions", [])
         self.models = {}
@@ -160,6 +159,7 @@ class EBTInferenceAgent(BaseAgent):
                 self.logger,
                 source=self.model_type,
                 model_name=self.get_model_name(),
+                evaluator_name=self.model_type,
             )
 
             results.append(

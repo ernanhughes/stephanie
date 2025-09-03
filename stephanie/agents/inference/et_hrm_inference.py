@@ -7,8 +7,8 @@ from typing import Any, Dict, List
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.ep_hrm_scorer import EpistemicPlanHRMScorer
 from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorer.ep_hrm_scorer import EpistemicPlanHRMScorer
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.utils.trace_utils import load_plan_traces_from_export_dir
 
@@ -20,7 +20,7 @@ class EpistemicTraceHRMInferenceAgent(BaseAgent):
     Stores score results in memory and context.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", [])
         self.export_dir = cfg.get("export_dir", "reports/epistemic_plan_executor")
@@ -50,10 +50,11 @@ class EpistemicTraceHRMInferenceAgent(BaseAgent):
             return context
 
         results = []
+        goal_text = context.get("goal", {}).get("goal_text", "")
         for trace in traces:
             score_bundle: ScoreBundle = self.scorer.score(trace, self.dimensions)
 
-            scorable = ScorableFactory.from_plan_trace(trace, mode="default")
+            scorable = ScorableFactory.from_plan_trace(trace, goal_text=goal_text)
             # Save to memory
             ScoringManager.save_score_to_memory(
                 bundle=score_bundle,
@@ -64,6 +65,7 @@ class EpistemicTraceHRMInferenceAgent(BaseAgent):
                 logger=self.logger,
                 source=self.scorer.model_type,
                 model_name=self.scorer.get_model_name(),
+                evaluator_name=self.scorer.name,
             )
 
             results.append({

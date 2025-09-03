@@ -28,7 +28,7 @@ class CycleWatcher:
         self.history[key].append(agreement)
 
         if self.logger:
-            self.logger.info(
+            self.logger.log(
                 "CycleAgreementTracked",
                 extra={"goal": goal, "dimension": dimension, "agreement": agreement},
             )

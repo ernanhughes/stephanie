@@ -2,6 +2,7 @@
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.evaluator import MRQSelfEvaluator
 from stephanie.models import EvaluationORM
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
 class MRQScoringAgent(BaseAgent):
@@ -17,6 +18,7 @@ class MRQScoringAgent(BaseAgent):
         count_scored = 0
 
         for hypothesis in hypotheses:
+            scorable = ScorableFactory.from_orm(hypothesis, TargetType.HYPOTHESIS)
             if not hypothesis.prompt or not scorable.text:
                 continue
 
@@ -46,14 +48,15 @@ class MRQScoringAgent(BaseAgent):
 
             score_obj = EvaluationORM(
                 goal_id=hypothesis.goal_id,
-                target_type="hypothesis",
-                target_id=hypothesis.id,
+                scorable_type="hypothesis",
+                scorable_id=str(hypothesis.id),
                 agent_name=self.name,
                 model_name=self.model_name,
-                embedding_type=self.memory.embedding.type,
+                embedding_type=self.memory.embedding.name,
                 evaluator_name=self.evaluator.__class__.__name__,
                 scores=result,
                 pipeline_run_id=context.get("pipeline_run_id"),
+                plan_trace_id=context.get("plan_trace_id"),
                 extra_data=self.cfg,
                 dimensions=dimensions,
             )

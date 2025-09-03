@@ -19,7 +19,7 @@ class GILDTraceAgent(BaseAgent):
     GILD Trainer that not only performs policy refinement but also records
     its own process and outcome as a PlanTrace for self-analysis and improvement.
     """
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         # --- Initialize Database Stores ---
         self.plan_trace_store: PlanTraceStore = PlanTraceStore(memory.session, logger)

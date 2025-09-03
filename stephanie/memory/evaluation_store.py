@@ -1,14 +1,18 @@
 # stephanie/memory/evaluation_store.py
 # stores/score_store.py
 import json
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models import RuleApplicationORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.evaluation_rule_link import EvaluationRuleLinkORM
 from stephanie.models.goal import GoalORM
+from stephanie.models.score import ScoreORM
+from stephanie.models.score_attribute import ScoreAttributeORM
 from stephanie.scoring.scorable import Scorable
 
 
@@ -106,7 +110,8 @@ class EvaluationStore:
     ) -> list[dict]:
         """Returns all scores associated with a specific hypothesis, optionally filtered by evaluator source."""
         query = self.session.query(EvaluationORM).filter(
-            EvaluationORM.hypothesis_id == hypothesis_id
+            EvaluationORM.scorable_id == str(hypothesis_id)
+            and EvaluationORM.scorable_type == "hypothesis"
         )
 
         if source:
@@ -166,7 +171,8 @@ class EvaluationStore:
         return {
             "id": row.id,
             "goal_id": row.goal_id,
-            "hypothesis_id": row.hypothesis_id,
+            "scorable_id": row.scorable_id,
+            "scorable_type": row.scorable_type,
             "agent_name": row.agent_name,
             "model_name": row.model_name,
             "evaluator_name": row.evaluator_name,
@@ -196,30 +202,9 @@ class EvaluationStore:
         )
         return [rid for (rid,) in links]
 
-    def get_by_hypothesis_ids(self, hypothesis_ids: list[int]) -> list[EvaluationORM]:
-        if not hypothesis_ids:
-            return []
-        try:
-            return (
-                self.session.query(EvaluationORM)
-                .filter(EvaluationORM.hypothesis_id.in_(hypothesis_ids))
-                .all()
-            )
-        except Exception as e:
-            if self.logger:
-                self.logger.log(
-                    "EvaluationStoreError",
-                    {
-                        "method": "get_by_hypothesis_ids",
-                        "error": str(e),
-                        "hypothesis_ids": hypothesis_ids,
-                    },
-                )
-            return []
-
     def get_latest_score(self, scorable: Scorable, agent_name: str = None):
         query = self.session.query(EvaluationORM).filter_by(
-            target_type=scorable.target_type, target_id=str(scorable.id)
+            scorable_type=scorable.target_type, scorable_id=str(scorable.id)
         )
 
         if agent_name:
@@ -232,3 +217,98 @@ class EvaluationStore:
             return latest.scores.get("final_score")
 
         return None
+
+
+    def save_bundle(self, bundle: ScoreBundle, scorable, context, cfg, source, embedding_type="hnet", evaluator=None):
+        """Persist a full bundle (Evaluation + Scores + Attributes) into the DB."""
+        goal = context.get("goal")
+        pipeline_run_id = context.get("pipeline_run_id")
+
+        eval_orm = EvaluationORM(
+            goal_id=goal.get("id"),
+            pipeline_run_id=pipeline_run_id,
+            scorable_type=scorable.target_type,
+            scorable_id=str(scorable.id),
+            source=source,
+            agent_name=cfg.get("name"),
+            model_name=cfg.get("model", {}).get("name", "UnknownModel"),
+            embedding_type=embedding_type,
+            evaluator_name=evaluator or "ScoreEvaluator",
+            strategy=cfg.get("strategy"),
+            reasoning_strategy=cfg.get("reasoning_strategy"),
+        )
+        self.session.add(eval_orm)
+        self.session.flush()
+
+        # Save ScoreORM + attributes
+        for result in bundle.results.values():
+            score_orm = ScoreORM(
+                evaluation_id=eval_orm.id,
+                dimension=result.dimension,
+                score=result.score,
+                weight=result.weight,
+                source=result.source,
+                rationale=result.rationale,
+            )
+            self.session.add(score_orm)
+            self.session.flush()
+
+            # Attributes
+            for k, v in (result.attributes or {}).items():
+                self.session.add(ScoreAttributeORM(
+                    score_id=score_orm.id,
+                    key=k,
+                    value=json.dumps(v) if isinstance(v, (list, dict)) else str(v),
+                    data_type="json" if isinstance(v, (list, dict)) else "float" if isinstance(v, (int,float)) else "string"
+                ))
+
+        self.session.commit()
+        return eval_orm
+
+    def get_by_scorable(
+        self,
+        scorable_id: str | int,
+        scorable_type: str,
+        *,
+        evaluator_name: Optional[str] = None,
+        since: Optional[datetime] = None,
+        limit: Optional[int] = 100,
+        newest_first: bool = True,
+    ) -> list[dict]:
+        """
+        Return evaluations for a specific (scorable_id, scorable_type), with optional filters.
+
+        Args:
+            scorable_id: The scorable identifier (will be coerced to str for comparison).
+            scorable_type: The scorable type string (e.g., "plan_trace", "hypothesis").
+            evaluator_name: If provided, filter by evaluator name.
+            since: If provided, only evaluations created on/after this datetime.
+            limit: Maximum number of rows to return (None for no limit).
+            newest_first: Sort order by created_at. True => DESC, False => ASC.
+
+        Returns:
+            A list of dicts (via _orm_to_dict).
+        """
+        q = (
+            self.session.query(EvaluationORM)
+            .filter(
+                EvaluationORM.scorable_id == str(scorable_id),
+                EvaluationORM.scorable_type == scorable_type,
+            )
+        )
+
+        if evaluator_name:
+            q = q.filter(EvaluationORM.evaluator_name == evaluator_name)
+
+        if since:
+            q = q.filter(EvaluationORM.created_at >= since)
+
+        q = q.order_by(
+            EvaluationORM.created_at.desc() if newest_first else EvaluationORM.created_at.asc()
+        )
+
+        if limit is not None:
+            q = q.limit(int(limit))
+
+        rows = q.all()
+        return [self._orm_to_dict(r) for r in rows]

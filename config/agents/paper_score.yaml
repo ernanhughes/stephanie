@@ -1,5 +1,4 @@
 # config/agents/paper_score.yaml
-
 paper_score:
   name: paper_score
   enabled: true
@@ -7,29 +6,46 @@ paper_score:
   save_context: false
   skip_if_completed: false
 
-  force_rescore: true
+  force_rescore: false
   use_memory_for_fast_prompts: false
 
+  enabled_scorers:
+    - hrm
+    - sicql
+    - svm
+    - mrq
+    - ebt
+    - contrastive_ranker
 
-  model:
-    name: ollama_chat/qwen3
-    api_base: http://localhost:11434
-    api_key: null
+  include_mars: true
 
-  prompt_mode: file
-  prompt_file: full_review.txt
-  input_key: documents
-  output_key: paper_score
+  # MARS normalization & thresholds live here
+  dimension_config:
+    # Most dims are 10–100 in your system
+    default_range: [10, 100]
 
-  dimensions: 
-    - alignment
-    - clarity
-    - implementability
-    - novelty
-    - relevance
+    # Explicit overrides
+    ranges:
+      hrm: [0, 1]
 
-  preferences:
-    - goal_consistency
-    - factual
-    - reliable_source
-    - simplicity
+    # Global variance threshold used for scaled space (0–1)
+    variance_threshold: 0.15
+
+    # Optional: tell MARS to analyze extra metrics beyond "score"
+    metrics:
+      - score
+      - energy        # if your scorers populate it
+      - uncertainty   # if available
+
+    # Optional per-dimension overrides (this replaces mars_thresholds)
+    dimensions:
+      relevance:
+        variance_threshold: 0.30
+      novelty:
+        variance_threshold: 0.30
+      clarity:
+        variance_threshold: 0.30
+      implementability:
+        variance_threshold: 0.30
+      alignment:
+        variance_threshold: 0.30

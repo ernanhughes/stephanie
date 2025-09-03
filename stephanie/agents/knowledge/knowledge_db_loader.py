@@ -6,7 +6,7 @@ from stephanie.scoring.scorable_factory import TargetType
 
 
 class KnowledgeDBLoaderAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.top_k = cfg.get("top_k", 100)
         self.include_full_text = cfg.get("include_full_text", False)
@@ -25,7 +25,7 @@ class KnowledgeDBLoaderAgent(BaseAgent):
                 self.logger.log("NoDocumentIdsProvided", "No document ids to score.")
                 return context
 
-            docs = self.memory.document.get_by_ids(self.doc_ids)
+            docs = self.memory.documents.get_by_ids(self.doc_ids)
             if not docs:
                 self.logger.log("NoDocumentsFound", {"ids": self.doc_ids})
                 return context
@@ -35,8 +35,8 @@ class KnowledgeDBLoaderAgent(BaseAgent):
             )
             docs = [d.to_dict() for d in docs]
         else:
-            docs = self.memory.embedding.search_related_documents(
-                goal_text, self.top_k
+            docs = self.memory.embedding.search_related_scorables(
+                goal_text, top_k=self.top_k
             )
             self.logger.log(
                 "DocumentsSearched",

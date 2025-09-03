@@ -46,10 +46,7 @@ database:
 
 # Embeddings (to match MemoryTool usage)
 embeddings:
-  backend: "mxbai"   # options: mxbai | hnet | huggingface
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
+  backend: "hnet"   # options: mxbai | hnet | huggingface
 
 # Logging
 logging:

@@ -1,0 +1,201 @@
+# configs/agents/memento.yaml
+
+memento:
+  name: memento
+
+  max_depth: 5
+  branching_factor: 3
+  ucb_weight: 1.41
+  num_simulations: 50
+  use_memory_for_fast_prompts: true
+
+  reuse_budget: 16
+  casebook_budget: 200
+  artifact_budget: 20
+  min_diversity: 0.25
+  improve_eps: 1e-6
+  exploration_eps: 0.1
+  retrieval_mode: fallback   # strict|fallback|union
+  quality_weights:
+    mars: 1.0
+    hrm: 0.5
+    reward: 2.0
+    llm: 0.25
+  prune_after_runs: 1        # run pruning every N runs
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  input_keys: ["goal"]   # add nodes
+  output_key: lats  # change
+  prompt_mode: file
+  prompt_file: lats.txt
+
+  # --- MARS / dimension config ---
+
+  # Global defaults (used by each dimension via merge)
+  trust_reference: llm           # or "hrm" / "mrq" — your upstream reference scorer
+  variance_threshold: 0.05       # collapse/ignore dims with very low variance
+  metrics:                       # default metrics each dimension will compute/aggregate
+    - agreement
+    - dispersion
+    - confidence
+
+  # Active dimensions
+  dimensions:
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+
+  dimension_configs:
+    _defaults: &dim_defaults
+      trust_reference: llm
+      variance_threshold: 0.05
+      metrics: 
+        - agreement
+        - dispersion
+        - confidence
+
+
+    alignment:
+      <<: *dim_defaults
+      weight: 1.0
+      description: "How well the response aligns with the user's goal."
+
+    clarity:
+      <<: *dim_defaults
+      weight: 0.5
+      description: "The clarity of the response."
+
+    implementability:
+      <<: *dim_defaults
+      weight: 0.25
+      description: "How easily the response can be implemented."
+
+    novelty:
+      <<: *dim_defaults
+      metrics: [diversity, surprise, dispersion]   # override if you like
+      weight: 0.1
+      description: "The novelty of the response."
+
+    relevance:
+      <<: *dim_defaults
+      weight: 0.8
+      description: "Topical fit to the goal and retrieved context."
+
+
+  casebook_tag: default
+  novelty_k: 6
+  quality_threshold: 0.72
+  retain_dedup_sim: 0.92
+  shadow_rollout: true
+
+  mcts:
+    num_simulations: 24
+    branching_factor: 2
+    top_k_leaves: 3
+    max_lm_calls: 48
+    eval_at: leaf
+    target_score: 0.78   # early stop
+    expand_mode: single_step
+    samples_per_expand: 2
+
+  selector:
+    rerank:
+      w_goal_sim: 0.55
+      w_quality: 0.30
+      w_recency_decay: 0.10
+      w_novelty_bonus: 0.05
+
+  ab_validation:
+    mode: periodic         # off | periodic | always
+    period: 5              # every Nth run per (pipeline×agent×goal)
+    control_tag: "control" # where to store baseline provenance (if you want)
+    delta_eps: 0.002        # min improvement to count as better
+    seed_lock: true        # use same seed for baseline & cbr
+    freeze_training: true  # disable online learning during baseline
+
+  proximity:   
+    name: proximity
+
+    similarity_threshold: 0.75  # Only show pairs with at least 75% similarity
+    max_graft_candidates: 3   # Max number of pairs to suggest for grafting
+    use_database_search: true # Whether to pull past hypotheses from DB
+    top_k_database_matches: 10  # How many prior hypotheses to retrieve
+
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Key that it will iterate over ot generate reflections
+    input_key: "hypotheses"
+    # Key that it store the results of those reflections
+    output_key: "proximity"  # change
+
+    save_prompt: true
+    strategy:
+    prompt_mode: file
+    prompt_file: proximity.txt
+
+    preferences:
+    - goal_consistency
+    - biological_plausibility
+    - experimental_validity
+    - novelty
+    - simplicity
+
+  rule_tuner:
+    name: rule_tuner
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Required keys for the agent ot effectively process the context
+    required_keys: ["goal", "hypotheses"]   # add nodes
+    # Key that it will iterate over ot generate reflections
+    input_key: "hypotheses"
+    # Key that it store the results of those reflections
+    output_key: "tuning"
+
+  mrq:
+    similarity_threshold: 0.85
+    top_k_similar: 20
+    min_value_difference: 10
+    model_output_dir: ./outputs/unified_mrq
+    target_dimensions:
+      - correctness
+      - originality
+      - clarity
+      - relevance
+
+    # model
+    model:
+      name: ollama_chat/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Required keys for the agent ot effectively process the context
+    required_keys: ["goal", "hypotheses"] # add nodes
+    # Key that it will iterate over ot generate reflections
+    input_key: hypotheses
+    # Key that it store the results of those reflections
+    output_key: ranking # change
+
+    # prompt
+    save_prompt: true
+    prompt_mode: file
+    strategy: debate
+    prompt_file: debate.txt
+    # preferences
+    preferences:
+      - goal_consistency
+      - biological_plausibility
+      - experimental_validity
+      - novelty
+      - simplicity

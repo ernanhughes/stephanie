@@ -5,18 +5,17 @@ import numpy as np
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
-from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.scoring.ebt.buffer import EBTTrainingBuffer
-from stephanie.scoring.ebt_scorer import EBTScorer
-from stephanie.scoring.llm_scorer import LLMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.llm_scorer import LLMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
 
 class ScoringPolicyAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.cfg = cfg
         self.memory = memory
@@ -199,7 +198,6 @@ class ScoringPolicyAgent(BaseAgent):
             plt.savefig(f"reports/score_dist_{dim}.png")
             plt.close()
 
-import numpy as np
 
 
 def generate_summary_report(self, results: list):

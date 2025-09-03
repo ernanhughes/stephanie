@@ -4,7 +4,7 @@ from stephanie.constants import GOAL
 
 
 class KnowledgeDBLoaderAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.top_k = cfg.get("top_k", 10)
         self.include_full_text = cfg.get("include_full_text", False)
@@ -27,7 +27,7 @@ class KnowledgeDBLoaderAgent(BaseAgent):
                 goal_text, top_k=self.top_k
             )
         else:
-            matches = self.memory.embedding.search_related_documents(goal_text, top_k=self.top_k)
+            matches = self.memory.embedding.search_related_scorables(goal_text, top_k=self.top_k)
 
         # Step 3: Format results
         results = []

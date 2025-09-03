@@ -1,13 +1,16 @@
 # stephanie/memory/plan_trace_store.py
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 # Import the ORM
 from stephanie.data.plan_trace import PlanTrace
+from stephanie.models.goal import GoalORM
 from stephanie.models.plan_trace import ExecutionStepORM, PlanTraceORM
+from stephanie.models.plan_trace_reuse_link import PlanTraceReuseLinkORM
+from stephanie.models.plan_trace_revision import PlanTraceRevisionORM
 
 
 class PlanTraceStore:
@@ -34,7 +37,7 @@ class PlanTraceStore:
             final_output_text=plan_trace.final_output_text,
             target_epistemic_quality=plan_trace.target_epistemic_quality,
             target_epistemic_quality_source=plan_trace.target_epistemic_quality_source,
-            meta=plan_trace.extra_data,
+            meta=plan_trace.meta,
         )
 
         # Convert execution steps
@@ -48,7 +51,7 @@ class PlanTraceStore:
                 description=step.description,
                 output_text=step.output_text,
                 output_embedding_id=None,
-                meta={**(step.attributes or {}), **(step.extra_data or {})},
+                meta={**(step.attributes or {}), **(step.meta or {})},
             )
             orm_steps.append(orm_step)
 
@@ -86,21 +89,10 @@ class PlanTraceStore:
             raise
 
     def update(self, plan_trace: PlanTrace) -> bool:
-        """
-        Updates an existing PlanTrace in the database with new scoring data.
-        
-        Args:
-            plan_trace: The PlanTrace dataclass with updated scoring information
-            
-        Returns:
-            bool: True if update was successful, False otherwise
-        """
         try:
-            # Find the existing PlanTraceORM by trace_id
             orm_trace = self.session.query(PlanTraceORM).filter(
                 PlanTraceORM.trace_id == plan_trace.trace_id
             ).first()
-            
             if not orm_trace:
                 if self.logger:
                     self.logger.log("PlanTraceUpdateFailed", {
@@ -109,45 +101,54 @@ class PlanTraceStore:
                     })
                 return False
 
-            # === Update scoring fields directly ===
-            orm_trace.step_scores = plan_trace.step_scores
-            orm_trace.pipeline_score = plan_trace.pipeline_score
-            orm_trace.mars_analysis = plan_trace.mars_analysis
+            # Update scalar fields
+            orm_trace.final_output_text = plan_trace.final_output_text
+            orm_trace.target_epistemic_quality = plan_trace.target_epistemic_quality
+            orm_trace.target_epistemic_quality_source = plan_trace.target_epistemic_quality_source
 
-            # === Update meta data ===
+            # Update scoring fields
+            orm_trace.step_scores = (
+                plan_trace.meta.get("step_scores")
+                if isinstance(plan_trace.meta, dict)
+                else None
+            )
+
+            # Update extra_data safely (merge, don’t overwrite)
             if not orm_trace.meta:
                 orm_trace.meta = {}
+            orm_trace.meta.update(plan_trace.meta or {})
 
-            orm_trace.meta.update({
-                "scored_at": plan_trace.extra_data.get(
-                    "completed_at", orm_trace.meta.get("completed_at")
-                ),
-                "scoring_duration": plan_trace.extra_data.get("scoring_duration", 0)
-            })
+            # Optionally update execution steps
+            if plan_trace.execution_steps:
+                # Clear and repopulate or merge
+                orm_trace.execution_steps.clear()
+                for step in plan_trace.execution_steps:
+                    orm_trace.execution_steps.append(
+                        ExecutionStepORM(
+                            plan_trace=orm_trace,
+                            pipeline_run_id=plan_trace.pipeline_run_id,
+                            step_order=step.step_order,
+                            step_id=str(step.step_id),
+                            description=step.description,
+                            output_text=step.output_text,
+                            meta={**(step.attributes or {}), **(step.meta or {})},
+                        )
+                    )
 
-            # Commit the changes
             self.session.commit()
-
-            if self.logger:
-                self.logger.log("PlanTraceUpdated", {
-                    "trace_id": plan_trace.trace_id,
+            self.logger.log("PlanTraceUpdated", {
+                "trace_id": plan_trace.trace_id,
                     "step_count": len(plan_trace.execution_steps),
-                    "pipeline_score": plan_trace.pipeline_score
                 })
-
             return True
 
         except Exception as e:
             self.session.rollback()
-            error_traceback = traceback.format_exc()
-
-            if self.logger:
-                self.logger.log("PlanTraceUpdateError", {
-                    "trace_id": plan_trace.trace_id,
-                    "error": str(e),
-                    "traceback": error_traceback
-                })
-
+            self.logger.log("PlanTraceUpdateError", {
+                "trace_id": plan_trace.trace_id,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            })
             return False
 
     def get_by_id(self, trace_id: int) -> Optional[PlanTraceORM]:
@@ -236,3 +237,147 @@ class PlanTraceStore:
             if self.logger:
                 self.logger.log("PlanTraceGetAllFailed", {"error": str(e), "limit": limit})
             return []
+
+
+    def get_goal_text(self, trace_id: str) -> Optional[str]:
+        """
+        Retrieve the goal text for a given plan_trace (by trace_id) using a direct join.
+        More efficient than loading the full ORM relationship.
+        """
+        try:
+            result = (
+                self.session.query(GoalORM.goal_text)
+                .join(PlanTraceORM, GoalORM.id == PlanTraceORM.goal_id)
+                .filter(PlanTraceORM.trace_id == trace_id)
+                .first()
+            )
+            if result:
+                return result[0]  # since we're selecting only goal_text
+            return None
+        except Exception as e:
+            if self.logger:
+                self.logger.log(
+                    "PlanTraceGetGoalTextError",
+                    {"error": str(e), "trace_id": trace_id},
+                )
+            return None
+
+
+
+    def get_similar_traces(self, query_text: str, top_k: int = 10, embedding=None) -> List[PlanTraceORM]:
+        """
+        Retrieve PlanTraces most similar to the given query_text using embeddings.
+        Requires `embedding` backend (defaults to memory.embedding).
+        """
+        try:
+            if embedding is None:
+                embedding = self.session.bind.memory.embedding  # fallback if memory is globally bound
+            query_emb = embedding.get_or_create(query_text)
+
+            traces = self.get_all(limit=500)  # pull candidates
+            scored = []
+            for t in traces:
+                candidate_text = (t.final_output_text or "") + " " + (t.plan_signature or "")
+                cand_emb = embedding.get_or_create(candidate_text)
+                sim = float(query_emb @ cand_emb / ( (query_emb**2).sum()**0.5 * (cand_emb**2).sum()**0.5 ))
+                scored.append((sim, t))
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [t for _, t in scored[:top_k]]
+
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceSimilarityError", {"error": str(e), "query": query_text})
+            return []
+
+    def get_by_goal_type(self, goal_type: str, limit: int = 50) -> List[PlanTraceORM]:
+        """Retrieve traces linked to a specific goal type (via GoalORM.goal_type)."""
+        try:
+            return (
+                self.session.query(PlanTraceORM)
+                .join(GoalORM, GoalORM.id == PlanTraceORM.goal_id)
+                .filter(GoalORM.goal_type == goal_type)
+                .order_by(desc(PlanTraceORM.created_at))
+                .limit(limit)
+                .all()
+            )
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceGetByGoalTypeError", {"error": str(e), "goal_type": goal_type})
+            return []
+
+    def get_by_outcome(self, min_score: Optional[float] = None, success_only: bool = False, limit: int = 50) -> List[PlanTraceORM]:
+        """
+        Retrieve traces by outcome.
+        - If min_score is set, filter by pipeline_score['overall'] >= min_score.
+        - If success_only=True, filter traces with no error in meta.
+        """
+        try:
+            query = self.session.query(PlanTraceORM)
+
+            if min_score is not None:
+                query = query.filter(
+                    PlanTraceORM.pipeline_score["overall"].astext.cast(float) >= min_score
+                )
+            if success_only:
+                query = query.filter(~PlanTraceORM.meta.has_key("error"))  # noqa: E711
+
+            return query.order_by(desc(PlanTraceORM.created_at)).limit(limit).all()
+        except Exception as e:
+            if self.logger:
+                self.logger.log("PlanTraceGetByOutcomeError", {
+                    "error": str(e),
+                    "min_score": min_score,
+                    "success_only": success_only
+                })
+            return []
+
+    def add_reuse_link(self, parent_trace_id: str, child_trace_id: str):
+        if parent_trace_id == child_trace_id:
+            if self.logger:
+                self.logger.log("PlanTraceReuseLinkSkipped", {
+                    "reason": "parent == child",
+                    "trace_id": parent_trace_id
+                })
+            return None
+        link = PlanTraceReuseLinkORM(
+            parent_trace_id=parent_trace_id,
+            child_trace_id=child_trace_id
+        )
+        self.session.add(link)
+        self.session.commit()
+        if self.logger:
+            self.logger.log("PlanTraceReuseLinkCreated", {
+                "parent": parent_trace_id,
+                "child": child_trace_id
+            })
+        return link.id
+
+    def get_reuse_links_for_trace(self, trace_id: str):
+        return (
+            self.session.query(PlanTraceReuseLinkORM)
+            .filter(
+                (PlanTraceReuseLinkORM.parent_trace_id == trace_id) |
+                (PlanTraceReuseLinkORM.child_trace_id == trace_id)
+            )
+            .all()
+        )
+    
+    def add_revision(self, trace_id: str, revision_type: str, revision_text: str, source: str = "user"):
+        revision = PlanTraceRevisionORM(
+            plan_trace_id=trace_id,
+            revision_type=revision_type,
+            revision_text=revision_text,
+            source=source,
+        )
+        self.session.add(revision)
+        self.session.commit()
+        return revision
+
+    def get_revisions(self, trace_id: str) -> list[PlanTraceRevisionORM]:
+        return (
+            self.session.query(PlanTraceRevisionORM)
+            .filter_by(plan_trace_id=trace_id)
+            .order_by(PlanTraceRevisionORM.created_at)
+            .all()
+        )

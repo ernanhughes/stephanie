@@ -1,10 +1,11 @@
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.mrq.preference_pair_builder import PreferencePairBuilder
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.scoring.training.rank_trainer import ContrastiveRankerTrainer
 
 
 class ContrastiveRankerTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.pair_builder = PreferencePairBuilder(memory.session, logger)
         self.model_type = "contrastive_ranker"

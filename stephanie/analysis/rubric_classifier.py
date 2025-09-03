@@ -1,6 +1,6 @@
 # stephanie/analysis/rubric_classifier.py
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 
 from stephanie.constants import GOAL
 from stephanie.models import PatternStatORM

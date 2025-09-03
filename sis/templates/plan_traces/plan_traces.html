@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h2>🪢 Plan Traces</h2>
+
+  {% if message %}
+    <div class="alert alert-info">{{ message }}</div>
+  {% endif %}
+
+  {% if traces %}
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Goal</th>
+        <th>Pipeline</th>
+        <th>Steps</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in traces %}
+      <tr>
+        <td>{{ t.trace_id }}</td>
+        <td>{{ t.goal_text or "—" }}</td>
+        <td>{{ t.plan_signature }}</td>
+        <td>{{ t.execution_steps|length }}</td>
+        <td>{{ t.created_at | datetimeformat }}</td>
+        <td>
+          <a href="/plan_traces/{{ t.trace_id }}" class="btn btn-sm btn-outline-primary">View</a>
+          <a href="/plan_traces?similar_to={{ t.trace_id }}" class="btn btn-sm btn-outline-secondary">Find Similar</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No plan traces found.</p>
+  {% endif %}
+</div>
+{% endblock %}

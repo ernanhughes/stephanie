@@ -4,7 +4,7 @@ from stephanie.world.db.locator import WorldviewDBLocator
 
 
 class WorldViewCeate(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.base_directory = cfg.get("base_directory", "worldviews")
         self.pipelines = cfg.get("pipelines", [])

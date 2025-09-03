@@ -1,0 +1,18 @@
+planner_revise:
+  name: planner_revise
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: planner_reuse  # note the output_key of the planner_reuse agent
+  output_key: planner_revise
+
+  prompt_mode: file
+
+  prompt_file: planner_revise.txt

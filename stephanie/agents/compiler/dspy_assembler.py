@@ -7,9 +7,9 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import GOAL
-from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 
 
 # DSPy signature for merging multiple high-quality prompts into a coherent prompt
@@ -39,7 +39,7 @@ class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
     DSPyAssembler uses DSPy to merge and refine multiple prompt variants into one optimal prompt.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.scorer = MRQScorer(cfg, memory, logger)
         self.scorer.load_models()

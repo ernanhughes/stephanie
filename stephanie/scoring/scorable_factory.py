@@ -1,9 +1,11 @@
 # stephanie/scoring/scorable_factory.py
+import trace
 from enum import Enum as PyEnum
 from typing import Optional
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
+from stephanie.models.casebook import CaseORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
@@ -13,7 +15,10 @@ from stephanie.scoring.scorable import Scorable
 
 # Enum defining all the supported types of scoreable targets
 class TargetType:
+    AGENT_OUTPUT = "agent_output"
     DOCUMENT = "document"
+    GOAL = "goal"
+    CASE = "case"
     HYPOTHESIS = "hypothesis"
     CARTRIDGE = "cartridge"
     TRIPLE = "triple"
@@ -86,6 +91,19 @@ class ScorableFactory:
             text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
             return Scorable(id=obj.id, text=text, target_type=TargetType.DOCUMENT)
 
+        elif isinstance(obj, CaseORM):
+            text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
+            return Scorable(id=obj.id, text=text, target_type=TargetType.CASE)
+
+        elif isinstance(obj, PlanTrace):
+            text = " ".join([
+                obj.plan_signature or "",
+                obj.final_output_text or "",
+            " ".join([s.output_text for s in obj.execution_steps[:3]])  # optional context
+            ])
+            return Scorable(id=obj.trace_id, text=text, target_type=TargetType.PLAN_TRACE)
+
+
         else:
             raise ValueError(f"Unsupported ORM type for scoring: {type(obj)}")
 
@@ -131,7 +149,7 @@ class ScorableFactory:
         return Scorable(id="", text=text, target_type=target_type)
 
     @staticmethod
-    def from_plan_trace(trace: PlanTrace, mode: str = "default", step: Optional[ExecutionStep] = None) -> Scorable:
+    def from_plan_trace(trace: PlanTrace, goal_text: str, mode: str = "default", step: Optional[ExecutionStep] = None) -> Scorable:
         """
         Convert a PlanTrace into a Scorable object for scoring.
         Mode can be used to customize how the trace is represented as text.
@@ -168,7 +186,7 @@ class ScorableFactory:
         
         elif mode == "full_trace":
             # Format the complete trace for scoring
-            trace_text = f"Goal: {trace.goal_text or 'No goal text'}\n\n"
+            trace_text = f"Goal: {goal_text or 'No goal text'}\n\n"
             trace_text += "Pipeline Execution Steps:\n\n"
             
             # Add all steps
@@ -195,7 +213,6 @@ class ScorableFactory:
         
         else:
             # Default mode - goal + final output
-            goal_text = trace.goal_text or ""
             final_output = trace.final_output_text or ""
             
             return Scorable(
@@ -212,7 +229,7 @@ class ScorableFactory:
         """ 
         orm = None
         if target_type == TargetType.DOCUMENT:
-            orm = memory.document.get_by_id(target_id)
+            orm = memory.documents.get_by_id(target_id)
         elif target_type == TargetType.HYPOTHESIS:
             orm = memory.hypothesis.get_by_id(target_id)
         elif target_type == TargetType.CARTRIDGE:

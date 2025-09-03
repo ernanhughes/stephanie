@@ -29,6 +29,18 @@
             ]
         },
         {
+            "name": "cbr2",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "cbr2",
+            ]
+        },
+        {
             "name": "base",
             "type": "debugpy",
             "request": "launch",

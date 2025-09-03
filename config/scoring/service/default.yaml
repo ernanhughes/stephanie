@@ -1,0 +1,11 @@
+# config/scoring/service/default.yaml
+enabled: true
+create_missing_evaluations: true
+enabled_scorers:
+  - hrm
+  - sicql
+  - svm
+  - mrq
+  - ebt
+  - contrastive_ranker
+  - reward

@@ -5,7 +5,7 @@ Goal:
 {{ goal.goal_text }}
 
 Relevant Research Findings:
-{{ literature }}
+{{  }}
 
 Preferences:
 {{ preferences }}

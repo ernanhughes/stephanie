@@ -1,4 +1,4 @@
-# stephanie/agents/ebt/thinker.py
+All right# stephanie/agents/ebt/thinker.py
 import torch
 
 from stephanie.scoring.model.energy_based_scorer import EnergyBasedScorer

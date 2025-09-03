@@ -1,10 +1,11 @@
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.mrq.preference_pair_builder import PreferencePairBuilder
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.scoring.training.svm_trainer import SVMTrainer
 
 
 class SVMTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.trainer = SVMTrainer(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", [])

@@ -2,15 +2,27 @@
 defaults:
   - _self_
   - db: postgres
+  - plan_monitor: default
+
+  - scorer/ebt/default
+  - scorer/hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
+  - scorer/epistemic_hrm/default
+
   - agents/arxiv_search
   - agents/document_loader
   - agents/document_profiler
   - agents/paper_score
   - agents/knowledge_loader
-  - agents/mrq_trainer
   - agents/document_reward_scorer
   - agents/pipeline_judge
   - logging/json_logger
+
+embeddings:
+  backend: hnet
 
 goal:
   goal_text: I want to build an AI that can teach itself to solve complex problems better over time.
@@ -24,11 +36,6 @@ goal:
     - "stepwise_reasoning_trace"
     - "annotated_score_vector"
 
-post_judgment:
-  name: pipeline_judge
-  enabled: true
-  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
-
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
@@ -39,12 +46,6 @@ report:
 web_search:
   engine: "searxng"
   instance_url: "http://localhost:8080"
-
-
-embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
 
 pipeline:
   name: rivals
@@ -74,11 +75,6 @@ pipeline:
      - name: knowledge_loader
        description: "Load knowledge from the scored papers into the system"
        cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
-       enabled: true
-       iterations: 1
-     - name: mrq_trainer
-       description: "Build document pairs for training and evaluation" 
-       cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent 
        enabled: true
        iterations: 1
      - name: document_reward_scorer

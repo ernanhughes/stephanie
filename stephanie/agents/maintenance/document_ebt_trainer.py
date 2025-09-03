@@ -9,7 +9,8 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.maintenance.model_evolution_manager import \
     ModelEvolutionManager
 from stephanie.scoring.model.ebt_model import DocumentEBTScorer
-from stephanie.scoring.mrq.preference_pair_builder import PreferencePairBuilder
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import save_json
 
@@ -45,7 +46,7 @@ class DocumentEBTDataset(Dataset):
 
 
 class DocumentEBTTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         """
         Unified EBT trainer with versioning and evolution management
         

@@ -1,0 +1,156 @@
+
+{# sis/templates/plan_trace.html #}
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+<!-- Header with navigation buttons -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">📋 Plan Trace {{ trace.trace_id }}</h2>
+    <div>
+      <a href="/plan_traces?similar_to={{ trace.trace_id }}" class="btn btn-outline-info">
+        🔍 Find Similar Traces
+      </a>
+      <a href="/mars/{{ trace.pipeline_run_id }}" class="btn btn-outline-primary me-2">
+        🪐 View MARS Results
+      </a>
+      <a href="/pipeline/{{ trace.pipeline_run_id }}" class="btn btn-outline-primary me-2">
+        ⚙️ View Pipeline Details
+      </a>
+      <a href="/" class="btn btn-secondary">
+        📊 View All Pipelines
+      </a>
+    </div>
+  </div>
+  <p><strong>Goal:</strong> {{ goal_text }}</p>
+  <!-- Pipeline Stages -->
+  <h3 class="mt-4">🔧 Pipeline Stages</h3>
+  <div class="bg-light p-3 rounded">
+    <pre class="mermaid">
+flowchart LR
+{% for stage in stages %}
+  {% set short_class = stage.agent_class.split('.')[-1] if stage.agent_class else "Unknown" %}
+  {% set config_preview = stage.stage_dict if stage.stage_dict else "⚠️ No config found" %}
+
+  S{{ stage.id }}["{{ stage.stage_name }}<br/><i>{{ short_class }}</i>"]
+
+  click S{{ stage.id }} "javascript:void(0)" "{{ config_preview | tojson | replace('"', '&quot;') }}"
+
+  {% if not loop.last %}
+    S{{ stage.id }} --> S{{ stages[loop.index].id }}
+  {% endif %}
+{% endfor %}
+    </pre>
+  </div>
+
+  <!-- Retention badge -->
+  {% if trace.meta and trace.meta.retained == false %}
+    <span class="badge bg-danger">Discarded (by retention policy)</span>
+  {% else %}
+    <span class="badge bg-success">Retained</span>
+  {% endif %}
+
+  <!-- Reuse Links -->
+  <h4 class="mt-4">🔗 Reuse Links</h4>
+  {% if links %}
+    <ul>
+      {% for parent_trace_id, child_trace_id, created_at in links %}
+        <li>
+          {% if parent_trace_id == trace.trace_id %}
+            <strong class="text-primary">{{ parent_trace_id }}</strong>
+          {% else %}
+            <a href="/plan_traces/{{ parent_trace_id }}">
+              {{ parent_trace_id }}
+            </a>
+          {% endif %}
+          → 
+          {% if child_trace_id == trace.trace_id %}
+            <strong class="text-success">{{ child_trace_id }}</strong>
+          {% else %}
+            <a href="/plan_traces/{{ child_trace_id }}">
+              {{ child_trace_id }}
+            </a>
+          {% endif %}
+          ({{ created_at.strftime('%Y-%m-%d %H:%M:%S') }})
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-muted">No reuse links recorded.</p>
+  {% endif %}
+
+  <!-- Revision History -->
+  <h4 class="mt-4">✏️ Revisions</h4>
+  {% if trace.meta.revisions %}
+    <ul>
+      {% for rev in trace.meta.revisions %}
+        <li>
+          <b>{{ rev.timestamp | datetimeformat }}</b> — {{ rev.feedback or rev.note }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-muted">No revisions yet.</p>
+  {% endif %}
+
+
+  {% if trace.pipeline_score %}
+<div class="alert alert-info mt-3">
+  <strong>Pipeline Score:</strong> {{ trace.pipeline_score.overall or 'N/A' }}
+</div>
+{% endif %}
+
+  <!-- Execution Steps -->
+  <h4 class="mt-4">Execution Steps</h4>
+  {% if steps %}
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Stage</th>
+        <th>Description</th>
+        <th>Duration (s)</th>
+        <th>Status</th>
+        <th>Scores</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for step in steps %}
+      <tr>
+        <td>{{ step.step_order }}</td>
+        <td>{{ step.step_type }}</td>
+        <td>{{ step.description }}</td>
+        <td>{{ "%.2f"|format(step.duration or 0) }}</td>
+        <td>
+            {% if step.error %}
+            <span class="badge bg-danger">❌ {{ step.error.type }}</span>
+            {% else %}
+            <span class="badge bg-success">✅ Completed</span>
+            {% endif %}
+        </td>
+        <td>
+          {% if step.scores %}
+            <ul class="small mb-0">
+              {% for dim, val in step.scores.items() %}
+                <li>{{ dim }}: {{ val }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            -
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">No execution steps recorded for this trace.</p>
+  {% endif %}
+</div>
+
+<!-- Mermaid Support -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.10.1/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true });
+</script>
+
+{% endblock %}

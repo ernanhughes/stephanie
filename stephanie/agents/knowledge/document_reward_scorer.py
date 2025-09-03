@@ -11,14 +11,15 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
-from stephanie.scoring.ebt_scorer import EBTScorer
-from stephanie.scoring.hrm_scorer import HRMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorer.contrastive_ranker_scorer import \
+    ContrastiveRankerScorer
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.hrm_scorer import HRMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
 from stephanie.scoring.scoring_manager import ScoringManager
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.svm_scorer import SVMScorer
 
 
 class DocumentRewardScorerAgent(BaseAgent):
@@ -30,7 +31,7 @@ class DocumentRewardScorerAgent(BaseAgent):
     to evaluate consistency across scoring models using the tensor-based architecture.
     """
     
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", ["helpfulness", "truthfulness", "reasoning_quality"])
         self.include_mars = cfg.get("include_mars", True)
@@ -38,7 +39,7 @@ class DocumentRewardScorerAgent(BaseAgent):
         self.test_document_count = cfg.get("test_document_count", 100)
         
         # Configure which scorers to use
-        self.scorer_types = cfg.get("scorer_types", [
+        self.enabled_scorers = cfg.get("enabled_scorers", [
             "svm", "mrq", "sicql", "ebt", "hrm", "contrastive_ranker"
         ])
         
@@ -47,11 +48,11 @@ class DocumentRewardScorerAgent(BaseAgent):
         
         # Initialize MARS calculator with dimension-specific configurations
         dimension_config = cfg.get("dimension_config", {})
-        self.mars_calculator = MARSCalculator(dimension_config, self.logger)
+        self.mars_calculator = MARSCalculator(dimension_config, self.memory, self.logger)
         
         self.logger.log("DocumentRewardScorerInitialized", {
             "dimensions": self.dimensions,
-            "scorers": self.scorer_types,
+            "scorers": self.enabled_scorers,
             "include_mars": self.include_mars,
             "test_mode": self.test_mode
         })
@@ -60,17 +61,17 @@ class DocumentRewardScorerAgent(BaseAgent):
         """Initialize all configured scorers"""
         scorers = {}
         
-        if "svm" in self.scorer_types:
+        if "svm" in self.enabled_scorers:
             scorers["svm"] = SVMScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "mrq" in self.scorer_types:
+        if "mrq" in self.enabled_scorers:
             scorers["mrq"] = MRQScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "sicql" in self.scorer_types:
+        if "sicql" in self.enabled_scorers:
             scorers["sicql"] = SICQLScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "ebt" in self.scorer_types:
+        if "ebt" in self.enabled_scorers:
             scorers["ebt"] = EBTScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "hrm" in self.scorer_types:
+        if "hrm" in self.enabled_scorers:
             scorers["hrm"] = HRMScorer(self.cfg, memory=self.memory, logger=self.logger)
-        if "contrastive_ranker" in self.scorer_types:
+        if "contrastive_ranker" in self.enabled_scorers:
             scorers["contrastive_ranker"] = ContrastiveRankerScorer(
                 self.cfg, memory=self.memory, logger=self.logger
             )
@@ -146,13 +147,19 @@ class DocumentRewardScorerAgent(BaseAgent):
         # Create ScoreCorpus for MARS analysis
         corpus = ScoreCorpus(bundles=all_bundles)
         
+        self.logger.log("ScoreCorpusSummary", {
+            "dims": corpus.dimensions,
+            "scorers": corpus.scorers,
+            "shape_example": corpus.get_dimension_matrix(self.dimensions[0]).shape
+        })
+
         # Save corpus to context for potential future analysis
         context["score_corpus"] = corpus.to_dict()
         
         # Run MARS analysis if requested
         mars_results = {}
         if self.include_mars and all_bundles:
-            mars_results = self.mars_calculator.calculate(corpus)
+            mars_results = self.mars_calculator.calculate(corpus, context=context)
             context["mars_analysis"] = {
                 "summary": mars_results,
                 "recommendations": self.mars_calculator.generate_recommendations(mars_results)
@@ -220,7 +227,8 @@ class DocumentRewardScorerAgent(BaseAgent):
             self.memory,
             self.logger,
             source="document_reward",
-            model_name="ensemble"
+            model_name="ensemble",
+            evaluator_name=str(self.scorers.keys())
         )
         
         # Prepare results for reporting

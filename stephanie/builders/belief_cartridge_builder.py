@@ -21,11 +21,11 @@ from stephanie.utils.metrics import compute_uncertainty
 
 
 class BeliefCartridgeBuilder(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "novelty"])
         self.embedding_types = cfg.get("embedding_types", ["hnet", "mxbai", "hf"])
-        self.scorer_types = cfg.get("scorer_types", ["mrq", "ebt", "svm", "llm"])
+        self.enabled_scorers = cfg.get("enabled_scorers", ["mrq", "ebt", "svm", "llm"])
         self.use_sicql = cfg.get("use_sicql", False)
         self.track_efficiency = cfg.get("track_efficiency", True)
         self.uncertainty_threshold = cfg.get("uncertainty_threshold", 0.3)
@@ -79,7 +79,7 @@ class BeliefCartridgeBuilder(BaseAgent):
             "embedding_comparison": defaultdict(lambda: defaultdict(dict)),
             "metadata": {
                 "embedding_types": self.embedding_types,
-                "scorers": self.scorer_types,
+                "scorers": self.enabled_scorers,
                 "dimensions": self.dimensions
             }
         }
@@ -91,7 +91,7 @@ class BeliefCartridgeBuilder(BaseAgent):
         for embedding_type in self.embedding_types:
             scorable.embedding_type = embedding_type
             
-            for scorer_type in self.scorer_types:
+            for scorer_type in self.enabled_scorers:
                 scorer = self._get_scorer(scorer_type, embedding_type)
                 if not scorer:
                     continue
@@ -216,8 +216,8 @@ class BeliefCartridgeBuilder(BaseAgent):
         """Create evaluation record with metadata"""
         return EvaluationORM(
             goal_id=goal.get("id"),
-            target_id=scorable.id,
-            target_type=scorable.target_type,
+            scorable_id=scorable.id,
+            scorable_type=scorable.target_type,
             evaluator_name=scorer_type,
             model_name=f"{scorable.target_type}_{scorer_type}_v1",
             embedding_type=embedding_type,

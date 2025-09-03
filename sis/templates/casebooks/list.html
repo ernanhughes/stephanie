@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-baseline mb-3">
+    <h2 class="mb-0">Casebooks</h2>
+    <form class="d-flex gap-2" method="get" action="/casebooks">
+      <input class="form-control form-control-sm" name="agent" placeholder="agent" value="{{ filters.agent or '' }}">
+      <input class="form-control form-control-sm" name="tag" placeholder="tag" value="{{ filters.tag or '' }}">
+      <input class="form-control form-control-sm" name="pipeline_run_id" placeholder="pipeline_run_id" value="{{ filters.pipeline_run_id or '' }}">
+      <button class="btn btn-sm btn-outline-primary">Filter</button>
+    </form>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Tag</th>
+          <th>Agent</th>
+          <th>Pipeline</th>
+          <th>Cases</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for cb in casebooks %}
+        <tr>
+          <td>#{{ cb.id }}</td>
+          <td><code>{{ cb.name }}</code></td>
+          <td><span class="badge bg-secondary">{{ cb.tag or '—' }}</span></td>
+          <td><span class="badge bg-info text-dark">{{ cb.agent_name or '—' }}</span></td>
+          <td>{{ cb.pipeline_run_id or '—' }}</td>
+          <td><span class="badge bg-primary">{{ cb.case_count or 0 }}</span></td>
+          <td class="text-muted">{{ cb.created_at or '—' }}</td>
+          <td><a class="btn btn-sm btn-outline-secondary" href="/casebooks/{{ cb.pipeline_run_id }}">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

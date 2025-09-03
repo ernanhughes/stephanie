@@ -1,0 +1,60 @@
+You are a plan reviewer.
+
+Based on this goal:
+
+## Goal
+{{ goal.goal_text }}
+
+And this Candidate Plan:
+
+## Candidate Plan
+{% if plan_text is string -%}
+{{ plan_text }}
+{%- else -%}
+{% for s in plan_text -%}
+{{ loop.index }}. {{ s }}
+{%- endfor %}
+{%- endif %}
+
+{% if examples and examples|length > 0 %}
+Use these similar, high-quality past cases as guidance (do not copy verbatim):
+
+## Examples
+{% for e in examples %}
+- trace_id: {{ (e.trace_id if e.trace_id is defined else e['trace_id']) }}
+  hrm: {{ "%.3f"|format(e.hrm if e.hrm is defined else e['hrm']) }}
+  rank: {{ "%.3f"|format(e.rank_score if e.rank_score is defined else e['rank_score']) }}
+  {% if (e.knn_score is defined) or ('knn_score' in e) -%}
+  knn: {{ "%.3f"|format(e.knn_score if e.knn_score is defined else e['knn_score']) }}
+  {%- endif %}
+  goal: {{ ((e.goal if e.goal is defined else e['goal'])|default(''))[:160] }}{% if ((e.goal if e.goal is defined else e['goal'])|default(''))|length > 160 %}…{% endif %}
+  plan_sig: {{ ((e.plan if e.plan is defined else e['plan'])|default('')|string)[:120] }}{% if ((e.plan if e.plan is defined else e['plan'])|default('')|string)|length > 120 %}…{% endif %}
+{% endfor %}
+{% endif %}
+
+Instructions:
+1) Identify issues that reduce coherence, feasibility, or completeness.
+2) Propose a revised plan **only** if it materially improves the candidate.
+3) Provide **two** numeric outputs:
+   - Quality **score** in [0,1]
+   - **Confidence** in [0,100]
+
+Return **only** these sections, in this order, with the numeric value on the same line:
+
+## rationale:
+- short justification (1–3 bullets)
+
+## score:
+<float in [0,1]>
+
+## confidence:
+<float in [0,100]>
+
+## issues:
+- bullet list of detected issues (omit if none)
+
+## revised plan:
+1. step
+2. step
+(leave empty if no revision is needed)
+

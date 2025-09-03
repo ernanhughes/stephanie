@@ -27,6 +27,33 @@
       {% if c.domain_tags %}
       <p><b>Domains:</b> {{ c.domain_tags | join(", ") }}</p>
       {% endif %}
+
+      {% if c.triples %}
+        <details class="mt-2">
+          <summary>🔗 Triples ({{ c.triples|length }})</summary>
+          <table class="table table-sm mt-2">
+            <thead> 
+              <tr>
+                <th>Subject</th>
+                <th>Predicate</th>
+                <th>Object</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in c.triples %}
+              <tr>
+                <td>{{ t.subject }}</td>
+                <td>{{ t.predicate }}</td>
+                <td>{{ t.object }}</td>
+                <td>{{ "%.2f"|format(t.confidence or 0.0) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      {% endif %}
+
     </div>
     {% endfor %}
   </div>

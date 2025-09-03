@@ -1,0 +1,43 @@
+# stephanie/agents/cbr/modular_memento.py
+from stephanie.cbr.context_namespacer import DefaultContextNamespacer
+from stephanie.cbr.casebook_scope_manager import DefaultCasebookScopeManager
+from stephanie.cbr.case_selector import DefaultCaseSelector
+from stephanie.cbr.rank_and_analyze import DefaultRankAndAnalyze
+from stephanie.cbr.retention_policy import DefaultRetentionPolicy
+from stephanie.cbr.quality_assessor import DefaultQualityAssessor
+from stephanie.cbr.champion_promoter import DefaultChampionPromoter
+from stephanie.cbr.goal_state_tracker import DefaultGoalStateTracker
+from stephanie.cbr.ab_validator import DefaultABValidator
+from stephanie.cbr.micro_learner import DefaultMicroLearner
+from stephanie.cbr.middleware import CBRMiddleware
+from stephanie.agents.dspy.mcts_reasoning import MCTSReasoningAgent
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+from stephanie.constants import AGENT_NAME, INCLUDE_MARS
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
+
+class ModularMementoAgent(MCTSReasoningAgent):
+    def __init__(self, cfg, memory, logger):
+        super().__init__(cfg, memory, logger)
+        ns = DefaultContextNamespacer()
+        scope = DefaultCasebookScopeManager(cfg, memory, logger)
+        selector = DefaultCaseSelector(cfg, memory, logger)
+        ranker = DefaultRankAndAnalyze(cfg, memory, logger, ranker=ScorableRanker(cfg, memory, logger),
+                                       mars=MARSCalculator(cfg, memory, logger) if cfg.get(INCLUDE_MARS, True) else None)
+        retention = DefaultRetentionPolicy(cfg, memory, logger, casebook_scope_mgr=scope)
+        assessor = DefaultQualityAssessor(cfg, memory, logger)
+        promoter = DefaultChampionPromoter(cfg, memory, logger)
+        tracker = DefaultGoalStateTracker(cfg, memory, logger)
+        ab = DefaultABValidator(cfg, memory, logger, ns=ns, assessor=assessor)
+        micro = DefaultMicroLearner(cfg, memory, logger)
+
+        self._cbr = CBRMiddleware(cfg, memory, logger, ns, scope, selector, ranker, retention, assessor, promoter, tracker, ab, micro)
+
+    async def run(self, context: dict) -> dict:
+        self._cbr.ranker.scoring = self.scoring
+        # This delegates “CBR extras” to the middleware, using this agent’s base run as the core.
+        parent_run = super(ModularMementoAgent, self).run  # <-- bound coroutine fn
+        context[AGENT_NAME] = self.name
+        async def base_run(ctx):  # what CBR wraps: your monolithic base behavior
+            return await parent_run(ctx)
+        result_ctx = await self._cbr.run(context, base_run, self.output_key)
+        return result_ctx

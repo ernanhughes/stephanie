@@ -12,7 +12,7 @@ class MRQSelfEvaluator(BaseEvaluator):
     """
 
     def __init__(self, cfg, memory, logger, device="cpu"):
-        from stephanie.scoring.sicql_scorer import SICQLScorer
+        from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
         self.cfg = cfg
         self.device = device
         self.memory = memory

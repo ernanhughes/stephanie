@@ -112,7 +112,7 @@ class GILDSelector:
                 .join(EvaluationORM)
                 .filter(
                     EvaluationAttributeORM.dimension == "alignment",
-                    EvaluationORM.target_id == scorable.id,
+                    EvaluationORM.scorable_id == scorable.id,
                     EvaluationORM.evaluator_name == "ebt"
                 )
                 .order_by(EvaluationAttributeORM.created_at.desc())

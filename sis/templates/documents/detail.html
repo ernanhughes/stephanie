@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+
+<a href="/documents/{{ document.id }}/profile" class="btn btn-outline-primary">
+  🧩 View Profile
+</a>
+
+
+<p><strong>ID:</strong> {{ document.id }}</p>
+<p><strong>Title:</strong> {{ document.title }}</p>
+<p><strong>Summary:</strong> {{ document.summary }}</p>
+<p><strong>URL:</strong> <a href="{{ document.url }}" target="_blank">{{ document.url }}</a></p>
+
+<h2>Domains</h2>
+<ul>
+  {% for d in domains %}
+    <li>{{ d.domain }} (score: {{ "%.2f"|format(d.score) }})</li>
+  {% endfor %}
+</ul>
+
+<h2>Embedding</h2>
+{% if embedding %}
+  <p><strong>ID:</strong> {{ embedding.embedding_id }}</p>
+  <p><strong>Type:</strong> {{ embedding.embedding_type }}</p>
+{% else %}
+  <p>No embedding available.</p>
+{% endif %}
+
+<h2>Text</h2>
+<pre style="white-space: pre-wrap;">{{ document.text[:2000] }}...</pre>
+
+{% endblock %}

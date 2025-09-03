@@ -6,7 +6,7 @@ class DocumentSectionStore:
     def __init__(self, session, logger=None):
         self.session = session
         self.logger = logger
-        self.name = "document_section"
+        self.name = "document_sections"
 
     def insert(self, section_dict):
         section = DocumentSectionORM(**section_dict)

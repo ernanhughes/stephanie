@@ -11,10 +11,11 @@ from omegaconf import DictConfig, OmegaConf
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.logging import JSONLogger
-from stephanie.memory import MemoryTool
+from stephanie.memory.memory_tool import MemoryTool
 from stephanie.supervisor import Supervisor
 from stephanie.utils import generate_run_id, get_log_file_path
 
+logger = logging.getLogger(__name__)
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def run(cfg: DictConfig):
@@ -24,27 +25,27 @@ def run(cfg: DictConfig):
         # Setup logger and memory
         run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
         log_path = get_log_file_path(run_id, cfg)
-        logger = JSONLogger(log_path=log_path)
-        memory = MemoryTool(cfg=cfg, logger=logger)
+        log = JSONLogger(log_path=log_path)
+        memory = MemoryTool(cfg=cfg, logger=log)
 
         # Create supervisor
-        supervisor = Supervisor(cfg=cfg, memory=memory, logger=logger)
+        supervisor = Supervisor(cfg=cfg, memory=memory, logger=log)
 
         # ✅ Batch Mode: input_file provided
         if "input_file" in cfg and cfg.input_file:
-            print(f"📂 Batch mode: Loading from file: {cfg.input_file}")
+            logger.info(f"📂 Batch mode: Loading from file: {cfg.input_file}")
             result = await supervisor.run_pipeline_config(
                 {"input_file": cfg.input_file}
             )
-            print(
+            logger.info(
                 f"✅ Batch run completed for file: {cfg.input_file}: {str(result)[:100]}"
             )
             return
 
         # ✅ Single goal mode
-        print(f"🟢 Running pipeline with run_id={run_id}")
-        print(f"🧠 Goal: {cfg.goal}")
-        print(f"📁 Config source: {str(cfg)[:100]}...")
+        logger.info(f"🟢 Running pipeline with run_id={run_id}")
+        logger.info(f"🧠 Goal: {cfg.goal}")
+        logger.info(f"📁 Config source: {str(cfg)[:100]}...")
 
         goal = OmegaConf.to_container(cfg.goal, resolve=True)
         context = {
@@ -67,7 +68,7 @@ def save_yaml_result(log_path: str, result: dict):
     report_path = log_path.replace(".jsonl", ".yaml")
     with open(report_path, "w", encoding="utf-8") as f:
         yaml.dump(result, f, allow_unicode=True, sort_keys=False)
-    print(f"✅ Result saved to: {report_path}")
+    logger.info(f"✅ Result saved to: {report_path}")
 
 
 
@@ -96,7 +97,7 @@ def save_json_result(log_path: str, result: dict):
     report_path = log_path.replace(".jsonl", "_report.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=default_serializer)
-    print(f"✅ JSON result saved to: {report_path}")
+    logger.info(f"✅ JSON result saved to: {report_path}")
 
 
 def save_config_to_timestamped_file(cfg, output_dir="logs"):
@@ -105,7 +106,7 @@ def save_config_to_timestamped_file(cfg, output_dir="logs"):
     filepath = os.path.join(output_dir, timestamped_name)
     with open(filepath, "w", encoding="utf-8") as f:   # 👈 Force UTF-8
         f.write(OmegaConf.to_yaml(cfg))
-    print(f"🔧 Saved config to {filepath}")
+    logger.info(f"🔧 Saved config to {filepath}")
     return filepath
 
 

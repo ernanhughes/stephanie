@@ -35,13 +35,6 @@ class DocumentORM(Base):
         "DocumentSectionORM", back_populates="document", cascade="all, delete-orphan"
     )
 
-    domains_rel = relationship(
-        "DocumentDomainORM", back_populates="document", cascade="all, delete-orphan"
-    )
-    evaluations = relationship(
-        "EvaluationORM", back_populates="document", cascade="all, delete-orphan"   
-    )
-
     def to_dict(self):
         return {
             "id": self.id,

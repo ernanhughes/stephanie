@@ -18,7 +18,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
     using configured reward model (e.g., SVM-based or regression-based).
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.model_type = "llm"
         self.evaluator = "llm"
@@ -66,6 +66,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
                 self.memory,
                 self.logger,
                 source="llm",
+                evaluator_name=self.model_name,
             )
 
         self.logger.log("DocumentLLMInferenceCompleted", {
@@ -107,6 +108,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
             self.memory,
             self.logger,
             source="llm",
+            evaluator_name=self.model_name,
         )
 
         return result
@@ -120,8 +122,8 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
             self.memory.session.query(ScoreORM)
             .join(EvaluationORM, ScoreORM.evaluation_id == EvaluationORM.id)
             .filter(
-                EvaluationORM.target_type == "document",
-                EvaluationORM.target_id == str(scorable_id),
+                EvaluationORM.scorable_type == "document",
+                EvaluationORM.scorable_id == str(scorable_id),
                 EvaluationORM.source == "llm"
             )
             .count()

@@ -19,7 +19,7 @@ class PolicySynthesisAgent(BaseAgent):
     This is Step 5: Policy Synthesis and GILD Signal Preparation.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         
         # Configuration

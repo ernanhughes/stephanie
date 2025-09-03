@@ -8,8 +8,12 @@ from typing import Dict, Optional
 
 from omegaconf import OmegaConf
 
+from stephanie.agents.agent_scorer import AgentScorerAgent
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
+from stephanie.constants import PLAN_TRACE_ID, SCORABLE_DETAILS
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.models.plan_trace import PlanTraceORM
+from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.utils.serialization import default_serializer
 
 
@@ -20,7 +24,7 @@ class PlanTraceMonitor:
     It creates PlanTraces at pipeline start, tracks stage execution, and scores completed traces.
     """
 
-    def __init__(self, cfg: Dict, memory, logger):
+    def __init__(self, cfg: Dict, memory, logger, scoring_service=None):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
@@ -34,7 +38,11 @@ class PlanTraceMonitor:
    
         if self.enabled:
             self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, logger)
+            self.agent_scorer = AgentScorerAgent(cfg, memory, logger)
+            self.agent_scorer.scoring = scoring_service
             self.stage_start_times: Dict[int, float] = {}
+        self.retention_policy = monitor_cfg.get("retention_policy", "keep_all")
+        self.reuse_links = []  # (parent_trace_id, child_trace_id)
         
         self.logger.log("PlanTraceMonitorInitialized", {
             "enabled": self.enabled,
@@ -42,6 +50,39 @@ class PlanTraceMonitor:
             "cfg_keys": list(cfg.keys())
         })
     
+    def link_reuse(self, parent_trace_id: str, child_trace_id: str):
+        self.memory.plan_traces.add_reuse_link(parent_trace_id, child_trace_id)
+
+    def revise_trace(self, trace_id: str, revision: dict):
+        """Apply revision notes (feedback, corrections) to a stored trace."""
+        trace: PlanTraceORM = self.memory.plan_traces.get_by_trace_id(trace_id)
+        if not trace:
+            return
+        trace.meta.setdefault("revisions", []).append({
+            "timestamp": time.time(),
+            **revision
+        })
+        self.memory.plan_traces.update(trace)
+        self.logger.log("PlanTraceRevised", {"trace_id": trace_id, "revision": revision})
+    
+    def apply_retention_policy(self):
+        """Decide which traces to retain after scoring/feedback."""
+        if self.retention_policy == "keep_all":
+            return
+        elif self.retention_policy == "keep_top_k":
+            top_k = self.cfg["plan_monitor"].get("retain_k", 100)
+            traces = self.memory.plan_traces.get_all()
+            sorted_traces = sorted(traces, key=lambda t: t.pipeline_score.get("overall", 0), reverse=True)
+            for t in sorted_traces[top_k:]:
+                self.memory.plan_traces.delete(t.trace_id)
+                self.logger.log("PlanTraceDiscarded", {"trace_id": t.trace_id})
+        elif self.retention_policy == "discard_failed":
+            failed = self.memory.plan_traces.get_failed()
+            for t in failed:
+                self.memory.plan_traces.delete(t.trace_id)
+                self.logger.log("PlanTraceDiscarded", {"trace_id": t.trace_id, "reason": "failed"})
+
+
     def start_pipeline(self, context: Dict, pipeline_run_id: str) -> None:
         if not self.enabled:
             self.logger.log("PlanTraceMonitorDisabled", {})
@@ -51,7 +92,7 @@ class PlanTraceMonitor:
         goal = context.get("goal", {})
         essential_config = {
             k: v for k, v in OmegaConf.to_container(self.cfg, resolve=True).items()
-            if k in ["pipeline", "model", "scorer", "dimensions", "scorer_types"]
+            if k in ["pipeline", "model", "scorer", "dimensions", "enabled_scorers"]
         }
         
         # Create PlanTrace for this pipeline execution
@@ -66,13 +107,18 @@ class PlanTraceMonitor:
             execution_steps=[],
             target_epistemic_quality=None,
             target_epistemic_quality_source=None,
-            extra_data={
+            meta={
                 "agent_name": "PlanTraceMonitor",
                 "started_at": time.time(),
                 "pipeline_run_id": pipeline_run_id,
                 "pipeline_config": essential_config
             }
         )
+
+        # After creating self.current_plan_trace
+        self.memory.plan_traces.add(self.current_plan_trace)
+        context[PLAN_TRACE_ID] = self.current_plan_trace.trace_id
+
         
         # Log PlanTrace creation
         self.logger.log("PlanTraceCreated", {
@@ -140,37 +186,51 @@ class PlanTraceMonitor:
             "stage_name": stage_name
         })
     
-    def complete_stage(self, stage_name: str, context: Dict, stage_idx: int) -> None:
-        """Update ExecutionStep when stage completes"""
+    async def complete_stage(
+        self,
+        stage_name: str,
+        context: Dict,
+        stage_idx: int,
+    ) -> None:
+        """Update ExecutionStep when stage completes."""
         if not self.current_plan_trace or stage_idx >= len(self.current_plan_trace.execution_steps):
             return
-            
+
         # Calculate duration
         start_time = self.stage_start_times.get(stage_idx, time.time())
         duration = time.time() - start_time
-        
+
         # Update the current step
         step = self.current_plan_trace.execution_steps[stage_idx]
         step.end_time = time.time()
         step.duration = duration
-        
-        # Capture output preview
-        output_keys = list(context.keys())
-        output_preview = "Context keys: " + ", ".join(output_keys[:3])
-        if len(output_keys) > 3:
-            output_preview += f" + {len(output_keys) - 3} more"
-        
-        step.output_text = output_preview
-        step.output_keys = output_keys
-        step.output_size = len(str(context))
-        
-        # Log stage completion
+
+        scorable_details = context.get(SCORABLE_DETAILS, {})
+        if scorable_details.get("output_text"):
+            step.input_text = scorable_details.get("input_text", "")
+            step.output_text = scorable_details.get("output_text", "")
+            step.description = scorable_details.get(
+                "description", f"Scorable output from {stage_name}"
+            )
+
+            # Kick scoring agent
+            context = await self.agent_scorer.run(context)
+        else:
+            # Fallback breadcrumb
+            output_keys = list(context.keys())
+            preview = "Context keys: " + ", ".join(output_keys[:3])
+            if len(output_keys) > 3:
+                preview += f" + {len(output_keys) - 3} more"
+            step.output_text = preview
+            step.output_keys = output_keys
+            step.output_size = len(str(context))
+
         self.logger.log("PipelineStageCompleted", {
             "trace_id": self.current_plan_trace.trace_id,
             "stage_idx": stage_idx + 1,
             "stage_name": stage_name,
             "stage_time": duration,
-            "output_keys": output_keys
+            "is_scorable": bool(scorable_details)
         })
     
     def handle_stage_error(self, stage_name: str, error: Exception, stage_idx: int) -> None:
@@ -219,18 +279,20 @@ class PlanTraceMonitor:
             self.current_plan_trace.final_output_text = str(final_output)[:1000] + "..."
         
         # Set completion time
-        self.current_plan_trace.extra_data["completed_at"] = time.time()
+        self.current_plan_trace.meta["completed_at"] = time.time()
         
         # Calculate total pipeline time
-        start_time = self.current_plan_trace.extra_data.get("started_at", time.time())
-        self.current_plan_trace.extra_data["total_time"] = time.time() - start_time
+        start_time = self.current_plan_trace.meta.get("started_at", time.time())
+        self.current_plan_trace.meta["total_time"] = time.time() - start_time
         
         if self.enabled and self.save_output:
             self.save_plan_trace_to_json(self.current_plan_trace)
 
         # Store in memory
         try:
-            self.memory.plan_traces.add(self.current_plan_trace)
+            self.memory.plan_traces.update(self.current_plan_trace)
+            scorable = ScorableFactory.from_orm(self.current_plan_trace)
+            self.memory.scorable_embeddings.get_or_create(scorable)
             self.logger.log("PlanTraceStored", {
                 "trace_id": self.current_plan_trace.trace_id,
                 "step_count": len(self.current_plan_trace.execution_steps)
@@ -244,7 +306,7 @@ class PlanTraceMonitor:
         self.logger.log("PlanTraceCompleted", {
             "trace_id": self.current_plan_trace.trace_id,
             "step_count": len(self.current_plan_trace.execution_steps),
-            "total_time": self.current_plan_trace.extra_data["total_time"]
+            "total_time": self.current_plan_trace.meta["total_time"]
         })
 
     async def score_pipeline(self, context: Dict) -> None:
@@ -296,16 +358,16 @@ class PlanTraceMonitor:
             
         # Update PlanTrace with error information
         self.current_plan_trace.final_output_text = f"Pipeline failed: {str(error)}"
-        self.current_plan_trace.extra_data["error"] = {
+        self.current_plan_trace.meta["error"] = {
             "type": type(error).__name__,
             "message": str(error),
             "traceback": traceback.format_exc()
         }
-        self.current_plan_trace.extra_data["completed_at"] = time.time()
+        self.current_plan_trace.meta["completed_at"] = time.time()
         
         # Store in memory
         try:
-            self.memory.plan_traces.add(self.current_plan_trace)
+            self.memory.plan_traces.update(self.current_plan_trace)
         except Exception as e:
             self.logger.log("PlanTraceSaveError", {
                 "trace_id": self.current_plan_trace.trace_id,

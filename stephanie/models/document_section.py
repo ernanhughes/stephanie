@@ -1,16 +1,14 @@
 # stephanie/models/document_section.py
-# models/document_section.py
-
-from sqlalchemy import ARRAY, JSON, Column, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
 
 
 class DocumentSectionORM(Base):
-    __tablename__ = "document_sections"
+    __tablename__ = "document_sections"   # ✅ Corrected table name
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     document_id = Column(
         Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
     )
@@ -19,17 +17,18 @@ class DocumentSectionORM(Base):
     section_text = Column(Text, nullable=True)
     source = Column(Text, nullable=True)  # e.g., original text or system
 
-    domains = Column(ARRAY(String))
     embedding = Column(JSON, nullable=True)  # vector embedding if used
     summary = Column(Text, nullable=True)  # LLM-generated summary
     extra_data = Column(JSON, nullable=True)  # MR.Q scores, confidences, etc.
 
-    document = relationship("DocumentORM", back_populates="sections")
+    # ✅ Proper relationship with DocumentSectionDomainORM
     domains = relationship(
         "DocumentSectionDomainORM",
         back_populates="document_section",
         cascade="all, delete-orphan",
     )
+
+    document = relationship("DocumentORM", back_populates="sections")
 
     def to_dict(self):
         return {
@@ -38,7 +37,8 @@ class DocumentSectionORM(Base):
             "section_name": self.section_name,
             "section_text": self.section_text,
             "summary": self.summary,
-            "extra_data": self.extra_data,
+            "source": self.source,
+            "domains": [d.to_dict() for d in self.domains] if self.domains else [],
         }
 
     def __repr__(self):

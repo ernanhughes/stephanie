@@ -4,7 +4,7 @@ import re
 
 
 class TripletExtractor:
-    def __init__(self, cfg, prompt_loader, memory=None, logger=None, call_llm=None):
+    def __init__(self, cfg, prompt_loader, memory, logger, call_llm=None):
         self.cfg = cfg
         self.prompt_loader = prompt_loader
         self.memory = memory

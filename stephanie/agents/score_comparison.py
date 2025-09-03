@@ -24,7 +24,7 @@ class ScoreComparisonAgent(BaseAgent):
     This is Step 1: Comprehensive Score Aggregation and Comparison.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dimensions = cfg.get("dimensions", [])  # Default dimensions, can be overridden in config
         
@@ -354,17 +354,17 @@ class ScoreComparisonAgent(BaseAgent):
             # Subquery to find the latest evaluation_id for each (target_id, dimension) for LLM
             latest_eval_subq = (
                 self.session.query(
-                    EvaluationORM.target_id,
+                    EvaluationORM.sccorable_id,
                     ScoreORM.dimension,
                     # Using func.max might not directly give us the id, so we use a window function approach
                     # Or, simpler, get the latest EvaluationORM.id per group and join back
                 )
                 .join(ScoreORM, ScoreORM.evaluation_id == EvaluationORM.id)
                 .filter(EvaluationORM.evaluator_name == self.ground_truth_source)
-                .filter(EvaluationORM.target_id.in_([t['target_id'] for t in target_info_list]))
+                .filter(EvaluationORM.sccorable_id.in_([t['target_id'] for t in target_info_list]))
                 .filter(ScoreORM.dimension.in_(dimensions) if dimensions else True)
                 # Group by target and dimension
-                .group_by(EvaluationORM.target_id, ScoreORM.dimension)
+                .group_by(EvaluationORM.sccorable_id, ScoreORM.dimension)
                 # This approach with group_by alone won't give the latest id directly
                 # Let's use a more robust method with a correlated subquery or distinct on
                 # Or, use the logic from ScoringStore.load_gild_examples which handles "latest"

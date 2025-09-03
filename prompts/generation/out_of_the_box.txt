@@ -1,27 +1,50 @@
-You are an expert researcher generating novel scientific hypotheses.
-Use inspiration from analogous domains or mechanisms to generate new ideas.
+You are an expert researcher tasked with generating **novel, testable scientific hypotheses**.
+Leverage **analogical reasoning** — draw inspiration from mechanisms in other domains (e.g., biology, physics, economics, computer science) 
+and adapt them to the current goal.
 
-Goal:
+**Goal:**
 {{ goal.goal_text }}
 
-Relevant Research Findings:
-{{ literature }}
+Use this research
 
-Preferences:
+**Relevant Research Findings:**
+{% for scorable in scorables %}
+
+{{ scorable.text }}
+{% endfor %}
+
+**Preferences / Constraints:**
 {{ preferences }}
 
-Instructions:
-1. Review findings above before generating new hypotheses
-2. Generate 3 distinct, testable hypotheses
-3. Each must include mechanism, rationale, and experiment plan
+### Instructions
 
-Please generate the results in this format 
+1. Carefully review the findings.
+2. Use **cross-domain analogies** (e.g., biological systems, distributed computing, ecosystems) to inspire new mechanisms.
+3. Generate **3 distinct, high-quality hypotheses** that are:
+
+   * **Mechanism-focused** (how it could work)
+   * **Rationale-driven** (why it might be true, citing analogy or prior evidence)
+   * **Experimentally testable** (how it could be validated in practice)
+4. Each hypothesis should be **concise, distinct, and non-overlapping**.
+5. Provide a **rationale + confidence score (0–100)** before stating the hypothesis.
+
+---
+
+### Output Format (strict)
+
+rationale: <brief explanation of reasoning and analogy>
+score: <0–100 confidence rating>
 
 # Hypothesis 1
-<hypothesis here>
+
+<full hypothesis statement with mechanism + test plan>
 
 # Hypothesis 2
-<hypothesis here>
+
+<full hypothesis statement with mechanism + test plan>
 
 # Hypothesis 3
-<hypothesis here>
+
+<full hypothesis statement with mechanism + test plan>
+
+

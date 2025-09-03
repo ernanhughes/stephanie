@@ -67,6 +67,6 @@ pipeline:
   description: "Default hypothesis generation and refinement pipeline"
   stages:
      - name: prompt_tuning
-       cls: stephanie.agents.prompt_tuning.PromptTuningAgent
+       cls: stephanie.agents.dspy.prompt_tuning.PromptTuningAgent
        enabled: true
        iterations: 1

@@ -7,11 +7,12 @@ plan_trace_scorer:
 
   export_dir: ${hydra:runtime.cwd}/reports/epistemic_plan_executor
   include_mars: true
-  scorer_types:
+  enabled_scorers:
     - hrm
     - sicql
     - svm
     - mrq
+    - ebt
 
   dimensions: 
     - alignment

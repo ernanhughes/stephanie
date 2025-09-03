@@ -5,6 +5,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scoring_manager import ScoringManager
 
+
 @DeprecationWarning
 class ScoringEngine:
     def __init__(self, cfg, memory, prompt_loader, logger, call_llm):

@@ -2,6 +2,7 @@
 from .base import Base
 from .belief_cartridge import BeliefCartridgeORM
 from .cartridge_domain import CartridgeDomainORM
+from .case_goal_state import CaseGoalStateORM
 from .comparison_preference import ComparisonPreferenceORM
 from .context_state import ContextStateORM
 from .document_section import DocumentSectionORM
@@ -21,9 +22,11 @@ from .mrq_preference_pair import MRQPreferencePairORM
 from .node_orm import NodeORM
 from .pattern_stat import PatternStatORM
 from .pipeline_run import PipelineRunORM
+from .pipeline_stage import PipelineStageORM
 from .plan_trace import ExecutionStepORM, PlanTraceORM
 from .prompt import PromptORM, PromptProgramORM
 from .reflection_delta import ReflectionDeltaORM
+from .report import ReportORM
 from .rule_application import RuleApplicationORM
 from .score import ScoreORM
 from .score_attribute import ScoreAttributeORM

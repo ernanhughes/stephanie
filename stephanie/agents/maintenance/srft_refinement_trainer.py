@@ -1,11 +1,10 @@
 # stephanie/scoring/ebt/srft_refinement_trainer.py
 
-import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
 import torch
-from torch import nn, optim
+from torch import optim
 from torch.utils.data import DataLoader
 
 from stephanie.agents.base_agent import BaseAgent
@@ -17,7 +16,7 @@ from stephanie.utils.model_locator import ModelLocator
 
 
 class SRFTRefinementTrainer(BaseAgent, EBTMixin):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         BaseAgent.__init__(self, cfg, memory, logger)
         EBTMixin.__init__(self, cfg.get("ebt", {}))
 
@@ -28,7 +27,7 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
         self.model_type = "ebt"
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
 
 
     def train_srft_model(

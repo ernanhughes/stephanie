@@ -3,13 +3,14 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.rubric_classifier import RubricClassifierMixin
 from stephanie.constants import GOAL
 from stephanie.evaluator.llm_judge_evaluator import LLMJudgeEvaluator
-from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
-from stephanie.scoring.ebt_scorer import EBTScorer
-from stephanie.scoring.hrm_scorer import HRMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.scorer.contrastive_ranker_scorer import \
+    ContrastiveRankerScorer
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.hrm_scorer import HRMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
 
 class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):

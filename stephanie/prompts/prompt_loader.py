@@ -14,7 +14,7 @@ def get_text_from_file(file_path: str) -> str:
 
 
 class PromptLoader:
-    def __init__(self, memory=None, logger=None):
+    def __init__(self, memory, logger):
         self.memory = memory
         self.logger = logger
 

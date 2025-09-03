@@ -1,10 +1,10 @@
 # stephanie/registry/scorer.py
-from stephanie.scoring.ebt_scorer import EBTScorer
-from stephanie.scoring.llm_scorer import LLMScorer
-from stephanie.scoring.mrq_scorer import MRQScorer
-from stephanie.scoring.proximity_scorer import ProximityScorer
-from stephanie.scoring.sicql_scorer import SICQLScorer
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.llm_scorer import LLMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
 SCORER_REGISTRY = {
     "mrq": MRQScorer,
@@ -16,7 +16,7 @@ SCORER_REGISTRY = {
 }
 
 
-def get_scorer(scorer_type: str, cfg: dict, memory=None, logger=None):
+def get_scorer(scorer_type: str, cfg: dict, memory, logger):
     """
     Factory function to get a scorer instance by type.
 

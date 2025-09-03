@@ -9,10 +9,10 @@ class RelatedAgent(BaseAgent):
     Agent that searches for documents related to a given goal using embeddings.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.document_type = cfg.get("document_type", "document")
-        self.embedding_type = self.memory.embedding.name  # e.g., "hf_embeddings"
+        self.embedding_type = self.memory.embedding.name  # e.g., "hnet"
         self.top_k = cfg.get("top_k", 50)
 
     async def run(self, context: dict) -> dict:
@@ -20,7 +20,7 @@ class RelatedAgent(BaseAgent):
         goal_text = goal.get("goal_text")
 
         # Step 1: Search for related documents
-        results = self.memory.embedding.search_related_documents(
+        results = self.memory.embedding.search_related_scorables(
             query=goal_text,
             top_k=self.top_k,
             document_type=self.document_type,

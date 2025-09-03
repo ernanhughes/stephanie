@@ -227,6 +227,8 @@ CREATE TABLE IF NOT EXISTS evaluations (
     strategy TEXT,
     reasoning_strategy TEXT,
     run_id TEXT,
+    query_id TEXT,
+    query_text TEXT,
 
     -- Evaluation Metadata
     symbolic_rule_id INTEGER REFERENCES symbolic_rules(id) ON DELETE SET NULL,
@@ -1245,6 +1247,12 @@ CREATE TABLE IF NOT EXISTS plan_traces (
     target_epistemic_quality DOUBLE PRECISION, -- Label for HRM training
     target_epistemic_quality_source TEXT, -- Source of the HRM training label
     meta JSONB, -- Flexible metadata storage
+    retrieved_cases JSONB DEFAULT '[]',
+    strategy_used TEXT,
+    reward_signal JSONB DEFAULT '{}',
+    skills_used JSONB DEFAULT '[]',
+    repair_links JSONB DEFAULT '[]';
+
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
 );
@@ -1286,4 +1294,160 @@ CREATE TABLE IF NOT EXISTS score_attributes (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMIT;
+
+CREATE TABLE scorable_ranks (
+    id SERIAL PRIMARY KEY,
+    query_text TEXT NOT NULL,
+    scorable_id TEXT NOT NULL,
+    scorable_type TEXT NOT NULL,
+    rank_score FLOAT NOT NULL,
+    components JSONB DEFAULT '{}'::jsonb,
+    embedding_type TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_scorable_ranks_query_text ON scorable_ranks (query_text);
+CREATE INDEX idx_scorable_ranks_scorable ON scorable_ranks (scorable_id, scorable_type);
+
+
+-- 🚀 Create table: mars_results
+CREATE TABLE mars_results (
+    id SERIAL PRIMARY KEY,
+
+    -- Links
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+    plan_trace_id VARCHAR REFERENCES plan_traces(trace_id) ON DELETE CASCADE,
+
+    -- Core analysis
+    dimension VARCHAR NOT NULL,
+    source TEXT, 
+    average_score DOUBLE PRECISION NOT NULL,
+    agreement_score DOUBLE PRECISION NOT NULL,
+    std_dev DOUBLE PRECISION NOT NULL,
+    preferred_model VARCHAR,
+    primary_conflict JSONB,
+    delta DOUBLE PRECISION,
+
+    high_disagreement BOOLEAN NOT NULL DEFAULT FALSE,
+    explanation TEXT,
+
+    -- Extended metrics
+    scorer_metrics JSONB,
+    metric_correlations JSONB,
+
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
+);
+
+-- 🚦 Indexes for quick lookup
+CREATE INDEX idx_mars_results_plan_trace ON mars_results(plan_trace_id);
+CREATE INDEX idx_mars_results_pipeline_run ON mars_results(pipeline_run_id);
+CREATE INDEX idx_mars_results_dimension ON mars_results(dimension);
+
+
+CREATE TABLE mars_conflicts (
+    id SERIAL PRIMARY KEY,
+    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+    plan_trace_id VARCHAR REFERENCES plan_traces(trace_id) ON DELETE CASCADE,
+    dimension VARCHAR NOT NULL,
+    primary_conflict JSON NOT NULL,
+    delta FLOAT NOT NULL,
+    agreement_score FLOAT,
+    preferred_model VARCHAR,
+    explanation TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- casebook table: identifies different "books"
+CREATE TABLE casebooks (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- cases table: each reasoning experience
+CREATE TABLE cases (
+    id SERIAL PRIMARY KEY,
+    casebook_id INT NOT NULL REFERENCES casebooks(id) ON DELETE CASCADE,
+    goal_id VARCHAR(64) NOT NULL,
+    goal_text TEXT NOT NULL,
+    agent_name VARCHAR(128) NOT NULL,
+    mars_summary JSONB,
+    scores JSONB,
+    rank JSONB,
+    meta JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- mapping: many-to-many between cases and scorables
+CREATE TABLE case_scorables (
+    id SERIAL PRIMARY KEY,
+    case_id INT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    scorable_id VARCHAR(64) NOT NULL,
+    scorable_type VARCHAR(64),
+    role VARCHAR(64),   -- e.g. "input", "output", "supporting"
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS case_goal_state (
+  id                SERIAL PRIMARY KEY,
+  casebook_id       INTEGER      NOT NULL,
+  goal_id           TEXT         NOT NULL,
+  champion_case_id  INTEGER      NULL,
+  champion_quality  DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+  run_ix            INTEGER      NOT NULL DEFAULT 0,
+  wins              INTEGER      NOT NULL DEFAULT 0,
+  losses            INTEGER      NOT NULL DEFAULT 0,
+  avg_delta         DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+  trust             DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+
+-- Core lake of learning signals (pairwise + pointwise in one table)
+CREATE TABLE IF NOT EXISTS training_events (
+  id            BIGSERIAL PRIMARY KEY,
+  -- Target & scope
+  model_key     TEXT NOT NULL,           -- e.g., "ranker.sicql.v1" or "retriever.mrq.v2"
+  dimension     TEXT NOT NULL,           -- e.g., "alignment", "relevance"
+  goal_id       TEXT,                    -- optional: tie back to goal
+  pipeline_run_id  INTEGER,                    -- optional: which pipeline
+  agent_name    TEXT,                    -- who emitted it
+
+  -- Event kind
+  kind          TEXT NOT NULL CHECK (kind IN ('pairwise','pointwise')),
+
+  -- Pairwise fields (use when kind='pairwise')
+  query_text    TEXT,
+  pos_text      TEXT,
+  neg_text      TEXT,
+
+  -- Pointwise fields (use when kind='pointwise')
+  cand_text     TEXT,
+  label         SMALLINT,                -- 1 or 0 for pointwise; (optional) -1/0/1 for pairwise
+
+  -- Weights/quality
+  weight        DOUBLE PRECISION DEFAULT 1.0,
+  trust         DOUBLE PRECISION DEFAULT 0.0,    -- optional: confidence from MARS, A/B margin, etc.
+
+  -- Provenance
+  source        TEXT DEFAULT 'memento',
+  meta          JSONB DEFAULT '{}'::jsonb,
+
+  -- Dedup
+  fp            CHAR(40) UNIQUE,         -- SHA1 fingerprint
+
+  -- Lifecycle
+  processed     BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS ix_te_target ON training_events (model_key, dimension, kind);
+CREATE INDEX IF NOT EXISTS ix_te_recent ON training_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_te_unprocessed ON training_events (processed) WHERE processed = false;
+
+
+COMMIT; 

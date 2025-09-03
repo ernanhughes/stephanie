@@ -52,12 +52,7 @@ embeddings:
   backend: hnet
 
 plan_monitor:
-  enabled: true
-  cls: stephanie.agents.plan_monitor.PlanMonitorAgent
-  save_output: true
-  output_dir: ${hydra:runtime.cwd}/reports/plan_traces_pipeline
-  plan_monitoring_interval: 10
-  plan_monitoring_timeout: 60
+  enabled: false
 
 goal:
   goal_text: I want to build an AI that can get better over time.
@@ -81,7 +76,7 @@ paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
 report:
-  generate_report: true
+  generate_report: false
   path: ${hydra:runtime.cwd}/reports
 
 web_search:
@@ -102,25 +97,25 @@ pipeline:
      - name: sicql_mrq_trainer
        description: "Build document pairs for training and evaluation"
        cls: stephanie.agents.maintenance.sicql_trainer.SICQLTrainerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: document_svm_trainer
        description: "Train a model to predict document values using SVM" 
        cls: stephanie.agents.maintenance.svm_trainer.SVMTrainerAgent 
-       enabled: true
+       enabled: false
        iterations: 1  
 
      - name: document_ebt_trainer
        description: "Train a model to predict document values based on EBT" 
        cls: stephanie.agents.maintenance.ebt_trainer.EBTTrainerAgent 
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: rank_trainer
        description: "Train a ranker model using SICQL"
        cls: stephanie.agents.maintenance.rank_trainer.ContrastiveRankerTrainerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: hrm_trainer
@@ -144,13 +139,13 @@ pipeline:
      - name: universal_scorer
        description: "Score documents using a universal scoring approach"
        cls: stephanie.agents.universal_scorer.UniversalScorerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: related
        description: "Find documents related to the goal"
        cls: stephanie.agents.related.RelatedAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: knowledge_db_loader

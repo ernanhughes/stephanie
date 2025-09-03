@@ -1,4 +1,5 @@
 # stephanie/memory/pipeline_reference_store.py
+import logging
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -6,6 +7,8 @@ from sqlalchemy.orm import Session
 from stephanie.models.pipeline_reference import PipelineReferenceORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineReferenceStore:
@@ -34,16 +37,13 @@ class PipelineReferenceStore:
             self.session.flush()  # Get ID before commit
             ref_id = db_ref.id
 
-            if self.logger:
-                self.logger.log(
-                    "PipelineReferenceInserted",
-                    {
-                        "reference_id": ref_id,
-                        "pipeline_run_id": db_ref.pipeline_run_id,
-                        "target_type": db_ref.target_type,
-                        "target_id": db_ref.target_id,
-                    },
-                )
+            logger.debug(
+                "PipelineReferenceInserted"
+                f"reference_id: {ref_id}, "
+                f"pipeline_run_id: {db_ref.pipeline_run_id}, "
+                f"target_type: {db_ref.target_type}, "
+                f"target_id: {db_ref.target_id}"
+            )
 
             self.session.commit()
             return ref_id
@@ -51,7 +51,9 @@ class PipelineReferenceStore:
         except Exception as e:
             self.session.rollback()
             if self.logger:
-                self.logger.log("PipelineReferenceInsertFailed", {"error": str(e)})
+                self.logger.log(
+                    "PipelineReferenceInsertFailed", {"error": str(e)}
+                )
             raise
 
     def get_by_id(self, ref_id: int) -> Optional[PipelineReferenceORM]:
@@ -64,7 +66,9 @@ class PipelineReferenceStore:
             .first()
         )
 
-    def get_by_pipeline_run(self, pipeline_run_id: int) -> List[PipelineReferenceORM]:
+    def get_by_pipeline_run(
+        self, pipeline_run_id: int
+    ) -> List[PipelineReferenceORM]:
         """
         Fetch all references associated with a pipeline run.
         """
@@ -75,7 +79,9 @@ class PipelineReferenceStore:
             .all()
         )
 
-    def get_by_target(self, target_type: str, target_id: str) -> List[PipelineReferenceORM]:
+    def get_by_target(
+        self, target_type: str, target_id: str
+    ) -> List[PipelineReferenceORM]:
         """
         Fetch all references to a specific scorable target.
         """
@@ -105,20 +111,32 @@ class PipelineReferenceStore:
         query = self.session.query(PipelineReferenceORM)
 
         if "pipeline_run_id" in filters:
-            query = query.filter(PipelineReferenceORM.pipeline_run_id == filters["pipeline_run_id"])
+            query = query.filter(
+                PipelineReferenceORM.pipeline_run_id
+                == filters["pipeline_run_id"]
+            )
         if "target_type" in filters:
-            query = query.filter(PipelineReferenceORM.target_type == filters["target_type"])
+            query = query.filter(
+                PipelineReferenceORM.target_type == filters["target_type"]
+            )
         if "target_id" in filters:
-            query = query.filter(PipelineReferenceORM.target_id == filters["target_id"])
+            query = query.filter(
+                PipelineReferenceORM.target_id == filters["target_id"]
+            )
         if "relation_type" in filters:
-            query = query.filter(PipelineReferenceORM.relation_type == filters["relation_type"])
+            query = query.filter(
+                PipelineReferenceORM.relation_type == filters["relation_type"]
+            )
         if "since" in filters:
-            query = query.filter(PipelineReferenceORM.created_at >= filters["since"])
+            query = query.filter(
+                PipelineReferenceORM.created_at >= filters["since"]
+            )
 
         return query.order_by(PipelineReferenceORM.created_at.desc()).all()
 
-
-    def get_documents_by_run_id(self, pipeline_run_id: int, memory, limit: int = 100) -> dict:
+    def get_documents_by_run_id(
+        self, pipeline_run_id: int, memory, limit: int = 100
+    ) -> dict:
         """
         Fetch the first `limit` referenced documents for a given pipeline run,
         and return them as Scorable objects keyed by (target_type, target_id).
@@ -139,7 +157,9 @@ class PipelineReferenceStore:
         results: dict[tuple[str, str], Scorable] = {}
         for ref in refs:
             try:
-                scorable = ScorableFactory.from_id(memory, ref.target_type, ref.target_id)
+                scorable = ScorableFactory.from_id(
+                    memory, ref.target_type, ref.target_id
+                )
                 results[(ref.target_type, ref.target_id)] = scorable
             except Exception as e:
                 if self.logger:

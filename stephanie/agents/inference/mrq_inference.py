@@ -10,11 +10,11 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
 from stephanie.scoring.model.in_context_q import InContextQModel
+from stephanie.scoring.model.mrq_model import MRQModel
 from stephanie.scoring.model.policy_head import PolicyHead
 from stephanie.scoring.model.q_head import QHead
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.model.v_head import VHead
-from stephanie.scoring.mrq.model import MRQModel
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
@@ -23,7 +23,7 @@ from stephanie.utils.model_locator import ModelLocator
 
 
 class MRQInferenceAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.dim = memory.embedding.dim
         self.hdim = memory.embedding.hdim
@@ -34,21 +34,24 @@ class MRQInferenceAgent(BaseAgent):
         self.evaluator = "sicql" if self.use_sicql else "mrq"
         self.target_type = cfg.get("target_type", "document")
         self.model_version = cfg.get("model_version", "v1")
-        self.embedding_type = self.memory.embedding.type
+        self.embedding_type = self.memory.embedding.name
         self.dimensions = cfg.get("dimensions", [])
         self.models = {}
-        self.model_meta = {}
+        self.model_meta = {} 
         self.tuners = {}
 
-        self.logger.log("MRQInferenceAgentInitialized", {
-            "model_type": self.model_type,
-            "target_type": self.target_type,
-            "dimensions": self.dimensions,
-            "device": str(self.device),
-            "model_version": self.model_version,
-            "embedding_type": self.embedding_type,
-            "use_sicql": self.use_sicql,
-        })
+        self.logger.log(
+            "MRQInferenceAgentInitialized",
+            {
+                "model_type": self.model_type,
+                "target_type": self.target_type,
+                "dimensions": self.dimensions,
+                "device": str(self.device),
+                "model_version": self.model_version,
+                "embedding_type": self.embedding_type,
+                "use_sicql": self.use_sicql,
+            },
+        )
 
     async def run(self, context: dict) -> dict:
         goal_text = context.get("goal", {}).get("goal_text")
@@ -66,33 +69,41 @@ class MRQInferenceAgent(BaseAgent):
             for dim, model in self.models.items():
                 if self.use_sicql:
                     prompt_emb = torch.tensor(
-                        self.memory.embedding.get_or_create(goal_text), device=self.device
+                        self.memory.embedding.get_or_create(goal_text),
+                        device=self.device,
                     ).unsqueeze(0)
                     output_emb = torch.tensor(
-                        self.memory.embedding.get_or_create(scorable.text), device=self.device
+                        self.memory.embedding.get_or_create(scorable.text),
+                        device=self.device,
                     ).unsqueeze(0)
                     result = model(prompt_emb, output_emb)
 
-
                     q_value = result["q_value"].item()
                     v_value = result["state_value"].item()
-                    policy_logits = result["action_logits"].cpu().detach().numpy().tolist()
+                    policy_logits = (
+                        result["action_logits"].cpu().detach().numpy().tolist()
+                    )
 
-                    if isinstance(policy_logits, list) and len(policy_logits) == 1:
+                    if (
+                        isinstance(policy_logits, list)
+                        and len(policy_logits) == 1
+                    ):
                         if isinstance(policy_logits[0], list):
                             # [[0.1166]] → [0.1166]
                             policy_logits = policy_logits[0]
 
                     print(f"Policy logits for {dim}: {policy_logits}")
 
-                        # Calculate uncertainty (|Q - V|)
+                    # Calculate uncertainty (|Q - V|)
                     uncertainty = abs(q_value - v_value)
-                    
+
                     # Calculate entropy from policy logits
                     policy_tensor = torch.tensor(policy_logits)
                     action_probs = F.softmax(policy_tensor, dim=-1)
-                    entropy = -torch.sum(action_probs * torch.log(action_probs + 1e-8)).item()
-                    
+                    entropy = -torch.sum(
+                        action_probs * torch.log(action_probs + 1e-8)
+                    ).item()
+
                     # Calculate advantage
                     advantage = q_value - v_value
 
@@ -104,20 +115,31 @@ class MRQInferenceAgent(BaseAgent):
                     scaled_score = self.tuners[dim].transform(q_value)
                 else:
                     normalized = torch.sigmoid(torch.tensor(q_value)).item()
-                    scaled_score = normalized * (meta["max_value"] - meta["min_value"]) + meta["min_value"]
+                    scaled_score = (
+                        normalized * (meta["max_value"] - meta["min_value"])
+                        + meta["min_value"]
+                    )
 
-                scaled_score = max(min(scaled_score, meta["max_value"]), meta["min_value"])
+                scaled_score = max(
+                    min(scaled_score, meta["max_value"]), meta["min_value"]
+                )
                 final_score = round(scaled_score, 4)
                 dimension_scores[dim] = final_score
 
                 attributes = {
                     "raw_q_value": round(q_value, 4),
-                    "raw_v_value": round(v_value, 4) if self.use_sicql else None,
+                    "raw_v_value": round(v_value, 4)
+                    if self.use_sicql
+                    else None,
                     "policy_logits": policy_logits if self.use_sicql else None,
                     "scaled_score": round(scaled_score, 4),
-                    "advantage": round(advantage, 4) if self.use_sicql else None,
-                    "uncertainty": round(uncertainty, 4) if self.use_sicql else None,
-                    "entropy": round(entropy, 4) if self.use_sicql else None
+                    "advantage": round(advantage, 4)
+                    if self.use_sicql
+                    else None,
+                    "uncertainty": round(uncertainty, 4)
+                    if self.use_sicql
+                    else None,
+                    "entropy": round(entropy, 4) if self.use_sicql else None,
                 }
 
                 score_results.append(
@@ -131,35 +153,56 @@ class MRQInferenceAgent(BaseAgent):
                     )
                 )
 
-                self.logger.log("MRQScoreComputed", {
-                    "document_id": doc_id,
-                    "dimension": dim,
-                    "q_value": round(q_value, 4),
-                    "final_score": final_score,
-                })
+                self.logger.log(
+                    "MRQScoreComputed",
+                    {
+                        "document_id": doc_id,
+                        "dimension": dim,
+                        "q_value": round(q_value, 4),
+                        "final_score": final_score,
+                    },
+                )
 
-            score_bundle = ScoreBundle(results={r.dimension: r for r in score_results})
-            model_name = f"{self.target_type}_{self.model_type}_{self.model_version}"
-
-            ScoringManager.save_score_to_memory(
-                score_bundle, scorable, context, self.cfg, self.memory, self.logger,
-                source="mrq", model_name=model_name
+            score_bundle = ScoreBundle(
+                results={r.dimension: r for r in score_results}
+            )
+            model_name = (
+                f"{self.target_type}_{self.model_type}_{self.model_version}"
             )
 
-            results.append({
-                "scorable": scorable.to_dict(),
-                "scores": dimension_scores,
-                "score_bundle": score_bundle.to_dict(),
-            })
+            ScoringManager.save_score_to_memory(
+                score_bundle,
+                scorable,
+                context,
+                self.cfg,
+                self.memory,
+                self.logger,
+                source="mrq",
+                model_name=model_name,
+                evaluator_name=self.model_type,
+            )
 
-            self.logger.log("MRQScoringFinished", {
-                "document_id": doc_id,
-                "scores": dimension_scores,
-                "dimensions_scored": list(dimension_scores.keys()),
-            })
+            results.append(
+                {
+                    "scorable": scorable.to_dict(),
+                    "scores": dimension_scores,
+                    "score_bundle": score_bundle.to_dict(),
+                }
+            )
+
+            self.logger.log(
+                "MRQScoringFinished",
+                {
+                    "document_id": doc_id,
+                    "scores": dimension_scores,
+                    "dimensions_scored": list(dimension_scores.keys()),
+                },
+            )
 
         context[self.output_key] = results
-        self.logger.log("MRQInferenceCompleted", {"total_documents_scored": len(results)})
+        self.logger.log(
+            "MRQInferenceCompleted", {"total_documents_scored": len(results)}
+        )
         return context
 
     def load_models(self, dimensions: list):
@@ -179,14 +222,20 @@ class MRQInferenceAgent(BaseAgent):
 
             encoder = TextEncoder(self.dim, self.hdim)
             if self.use_sicql:
-                q_head = QHead(zsa_dim=self.dim, hdim=self.hdim).to(self.device)
-                v_head = VHead(zsa_dim=self.dim, hdim=self.hdim).to(self.device)
+                q_head = QHead(zsa_dim=self.dim, hdim=self.hdim).to(
+                    self.device
+                )
+                v_head = VHead(zsa_dim=self.dim, hdim=self.hdim).to(
+                    self.device
+                )
                 pi_head = PolicyHead(
                     zsa_dim=self.dim, hdim=self.hdim, num_actions=3
                 ).to(self.device)
 
                 encoder.load_state_dict(
-                    torch.load(locator.encoder_file(), map_location=self.device)
+                    torch.load(
+                        locator.encoder_file(), map_location=self.device
+                    )
                 )
                 q_head.load_state_dict(
                     torch.load(locator.q_head_file(), map_location=self.device)
@@ -195,7 +244,9 @@ class MRQInferenceAgent(BaseAgent):
                     torch.load(locator.v_head_file(), map_location=self.device)
                 )
                 pi_head.load_state_dict(
-                    torch.load(locator.pi_head_file(), map_location=self.device)
+                    torch.load(
+                        locator.pi_head_file(), map_location=self.device
+                    )
                 )
 
                 model = InContextQModel(
@@ -222,10 +273,21 @@ class MRQInferenceAgent(BaseAgent):
                     self.tuners[dim] = tuner
             else:
                 predictor = HypothesisValuePredictor(self.dim, self.hdim)
-                model = MRQModel(encoder, predictor, self.memory.embedding, device=self.device)
-                model.load_weights(locator.encoder_file(), locator.model_file())
+                model = MRQModel(
+                    encoder,
+                    predictor,
+                    self.memory.embedding,
+                    device=self.device,
+                )
+                model.load_weights(
+                    locator.encoder_file(), locator.model_file()
+                )
                 self.models[dim] = model
-                meta = load_json(locator.meta_file()) if os.path.exists(locator.meta_file()) else {"min": 0, "max": 100}
+                meta = (
+                    load_json(locator.meta_file())
+                    if os.path.exists(locator.meta_file())
+                    else {"min": 0, "max": 100}
+                )
                 tuner_path = locator.tuner_file()
                 self.model_meta[dim] = meta
 

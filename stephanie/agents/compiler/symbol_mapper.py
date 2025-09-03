@@ -1,6 +1,6 @@
 # stephanie/agents/compiler/symbol_mapper.py
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
-from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
+from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 
 
 class SymbolMapper:

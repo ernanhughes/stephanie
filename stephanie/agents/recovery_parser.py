@@ -5,7 +5,7 @@ from stephanie.agents.base_agent import BaseAgent
 
 
 class RecoveryParserAgent(BaseAgent):
-    def __init__(self, cfg=None, memory=None, logger=None):
+    def __init__(self, cfg=None, memory, logger):
         super().__init__(cfg or {}, memory, logger)
 
     def parse(

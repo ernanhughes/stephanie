@@ -6,7 +6,7 @@ from stephanie.constants import (DATABASE_MATCHES, EVOLVED, HYPOTHESES,
 
 
 class MetaReviewAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         # Load preferences from config or default list
         self.preferences = cfg.get("preferences", ["goal_consistency", "plausibility"])

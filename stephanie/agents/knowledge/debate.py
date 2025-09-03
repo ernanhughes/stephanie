@@ -3,7 +3,7 @@ from stephanie.agents.base_agent import BaseAgent
 
 
 class OptimistDebater(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
@@ -23,7 +23,7 @@ class OptimistDebater(BaseAgent):
 
 
 class SkepticDebater(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
@@ -43,7 +43,7 @@ class SkepticDebater(BaseAgent):
 
 
 class BalancedDebater(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
@@ -63,7 +63,7 @@ class BalancedDebater(BaseAgent):
 
 
 class DebateAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.optimist = OptimistDebater(cfg, memory, logger)
         self.skeptic = SkepticDebater(cfg, memory, logger)

@@ -55,3 +55,23 @@ class PipelineRunORM(Base):
             f"name='{self.name}', "
             f"description='{(self.description[:50] + '...') if self.description and len(self.description) > 50 else self.description}')>"
         )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "run_id": self.run_id,
+            "goal_id": self.goal_id,
+            "pipeline": self.pipeline,
+            "name": self.name,
+            "tag": self.tag,
+            "description": self.description,
+            "strategy": self.strategy,
+            "model_name": self.model_name,
+            "embedding_type": self.embedding_type,
+            "embedding_dimensions": self.embedding_dimensions,
+            "run_config": self.run_config,
+            "lookahead_context": self.lookahead_context,
+            "symbolic_suggestion": self.symbolic_suggestion,
+            "extra_data": self.extra_data,
+            "created_at": self.created_at,
+        }

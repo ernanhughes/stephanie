@@ -1,18 +1,19 @@
 # stephanie/worldmodel/world_model.py
 import os
+import pickle
 from datetime import datetime
 from typing import Dict, List
 
 import networkx as nx
 import torch
-import pickle
 
 from stephanie.agents.inference.ebt_inference import DocumentEBTInferenceAgent
 from stephanie.memcubes.memcube import MemCube
 from stephanie.memcubes.theorem import Theorem
+from stephanie.models.belief import BeliefORM
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.model_utils import get_model_path
-from stephanie.models.belief import BeliefORM
+
 
 class WorldModel:
     """

@@ -1,0 +1,50 @@
+trust_reference: llm           # or "hrm" / "mrq" — your upstream reference scorer
+variance_threshold: 0.05       # collapse/ignore dims with very low variance
+metrics:                       # default metrics each dimension will compute/aggregate
+  - agreement
+  - dispersion
+  - confidence
+
+# Active dimensions
+dimensions:
+  - alignment
+  - clarity
+  - implementability
+  - novelty
+  - relevance
+
+dimension_configs:
+  _defaults: &dim_defaults
+    trust_reference: llm
+    variance_threshold: 0.05
+    metrics: 
+      - agreement
+      - dispersion
+      - confidence
+
+
+  alignment:
+    <<: *dim_defaults
+    weight: 1.0
+    description: "How well the response aligns with the user's goal."
+
+  clarity:
+    <<: *dim_defaults
+    weight: 0.5
+    description: "The clarity of the response."
+
+  implementability:
+    <<: *dim_defaults
+    weight: 0.25
+    description: "How easily the response can be implemented."
+
+  novelty:
+    <<: *dim_defaults
+    metrics: [diversity, surprise, dispersion]   # override if you like
+    weight: 0.1
+    description: "The novelty of the response."
+
+  relevance:
+    <<: *dim_defaults
+    weight: 0.8
+    description: "Topical fit to the goal and retrieved context."

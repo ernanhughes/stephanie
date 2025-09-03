@@ -60,6 +60,20 @@ def pipeline_detail(request: Request, pipeline_id: int):
     )
     config_yaml = get_run_config(run)
 
+    cartridges = memory.cartridges.get_run_id(pipeline_id)
+    theorems = memory.theorems.get_by_run_id(pipeline_id)
+    print(f"Found {len(theorems)} theorems for pipeline run {pipeline_id}")
+
+    # Expand with triples
+    cartridges = [
+        {
+            **c.to_dict(),
+            "triples": [t.to_dict() for t in c.triples_rel] if c.triples_rel else []
+        }
+        for c in cartridges
+    ]
+    print(f"Found {len(cartridges)} cartridges for pipeline run {pipeline_id}")
+
     return templates.TemplateResponse(
         "pipeline_detail.html",
         {
@@ -71,6 +85,8 @@ def pipeline_detail(request: Request, pipeline_id: int):
             "documents": documents,
             "report": report,
             "report_path": report_path,
+            "cartridges": cartridges,
+            "theorems": theorems,
             "config_yaml": config_yaml,
         },
     )
@@ -203,12 +219,17 @@ def pipeline_cartridges(request: Request, pipeline_id: int):
     memory = request.app.state.memory
     templates = request.app.state.templates
 
+    cartridges = memory.cartridges.get_run_id(pipeline_id)
 
-    cartridges = memory.cartridges.get_all()
-    # # fetch cartridges linked to pipeline
-    # cartridges = memory.cartridges.session.query(
-    #     memory.cartridges.session.registry.mapped["CartridgeORM"]
-    # ).filter_by(pipeline_run_id=pipeline_id).all()
+    # Expand with triples
+    cartridges = [
+        {
+            **c.to_dict(),
+            "triples": [t.to_dict() for t in c.triples_rel] if c.triples_rel else []
+        }
+        for c in cartridges
+    ]
+    print(f"Found {len(cartridges)} cartridges for pipeline run {pipeline_id}")
 
     return templates.TemplateResponse(
         "pipeline_cartridges.html",
@@ -225,12 +246,7 @@ def pipeline_theorems(request: Request, pipeline_id: int):
     memory = request.app.state.memory
     templates = request.app.state.templates
 
-    # fetch theorems linked to pipeline
-
-    theorems = memory.theorems.get_all()
-    # theorems = memory.theorems.session.query(
-    #     memory.theorems.session.registry.mapped["TheoremORM"]
-    # ).filter_by(pipeline_run_id=pipeline_id).all()
+    theorems = memory.theorems.get_by_run_id(pipeline_id)
 
     return templates.TemplateResponse(
         "pipeline_theorems.html",

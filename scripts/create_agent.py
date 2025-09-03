@@ -5,7 +5,7 @@ TEMPLATE_AGENT_CODE = '''from stephanie.agents.base_agent import BaseAgent
 
 
 class {{ agent_name|capitalize }}Agent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
     async def run(self, context: dict) -> dict:
@@ -33,19 +33,19 @@ TEMPLATE_CONFIG = '''{{ agent_name }}:
 TEMPLATE_PROMPT = '''You are a helpful assistant
 
 Based upon this goal:
-Goal: {{ '{{' }} goal.goal_text {{ '}}' }}
+Goal: {{ goal.goal_text }}
 
 {% if preferences %}
 And these preferences:
 {% for p in preferences %}
-- {{ '{{' }} p {{ '}}' }}
+- {{ p }}
 {% endfor %}
 {% endif %}
 
 {% if instructions %}
 Additional instructions: 
 {% for i in instructions %}
-- {{ '{{' }} i {{ '}}' }}
+- {{ i }}
 {% endfor %}
 {% endif %}
 '''

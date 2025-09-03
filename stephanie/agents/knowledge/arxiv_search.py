@@ -1,32 +1,43 @@
 # stephanie/agents/knowledge/arxiv_search.py
+"""
+arXiv Search Agent Module
+
+Provides functionality to search and retrieve academic papers from arXiv.org
+based on research goals and extracted keywords. Includes robust error handling,
+query construction, and result processing capabilities.
+"""
+
 import re
 from datetime import datetime, timedelta
+
 import arxiv
 
 from stephanie.agents.base_agent import BaseAgent
 
 
 class ArxivSearchAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
+        # Configuration with defaults
         self.year_start = cfg.get("year_start", 2021)
         self.year_end = cfg.get("year_end", 2025)
-        self.category = cfg.get("category", "cs.AI")
+        self.category = cfg.get("category", "cs.AI")  # Default to AI category
         self.max_results = cfg.get("max_results", 50)
         self.return_top_n = cfg.get("top_n", 10)
         self.date_filter = cfg.get("date_filter", "")
 
     async def run(self, context: dict) -> dict:
+        """Main execution method for arXiv search agent"""
         goal = context.get("goal", {}).get("goal_text", "")
 
-        # --- Report: Start ---
+        # --- Performance reporting ---
         self.report({
             "event": "start",
             "step": "ArxivSearch",
             "details": f"Searching arXiv for goal: {goal}",
         })
 
-        # Step 1: Extract relevant keywords
+        # Step 1: Keyword extraction
         keywords = self.extract_keywords(context)
         context["search_keywords"] = keywords
 
@@ -37,7 +48,7 @@ class ArxivSearchAgent(BaseAgent):
             "keywords": keywords,
         })
 
-        # Step 2: Build Arxiv-compatible query
+        # Step 2: Query construction
         query = self.build_arxiv_query_from_goal(
             context=context,
             year_start=self.year_start,
@@ -53,7 +64,7 @@ class ArxivSearchAgent(BaseAgent):
             "query": query,
         })
 
-        # Step 3: Fetch raw papers
+        # Step 3: Fetch results
         results = []
         try:
             results = self.fetch_arxiv_results(
@@ -61,11 +72,13 @@ class ArxivSearchAgent(BaseAgent):
             )
             context["raw_arxiv_results"] = results
 
+            len_results = len(results) if results else 0
+
             self.report({
                 "event": "search_complete",
                 "step": "ArxivSearch",
-                "details": f"Fetched {len(results)} papers",
-                "sample_titles": [r['title'] for r in results[:3]],  # just first 3
+                "details": f"Fetched {len_results} papers",
+                "sample_titles": [r['title'] for r in results[:3]],  # First 3 titles
             })
         except Exception as e:
             self.report({
@@ -74,12 +87,9 @@ class ArxivSearchAgent(BaseAgent):
                 "details": f"Error fetching arXiv results: {str(e)}",
             })
 
-        # TODO: Ranking can also report
-        # context["filtered_arxiv_results"] = top_ranked
-
         context[self.output_key] = results
 
-        # --- Report: End ---
+        # --- Completion report ---
         self.report({
             "event": "end",
             "step": "ArxivSearch",
@@ -89,17 +99,19 @@ class ArxivSearchAgent(BaseAgent):
         return context
 
     def extract_keywords(self, merged_context: dict) -> list:
-        """Extract keywords from the goal text using simple heuristics."""
+        """Extract keywords using prompt-based approach with regex parsing"""
         response = self.execute_prompt(merged_context)
+        # Match lines separated by newlines
         pattern = r"(?:\n|\r|\r\n)([^\n\r]+?)(?=(?:\n|\r|\r\n|$))"
         lines = re.findall(pattern, response.strip())
+        # Clean numbering/bullets from lines
         keywords = [re.sub(r"^[-•\d\.\s]+", "", line).strip() for line in lines]
 
-        # Keep the debug log
+        # Debug logging
         self.logger.log(
             "KeywordsExtracted", {"raw_keywords": lines, "cleaned_keywords": keywords}
         )
-        return [kw for kw in keywords if kw]
+        return [kw for kw in keywords if kw]  # Return non-empty keywords
 
     def build_arxiv_query_from_goal(
         self,
@@ -109,9 +121,11 @@ class ArxivSearchAgent(BaseAgent):
         year_end: int = None,
         category: str = None,
     ) -> str:
+        """Construct arXiv-compatible search query with filters"""
         keyword_filter = " OR ".join(f'"{kw.strip()}"' for kw in keywords if kw.strip())
         filters = [f"({keyword_filter})"]
 
+        # Date filtering logic
         date_filter_mode = self.cfg.get("date_filter", "").lower()
         now = datetime.now()
 
@@ -131,10 +145,12 @@ class ArxivSearchAgent(BaseAgent):
             end = now.strftime("%Y%m%d")
             filters.append(f"submittedDate:[{start} TO {end}]")
         elif year_start or year_end:
+            # Use year range if specified
             start = f"{year_start}0101" if year_start else "00000101"
             end = f"{year_end}1231" if year_end else "99991231"
             filters.append(f"submittedDate:[{start} TO {end}]")
 
+        # Category filter
         if category:
             filters.append(f"cat:{category}")
 
@@ -143,40 +159,116 @@ class ArxivSearchAgent(BaseAgent):
     def fetch_arxiv_results(
         self, context: dict, query: str, max_results: int = 50
     ) -> list[dict]:
-        search = arxiv.Search(
-            query=query,
-            max_results=max_results,
-            sort_by=arxiv.SortCriterion.Relevance,
-            sort_order=arxiv.SortOrder.Descending,
-        )
-
-        results = []
+        """
+        Fetch papers from arXiv API with error handling and retry logic.
+        Returns list of paper dictionaries with metadata.
+        """
+        results: list[dict] = []
         goal = context.get("goal", {})
         goal_id = goal.get("id", "")
         parent_goal = goal.get("goal_text")
         strategy = goal.get("strategy")
         focus_area = goal.get("focus_area")
 
-        for result in search.results():
-            arxiv_url = result.entry_id
-            pid = arxiv_url.split("/")[-1]
-            results.append(
+        # Safety clamp on results
+        max_results = min(max_results or self.max_results, 100)
+
+        try:
+            search = arxiv.Search(
+                query=query,
+                max_results=max_results,
+                sort_by=arxiv.SortCriterion.Relevance,
+                sort_order=arxiv.SortOrder.Descending,
+            )
+
+            # Retry mechanism for transient errors
+            for attempt in range(3):
+                try:
+                    for result in search.results():
+                        try:
+                            arxiv_url = getattr(result, "entry_id", "") or ""
+                            pid = arxiv_url.split("/")[-1] if "/" in arxiv_url else None
+                            if not pid:
+                                continue  # Skip entries without ID
+
+                            # Extract and clean fields
+                            title = (getattr(result, "title", "") or "Unknown").strip()
+                            summary = (getattr(result, "summary", "") or "").strip()
+                            published = getattr(result, "published", None)
+                            published_str = (
+                                published.isoformat() if published else ""
+                            )
+                            authors = [
+                                a.name for a in getattr(result, "authors", []) or []
+                            ]
+                            primary_category = getattr(
+                                result, "primary_category", "unknown"
+                            )
+
+                            # Build result dictionary
+                            results.append(
+                                {
+                                    "query": query,
+                                    "source": self.name,
+                                    "result_type": "paper",
+                                    "title": title,
+                                    "summary": summary,
+                                    "url": f"https://arxiv.org/pdf/{pid}.pdf",
+                                    "goal_id": goal_id,
+                                    "parent_goal": parent_goal,
+                                    "strategy": strategy,
+                                    "focus_area": focus_area,
+                                    "authors": authors,
+                                    "published": published_str,
+                                    "pid": pid,
+                                    "primary_category": primary_category,
+                                }
+                            )
+                        except Exception as parse_err:
+                            self.logger.log(
+                                "ArxivResultParseError",
+                                {
+                                    "error": str(parse_err),
+                                    "entry_id": getattr(result, "entry_id", "unknown"),
+                                },
+                            )
+                            continue
+
+                    break  # Success - exit retry loop
+
+                except arxiv.UnexpectedEmptyPageError as e:
+                    self.logger.log(
+                        "ArxivEmptyPageRetry",
+                        {"query": query, "attempt": attempt + 1, "error": str(e)},
+                    )
+                    if attempt < 2:
+                        import time
+                        time.sleep(2 ** attempt)  # Exponential backoff
+                        continue
+                    else:
+                        return []  # Failed after retries
+
+        except Exception as e:
+            self.logger.log(
+                "ArxivSearchFailed",
+                {"query": query, "error": str(e)},
+            )
+            return []
+
+        # Log results
+        if not results:
+            self.logger.log(
+                "ArxivNoResults",
+                {"query": query, "goal_id": goal_id, "parent_goal": parent_goal},
+            )
+        else:
+            self.logger.log(
+                "ArxivResultsFetched",
                 {
-                    "query": query,
-                    "source": self.name,
-                    "result_type": "paper",
-                    "title": result.title.strip(),
-                    "summary": result.summary.strip(),
-                    "url": f"https://arxiv.org/pdf/{pid}.pdf",
-                    "goal_id": goal_id,
-                    "parent_goal": parent_goal,
-                    "strategy": strategy,
-                    "focus_area": focus_area,
-                    "authors": [a.name for a in result.authors],
-                    "published": result.published.isoformat(),
-                    "pid": pid,
-                    "primary_category": result.primary_category,
-                }
+                    "query": query, 
+                    "count": len(results), 
+                    "first_title": results[0]["title"]
+                },
             )
 
         return results

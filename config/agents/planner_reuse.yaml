@@ -1,0 +1,34 @@
+planner_reuse:
+  name: planner_reuse
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  top_k: 500
+  min_hrm: 0.60       # normalized [0,1]
+  use_db_knn: true
+  rerank_with_scorable_ranker: false
+  select_k: 8         # examples fed to LLM
+  include_steps: false
+  progress: true
+  rank_weights: { sim: 0.45, val: 0.30, rec: 0.10, div: 0.10, tool: 0.05 }
+  rank_recency_lambda: 0.02
+  rank_epsilon: 0.10
+
+  dimensions: 
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: planner_reuse
+  prompt_mode: file
+  prompt_file: planner_reuse.txt

@@ -14,8 +14,10 @@ from stephanie.agents.rule_tuner import RuleTunerAgent
 from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.mrq.scorer import MRQScorer
+from stephanie.data.score_corpus import ScoreCorpus
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 from stephanie.utils.graph_tools import (build_mermaid_graph, compare_graphs,
                                          save_mermaid_to_file)
 
@@ -190,14 +192,14 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
     - DSPy optimization
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.max_depth = cfg.get("max_depth", 5)
         self.branching_factor = cfg.get("branching_factor", 3)
         self.ucb_weight = cfg.get("ucb_weight", 1.41)
         self.num_simulations = cfg.get("num_simulations", 50)
         self.lambda_weight = cfg.get("lambda", 0.5)
-
+        self.scorer_name = cfg.get("scorer_name", "sicql")
         # Node tracking
         self.nodes = []
         self.N = defaultdict(int)  # visit count
@@ -228,16 +230,13 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
 
         # Symbolic impact analyzer
         self.impact_analyzer = SymbolicImpactAnalyzer(self._get_score)
+        self.ranker = ScorableRanker(cfg, memory, logger)
+        self.mars = MARSCalculator(cfg, memory, logger)
+        
         self.score_map = {}
         self.completed_nodes = 0
         self.total_estimated_nodes = 1  # Start with 1 to avoid division by zero
-        self.dimensions = self.get_dimensions("lats_reflection")
-        self.scorer = MRQScorer(
-            self.cfg, memory=self.memory, logger=self.logger, dimensions=self.dimensions
-        )
-        # self.scorer.train_from_database(cfg=self.cfg)
-        # self.scorer.save_models()
-        self.scorer.load_models()
+        self.dimensions = self.cfg.get("dimensions", ["alignment", "clarity", "implementability", "novelty", "relevance"])
 
     async def run(self, context: dict) -> dict:
         """Main LATS search loop"""
@@ -328,6 +327,13 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         )
         context.setdefault("lats_result", []).append(hypothesis.to_dict())
         context.setdefault("hypotheses", []).append(hypothesis.to_dict())
+
+        mars_results = self.mars.calculate(
+            ScoreCorpus.from_nodes(self.nodes, scorers=["sicql", "mrq", "ebt"]),
+            context=context
+        )
+        context["mars_results"] = mars_results
+
         return context
 
     def create_node(self, state, trace, parent=None):
@@ -407,9 +413,24 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             state=node["state"], trace=node["trace"], depth=0
         )
 
+        # 2b. Rank completions with ScorableRanker
+        query_scorable = Scorable(
+            id=f"node-{node['id']}",
+            text=node["state"]["current"],
+            target_type="lats_node",
+            metadata={"agent_name": "LATSDSPyAgent"}
+        )
+        cand_scorables = [
+            Scorable(text=comp, target_type="lats_child", metadata={"agent_name": "LATSDSPyAgent"})
+            for comp in completions
+        ]
+        ranked_bundles = self.ranker.rank(query_scorable, cand_scorables, context)
+        ranked_completions = [r["scorable_id"] for r in ranked_bundles]
+
+
         # 3. Apply proximity-based refinement
         refined_completions = []
-        for comp in completions:
+        for comp in ranked_completions:
             refined = self._apply_proximity_guidance(comp, proximity_context)
             refined_completions.append(refined)
 
@@ -428,9 +449,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             # Score using dimensional scorers
             scorable = Scorable(text=comp)
 
-            score_result = self.score_item(
-                scorable, scoring_context, metrics="lats_node", scorer=self.scorer
-            )
+            score_result = self.scoring.score(self.scorer_name, scorable=scorable, context=scoring_context, dimensions=self.dimensions)
             node_path = self.build_node_path(node)
             aggregated_result = score_result.aggregate()
             print(f"Scoring result for {node_path}: {aggregated_result}")
@@ -514,8 +533,8 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         # Fallback: dimensional scoring
         print(node)
         scorable = Scorable(text="\n".join(node["trace"]))
-        score_result = self.score_item(
-            scorable, context, metrics="lats_reflection", scorer=self.scorer
+        score_result = self.scoring.score(
+           self.scorer_name, scorable=scorable, context=context, dimensions=self.dimensions
         )
         return score_result.aggregate() / 100, score_result
 
@@ -643,11 +662,11 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         scorable = Scorable(text="\n".join(trace))
 
         # Score using dimensional scorers
-        score_result = self.score_item(
-            scorable,
-            {"goal": {"goal_text": goal_text}},  # Always a dict
-            metrics="lats_reflection",
-            scorer=self.scorer,
+        score_result = self.scoring.score(
+            self.scorer_name,
+            scorable=scorable,
+            context={"goal": {"goal_text": goal_text}},  # Always a dict
+            dimensions=self.dimensions
         )
 
         return score_result.aggregate() / 100  # Normalize
@@ -716,11 +735,11 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         scorable = Scorable(text="\n".join(trace))
 
         # Score across dimensions
-        score_result = self.score_item(
-            scorable,
-            {"goal": {"goal_text": trace["goal"]}},
-            metrics="lats_reflection",
-            scorer=self.scorer,
+        score_result = self.scoring.score(
+            self.scorer_name,
+            scorable=scorable,
+            context={"goal": {"goal_text": trace["goal"]}},
+            dimensions=self.dimensions
         )
         return score_result.aggregate() / 100  # Normalize
 
@@ -756,7 +775,10 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
     def _get_dimension_scores(self, trace) -> ScoreBundle:
         """Get scores across all dimensions"""
         hyp = {"text": "\n".join(trace)}
-        return self.score_item(hyp, {}, metrics="lats_node", scorer=self.scorer)
+        return self.scoring.score(self.scorer_name, 
+                                  scorable=hyp, 
+                                  context={"goal": {"goal_text": trace["goal"]}}, 
+                                  dimensions=["lats_node"])
 
     def _generate_reflection(self, node):
         """Generate reflection for failed trajectory"""

@@ -8,7 +8,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.icl.prompt_builder import PromptBuilder
 from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 from stephanie.scoring.scorable_factory import ScorableFactory
-from stephanie.scoring.svm_scorer import SVMScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
 
 class ICLExample:
@@ -77,7 +77,7 @@ class ICLHelper:
 
 
 class ICLAgent(BaseAgent):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

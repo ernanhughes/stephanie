@@ -1,8 +1,8 @@
 # stephanie/memory/cartridge_store.py
-
 from sqlalchemy.orm import Session
+
+from stephanie.models.scorable_embedding import ScorableEmbeddingORM
 from stephanie.models.theorem import CartridgeORM
-from stephanie.models.document_embedding import DocumentEmbeddingORM
 
 
 class CartridgeStore:
@@ -11,16 +11,22 @@ class CartridgeStore:
         self.logger = logger
         self.name = "cartridges"
 
-    def _ensure_document_embedding(self, embedding_id: int, document_id: str, document_type: str, embedding_type: str) -> int:
+    def _ensure_scorable_embedding(
+        self,
+        embedding_id: int,
+        scorable_id: str,
+        scorable_type: str,
+        embedding_type: str,
+    ) -> int:
         """
-        Ensure a corresponding entry exists in document_embeddings.
-        Returns the document_embeddings.id to use in CartridgeORM.
+        Ensure a corresponding entry exists in scorable_embeddings.
+        Returns scorable_embeddings.id to store on CartridgeORM/TheoremORM as a soft pointer.
         """
         existing = (
-            self.session.query(DocumentEmbeddingORM)
+            self.session.query(ScorableEmbeddingORM)
             .filter_by(
-                document_id=document_id,
-                document_type=document_type,
+                scorable_id=scorable_id,
+                scorable_type=scorable_type,
                 embedding_id=embedding_id,
                 embedding_type=embedding_type,
             )
@@ -29,15 +35,15 @@ class CartridgeStore:
         if existing:
             return existing.id
 
-        new_de = DocumentEmbeddingORM(
-            document_id=document_id,
-            document_type=document_type,
+        new_se = ScorableEmbeddingORM(
+            scorable_id=scorable_id,
+            scorable_type=scorable_type,
             embedding_id=embedding_id,
             embedding_type=embedding_type,
         )
-        self.session.add(new_de)
-        self.session.flush()  # ensures new_de.id is populated without commit
-        return new_de.id
+        self.session.add(new_se)
+        self.session.flush()  # populate new_se.id without commit
+        return new_se.id
 
     def add_cartridge(self, data: dict) -> CartridgeORM:
         existing = (
@@ -46,18 +52,17 @@ class CartridgeStore:
             .first()
         )
 
-        # Resolve embedding_id into document_embeddings
+        # Resolve external embedding pointer into scorable_embeddings.id
         if data.get("embedding_id"):
-            resolved_id = self._ensure_document_embedding(
+            resolved_id = self._ensure_scorable_embedding(
                 embedding_id=data["embedding_id"],
-                document_id=data.get("source_uri"),   # maps back to document/hypothesis/etc.
-                document_type=data["source_type"],
+                scorable_id=data.get("source_uri"),   # the owner key (e.g., doc uri)
+                scorable_type=data["source_type"],    # 'document', 'hypothesis', etc.
                 embedding_type=data.get("embedding_type", "unknown"),
             )
-            data["embedding_id"] = resolved_id
+            data["embedding_id"] = resolved_id  # store soft pointer id
 
         if existing:
-            # Update existing cartridge
             for field in [
                 "markdown_content", "title", "summary",
                 "sections", "triples", "domain_tags", "embedding_id"
@@ -67,7 +72,6 @@ class CartridgeStore:
             self.session.commit()
             return existing
 
-        # Insert new
         cartridge = CartridgeORM(**data)
         self.session.add(cartridge)
         self.session.commit()
@@ -77,10 +81,10 @@ class CartridgeStore:
         cartridges = []
         for item in items:
             if item.get("embedding_id"):
-                resolved_id = self._ensure_document_embedding(
+                resolved_id = self._ensure_scorable_embedding(
                     embedding_id=item["embedding_id"],
-                    document_id=item.get("source_uri"),
-                    document_type=item["source_type"],
+                    scorable_id=item.get("source_uri"),
+                    scorable_type=item["source_type"],
                     embedding_type=item.get("embedding_type", "unknown"),
                 )
                 item["embedding_id"] = resolved_id
@@ -110,3 +114,10 @@ class CartridgeStore:
             self.session.commit()
             return True
         return False
+
+    def get_run_id(self, pipeline_run_id: int) -> list[CartridgeORM]:
+        return (
+            self.session.query(CartridgeORM)
+            .filter_by(pipeline_run_id=pipeline_run_id)
+            .all()
+        )   

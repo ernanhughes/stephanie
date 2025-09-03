@@ -1,144 +1,195 @@
+# stephanie/scoring/calculations/mars_calculator.py
+
 import json
+import math
 import os
 import traceback
 from datetime import datetime
 from statistics import mean
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from scipy import stats
 
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.base_calculator import BaseScoreCalculator
+from stephanie.utils.json_sanitize import json_sanitize
 from stephanie.utils.serialization import default_serializer
+
+
+def _safe_scalar(x: Any) -> float | None:
+    """Convert to float; return None if not finite or convertible."""
+    try:
+        f = float(x)
+        return f if math.isfinite(f) else None
+    except Exception:
+        return None
+
+
+def _safe_mean(values: List[float | None]) -> float | None:
+    vals = [_safe_scalar(v) for v in values]
+    vals = [v for v in vals if v is not None]
+    if not vals:
+        return None
+    return float(np.mean(vals))
+
+
+def _safe_std(values: List[float | None]) -> float:
+    vals = [_safe_scalar(v) for v in values]
+    vals = [v for v in vals if v is not None]
+    if len(vals) <= 1:
+        return 0.0
+    return float(np.std(vals))
+
+
+def _safe_min(values: List[float | None]) -> float | None:
+    vals = [_safe_scalar(v) for v in values]
+    vals = [v for v in vals if v is not None]
+    return float(np.min(vals)) if vals else None
+
+
+def _safe_max(values: List[float | None]) -> float | None:
+    vals = [_safe_scalar(v) for v in values]
+    vals = [v for v in vals if v is not None]
+    return float(np.max(vals)) if vals else None
+
+
+def _to_python(value):
+    """Make sure numpy types and non-finite floats become JSON-safe Python values."""
+    if isinstance(value, (np.generic,)):
+        value = value.item()
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (list, tuple)):
+        return [_to_python(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _to_python(v) for k, v in value.items()}
+    return value
 
 
 class MARSCalculator(BaseScoreCalculator):
     """
     Model Agreement and Reasoning Signal (MARS) Calculator
 
-    Analyzes agreement patterns across multiple scoring models/adapters to:
-    - Quantify scoring consensus or divergence across documents
-    - Identify which scorers disagree systematically
-    - Determine which model aligns best with trust reference
-    - Measure uncertainty in the overall assessment
-    - Provide diagnostic insights for scoring system improvement
-
-    Unlike traditional aggregators, MARS operates at the ScoreCorpus level (multiple documents)
-    to detect reliability patterns rather than just computing an average score.
+    Operates over a ScoreCorpus to analyze agreement/divergence across scorers.
     """
 
-    def __init__(self, config: Dict = None, logger=None):
-        """
-        Initialize MARS calculator with configuration
-
-        Args:
-            config: Optional configuration with:
-                - trust_reference: Which scorer to use as gold standard (default: "llm")
-                - variance_threshold: Threshold for flagging high disagreement (default: 0.15)
-                - dimensions: Dimension-specific configurations
-                - metrics: Which metrics to analyze (default: ["score"] for core score)
-        """
-        self.config = config or {}
+    def __init__(self, cfg, memory, logger):
+        self.cfg = cfg
+        self.memory = memory
         self.logger = logger
-        self.trust_reference = self.config.get("trust_reference", "llm")
-        self.variance_threshold = self.config.get("variance_threshold", 0.15)
-        self.metrics = self.config.get(
-            "metrics", ["score"]
-        )  # Core score by default
-        self.dimension_configs = self.config.get("dimensions", {})
 
-        # Configure logging options
-        self.log_enabled = self.config.get("log_enabled", True)
-        self.log_path = self.config.get("log_path", "reports")
-        self.include_full_data = self.config.get("include_full_data", True)
+        self.trust_reference = self.cfg.get("trust_reference", "llm")
+        self.variance_threshold = self.cfg.get("variance_threshold", 0.15)
+        self.metrics = self.cfg.get("metrics", ["score"])
+        self.dimension_configs = self.cfg.get("dimension_configs", {}) or {}
+        self.save_conflicts = self.cfg.get("save_conflicts", True)
+
+        # Logging options
+        self.log_enabled = self.cfg.get("log_enabled", True)
+        self.log_path = self.cfg.get("log_path", "reports")
+        self.include_full_data = self.cfg.get("include_full_data", True)
 
         if self.log_enabled and self.logger:
-            self.logger.log("MARSLoggerConfigured", {
-                "log_path": os.path.abspath(self.log_path),
-                "include_full_data": self.include_full_data,
-                "enabled": self.log_enabled
-            })
-
-
-    def _write_json_report(self, mars_results: Dict[str, Any], corpus: "ScoreCorpus"):
-        """Write MARS results to a JSON file with proper serialization"""
-        if not self.log_enabled:
-            return
-        
-        try:
-            # Create directory if it doesn't exist
-            os.makedirs(self.log_path, exist_ok=True)
-            
-            # Generate filename with timestamp and dimension
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"mars_report_{timestamp}.json"
-            filepath = os.path.join(self.log_path, filename)
-            
-            # Prepare report data
-            report_data = {
-                "metadata": {
-                    "timestamp": timestamp,
-                    "document_count": len(corpus.bundles),
-                    "scorers": list(corpus.scorers),
-                    "metrics": ["agreement", "uncertainty", "std_deviation", "outliers"]
+            self.logger.log(
+                "MARSLoggerConfigured",
+                {
+                    "log_path": os.path.abspath(self.log_path),
+                    "include_full_data": bool(self.include_full_data),
+                    "enabled": bool(self.log_enabled),
                 },
-                "results": mars_results
-            }
-            
-            # Include full data if configured
-            if self.include_full_data:
-                report_data["full_data"] = {
-                    "corpus_summary": corpus.get_summary(),
-                    "metric_matrices": {
-                        metric: mars_results.get(metric, {}).get("matrix", {}).tolist() 
-                        for metric in ["agreement", "uncertainty", "std_deviation"]
-                        if metric in mars_results
-                    }
-                }
-            
-            # Write the report with proper serialization
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(report_data, f, indent=2, default=default_serializer)
-            
-            if self.logger:
-                self.logger.log("MARSReportSaved", {
-                    "filepath": filepath,
-                    "document_count": len(corpus.bundles),
-                    "scorers_count": len(corpus.scorers)
-                })
-                
-        except Exception as e:
-            if self.logger:
-                self.logger.log("MARSReportError", {
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                })
-
-
-    def calculate(self, corpus: "ScoreCorpus") -> Dict[str, Any]:
-        """
-        Calculate MARS metrics across all scoring models in the corpus
-
-        Args:
-            corpus: ScoreCorpus containing results from multiple scorers across multiple documents
-
-        Returns:
-            Dictionary containing comprehensive MARS analysis metrics
-        """
-        # Calculate MARS metrics for each dimension
-        mars_results = {}
-        for dimension in corpus.dimensions:
-            mars_results[dimension] = self._calculate_dimension_mars(
-                corpus, dimension
             )
 
-        if self.log_enabled:
-            self._write_json_report(mars_results, corpus)
+    def _write_json_report(self, mars_results: Dict[str, Any], corpus: "ScoreCorpus"):
+        """Write MARS results to JSON; always JSON-safe."""
+        if not self.log_enabled:
+            return
+        try:
+            os.makedirs(self.log_path, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = os.path.join(self.log_path, f"mars_report_{ts}.json")
+
+            report_data = {
+                "metadata": {
+                    "timestamp": ts,
+                    "document_count": len(corpus.bundles),
+                    "scorers": list(corpus.scorers),
+                    "metrics": list(corpus.metrics),
+                },
+                "results": json_sanitize(mars_results),
+                "corpus_summary": json_sanitize(corpus.get_summary()),
+            }
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(report_data, f, indent=2, default=default_serializer)
+
+            if self.logger:
+                self.logger.log(
+                    "MARSReportSaved",
+                    {
+                        "filepath": filepath,
+                        "document_count": len(corpus.bundles),
+                        "scorers_count": len(corpus.scorers),
+                    },
+                )
+        except Exception as e:
+            if self.logger:
+                self.logger.log(
+                    "MARSReportError",
+                    {"error": str(e), "traceback": traceback.format_exc()},
+                )
+
+    def calculate(self, corpus: "ScoreCorpus", context: dict) -> Dict[str, Any]:
+        """
+        Calculate per-dimension MARS and persist a JSONB 'result' per dimension.
+        Returns: {dimension: result_dict}
+        """
+        mars_results: Dict[str, Any] = {}
+
+        # Log a tiny, serializable preview
+        try:
+            first_dim = next(iter(corpus.dimensions), None)
+            head_preview = None
+            if first_dim:
+                head_preview = str(corpus.get_dimension_matrix(first_dim).head())
+            if self.logger:
+                self.logger.log(
+                    "MARSCalculationStarted",
+                    {
+                        "document_count": len(corpus.bundles),
+                        "dimensions": list(corpus.dimensions),
+                        "head_preview": head_preview,
+                    },
+                )
+        except Exception:
+            pass
+
+        for dimension in corpus.dimensions:
+            result = self._calculate_dimension_mars(corpus, dimension, context)
+            # ensure JSON-safety before using result further
+            safe_result = json_sanitize(result)
+            mars_results[dimension] = safe_result
+
+            # Persist one row per dimension as JSONB 'result'
+            try:
+                self.memory.mars_results.add(
+                    pipeline_run_id=context.get("pipeline_run_id"),
+                    plan_trace_id=context.get("plan_trace_id"),
+                    result=safe_result,
+                )
+            except Exception as e:
+                if self.logger:
+                    self.logger.log(
+                        "MARSResultPersistenceError",
+                        {"error": str(e), "dimension": dimension},
+                    )
+
+        # Optional file report
+        self._write_json_report(mars_results, corpus)
         return mars_results
 
     def _get_dimension_config(self, dimension: str) -> Dict:
-        """Get dimension-specific configuration with fallbacks"""
+        """Get dimension-specific config with fallbacks."""
         return self.dimension_configs.get(
             dimension,
             {
@@ -149,391 +200,322 @@ class MARSCalculator(BaseScoreCalculator):
         )
 
     def _calculate_dimension_mars(
-        self, corpus: "ScoreCorpus", dimension: str
+        self, corpus: "ScoreCorpus", dimension: str, context: dict
     ) -> Dict[str, Any]:
-        """
-        Calculate MARS metrics for a specific dimension
+        dim_cfg = self._get_dimension_config(dimension)
+        trust_ref = dim_cfg.get("trust_reference", self.trust_reference)
+        metrics = list(dim_cfg.get("metrics", self.metrics) or ["score"])
 
-        Args:
-            corpus: ScoreCorpus containing evaluation results
-            dimension: The dimension being analyzed
+        matrix = corpus.get_dimension_matrix(dimension)  # [docs x scorers]
 
-        Returns:
-            Dictionary with MARS metrics for this dimension
-        """
-        # Get dimension-specific configuration
-        dim_config = self._get_dimension_config(dimension)
-        trust_ref = dim_config["trust_reference"]
-        metrics = dim_config["metrics"]
-
-        # Get the document × scorer matrix for this dimension
-        matrix = corpus.get_dimension_matrix(dimension)
-
-        # If no data for this dimension, return empty results
-        if matrix.empty:
+        if matrix.empty or matrix.shape[0] == 0 or matrix.shape[1] == 0:
             return {
-                "dimension": dimension,
+                "dimension": str(dimension),
                 "agreement_score": 0.0,
                 "std_dev": 0.0,
                 "preferred_model": "none",
-                "primary_conflict": ("none", "none"),
+                "primary_conflict": ["none", "none"],
                 "delta": 0.0,
                 "high_disagreement": False,
                 "explanation": "No data available for this dimension",
                 "scorer_metrics": {},
                 "metric_correlations": {},
+                "source": "mars",
+                "average_score": 0.0,
             }
 
-        # Calculate basic statistics
-        avg_score = matrix.mean().mean()  # Overall average score
-        std_dev = (
-            matrix.std().mean()
-        )  # Average standard deviation across documents
+        # Column means (per scorer) → then average across scorers
+        col_means = matrix.mean(axis=0, skipna=True)
+        avg_score = _safe_scalar(col_means.mean()) or 0.0
 
-        # Calculate agreement score (1.0 = perfect agreement)
-        agreement_score = 1.0 - min(std_dev, 1.0)
+        # Column std across docs (per scorer), then mean std across scorers
+        col_stds = matrix.std(axis=0, ddof=0, skipna=True)
+        std_dev = _safe_scalar(col_stds.mean()) or 0.0
 
-        # Identify primary conflict (largest average score difference)
-        scorer_means = matrix.mean()
-        max_valuer = scorer_means.idxmax()
-        min_valuer = scorer_means.idxmin()
-        delta = scorer_means[max_valuer] - scorer_means[min_valuer]
-        primary_conflict = (max_valuer, min_valuer)
+        # Agreement (1 - dispersion), clipped
+        agreement_score = max(0.0, min(1.0, 1.0 - float(std_dev)))
 
-        # Determine which model aligns best with trust reference
-        preferred_model = "unknown"
+        # Primary conflict = max difference among scorer means
+        scorer_means = col_means.fillna(0.0)
+        if len(scorer_means) >= 1:
+            max_name = str(scorer_means.idxmax())
+            min_name = str(scorer_means.idxmin())
+            delta = float(scorer_means[max_name] - scorer_means[min_name])
+            primary_conflict = [max_name, min_name]
+        else:
+            primary_conflict = ["none", "none"]
+            delta = 0.0
+
+        # Preferred model: closest to trust_ref by L1 distance to trust_ref’s scores
         if trust_ref in matrix.columns:
             trust_scores = matrix[trust_ref]
             closest = None
             min_diff = float("inf")
-
             for scorer in matrix.columns:
                 if scorer == trust_ref:
                     continue
-
-                # Calculate average absolute difference
-                diff = (matrix[scorer] - trust_scores).abs().mean()
-                if diff < min_diff:
-                    min_diff = diff
+                diff = (matrix[scorer] - trust_scores).abs().mean(skipna=True)
+                dval = _safe_scalar(diff)
+                if dval is not None and dval < min_diff:
+                    min_diff = dval
                     closest = scorer
-
-            preferred_model = closest if closest else "unknown"
+            preferred_model = str(closest) if closest is not None else "unknown"
         else:
-            # If trust reference isn't available, use median scorer
-            sorted_scorers = scorer_means.sort_values()
-            median_idx = len(sorted_scorers) // 2
-            preferred_model = sorted_scorers.index[median_idx]
+            # Fallback: median of scorer means
+            ordered = scorer_means.sort_values()
+            ix = int(len(ordered) / 2)
+            preferred_model = str(ordered.index[ix]) if len(ordered) else "unknown"
 
-        # Identify high-disagreement areas
-        high_disagreement = std_dev > dim_config["variance_threshold"]
+        high_disagreement = float(std_dev) > float(dim_cfg.get("variance_threshold", 0.15))
 
-        # Analyze scorer metrics (q_value, uncertainty, etc.)
-        scorer_metrics = self._analyze_scorer_metrics(
-            corpus, dimension, metrics
-        )
+        # Per-scorer metric summaries (never NaN)
+        scorer_metrics = self._analyze_scorer_metrics(corpus, dimension, metrics)
 
-        # Calculate metric correlations
-        metric_correlations = self._calculate_metric_correlations(
-            corpus, dimension, metrics
-        )
+        # Metric correlations (only when variance exists)
+        metric_correlations = self._calculate_metric_correlations(corpus, dimension, metrics)
 
-        # Generate explanation
-        explanation_parts = [
-            f"MARS agreement: {agreement_score:.3f} (std: {std_dev:.3f})"
+        # Human-readable explanation
+        exp = [
+            f"MARS agreement: {agreement_score:.3f} (std: {float(std_dev):.3f})",
+            f"Most aligned with {trust_ref}: {preferred_model}" if preferred_model != "unknown" else "No trust reference alignment available",
+            f"Primary conflict: {primary_conflict[0]} vs {primary_conflict[1]} (Δ={delta:.3f})",
         ]
-
         if high_disagreement:
-            explanation_parts.append(
-                f"⚠️ High disagreement detected (threshold: {dim_config['variance_threshold']})"
-            )
+            exp.append(f"⚠️ High disagreement (>{dim_cfg.get('variance_threshold')})")
+        explanation = " | ".join(exp)
 
-        if preferred_model != "unknown":
-            explanation_parts.append(
-                f"Most aligned with {trust_ref}: {preferred_model}"
-            )
-
-        explanation_parts.append(
-            f"Primary conflict: {primary_conflict[0]} vs {primary_conflict[1]} (Δ={delta:.3f})"
-        )
-
-        # Check for systematic bias
-        above_mean = [
-            scorer
-            for scorer, mean_score in scorer_means.items()
-            if mean_score > avg_score
-        ]
-        below_mean = [
-            scorer
-            for scorer, mean_score in scorer_means.items()
-            if mean_score < avg_score
-        ]
-
-        if len(above_mean) == 1 or len(below_mean) == 1:
-            outlier = above_mean[0] if len(above_mean) == 1 else below_mean[0]
-            explanation_parts.append(f"⚠️ {outlier} appears to be an outlier")
-
-        explanation = " | ".join(explanation_parts)
-
-        return {
-            "dimension": dimension,
-            "agreement_score": round(agreement_score, 3),
-            "std_dev": round(std_dev, 3),
-            "preferred_model": preferred_model,
-            "primary_conflict": primary_conflict,
-            "delta": round(delta, 3),
-            "high_disagreement": high_disagreement,
+        result = {
+            "dimension": str(dimension),
+            "agreement_score": float(agreement_score),
+            "std_dev": float(std_dev),
+            "preferred_model": str(preferred_model),
+            "primary_conflict": list(primary_conflict),
+            "delta": float(delta),
+            "high_disagreement": bool(high_disagreement),
             "explanation": explanation,
-            "scorer_metrics": scorer_metrics,
-            "metric_correlations": metric_correlations,
+            "scorer_metrics": _to_python(scorer_metrics),
+            "metric_correlations": _to_python(metric_correlations),
             "source": "mars",
-            "average_score": round(avg_score, 3),
+            "average_score": float(avg_score),
         }
+
+        # Optional: persist top conflict
+        if (
+            self.save_conflicts
+            and result["primary_conflict"] != ["none", "none"]
+        ):
+            try:
+                self.memory.mars_conflicts.add(
+                    pipeline_run_id=context.get("pipeline_run_id"),
+                    plan_trace_id=context.get("plan_trace_id"),
+                    dimension=result["dimension"],
+                    conflict=json_sanitize(result["primary_conflict"]),
+                    delta=float(result["delta"]),
+                    explanation=result["explanation"],
+                    agreement_score=float(result["agreement_score"]),
+                    preferred_model=result["preferred_model"],
+                )
+                if self.logger:
+                    self.logger.log(
+                        "MARSConflictStored",
+                        {
+                            "pipeline_run_id": context.get("pipeline_run_id"),
+                            "plan_trace_id": context.get("plan_trace_id"),
+                            "dimension": result["dimension"],
+                            "conflict": result["primary_conflict"],
+                            "delta": result["delta"],
+                            "agreement_score": result["agreement_score"],
+                            "preferred_model": result["preferred_model"],
+                        },
+                    )
+            except Exception as e:
+                if self.logger:
+                    self.logger.log(
+                        "MARSConflictStoreError",
+                        {"error": str(e), "dimension": result["dimension"]},
+                    )
+
+        return result
 
     def _analyze_scorer_metrics(
         self, corpus: "ScoreCorpus", dimension: str, metrics: List[str]
     ) -> Dict[str, Dict[str, float]]:
         """
-        Analyze extended metrics for each scorer in this dimension
+        Summarize selected metrics for each scorer in this dimension.
+        Returns: {scorer: {metric: {mean,std,min,max,count}}}
         """
-        scorer_metrics = {}
-
+        out: Dict[str, Dict[str, float]] = {}
         for scorer in corpus.scorers:
-            # Get all attribute values for this scorer and dimension
-            metric_values = corpus.get_metric_values(
-                dimension, scorer, metrics
-            )
-
-            # Calculate statistics for each metric
-            metrics_stats = {}
-            for metric, values in metric_values.items():
-                if not values:
+            metric_values = corpus.get_metric_values(dimension, scorer, metrics)
+            stats_dict: Dict[str, Dict[str, float]] = {}
+            for metric, vals in metric_values.items():
+                if metric == "scorable_id":
                     continue
-
-                # Filter out None/NaN values
-                valid_values = [v for v in values if v is not None]
-                if not valid_values:
+                # clean values → floats, finite only
+                cleaned: List[float] = []
+                for v in vals:
+                    fv = _safe_scalar(v)
+                    if fv is not None:
+                        cleaned.append(fv)
+                if not cleaned:
                     continue
-
-                metrics_stats[metric] = {
-                    "mean": float(np.mean(valid_values)),
-                    "std": float(np.std(valid_values)),
-                    "min": float(min(valid_values)),
-                    "max": float(max(valid_values)),
-                    "count": len(valid_values),
+                stats_dict[metric] = {
+                    "mean": float(np.mean(cleaned)),
+                    "std": float(np.std(cleaned)) if len(cleaned) > 1 else 0.0,
+                    "min": float(np.min(cleaned)),
+                    "max": float(np.max(cleaned)),
+                    "count": int(len(cleaned)),
                 }
-
-            if metrics_stats:
-                scorer_metrics[scorer] = metrics_stats
-
-        return scorer_metrics
+            if stats_dict:
+                out[scorer] = stats_dict
+        return out
 
     def _calculate_metric_correlations(
         self, corpus: "ScoreCorpus", dimension: str, metrics: List[str]
     ) -> Dict[str, Dict[str, float]]:
         """
-        Calculate correlations between different metrics for this dimension
+        Correlations between metrics over scorables (only when both sides have variance).
+        Returns: {metricA: {metricB: corr}}
         """
         if len(metrics) < 2:
             return {}
 
-        # Get all metric values for this dimension
-        metric_values = corpus.get_all_metric_values(dimension, metrics)
+        # ScoreCorpus should now expose this; otherwise build locally
+        try:
+            metric_values = corpus.get_all_metric_values(dimension, metrics)
+        except AttributeError:
+            # Fallback: build across *all scorers* combined
+            metric_values = {m: [] for m in metrics}
+            for scorer in corpus.scorers:
+                vals = corpus.get_metric_values(dimension, scorer, metrics)
+                for m in metrics:
+                    metric_values[m].extend(
+                        [_safe_scalar(v) for v in vals.get(m, [])]
+                    )
 
-        # Calculate correlations
-        correlations = {}
+        correlations: Dict[str, Dict[str, float]] = {}
         for i in range(len(metrics)):
             for j in range(i + 1, len(metrics)):
-                metric1, metric2 = metrics[i], metrics[j]
+                m1, m2 = metrics[i], metrics[j]
+                v1 = metric_values.get(m1, [])
+                v2 = metric_values.get(m2, [])
 
-                # Get valid pairs of values
-                pairs = [
-                    (v1, v2)
-                    for v1, v2 in zip(
-                        metric_values[metric1], metric_values[metric2]
-                    )
-                    if v1 is not None and v2 is not None
-                ]
+                pairs: List[Tuple[float, float]] = []
+                for a, b in zip(v1, v2):
+                    fa, fb = _safe_scalar(a), _safe_scalar(b)
+                    if fa is not None and fb is not None:
+                        pairs.append((fa, fb))
 
-                if len(pairs) > 1:
-                    values1, values2 = zip(*pairs)
-                    try:
-                        corr, _ = stats.pearsonr(values1, values2)
-                        if metric1 not in correlations:
-                            correlations[metric1] = {}
-                        correlations[metric1][metric2] = float(corr)
-                    except:
-                        pass
+                if len(pairs) <= 1:
+                    continue
+
+                a_vals, b_vals = zip(*pairs)
+                # Require variance on both series
+                if np.std(a_vals) == 0.0 or np.std(b_vals) == 0.0:
+                    continue
+                try:
+                    corr, _ = stats.pearsonr(a_vals, b_vals)
+                except Exception:
+                    continue
+                if not math.isfinite(corr):
+                    continue
+
+                correlations.setdefault(m1, {})[m2] = float(corr)
 
         return correlations
 
     def get_aggregate_score(self, mars_results: Dict[str, Dict]) -> float:
-        """
-        Get a single aggregate score from MARS analysis
-
-        This provides a weighted average of dimension scores based on agreement reliability
-
-        Args:
-            mars_results: Results from calculate() method
-
-        Returns:
-            Weighted aggregate score where dimensions with higher agreement contribute more
-        """
-        total = 0
-        weight_sum = 0
-
-        for dimension, results in mars_results.items():
-            # Weight by agreement score (higher agreement = more weight)
-            weight = results["agreement_score"]
-            total += results["average_score"] * weight
-            weight_sum += weight
-
+        total = 0.0
+        weight_sum = 0.0
+        for _dim, res in mars_results.items():
+            w = _safe_scalar(res.get("agreement_score"))
+            s = _safe_scalar(res.get("average_score"))
+            if w is None or s is None:
+                continue
+            total += s * w
+            weight_sum += w
         return round(total / weight_sum, 3) if weight_sum > 0 else 0.0
 
     def get_high_disagreement_documents(
-        self, corpus: "ScoreCorpus", dimension: str, threshold: float = None
+        self, corpus: "ScoreCorpus", dimension: str, threshold: float | None = None
     ) -> List[str]:
-        """
-        Identify documents with high scoring disagreement for this dimension
-
-        Args:
-            corpus: ScoreCorpus to analyze
-            dimension: Dimension to check
-            threshold: Custom disagreement threshold (uses config default if None)
-
-        Returns:
-            List of document IDs with high disagreement
-        """
         if threshold is None:
-            dim_config = self._get_dimension_config(dimension)
-            threshold = dim_config["variance_threshold"]
-
-        # Get the document × scorer matrix
+            threshold = self._get_dimension_config(dimension)["variance_threshold"]
         matrix = corpus.get_dimension_matrix(dimension)
         if matrix.empty:
             return []
-
-        # Calculate disagreement per document (standard deviation across scorers)
-        disagreement = matrix.std(axis=1)
-
-        # Return documents with disagreement above threshold
-        return disagreement[disagreement > threshold].index.tolist()
+        disagreement = matrix.std(axis=1, ddof=0)
+        return disagreement[disagreement > float(threshold)].index.tolist()
 
     def get_scorer_reliability(
         self, corpus: "ScoreCorpus", dimension: str
     ) -> Dict[str, float]:
-        """
-        Calculate reliability score for each scorer in this dimension
-
-        Args:
-            corpus: ScoreCorpus to analyze
-            dimension: Dimension to check
-
-        Returns:
-            Dictionary mapping scorer names to reliability scores (higher = more reliable)
-        """
-        # Get dimension-specific configuration
-        dim_config = self._get_dimension_config(dimension)
-        trust_ref = dim_config["trust_reference"]
-
-        # Get the document × scorer matrix
+        dim_cfg = self._get_dimension_config(dimension)
+        trust_ref = dim_cfg["trust_reference"]
         matrix = corpus.get_dimension_matrix(dimension)
         if matrix.empty:
             return {}
 
-        # Calculate reliability as correlation with trust reference
-        reliability = {}
+        reliability: Dict[str, float] = {}
         if trust_ref in matrix.columns:
-            trust_scores = matrix[trust_ref]
-
-            for scorer in matrix.columns:
-                if scorer == trust_ref:
-                    reliability[scorer] = (
-                        1.0  # Perfect correlation with itself
-                    )
+            ref = matrix[trust_ref]
+            for sc in matrix.columns:
+                if sc == trust_ref:
+                    reliability[sc] = 1.0
                     continue
-
-                # Calculate correlation with trust reference
-                valid_pairs = matrix[[scorer, trust_ref]].dropna()
-                if len(valid_pairs) > 1:
-                    try:
-                        corr, _ = stats.pearsonr(
-                            valid_pairs[scorer], valid_pairs[trust_ref]
-                        )
-                        reliability[scorer] = float(corr)
-                    except:
-                        reliability[scorer] = 0.0
-                else:
-                    reliability[scorer] = 0.0
-
-        # If no trust reference, use consistency across documents
+                pair = matrix[[sc, trust_ref]].dropna()
+                if len(pair) <= 1:
+                    reliability[sc] = 0.0
+                    continue
+                try:
+                    corr, _ = stats.pearsonr(pair[sc], pair[trust_ref])
+                    reliability[sc] = float(corr) if math.isfinite(corr) else 0.0
+                except Exception:
+                    reliability[sc] = 0.0
         else:
-            scorer_std = matrix.std()
-            max_std = scorer_std.max()
-            for scorer, std in scorer_std.items():
-                # Higher reliability for lower standard deviation
-                reliability[scorer] = (
-                    1.0 - (std / max_std) if max_std > 0 else 1.0
-                )
-
+            # Fallback: lower std across docs => higher reliability
+            s_std = matrix.std(axis=0, ddof=0)
+            m = _safe_scalar(s_std.max()) or 0.0
+            for sc, v in s_std.items():
+                vv = _safe_scalar(v) or 0.0
+                reliability[sc] = float(1.0 - (vv / m)) if m > 0 else 1.0
         return reliability
 
-    def generate_recommendations(
-        self, mars_results: Dict[str, Dict]
-    ) -> List[str]:
-        """
-        Generate actionable recommendations based on MARS analysis
-
-        Args:
-            mars_results: Results from calculate() method
-
-        Returns:
-            List of actionable recommendations
-        """
-        recommendations = []
-
-        for dimension, results in mars_results.items():
-            # High disagreement recommendations
-            if results["high_disagreement"]:
-                primary_conflict = results["primary_conflict"]
-                recommendations.append(
-                    f"⚠️ High disagreement in {dimension}: {primary_conflict[0]} and {primary_conflict[1]} "
-                    f"differ by {results['delta']:.3f}. Consider human review for ambiguous cases."
+    def generate_recommendations(self, mars_results: Dict[str, Dict]) -> List[str]:
+        recs: List[str] = []
+        for dimension, res in mars_results.items():
+            if res.get("high_disagreement"):
+                pc = res.get("primary_conflict", ["—", "—"])
+                delta = _safe_scalar(res.get("delta")) or 0.0
+                recs.append(
+                    f"⚠️ High disagreement in {dimension}: {pc[0]} vs {pc[1]} "
+                    f"(Δ={delta:.3f}). Consider human review."
                 )
 
-            # Outlier scorer recommendations
-            scorer_metrics = results["scorer_metrics"]
-            if (
-                len(scorer_metrics) > 2
-            ):  # Need at least 3 scorers to identify outliers
-                # Check for scorers with unusual metric patterns
-                for scorer, metrics in scorer_metrics.items():
-                    if (
-                        "uncertainty" in metrics
-                        and metrics["uncertainty"]["std"] > 0.2
-                    ):
-                        recommendations.append(
-                            f"⚠️ {scorer} shows high uncertainty variability in {dimension}. "
-                            "Consider retraining or adding calibration."
+            # Example: look for metric variability flags
+            sm = res.get("scorer_metrics") or {}
+            if len(sm) > 2:
+                for scorer, md in sm.items():
+                    unc = md.get("uncertainty")
+                    if unc and _safe_scalar(unc.get("std", 0.0)) and float(unc["std"]) > 0.2:
+                        recs.append(
+                            f"⚠️ {scorer} shows high uncertainty variability in {dimension}. Consider calibration."
                         )
 
-            # Correlation-based recommendations
-            metric_correlations = results["metric_correlations"]
-            for metric1, correlations in metric_correlations.items():
-                for metric2, corr in correlations.items():
-                    if abs(corr) > 0.7:  # Strong correlation
-                        recommendations.append(
-                            f"💡 In {dimension}, {metric1} and {metric2} are strongly correlated ({corr:.2f}). "
-                            "Consider using one as a proxy for the other."
+            corrs = res.get("metric_correlations") or {}
+            for m1, sub in corrs.items():
+                for m2, c in (sub or {}).items():
+                    cc = _safe_scalar(c)
+                    if cc is not None and abs(cc) > 0.7:
+                        recs.append(
+                            f"💡 In {dimension}, {m1} and {m2} are strongly correlated ({cc:.2f})."
                         )
 
-        # Overall system recommendations
-        overall_agreement = mean(
-            [r["agreement_score"] for r in mars_results.values()]
-        )
-        if overall_agreement < 0.7:
-            recommendations.append(
-                "⚠️ Overall scoring agreement is low (<0.7). Consider implementing human review "
-                "for documents with high disagreement."
+        # Overall system recommendation
+        agreements = [_safe_scalar(r.get("agreement_score")) for r in mars_results.values()]
+        agreements = [a for a in agreements if a is not None]
+        if agreements and (sum(agreements) / len(agreements)) < 0.7:
+            recs.append(
+                "⚠️ Overall scoring agreement is low (<0.7). Consider human review for high-disagreement items."
             )
-
-        return recommendations
+        return recs

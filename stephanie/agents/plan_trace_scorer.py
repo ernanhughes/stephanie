@@ -10,10 +10,14 @@ from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.contrastive_ranker_scorer import ContrastiveRankerScorer
-from stephanie.scoring.hrm_scorer import HRMScorer
 from stephanie.scoring.scorable_factory import ScorableFactory
-from stephanie.scoring.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.contrastive_ranker_scorer import \
+    ContrastiveRankerScorer
+from stephanie.scoring.scorer.ebt_scorer import EBTScorer
+from stephanie.scoring.scorer.hrm_scorer import HRMScorer
+from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+from stephanie.scoring.scorer.svm_scorer import SVMScorer
 from stephanie.utils.trace_utils import load_plan_traces_from_export_dir
 
 
@@ -27,34 +31,32 @@ class PlanTraceScorerAgent(BaseAgent):
     Uses HRM as primary reasoning quality scorer with MARS meta-analysis
     to enable self-tuning of pipeline execution patterns.
     """
-    
-    def __init__(self, cfg, memory=None, logger=None):
-        super().__init__(cfg, memory, logger)
-        self.dimensions = cfg.get("dimensions", [])
-        self.include_mars = cfg.get("include_mars", True)
-        
+
+    def __init__(self, cfg, memory, logger):
+        super().__init__(cfg.get("agents", {}).get("plan_trace_scorer", {}), memory, logger)
+        self.dimensions = self.cfg.get("dimensions", [])
+        self.include_mars = self.cfg.get("include_mars", True)
+
         # Configure which scorers to use
-        self.scorer_types = cfg.get("scorer_types", [
-            "hrm", "sicql", "contrastive_ranker"
+        self.enabled_scorers = self.cfg.get("enabled_scorers", [
+            "hrm", "sicql", "contrastive_ranker", "ebt", "mrq", "svm"
         ])
-        
         # Initialize scorers
         self.scorers = self._initialize_scorers()
         
         # Initialize MARS calculator
-        dimension_config = cfg.get("dimension_config", {})
-        self.mars_calculator = MARSCalculator(dimension_config, self.logger)
-        
+        self.mars_calculator = MARSCalculator(cfg.get("mars", {}), self.memory, self.logger)
+
         # Pattern extraction parameters
-        self.high_agreement_threshold = cfg.get("high_agreement_threshold", 0.8)
-        self.low_uncertainty_threshold = cfg.get("low_uncertainty_threshold", 0.2)
-        self.pattern_min_count = cfg.get("pattern_min_count", 3)
-        
-        self.export_dir = cfg.get("export_dir", "exports/plan_traces")
+        self.high_agreement_threshold = self.cfg.get("high_agreement_threshold", 0.8)
+        self.low_uncertainty_threshold = self.cfg.get("low_uncertainty_threshold", 0.2)
+        self.pattern_min_count = self.cfg.get("pattern_min_count", 3)
+
+        self.export_dir = self.cfg.get("export_dir", "exports/plan_traces")
 
         self.logger.log("PlanTraceScorerInitialized", {
             "dimensions": self.dimensions,
-            "scorers": self.scorer_types,
+            "scorers": self.enabled_scorers,
             "high_agreement_threshold": self.high_agreement_threshold,
             "low_uncertainty_threshold": self.low_uncertainty_threshold
         })
@@ -62,18 +64,34 @@ class PlanTraceScorerAgent(BaseAgent):
     def _initialize_scorers(self) -> Dict[str, Any]:
         """Initialize all configured scorers"""
         scorers = {}
-        
-        if "hrm" in self.scorer_types:
-            scorers["hrm"] = HRMScorer(self.cfg.scorer.hrm, memory=self.memory, logger=self.logger)
-        if "sicql" in self.scorer_types:
-            scorers["sicql"] = SICQLScorer(self.cfg.scorer.sicql, memory=self.memory, logger=self.logger)
-        if "contrastive_ranker" in self.scorer_types:
-            scorers["contrastive_ranker"] = ContrastiveRankerScorer(
-                self.cfg.scorer.contrastive_ranker, memory=self.memory, logger=self.logger
-            )
-            
-        return scorers
 
+        if "svm" in self.enabled_scorers:
+            scorers["svm"] = SVMScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+        if "mrq" in self.enabled_scorers:
+            scorers["mrq"] = MRQScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+        if "sicql" in self.enabled_scorers:
+            scorers["sicql"] = SICQLScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+        if "ebt" in self.enabled_scorers:
+            scorers["ebt"] = EBTScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+        if "hrm" in self.enabled_scorers:
+            scorers["hrm"] = HRMScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+        if "contrastive_ranker" in self.enabled_scorers:
+            scorers["contrastive_ranker"] = ContrastiveRankerScorer(
+                self.cfg, memory=self.memory, logger=self.logger
+            )
+
+        return scorers
+    
     async def run(self, context: dict) -> dict:
         """Score pipeline execution traces with self-tuning capability"""
         start_time = time.time()
@@ -91,6 +109,7 @@ class PlanTraceScorerAgent(BaseAgent):
             ) 
             raw_traces_data = load_plan_traces_from_export_dir(self.export_dir)
 
+        goal_text = context.get("goal", {}).get("goal_text", "")
         for raw_trace in raw_traces_data:
             # Convert raw trace data to PlanTrace object
             if isinstance(raw_trace, dict):
@@ -114,17 +133,37 @@ class PlanTraceScorerAgent(BaseAgent):
             )
             
             for step in pbar:
+                # Skip if step has no scorable content
+                if not step.input_text and not step.output_text:
+                    self.logger.log("StepSkippedNoScorable", {
+                        "trace_id": plan_trace.trace_id,
+                        "step_id": step.step_id,
+                        "step_order": step.step_order,
+                        "reason": "No input/output text to score"
+                    })
+                    continue
+
                 # Create scorable for this step
                 scorable = ScorableFactory.from_plan_trace(
-                    plan_trace, 
+                    plan_trace,
+                    goal_text=goal_text,
                     mode="single_step",
                     step=step
                 )
-                
+
+                if not scorable or not scorable.text.strip():
+                    self.logger.log("StepSkippedEmptyScorable", {
+                        "trace_id": plan_trace.trace_id,
+                        "step_id": step.step_id,
+                        "step_order": step.step_order,
+                        "reason": "Scorable text empty"
+                    })
+                    continue
+
                 # Score the step
                 step_bundle = self._score_scorable(scorable, plan_trace.goal_text)
                 all_step_bundles[step.step_id] = step_bundle
-                
+
                 # Prepare results for reporting
                 step_scores = {
                     dim: {
@@ -133,7 +172,7 @@ class PlanTraceScorerAgent(BaseAgent):
                         "source": result.source
                     } for dim, result in step_bundle.results.items()
                 }
-                
+
                 step_results.append({
                     "step_id": step.step_id,
                     "step_order": step.step_order,
@@ -142,21 +181,26 @@ class PlanTraceScorerAgent(BaseAgent):
                     "description": step.description,
                     "scores": step_scores
                 })
-                
-                # Update progress bar
+
                 pbar.set_postfix({"steps": f"{len(step_results)}/{len(plan_trace.execution_steps)}"})
             
             # Score the complete pipeline
-            full_scorable = ScorableFactory.from_plan_trace(plan_trace, mode="full_trace")
+            full_scorable = ScorableFactory.from_plan_trace(plan_trace, goal_text=goal_text, mode="full_trace")
             full_bundle = self._score_scorable(full_scorable, plan_trace.goal_text)
             
             # Create ScoreCorpus for MARS analysis
             corpus = ScoreCorpus(bundles=all_step_bundles)
             
+            self.logger.log("ScoreCorpusSummary", {
+                "dims": corpus.dimensions,
+                "scorers": corpus.scorers,
+                "shape_example": corpus.get_dimension_matrix(self.dimensions[0]).shape
+            })
+
             # Run MARS analysis across all steps
             mars_results = {}
             if self.include_mars:
-                mars_results = self.mars_calculator.calculate(corpus)
+                mars_results = self.mars_calculator.calculate(corpus, context)
                 
                 # Log MARS analysis metrics
                 self.logger.log("MARSAnalysisCompleted", {

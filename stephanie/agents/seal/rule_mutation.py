@@ -3,7 +3,6 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.models import SymbolicRuleORM
 from stephanie.rules.rule_options_config import RuleOptionsConfig
 from stephanie.rules.rule_tuner import RuleTuner
-from stephanie.rules.symbolic_rule_applier import SymbolicRuleApplier
 
 
 class RuleMutationAgent(BaseAgent):

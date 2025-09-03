@@ -11,7 +11,7 @@ from stephanie.evaluator.evaluator_loader import get_evaluator
 
 
 class PromptCompilerAgent(BaseAgent, PromptEvolverMixin):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.prompt_key = cfg.get("prompt_key", "default")
         self.sample_size = cfg.get("sample_size", 20)

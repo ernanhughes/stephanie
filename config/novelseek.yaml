@@ -106,7 +106,7 @@ pipeline:
       enabled: true
       iterations: 1
     - name: prompt_tuning
-      cls: stephanie.agents.prompt_tuning.PromptTuningAgent
+      cls: stephanie.agents.dspy.prompt_tuning.PromptTuningAgent
       enabled: true
       iterations: 1
     - name: sharpening

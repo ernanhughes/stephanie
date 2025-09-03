@@ -1,9 +1,18 @@
 # stephanie/scoring/scorable.py
+from typing import Any, Dict
+
+
 class Scorable:
-    def __init__(self, text: str, id: str = "", target_type: str = "custom"):
+    def __init__(self, text: str, id: str = "", target_type: str = "custom", metadata: Dict[str, Any] = None):
         self._id = id
         self._text = text
         self._target_type = target_type
+        self._metadata = metadata or {}
+
+    @property
+    def meta(self) -> Dict[str, Any]:
+        return self._metadata
+
 
     @property
     def text(self) -> str:
@@ -21,7 +30,8 @@ class Scorable:
         return {
             "id": self._id,
             "text": self._text,
-            "target_type": self._target_type
+            "target_type": self._target_type,
+            "metadata": self._metadata  
         }
 
     def __repr__(self):

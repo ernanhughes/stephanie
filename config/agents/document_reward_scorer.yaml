@@ -5,7 +5,7 @@ document_reward_scorer:
   save_context: false
   skip_if_completed: false
 
-  scorer_types:
+  enabled_scorers:
     - svm
     - mrq
     - sicql

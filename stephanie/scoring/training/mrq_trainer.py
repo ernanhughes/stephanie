@@ -6,15 +6,15 @@ from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
 
 from stephanie.models.training_stats import TrainingStatsORM
+from stephanie.scoring.model.mrq_model import MRQModel
 from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.mrq.model import MRQModel
-from stephanie.scoring.mrq.value_predictor import ValuePredictor
+from stephanie.scoring.model.value_predictor import ValuePredictor
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 
 class MRQTrainer(BaseTrainer):
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
 
         self.early_stopping_patience = cfg.get("patience", 3)
