@@ -234,9 +234,9 @@ class MCTSReasoningAgent(BaseAgent):
         # optional LM value estimator
         ve_score = None
         ve_rationale = None
-        if self.value_estimator_enabled and (not self.value_estimator_at_leaf_only or self._is_terminal(best)):
+        if self.value_estimator_enabled and (not self.value_estimator_at_leaf_only or self._is_terminal(best_node)):
             try:
-                ve = self.lats_program.value_estimator(state=best.state, trace=best_text, goal=goal_text)
+                ve = self.lats_program.value_estimator(state=best_node.state, trace=best_text, goal=goal_text)
                 ve_score = float(getattr(ve, "score", 0.0) or 0.0)
                 ve_rationale = getattr(ve, "rationale", None)
             except Exception as e:
@@ -250,13 +250,13 @@ class MCTSReasoningAgent(BaseAgent):
         parsed_content = parsed.get("content") or best_text
 
         result = Scorable(
-            id=best.id,
+            id=best_node.id,
             text=parsed_content,
             target_type=self.scorable_type,
             metadata={
                 "mcts": {
-                    "best_node_score": float(best.score),
-                    "depth": int(len(best.trace)),
+                    "best_node_score": float(best_node.score),
+                    "depth": int(len(best_node.trace)),
                     "nodes_explored": int(len(self.nodes)),
                     "lm_calls_used": int(self.calls_used),
                 },
@@ -277,8 +277,8 @@ class MCTSReasoningAgent(BaseAgent):
         context.setdefault(self.output_key, []).append(result.to_dict())
         self.logger.log("MCTSReasoningAgentComplete", {
             "goal": goal_text,
-            "best_score": round(best.score, 3),
-            "trace_length": len(best.trace),
+            "best_score": round(best_node.score, 3),
+            "trace_length": len(best_node.trace),
             "nodes_explored": len(self.nodes),
             "lm_calls_used": self.calls_used,
         })
@@ -351,41 +351,50 @@ class MCTSReasoningAgent(BaseAgent):
         return (len(node.trace) % k) == 0
 
     def _evaluate(self, node, context):
+        # skip eval if schedule says so
         if not self._should_eval(node):
             return 0.0
 
         text = "\n".join(node.trace)
-        if text in self.score_cache:
-            score = self.score_cache[text]
-        else:
-            scorable = Scorable(text=text)
-            bundle = self.scoring.score(
-                self.scorer_name,
-                scorable=scorable,
-                context=context,
-                dimensions=self.dimensions,
-            )
-            score = float(bundle.aggregate()) / 100.0  # normalize to 0..1
-            self.score_cache[text] = score
+        try:
+            if text in self.score_cache:
+                score = float(self.score_cache[text] or 0.0)
+            else:
+                scorable = Scorable(text=text)
+                bundle = self.scoring.score(
+                    self.scorer_name,
+                    scorable=scorable,
+                    context=context,
+                    dimensions=self.dimensions,
+                )
+                # guard aggregate() being None
+                agg = bundle.aggregate()
+                score = float(agg if agg is not None else 0.0) / 100.0
+                self.score_cache[text] = score
+        except Exception as e:
+            self.logger.log("MCTSEvaluateError", {"error": str(e)})
+            score = 0.0
 
-            node.score = score
-            node.reward += score
-
-            # track global best
-            if score > self._best_so_far[0]:
-                self._best_so_far = (score, node)
-
-            self.logger.log("MCTSEvaluate", {
-                "node_id": node.id,
-                "trace_len": len(node.trace),
-                "score": round(score, 3),
-            })
-            return score
+        node.score = score
+        node.reward += score
+        self.logger.log("MCTSEvaluate", {
+            "node_id": node.id,
+            "trace_len": len(node.trace),
+            "score": round(score, 3),
+        })
+        return score
 
     def _backpropagate(self, node, reward):
+        try:
+            r = float(reward)
+            if r != r:  # NaN check
+                r = 0.0
+        except Exception:
+            r = 0.0
+
         while node:
             node.visits += 1
-            node.reward += reward
+            node.reward += r
             node = node.parent
 
     def _best_child(self, node, ucb_weight=None):
