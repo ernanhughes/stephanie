@@ -1,0 +1,5 @@
+skill_filters:
+  enabled: true
+  default_alpha: 1.0
+  safety_threshold: 0.15
+  steps_per_reset: 200

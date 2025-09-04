@@ -35,6 +35,7 @@ from .search_hit import SearchHitORM
 from .search_result import SearchResultORM
 from .sharpening_prediction import SharpeningPredictionORM
 from .sharpening_result import SharpeningResultORM
+from .skill_filter import SkillFilterORM
 from .symbolic_rule import SymbolicRuleORM
 from .theorem import CartridgeORM, TheoremORM
 from .training_stats import TrainingStatsORM

@@ -1450,4 +1450,31 @@ CREATE INDEX IF NOT EXISTS ix_te_recent ON training_events (created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_te_unprocessed ON training_events (processed) WHERE processed = false;
 
 
+I had nervous and stupid Chris I had
+-- Skill filters table (stores weight-space + visual-space representations)
+CREATE TABLE IF NOT EXISTS skill_filters (
+    id VARCHAR(64) PRIMARY KEY,
+    casebook_id VARCHAR NOT NULL REFERENCES casebooks(id),
+    domain VARCHAR(32),
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Weight-space
+    weight_delta_path VARCHAR(256),
+    weight_size_mb FLOAT,
+
+    -- Visual-space
+    vpm_residual_path VARCHAR(256),
+    vpm_preview_path VARCHAR(256),
+
+    -- Validation
+    alignment_score FLOAT,
+    improvement_score FLOAT,
+    stability_score FLOAT,
+
+    -- Composition metadata
+    compatible_domains JSON,
+    negative_interactions JSON
+);
+
 COMMIT; 

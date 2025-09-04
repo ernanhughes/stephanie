@@ -17,6 +17,7 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
 from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
+from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
 from stephanie.scoring.scoring_service import ScoringService
 
 
@@ -32,7 +33,10 @@ class BaseAgent(ABC):
         self.description = cfg.get("description", "")
         self.memory = memory
         self.logger = logger
+
         self.scoring: Optional[ScoringService] = None
+        self.reporter: Optional[Reporter] = None
+        
         self.enabled_scorers = self.cfg.get("enabled_scorers", ["sicql"])
 
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")

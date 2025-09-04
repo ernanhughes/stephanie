@@ -218,3 +218,20 @@ class MemoryTool:
                 self.logger.log(
                     "SessionRefreshed", {"new_session_id": id(self.session)}
                 )
+
+    @staticmethod
+    def SessionLocal() -> Session:
+        """
+        Convenience method to create a standalone SQLAlchemy session.
+        Does not initialize the full MemoryTool.
+        """
+        return sessionmaker(bind=engine)()
+
+    @classmethod
+    def new_session(cls) -> Session:
+        """
+        Class method variant (alias for SessionLocal).
+        Useful if you want it bound to the class.
+        """
+        return sessionmaker(bind=engine)()
+

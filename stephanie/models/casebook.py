@@ -64,6 +64,8 @@ class CaseBookORM(Base):
         passive_deletes=True,
     )
 
+    skill_filters = relationship("SkillFilterORM", back_populates="casebook")
+
     # -------- convenience --------
     def to_dict(
         self,
@@ -122,7 +124,7 @@ class CaseORM(Base):
     scores       = Column(SA_JSON, nullable=False, default=dict)
     meta         = Column(SA_JSON, nullable=False, default=dict)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     # --- relationships ---
     casebook = relationship("CaseBookORM", back_populates="cases")

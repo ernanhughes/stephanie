@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from stephanie.models.case_goal_state import CaseGoalStateORM
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.models.goal import GoalORM
+from stephanie.scoring.scorable_factory import TargetType
 
 
 class CaseBookStore:
@@ -478,7 +480,7 @@ class CaseBookStore:
                 cs = CaseScorableORM(
                     case_id=case.id,
                     scorable_id=safe_sid,
-                    scorable_type=s.get("type"),
+                    scorable_type=s.get("type") or s.get("target_type"),
                     role=(s.get("role") or "input"),
                     rank=s.get("rank"),
                     meta=meta,
@@ -552,3 +554,65 @@ class CaseBookStore:
     def get_case_by_id(self, case_id: int) -> Optional[CaseORM]:
         """Load a single case with its relationships."""
         return self.session.get(CaseORM, case_id)
+
+
+    def ensure_case(
+        self,
+        casebook_id: int,
+        goal_text: str,
+        pipeline_run_id: Optional[int],
+        agent_name: str,
+    ) -> CaseORM:
+        """
+        Ensure there is a parent 'goal' case row for this casebook.
+        Creates one if not present.
+
+        Args:
+            casebook_id: CaseBookORM.id
+            goal_text:   text of the goal
+            agent_name:  name of the agent creating the case
+
+        Returns:
+            CaseORM instance
+        """
+        q = (self.session.query(CaseORM)
+             .filter_by(casebook_id=casebook_id,
+                        target_type=TargetType.GOAL,
+                        target_id=None))
+        goal_case = q.one_or_none()
+
+
+        if goal_case is None:
+            goal = self.session.query(GoalORM).filter_by(goal_text=goal_text).first()
+            goal_case = CaseORM(
+                casebook_id=casebook_id,
+                goal_id=goal.id,
+                agent_name=agent_name,
+            )
+            self.session.add(goal_case)
+            self.session.flush()
+        return goal_case
+
+    def ensure_goal_state_for_case(
+        self,
+        casebook_id: int,
+        goal_text: str,
+        goal_id: str,
+        pipeline_run_id,
+    ) -> CaseGoalStateORM:
+        """
+        Ensure CaseGoalState row exists for the given casebook/goal.
+        """
+        state = (self.session.query(CaseGoalStateORM)
+                 .filter_by(casebook_id=casebook_id)
+                 .one_or_none())
+        if state is None:
+            state = CaseGoalStateORM(
+                casebook_id=casebook_id,
+                goal_id=goal_id or f"goal:{casebook_id}",
+                goal_text=goal_text,
+                pipeline_run_id=pipeline_run_id,
+            )
+            self.session.add(state)
+            self.session.commit()
+        return state

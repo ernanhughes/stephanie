@@ -1,8 +1,14 @@
 # stephanie/reporting/reporter.py
 from __future__ import annotations
-import asyncio, json, time, math, uuid
-from typing import Any, Dict, Optional
+
+import asyncio
+import json
+import math
+import time
+import uuid
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
 
 def _truncate(v, max_len=400):
     if isinstance(v, str):
