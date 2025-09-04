@@ -617,7 +617,7 @@ class PACSCoreTrainer:
             try:
                 # Sample random item from dataset
                 item = dataset[random.randint(0, len(dataset) - 1)]
-                self._train_on_item(item)
+                self._train_on_item(item, metrics)
                 
                 # Periodic reference model reset
                 if self.cfg.steps_per_reset and (self._step % self.cfg.steps_per_reset == 0):
@@ -653,7 +653,8 @@ class PACSCoreTrainer:
             "steps": self._step
         }
     
-    def _train_on_item(self, item: RLVRItem) -> None:
+    def _train_on_item(self, item: RLVRItem, metrics: Dict[str, list]) -> None:
+
         """Train on a single dataset item (prompt + meta)"""
         prompt = item.query
         meta = item.meta
@@ -673,7 +674,9 @@ class PACSCoreTrainer:
         # Compute r̂ and ψ
         rhat = self._rhat_vector(prompt, responses)  # (G,)
         psi = self._psi_rloo(rhat)
-        
+        psi = torch.tanh(psi)  # Clamp to [-1, 1]
+
+
         # Compute loss
         loss = self.loss_fn(psi, labels)
         
@@ -699,8 +702,18 @@ class PACSCoreTrainer:
             rhat_mean = float(rhat.mean().item())
             label_pos_rate = float(labels.mean().item())
             acc_proxy = float(((psi > 0).float() == labels).float().mean().item())
-            entropy = self.policy.calculate_response_entropy(prompt, responses)
-        
+            entropy = self.policy.calculate_response_entropy(
+                prompt, 
+                responses,
+                temperature=self.cfg.temperature
+            )
+            metrics["losses"].append(float(loss.item()))
+            metrics["psi_means"].append(psi_mean)
+            metrics["rhat_means"].append(rhat_mean)
+            metrics["label_rates"].append(label_pos_rate)
+            metrics["acc_proxies"].append(acc_proxy)
+            metrics["entropies"].append(entropy)
+
         # Store metrics
         self._log({
             "loss": float(loss.item()),
@@ -916,16 +929,14 @@ class PACSTrainer(BaseTrainer):
         )
         
         # 5. Train model
-        self.pacs_core.train(dataset, max_steps=self.max_steps)
+        training_stats = self.pacs_core.train(dataset, max_steps=self.max_steps)
         
         # 6. Save model and metadata
-        meta = self._save_model(policy, dimension)
-        
+        meta = self._save_model(policy, dimension, training_stats)
+
         # 7. Log training stats
         self._log_training_stats(dimension, meta)
         
-        # 8. Update belief cartridges
-        self._update_belief_cartridge(dimension, meta)
         
         self.logger.log(
             "PACSTrainingComplete",
@@ -950,7 +961,7 @@ class PACSTrainer(BaseTrainer):
             else:
                 self.early_stop_counter += 1
     
-    def _save_model(self, policy, dimension: str):
+    def _save_model(self, policy, dimension: str, training_stats: Dict[str, Any]):
         """Save PACS model with metadata"""
         # Create output directory
         output_dir = os.path.join(self.model_path, dimension)
@@ -980,15 +991,19 @@ class PACSTrainer(BaseTrainer):
             "score_mode": self.score_mode,
             "beta": self.beta,
             "group_size": self.group_size,
-            "avg_loss": float(self.best_loss),
-            "policy_entropy": policy_entropy,
-            "policy_stability": policy_stability,
-            "steps": self.pacs_core._step if self.pacs_core else 0,
+            "avg_loss": float(training_stats["avg_loss"]),
+            "policy_entropy": training_stats["entropy"],
+            "policy_stability": training_stats["acc_proxy"],
+            "steps": training_stats["steps"],
             "device": str(self.device),
             "model_path": output_dir,
             "timestamp": datetime.now().isoformat(),
+            "config": {
+                k: v for k, v in self.cfg.__dict__.items() 
+                if not callable(v) and not k.startswith('_')
+            }
         }
-        
+            
         # Save metadata
         with open(os.path.join(output_dir, "meta.json"), "w") as f:
             json.dump(meta, f, indent=2)
@@ -1005,12 +1020,15 @@ class PACSTrainer(BaseTrainer):
         
         return meta
     
-    def _calculate_policy_entropy(self, policy) -> float:
-        """Calculate policy entropy for monitoring"""
-        # In practice, this would sample responses and calculate entropy
-        # For simplicity, we'll estimate from temperature
-        return -math.log(policy.cfg.temperature) if hasattr(policy, 'cfg') else 1.5
-    
+    def _calculate_policy_entropy(self, policy, prompt: str, responses: List[str]) -> float:
+        """Calculate actual policy entropy from response diversity"""
+        # Reuse the adapter's entropy calculation
+        return policy.calculate_response_entropy(
+            prompt, 
+            responses,
+            temperature=self.cfg.temperature
+    )    
+
     def _calculate_policy_stability(self, policy) -> float:
         """Calculate policy stability metric"""
         # This would be more sophisticated in practice
@@ -1030,19 +1048,24 @@ class PACSTrainer(BaseTrainer):
         self.memory.session.add(training_stats)
         self.memory.session.commit()
     
-    def _update_belief_cartridge(self, dimension: str, meta: Dict[str, Any]):
-        """Update belief cartridges with policy stats"""
+    def _update_belief_cartridge(self, context: dict, dimension: str, meta: Dict[str, Any]):
+        """Update belief cartridges with policy stats and proper goal ID"""
+        # Extract goal_id from context
+        goal_id = context.get("goal", {}).get("id")
+        if not goal_id:
+            self.logger.log("MissingGoalID", {"dimension": dimension})
+        
         bc = BeliefCartridgeORM(
             title=f"PACS Policy - {dimension}",
             content=f"PACS training completed for {dimension} dimension",
-            goal_id=None,  # Would be set based on context
+            goal_id=goal_id,  # FIXED: now properly set
             domain=dimension,
             policy_entropy=meta["policy_entropy"],
             policy_stability=meta["policy_stability"],
         )
         self.memory.session.add(bc)
-        self.memory.session.commit()
-    
+        self.memory.session.commit()    
+
     def run(self, context: dict) -> dict:
         """
         Main entry point for PACS training.
