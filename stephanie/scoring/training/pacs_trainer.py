@@ -429,47 +429,105 @@ class HybridSICQLAdapter:
         if not responses:
             return 0.0
         
-        # 1. Calculate raw diversity
+        # Classify the prompt type
+        prompt_type = self._classify_prompt_type(prompt)
+        
+        # Calculate raw diversity
         unique_responses = set(responses)
         raw_diversity = len(unique_responses) / len(responses)
         
-        # 2. Estimate prompt type to normalize entropy
-        prompt_type = self._classify_prompt_type(prompt)
+        # Define expected diversity ranges based on prompt type
+        expected_diversity = {
+            "factual": 0.3,    # Low expected diversity (correct answers are limited)
+            "creative": 0.8,   # High expected diversity (many creative variations)
+            "analytical": 0.5, # Medium expected diversity
+            "balanced": 0.5    # Default medium diversity
+        }
         
-        # 3. Apply type-specific normalization
-        if prompt_type == "factual":
-            # Factual prompts have lower max diversity - normalize accordingly
-            max_possible_diversity = 0.3  # Empirical max for factual questions
-        elif prompt_type == "creative":
-            # Creative prompts have higher max diversity
-            max_possible_diversity = 0.9
-        else:
-            # Default normalization
-            max_possible_diversity = 0.6
+        # Get expected diversity for this prompt type
+        max_possible_diversity = expected_diversity.get(prompt_type, 0.5)
         
-        # 4. Calculate normalized entropy (0-1)
+        # Calculate normalized entropy (0-1)
         normalized_entropy = min(raw_diversity / max_possible_diversity, 1.0)
         
-        # 5. Scale by temperature (optional, but matches paper's temperature sensitivity)
-        return normalized_entropy * (-math.log(temperature + 1e-8) / 5.0)  # Scaled to reasonable range
+        # Log for monitoring
+        self.logger.log("ResponseEntropy", {
+            "prompt_type": prompt_type,
+            "raw_diversity": raw_diversity,
+            "normalized_entropy": normalized_entropy,
+            "prompt_snippet": prompt[:50] + "..." if len(prompt) > 50 else prompt
+        })
+        
+        # Scale by temperature (optional, but matches paper's temperature sensitivity)
+        return normalized_entropy * (-math.log(temperature + 1e-8) / 5.0)
 
     def _classify_prompt_type(self, prompt: str) -> str:
-        """Classify prompt as factual, creative, or other"""
-        prompt = prompt.lower().strip()
+        """
+        Classify prompt using ScorableClassifier for accurate type identification.
         
-        # Check for factual indicators
-        factual_keywords = ["what", "when", "where", "how", "why", "who", "is", "are", "was", "were"]
-        if any(kw in prompt for kw in factual_keywords) and ("?" in prompt or "question" in prompt):
-            return "factual"
+        This leverages Stephanie's existing domain classification infrastructure
+        for robust semantic understanding of prompt types.
         
-        # Check for creative indicators
-        creative_keywords = ["story", "write", "create", "imagine", "describe", "poem", "essay"]
-        if any(kw in prompt for kw in creative_keywords):
-            return "creative"
+        Args:
+            prompt: Input prompt to classify
+            
+        Returns:
+            One of: "factual", "creative", "analytical", or "balanced"
+        """
+        if not prompt.strip():
+            return "balanced"
         
-        # Default to balanced
-        return "balanced"    
-
+        try:
+            # Use ScorableClassifier if available
+            if self.classifier:
+                # Get top 2 domains with scores
+                domains = self.classifier.classify(
+                    text=prompt,
+                    top_k=2,
+                    min_value=0.3
+                )
+                
+                # Log classification results
+                self.logger.log("PromptClassification", {
+                    "prompt": prompt[:100] + "..." if len(prompt) > 100 else prompt,
+                    "domains": domains
+                })
+                
+                # If we have at least one domain above threshold
+                if domains and domains[0][1] > 0.4:
+                    primary_domain = domains[0][0]
+                    
+                    # Check if it's clearly dominant
+                    if len(domains) > 1 and domains[0][1] - domains[1][1] > 0.15:
+                        return primary_domain
+                    else:
+                        # If close between domains, check confidence
+                        if domains[0][1] > 0.6:
+                            return primary_domain
+                        else:
+                            return "balanced"
+            
+            # Fallback to simple classification if ScorableClassifier not available
+            self.logger.log("FallbackClassification", {
+                "message": "Falling back to simple classification"
+            })
+            
+            # Simple fallback classification
+            prompt_lower = prompt.lower()
+            if any(kw in prompt_lower for kw in ["what", "when", "where", "how", "why", "who", "?"]):
+                return "factual"
+            elif any(kw in prompt_lower for kw in ["write", "create", "imagine", "describe"]):
+                return "creative"
+            else:
+                return "analytical"
+                
+        except Exception as e:
+            self.logger.log("ClassificationError", {
+                "error": str(e),
+                "prompt": prompt[:50] + "..." if len(prompt) > 50 else prompt
+            })
+            return "balanced"
+        
     def check_model_stability(self) -> bool:
         """
         Check if the model is becoming unstable (e.g., collapsing to single response).
@@ -836,6 +894,9 @@ class PACSCoreTrainer:
             "binary_entropy": binary_entropy
         }
 
+# Add to imports at the top
+from stephanie.analysis.scorable_classifier import ScorableClassifier
+
 class PACSTrainer(BaseTrainer):
     """
     PACS trainer that implements the RLVR via Supervised algorithm.
@@ -866,12 +927,30 @@ class PACSTrainer(BaseTrainer):
         # Initialize configuration
         self._init_config(cfg)
         
+        # Initialize ScorableClassifier for prompt type classification
+        try:
+            self.classifier = ScorableClassifier(
+                memory=self.memory,
+                logger=self.logger,
+                config_path="config/domain/seeds.yaml",
+                metric="cosine"
+            )
+            self.logger.log("ScorableClassifierInitialized", {
+                "message": "Successfully initialized ScorableClassifier for prompt type classification"
+            })
+        except Exception as e:
+            self.logger.log("ScorableClassifierError", {
+                "error": str(e),
+                "message": "Failed to initialize ScorableClassifier, falling back to simple classification"
+            })
+            self.classifier = None
+        
         # Track training state
         self.best_loss = float("inf")
         self.early_stop_counter = 0
         self.trainer = None  # Will be initialized in train()
-        self.pacs_core = None  # Core PACS implementation
-        
+        self.pacs_core = None  # Core PACS implementation        
+
         # Log initialization
         self.logger.log(
             "PACSTrainerInitialized",

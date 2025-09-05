@@ -49,7 +49,6 @@ class CaseBookToRLVRDataset:
                 for j, sc_other in enumerate(scorables):
                     if j <= i:  # avoid self-comparison & duplicates
                         continue
-
                     meta = {
                         "goal_id": case.goal_id,
                         "goal_text": goal_text,
