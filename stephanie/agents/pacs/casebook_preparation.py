@@ -15,7 +15,7 @@ class CaseBookPreparationAgent(BaseAgent):
         self.casebook_name = cfg.get("casebook_name", "default_casebook")
         self.verifier = cfg.get("verifier", "default_verifier")
         self.reporter = reporter or getattr(self, "reporter", None)
-        self.dimnsions = cfg.get("dimensions", ["alignment"])
+        self.dimensions = cfg.get("dimensions", ["alignment"])
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Load and prepare CaseBook for training"""

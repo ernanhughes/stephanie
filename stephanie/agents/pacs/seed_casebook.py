@@ -9,18 +9,13 @@ from stephanie.constants import GOAL, PIPELINE_RUN_ID
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
+from stephanie.utils.slug import simple_slugify
 
 # Optional: if you want a separate goal-state table
 try:
     from stephanie.models.case_goal_state import CaseGoalStateORM
 except Exception:
     CaseGoalStateORM = None
-
-
-def slugify(text: str, max_len: int = 60) -> str:
-    text = re.sub(r"\s+", "-", text.strip())
-    text = re.sub(r"[^a-zA-Z0-9\-]", "", text)
-    return text[:max_len].strip("-").lower() or "goal"
 
 
 class SeedCaseBookAgent(BaseAgent):
@@ -36,8 +31,9 @@ class SeedCaseBookAgent(BaseAgent):
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.documents_key = cfg.get("documents_key") or self.input_key or self.name  # be flexible
-        self.max_docs = int(cfg.get("max_docs", 20))
-        self.casebook_name = cfg.get("casebook_name", "SEED CASEBOOK 01")
+        self.max_docs = int(cfg.get("max_docs", 50))
+        # self.casebook_name = cfg.get("casebook_name", "default_casebook")
+        self.casebook_name = "default_casebook"
         self.mode = cfg.get("mode", "one_case_per_doc")
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -52,7 +48,7 @@ class SeedCaseBookAgent(BaseAgent):
         # derive a casebook name if not provided
         if not self.casebook_name:
             date = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.casebook_name = f"cb_{slugify(goal_text or 'goal')}_{date}"
+            self.casebook_name = f"cb_{simple_slugify(goal_text or 'goal')}_{date}"
 
         # create/ensure casebook
         cb = self.memory.casebooks.ensure_casebook(name=self.casebook_name, description=goal_text[:240])

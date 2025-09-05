@@ -447,43 +447,85 @@ class CaseBookStore:
         # absolute fallback
         return uuid.uuid4().hex
 
-    def add_case(self, casebook_id, goal_id, goal_text, agent_name,
-                 mars_summary=None, scores=None, metadata=None,
-                 scorables=None):
+    def add_case(
+        self,
+        casebook_id: int,
+        goal_id: str,
+        goal_text: str,
+        agent_name: str,
+        mars_summary=None,
+        scores=None,
+        metadata=None,
+        scorables=None,
+        prompt_text: Optional[str] = None,
+        response_texts: Optional[list[str]] = None,
+    ):
+        """
+        Add a case to a casebook with prompt + responses.
+
+        Args:
+            casebook_id: ID of the parent casebook
+            goal_id:     Related goal id
+            goal_text:   Related goal text
+            agent_name:  Which agent created the case
+            mars_summary: Optional reasoning summary
+            scores:     Optional dict of scores
+            metadata:   Optional dict of metadata
+            scorables:  Explicit scorable dicts (legacy path)
+            prompt_text: Text of the prompt (user input)
+            response_texts: List of assistant responses to attach as scorables
+
+        Returns:
+            CaseORM instance
+        """
         case = CaseORM(
             casebook_id=casebook_id,
             goal_id=goal_id,
             goal_text=goal_text,
+            prompt_text=prompt_text,
             agent_name=agent_name,
             mars_summary=mars_summary or {},
             scores=scores or {},
             meta=metadata or {},
         )
         self.session.add(case)
-        self.session.flush()  # we need case.id for scorable hashing
+        self.session.flush()  # need case.id for scorable ids
 
+        # --- 1. Add scorables from explicit dicts ---
         if scorables:
             for idx, s in enumerate(scorables):
-                # guarantee scorable_id
                 safe_sid = self._make_scorable_id(s, case.id, idx)
-
-                # normalize meta and keep text for provenance
                 meta = s.get("meta") or {}
                 if not isinstance(meta, dict):
                     meta = {}
                 if "text" not in meta:
-                    # try to carry the text over if present
                     txt = s.get("text", "") or s.get("content", "")
                     if txt:
                         meta["text"] = txt
-
                 cs = CaseScorableORM(
                     case_id=case.id,
                     scorable_id=safe_sid,
-                    scorable_type=s.get("type") or s.get("target_type"),
-                    role=(s.get("role") or "input"),
+                    scorable_type=s.get("type") or s.get("target_type") or "document",
+                    role=(s.get("role") or "output"),
                     rank=s.get("rank"),
                     meta=meta,
+                )
+                self.session.add(cs)
+
+        # --- 2. Add scorables for assistant responses ---
+        if response_texts:
+            for idx, resp in enumerate(response_texts):
+                if not resp or not resp.strip():
+                    continue
+                sc_dict = {"text": resp, "role": "assistant"}
+                safe_sid = self._make_scorable_id(sc_dict, case.id, idx)
+                cs = CaseScorableORM(
+                    case_id=case.id,
+                    scorable_id=safe_sid,
+                    scorable_type="document",  # or "response"
+                    role="assistant",
+                    rank=idx,
+                    meta={"text": resp},
                 )
                 self.session.add(cs)
 
@@ -609,9 +651,7 @@ class CaseBookStore:
         if state is None:
             state = CaseGoalStateORM(
                 casebook_id=casebook_id,
-                goal_id=goal_id or f"goal:{casebook_id}",
-                goal_text=goal_text,
-                pipeline_run_id=pipeline_run_id,
+                goal_id=goal_id,
             )
             self.session.add(state)
             self.session.commit()

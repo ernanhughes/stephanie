@@ -1,7 +1,6 @@
 # stephanie/dataloaders/casebook_to_rlvr.py
 
 from __future__ import annotations
-
 from typing import Any, Dict, List, Optional
 
 
@@ -23,6 +22,7 @@ class RLVRItem:
     def __repr__(self) -> str:
         return f"<RLVRItem prompt={self.prompt[:20]}... reward={self.reward:.2f}>"
 
+
 class CaseBookToRLVRDataset:
     def __init__(self, memory, casebook_name: str, scoring, dimensions: Optional[List[str]] = None):
         self.memory = memory
@@ -35,13 +35,14 @@ class CaseBookToRLVRDataset:
         if not casebook:
             raise ValueError(f"CaseBook '{self.casebook_name}' not found")
 
-        goal = self.memory.goals.get_by_id(casebook.goal_id)
-        goal_text = goal.text if goal else ""
-
         dataset: List[RLVRItem] = []
 
         for case in casebook.cases:
             prompt = case.prompt_text or ""
+
+            goal = self.memory.goals.get_by_id(case.goal_id)
+            goal_text = goal.goal_text if goal else ""
+
             scorables = case.scorables
 
             # Compare each scorable against others (pairwise, no duplicates)
@@ -49,6 +50,7 @@ class CaseBookToRLVRDataset:
                 for j, sc_other in enumerate(scorables):
                     if j <= i:  # avoid self-comparison & duplicates
                         continue
+
                     meta = {
                         "goal_id": case.goal_id,
                         "goal_text": goal_text,

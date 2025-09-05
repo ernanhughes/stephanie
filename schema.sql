@@ -1373,6 +1373,7 @@ CREATE TABLE cases (
     goal_id VARCHAR(64) NOT NULL,
     goal_text TEXT NOT NULL,
     agent_name VARCHAR(128) NOT NULL,
+    prompt_text TEXT, 
     mars_summary JSONB,
     scores JSONB,
     rank JSONB,
