@@ -6,6 +6,7 @@ import json
 import math
 from datetime import datetime
 from stephanie.scoring.scorable_factory import TargetType
+from stephanie.utils import metrics
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -408,7 +409,6 @@ class HybridSICQLAdapter:
             self.critic_ref.load_state_dict(self.critic.state_dict())
             self.critic_ref.eval()
     
-    # ---------- Safety and diagnostics ----------
     def calculate_response_entropy(
         self,
         prompt: str,
@@ -416,7 +416,7 @@ class HybridSICQLAdapter:
         temperature: float = 0.6
     ) -> float:
         """
-        Calculate approximate entropy of the response distribution.
+        Calculate normalized entropy of the response distribution, accounting for prompt type.
         
         Args:
             prompt: Input prompt
@@ -424,18 +424,52 @@ class HybridSICQLAdapter:
             temperature: Sampling temperature
             
         Returns:
-            Approximate entropy value
+            Normalized entropy value (0-1)
         """
         if not responses:
             return 0.0
-            
-        # Simple heuristic: entropy proportional to response diversity
-        unique_responses = set(responses)
-        diversity = len(unique_responses) / len(responses)
         
-        # Scale by temperature (higher temp = higher entropy)
-        return -math.log(temperature + 1e-8) * diversity
-    
+        # 1. Calculate raw diversity
+        unique_responses = set(responses)
+        raw_diversity = len(unique_responses) / len(responses)
+        
+        # 2. Estimate prompt type to normalize entropy
+        prompt_type = self._classify_prompt_type(prompt)
+        
+        # 3. Apply type-specific normalization
+        if prompt_type == "factual":
+            # Factual prompts have lower max diversity - normalize accordingly
+            max_possible_diversity = 0.3  # Empirical max for factual questions
+        elif prompt_type == "creative":
+            # Creative prompts have higher max diversity
+            max_possible_diversity = 0.9
+        else:
+            # Default normalization
+            max_possible_diversity = 0.6
+        
+        # 4. Calculate normalized entropy (0-1)
+        normalized_entropy = min(raw_diversity / max_possible_diversity, 1.0)
+        
+        # 5. Scale by temperature (optional, but matches paper's temperature sensitivity)
+        return normalized_entropy * (-math.log(temperature + 1e-8) / 5.0)  # Scaled to reasonable range
+
+    def _classify_prompt_type(self, prompt: str) -> str:
+        """Classify prompt as factual, creative, or other"""
+        prompt = prompt.lower().strip()
+        
+        # Check for factual indicators
+        factual_keywords = ["what", "when", "where", "how", "why", "who", "is", "are", "was", "were"]
+        if any(kw in prompt for kw in factual_keywords) and ("?" in prompt or "question" in prompt):
+            return "factual"
+        
+        # Check for creative indicators
+        creative_keywords = ["story", "write", "create", "imagine", "describe", "poem", "essay"]
+        if any(kw in prompt for kw in creative_keywords):
+            return "creative"
+        
+        # Default to balanced
+        return "balanced"    
+
     def check_model_stability(self) -> bool:
         """
         Check if the model is becoming unstable (e.g., collapsing to single response).
@@ -507,6 +541,9 @@ class PACSCoreTrainer:
         )
         
         # Loss function
+        # Use BCEWithLogitsLoss to maintain numerical stability. 
+        # The paper's Equation 1 shows the loss is computed with σ(ψ), 
+        # but PyTorch's BCEWithLogitsLoss combines sigmoid + BCE in a numerically stable way.
         self.loss_fn = WeightedBCEWithLogits(pos_weight=cfg.pos_weight)
         
         # Training state
@@ -518,7 +555,7 @@ class PACSCoreTrainer:
     def _rhat_vector(self, prompt: str, responses: List[str]) -> torch.Tensor:
         """
         Compute r̂ for each response in group based on chosen score_mode.
-        
+        In both modes:
         r̂ = β·(score_online - score_ref)
         """
         vals = []
@@ -654,8 +691,7 @@ class PACSCoreTrainer:
         }
     
     def _train_on_item(self, item: RLVRItem, metrics: Dict[str, list]) -> None:
-
-        """Train on a single dataset item (prompt + meta)"""
+        """Train on a single dataset item and update metrics"""
         prompt = item.query
         meta = item.meta
         
@@ -674,12 +710,36 @@ class PACSCoreTrainer:
         # Compute r̂ and ψ
         rhat = self._rhat_vector(prompt, responses)  # (G,)
         psi = self._psi_rloo(rhat)
-        psi = torch.tanh(psi)  # Clamp to [-1, 1]
-
-
+        
         # Compute loss
         loss = self.loss_fn(psi, labels)
         
+        # Detach psi for component calculations
+        psi_detached = psi.detach()
+        psi_sigmoid = torch.sigmoid(psi_detached)
+        
+        # Calculate actor component magnitude
+        with torch.no_grad():
+            # Actor component: policy improvement term
+            # [l(q, o; πθ)]∇θ log πθ(o|q)
+            cross_entropy_loss = -(labels * torch.log(psi_sigmoid + 1e-8) + 
+                                (1 - labels) * torch.log(1 - psi_sigmoid + 1e-8))
+            actor_component = cross_entropy_loss.mean().item()
+            
+            # Critic component: reward estimation term
+            # (R(q, o) - σ(ψ(q, o; πθ)))∇θψ(q, o; πθ)
+            critic_raw = (labels - psi_sigmoid).mean().item()  # Prediction error
+            critic_grad = psi.mean().item()  # Gradient magnitude
+            critic_component = critic_raw * critic_grad  # Full critic update
+            
+            # Calculate coupling ratio (absolute values to handle sign)
+            coupling_ratio = abs(actor_component) / (abs(critic_component) + 1e-8)
+            
+            # Track policy entropy for exploration analysis
+            policy_entropy = -torch.mean(psi_sigmoid * torch.log(psi_sigmoid + 1e-8) + 
+                                        (1 - psi_sigmoid) * torch.log(1 - psi_sigmoid + 1e-8)).item()
+            sequence_entropy = self.policy.calculate_response_entropy(prompt, responses)
+
         # Optimization
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -701,20 +761,31 @@ class PACSCoreTrainer:
             psi_mean = float(psi.mean().item())
             rhat_mean = float(rhat.mean().item())
             label_pos_rate = float(labels.mean().item())
-            acc_proxy = float(((psi > 0).float() == labels).float().mean().item())
-            entropy = self.policy.calculate_response_entropy(
-                prompt, 
-                responses,
-                temperature=self.cfg.temperature
-            )
-            metrics["losses"].append(float(loss.item()))
-            metrics["psi_means"].append(psi_mean)
-            metrics["rhat_means"].append(rhat_mean)
-            metrics["label_rates"].append(label_pos_rate)
-            metrics["acc_proxies"].append(acc_proxy)
-            metrics["entropies"].append(entropy)
+            preds = (torch.sigmoid(psi) > 0.5).float()
+            acc_proxy = float((preds == labels).float().mean().item())
+            entropy = self.policy.calculate_response_entropy(prompt, responses)
+        
+        grad_analysis = self._analyze_gradients(psi, labels)
 
-        # Store metrics
+        metrics["actor_components"].append(grad_analysis["actor_component"])
+        metrics["critic_raws"].append(grad_analysis["critic_raw"])
+        metrics["critic_grads"].append(grad_analysis["critic_grad"])
+        metrics["critic_components"].append(grad_analysis["critic_component"])
+        metrics["coupling_ratios"].append(grad_analysis["coupling_ratio"])
+        metrics["binary_entropies"].append(grad_analysis["binary_entropy"])
+        metrics["losses"].append(float(loss.item()))
+        metrics["psi_means"].append(psi_mean)
+        metrics["rhat_means"].append(rhat_mean)
+        metrics["label_rates"].append(label_pos_rate)
+        metrics["acc_proxies"].append(acc_proxy)
+        metrics["entropies"].append(entropy)
+        metrics["policy_entropies"].append(policy_entropy)
+        metrics["sequence_entropies"].append(sequence_entropy)
+        metrics["response_entropy"].append(
+            self.policy.calculate_response_entropy(prompt, responses)
+        )
+
+        # Log metrics
         self._log({
             "loss": float(loss.item()),
             "psi_mean": psi_mean,
@@ -723,7 +794,47 @@ class PACSCoreTrainer:
             "acc_proxy": acc_proxy,
             "entropy": entropy,
             "mode": self.cfg.score_mode,
+            "actor_component": actor_component,
+            "critic_component": critic_component,
+            "coupling_ratio": coupling_ratio,
+            **grad_analysis,
+            "policy_entropy": self.policy.calculate_response_entropy(prompt, responses)
         })
+
+    def _analyze_gradients(self, psi: torch.Tensor, labels: torch.Tensor) -> Dict[str, float]:
+        """Analyze gradient components as in PACS paper Equation 6"""
+        # Compute sigmoid once for efficiency
+        psi_sigmoid = torch.sigmoid(psi)
+        
+        # 1. ACTOR component: policy improvement term
+        # [l(q, o; πθ)]∇θ log πθ(o|q)
+        cross_entropy_loss = -(labels * torch.log(psi_sigmoid + 1e-8) + 
+                            (1 - labels) * torch.log(1 - psi_sigmoid + 1e-8))
+        actor_component = cross_entropy_loss.mean().item()
+        
+        # 2. CRITIC component breakdown
+        prediction_error = (labels - psi_sigmoid)
+        critic_raw = prediction_error.mean().item()  # R - σ(ψ)
+        critic_grad = psi.mean().item()  # ∇θψ
+        critic_component = (prediction_error * psi).mean().item()  # Full critic update
+        
+        # 3. Coupling ratio (normalized for stability)
+        coupling_ratio = abs(actor_component) / (abs(critic_component) + 1e-8)
+        
+        # 4. Binary entropy (prediction confidence)
+        binary_entropy = -torch.mean(
+            psi_sigmoid * torch.log(psi_sigmoid + 1e-8) + 
+            (1 - psi_sigmoid) * torch.log(1 - psi_sigmoid + 1e-8)
+        ).item()
+        
+        return {
+            "actor_component": actor_component,
+            "critic_raw": critic_raw,
+            "critic_grad": critic_grad,
+            "critic_component": critic_component,
+            "coupling_ratio": coupling_ratio,
+            "binary_entropy": binary_entropy
+        }
 
 class PACSTrainer(BaseTrainer):
     """
