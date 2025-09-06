@@ -81,7 +81,7 @@ class SeedCaseBookAgent(BaseAgent):
             }
             scorable = Scorable(id=str(doc_id), text=d.get("text", title), 
                                 target_type=TargetType.DOCUMENT,
-                                metadata=meta)
+                                meta=meta)
 
             self.memory.casebooks.add_case(
                 casebook_id=cb.id,

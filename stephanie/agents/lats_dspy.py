@@ -418,10 +418,10 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             id=f"node-{node['id']}",
             text=node["state"]["current"],
             target_type="lats_node",
-            metadata={"agent_name": "LATSDSPyAgent"}
+            meta={"agent_name": "LATSDSPyAgent"}
         )
         cand_scorables = [
-            Scorable(text=comp, target_type="lats_child", metadata={"agent_name": "LATSDSPyAgent"})
+            Scorable(text=comp, target_type="lats_child", meta={"agent_name": "LATSDSPyAgent"})
             for comp in completions
         ]
         ranked_bundles = self.ranker.rank(query_scorable, cand_scorables, context)

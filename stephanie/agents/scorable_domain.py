@@ -61,7 +61,7 @@ class ScorableDomainAgent(BaseAgent):
                         id=str(sc.get("id")),
                         text=sc.get("text"),
                         target_type=sc.get("target_type", "document"),
-                        metadata=sc.get("metadata", {}),
+                        meta=sc.get("metadata", {}),
                     )
 
                 # 1. Ensure embedding exists

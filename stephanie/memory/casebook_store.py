@@ -481,7 +481,7 @@ class CaseBookStore:
         case = CaseORM(
             casebook_id=casebook_id,
             goal_id=goal_id,
-            agent_name=agent_name,
+            agent_name=agent_name, 
             prompt_text=prompt_text,
         )
         self.session.add(case)

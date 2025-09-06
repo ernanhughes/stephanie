@@ -16,6 +16,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/chat_to_casebook
   - agents/pacs_trainer
   - agents/universal_scorer
   - agents/chat_import
@@ -96,7 +97,7 @@ pipeline:
      - name: chat_import
        description: "🗂️ Prepare: load and prepare chat imports for training"
        cls: stephanie.agents.pacs.chat_import.ChatImportAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: universal_scorer
@@ -108,8 +109,14 @@ pipeline:
      - name: casebook_preparation
        description: "🗂️ Prepare: load and prepare CaseBook for training"
        cls: stephanie.agents.pacs.casebook_preparation.CaseBookPreparationAgent
+       enabled: false
+       iterations: 1
+     
+     - name: chat_to_casebook
+       description: "🗂️ Prepare: Convert chat conversations to casebook format"
+       cls: stephanie.agents.pacs.chat_to_casebook.ChatToCaseBookAgent
        enabled: true
-       iterations: 1 
+       iterations: 1
 
      - name: pacs_trainer
        description: "🗂️ Purpose: Train the model using the PACS algorithm"

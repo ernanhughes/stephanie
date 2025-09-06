@@ -4,6 +4,7 @@ from typing import Optional
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseORM
+from stephanie.models.chat import ChatConversationORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
@@ -16,6 +17,7 @@ from stephanie.models.casebook import CaseScorableORM
 class TargetType:
     AGENT_OUTPUT = "agent_output"
     DOCUMENT = "document"
+    CONVERSATION = "conversation"
     GOAL = "goal"
     CASE = "case"
     CASE_SCORABLE = "case_scorable"
@@ -69,9 +71,6 @@ class ScorableFactory:
         Mode controls whether to return summary, full, or default text.
         """
 
-
-
-
         if isinstance(obj, PromptORM):
             return ScorableFactory.from_prompt_pair(obj, mode)
 
@@ -106,6 +105,19 @@ class ScorableFactory:
             " ".join([s.output_text for s in obj.execution_steps[:3]])  # optional context
             ])
             return Scorable(id=obj.trace_id, text=text, target_type=TargetType.PLAN_TRACE)
+
+        elif isinstance(obj, ChatConversationORM):
+            text = "\n".join(
+                [f"{m.role}: {m.text}" for m in obj.messages]
+            ).strip()
+
+            conv_scorable = Scorable(
+                id=str(obj.id),
+                text=text,
+                target_type=TargetType.CONVERSATION,
+                meta=obj.to_dict(include_messages=False)
+            )
+            return conv_scorable
 
         elif isinstance(obj, CaseScorableORM):
             # Prefer explicit text in meta

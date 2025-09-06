@@ -92,7 +92,7 @@ class AgentScorerAgent(BaseAgent):
                 id=scorable_id,
                 text=scorable_details.get("output_text"),
                 target_type=TargetType.AGENT_OUTPUT,
-                metadata={
+                meta={
                     "agent_name": scorable_details.get("agent_name"),
                     "stage_name": scorable_details.get("stage_name"),
                     "pipeline_run_id": context.get("pipeline_run_id"),

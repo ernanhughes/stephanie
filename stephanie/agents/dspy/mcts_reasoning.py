@@ -315,7 +315,7 @@ class MCTSReasoningAgent(BaseAgent):
                 id=n.id,
                 text=content,
                 target_type=self.scorable_type,
-                metadata={
+                meta={
                     "mcts": {
                         "rank": rank,
                         "best_node_score": float(n.score or 0.0),

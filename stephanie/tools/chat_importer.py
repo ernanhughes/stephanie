@@ -5,12 +5,21 @@ import os
 from bs4 import BeautifulSoup
 
 import hashlib
-from sqlalchemy import cast, String
 from stephanie.models.casebook import CaseBookORM
+from datetime import datetime
 
 def file_hash(path):
     with open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
+
+
+def safe_timestamp(ts):
+    if ts is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(ts))
+    except Exception:
+        return None
 
 def conversation_to_chat(memory, bundle: dict, context: dict):
     title = bundle.get("title", "Untitled Conversation")
@@ -20,6 +29,7 @@ def conversation_to_chat(memory, bundle: dict, context: dict):
         "provider": "openai",
         "external_id": conversation_id,
         "title": title,
+        "created_at": safe_timestamp(bundle.get("created_at")),
         "meta": {"raw": bundle}
     })
 
@@ -35,6 +45,11 @@ def conversation_to_chat(memory, bundle: dict, context: dict):
 
     messages = memory.chats.add_messages(conv.id, turns)
     memory.chats.add_turns(conv.id, [m.to_dict() for m in messages])
+
+    top = memory.chats.get_top_conversations(limit=20)
+    for conv, count in top:
+        print(f"Top Conversation: {conv.title}, Messages: {count}")
+
     return conv
 
 def import_conversations(memory, path: str, context: dict) -> dict:

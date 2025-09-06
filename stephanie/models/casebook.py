@@ -120,7 +120,9 @@ class CaseORM(Base):
 
     prompt_text = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    agent_name = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.now)
 
     # Relationships
     scorables = relationship("CaseScorableORM", back_populates="case")
