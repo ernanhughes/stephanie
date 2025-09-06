@@ -12,25 +12,48 @@ def file_hash(path):
     with open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
 
+def conversation_to_chat(memory, bundle: dict, context: dict):
+    title = bundle.get("title", "Untitled Conversation")
+    conversation_id = bundle.get("id") or bundle.get("conversation_id")
 
-def import_conversations(memory, path: str):
+    conv = memory.chats.add_conversation({
+        "provider": "openai",
+        "external_id": conversation_id,
+        "title": title,
+        "meta": {"raw": bundle}
+    })
+
+    turns = []
+    if "mapping" in bundle:
+        turns = _extract_turns_from_mapping(bundle["mapping"])
+    elif "turns" in bundle:
+        turns = bundle["turns"]
+
+    if not turns:
+        print(f"⚠️ Skipping {title}, no messages found")
+        return conv
+
+    messages = memory.chats.add_messages(conv.id, turns)
+    memory.chats.add_turns(conv.id, [m.to_dict() for m in messages])
+    return conv
+
+def import_conversations(memory, path: str, context: dict) -> dict:
     """
-    Walks a directory, parses chat files, and imports them into memory as CaseBooks.
-    
-    Args:
-        memory (MemoryTool): The memory tool instance for persistence.
-        path (str): The path to the directory containing chat exports.
+    Walks a directory, parses chat files, and imports them into memory as ChatConversations.
+    Returns a summary dict with counts.
     """
+    total_files = 0
+    total_skipped = 0
+    total_convs = 0
+
     for fp in glob.glob(os.path.join(path, "*.json")) + glob.glob(os.path.join(path, "*.html")):
+        total_files += 1
         h = file_hash(fp)
 
-        existing = (
-            memory.session.query(CaseBookORM)
-            .filter(cast(CaseBookORM.meta["hash"], String) == h)
-            .first()
-        )
+        existing = memory.chats.exists_conversation(h)
         if existing:
             print(f"Skipping {fp}, already imported.")
+            total_skipped += 1
             continue
 
         # Parse file
@@ -42,11 +65,18 @@ def import_conversations(memory, path: str):
                 bundles = parse_json(json.load(f))
 
         for bundle in bundles:
-            cb = conversation_to_casebook(memory, bundle)
-            cb.meta = {"hash": h, "source_file": os.path.basename(fp)}
-            memory.session.add(cb)
+            conv = conversation_to_chat(memory, bundle, context)
+            conv.meta = {"hash": h, "source_file": os.path.basename(fp)}
+            memory.session.add(conv)
             memory.commit()
-            print(f"Imported: {cb.name}")
+            print(f"Imported Chat: {conv.title}")
+            total_convs += 1
+
+    return {
+        "files_processed": total_files,
+        "files_skipped": total_skipped,
+        "conversations_imported": total_convs
+    }
 
 def parse_html(html_content: str):
     """Parses a ChatGPT-style HTML export."""
@@ -144,7 +174,7 @@ def normalize_turns(turns: list):
 
 # tools/chat_importer.py
 
-def conversation_to_casebook(memory, bundle: dict):
+def conversation_to_casebook(memory, bundle: dict, context: dict) -> CaseBookORM:
     """
     Convert a parsed conversation bundle into a CaseBook + Cases + Scorables.
 
@@ -160,7 +190,7 @@ def conversation_to_casebook(memory, bundle: dict):
     conversation_id = bundle.get("id") or bundle.get("conversation_id")
 
     cb = memory.casebooks.ensure_casebook(
-        name=f"chat_{conversation_id or title[:50]}",  # truncate long names
+        name=f"chat_{conversation_id or title[:200]}",  # truncate long names
         description=f"Imported chat conversation: {title}"
     )
 
@@ -175,17 +205,19 @@ def conversation_to_casebook(memory, bundle: dict):
     if not turns:
         print(f"⚠️ Skipping {title}, no turns found")
         return cb
-
+    goal = memory.goals.get_or_create({"goal_text": f"{cb.name}", "description": f"{cb.description}"})  
+    goal = goal.to_dict() 
     # --- 4. Pair up user → assistant messages as cases ---
     for i in range(len(turns) - 1):
         if turns[i]["role"] == "user" and turns[i + 1]["role"] == "assistant":
             user_text = turns[i]["text"]
             assistant_text = turns[i + 1]["text"]
 
+
             case = memory.casebooks.add_case(
                 casebook_id=cb.id,
-                goal_id=None,           # can attach later if tied to a goal
-                goal_text=None,
+                goal_id=goal.get("id"),           # can attach later if tied to a goal
+                goal_text=goal.get("goal_text"),
                 agent_name="chat_import",
                 prompt_text=user_text,
                 scorables=[{
@@ -193,7 +225,7 @@ def conversation_to_casebook(memory, bundle: dict):
                     "role": "assistant",
                     "source": "chat"
                 }],
-                response_text=assistant_text
+                response_texts=assistant_text
             )
 
     return cb

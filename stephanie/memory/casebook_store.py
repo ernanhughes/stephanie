@@ -481,12 +481,8 @@ class CaseBookStore:
         case = CaseORM(
             casebook_id=casebook_id,
             goal_id=goal_id,
-            goal_text=goal_text,
-            prompt_text=prompt_text,
             agent_name=agent_name,
-            mars_summary=mars_summary or {},
-            scores=scores or {},
-            meta=metadata or {},
+            prompt_text=prompt_text,
         )
         self.session.add(case)
         self.session.flush()  # need case.id for scorable ids
@@ -543,7 +539,7 @@ class CaseBookStore:
         """
         Filterable list of casebooks, newest first.
         Any filter left as None is ignored.
-        """
+        All right"""
         q = self.session.query(CaseBookORM)
 
         if agent_name is not None:
@@ -567,6 +563,13 @@ class CaseBookStore:
     def get_casebook(self, casebook_id: int) -> Optional[CaseBookORM]:
         """Load a casebook by its primary key."""
         return self.session.get(CaseBookORM, casebook_id)
+
+
+    def get_casebooks(self) -> Optional[CaseBookORM]:
+        """Load a casebook by its primary key."""
+        q = self.session.query(CaseBookORM)
+
+        return self.session.get(CaseBookORM).all()
 
     def list_cases(
         self,

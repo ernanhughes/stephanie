@@ -3,6 +3,8 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
+from stephanie.scoring.scorable_factory import ScorableFactory
+
 
 class RLVRItem:
     def __init__(self, prompt: str, response: str, reward: float, meta: Optional[Dict[str, Any]] = None):
@@ -57,18 +59,23 @@ class CaseBookToRLVRDataset:
                         "case_id": case.id,
                         "scorable_id": sc.id,
                         "competitor_id": sc_other.id,
-                        "source": sc.source,
                         "created_at": str(sc.created_at),
                     }
 
                     source = goal_text if goal_text else prompt
 
+                    scorable = ScorableFactory.from_orm(sc)
                     # Score both scorables
-                    reward_a = self.scoring.score("sicql", source, sc.text, self.dimensions).aggregate()
-                    reward_b = self.scoring.score("sicql", source, sc_other.text, self.dimensions).aggregate()
+
+                    reward_a = self.scoring.score("sicql", scorable=scorable, context=_as_context(source), dimensions=self.dimensions).aggregate()
+                    scorable_other = ScorableFactory.from_orm(sc_other)
+                    reward_b = self.scoring.score("sicql", scorable=scorable_other, context=_as_context(source), dimensions=self.dimensions).aggregate()
 
                     # Store two RLVR items with relative reward
-                    dataset.append(RLVRItem(prompt, sc.text, reward_a, meta))
-                    dataset.append(RLVRItem(prompt, sc_other.text, reward_b, meta))
+                    dataset.append(RLVRItem(prompt, scorable.text, reward_a, meta))
+                    dataset.append(RLVRItem(prompt, scorable_other.text, reward_b, meta))
 
         return dataset
+
+def _as_context(source: str) -> Dict[str, Any]:
+    return {"goal": {"goal_text": source}}

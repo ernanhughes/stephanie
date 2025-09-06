@@ -1,6 +1,4 @@
 # stephanie/scoring/scorable_factory.py
-import trace
-from enum import Enum as PyEnum
 from typing import Optional
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
@@ -11,6 +9,7 @@ from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.scorable import Scorable
+from stephanie.models.casebook import CaseScorableORM
 
 
 # Enum defining all the supported types of scoreable targets
@@ -19,6 +18,7 @@ class TargetType:
     DOCUMENT = "document"
     GOAL = "goal"
     CASE = "case"
+    CASE_SCORABLE = "case_scorable"
     HYPOTHESIS = "hypothesis"
     CARTRIDGE = "cartridge"
     TRIPLE = "triple"
@@ -68,6 +68,10 @@ class ScorableFactory:
         Convert an ORM object into a Scorable.
         Mode controls whether to return summary, full, or default text.
         """
+
+
+
+
         if isinstance(obj, PromptORM):
             return ScorableFactory.from_prompt_pair(obj, mode)
 
@@ -103,6 +107,20 @@ class ScorableFactory:
             ])
             return Scorable(id=obj.trace_id, text=text, target_type=TargetType.PLAN_TRACE)
 
+        elif isinstance(obj, CaseScorableORM):
+            # Prefer explicit text in meta
+            text = ""
+            if obj.meta and isinstance(obj.meta, dict):
+                text = obj.meta.get("text") or obj.meta.get("content") or ""
+            if not text:
+                # fallback: type/role if no text available
+                text = f"[{obj.role}] {obj.scorable_type or ''}"
+
+            return Scorable(
+                id=obj.scorable_id or str(obj.id),
+                text=text.strip(),
+                target_type=TargetType.CASE_SCORABLE,
+            )
 
         else:
             raise ValueError(f"Unsupported ORM type for scoring: {type(obj)}")
@@ -135,12 +153,27 @@ class ScorableFactory:
     def from_dict(data: dict, target_type: TargetType = None, mode: str = "default") -> Scorable:
         """Convert dicts to Scorable. Supports summary vs. full text where applicable."""
         if target_type is None:
-           target_type = data.get("target_type", "document")
+            target_type = data.get("target_type") or data.get("scorable_type") or "document"
+
+        if target_type == TargetType.CASE_SCORABLE:
+            text = ""
+            meta = data.get("meta") or {}
+            if isinstance(meta, dict):
+                text = meta.get("text") or meta.get("content") or ""
+            if not text:
+                text = f"[{data.get('role')}] {data.get('scorable_type') or ''}"
+
+            return Scorable(
+                id=str(data.get("scorable_id") or data.get("id", "")),
+                text=text.strip(),
+                target_type=TargetType.CASE_SCORABLE,
+            )
+
+        # fallback to doc-like behavior
         title = data.get("title", "")
         summary = data.get("summary", "")
         in_text = data.get("text", "")
         text = ScorableFactory.get_text(title, summary, in_text, mode)
-
         return Scorable(id=str(data.get("id", "")), text=text, target_type=target_type)
 
     @staticmethod

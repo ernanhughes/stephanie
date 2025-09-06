@@ -12,7 +12,6 @@ class CaseBookPreparationAgent(BaseAgent):
 
     def __init__(self, cfg, memory, logger, reporter=None):
         super().__init__(cfg, memory, logger)
-        self.casebook_name = cfg.get("casebook_name", "default_casebook")
         self.verifier = cfg.get("verifier", "default_verifier")
         self.reporter = reporter or getattr(self, "reporter", None)
         self.dimensions = cfg.get("dimensions", ["alignment"])
@@ -23,20 +22,27 @@ class CaseBookPreparationAgent(BaseAgent):
         pipeline_stage = context.get(PIPELINE, "casebook_preparation")
 
         try:
-            # --- Stage start ---
-            if self.reporter:
-                await self.reporter.emit(
-                    ctx=context,
-                    stage=pipeline_stage,
-                    event="start",
-                    summary=f"Preparing CaseBook {self.casebook_name}",
-                    goal=goal,
-                )
+            await self.reporter.emit(
+                ctx=context,
+                stage=pipeline_stage,
+                event="start",
+                summary="Preparing CaseBooks for training",
+                goal=goal,
+            )
 
             # Load CaseBook from DB
-            casebook: CaseBookORM = self.memory.casebooks.get_by_name(self.casebook_name)
-            if not casebook:
-                msg = f"CaseBook '{self.casebook_name}' not found"
+            recent_casebooks = self.memory.casebooks.list_casebooks()
+
+            dataset = []
+            for cb in recent_casebooks:
+                dataset_builder = CaseBookToRLVRDataset(
+                    memory=self.memory,
+                    casebook_name=cb.name,
+                    scoring=self.scoring,
+                    dimensions=self.dimensions,
+                )
+                dataset.extend(dataset_builder.build() or [])
+                msg = f"CaseBook '{cb.name}' not found"
                 self.logger.log("CaseBookNotFound", {"stage": pipeline_stage, "error": msg})
                 if self.reporter:
                     await self.reporter.emit(
@@ -48,25 +54,14 @@ class CaseBookPreparationAgent(BaseAgent):
                     )
                 return context  # graceful exit
 
-            # Build RLVRDataset
-            dataset_builder = CaseBookToRLVRDataset(
-                memory=self.memory,
-                casebook_name=self.casebook_name,
-                scoring=self.scoring,
-                dimensions=self.dimensions,
-            )
-            dataset = dataset_builder.build() or []
-            # Collect dataset stats
-            stats = self._analyze_dataset(dataset)
 
             # Add to context
             context.update(
                 {
-                    "casebook": casebook,
+                    "casebooks": recent_casebooks,
                     "rlvr_dataset": dataset,
                     "verifier": self._get_verifier(),
-                    "casebook_name": self.casebook_name,
-                    "dataset_stats": stats,
+                    "casebook_names": [cb.name for cb in recent_casebooks],
                 }
             )
 
@@ -77,7 +72,6 @@ class CaseBookPreparationAgent(BaseAgent):
                     "stage": pipeline_stage,
                     "casebook": self.casebook_name,
                     "num_items": len(dataset),
-                    "stats": stats,
                 },
             )
             if self.reporter:
@@ -86,7 +80,6 @@ class CaseBookPreparationAgent(BaseAgent):
                     stage=pipeline_stage,
                     event="done",
                     num_items=len(dataset),
-                    stats=stats,
                     finalize=True,
                 )
 

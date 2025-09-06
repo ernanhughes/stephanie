@@ -21,7 +21,7 @@ class ChatImportAgent(BaseAgent):
 
         # Run the importer
         try:
-            import_conversations(self.memory, self.import_path)
+            import_conversations(self.memory, self.import_path, context=context)
             self.logger.log("ChatImportSuccess", {
                 "import_path": self.import_path
             })

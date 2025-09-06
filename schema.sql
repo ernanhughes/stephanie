@@ -1478,4 +1478,44 @@ CREATE TABLE IF NOT EXISTS skill_filters (
     negative_interactions JSON
 );
 
+
+-- ============================================
+-- Chat Conversations Table
+-- ============================================
+CREATE TABLE chat_conversations (
+    id SERIAL PRIMARY KEY,
+    provider VARCHAR(50) NOT NULL DEFAULT 'openai',
+    external_id VARCHAR(255),
+    title VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    meta JSONB DEFAULT '{}'::jsonb
+);
+
+-- ============================================
+-- Chat Messages Table
+-- ============================================
+CREATE TABLE chat_messages (
+    id SERIAL PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    role VAR Youtube CHAR(50) NOT NULL,            -- "user", "assistant", "system", "tool"
+    text TEXT,
+    parent_id INTEGER REFERENCES chat_messages(id) ON DELETE CASCADE,
+    order_index INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    meta JSONB DEFAULT '{}'::jsonb
+);
+
+-- Indexes for faster lookups
+CREATE INDEX idx_chat_messages_conversation_id ON chat_messages(conversation_id);
+CREATE INDEX idx_chat_messages_parent_id ON chat_messages(parent_id);
+
+
+CREATE TABLE chat_turns (
+    id SERIAL PRIMARY KEY,
+    conversation_id INT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    user_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+    assistant_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE
+);
+
 COMMIT; 

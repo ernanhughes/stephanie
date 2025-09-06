@@ -16,6 +16,8 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/pacs_trainer
+  - agents/universal_scorer
   - agents/chat_import
   - agents/casebook_preparation
   - agents/pacs_training
@@ -96,6 +98,12 @@ pipeline:
        cls: stephanie.agents.pacs.chat_import.ChatImportAgent
        enabled: true
        iterations: 1
+
+     - name: universal_scorer
+       description: "Score imported conversations with all available scorers"
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false
+       iterations: 1 
 
      - name: casebook_preparation
        description: "🗂️ Prepare: load and prepare CaseBook for training"
