@@ -86,7 +86,7 @@ pipeline:
        description: "Load prior retained knowledge from the database for retrieval"
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
        enabled: false
-       iterations: 1    
+       iterations: 1 I
 
      - name: seed_casebook
        description: "🗂️ Prepare: load and prepare CaseBook for training"
@@ -97,14 +97,8 @@ pipeline:
      - name: chat_import
        description: "🗂️ Prepare: load and prepare chat imports for training"
        cls: stephanie.agents.pacs.chat_import.ChatImportAgent
-       enabled: false
+       enabled: true
        iterations: 1
-
-     - name: universal_scorer
-       description: "Score imported conversations with all available scorers"
-       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
-       enabled: false
-       iterations: 1 
 
      - name: casebook_preparation
        description: "🗂️ Prepare: load and prepare CaseBook for training"
@@ -115,8 +109,14 @@ pipeline:
      - name: chat_to_casebook
        description: "🗂️ Prepare: Convert chat conversations to casebook format"
        cls: stephanie.agents.pacs.chat_to_casebook.ChatToCaseBookAgent
-       enabled: true
+       enabled: false
        iterations: 1
+
+     - name: universal_scorer
+       description: "Score imported conversations with all available scorers"
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false
+       iterations: 1 
 
      - name: pacs_trainer
        description: "🗂️ Purpose: Train the model using the PACS algorithm"

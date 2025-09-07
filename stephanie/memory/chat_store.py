@@ -85,7 +85,6 @@ class ChatStore:
             self.session.query(ChatTurnORM).delete()
             self.session.query(ChatMessageORM).delete()
             self.session.query(ChatConversationORM).delete()
-
         self.session.commit()
         if self.logger:
             self.logger.info("[ChatStore] Purged all conversations, messages, and turns")

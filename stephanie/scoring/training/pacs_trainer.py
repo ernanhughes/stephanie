@@ -6,7 +6,6 @@ import json
 import math
 from datetime import datetime
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.utils import metrics
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

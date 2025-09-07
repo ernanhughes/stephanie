@@ -160,13 +160,8 @@ class UniversalScorerAgent(BaseAgent):
                     dimensions=self.dimensions
                 )
                 for dim, result in bundle.results.items():
-                    # ensure the result carries its dimension and source
-                    if not getattr(result, "dimension", None):
-                        result.dimension = dim
-                    if not getattr(result, "source", None):
-                        result.source = scorer_name  # fallback if scorer didn't set it
-
-                    # use a composite key to avoid overwriting, but keep result.dimension == dim
+                    result.dimension = dim
+                    result.source = scorer_name
                     key = f"{dim}::{result.source}"
                     score_results[key] = result
             except Exception as e:
@@ -176,21 +171,24 @@ class UniversalScorerAgent(BaseAgent):
         bundle = ScoreBundle(results=dict(score_results))
 
         # Save to memory
-        ScoringManager.save_score_to_memory(
-            bundle,
-            scorable,
-            context,
-            self.cfg,
-            self.memory,
-            self.logger,
-            source=self.name,
-            model_name="ensemble",
-            evaluator_name=self.name,
-        )
+        for key, result in score_results.items():
+            ScoringManager.save_score_to_memory(
+                ScoreBundle(results={result.dimension: result}),
+                scorable,
+                context,
+                self.cfg,
+                self.memory,
+                self.logger,
+                source=result.source, 
+                model_name=result.source,
+                evaluator_name=self.name,
+            )
 
         report_scores = {
-            dim: {"score": result.score, "rationale": result.rationale, "source": result.source}
-            for dim, result in score_results.items()
+            key: {"score": result.score,
+                "rationale": result.rationale,
+                "source": result.source}
+            for key, result in score_results.items()
         }
 
         return {

@@ -11,7 +11,7 @@ class ChatImportAgent(BaseAgent):
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
         self.import_path = cfg.get("import_path", "data/chats")
-        if cfg.get("purge_existing", False):
+        if cfg.get("purge_existing", True):
             self.memory.chats.purge_all(True)
 
     async def run(self, context: dict) -> dict:
@@ -23,10 +23,19 @@ class ChatImportAgent(BaseAgent):
 
         # Run the importer
         try:
-            import_conversations(self.memory, self.import_path, context=context)
+            summary = import_conversations(self.memory, self.import_path, context=context)
+
+            # Log detailed summary
             self.logger.log("ChatImportSuccess", {
-                "import_path": self.import_path
+                "import_path": self.import_path,
+                "files_processed": summary.get("files_processed", 0),
+                "files_skipped": summary.get("files_skipped", 0),
+                "conversations_imported": summary.get("conversations_imported", 0),
+                # Optional: if you add case/scorable counts to summary, log them too
+                "cases_created": summary.get("cases_created", 0),
+                "scorables_created": summary.get("scorables_created", 0),
             })
+
         except Exception as e:
             self.logger.log("ChatImportError", {
                 "error": str(e),

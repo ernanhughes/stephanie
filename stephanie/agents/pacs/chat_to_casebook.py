@@ -55,7 +55,7 @@ class ChatToCaseBookAgent(BaseAgent):
         Internal: convert one conversation into a CaseBook + Case + Scorable.
         """
         # --- 1. CaseBook
-        cb = self.memory.casebooks.ensure_casebook(
+None        cb = self.memory.casebooks.ensure_casebook(
             name=f"{conv.title}",
             description=f"Imported chat conversation: {conv.id} - {conv.title}"
         )

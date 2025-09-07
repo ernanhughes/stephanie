@@ -1,12 +1,25 @@
-# tools/chat_importer.py
+# stephanie/tools/chat_importer.py
 import json
 import glob
 import os
 from bs4 import BeautifulSoup
-
 import hashlib
-from stephanie.models.casebook import CaseBookORM
+from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+
+def _turn_hash(user_text: str, assistant_text: str) -> str:
+    """
+    Compute a stable hash for a user→assistant turn.
+    Ensures uniqueness of scorables per casebook.
+    """
+    key = (user_text.strip() + "||" + assistant_text.strip()).encode("utf-8")
+    return hashlib.sha256(key).hexdigest()
 
 def file_hash(path):
     with open(path, "rb") as f:
@@ -40,7 +53,7 @@ def conversation_to_chat(memory, bundle: dict, context: dict):
         turns = bundle["turns"]
 
     if not turns:
-        print(f"⚠️ Skipping {title}, no messages found")
+        logger.info(f"⚠️ Skipping {title}, no messages found")
         return conv
 
     messages = memory.chats.add_messages(conv.id, turns)
@@ -48,7 +61,7 @@ def conversation_to_chat(memory, bundle: dict, context: dict):
 
     top = memory.chats.get_top_conversations(limit=20)
     for conv, count in top:
-        print(f"Top Conversation: {conv.title}, Messages: {count}")
+        logger.info(f"Top Conversation: {conv.title}, Messages: {count}")
 
     return conv
 
@@ -67,7 +80,7 @@ def import_conversations(memory, path: str, context: dict) -> dict:
 
         existing = memory.chats.exists_conversation(h)
         if existing:
-            print(f"Skipping {fp}, already imported.")
+            logger.info(f"Skipping {fp}, already imported.")
             total_skipped += 1
             continue
 
@@ -84,7 +97,7 @@ def import_conversations(memory, path: str, context: dict) -> dict:
             conv.meta = {"hash": h, "source_file": os.path.basename(fp)}
             memory.session.add(conv)
             memory.commit()
-            print(f"Imported Chat: {conv.title}")
+            logger.info(f"Imported Chat: {conv.title}")
             total_convs += 1
 
     return {
@@ -186,62 +199,74 @@ def normalize_turns(turns: list):
         # Basic normalization: strip PII, clean whitespace, etc.
         turn["text"] = text.strip()
     return turns
-
-# tools/chat_importer.py
-
 def conversation_to_casebook(memory, bundle: dict, context: dict) -> CaseBookORM:
-    """
-    Convert a parsed conversation bundle into a CaseBook + Cases + Scorables.
-
-    Args:
-        memory: MemoryTool with .casebooks, .cases, .scorables stores
-        bundle: One conversation object from ChatGPT JSON export
-
-    Returns:
-        CaseBookORM object
-    """
-    # --- 1. CaseBook creation ---
     title = bundle.get("title", "Untitled Conversation")
     conversation_id = bundle.get("id") or bundle.get("conversation_id")
 
     cb = memory.casebooks.ensure_casebook(
-        name=f"chat_{conversation_id or title[:200]}",  # truncate long names
+        name=f"chat_{conversation_id or title[:200]}",
         description=f"Imported chat conversation: {title}"
     )
+    logger.info(f"[CaseBook] Created or loaded: {cb.name} (id={cb.id})")
 
-    # --- 2. Handle mapping-based format ---
+    # --- 1. Extract turns ---
     mapping = bundle.get("mapping", {})
     if mapping:
         turns = _extract_turns_from_mapping(mapping)
     else:
-        # --- 3. Fallback: use normalized turns directly ---
         turns = bundle.get("turns", [])
 
     if not turns:
-        print(f"⚠️ Skipping {title}, no turns found")
+        logger.info(f"⚠️ Skipping {title}, no turns found")
         return cb
-    goal = memory.goals.get_or_create({"goal_text": f"{cb.name}", "description": f"{cb.description}"})  
-    goal = goal.to_dict() 
-    # --- 4. Pair up user → assistant messages as cases ---
+
+    # --- 2. Goal setup ---
+    goal = memory.goals.get_or_create(
+        {"goal_text": f"{cb.name}", "description": f"{cb.description}"}
+    )
+    goal = goal.to_dict()
+
+    # --- 3. Uniqueness guard: load existing scorable hashes ---
+    existing_hashes = {
+        sc.meta.get("turn_hash")
+        for sc in memory.session.query(CaseScorableORM)
+        .join(CaseORM, CaseScorableORM.case_id == CaseORM.id)
+        .filter(CaseORM.casebook_id == cb.id)
+        .all()
+        if sc.meta and sc.meta.get("turn_hash")
+    }
+
+    logger.info(f"[Dedup] Existing scorables in CaseBook {cb.id}: {len(existing_hashes)}")
+
+    # --- 4. Add new turns as cases/scorables ---
     for i in range(len(turns) - 1):
         if turns[i]["role"] == "user" and turns[i + 1]["role"] == "assistant":
-            user_text = turns[i]["text"]
-            assistant_text = turns[i + 1]["text"]
+            user_text = turns[i]["text"].strip()
+            assistant_text = turns[i + 1]["text"].strip()
+            thash = _turn_hash(user_text, assistant_text)
 
+            if thash in existing_hashes:
+                logger.debug(f"[Skip] Duplicate scorable hash {thash[:10]}…")
+                continue  # skip duplicate
 
             case = memory.casebooks.add_case(
                 casebook_id=cb.id,
-                goal_id=goal.get("id"),           # can attach later if tied to a goal
+                goal_id=goal.get("id"),
                 goal_text=goal.get("goal_text"),
                 agent_name="chat_import",
                 prompt_text=user_text,
                 scorables=[{
                     "text": assistant_text,
                     "role": "assistant",
-                    "source": "chat"
+                    "source": "chat",
+                    "meta": {"turn_hash": thash},
                 }],
                 response_texts=assistant_text
             )
+            logger.info(f"[Case] Added case id={case.id} to CaseBook {cb.id}")
+            logger.info(f"[Scorable] Added scorable for case id={case.id}, hash={thash[:10]}…")
+
+            existing_hashes.add(thash)
 
     return cb
 
