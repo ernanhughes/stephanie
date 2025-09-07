@@ -1,3 +1,31 @@
+"""
+NER Retriever Module
+
+This module implements a Named Entity Recognition (NER) based retrieval system for legal case documents.
+It combines transformer-based entity detection, embedding generation, and approximate nearest neighbor
+search to enable efficient entity retrieval from casebooks.
+
+Key Components:
+1. NERRetrieverProjection: Neural network for projecting entity embeddings to lower dimension
+2. EntityDetector: BERT-based named entity recognition with fallback heuristic
+3. AnnoyIndex: Wrapper for Annoy approximate nearest neighbor index
+4. NERRetrieverEmbedder: Main class handling entity detection, embedding, and retrieval
+
+Primary Features:
+- Entity extraction from legal documents using BERT-NER
+- Contrastive learning for entity type representations
+- Efficient similarity search using Annoy index
+- Batch processing for large document collections
+
+Typical Usage:
+1. Initialize NERRetrieverEmbedder with pre-trained model
+2. Index casebooks using index_casebook_entities()
+3. Query entities using retrieve_entities()
+
+Dependencies:
+- PyTorch, Transformers, Annoy, Numpy
+"""
+
 # stephanie/scoring/model/ner_retriever.py
 import torch
 import torch.nn as nn
@@ -21,33 +49,38 @@ logger = logging.getLogger(__name__)
 # Projection Network
 # -------------------------------
 class NERRetrieverProjection(nn.Module):
+    """Neural projection network to reduce embedding dimensionality while preserving semantic information."""
     def __init__(self, input_dim: int = 4096, output_dim: int = 500, dropout: float = 0.1):
         super().__init__()
+        # Two-layer MLP with SiLU activation and dropout
         self.fc1 = nn.Linear(input_dim, output_dim)
         self.act = nn.SiLU()
         self.dropout = nn.Dropout(dropout)
         self.fc2 = nn.Linear(output_dim, output_dim)
 
-        # Initialize weights
+        # Initialize weights using Xavier uniform initialization
         nn.init.xavier_uniform_(self.fc1.weight)
         nn.init.xavier_uniform_(self.fc2.weight)
         nn.init.zeros_(self.fc1.bias)
         nn.init.zeros_(self.fc2.bias)
 
     def forward(self, x):
+        # Forward pass through projection layers
         x = self.fc1(x)
         x = self.act(x)
         x = self.dropout(x)
         x = self.fc2(x)
-        return F.normalize(x, p=2, dim=-1)
+        return F.normalize(x, p=2, dim=-1)  # L2 normalize output for cosine similarity
 
 
 # -------------------------------
 # Entity Detector
 # -------------------------------
 class EntityDetector:
+    """Detects named entities in text using BERT-NER with fallback to heuristic rules."""
     def __init__(self, device: str = "cuda"):
         try:
+            # Initialize HuggingFace NER pipeline
             self.ner_pipeline = pipeline(
                 "ner",
                 model="dslim/bert-base-NER",
@@ -60,23 +93,28 @@ class EntityDetector:
             self.ner_pipeline = None
 
     def detect_entities(self, text: str) -> List[Tuple[int, int, str]]:
+        """Detect entities in text using either BERT-NER or fallback heuristic."""
         if not text or len(text.strip()) < 2:
             return []
         if self.ner_pipeline:
             try:
+                # Use BERT-NER if available
                 results = self.ner_pipeline(text)
                 return [(r["start"], r["end"], self._map_entity_type(r["entity_group"])) for r in results]
             except Exception as e:
                 logger.warning(f"NER pipeline failed: {e}")
-        # Fallback: naive heuristic
+        # Fallback to heuristic-based detection
         return self._heuristic_entity_detection(text)
 
     def _map_entity_type(self, group: str) -> str:
+        """Map BERT-NER entity types to simplified categories."""
         return {"PER": "PERSON", "ORG": "ORG", "LOC": "LOC", "MISC": "MISC"}.get(group, "UNKNOWN")
 
     def _heuristic_entity_detection(self, text: str) -> List[Tuple[int, int, str]]:
+        """Fallback entity detection using capitalization rules."""
         entities = []
         for word in text.split():
+            # Simple heuristic: capitalized words longer than 2 characters
             if word and word[0].isupper() and len(word) > 2:
                 start = text.find(word)
                 if start != -1:
@@ -88,14 +126,16 @@ class EntityDetector:
 # Annoy Index Wrapper
 # -------------------------------
 class AnnoyIndex:
+    """Wrapper for Annoy approximate nearest neighbor index with metadata management."""
     def __init__(self, dim: int = 500, index_path: str = "data/ner_retriever/index"):
         self.dim = dim
         self.index_path = index_path
-        self.index = annoy.AnnoyIndex(dim, "angular")
+        self.index = annoy.AnnoyIndex(dim, "angular")  # Angular distance for cosine similarity
         self.metadata = []
         self._load_index()
 
     def _load_index(self):
+        """Load existing index and metadata from disk if available."""
         index_file = f"{self.index_path}.ann"
         meta_file = f"{self.index_path}_metadata.json"
         if os.path.exists(index_file) and os.path.exists(meta_file):
@@ -111,30 +151,36 @@ class AnnoyIndex:
         else:
             logger.info("Starting with empty Annoy index")
 
-    def add(self, embeddings: np.ndarray, metadata_list: List[Dict]):
+    def add(self, embeddings: np.ndarray, metadata_list: List[Dict], n_trees: int = 10):
+        """Add new embeddings with metadata and rebuild the Annoy index."""
         if not len(embeddings):
             return
-            
+        
         n_existing = self.index.get_n_items()
         added_count = 0
         
         for i, (vec, meta) in enumerate(zip(embeddings, metadata_list)):
-            # Deduplicate by scorable_id + entity_text
-            if any(m.get("scorable_id") == meta.get("scorable_id") and 
-                   m.get("entity_text") == meta.get("entity_text")
-                   for m in self.metadata):
+            # Deduplicate by (scorable_id, entity_text)
+            if any(
+                m.get("scorable_id") == meta.get("scorable_id") and
+                m.get("entity_text") == meta.get("entity_text")
+                for m in self.metadata
+            ):
                 continue
-                
-            # Add to index
+            
             self.index.add_item(n_existing + added_count, vec)
             self.metadata.append(meta)
             added_count += 1
-            
+        
         if added_count > 0:
+            # Rebuild with fresh trees
+            self.index.build(n_trees)
             self._save_index()
-            logger.info(f"Added {added_count} new entities to index (skipped {len(metadata_list) - added_count} duplicates)")
+            logger.info(f"Annoy index rebuilt with {self.index.get_n_items()} items "
+                        f"(added {added_count}, skipped {len(metadata_list) - added_count})")
 
     def search(self, query: np.ndarray, k: int = 10):
+        """Search index for nearest neighbors to query vector."""
         if self.index.get_n_items() == 0:
             return []
             
@@ -144,7 +190,6 @@ class AnnoyIndex:
         results = []
         for idx, dist in zip(indices, distances):
             # Convert angular distance to cosine similarity
-            # Formula: cos_sim = 1 - (angular_dist^2)/2
             sim = 1 - (dist ** 2) / 2
             if idx < len(self.metadata):
                 meta = self.metadata[idx].copy()
@@ -155,6 +200,7 @@ class AnnoyIndex:
         return results
 
     def _save_index(self):
+        """Save index and metadata with atomic file replacement."""
         temp_index = f"{self.index_path}.ann.tmp"
         temp_meta = f"{self.index_path}_metadata.json.tmp"
         
@@ -169,7 +215,7 @@ class AnnoyIndex:
             os.replace(temp_meta, f"{self.index_path}_metadata.json")
         except Exception as e:
             logger.error(f"Failed to save index: {e}")
-            # Clean up temp files if they exist
+            # Clean up temp files on failure
             if os.path.exists(temp_index):
                 os.remove(temp_index)
             if os.path.exists(temp_meta):
@@ -204,6 +250,7 @@ class AnnoyIndex:
 # Retriever Embedder
 # -------------------------------
 class NERRetrieverEmbedder:
+    """Main class for entity embedding and retrieval operations."""
     def __init__(
         self,
         model_name: str = "meta-llama/Llama-3-8b",
@@ -232,11 +279,11 @@ class NERRetrieverEmbedder:
 
     def preprocess_query(self, query: str) -> str:
         """Preprocess query to improve retrieval performance."""
-        # Remove common prefixes
+        # Remove common command prefixes
         query = re.sub(r"^(find all|show me|retrieve|get|list|identify)\s+", "", query, flags=re.IGNORECASE)
-        # Convert to lowercase for consistency
+        # Normalize to lowercase
         query = query.lower()
-        # Remove trailing punctuation
+        # Clean trailing punctuation
         query = query.rstrip(" .,;:")
         return query.strip()
 
@@ -260,7 +307,7 @@ class NERRetrieverEmbedder:
         start_token = inputs.char_to_token(0, span[0])
         end_token = inputs.char_to_token(0, span[1] - 1)
         
-        # Handle cases where char_to_token returns None
+        # Handle edge cases where char_to_token returns None
         if start_token is None:
             # Search backward from span start
             for offset in range(1, min(10, span[0] + 1)):
@@ -290,7 +337,7 @@ class NERRetrieverEmbedder:
         return self.projection(entity_vec)
 
     def embed_type_query(self, query: str) -> torch.Tensor:
-        """Embed a user-provided type description using last token representation (paper-compliant)."""
+        """Embed a user-provided type description using last token representation."""
         # Preprocess query
         query = self.preprocess_query(query)
         
@@ -363,7 +410,7 @@ class NERRetrieverEmbedder:
         
         return np.array(embeddings)
 
-    def index_scorables(self, scorables: List[Scorable], memory) -> int:
+    def index_scorables(self, scorables: List[Scorable]) -> int:
         """Index all entities in a list of scorables for retrieval."""
         logger.info("Indexing entities from scorables")
         
@@ -410,7 +457,7 @@ class NERRetrieverEmbedder:
         # Add to index
         if new_embeddings:
             self.index.add(np.array(new_embeddings), new_metadata)
-            logger.info(f"Indexed {len(new_embeddings)} entities")
+            logger.info(f"Indexed {len(new_embeddings)} entities from {len(scorables)} scorables")
             return len(new_embeddings)
 
         logger.info("No entities found for indexing")
@@ -575,7 +622,7 @@ class NERRetrieverEmbedder:
             negative_inputs = self.tokenizer(
                 negative_batch, 
                 return_tensors="pt", 
-                padding=True, 
+                padding=True,
                 truncation=True,
                 max_length=32
             ).to(self.device)
