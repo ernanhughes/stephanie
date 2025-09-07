@@ -4,7 +4,6 @@ from typing import Any, Dict
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE
 from stephanie.dataloaders.casebook_to_rlvr import CaseBookToRLVRDataset
-from stephanie.models.casebook import CaseBookORM
 
 
 class CaseBookPreparationAgent(BaseAgent):

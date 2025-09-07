@@ -451,12 +451,12 @@ class CaseBookStore:
         self,
         casebook_id: int,
         goal_id: str,
-        goal_text: str,
         agent_name: str,
-        mars_summary=None,
-        scores=None,
-        metadata=None,
-        scorables=None,
+        goal_text: Optional[str] = None,
+        mars_summary: Optional[str] = None,
+        scores: Optional[dict] = None,
+        metadata: Optional[dict] = None,
+        scorables: Optional[list[dict]] = None,
         prompt_text: Optional[str] = None,
         response_texts: Optional[list[str]] = None,
     ):
@@ -567,8 +567,6 @@ class CaseBookStore:
 
     def get_casebooks(self) -> Optional[CaseBookORM]:
         """Load a casebook by its primary key."""
-        q = self.session.query(CaseBookORM)
-
         return self.session.get(CaseBookORM).all()
 
     def list_cases(
@@ -605,7 +603,6 @@ class CaseBookStore:
         self,
         casebook_id: int,
         goal_text: str,
-        pipeline_run_id: Optional[int],
         agent_name: str,
     ) -> CaseORM:
         """
@@ -643,7 +640,6 @@ class CaseBookStore:
         casebook_id: int,
         goal_text: str,
         goal_id: str,
-        pipeline_run_id,
     ) -> CaseGoalStateORM:
         """
         Ensure CaseGoalState row exists for the given casebook/goal.
@@ -652,6 +648,8 @@ class CaseBookStore:
                  .filter_by(casebook_id=casebook_id)
                  .one_or_none())
         if state is None:
+            if not goal_id:
+                goal_id = self.session.query(GoalORM).filter_by(goal_text=goal_text).first().id    
             state = CaseGoalStateORM(
                 casebook_id=casebook_id,
                 goal_id=goal_id,

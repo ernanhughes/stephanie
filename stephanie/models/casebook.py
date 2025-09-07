@@ -137,7 +137,7 @@ class CaseScorableORM(Base):
     role = Column(String, nullable=False, default="input")
     rank = Column(Integer, nullable=True)          # ← matches new column
     meta = Column(SA_JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     case = relationship("CaseORM", back_populates="scorables")
 

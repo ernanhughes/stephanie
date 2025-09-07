@@ -2,6 +2,8 @@
 from sqlalchemy import desc, func, text
 from sqlalchemy.orm import Session
 from stephanie.models.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 
 class ChatStore:
     def __init__(self, session: Session, logger=None):
@@ -112,3 +114,77 @@ class ChatStore:
             )
 
         return [(conv, count) for conv, count in q.all()]
+
+    def get_message_by_id(self, message_id: int) -> ChatMessageORM | None:
+        """
+        Fetch a single ChatMessageORM by its ID.
+        """
+        return (
+            self.session.query(ChatMessageORM)
+            .filter_by(id=message_id)
+            .first()
+        )
+
+    def get_turn_by_id(self, turn_id: int) -> ChatTurnORM | None:
+        """
+        Fetch a single ChatTurnORM by its ID.
+        """
+        return (
+            self.session.query(ChatTurnORM)
+            .filter_by(id=turn_id)
+            .first()
+        )
+
+    def get_turns_for_conversation(self, conv_id: int) -> list[ChatTurnORM]:
+        """
+        Fetch all ChatTurnORMs for a given conversation.
+        """
+        return (
+            self.session.query(ChatTurnORM)
+            .filter_by(conversation_id=conv_id)
+            .order_by(ChatTurnORM.id)
+            .all()
+        )
+
+    def scorable_from_conversation(self, conv: ChatConversationORM) -> Scorable:
+        """
+        Convert a ChatConversationORM into a Scorable object.
+        Uses the full text of the conversation.
+        """
+        text = "\n".join(
+            [f"{m.role}: {m.text}" for m in conv.messages if m.text]
+        ).strip()
+
+        return Scorable(
+            id=str(conv.id),
+            text=text,
+            target_type=TargetType.CONVERSATION,
+            meta=conv.to_dict(include_messages=False)
+        )
+
+    def scorable_from_message(self, msg: ChatMessageORM) -> Scorable:
+        """
+        Convert a single ChatMessageORM into a Scorable object.
+        """
+        text = msg.text or ""
+        return Scorable(
+            id=str(msg.id),
+            text=f"[{msg.role}] {text.strip()}",
+            target_type=TargetType.CONVERSATION_MESSAGE,
+            meta={"conversation_id": msg.conversation_id}
+        )
+
+    def scorable_from_turn(self, turn: ChatTurnORM) -> Scorable:
+        """
+        Convert a ChatTurnORM (user→assistant pair) into a Scorable object.
+        """
+        user_text = turn.user_message.text if turn.user_message else ""
+        assistant_text = turn.assistant_message.text if turn.assistant_message else ""
+        text = f"USER: {user_text.strip()}\nASSISTANT: {assistant_text.strip()}"
+
+        return Scorable(
+            id=str(turn.id),
+            text=text,
+            target_type=TargetType.CONVERSATION_TURN,
+            meta={"conversation_id": turn.conversation_id}
+        )

@@ -10,14 +10,16 @@ from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.scorable import Scorable
-from stephanie.models.casebook import CaseScorableORM
+from stephanie.models.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM
 
 
 # Enum defining all the supported types of scoreable targets
 class TargetType:
     AGENT_OUTPUT = "agent_output"
     DOCUMENT = "document"
-    CONVERSATION = "conversation"
+    CONVERSATION = "conversation"       # full conversation
+    CONVERSATION_TURN = "conversation_turn"  # user→assistant pair
+    CONVERSATION_MESSAGE = "conversation_message"  # single message
     GOAL = "goal"
     CASE = "case"
     CASE_SCORABLE = "case_scorable"
@@ -107,33 +109,33 @@ class ScorableFactory:
             return Scorable(id=obj.trace_id, text=text, target_type=TargetType.PLAN_TRACE)
 
         elif isinstance(obj, ChatConversationORM):
-            text = "\n".join(
-                [f"{m.role}: {m.text}" for m in obj.messages]
-            ).strip()
-
-            conv_scorable = Scorable(
+            text = "\n".join([f"{m.role}: {m.text}" for m in obj.messages]).strip()
+            return Scorable(
                 id=str(obj.id),
                 text=text,
                 target_type=TargetType.CONVERSATION,
                 meta=obj.to_dict(include_messages=False)
             )
-            return conv_scorable
 
-        elif isinstance(obj, CaseScorableORM):
-            # Prefer explicit text in meta
-            text = ""
-            if obj.meta and isinstance(obj.meta, dict):
-                text = obj.meta.get("text") or obj.meta.get("content") or ""
-            if not text:
-                # fallback: type/role if no text available
-                text = f"[{obj.role}] {obj.scorable_type or ''}"
-
+        elif isinstance(obj, ChatTurnORM):
+            user_text = obj.user_message.text if obj.user_message else ""
+            assistant_text = obj.assistant_message.text if obj.assistant_message else ""
+            text = f"USER: {user_text}\nASSISTANT: {assistant_text}"
             return Scorable(
-                id=obj.scorable_id or str(obj.id),
+                id=str(obj.id),
                 text=text.strip(),
-                target_type=TargetType.CASE_SCORABLE,
+                target_type=TargetType.CONVERSATION_TURN,
+                meta=obj.to_dict()
             )
 
+        elif isinstance(obj, ChatMessageORM):
+            text = obj.text or ""
+            return Scorable(
+                id=str(obj.id),
+                text=text.strip(),
+                target_type=TargetType.CONVERSATION_MESSAGE,
+                meta=obj.to_dict()
+            )
         else:
             raise ValueError(f"Unsupported ORM type for scoring: {type(obj)}")
 
@@ -273,7 +275,15 @@ class ScorableFactory:
         Extracts the text content from a Scorable object.
         """ 
         orm = None
-        if target_type == TargetType.DOCUMENT:
+    @staticmethod
+    def from_id(memory, target_type: str, target_id: str) -> str:
+        if target_type == TargetType.CONVERSATION:
+            orm = memory.chats.get_conversation(target_id)
+        elif target_type == TargetType.CONVERSATION_TURN:
+            orm = memory.chats.get_turn_by_id(target_id)
+        elif target_type == TargetType.CONVERSATION_MESSAGE:
+            orm = memory.chats.get_message_by_id(target_id)
+        elif target_type == TargetType.DOCUMENT:
             orm = memory.documents.get_by_id(target_id)
         elif target_type == TargetType.HYPOTHESIS:
             orm = memory.hypothesis.get_by_id(target_id)

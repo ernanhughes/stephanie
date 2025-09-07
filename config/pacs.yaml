@@ -74,7 +74,6 @@ report:
 web_search:
   engine: "searxng"
 Right here  instance_url: "http://localhost:8080"
-
 pipeline:
   name: pacs_trainer_pipeline
   tag: pacs
@@ -82,34 +81,16 @@ pipeline:
     Implementation of the PACS framework from 
 
   stages:
-     - name: knowledge_db_loader
-       description: "Load prior retained knowledge from the database for retrieval"
-       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
-       enabled: false
-       iterations: 1 I
-
-     - name: seed_casebook
-       description: "🗂️ Prepare: load and prepare CaseBook for training"
-       cls: stephanie.agents.pacs.seed_casebook.SeedCaseBookAgent
-       enabled: false
-       iterations: 1
-
      - name: chat_import
        description: "🗂️ Prepare: load and prepare chat imports for training"
        cls: stephanie.agents.pacs.chat_import.ChatImportAgent
-       enabled: true
-       iterations: 1
-
-     - name: casebook_preparation
-       description: "🗂️ Prepare: load and prepare CaseBook for training"
-       cls: stephanie.agents.pacs.casebook_preparation.CaseBookPreparationAgent
        enabled: false
        iterations: 1
-     
+
      - name: chat_to_casebook
        description: "🗂️ Prepare: Convert chat conversations to casebook format"
        cls: stephanie.agents.pacs.chat_to_casebook.ChatToCaseBookAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: universal_scorer
@@ -117,6 +98,12 @@ pipeline:
        cls: stephanie.agents.universal_scorer.UniversalScorerAgent
        enabled: false
        iterations: 1 
+
+     - name: casebook_preparation
+       description: "🗂️ Prepare: load and prepare CaseBook for training"
+       cls: stephanie.agents.pacs.casebook_preparation.CaseBookPreparationAgent
+       enabled: false
+       iterations: 1
 
      - name: pacs_trainer
        description: "🗂️ Purpose: Train the model using the PACS algorithm"
