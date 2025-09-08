@@ -48,6 +48,9 @@ class CartridgeTripleStore:
                 self.logger.log("TripleInserted", data)
             return new_triple
 
+    def get_by_id(self, triple_id: int) -> CartridgeTripleORM:
+        return self.session.query(CartridgeTripleORM).get(triple_id)
+
     def get_triples(self, cartridge_id: int) -> list[CartridgeTripleORM]:
         return (
             self.session.query(CartridgeTripleORM)

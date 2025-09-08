@@ -651,3 +651,7 @@ class CaseBookStore:
             self.session.add(state)
             self.session.commit()
         return state
+
+    def get_case_scorable_by_id(self, case_scorable_id: int) -> Optional[CaseScorableORM]:
+        """Load a single CaseScorable by its primary key."""
+        return self.session.get(CaseScorableORM, case_scorable_id)

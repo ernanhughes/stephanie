@@ -270,14 +270,7 @@ class ScorableFactory:
         
 
     @staticmethod
-    def from_id(memory, target_type: str, target_id: str) -> str:
-        """
-        Extracts the text content from a Scorable object.
-        """ 
-        orm = None
-
-    @staticmethod
-    def from_id(memory, target_type: str, target_id: str):
+    def from_id(memory, scorable_type: str, scorable_id: str):
         """
         Resolve a scorable object from memory by its type and id,
         returning a Scorable. Raises ValueError if unsupported or not found.
@@ -289,9 +282,9 @@ class ScorableFactory:
             TargetType.CONVERSATION_TURN: (memory.chats.get_turn_by_id, int),
             TargetType.CONVERSATION_MESSAGE: (memory.chats.get_message_by_id, int),
             TargetType.DOCUMENT: (memory.documents.get_by_id, int),
-            TargetType.HYPOTHESIS: (memory.hypothesis.get_by_id, int),
-            TargetType.CARTRIDGE: (memory.cartridge.get_by_id, int),
-            TargetType.TRIPLE: (memory.triple.get_by_id, int),
+            TargetType.HYPOTHESIS: (memory.hypotheses.get_by_id, int),
+            TargetType.CARTRIDGE: (memory.cartridges.get_by_id, int),
+            TargetType.TRIPLE: (memory.cartridge_triples.get_by_id, int),
             TargetType.PROMPT: (memory.prompts.get_by_id, int), 
             TargetType.THEOREM: (memory.theorems.get_by_id, int),  # plural fixed
             TargetType.CASE: (memory.casebooks.get_case_by_id, int),
@@ -300,13 +293,13 @@ class ScorableFactory:
             TargetType.PLAN_TRACE_STEP: (memory.plan_traces.get_step_by_id, str),
         }
 
-        if target_type not in dispatch:
-            raise ValueError(f"Unsupported target type for text extraction: {target_type}")
+        if scorable_type not in dispatch:
+            raise ValueError(f"Unsupported target type for text extraction: {scorable_type}")
 
-        getter, caster = dispatch[target_type]
-        orm = getter(caster(target_id))
+        getter, caster = dispatch[scorable_type]
+        orm = getter(caster(scorable_id))
 
         if orm is None:
-            raise ValueError(f"No object found for {target_type} id={target_id}")
+            raise ValueError(f"No object found for {scorable_type} id={scorable_id}")
 
         return ScorableFactory.from_orm(orm)

@@ -12,6 +12,7 @@ class ModelVersionORM(Base):
 
     id = Column(Integer, primary_key=True)
     model_type = Column(Text, nullable=False)
+    score_mode = Column(Text, nullable=True)
     target_type = Column(Text, nullable=False)
     dimension = Column(Text, nullable=False)
     version = Column(Text, nullable=False)

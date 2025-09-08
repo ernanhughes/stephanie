@@ -113,6 +113,7 @@ class HybridSICQLAdapter:
     - Critic: SICQL InContextQModel (embeddings in → Q/V/π outputs)
     """
 
+class HybridSICQLAdapter:
     def __init__(self, memory, actor_lm, tokenizer, critic_head=None, device=None):
         self._device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.memory = memory
@@ -127,24 +128,39 @@ class HybridSICQLAdapter:
         for p in self.actor_ref.parameters():
             p.requires_grad_(False)
 
-        # --- Critic setup (InContextQModel) ---
+        # --- Critic setup (supports both SICQL + HuggingFace critics) ---
         self.critic = critic_head.to(self._device) if critic_head is not None else None
         self.critic_ref = None
+        self.critic_type = None
+
         if self.critic is not None:
-            self.critic.train()
-            # build critic_ref properly
-            self.critic_ref = type(self.critic)(  # same class
-                encoder=copy.deepcopy(self.critic.encoder),
-                q_head=copy.deepcopy(self.critic.q_head),
-                v_head=copy.deepcopy(self.critic.v_head),
-                pi_head=copy.deepcopy(self.critic.pi_head),
-                embedding_store=self.memory.embedding,  # reuse, not copied
-                device=self._device,
-            ).to(self._device)
-            self.critic_ref.load_state_dict(self.critic.state_dict())
-            self.critic_ref.eval()
-            for p in self.critic_ref.parameters():
-                p.requires_grad_(False)
+            # Detect critic type
+            if hasattr(self.critic, "q_head") and hasattr(self.critic, "encoder"):
+                # Looks like SICQL InContextQModel
+                self.critic_type = "sicql"
+                self.critic.train()
+
+                self.critic_ref = type(self.critic)(
+                    encoder=copy.deepcopy(self.critic.encoder),
+                    q_head=copy.deepcopy(self.critic.q_head),
+                    v_head=copy.deepcopy(self.critic.v_head),
+                    pi_head=copy.deepcopy(self.critic.pi_head),
+                    embedding_store=self.memory.embedding,
+                    device=self._device,
+                ).to(self._device)
+                self.critic_ref.load_state_dict(self.critic.state_dict())
+                self.critic_ref.eval()
+                for p in self.critic_ref.parameters():
+                    p.requires_grad_(False)
+
+            else:
+                # Assume HuggingFace-style sequence classification model
+                self.critic_type = "hf"
+                self.critic.train()
+                self.critic_ref = copy.deepcopy(self.critic).to(self._device)
+                self.critic_ref.eval()
+                for p in self.critic_ref.parameters():
+                    p.requires_grad_(False)
 
         # --- Tokenizer setup ---
         self.tok = tokenizer
@@ -857,7 +873,7 @@ class PACSTrainer(BaseTrainer):
         training_stats = self.pacs_core.train(dataset, max_steps=self.max_steps)
         
         # 6. Save model and metadata
-        meta = self._save_model(policy, dimension, training_stats)
+        meta = self._save_model(policy, dimension, training_stats, dataset=dataset)
 
         # 7. Log training stats
         self._log_training_stats(dimension, meta)
@@ -886,7 +902,7 @@ class PACSTrainer(BaseTrainer):
             else:
                 self.early_stop_counter += 1
     
-    def _save_model(self, policy, dimension: str, training_stats: Dict[str, Any]):
+    def _save_model(self, policy, dimension: str, training_stats: Dict[str, Any], dataset=None) -> Dict[str, Any]:
         """Save PACS model with metadata"""
         # Create output directory
         output_dir = os.path.join(self.model_path, dimension)
@@ -899,6 +915,7 @@ class PACSTrainer(BaseTrainer):
         # Save critic if in critic mode
         if self.score_mode == "critic" and policy.critic is not None:
             critic_path = os.path.join(output_dir, "critic")
+            os.makedirs(critic_path, exist_ok=True) 
             # Save SICQL components
             torch.save(policy.critic.encoder.state_dict(), os.path.join(critic_path, "encoder.pt"))
             torch.save(policy.critic.q_head.state_dict(), os.path.join(critic_path, "q_head.pt"))
@@ -906,14 +923,18 @@ class PACSTrainer(BaseTrainer):
             torch.save(policy.critic.pi_head.state_dict(), os.path.join(critic_path, "pi_head.pt"))
         
         # Calculate policy metrics
-        policy_entropy = self._calculate_policy_entropy(policy)
-        policy_stability = self._calculate_policy_stability(policy)
-        
+        policy_entropy = self._calculate_policy_entropy(policy, dataset, tokenizer=policy.tok)
+        policy_stability = self._calculate_policy_stability(policy, dataset=dataset)
+
         # Build metadata
         meta = {
             "version": self.model_version,
             "dimension": dimension,
             "score_mode": self.score_mode,
+            "policy_entropy_calc": policy_entropy,
+            "policy_stability_calc": policy_stability,
+            "actor_model": "Qwen2.5-1.5B",
+            "critic_model": "SICQL" if self.score_mode == "critic" else None,
             "beta": self.beta,
             "group_size": self.group_size,
             "avg_loss": float(training_stats["avg_loss"]),
@@ -923,47 +944,102 @@ class PACSTrainer(BaseTrainer):
             "device": str(self.device),
             "model_path": output_dir,
             "timestamp": datetime.now().isoformat(),
-            "config": {
-                k: v for k, v in self.cfg.__dict__.items() 
-                if not callable(v) and not k.startswith('_')
-            }
+            "config": self.cfg if isinstance(self.cfg, dict) else self.cfg.__dict__
         }
+
+        # Split into direct columns vs. extra_data
+        db_fields = {
+            "model_type": "pacs",
+            "target_type": self.target_type,
+            "dimension": meta["dimension"],
+            "version": meta["version"],
+            "score_mode": meta["score_mode"],
+            "model_path": meta["model_path"],
+        }
+
+        extra_data = {k: v for k, v in meta.items() if k not in db_fields and k not in ["model_path", "dimension", "version", "score_mode"]}
+
             
         # Save metadata
         with open(os.path.join(output_dir, "meta.json"), "w") as f:
             json.dump(meta, f, indent=2)
-        
-        # Save to database
+
+        # Insert into DB
         model_version = ModelVersionORM(
-            model_type="pacs",
-            dimension=dimension,
-            version=self.model_version,
-            **meta
+            **db_fields,
+            extra_data=extra_data
         )
         self.memory.session.add(model_version)
         self.memory.session.commit()
         
         return meta
     
-    def _calculate_policy_entropy(self, policy, prompt: str, responses: List[str]) -> float:
-        """Calculate actual policy entropy from response diversity"""
-        # Reuse the adapter's entropy calculation
-        return policy.calculate_response_entropy(
-            prompt, 
-            responses,
-            temperature=self.cfg.temperature
-    )    
+    def _calculate_policy_entropy(self, policy, dataset, tokenizer, sample_size: int = 100) -> float:
+        """
+        Calculate average entropy of the actor policy over a subset of dataset.
+        """
+        import random
+        subset = random.sample(dataset, min(sample_size, len(dataset)))
 
-    def _calculate_policy_stability(self, policy) -> float:
-        """Calculate policy stability metric"""
-        # This would be more sophisticated in practice
-        return 0.85  # Placeholder
+        entropies = []
+        for item in subset:
+            prompt, response = item.prompt, item.response
+            if not response:
+                continue
+
+            logits = self._get_logits(policy, prompt, response, tokenizer, device=policy._device)
+            # take only the response part
+            resp_len = len(tokenizer.encode(response))
+            resp_logits = logits[:, -resp_len:, :]
+
+            probs = F.softmax(resp_logits, dim=-1)
+            entropy = -(probs * probs.log()).sum(dim=-1).mean().item()
+            entropies.append(entropy)
+
+        return float(sum(entropies) / len(entropies)) if entropies else 0.0
+
+    def _get_logits(self, policy, prompt: str, response: str, tokenizer, device="cuda"):
+        """Tokenize prompt+response and run through actor LM to get logits."""
+        inputs = tokenizer(prompt + response, return_tensors="pt").to(device)
+        with torch.no_grad():
+            outputs = policy.actor(**inputs)
+            logits = outputs.logits  # shape: [batch, seq_len, vocab_size]
+        return logits
+
+    def _calculate_policy_stability(self, policy, dataset, sample_size: int = 100) -> float:
+        subset = random.sample(dataset, min(sample_size, len(dataset)))
+        rewards, kl_divs = [], []
+
+        for item in subset:
+            prompt, response = item.prompt, item.response
+            if not response:
+                continue
+
+            # Current policy logits
+            logits_cur = self._get_logits(policy, prompt, response, policy.tok, device=policy._device)
+            probs_cur = F.softmax(logits_cur, dim=-1)
+
+            # Reference policy logits
+            logits_ref = self._get_logits(policy, prompt, response, policy.tok, device=policy._device)
+            probs_ref = F.softmax(logits_ref, dim=-1)
+
+            kl = F.kl_div(probs_ref.log(), probs_cur, reduction="batchmean").item()
+            kl_divs.append(kl)
+
+            if policy.critic is not None:
+                reward = policy.critic_logit(prompt, response).item()
+                rewards.append(reward)
+
+        reward_var = np.var(rewards) if rewards else 0.0
+        kl_mean = np.mean(kl_divs) if kl_divs else 0.0
+        return 1.0 / (1.0 + reward_var + kl_mean)
     
     def _log_training_stats(self, dimension: str, meta: Dict[str, Any]):
         """Log training stats to database"""
         training_stats = TrainingStatsORM(
             model_type="pacs",
             target_type=self.target_type,
+            embedding_type=self.memory.embedding.name,
             dimension=dimension,
             version=self.model_version,
             avg_q_loss=meta["avg_loss"],

@@ -48,7 +48,9 @@ class CaseBookToRLVRDataset:
             scorables = case.scorables
 
             if len(scorables) == 1:
-                scorable = ScorableFactory.from_orm(scorables[0])
+                scorable_id = scorables[0].scorable_id
+                scorable_type = scorables[0].scorable_type
+                scorable = ScorableFactory.from_id(self.memory, scorable_id=scorable_id, scorable_type=scorable_type)
                 source = goal_text if goal_text else prompt
                 meta = {
                     "goal_id": case.goal_id,
@@ -78,7 +80,9 @@ class CaseBookToRLVRDataset:
 
                     source = goal_text if goal_text else prompt
 
-                    scorable = ScorableFactory.from_orm(sc)
+                    scorable_id = sc.scorable_id
+                    scorable_type = sc.scorable_type
+                    scorable = ScorableFactory.from_id(self.memory, scorable_id, scorable_type)
                     # Score both scorables
 
                     reward_a = self.scoring.score("sicql", scorable=scorable, context=_as_context(source), dimensions=self.dimensions).aggregate()

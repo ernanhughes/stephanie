@@ -41,5 +41,5 @@ class PipelineReferenceORM(Base):
         from stephanie.scoring.scorable_factory import ScorableFactory
 
         return ScorableFactory.from_id(
-            memory=memory, target_type=self.target_type, target_id=self.target_id
+            memory=memory, scorable_type=self.target_type, scorable_id=self.target_id
         )

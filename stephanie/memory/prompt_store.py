@@ -64,6 +64,9 @@ class PromptStore:
                 self.logger.log("GoalGetOrCreateFailed", {"error": str(e)})
             raise
 
+    def get_by_id(self, prompt_id: int) -> Optional[PromptORM]:
+        return self.session.query(PromptORM).get(prompt_id)        
+
     def save(
         self,
         goal: dict,
