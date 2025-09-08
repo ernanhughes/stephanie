@@ -29,7 +29,7 @@ class CompilerOptimizerAgent(BaseAgent):
 
         # Step 2: Analyze performance per prompt
         for prompt_id, scores in prompt_scores.items():
-            prompt = self.memory.prompt.get(prompt_id)
+            prompt = self.memory.prompts.get(prompt_id)
             raw_scores = [s.score for s in scores if s.score is not None]
 
             if not raw_scores:

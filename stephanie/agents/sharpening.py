@@ -127,7 +127,7 @@ class SharpeningAgent(BaseAgent):
     def save_improved(self, goal, prompt: str, entry: dict, context: dict):
         if entry["improved"] and self.cfg.get("save_improved", True):
             # Save refined prompt (optional – only if different enough)
-            new_prompt_id = self.memory.prompt.save(
+            new_prompt_id = self.memory.prompts.save(
                 goal=goal,
                 agent_name=f"{self.name}_{entry['template']}",
                 prompt_key="sharpening",

@@ -5,7 +5,10 @@ from stephanie.models.casebook import CaseScorableORM, CaseORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
 from stephanie.models.casebook import CaseBookORM
+from sqlalchemy import cast, String
 import numpy as np
+from stephanie.scoring.scorable_factory import TargetType
+import random
 
 class ScoredRLVRDataset:
     """
@@ -55,40 +58,46 @@ class ScoredRLVRDataset:
             List of RLVRItem objects for PACS training
         """
         session = self.memory.session
-        
+
         # --- 1. Query scored case_scorables ---
         query = (
             session.query(
                 CaseScorableORM, 
                 CaseORM, 
                 CaseBookORM,
+                EvaluationORM,
                 ScoreORM
             )
             .join(CaseORM, CaseScorableORM.case_id == CaseORM.id)
             .join(CaseBookORM, CaseORM.casebook_id == CaseBookORM.id)
-            .join(ScoreORM, ScoreORM.scorable_id == str(CaseScorableORM.id))
+            .join(EvaluationORM, EvaluationORM.scorable_id == cast(CaseScorableORM.id, String))
+            .join(ScoreORM, ScoreORM.evaluation_id == EvaluationORM.id)
             .filter(ScoreORM.dimension.in_(self.dimensions))
         )
-        
+
         # Apply filters
         if domain:
             query = query.filter(CaseBookORM.domain == domain)
         if casebook_id:
             query = query.filter(CaseBookORM.id == casebook_id)
-        
+
         # Order and limit
         query = query.order_by(ScoreORM.id.desc()).limit(limit)
-        
+
         # Execute query
         results = query.all()
-        
+
         # --- 2. Group by dimension for balanced sampling ---
         items_by_dimension = {dim: [] for dim in self.dimensions}
-        
-        for scorable, case, casebook, score in results:
+
+        for scorable, case, casebook, evaluation, score in results:
             # Convert continuous score to binary reward
             is_correct = 1 if score.score >= self.reward_threshold else 0
-            
+
+            domain_list = self.memory.scorable_domains.get_by_scorable(
+                str(scorable.id), scorable.scorable_type
+            )
+
             # Build metadata
             meta = {
                 "case_id": case.id,
@@ -98,49 +107,62 @@ class ScoredRLVRDataset:
                 "dimension": score.dimension,
                 "score_value": float(score.score),
                 "is_correct": is_correct,
-                "domain": casebook.domain,
-                "created_at": str(score.created_at),
+                "domain": domain_list[0].domain if domain_list else None,
+                "created_at": str(evaluation.created_at),
                 "casebook_name": casebook.name,
-                "goal_text": casebook.goal_text if hasattr(casebook, 'goal_text') else ""
+                "goal_text": getattr(casebook, "goal_text", ""),
             }
-            
-            # Store in dimension group
+
             items_by_dimension[score.dimension].append((case.prompt_text, meta))
-        
+
         # --- 3. Balance samples across dimensions ---
         balanced_items = []
-        min_per_dim = min(
-            len(items) for items in items_by_dimension.values() 
+        valid_dims = [
+            len(items) for items in items_by_dimension.values()
             if len(items) >= self.min_samples_per_dimension
-        )
-        
-        # Take balanced samples from each dimension
+        ]
+        if not valid_dims:
+            self.memory.logger.log("RLVRDatasetWarning", {
+                "message": "Not enough samples per dimension to balance dataset",
+                "dimensions": {dim: len(items) for dim, items in items_by_dimension.items()}
+            })
+            return []
+
+        min_per_dim = min(valid_dims)
+
         for dim, items in items_by_dimension.items():
             if len(items) >= self.min_samples_per_dimension:
-                # Randomly sample to balance across dimensions
-                sampled = np.random.choice(
-                    items, 
-                    size=min(min_per_dim, len(items)), 
-                    replace=False
-                ).tolist()
+                sample_size = min(min_per_dim, len(items))
+                sampled = random.sample(items, sample_size)  # <-- FIXED
                 balanced_items.extend(sampled)
-        
+
+
         # --- 4. Build RLVR dataset ---
         dataset = []
         for prompt, meta in balanced_items:
-            dataset.append(RLVRItem(
-                query=prompt,
-                meta=meta
-            ))
-        
+            # Pick the scorable text (ensure you added this earlier in meta)
+            response = meta.get("scorable_text", "")
+            reward = 1.0 if meta["is_correct"] else 0.0  # binary reward for PACS
+
+            dataset.append(
+                RLVRItem(
+                    prompt=prompt,
+                    response=response,
+                    reward=reward,
+                    meta=meta
+                )
+            )
+
         # Log dataset statistics
         self.memory.logger.log("RLVRDatasetBuilt", {
             "total_items": len(dataset),
             "dimensions": self.dimensions,
             "reward_threshold": self.reward_threshold,
-            "items_per_dimension": {dim: len(items) for dim, items in items_by_dimension.items()}
+            "items_per_dimension": {
+                dim: len(items) for dim, items in items_by_dimension.items()
+            }
         })
-        
+
         return dataset
     
     def get_reward_distribution(self, dataset: List[RLVRItem]) -> Dict[str, float]:

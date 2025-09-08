@@ -726,7 +726,7 @@ CREATE TABLE IF NOT EXISTS document_section_domains (
     CONSTRAINT unique_document_section_domain UNIQUE (document_section_id, domain)
 );
 
-I CREATE TABLE IF NOT EXISTS evaluation_rule_links (
+CREATE TABLE IF NOT EXISTS evaluation_rule_links (
     id SERIAL PRIMARY KEY,
     evaluation_id INTEGER NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
     rule_application_id INTEGER NOT NULL REFERENCES rule_applications(id) ON DELETE CASCADE,
@@ -1363,6 +1363,8 @@ CREATE TABLE casebooks (
     id SERIAL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     description TEXT,
+    domain TEXT,
+
     created_at TIMESTAMP DEFAULT NOW()
 );
 

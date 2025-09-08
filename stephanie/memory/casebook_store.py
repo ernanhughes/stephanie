@@ -492,12 +492,6 @@ class CaseBookStore:
             for idx, s in enumerate(scorables):
                 safe_sid = self._make_scorable_id(s, case.id, idx)
                 meta = s.get("meta") or {}
-                if not isinstance(meta, dict):
-                    meta = {}
-                if "text" not in meta:
-                    txt = s.get("text", "") or s.get("content", "")
-                    if txt:
-                        meta["text"] = txt
                 cs = CaseScorableORM(
                     case_id=case.id,
                     scorable_id=safe_sid,

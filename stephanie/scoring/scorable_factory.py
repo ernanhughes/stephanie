@@ -275,30 +275,38 @@ class ScorableFactory:
         Extracts the text content from a Scorable object.
         """ 
         orm = None
+
     @staticmethod
-    def from_id(memory, target_type: str, target_id: str) -> str:
-        if target_type == TargetType.CONVERSATION:
-            orm = memory.chats.get_conversation(target_id)
-        elif target_type == TargetType.CONVERSATION_TURN:
-            orm = memory.chats.get_turn_by_id(target_id)
-        elif target_type == TargetType.CONVERSATION_MESSAGE:
-            orm = memory.chats.get_message_by_id(target_id)
-        elif target_type == TargetType.DOCUMENT:
-            orm = memory.documents.get_by_id(target_id)
-        elif target_type == TargetType.HYPOTHESIS:
-            orm = memory.hypothesis.get_by_id(target_id)
-        elif target_type == TargetType.CARTRIDGE:
-            orm = memory.cartridge.get_by_id(target_id)
-        elif target_type == TargetType.TRIPLE:
-            orm = memory.triple.get_by_id(target_id)
-        elif target_type == TargetType.PROMPT:
-            orm = memory.prompt.get_by_id(target_id)
-        elif target_type == TargetType.THEOREM:
-            orm = memory.theorem.get_by_id(target_id)
-        elif target_type == TargetType.PLAN_TRACE:
-            orm = memory.plan_trace.get_by_id(target_id)
-        if orm is not None:
-            scorable = ScorableFactory.from_orm(orm)
-            return scorable
-        else:
+    def from_id(memory, target_type: str, target_id: str):
+        """
+        Resolve a scorable object from memory by its type and id,
+        returning a Scorable. Raises ValueError if unsupported or not found.
+        """
+
+        # Dispatch table mapping target_type -> (getter_function, cast_type)
+        dispatch = {
+            TargetType.CONVERSATION: (memory.chats.get_conversation, int),
+            TargetType.CONVERSATION_TURN: (memory.chats.get_turn_by_id, int),
+            TargetType.CONVERSATION_MESSAGE: (memory.chats.get_message_by_id, int),
+            TargetType.DOCUMENT: (memory.documents.get_by_id, int),
+            TargetType.HYPOTHESIS: (memory.hypothesis.get_by_id, int),
+            TargetType.CARTRIDGE: (memory.cartridge.get_by_id, int),
+            TargetType.TRIPLE: (memory.triple.get_by_id, int),
+            TargetType.PROMPT: (memory.prompts.get_by_id, int), 
+            TargetType.THEOREM: (memory.theorems.get_by_id, int),  # plural fixed
+            TargetType.CASE: (memory.casebooks.get_case_by_id, int),
+            TargetType.CASE_SCORABLE: (memory.casebooks.get_case_scorable_by_id, int),
+            TargetType.PLAN_TRACE: (memory.plan_traces.get_by_id, str),
+            TargetType.PLAN_TRACE_STEP: (memory.plan_traces.get_step_by_id, str),
+        }
+
+        if target_type not in dispatch:
             raise ValueError(f"Unsupported target type for text extraction: {target_type}")
+
+        getter, caster = dispatch[target_type]
+        orm = getter(caster(target_id))
+
+        if orm is None:
+            raise ValueError(f"No object found for {target_type} id={target_id}")
+
+        return ScorableFactory.from_orm(orm)

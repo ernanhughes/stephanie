@@ -304,7 +304,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             "mode": "reason",  # Or use context.get("mode", "reason")
         }
         prompt_text = self.prompt_loader.load_prompt(self.cfg, merged_for_prompt)
-        prompt_id = self.memory.prompt.get_id_from_response(prompt_text)
+        prompt_id = self.memory.prompts.get_id_from_response(prompt_text)
 
         # Safely extract scores
         dimension_scores = best_child.get("dimension_scores", {})

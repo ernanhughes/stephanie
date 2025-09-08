@@ -145,7 +145,7 @@ class PromptLoader:
 
     def _load_best_version(self, agent_name: str, goal: str, config: dict) -> str:
         """Load a tuned version of the prompt if available."""
-        best_prompt = self.memory.prompt.get_best_prompt_for_agent(
+        best_prompt = self.memory.prompts.get_best_prompt_for_agent(
             agent_name=agent_name, strategy=config.get(STRATEGY, DEFAULT), goal=goal
         )
         if best_prompt:

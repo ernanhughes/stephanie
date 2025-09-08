@@ -5,7 +5,6 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE
 from stephanie.dataloaders.casebook_to_rlvr import CaseBookToRLVRDataset
 
-
 class CaseBookPreparationAgent(BaseAgent):
     """Prepares CaseBook data for PACS training"""
 
@@ -69,7 +68,6 @@ class CaseBookPreparationAgent(BaseAgent):
                 "CaseBookPrepared",
                 {
                     "stage": pipeline_stage,
-                    "casebook": self.casebook_name,
                     "num_items": len(dataset),
                 },
             )

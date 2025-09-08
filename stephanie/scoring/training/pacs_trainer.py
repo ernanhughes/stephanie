@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import json
-import math
+import copy
 from datetime import datetime
 from stephanie.scoring.scorable_factory import TargetType
 import torch
@@ -16,12 +16,13 @@ from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.models.training_stats import TrainingStatsORM
 from stephanie.models.model_version import ModelVersionORM
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
-from stephanie.scoring.training.sicql_trainer import SICQLTrainer
+from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
+
 
 import random
 from dataclasses import dataclass
 
-from transformers import PreTrainedModel, PreTrainedTokenizer
 
 
 # ==============================
@@ -106,444 +107,150 @@ class WeightedBCEWithLogits(nn.Module):
 
 class HybridSICQLAdapter:
     """
-    Unifies the interfaces needed by PACS in both scoring modes:
+    Adapter unifying actor (HF LM) and critic (SICQL InContextQModel).
     
-    1. `logprob` mode: uses actor LM to compute Σ log p for responses
-    2. `critic` mode: uses SICQL critic head to score (prompt, response) pairs
-    
-    This adapter is the critical bridge between your SICQL infrastructure and PACS training.
-    
-    Key features:
-    - Maintains both online and reference models (for RLOO regularization)
-    - Handles safe generation with proper tokenization
-    - Implements correct logprob calculation for actor-based mode
-    - Integrates with SICQL policy heads for critic-based mode
-    - Includes safety mechanisms to prevent model collapse
+    - Actor: HuggingFace causal LM (text in → text out, uses tokenizer)
+    - Critic: SICQL InContextQModel (embeddings in → Q/V/π outputs)
     """
-    
-    def __init__(
-        self,
-        actor_lm: PreTrainedModel,           # Base LM for response generation
-        tokenizer: PreTrainedTokenizer,      # Matching tokenizer
-        critic_head: Optional[nn.Module] = None,  # SICQL head (optional)
-        device: Optional[str] = None,
-    ):
-        """
-        Args:
-            actor_lm: Base language model (trainable)
-            tokenizer: Tokenizer for the model
-            critic_head: SICQL policy head (optional, for critic mode)
-            device: Target device (auto-detected if None)
-        """
-        # Device setup
-        self._device = torch.device(
-            device or ("cuda" if torch.cuda.is_available() else "cpu")
-        )
-        
-        # Actor setup (policy for generation)
+
+    def __init__(self, memory, actor_lm, tokenizer, critic_head=None, device=None):
+        self._device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        self.memory = memory
+
+        # --- Actor setup ---
         self.actor = actor_lm.to(self._device)
         self.actor.train()
-        
-        # Reference actor (frozen for RLOO)
-        import copy
+
+        # Reference actor (frozen)
         self.actor_ref = copy.deepcopy(actor_lm).to(self._device)
         self.actor_ref.eval()
         for p in self.actor_ref.parameters():
             p.requires_grad_(False)
-        
-        # Critic setup (optional, for critic mode)
+
+        # --- Critic setup (InContextQModel) ---
         self.critic = critic_head.to(self._device) if critic_head is not None else None
+        self.critic_ref = None
         if self.critic is not None:
             self.critic.train()
-            self.critic_ref = copy.deepcopy(self.critic).to(self._device)
+            # build critic_ref properly
+            self.critic_ref = type(self.critic)(  # same class
+                encoder=copy.deepcopy(self.critic.encoder),
+                q_head=copy.deepcopy(self.critic.q_head),
+                v_head=copy.deepcopy(self.critic.v_head),
+                pi_head=copy.deepcopy(self.critic.pi_head),
+                embedding_store=self.memory.embedding,  # reuse, not copied
+                device=self._device,
+            ).to(self._device)
+            self.critic_ref.load_state_dict(self.critic.state_dict())
             self.critic_ref.eval()
             for p in self.critic_ref.parameters():
                 p.requires_grad_(False)
-        else:
-            self.critic_ref = None
-        
-        # Tokenizer setup
+
+        # --- Tokenizer setup ---
         self.tok = tokenizer
         if getattr(self.tok, "pad_token", None) is None:
             if getattr(self.tok, "eos_token", None) is not None:
                 self.tok.pad_token = self.tok.eos_token
             else:
-                # Fallback to adding a pad token
                 self.tok.add_special_tokens({"pad_token": "[PAD]"})
                 self.actor.resize_token_embeddings(len(self.tok))
-                if self.actor_ref:
-                    self.actor_ref.resize_token_embeddings(len(self.tok))
+                self.actor_ref.resize_token_embeddings(len(self.tok))
 
-    def device(self) -> torch.device:
-        """Return the device this adapter is using"""
+        self.memory = memory
+
+    def device(self):
         return self._device
-    
-    # ---------- Generation ----------
+
+    # ---------- Actor (HF LM) ----------
     @torch.no_grad()
-    def sample_group(
-        self,
-        prompt: str,
-        group_size: int,
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None
-    ) -> List[str]:
-        """
-        Generate multiple responses for a single prompt.
-        
-        Args:
-            prompt: Input prompt
-            group_size: Number of responses to generate
-            max_new_tokens: Override default max_new_tokens
-            temperature: Override default temperature
-            top_p: Override default top_p
-            
-        Returns:
-            List of generated responses
-        """
-        # Use defaults if not provided
-        max_new_tokens = max_new_tokens or self.cfg.max_new_tokens if hasattr(self, 'cfg') else 256
-        temperature = temperature or self.cfg.temperature if hasattr(self, 'cfg') else 0.6
-        top_p = top_p or self.cfg.top_p if hasattr(self, 'cfg') else 0.96
-        
-        # Tokenize prompt
+    def sample_group(self, prompt, group_size, max_new_tokens=256, temperature=0.6, top_p=0.95):
+        """Generate multiple responses from the HuggingFace LM."""
         inputs = self.tok(
-            prompt, 
-            return_tensors="pt", 
-            padding=True, 
-            truncation=True, 
-            max_length=1024
-        ).to(self._device)
-        
-        responses = []
-        for _ in range(group_size):
-            try:
-                # Generate response
-                out = self.actor.generate(
-                    **inputs,
-                    do_sample=True,
-                    temperature=temperature,
-                    top_p=top_p,
-                    max_new_tokens=max_new_tokens,
-                    pad_token_id=self.tok.pad_token_id or self.tok.eos_token_id,
-                    eos_token_id=self.tok.eos_token_id,
-                )
-                
-                # Extract only the generated part (remove prompt)
-                prompt_len = inputs["input_ids"].size(1)
-                response_ids = out[0, prompt_len:]
-                response = self.tok.decode(response_ids, skip_special_tokens=True)
-                responses.append(response)
-            except Exception as e:
-                print(f"Generation failed: {e}")
-                # Fallback to empty response
-                responses.append("")
-        
-        return responses
-    
-    # ---------- Logprob sums for `logprob` mode ----------
-    def _sum_logprobs(
-        self,
-        model: PreTrainedModel,
-        prompt: str,
-        response: str,
-        safety_threshold: float = 0.1
-    ) -> torch.Tensor:
-        """
-        Compute sum of log probabilities for the response tokens.
-        
-        Args:
-            model: Model to use for logprob calculation
-            prompt: Input prompt
-            response: Generated response
-            safety_threshold: Threshold for NaN/inf detection
-            
-        Returns:
-            Sum of log probabilities for response tokens
-        """
-        # Tokenize full sequence
-        full_text = prompt + response
-        enc = self.tok(
-            full_text, 
-            return_tensors="pt", 
-            padding=True, 
-            truncation=True, 
-            max_length=2048
-        ).to(self._device)
-        
-        # Get input IDs and attention mask
-        input_ids = enc["input_ids"]
-        attention_mask = enc["attention_mask"]
-        
-        # Forward pass
-        with torch.no_grad():
-            outputs = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=input_ids
-            )
-            logits = outputs.logits
-            
-            # Calculate log probabilities
-            log_probs = F.log_softmax(logits, dim=-1)
-            
-            # Gather log probs for the actual next tokens
-            shift_logits = log_probs[..., :-1, :].contiguous()
-            shift_labels = input_ids[..., 1:].contiguous()
-            
-            # Get log probs for the actual next tokens
-            token_log_probs = torch.gather(
-                shift_logits, 
-                dim=-1, 
-                index=shift_labels.unsqueeze(-1)
-            ).squeeze(-1)
-            
-            # Identify prompt vs response tokens
-            prompt_enc = self.tok(
-                prompt, 
-                return_tensors="pt", 
-                padding=False, 
-                truncation=True, 
-                max_length=1024
-            )
-            prompt_len = len(prompt_enc["input_ids"][0])
-            
-            # Only sum over response tokens
-            response_log_probs = token_log_probs[:, prompt_len-1:]
-            
-            # Safety checks
-            if torch.isnan(response_log_probs).any():
-                print("Warning: NaN detected in log probs, replacing with safe values")
-                response_log_probs = torch.nan_to_num(response_log_probs, nan=-100.0)
-                
-            if (response_log_probs < -1/safety_threshold).any():
-                print(f"Warning: Extremely low log probs detected (below {-1/safety_threshold})")
-                response_log_probs = torch.clamp(response_log_probs, min=-1/safety_threshold)
-        
-        # Sum log probs for response tokens
-        return response_log_probs.sum(dim=1).squeeze()
-    
-    def logprob_sum(self, prompt: str, response: str) -> torch.Tensor:
-        """Compute logprob sum using the online actor model"""
-        return self._sum_logprobs(self.actor, prompt, response)
-    
-    @torch.no_grad()
-    def logprob_sum_ref(self, prompt: str, response: str) -> torch.Tensor:
-        """Compute logprob sum using the frozen reference actor"""
-        return self._sum_logprobs(self.actor_ref, prompt, response).detach()
-    
-    # ---------- Critic logits for `critic` mode ----------
-    def _critic_logit(
-        self,
-        model: nn.Module,
-        prompt: str,
-        response: str,
-        max_length: int = 2048
-    ) -> torch.Tensor:
-        """
-        Compute critic logit for a (prompt, response) pair.
-        
-        Args:
-            model: Critic model to use
-            prompt: Input prompt
-            response: Generated response
-            max_length: Maximum sequence length
-            
-        Returns:
-            Scalar logit value
-        """
-        if self.critic is None:
-            raise ValueError("Critic head required for score_mode='critic'")
-        
-        # Format input for critic
-        full_text = f"{prompt}\n\n{response}"
-        
-        # Tokenize
-        enc = self.tok(
-            full_text,
+            prompt,
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=max_length
+            max_length=1024
         ).to(self._device)
-        
-        # Forward pass through critic
-        with torch.set_grad_enabled(model.training):
-            out = model(**enc)
-            logits = getattr(out, "logits", out)
-            
-            # Handle different output formats
-            if isinstance(logits, torch.Tensor):
-                if logits.dim() == 2 and logits.size(1) == 1:
-                    return logits.squeeze(1)
-                return logits
-            elif hasattr(logits, "logits"):
-                return logits.logits
-            else:
-                return logits
-    
-    def critic_logit(self, prompt: str, response: str) -> torch.Tensor:
-        """Compute critic logit using the online critic model"""
-        return self._critic_logit(self.critic, prompt, response)
-    
+
+        responses = []
+        for _ in range(group_size):
+            out = self.actor.generate(
+                **inputs,
+                do_sample=True,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                pad_token_id=self.tok.pad_token_id or self.tok.eos_token_id,
+                eos_token_id=self.tok.eos_token_id,
+            )
+            prompt_len = inputs["input_ids"].size(1)
+            response_ids = out[0, prompt_len:]
+            response = self.tok.decode(response_ids, skip_special_tokens=True)
+            responses.append(response)
+        return responses
+
+    def logprob_sum(self, prompt, response):
+        """Compute logprob sum with online actor LM."""
+        return self._sum_logprobs(self.actor, prompt, response)
+
     @torch.no_grad()
-    def critic_logit_ref(self, prompt: str, response: str) -> torch.Tensor:
-        """Compute critic logit using the frozen reference critic"""
+    def logprob_sum_ref(self, prompt, response):
+        """Compute logprob sum with frozen actor reference."""
+        return self._sum_logprobs(self.actor_ref, prompt, response).detach()
+
+    def _sum_logprobs(self, model, prompt, response):
+        """Sum log probabilities for actor outputs."""
+        full_text = prompt + response
+        enc = self.tok(full_text, return_tensors="pt", truncation=True, max_length=2048).to(self._device)
+        input_ids = enc["input_ids"]
+        attention_mask = enc["attention_mask"]
+
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=input_ids)
+        logits = outputs.logits
+        log_probs = F.log_softmax(logits, dim=-1)
+
+        shift_logits = log_probs[..., :-1, :].contiguous()
+        shift_labels = input_ids[..., 1:].contiguous()
+        token_log_probs = torch.gather(shift_logits, dim=-1, index=shift_labels.unsqueeze(-1)).squeeze(-1)
+
+        prompt_len = len(self.tok(prompt, return_tensors="pt")["input_ids"][0])
+        response_log_probs = token_log_probs[:, prompt_len - 1:]
+        return response_log_probs.sum(dim=1).squeeze()
+
+    # ---------- Critic (SICQL InContextQModel) ----------
+    def _critic_logit(self, model, prompt, response):
+        """Compute Q-value logit from SICQL critic (InContextQModel)."""
+        if model is None:
+            raise ValueError("Critic head required for critic mode")
+        if self.memory is None:
+            raise ValueError("Memory with embedding system required for critic")
+
+        # Get embeddings
+        prompt_emb_np = self.memory.embedding.get_or_create(prompt)
+        response_emb_np = self.memory.embedding.get_or_create(response)
+        prompt_emb = torch.tensor(prompt_emb_np, device=self._device, dtype=torch.float32).unsqueeze(0)
+        response_emb = torch.tensor(response_emb_np, device=self._device, dtype=torch.float32).unsqueeze(0)
+
+        out = model(prompt_emb, response_emb)
+        return out["q_value"].squeeze()
+
+    def critic_logit(self, prompt, response):
+        return self._critic_logit(self.critic, prompt, response)
+
+    @torch.no_grad()
+    def critic_logit_ref(self, prompt, response):
         return self._critic_logit(self.critic_ref, prompt, response).detach()
-    
-    # ---------- Reference sync ----------
-    def hard_reset_ref(self) -> None:
-        """
-        Reset reference models to current online models.
-        
-        This is critical for PACS stability - should be called periodically
-        (e.g., every steps_per_reset steps).
-        """
-        # Reset actor reference
+
+    # ---------- Ref sync ----------
+    def hard_reset_ref(self):
+        """Reset references to current models."""
         self.actor_ref.load_state_dict(self.actor.state_dict())
         self.actor_ref.eval()
-        
-        # Reset critic reference if available
-        if self.critic is not None and self.critic_ref is not None:
+        if self.critic and self.critic_ref:
             self.critic_ref.load_state_dict(self.critic.state_dict())
             self.critic_ref.eval()
-    
-    def calculate_response_entropy(
-        self,
-        prompt: str,
-        responses: List[str],
-        temperature: float = 0.6
-    ) -> float:
-        """
-        Calculate normalized entropy of the response distribution, accounting for prompt type.
-        
-        Args:
-            prompt: Input prompt
-            responses: List of generated responses
-            temperature: Sampling temperature
-            
-        Returns:
-            Normalized entropy value (0-1)
-        """
-        if not responses:
-            return 0.0
-        
-        # Classify the prompt type
-        prompt_type = self._classify_prompt_type(prompt)
-        
-        # Calculate raw diversity
-        unique_responses = set(responses)
-        raw_diversity = len(unique_responses) / len(responses)
-        
-        # Define expected diversity ranges based on prompt type
-        expected_diversity = {
-            "factual": 0.3,    # Low expected diversity (correct answers are limited)
-            "creative": 0.8,   # High expected diversity (many creative variations)
-            "analytical": 0.5, # Medium expected diversity
-            "balanced": 0.5    # Default medium diversity
-        }
-        
-        # Get expected diversity for this prompt type
-        max_possible_diversity = expected_diversity.get(prompt_type, 0.5)
-        
-        # Calculate normalized entropy (0-1)
-        normalized_entropy = min(raw_diversity / max_possible_diversity, 1.0)
-        
-        # Log for monitoring
-        self.logger.log("ResponseEntropy", {
-            "prompt_type": prompt_type,
-            "raw_diversity": raw_diversity,
-            "normalized_entropy": normalized_entropy,
-            "prompt_snippet": prompt[:50] + "..." if len(prompt) > 50 else prompt
-        })
-        
-        # Scale by temperature (optional, but matches paper's temperature sensitivity)
-        return normalized_entropy * (-math.log(temperature + 1e-8) / 5.0)
 
-    def _classify_prompt_type(self, prompt: str) -> str:
-        """
-        Classify prompt using ScorableClassifier for accurate type identification.
-        
-        This leverages Stephanie's existing domain classification infrastructure
-        for robust semantic understanding of prompt types.
-        
-        Args:
-            prompt: Input prompt to classify
-            
-        Returns:
-            One of: "factual", "creative", "analytical", or "balanced"
-        """
-        if not prompt.strip():
-            return "balanced"
-        
-        try:
-            # Use ScorableClassifier if available
-            if self.classifier:
-                # Get top 2 domains with scores
-                domains = self.classifier.classify(
-                    text=prompt,
-                    top_k=2,
-                    min_value=0.3
-                )
-                
-                # Log classification results
-                self.logger.log("PromptClassification", {
-                    "prompt": prompt[:100] + "..." if len(prompt) > 100 else prompt,
-                    "domains": domains
-                })
-                
-                # If we have at least one domain above threshold
-                if domains and domains[0][1] > 0.4:
-                    primary_domain = domains[0][0]
-                    
-                    # Check if it's clearly dominant
-                    if len(domains) > 1 and domains[0][1] - domains[1][1] > 0.15:
-                        return primary_domain
-                    else:
-                        # If close between domains, check confidence
-                        if domains[0][1] > 0.6:
-                            return primary_domain
-                        else:
-                            return "balanced"
-            
-            # Fallback to simple classification if ScorableClassifier not available
-            self.logger.log("FallbackClassification", {
-                "message": "Falling back to simple classification"
-            })
-            
-            # Simple fallback classification
-            prompt_lower = prompt.lower()
-            if any(kw in prompt_lower for kw in ["what", "when", "where", "how", "why", "who", "?"]):
-                return "factual"
-            elif any(kw in prompt_lower for kw in ["write", "create", "imagine", "describe"]):
-                return "creative"
-            else:
-                return "analytical"
-                
-        except Exception as e:
-            self.logger.log("ClassificationError", {
-                "error": str(e),
-                "prompt": prompt[:50] + "..." if len(prompt) > 50 else prompt
-            })
-            return "balanced"
-        
-    def check_model_stability(self) -> bool:
-        """
-        Check if the model is becoming unstable (e.g., collapsing to single response).
-        
-        Returns:
-            True if stable, False if unstable
-        """
-        # Sample multiple responses to a simple prompt
-        test_prompt = "The capital of France is"
-        responses = self.sample_group(test_prompt, group_size=8)
-        
-        # Check response diversity
-        unique_responses = set(responses)
-        diversity = len(unique_responses) / len(responses)
-        
-        # Model is unstable if diversity is too low
-        return diversity > 0.5
 
 
 # ==============================
@@ -711,7 +418,7 @@ class PACSCoreTrainer:
             try:
                 # Sample random item from dataset
                 item = dataset[random.randint(0, len(dataset) - 1)]
-                self._train_on_item(item, metrics)
+                self._train_on_item_offline(item, metrics)
                 
                 # Periodic reference model reset
                 if self.cfg.steps_per_reset and (self._step % self.cfg.steps_per_reset == 0):
@@ -747,9 +454,74 @@ class PACSCoreTrainer:
             "steps": self._step
         }
     
+
+    def _train_on_item_offline(self, item: RLVRItem, metrics: Dict[str, list]) -> None:
+        """
+        Train directly on dataset rewards (offline supervised PACS).
+        
+        Uses RLVRItem.prompt, RLVRItem.response, and RLVRItem.reward
+        as the training signal without generating new responses.
+        """
+        prompt = item.prompt
+        response = item.response
+        reward_val = float(item.reward)
+
+        # Convert reward into tensor
+        reward = torch.tensor([reward_val], device=self.policy.device(), dtype=torch.float32)
+
+        # --- Compute r̂ (online vs reference) ---
+        if self.cfg.score_mode == "logprob":
+            lp = self.policy.logprob_sum(prompt, response)          # requires grad
+            lpr = self.policy.logprob_sum_ref(prompt, response)     # no grad
+            rhat = self.cfg.beta * (lp - lpr)
+        else:  # critic mode
+            lg = self.policy.critic_logit(prompt, response)         # requires grad
+            lgr = self.policy.critic_logit_ref(prompt, response)    # no grad
+            rhat = self.cfg.beta * (lg - lgr)
+
+        psi = rhat.unsqueeze(0)  # keep batch dimension
+
+        # --- Compute supervised loss ---
+        loss = self.loss_fn(psi, reward)
+
+        # --- Optimization ---
+        self.optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        if self.cfg.grad_clip:
+            torch.nn.utils.clip_grad_norm_(
+                self.optimizer.param_groups[0]["params"], 
+                self.cfg.grad_clip
+            )
+        self.optimizer.step()
+        self.scheduler.step(loss.item())
+
+        # --- Metrics ---
+        with torch.no_grad():
+            psi_val = float(psi.item())
+            pred = (torch.sigmoid(psi) > 0.5).float()
+            acc_proxy = float((pred == reward).float().mean().item())
+
+            metrics["losses"].append(float(loss.item()))
+            metrics["psi_means"].append(psi_val)
+            metrics["rhat_means"].append(float(rhat.item()))
+            metrics["label_rates"].append(reward_val)
+            metrics["acc_proxies"].append(acc_proxy)
+
+        # --- Log ---
+        self._log({
+            "mode": f"{self.cfg.score_mode}-offline",
+            "loss": float(loss.item()),
+            "psi": psi_val,
+            "rhat": float(rhat.item()),
+            "reward": reward_val,
+            "acc_proxy": acc_proxy,
+            "prompt_snippet": prompt[:80] + ("..." if len(prompt) > 80 else "")
+        })
+
+    
     def _train_on_item(self, item: RLVRItem, metrics: Dict[str, list]) -> None:
         """Train on a single dataset item and update metrics"""
-        prompt = item.query
+        prompt = item.prompt
         meta = item.meta
         
         # Generate response group
@@ -894,7 +666,6 @@ class PACSCoreTrainer:
         }
 
 # Add to imports at the top
-from stephanie.analysis.scorable_classifier import ScorableClassifier
 
 class PACSTrainer(BaseTrainer):
     """
@@ -1026,46 +797,11 @@ class PACSTrainer(BaseTrainer):
         # For critic mode, load SICQL policy head
         critic = None
         if self.score_mode == "critic":
-            # Reuse SICQL's policy head structure
-            from stephanie.scoring.model.policy_head import PolicyHead
-            from stephanie.scoring.model.text_encoder import TextEncoder
-            from stephanie.scoring.model.q_head import QHead
-            from stephanie.scoring.model.v_head import VHead
-            
-            # Load SICQL components
-            locator = SICQLTrainer.get_locator(dimension)
-            encoder = TextEncoder(dim=self.memory.embedding.dim, hdim=self.memory.embedding.hdim).to(self.device)
-            q_head = QHead(zsa_dim=self.memory.embedding.dim, hdim=self.memory.embedding.hdim).to(self.device)
-            v_head = VHead(zsa_dim=self.memory.embedding.dim, hdim=self.memory.embedding.hdim).to(self.device)
-            pi_head = PolicyHead(
-                zsa_dim=self.memory.embedding.dim, 
-                hdim=self.memory.embedding.hdim, 
-                num_actions=3
-            ).to(self.device)
-            
-            # Load weights
-            if os.path.exists(locator.encoder_file()):
-                encoder.load_state_dict(torch.load(locator.encoder_file(), map_location=self.device))
-            if os.path.exists(locator.q_head_file()):
-                q_head.load_state_dict(torch.load(locator.q_head_file(), map_location=self.device))
-            if os.path.exists(locator.v_head_file()):
-                v_head.load_state_dict(torch.load(locator.v_head_file(), map_location=self.device))
-            if os.path.exists(locator.pi_head_file()):
-                pi_head.load_state_dict(torch.load(locator.pi_head_file(), map_location=self.device))
-            
-            # Create SICQL model (for critic)
-            from stephanie.scoring.model.in_context_q import InContextQModel
-            critic = InContextQModel(
-                encoder=encoder,
-                q_head=q_head,
-                v_head=v_head,
-                pi_head=pi_head,
-                embedding_store=self.memory.embedding,
-                device=self.device,
-            )
-        
+            scorer = SICQLScorer(self.cfg, self.memory, self.logger)
+            critic = scorer.get_model(self.dimension)
         # Create policy adapter
         adapter = HybridSICQLAdapter(
+            memory=self.memory,
             actor_lm=actor,
             tokenizer=tokenizer,
             critic_head=critic,

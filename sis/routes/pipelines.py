@@ -42,7 +42,7 @@ def pipeline_detail(request: Request, pipeline_id: int):
 
     logger.info(f"Loaded pipeline run: {run}")
     # Related objects via MemoryTool
-    prompts = memory.prompt.get_by_run_id(pipeline_id)
+    prompts = memory.prompts.get_by_run_id(pipeline_id)
     evaluations = memory.evaluations.get_by_run_id(pipeline_id)
     ids = [eval["id"] for eval in evaluations]
     scores = memory.scores.get_by_evaluation_ids(ids)

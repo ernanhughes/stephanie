@@ -47,6 +47,21 @@ class CaseBookToRLVRDataset:
 
             scorables = case.scorables
 
+            if len(scorables) == 1:
+                scorable = ScorableFactory.from_orm(scorables[0])
+                source = goal_text if goal_text else prompt
+                meta = {
+                    "goal_id": case.goal_id,
+                    "goal_text": goal_text,
+                    "case_id": case.id,
+                    "scorable_id": scorable.id,
+                }
+                # Still create RLVRItem with a baseline reward
+                reward = self.scoring.score("sicql", scorable=scorable,
+                                            context=_as_context(source),
+                                            dimensions=self.dimensions).aggregate()
+                dataset.append(RLVRItem(prompt, scorable.text, reward, meta))
+                continue
             # Compare each scorable against others (pairwise, no duplicates)
             for i, sc in enumerate(scorables):
                 for j, sc_other in enumerate(scorables):
@@ -59,7 +74,6 @@ class CaseBookToRLVRDataset:
                         "case_id": case.id,
                         "scorable_id": sc.id,
                         "competitor_id": sc_other.id,
-                        "created_at": str(sc.created_at),
                     }
 
                     source = goal_text if goal_text else prompt

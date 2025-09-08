@@ -17,7 +17,7 @@ class PromptStore:
     def __init__(self, session: Session, logger=None):
         self.session = session
         self.logger = logger
-        self.name = "prompt"
+        self.name = "prompts"
 
     def get_or_create_goal(
         self,

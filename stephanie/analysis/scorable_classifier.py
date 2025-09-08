@@ -26,6 +26,9 @@ from typing import Dict, List, Optional, Tuple
 import yaml
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ScorableClassifier:
     """
@@ -83,6 +86,7 @@ class ScorableClassifier:
             
             # Precompute domain centroids from seed embeddings
             self.centroids = self._domain_centroids()
+            self._classification_cache = {}
             
         except Exception as e:
             self.logger.log("DomainConfigError", {
@@ -197,13 +201,12 @@ class ScorableClassifier:
             # Calculate centroid as mean of all seed embeddings
             if seed_embs:
                 centroids[domain] = np.mean(seed_embs, axis=0)
-                
-                self.logger.log("DomainCentroidCalculated", {
-                    "domain": domain,
-                    "num_seeds": len(seeds),
-                    "centroid_shape": centroids[domain].shape,
-                    "message": f"Calculated centroid for domain {domain}"
-                })
+                logger.debug("DomainCentroidCalculated"
+                    f"domain : {domain}"
+                    f"num_seeds : {len(seeds)}"
+                    f"centroid_shape : {centroids[domain].shape}"
+                    f"message : Calculated centroid for domain {domain}"
+                )
             else:
                 self.logger.log("DomainWithoutSeeds", {
                     "domain": domain,
@@ -238,7 +241,10 @@ class ScorableClassifier:
             "has_context": context is not None,
             "message": "Starting domain classification"
         })
-        
+        cache_key = (text, tuple(sorted(self.dimensions or [])))
+        if cache_key in self._classification_cache:
+            return self._classification_cache[cache_key]
+
         # Get embedding for input text
         emb = self.memory.embedding.get_or_create(text)
         self.logger.log("TextEmbeddingCreated", {
@@ -297,7 +303,11 @@ class ScorableClassifier:
         
         # Sort scores in descending order
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        # compute as usual...
         top_matches = sorted_scores[:top_k]
+
+        # cache result
+        self._classification_cache[cache_key] = top_matches
         
         # Log if all scores are below minimum threshold
         if all(score < min_value for _, score in top_matches):

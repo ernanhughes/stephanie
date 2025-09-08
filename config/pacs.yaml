@@ -24,6 +24,7 @@ defaults:
   - agents/pacs_training
   - agents/skill_extraction
   - agents/skill_validation
+  - agents/skill_filter
   - agents/seed_casebook
   - agents/arxiv_search
   - agents/modular_memento
@@ -51,7 +52,7 @@ embeddings:
 
 goal:
   goal_text: >
-    Describe a practical blueprint for a CBR-based planner that leverages embeddings, ranking, and revision to iteratively improve at open-ended research tasks.
+    Lets design a process where we can effectively use our chat history to improve our future results.
   goal_type: "strategic"
   goal_category: "meta_reasoning"
   focus_area: "case_based_learning"
@@ -63,7 +64,6 @@ goal:
     - "revised_plan"
     - "retained_cartridge"
 
-
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
@@ -73,42 +73,58 @@ report:
 
 web_search:
   engine: "searxng"
-Right here  instance_url: "http://localhost:8080"
+  instance_url: "http O://localhost:8080"
+
 pipeline:
   name: pacs_trainer_pipeline
   tag: pacs
   description: >
-    Implementation of the PACS framework from 
+    Implementation of the PACS framework, where raw multi-agent chats are imported,
+    transformed into CaseBooks, scored, and used to train models on longitudinal signals.
 
   stages:
      - name: chat_import
-       description: "🗂️ Prepare: load and prepare chat imports for training"
+       description: >
+         🗂️ Import raw chat logs (JSON/HTML) from OpenAI, Qwen, Gemini, and DeepSeek.
+         Parse, deduplicate, and normalize conversations into structured ORM objects.
        cls: stephanie.agents.pacs.chat_import.ChatImportAgent
        enabled: false
        iterations: 1
 
      - name: chat_to_casebook
-       description: "🗂️ Prepare: Convert chat conversations to casebook format"
+       description: >
+         🗂️ Transform imported conversations into CaseBooks.  
+         Each conversation (or turn/message, depending on granularity) becomes a Case
+         with linked Scorables, tied to a goal context.
        cls: stephanie.agents.pacs.chat_to_casebook.ChatToCaseBookAgent
        enabled: true
        iterations: 1
 
      - name: universal_scorer
-       description: "Score imported conversations with all available scorers"
+       description: >
+         📊 Score the generated Scorables across multiple dimensions (novelty, clarity,
+         relevance, implementability, alignment, etc.) using ensemble scorers (SICQL, HRM, EBT).
+         Produces rich feedback that turns chats into labeled training data.
        cls: stephanie.agents.universal_scorer.UniversalScorerAgent
        enabled: false
        iterations: 1 
 
      - name: casebook_preparation
-       description: "🗂️ Prepare: load and prepare CaseBook for training"
+       description: >
+         🗂️ Aggregate scored Scorables into prepared CaseBooks.  
+         Compute progress stats, select high-quality examples, and build RLVR-style datasets
+         ready for PACS training.
        cls: stephanie.agents.pacs.casebook_preparation.CaseBookPreparationAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: pacs_trainer
-       description: "🗂️ Purpose: Train the model using the PACS algorithm"
+       description: >
+         🤖 Train Stephanie using the PACS algorithm.  
+         Replace unstable RL with a supervised loop that couples actor and critic signals ,
+         using CaseBook trajectories as the source of rewards.
        cls: stephanie.agents.pacs.pacs_trainer.PACSTrainerAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: skill_extraction

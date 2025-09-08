@@ -191,14 +191,19 @@ class ChatToCaseBookAgent(BaseAgent):
         # --- 4. Create cases with associated scorables
         for sc in scorables:
             case = self.memory.casebooks.add_case(
+                prompt_text=conv.title, 
                 casebook_id=cb.id,
                 goal_id=goal["id"],
                 agent_name="chat_to_casebook",
                 scorables=[{
+                    "scorable_id": sc.id,              
+                    "scorable_type": sc.target_type,   
                     "text": sc.text,
-                    "role": sc.target_type,
-                    "source": "chat",
-                    "meta": sc.meta or {"conversation_id": conv.id}
+                    "source": self.name,
+                    "meta": {
+                        "conversation_id": conv.id,
+                        **(sc.meta or {})
+                    },
                 }]
             )
             self.report({

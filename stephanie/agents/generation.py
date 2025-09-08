@@ -50,7 +50,7 @@ class GenerationAgent(BaseAgent):
         # --- Hypothesis extraction remains the same ---
         hypotheses = extract_hypotheses_with_score(response)
         hypotheses_saved = []
-        prompt = self.memory.prompt.get_from_text(prompt_text)
+        prompt = self.memory.prompts.get_from_text(prompt_text)
         for h in hypotheses:
             hyp = self.save_hypothesis(
                 {

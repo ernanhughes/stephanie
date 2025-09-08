@@ -126,7 +126,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             "mode": "reason",  # Or use context.get("mode", "reason")
         }
         prompt_text = self.prompt_loader.load_prompt(self.cfg, merged_for_prompt)
-        prompt_id = self.memory.prompt.get_id_from_response(prompt_text)
+        prompt_id = self.memory.prompts.get_id_from_response(prompt_text)
 
         # Safely extract scores
         dimension_scores = best_child.get("dimension_scores", {})
@@ -223,10 +223,10 @@ class LATSAgent(ScoringMixin, BaseAgent):
         prompt_text = self.prompt_loader.load_prompt(self.cfg, merged)
         response = self.call_llm(prompt_text, context=merged)
 
-        prompt = self.memory.prompt.get_from_text(prompt_text)
+        prompt = self.memory.prompts.get_from_text(prompt_text)
         if not prompt:
             goal = context.get("goal")
-            prompt_id = self.memory.prompt.save(
+            prompt_id = self.memory.prompts.save(
                 goal, self.name, self.name, prompt_text, response
             )
         else:
