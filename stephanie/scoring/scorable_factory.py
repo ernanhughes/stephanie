@@ -4,13 +4,13 @@ from typing import Optional
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseORM
-from stephanie.models.chat import ChatConversationORM
+from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
+                                   ChatTurnORM)
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.scorable import Scorable
-from stephanie.models.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM
 
 
 # Enum defining all the supported types of scoreable targets

@@ -22,11 +22,12 @@ Usage:
     domains = classifier.classify(text, top_k=3, context=goal_context)
 """
 
-from typing import Dict, List, Optional, Tuple
-import yaml
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
 import logging
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import yaml
+from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger(__name__)
 

@@ -1,11 +1,11 @@
 # dataloaders/conversation_to_casebook.py
+import logging
+import re
+from datetime import datetime
+
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 from stephanie.models.goal import GoalORM
-from datetime import datetime
-import re
-
-import logging
 
 logger = logging.getLogger(__name__)
 

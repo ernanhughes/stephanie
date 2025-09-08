@@ -3,6 +3,7 @@ from .base import Base
 from .belief_cartridge import BeliefCartridgeORM
 from .cartridge_domain import CartridgeDomainORM
 from .case_goal_state import CaseGoalStateORM
+from .chat import ChatConversationORM, ChatMessageORM
 from .comparison_preference import ComparisonPreferenceORM
 from .context_state import ContextStateORM
 from .document_section import DocumentSectionORM
@@ -40,4 +41,3 @@ from .symbolic_rule import SymbolicRuleORM
 from .theorem import CartridgeORM, TheoremORM
 from .training_stats import TrainingStatsORM
 from .unified_mrq import UnifiedMRQModelORM
-from .chat import ChatConversationORM, ChatMessageORM

@@ -1,9 +1,12 @@
 # stephanie/memory/chat_store.py
 from sqlalchemy import desc, func, text
 from sqlalchemy.orm import Session
-from stephanie.models.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM
+
+from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
+                                   ChatTurnORM)
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
+
 
 class ChatStore:
     def __init__(self, session: Session, logger=None):

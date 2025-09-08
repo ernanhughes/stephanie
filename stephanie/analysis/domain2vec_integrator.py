@@ -1,11 +1,14 @@
 # stephanie/analysis/domain2vec_integrator.py
 from typing import Dict, List, Tuple
+
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from stephanie.analysis.scorable_classifier import ScorableClassifier
-from stephanie.scoring.model.ner_retriever import NERRetrieverEmbedder
-from stephanie.models.embedding import EmbeddingORM
 import torch
+from sklearn.metrics.pairwise import cosine_similarity
+
+from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.models.embedding import EmbeddingORM
+from stephanie.scoring.model.ner_retriever import NERRetrieverEmbedder
+
 
 class Domain2VecNERIntegrator:
     """

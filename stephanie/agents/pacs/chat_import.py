@@ -2,6 +2,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 from stephanie.tools.chat_importer import import_conversations
 
+
 class ChatImportAgent(BaseAgent):
     """
     Agent that imports chat conversations from a directory

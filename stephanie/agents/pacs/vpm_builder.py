@@ -1,8 +1,10 @@
 # stephanie/agents/data/vpm_builder_agent.py
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import CASEBOOK
+
 
 class VPMBuilderAgent(BaseAgent):
     """

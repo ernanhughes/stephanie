@@ -1,15 +1,16 @@
 # stephanie/scoring/model/ner_retriever.py
+import json
+import logging
+import os
+from typing import Dict, List, Tuple
+
+import annoy
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import json
-import os
-import logging
 from tqdm import tqdm
-from typing import List, Tuple, Dict
 from transformers import AutoModel, AutoTokenizer, pipeline
-import annoy
 
 from stephanie.scoring.scorable import Scorable
 

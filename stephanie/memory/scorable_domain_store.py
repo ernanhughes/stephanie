@@ -1,11 +1,10 @@
+import logging
 from typing import List
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from stephanie.models.scorable_domain import ScorableDomainORM
-
-import logging
 
 logger = logging.getLogger(__name__)    
 

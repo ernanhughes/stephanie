@@ -1,9 +1,12 @@
 
+import logging
+
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.cartridge_triple import CartridgeTripleORM
+from stephanie.models.casebook import CaseScorableORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
@@ -12,9 +15,7 @@ from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 from stephanie.scoring.scoring_manager import ScoringManager
-from stephanie.models.casebook import CaseScorableORM
 
-import logging
 _logger = logging.getLogger(__name__)
 
 class UniversalScorerAgent(BaseAgent):

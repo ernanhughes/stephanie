@@ -20,12 +20,13 @@ This transformation is crucial for creating the training data that enables
 Stephanie to learn from human-AI collaboration patterns.
 """
 
+from datetime import datetime
+
 # stephanie/agents/pacs/chat_to_casebook.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.models.chat import ChatConversationORM
 from stephanie.models.casebook import CaseBookORM
-from datetime import datetime
+from stephanie.models.chat import ChatConversationORM
 
 
 class ChatToCaseBookAgent(BaseAgent):

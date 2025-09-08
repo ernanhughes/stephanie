@@ -1,15 +1,10 @@
 # stephanie/models/chat.py
 from datetime import datetime
-from sqlalchemy import (
-    Column,
-    DateTime,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    JSON,
-)
+
+from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer, String,
+                        Text)
 from sqlalchemy.orm import relationship
+
 from stephanie.models.base import Base
 
 

@@ -1520,4 +1520,30 @@ CREATE TABLE chat_turns (
     assistant_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE
 );
 
+
+CREATE TABLE IF NOT EXISTS scorable_entities (
+    id SERIAL PRIMARY KEY,
+    scorable_id VARCHAR NOT NULL,
+    scorable_type VARCHAR NOT NULL,
+    entity_text TEXT NOT NULL,
+    entity_type VARCHAR,
+    start INT,
+    "end" INT,
+    similarity FLOAT,
+    source_text TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE (scorable_id, scorable_type, entity_text)
+);
+
+-- Helpful indexes
+CREATE INDEX ix_scorable_entities_owner
+    ON scorable_entities (scorable_type, scorable_id);
+
+CREATE INDEX ix_scorable_entities_type
+    ON scorable_entities (entity_type);
+
+CREATE INDEX ix_scorable_entities_text
+    ON scorable_entities (entity_text);
+
+
 COMMIT; 

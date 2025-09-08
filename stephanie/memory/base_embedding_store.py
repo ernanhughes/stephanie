@@ -1,11 +1,11 @@
 # stephanie/memory/base_embedding_store.py
 import hashlib
+from typing import Dict, List, Tuple
+import numpy as np
+import torch
 import os
 import json
-import logging
-from typing import Dict, Any, List, Optional, Tuple
-
-import torch
+from datetime import datetime
 
 from stephanie.memory import BaseStore
 from stephanie.utils.lru_cache import SimpleLRUCache
@@ -29,6 +29,7 @@ class BaseEmbeddingStore(BaseStore):
         self.ner_retriever = None
         self.ner_enabled = cfg.get("enable_ner", False)
         self.ner_index_initialized = False
+
         
         if self.ner_enabled:
             try:
@@ -136,46 +137,51 @@ class BaseEmbeddingStore(BaseStore):
                 self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
         return None
 
-    def search_related_scorables(self, query: str, target_type: str = "document", 
-                            top_k: int = 10, with_metadata: bool = True,
-                            include_ner: bool = True):
+    def search_related_scorables(
+        self,
+        query: str,
+        target_type: str = "document", 
+        top_k: int = 10,
+        with_metadata: bool = True,
+        include_ner: bool = True,
+        domain: str = None
+    ):
         """
-        Search for scorables with configurable NER integration.
+        Search for scorables with configurable NER + semantic integration.
         
         Args:
-            hybrid_mode: How to integrate NER results
-                - "merge": Mix semantic + NER results (default)
-                - "ner_only": Return only NER results
-                - "semantic_only": Return only semantic results
-                - "separate": Return both as separate lists
+            query: search text
+            target_type: "document", "hypothesis", etc.
+            top_k: number of results to return
+            with_metadata: whether to fetch metadata (titles, text, etc.)
+            include_ner: whether to run NER retrieval
+            domain: optional domain context for dynamic weighting
         """
         hybrid_mode = self.cfg.get("ner_hybrid_mode", "merge")
-        
-        # Get semantic results
-        semantic_results = []
+
+        semantic_results, ner_results = [], []
+
         if hybrid_mode in ["merge", "semantic_only", "separate"]:
             semantic_results = self._get_semantic_results(query, target_type, top_k, with_metadata)
-        
-        # Get NER results
-        ner_results = []
+
         if include_ner and self.ner_enabled and hybrid_mode in ["merge", "ner_only", "separate"]:
             ner_results = self._get_ner_results(query, top_k)
-        
-        # Handle different integration modes
+
         if hybrid_mode == "merge":
-            combined = self._combine_results(semantic_results, ner_results)
-            combined.sort(key=lambda x: x["combined_score"], reverse=True)
+            # 👇 fallback-safe combination
+            combined = self._combine_results(semantic_results, ner_results, query=query, domain=domain)
             return combined[:top_k]
-        
+
         elif hybrid_mode == "separate":
             return {
                 "semantic": semantic_results[:top_k],
                 "ner": ner_results[:top_k],
-                "combined_score": self._combine_results(semantic_results, ner_results)[:top_k]
+                "combined": self._combine_results(semantic_results, ner_results, query=query, domain=domain)[:top_k]
             }
-        
+
         elif hybrid_mode == "ner_only":
             return ner_results[:top_k]
+
         else:  # semantic_only
             return semantic_results[:top_k]
 
@@ -279,23 +285,51 @@ class BaseEmbeddingStore(BaseStore):
     # NER Retriever Integration
     # ==============================
     
-
     def _normalize_scores(self, results: List[Dict], score_key: str = "score") -> None:
-        """Normalize scores to [0,1] within their distribution"""
+        """
+        Normalize scores using distribution-aware methods.
+
+        - Semantic scores (cosine similarity / vector distance) → assume ~normal distribution.
+        Normalize with mean & std (3-sigma scaling).
+        - NER similarity scores → typically skewed.
+        Normalize with percentile-based method (IQR scaling).
+
+        Adds either `norm_score` or `norm_similarity` depending on score_key.
+        """
+
         if not results:
             return
-            
-        scores = [r.get(score_key, 0.0) for r in results]
-        min_score = min(scores)
-        max_score = max(scores)
-        
-        # Avoid division by zero
-        if max_score - min_score < 1e-8:
+
+        scores = [r.get(score_key, 0.0) for r in results if r.get(score_key) is not None]
+        if not scores:
+            return
+
+        # --- Case 1: semantic similarity ---
+        if score_key == "score":
+            mean = np.mean(scores)
+            std = np.std(scores)
             for r in results:
-                r[f"norm_{score_key}"] = 0.5
-        else:
+                raw = r.get(score_key, 0.0)
+                # Map to [0,1] with 3σ window
+                norm = (raw - (mean - 3 * std)) / (6 * std + 1e-8)
+                r["norm_score"] = float(min(1.0, max(0.0, norm)))
+
+        # --- Case 2: NER similarity ---
+        elif score_key == "similarity":
+            p25 = np.percentile(scores, 25)
+            p75 = np.percentile(scores, 75)
+            iqr = max(p75 - p25, 1e-8)
+            upper_bound = p75 + 1.5 * iqr
+
             for r in results:
-                r[f"norm_{score_key}"] = (r.get(score_key, 0.0) - min_score) / (max_score - min_score + 1e-8)
+                raw = r.get(score_key, 0.0)
+                if raw >= p75:
+                    # High-confidence → emphasize upper half
+                    norm = 0.5 + 0.5 * min(1.0, (raw - p75) / (upper_bound - p75 + 1e-8))
+                else:
+                    # Low-confidence → squeeze into lower half
+                    norm = 0.5 * (raw - p25) / (p75 - p25 + 1e-8)
+                r["norm_similarity"] = float(min(1.0, max(0.0, norm)))
 
     def _standardize_result_schema(self, results: List[Dict]) -> List[Dict]:
         """Ensure all results have consistent schema"""
@@ -319,39 +353,74 @@ class BaseEmbeddingStore(BaseStore):
         
         return results
 
-    def _combine_results(self, semantic_results: List[Dict], ner_results: List[Dict]) -> List[Dict]:
-        """Combine semantic and NER results into a unified, weighted list."""
-        
-        # Normalize scores separately
+    def _combine_results(self, semantic_results: List[Dict], ner_results: List[Dict], query: str = "", domain: str = None) -> List[Dict]:
+        # Normalize scores
         self._normalize_scores(semantic_results, "score")
         self._normalize_scores(ner_results, "similarity")
+        
+        # Apply confidence calibration
+        self._calibrate_confidence(semantic_results, ner_results, query)
         
         # Standardize schema
         semantic_results = self._standardize_result_schema(semantic_results)
         ner_results = self._standardize_result_schema(ner_results)
         
-        # Apply weights
-        ner_weight = self.cfg.get("ner_weight", 0.6)
-        semantic_weight = 1.0 - ner_weight
+        # Determine weights
+        ner_weight, semantic_weight = self._determine_dynamic_weights(query, domain)
         
+        # Apply calibrated scores
         all_results = []
         for r in semantic_results:
-            # Use normalized score
-            norm_score = r.get("norm_score", 0.0)
-            r["combined_score"] = semantic_weight * norm_score
-            r["retrieval_type"] = "semantic"
-            r["score"] = r["combined_score"]  # unify under `score`
+            r["combined_score"] = semantic_weight * r.get("calibrated_score", r.get("norm_score", 0.0))
             all_results.append(r)
             
         for r in ner_results:
-            norm_similarity = r.get("norm_similarity", 0.0)
-            r["combined_score"] = ner_weight * norm_similarity
+            r["combined_score"] = ner_weight * r.get("calibrated_similarity", r.get("norm_similarity", 0.0))
+            all_results.append(r)
+
+        if not semantic_results:
+            self.logger.log("SemanticFailure", {
+                "query": query,
+                "ner_results": len(ner_results),
+                "message": "Semantic search failed, using NER only"
+            })
+            for r in ner_results:
+                r["combined_score"] = r.get("norm_similarity", 0.0) * 1.2  # boost NER slightly
+                r["retrieval_type"] = "ner_fallback"
+            return sorted(ner_results, key=lambda x: x["combined_score"], reverse=True)
+
+        # --- Case 3: Only semantic succeeded ---
+        if not ner_results:
+            self.logger.log("NERFailure", {
+                "query": query,
+                "semantic_results": len(semantic_results),
+                "message": "NER search failed, using semantic only"
+            })
+            for r in semantic_results:
+                r["combined_score"] = r.get("norm_score", 0.0)
+                r["retrieval_type"] = "semantic_only"
+                r["warning"] = "NER system unavailable"
+            return sorted(semantic_results, key=lambda x: x["combined_score"], reverse=True)
+
+        # --- Case 4: Both succeeded ---
+        ner_weight, semantic_weight = self._determine_dynamic_weights(query, domain)
+        
+        all_results = []
+        for r in semantic_results:
+            r["combined_score"] = semantic_weight * r.get("norm_score", 0.0)
+            r["retrieval_type"] = "semantic"
+            r["score"] = r["combined_score"]
+            all_results.append(r)
+            
+        for r in ner_results:
+            r["combined_score"] = ner_weight * r.get("norm_similarity", 0.0)
             r["retrieval_type"] = "ner_entity"
-            r["score"] = r["combined_score"]  # unify under `score`
+            r["score"] = r["combined_score"]
             all_results.append(r)
         
-        return all_results
-
+        return sorted(all_results, key=lambda x: x["combined_score"], reverse=True)
+       
+ 
     def index_entities_from_scorables(self, scorables: list, batch_size: int = 10) -> int:
         """
         Index entities from a list of scorables using NER Retriever.
@@ -539,3 +608,179 @@ class BaseEmbeddingStore(BaseStore):
             "retriever_available": self.ner_retriever is not None,
             "index_stats": self.get_ner_index_stats()
         }
+    
+
+    def _determine_dynamic_weights(self, query: str, domain: str = None) -> Tuple[float, float]:
+        """
+        Determine optimal NER vs Semantic weights based on query type and domain.
+
+        Returns:
+            (ner_weight, semantic_weight) in [0,1].
+        """
+        query_lower = query.lower()
+
+        # --- Keyword-based heuristics ---
+        entity_keywords = ["who", "what", "where", "when", "which", "name", "list", "find"]
+        conceptual_keywords = ["how", "why", "explain", "describe", "understand", "relationship"]
+
+        entity_count = sum(1 for kw in entity_keywords if kw in query_lower)
+        conceptual_count = sum(1 for kw in conceptual_keywords if kw in query_lower)
+
+        # --- Base weights ---
+        if entity_count > conceptual_count:
+            ner_weight, semantic_weight = 0.7, 0.3
+        elif conceptual_count > entity_count:
+            ner_weight, semantic_weight = 0.3, 0.7
+        else:
+            ner_weight, semantic_weight = 0.5, 0.5
+
+        # --- Domain adjustments ---
+        domain_weights = {
+            "legal": (0.6, 0.4),       # legal docs → entity precision matters
+            "scientific": (0.55, 0.45),
+            "creative": (0.4, 0.6),    # conceptual similarity more important
+        }
+
+        if domain and domain in domain_weights:
+            ner_weight, semantic_weight = domain_weights[domain]
+
+        # Clamp to valid range
+        ner_weight = max(0.0, min(1.0, ner_weight))
+        semantic_weight = max(0.0, min(1.0, semantic_weight))
+
+        self.logger.log("DynamicWeighting", {
+            "query": query[:60],
+            "ner_weight": ner_weight,
+            "semantic_weight": semantic_weight,
+            "domain": domain or "unknown"
+        })
+
+        return ner_weight, semantic_weight
+
+
+    def _calibrate_confidence(self, semantic_results: List[Dict], ner_results: List[Dict], query: str) -> None:
+        """Calibrate confidence between systems based on historical performance"""
+        # Get domain from query or context
+        domain = self._get_current_domain(query)
+        
+        # Load historical calibration data
+        calibration = self._load_calibration_data(domain)
+        
+        # Apply domain-specific calibration
+        for r in semantic_results:
+            r["calibrated_score"] = self._apply_calibration(
+                r["norm_score"], 
+                calibration.get("semantic", {})
+            )
+        
+        for r in ner_results:
+            r["calibrated_similarity"] = self._apply_calibration(
+                r["norm_similarity"], 
+                calibration.get("ner", {})
+            )
+
+    def _apply_calibration(self, score: float, calibration: Dict) -> float:
+        """Apply polynomial calibration based on historical accuracy"""
+        if not calibration or "coefficients" not in calibration:
+            return score
+        
+        # Apply polynomial transformation
+        poly = np.poly1d(calibration["coefficients"])
+        return float(poly(score))
+
+    def _get_current_domain(self, query: str) -> str:
+        """Determine domain from query using classifier"""
+        if not hasattr(self, '_domain_classifier'):
+            from stephanie.analysis.scorable_classifier import ScorableClassifier
+            self._domain_classifier = ScorableClassifier(
+                memory=self.memory,
+                logger=self.logger,
+                config_path=self.cfg.get("domain_config", "config/domain/seeds.yaml")
+            )
+        
+        return self._domain_classifier.classify(query)
+
+    def _load_calibration_data(self, domain: str) -> Dict:
+        """Load historical calibration data for the given domain"""
+        calibration_path = f"data/calibration/{domain}_calibration.json"
+        
+        if not os.path.exists(calibration_path):
+            # Fallback to general calibration
+            calibration_path = "data/calibration/general_calibration.json"
+            
+            if not os.path.exists(calibration_path):
+                # Default calibration coefficients
+                return {
+                    "semantic": {"coefficients": [1.0, 0.0]},
+                    "ner": {"coefficients": [1.0, 0.0]}
+                }
+        try:
+            with open(calibration_path, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.log("CalibrationLoadFailed", {
+                "error": str(e),
+                "path": calibration_path
+            })
+            return {
+                "semantic": {"coefficients": [1.0, 0.0]},
+                "ner": {"coefficients": [1.0, 0.0]}
+            }
+    
+    def train_calibration(self, historical_data: List[Dict], domain: str = "general"):
+        """
+        Train calibration model using historical performance data.
+        
+        Args:
+            historical_data: List of {query, expected_results, actual_results, accuracy}
+            domain: Domain to train calibration for
+        """
+        # Group data by system type
+        semantic_data = [d for d in historical_data if d["system"] == "semantic"]
+        ner_data = [d for d in historical_data if d["system"] == "ner"]
+        
+        # Train calibration models
+        semantic_calibration = self._train_calibration_model(semantic_data)
+        ner_calibration = self._train_calibration_model(ner_data)
+        
+        # Save to disk
+        calibration_data = {
+            "semantic": semantic_calibration,
+            "ner": ner_calibration,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        os.makedirs("data/calibration", exist_ok=True)
+        with open(f"data/calibration/{domain}_calibration.json", "w") as f:
+            json.dump(calibration_data, f, indent=2)
+        
+        self.logger.log("CalibrationTrained", {
+            "domain": domain,
+            "semantic_rmse": semantic_calibration.get("rmse", 0),
+            "ner_rmse": ner_calibration.get("rmse", 0)
+        })
+
+    def _train_calibration_model(self, data: List[Dict]) -> Dict:
+        """Train polynomial calibration model for a system"""
+        if not data:
+            return {"coefficients": [1.0, 0.0]}
+        
+        # Extract scores and actual accuracy
+        scores = [d["score"] for d in data]
+        accuracy = [d["accuracy"] for d in data]
+        
+        # Fit polynomial (degree 2 works well)
+        try:
+            coeffs = np.polyfit(scores, accuracy, 2)
+            # Calculate RMSE for evaluation
+            predicted = np.polyval(coeffs, scores)
+            rmse = np.sqrt(np.mean((predicted - accuracy) ** 2))
+            
+            return {
+                "coefficients": coeffs.tolist(),
+                "rmse": float(rmse),
+                "sample_size": len(data)
+            }
+        except Exception as e:
+            self.logger.log("CalibrationTrainingFailed", {"error": str(e)})
+            return {"coefficients": [1.0, 0.0]}

@@ -1,13 +1,14 @@
 # stephanie/tools/chat_importer.py
-import json
 import glob
-import os
-from bs4 import BeautifulSoup
 import hashlib
-from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
-
-from datetime import datetime
+import json
 import logging
+import os
+from datetime import datetime
+
+from bs4 import BeautifulSoup
+
+from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 
 logger = logging.getLogger(__name__)
 

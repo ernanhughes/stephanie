@@ -1,29 +1,26 @@
 # stephanie/scoring/training/pacs_trainer.py
 from __future__ import annotations
 
-import os
-import json
 import copy
+import json
+import os
+import random
+from dataclasses import dataclass
 from datetime import datetime
-from stephanie.scoring.scorable_factory import TargetType
+from typing import Any, Callable, Dict, List, Optional
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from typing import Dict, Any, Optional, Callable, List
 
-from stephanie.scoring.training.base_trainer import BaseTrainer
-from stephanie.models.training_stats import TrainingStatsORM
-from stephanie.models.model_version import ModelVersionORM
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.models.belief_cartridge import BeliefCartridgeORM
+from stephanie.models.model_version import ModelVersionORM
+from stephanie.models.training_stats import TrainingStatsORM
+from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
-
-
-import random
-from dataclasses import dataclass
-
-
+from stephanie.scoring.training.base_trainer import BaseTrainer
 
 # ==============================
 # Core RLVR data structures
@@ -282,6 +279,7 @@ class PACSCoreTrainer:
         cfg: PACSConfig,
         verifier: Callable[[str, str, Optional[Dict[str, Any]]], int],
         logger: Optional[Callable[[Dict[str, Any]], None]] = None,
+        online_training: bool = False
     ):
         """
         Args:
@@ -294,7 +292,8 @@ class PACSCoreTrainer:
         self.cfg = cfg
         self.verifier = verifier
         self.logger = logger or (lambda d: None)
-        
+        self.online_training = online_training
+
         # Determine which parameters to train
         if cfg.score_mode == "logprob":
             params = self.policy.actor.parameters()
@@ -434,7 +433,11 @@ class PACSCoreTrainer:
             try:
                 # Sample random item from dataset
                 item = dataset[random.randint(0, len(dataset) - 1)]
-                self._train_on_item_offline(item, metrics)
+
+                if self.online_training:
+                    self._train_on_item(item, metrics)
+                else:
+                    self._train_on_item_offline(item, metrics)
                 
                 # Periodic reference model reset
                 if self.cfg.steps_per_reset and (self._step % self.cfg.steps_per_reset == 0):
@@ -777,8 +780,9 @@ class PACSTrainer(BaseTrainer):
             def generic_verifier(prompt: str, response: str, meta: Optional[Dict] = None) -> int:
                 # In practice, this would use your SICQL system
                 from stephanie.scoring.scorable_factory import ScorableFactory
-                from stephanie.scoring.transforms.regression_tuner import RegressionTuner
-                
+                from stephanie.scoring.transforms.regression_tuner import \
+                    RegressionTuner
+
                 # Create scorable
                 scorable = ScorableFactory.from_text(
                     response, 
@@ -804,7 +808,7 @@ class PACSTrainer(BaseTrainer):
     def _build_policy_adapter(self, dimension: str):
         """Build policy adapter with SICQL integration"""
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        
+
         # Load base model (same as SICQL uses)
         base_model = "Qwen/Qwen2.5-1.5B"
         actor = AutoModelForCausalLM.from_pretrained(base_model)
@@ -866,8 +870,9 @@ class PACSTrainer(BaseTrainer):
             policy=policy,
             cfg=pacs_cfg,
             verifier=verifier,
-            logger=self._log_metrics
-        )
+            logger=self._log_metrics,
+            online_training=False
+        ) 
         
         # 5. Train model
         training_stats = self.pacs_core.train(dataset, max_steps=self.max_steps)
