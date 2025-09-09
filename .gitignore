@@ -5,6 +5,7 @@ outputs/
 /logs/
 /reports/
 /worldviews/
+/data/
 
 
 # Byte-compiled / optimized / DLL files

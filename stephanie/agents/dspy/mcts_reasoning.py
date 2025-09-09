@@ -3,13 +3,13 @@
 MCTSReasoningAgent (enhanced, patched)
 """
 
+import logging
 import math
 import uuid
-import logging
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 
 import dspy
-from dspy import Predict, Signature, InputField, OutputField
+from dspy import InputField, OutputField, Predict, Signature
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
@@ -315,7 +315,7 @@ class MCTSReasoningAgent(BaseAgent):
                 id=n.id,
                 text=content,
                 target_type=self.scorable_type,
-                metadata={
+                meta={
                     "mcts": {
                         "rank": rank,
                         "best_node_score": float(n.score or 0.0),

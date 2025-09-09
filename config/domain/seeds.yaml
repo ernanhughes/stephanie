@@ -205,3 +205,135 @@ domains:
       - "second-order optimization"
       - "trust-region methods"
       - "meta-optimization strategies"
+
+  mathematics:
+    description: "Mathematical reasoning, proofs, and symbolic problem solving."
+    seeds:
+      - "algebraic equation solving"
+      - "mathematical proof generation"
+      - "combinatorics and counting problems"
+      - "geometry reasoning"
+      - "probability and statistics"
+      - "calculus and differentiation"
+      - "number theory applications"
+
+  programming:
+    description: "Code generation, debugging, and reasoning about software systems."
+    seeds:
+      - "python code generation"
+      - "unit test generation"
+      - "code synthesis from natural language"
+      - "program repair and debugging"
+      - "algorithm design in code"
+      - "static code analysis"
+      - "runtime error detection"
+
+  scientific_discovery:
+    description: "Using AI to assist in scientific research and hypothesis formation."
+    seeds:
+      - "literature review automation"
+      - "knowledge extraction from research papers"
+      - "simulation-based hypothesis testing"
+      - "cross-domain scientific reasoning"
+      - "automated experiment design"
+      - "evidence synthesis across studies"
+      - "replication and reproducibility analysis"
+
+  medicine:
+    description: "Medical reasoning, diagnosis, and clinical knowledge extraction."
+    seeds:
+      - "disease diagnosis reasoning"
+      - "clinical guideline summarization"
+      - "drug-drug interaction detection"
+      - "biomedical literature mining"
+      - "radiology report analysis"
+      - "electronic health record reasoning"
+      - "precision medicine recommendations"
+
+  finance:
+    description: "Financial reasoning, market analysis, and quantitative trading."
+    seeds:
+      - "risk assessment in trading"
+      - "portfolio optimization"
+      - "derivatives pricing models"
+      - "market sentiment analysis"
+      - "financial time-series prediction"
+      - "fraud detection in finance"
+      - "algorithmic trading strategies"
+
+  law:
+    description: "Legal reasoning, case law retrieval, and compliance."
+    seeds:
+      - "case law retrieval"
+      - "legal document summarization"
+      - "contract clause analysis"
+      - "regulatory compliance checking"
+      - "legal reasoning with precedents"
+      - "statutory interpretation"
+      - "argument extraction from legal text"
+
+  ethics:
+    description: "Ethical reasoning, bias detection, and responsible AI."
+    seeds:
+      - "fairness and bias detection"
+      - "AI ethics guidelines"
+      - "bias mitigation techniques"
+      - "ethical dilemma reasoning"
+      - "value alignment in AI"
+      - "transparency and explainability"
+      - "responsible deployment of AI"
+
+  multimodal:
+    description: "Reasoning across text, vision, and audio modalities."
+    seeds:
+      - "image-text alignment"
+      - "vision-language grounding"
+      - "speech-to-text reasoning"
+      - "cross-modal retrieval"
+      - "multimodal embeddings"
+      - "audio-visual scene understanding"
+      - "video question answering"
+
+  creativity:
+    description: "Generative tasks involving creativity, design, and art."
+    seeds:
+      - "story generation with consistency"
+      - "poetry generation"
+      - "music composition with AI"
+      - "visual art generation"
+      - "creative brainstorming"
+      - "design ideation assistance"
+      - "humor generation in AI"
+
+  explanation:
+    description: "Interpretability and explainability in AI reasoning."
+    seeds:
+      - "saliency maps in NLP"
+      - "explainable AI methods"
+      - "rationale extraction"
+      - "transparent decision-making"
+      - "interpretability of deep networks"
+      - "counterfactual explanations"
+      - "post-hoc model explanation"
+
+  communication:
+    description: "Dialogue, conversation management, and interactive reasoning."
+    seeds:
+      - "multi-turn dialogue coherence"
+      - "conversation memory management"
+      - "clarification question generation"
+      - "task-oriented dialogue"
+      - "empathetic response generation"
+      - "interactive reasoning agents"
+      - "goal-driven conversation"
+
+  knowledge_graphs:
+    description: "Knowledge graph construction, reasoning, and querying."
+    seeds:
+      - "knowledge graph completion"
+      - "graph neural networks for reasoning"
+      - "triple extraction from text"
+      - "ontology alignment"
+      - "graph-based question answering"
+      - "schema induction"
+      - "multi-hop graph reasoning"

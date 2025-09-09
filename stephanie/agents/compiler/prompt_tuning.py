@@ -177,7 +177,7 @@ class PromptTuningAgent(BaseAgent):
                 step["score"] = best_score
 
                 # Store in prompt memory (if needed)
-                self.memory.prompt.save(
+                self.memory.prompts.save(
                     goal={"goal_text": goal},
                     agent_name=self.name,
                     prompt_key=f"step_{i}",
@@ -263,7 +263,7 @@ class PromptTuningAgent(BaseAgent):
                 refined_prompt = result.refined_prompt.strip()
 
                 # Store refined prompt to the DB
-                self.memory.prompt.save(
+                self.memory.prompts.save(
                     goal={"goal_text": example["goal"]},
                     agent_name=self.name,
                     prompt_key=self.prompt_key,

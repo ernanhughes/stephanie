@@ -1,0 +1,18 @@
+pacs_trainer:
+  name: pacs_trainer
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  dimensions: ["novelty", "clarity", "relevance", "implementability", "alignment"] 
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: pacs_trainer
+  prompt_mode: file
+  prompt_file: pacs_trainer.txt

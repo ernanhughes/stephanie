@@ -75,3 +75,6 @@ class GoalStore:
 
     def get_all(self) -> list[GoalORM]:
         return self.session.query(GoalORM).all()
+
+    def get_by_id(self, goal_id: int) -> GoalORM | None:
+        return self.session.query(GoalORM).filter(GoalORM.id == goal_id).first()

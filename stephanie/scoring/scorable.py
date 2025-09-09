@@ -3,11 +3,11 @@ from typing import Any, Dict
 
 
 class Scorable:
-    def __init__(self, text: str, id: str = "", target_type: str = "custom", metadata: Dict[str, Any] = None):
+    def __init__(self, text: str, id: str = "", target_type: str = "custom", meta: Dict[str, Any] = None):
         self._id = id
         self._text = text
         self._target_type = target_type
-        self._metadata = metadata or {}
+        self._metadata = meta or {}
 
     @property
     def meta(self) -> Dict[str, Any]:

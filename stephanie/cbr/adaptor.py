@@ -1,7 +1,10 @@
 # stephanie/cbr/adaptor.py
 from __future__ import annotations
-from typing import Dict, Any
-from dspy import Predict, Signature, InputField, OutputField
+
+from typing import Any, Dict
+
+from dspy import InputField, OutputField, Predict, Signature
+
 
 class AdaptSignature(Signature):
     goal      = InputField(desc="Goal text (what we are trying to achieve)")

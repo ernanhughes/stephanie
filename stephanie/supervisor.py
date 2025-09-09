@@ -24,6 +24,7 @@ from stephanie.memory.memory_tool import MemoryTool
 from stephanie.registry.component_registry import (get_registered_component,
                                                    register)
 from stephanie.reporting import ReportFormatter
+from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
 from stephanie.scoring.scoring_service import ScoringService
 from stephanie.utils.report_utils import get_stage_details
 
@@ -86,6 +87,17 @@ class Supervisor:
             trainer_fn=trainer_fn,
         )
 
+        # --- Reporting Service ---
+        reporter = Reporter(
+            sinks=[
+                JsonlSink(cfg.logging.logger.report_path or "reports/pipeline_events.jsonl"),
+                LoggerSink(self.logger),
+            ],
+            enabled=True,
+            sample_rate=1.0,
+        )
+
+        # Register for global access
         register("scoring_service", scoring_service)
         register("state_tracker", state_tracker)
         register("confidence_tracker", confidence_tracker)
@@ -93,6 +105,7 @@ class Supervisor:
         register("training_controller", training_controller)
         register("self_validation", validator)
         register("plan_trace_monitor", PlanTraceMonitor(cfg, self.memory, self.logger, scoring_service))
+        register("reporter_service", reporter)
         self.logger.log(
             "SupervisorComponentsRegistered",
             {
@@ -100,6 +113,7 @@ class Supervisor:
                 "confidence_tracker": confidence_tracker,
                 "training_controller": training_controller,
                 "self_validation": validator,
+                "report_path": cfg.report.path or "reports/pipeline_events.jsonl",
             },
         )
 
@@ -257,6 +271,7 @@ class Supervisor:
                     agent_args["full_cfg"] = self.cfg
                 agent = cls(**agent_args)
                 agent.scoring = get_registered_component("scoring_service")
+                agent.reporter = get_registered_component("reporter_service") or agent.reporter
 
                 self.logger.log("PipelineStageStart", {STAGE: stage.name})
                 

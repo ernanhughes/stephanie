@@ -118,7 +118,7 @@ class IdeaSharpeningAgent(BaseAgent):
             return None
 
         sharpened = result["sharpened_hypothesis"]
-        prompt_id = self.memory.prompt.get_id_from_response(sharpened)
+        prompt_id = self.memory.prompts.get_id_from_response(sharpened)
 
         hyp = self.save_hypothesis(
             {

@@ -85,7 +85,7 @@ class PromptTuningAgent(BaseAgent):
         )
 
         # Get training + validation data
-        examples = self.memory.prompt.get_prompt_training_set(goal, generation_count)
+        examples = self.memory.prompts.get_prompt_training_set(goal, generation_count)
         train_data = examples[: self.sample_size]
         val_data = examples[self.sample_size :]
 
@@ -159,7 +159,7 @@ class PromptTuningAgent(BaseAgent):
                 refined_prompt = result.refined_prompt.strip()
 
                 # Store refined prompt to the DB
-                self.memory.prompt.save(
+                self.memory.prompts.save(
                     goal={"goal_text": example["goal"]},
                     agent_name=self.name,
                     prompt_key=self.prompt_key,

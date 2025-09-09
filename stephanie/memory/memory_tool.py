@@ -12,6 +12,7 @@ from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
 from stephanie.memory.cartridge_triple_store import CartridgeTripleStore
 from stephanie.memory.casebook_store import CaseBookStore
+from stephanie.memory.chat_store import ChatStore
 from stephanie.memory.context_store import ContextStore
 from stephanie.memory.document_domain_section_store import \
     DocumentSectionDomainStore
@@ -161,6 +162,7 @@ class MemoryTool:
         self.register_store(MARSResultStore(self.session, logger))
         self.register_store(MARSConflictStore(self.session, logger))
         self.register_store(CaseBookStore(self.session, logger))
+        self.register_store(ChatStore(self.session, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):
@@ -218,3 +220,20 @@ class MemoryTool:
                 self.logger.log(
                     "SessionRefreshed", {"new_session_id": id(self.session)}
                 )
+
+    @staticmethod
+    def SessionLocal() -> Session:
+        """
+        Convenience method to create a standalone SQLAlchemy session.
+        Does not initialize the full MemoryTool.
+        """
+        return sessionmaker(bind=engine)()
+
+    @classmethod
+    def new_session(cls) -> Session:
+        """
+        Class method variant (alias for SessionLocal).
+        Useful if you want it bound to the class.
+        """
+        return sessionmaker(bind=engine)()
+

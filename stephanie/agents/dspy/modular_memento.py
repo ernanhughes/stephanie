@@ -1,19 +1,20 @@
 # stephanie/agents/cbr/modular_memento.py
-from stephanie.cbr.context_namespacer import DefaultContextNamespacer
-from stephanie.cbr.casebook_scope_manager import DefaultCasebookScopeManager
-from stephanie.cbr.case_selector import DefaultCaseSelector
-from stephanie.cbr.rank_and_analyze import DefaultRankAndAnalyze
-from stephanie.cbr.retention_policy import DefaultRetentionPolicy
-from stephanie.cbr.quality_assessor import DefaultQualityAssessor
-from stephanie.cbr.champion_promoter import DefaultChampionPromoter
-from stephanie.cbr.goal_state_tracker import DefaultGoalStateTracker
+from stephanie.agents.dspy.mcts_reasoning import MCTSReasoningAgent
 from stephanie.cbr.ab_validator import DefaultABValidator
+from stephanie.cbr.case_selector import DefaultCaseSelector
+from stephanie.cbr.casebook_scope_manager import DefaultCasebookScopeManager
+from stephanie.cbr.champion_promoter import DefaultChampionPromoter
+from stephanie.cbr.context_namespacer import DefaultContextNamespacer
+from stephanie.cbr.goal_state_tracker import DefaultGoalStateTracker
 from stephanie.cbr.micro_learner import DefaultMicroLearner
 from stephanie.cbr.middleware import CBRMiddleware
-from stephanie.agents.dspy.mcts_reasoning import MCTSReasoningAgent
-from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+from stephanie.cbr.quality_assessor import DefaultQualityAssessor
+from stephanie.cbr.rank_and_analyze import DefaultRankAndAnalyze
+from stephanie.cbr.retention_policy import DefaultRetentionPolicy
 from stephanie.constants import AGENT_NAME, INCLUDE_MARS
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+
 
 class ModularMementoAgent(MCTSReasoningAgent):
     def __init__(self, cfg, memory, logger):

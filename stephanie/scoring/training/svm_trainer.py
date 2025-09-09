@@ -1,3 +1,6 @@
+# stephanie/scoring/training/svm_trainer.py
+from __future__ import annotations
+
 import joblib
 import numpy as np
 from sklearn.preprocessing import StandardScaler

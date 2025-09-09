@@ -726,7 +726,7 @@ CREATE TABLE IF NOT EXISTS document_section_domains (
     CONSTRAINT unique_document_section_domain UNIQUE (document_section_id, domain)
 );
 
-I CREATE TABLE IF NOT EXISTS evaluation_rule_links (
+CREATE TABLE IF NOT EXISTS evaluation_rule_links (
     id SERIAL PRIMARY KEY,
     evaluation_id INTEGER NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
     rule_application_id INTEGER NOT NULL REFERENCES rule_applications(id) ON DELETE CASCADE,
@@ -1363,6 +1363,8 @@ CREATE TABLE casebooks (
     id SERIAL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     description TEXT,
+    domain TEXT,
+
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -1373,6 +1375,7 @@ CREATE TABLE cases (
     goal_id VARCHAR(64) NOT NULL,
     goal_text TEXT NOT NULL,
     agent_name VARCHAR(128) NOT NULL,
+    prompt_text TEXT, 
     mars_summary JSONB,
     scores JSONB,
     rank JSONB,
@@ -1448,6 +1451,99 @@ CREATE TABLE IF NOT EXISTS training_events (
 CREATE INDEX IF NOT EXISTS ix_te_target ON training_events (model_key, dimension, kind);
 CREATE INDEX IF NOT EXISTS ix_te_recent ON training_events (created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_te_unprocessed ON training_events (processed) WHERE processed = false;
+
+
+I had nervous and stupid Chris I had
+-- Skill filters table (stores weight-space + visual-space representations)
+CREATE TABLE IF NOT EXISTS skill_filters (
+    id VARCHAR(64) PRIMARY KEY,
+    casebook_id VARCHAR NOT NULL REFERENCES casebooks(id),
+    domain VARCHAR(32),
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Weight-space
+    weight_delta_path VARCHAR(256),
+    weight_size_mb FLOAT,
+
+    -- Visual-space
+    vpm_residual_path VARCHAR(256),
+    vpm_preview_path VARCHAR(256),
+
+    -- Validation
+    alignment_score FLOAT,
+    improvement_score FLOAT,
+    stability_score FLOAT,
+
+    -- Composition metadata
+    compatible_domains JSON,
+    negative_interactions JSON
+);
+
+
+-- ============================================
+-- Chat Conversations Table
+-- ============================================
+CREATE TABLE chat_conversations (
+    id SERIAL PRIMARY KEY,
+    provider VARCHAR(50) NOT NULL DEFAULT 'openai',
+    external_id VARCHAR(255),
+    title VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    meta JSONB DEFAULT '{}'::jsonb
+);
+
+-- ============================================
+-- Chat Messages Table
+-- ============================================
+CREATE TABLE chat_messages (
+    id SERIAL PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    role VAR Youtube CHAR(50) NOT NULL,            -- "user", "assistant", "system", "tool"
+    text TEXT,
+    parent_id INTEGER REFERENCES chat_messages(id) ON DELETE CASCADE,
+    order_index INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    meta JSONB DEFAULT '{}'::jsonb
+);
+
+-- Indexes for faster lookups
+CREATE INDEX idx_chat_messages_conversation_id ON chat_messages(conversation_id);
+CREATE INDEX idx_chat_messages_parent_id ON chat_messages(parent_id);
+
+
+CREATE TABLE chat_turns (
+    id SERIAL PRIMARY KEY,
+    conversation_id INT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    user_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+    assistant_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE IF NOT EXISTS scorable_entities (
+    id SERIAL PRIMARY KEY,
+    scorable_id VARCHAR NOT NULL,
+    scorable_type VARCHAR NOT NULL,
+    entity_text TEXT NOT NULL,
+    entity_type VARCHAR,
+    start INT,
+    "end" INT,
+    similarity FLOAT,
+    source_text TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE (scorable_id, scorable_type, entity_text)
+);
+
+-- Helpful indexes
+CREATE INDEX ix_scorable_entities_owner
+    ON scorable_entities (scorable_type, scorable_id);
+
+CREATE INDEX ix_scorable_entities_type
+    ON scorable_entities (entity_type);
+
+CREATE INDEX ix_scorable_entities_text
+    ON scorable_entities (entity_text);
 
 
 COMMIT; 

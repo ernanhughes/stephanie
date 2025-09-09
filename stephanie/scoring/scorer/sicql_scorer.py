@@ -225,3 +225,19 @@ class SICQLScorer(BaseScorer):
         if self.return_zsa and "zsa" not in outputs:
             outputs["zsa"] = model.encoder(prompt_emb, output_emb)
         return outputs  # Return the full outputs dict
+
+
+    def get_model(self, dimension: str) -> InContextQModel:
+        """
+        Access the underlying model for a specific dimension.
+
+        Args:
+            dimension: The scoring dimension (e.g. "epistemic_quality")
+
+        Returns:
+            InContextQModel: The model instance for the specified dimension.
+        """
+        model = self.models.get(dimension)
+        if model is None:
+            raise ValueError(f"Model for dimension '{dimension}' not loaded.")
+        return model

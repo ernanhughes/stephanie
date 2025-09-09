@@ -1,9 +1,12 @@
+import logging
 from typing import List
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from stephanie.models.scorable_domain import ScorableDomainORM
+
+logger = logging.getLogger(__name__)    
 
 
 class ScorableDomainStore:
@@ -115,5 +118,5 @@ class ScorableDomainStore:
         """
         result = self.session.query(ScorableDomainORM) \
             .filter_by(scorable_id=scorable_id, scorable_type=scorable_type).all()
-        self.logger.log("FetchedScorableDomain", {"scorable_id": scorable_id, "scorable_type": scorable_type, "result": result})
+        logger.debug(f"FetchedScorableDomain: scorable_id: {scorable_id}, scorable_type: {scorable_type}, result: {result}")
         return result

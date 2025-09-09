@@ -17,7 +17,7 @@ class PromptStore:
     def __init__(self, session: Session, logger=None):
         self.session = session
         self.logger = logger
-        self.name = "prompt"
+        self.name = "prompts"
 
     def get_or_create_goal(
         self,
@@ -63,6 +63,9 @@ class PromptStore:
             if self.logger:
                 self.logger.log("GoalGetOrCreateFailed", {"error": str(e)})
             raise
+
+    def get_by_id(self, prompt_id: int) -> Optional[PromptORM]:
+        return self.session.query(PromptORM).get(prompt_id)        
 
     def save(
         self,

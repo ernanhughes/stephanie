@@ -56,6 +56,7 @@ class CaseBookORM(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    meta = Column(SA_JSON, nullable=True)
     # --- relationships ---
     cases = relationship(
         "CaseORM",
@@ -63,6 +64,8 @@ class CaseBookORM(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    skill_filters = relationship("SkillFilterORM", back_populates="casebook")
 
     # -------- convenience --------
     def to_dict(
@@ -112,58 +115,18 @@ class CaseORM(Base):
     __tablename__ = "cases"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    casebook_id = Column(Integer, ForeignKey("casebooks.id", ondelete="CASCADE"), nullable=False)
+    casebook_id = Column(Integer, ForeignKey("casebooks.id"), nullable=False)
+    goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True)
 
-    goal_id    = Column(String, nullable=False, index=True)
-    goal_text  = Column(Text, nullable=False)
-    agent_name = Column(String, nullable=False, index=True)
+    prompt_text = Column(Text, nullable=True)
 
-    mars_summary = Column(SA_JSON, nullable=False, default=dict)
-    scores       = Column(SA_JSON, nullable=False, default=dict)
-    meta         = Column(SA_JSON, nullable=False, default=dict)
+    agent_name = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
 
-    # --- relationships ---
+    # Relationships
+    scorables = relationship("CaseScorableORM", back_populates="case")
     casebook = relationship("CaseBookORM", back_populates="cases")
-
-    scorables = relationship(
-        "CaseScorableORM",
-        back_populates="case",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
-    # -------- convenience --------
-    def to_dict(
-        self,
-        *,
-        include_scorables: bool = False,
-    ) -> dict:
-        """
-        Serialize the case.
-        - include_scorables: include related CaseScorable rows
-        """
-        data = {
-            "id": self.id,
-            "casebook_id": self.casebook_id,
-            "goal_id": self.goal_id,
-            "goal_text": self.goal_text,
-            "agent_name": self.agent_name,
-            "mars_summary": _json_safe(self.mars_summary),
-            "scores": _json_safe(self.scores),
-            "meta": _json_safe(self.meta),
-            "created_at": _iso(self.created_at),
-        }
-
-        if include_scorables:
-            data["scorables"] = [cs.to_dict() for cs in (self.scorables or [])]
-
-        return data
-
-    def __repr__(self) -> str:
-        return f"<CaseORM id={self.id} goal_id={self.goal_id!r} agent={self.agent_name!r}>"
-
 
 class CaseScorableORM(Base):
     __tablename__ = "case_scorables"
@@ -174,7 +137,7 @@ class CaseScorableORM(Base):
     role = Column(String, nullable=False, default="input")
     rank = Column(Integer, nullable=True)          # ← matches new column
     meta = Column(SA_JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     case = relationship("CaseORM", back_populates="scorables")
 

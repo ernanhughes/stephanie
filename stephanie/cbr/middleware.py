@@ -1,10 +1,12 @@
 # add imports
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
 import numpy as np
-from typing import Dict, Any, Callable, Awaitable, List, Optional
+
 from stephanie.cbr.adaptor import DefaultAdaptor
+from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
 
 
 class CBRMiddleware:
@@ -489,7 +491,8 @@ class CBRMiddleware:
         return x
 
     def _ensure_ids(self, scorables: List[dict]) -> List[dict]:
-        import hashlib, random
+        import hashlib
+        import random
 
         out = []
         for h in scorables:

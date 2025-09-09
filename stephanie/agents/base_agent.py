@@ -17,6 +17,7 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
 from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
+from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
 from stephanie.scoring.scoring_service import ScoringService
 
 
@@ -32,7 +33,10 @@ class BaseAgent(ABC):
         self.description = cfg.get("description", "")
         self.memory = memory
         self.logger = logger
+
         self.scoring: Optional[ScoringService] = None
+        self.reporter: Optional[Reporter] = None
+        
         self.enabled_scorers = self.cfg.get("enabled_scorers", ["sicql"])
 
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
@@ -90,9 +94,9 @@ class BaseAgent(ABC):
         }
 
     def get_or_save_prompt(self, prompt_text: str, context: dict) -> PromptORM:
-        prompt = self.memory.prompt.get_from_text(prompt_text)
+        prompt = self.memory.prompts.get_from_text(prompt_text)
         if prompt is None:
-            self.memory.prompt.save(
+            self.memory.prompts.save(
                 context.get("goal"),
                 agent_name=self.name,
                 prompt_key=self.cfg.get(PROMPT_PATH, ""),
@@ -101,7 +105,7 @@ class BaseAgent(ABC):
                 pipeline_run_id=context.get("pipeline_run_id"),
                 version=self.cfg.get("version", 1),
             )
-            prompt = self.memory.prompt.get_from_text(prompt_text)
+            prompt = self.memory.prompts.get_from_text(prompt_text)
         if prompt is None:
             raise ValueError(
                 f"Please check this prompt: {prompt_text}. "
@@ -129,7 +133,7 @@ class BaseAgent(ABC):
 
         # 🔁 Check cache
         if self.memory and use_memory_for_fast_prompts:
-            previous = self.memory.prompt.find_similar_prompt(
+            previous = self.memory.prompts.find_similar_prompt(
                 agent_name=agent_name,
                 prompt_text=prompt,
                 strategy=strategy,
@@ -163,7 +167,7 @@ class BaseAgent(ABC):
 
             # Save prompt and response if enabled
             if updated_cfg.get(SAVE_PROMPT, False) and self.memory:
-                self.memory.prompt.save(
+                self.memory.prompts.save(
                     context.get("goal"),
                     agent_name=self.name,
                     prompt_key=updated_cfg.get(PROMPT_PATH, ""),

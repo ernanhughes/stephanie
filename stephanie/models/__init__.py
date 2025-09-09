@@ -3,6 +3,7 @@ from .base import Base
 from .belief_cartridge import BeliefCartridgeORM
 from .cartridge_domain import CartridgeDomainORM
 from .case_goal_state import CaseGoalStateORM
+from .chat import ChatConversationORM, ChatMessageORM
 from .comparison_preference import ComparisonPreferenceORM
 from .context_state import ContextStateORM
 from .document_section import DocumentSectionORM
@@ -35,6 +36,7 @@ from .search_hit import SearchHitORM
 from .search_result import SearchResultORM
 from .sharpening_prediction import SharpeningPredictionORM
 from .sharpening_result import SharpeningResultORM
+from .skill_filter import SkillFilterORM
 from .symbolic_rule import SymbolicRuleORM
 from .theorem import CartridgeORM, TheoremORM
 from .training_stats import TrainingStatsORM

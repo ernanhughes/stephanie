@@ -381,3 +381,12 @@ class PlanTraceStore:
             .order_by(PlanTraceRevisionORM.created_at)
             .all()
         )
+
+    def get_step_by_id(self, step_id: int) -> Optional[ExecutionStepORM]:
+        """Retrieve an ExecutionStepORM by its database ID."""
+        try:
+            return self.session.get(ExecutionStepORM, step_id)
+        except Exception as e:
+            if self.logger:
+                self.logger.log("ExecutionStepGetByIdFailed", {"error": str(e), "id": step_id})
+            return None

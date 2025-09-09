@@ -34,7 +34,7 @@ class PromptCompilerAgent(BaseAgent, PromptEvolverMixin):
         goal_text = self.extract_goal_text(goal)
         total_count = self.sample_size + self.generate_count
 
-        examples = self.memory.prompt.get_prompt_training_set(goal_text, total_count)
+        examples = self.memory.prompts.get_prompt_training_set(goal_text, total_count)
         if not examples:
             self.logger.log(
                 "PromptCompilerSkipped", {"reason": "no_examples", "goal": goal}

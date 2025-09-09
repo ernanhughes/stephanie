@@ -29,7 +29,7 @@
             ]
         },
         {
-            "name": "cbr2",
+            "name": "pacs",
             "type": "debugpy",
             "request": "launch",
             "console": "integratedTerminal",
@@ -37,7 +37,7 @@
             "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
             "args": [
                 "--config-name",
-                "cbr2",
+                "pacs",
             ]
         },
         {

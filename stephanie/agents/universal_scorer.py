@@ -1,24 +1,22 @@
-from typing import Any, Dict
+
+import logging
 
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.cartridge_triple import CartridgeTripleORM
+from stephanie.models.casebook import CaseScorableORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scorer.contrastive_ranker_scorer import \
-    ContrastiveRankerScorer
-from stephanie.scoring.scorer.ebt_scorer import EBTScorer
-from stephanie.scoring.scorer.hrm_scorer import HRMScorer
-from stephanie.scoring.scorer.mrq_scorer import MRQScorer
-from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
-from stephanie.scoring.scorer.svm_scorer import SVMScorer
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 from stephanie.scoring.scoring_manager import ScoringManager
 
+_logger = logging.getLogger(__name__)
 
 class UniversalScorerAgent(BaseAgent):
 
@@ -29,6 +27,7 @@ class UniversalScorerAgent(BaseAgent):
         "cartridge": CartridgeORM,
         "theorem": TheoremORM,
         "triple": CartridgeTripleORM,
+        "case_scorable": CaseScorableORM,
     }
 
     """
@@ -38,45 +37,55 @@ class UniversalScorerAgent(BaseAgent):
 
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
-        self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "relevance"])
         self.enabled_scorers = cfg.get("enabled_scorers", ["sicql"])
         self.progress = cfg.get("progress", True)
         self.force_rescore = cfg.get("force_rescore", False)
         self.target_types = cfg.get(
             "target_types",
             [
-                # TargetType.DOCUMENT,
-                # TargetType.CARTRIDGE,
-                # TargetType.THEOREM,
+                TargetType.DOCUMENT,
+                TargetType.CARTRIDGE,
+                TargetType.THEOREM,
                 TargetType.TRIPLE,
+                TargetType.CASE_SCORABLE,
             ],
         )
-        self.scorers = self._initialize_scorers()
+        self.dimensions = self.cfg.get(
+            "dimensions",
+            [
+                "novelty",
+                "clarity",
+                "relevance",
+                "implementability",
+                "alignment",
+            ],
+        )
+        self.include_mars = self.cfg.get("include_mars", True)
+        self.include_ranking = self.cfg.get("include_ranking", True)
+        self.rank_top_k = self.cfg.get("rank_top_k", 5)
+        dimension_config = self.cfg.get("dimension_config", {})
+        # Components
+        self.mars_calculator = MARSCalculator(
+            dimension_config, self.memory, self.logger
+        )
+        self.ranker = ScorableRanker(cfg, memory, logger)
 
-    def _initialize_scorers(self) -> Dict[str, Any]:
-        """Initialize all configured scorers"""
-        scorers = {}
-        if "svm" in self.enabled_scorers:
-            scorers["svm"] = SVMScorer(self.cfg.get("svm"), memory=self.memory, logger=self.logger)
-        if "mrq" in self.enabled_scorers:
-            scorers["mrq"] = MRQScorer(self.cfg.get("mrq"), memory=self.memory, logger=self.logger)
-        if "sicql" in self.enabled_scorers:
-            scorers["sicql"] = SICQLScorer(self.cfg.get("sicql"), memory=self.memory, logger=self.logger)
-        if "ebt" in self.enabled_scorers:
-            scorers["ebt"] = EBTScorer(self.cfg.get("ebt"), memory=self.memory, logger=self.logger)
-        if "hrm" in self.enabled_scorers:
-            scorers["hrm"] = HRMScorer(self.cfg.get("hrm"), memory=self.memory, logger=self.logger)
-        if "contrastive_ranker" in self.enabled_scorers:
-            scorers["contrastive_ranker"] = ContrastiveRankerScorer(
-                self.cfg.get("contrastive_ranker"), memory=self.memory, logger=self.logger
-            )
-        return scorers
+        _logger.debug(
+            f"AgentScorerInitialized: "
+            f"enabled_scorers={self.enabled_scorers}, "
+            f"include_mars={self.include_mars}, "
+            f"force_rescore={self.force_rescore}, "
+            f"target_types={self.target_types}, "
+            f"dimensions={self.dimensions}, "
+            f"include_mars={self.include_mars}, "
+            f"include_ranking={self.include_ranking}, "
+            f"rank_top_k={self.rank_top_k}"
+        )
 
     async def run(self, context: dict) -> dict:
         scored_items = []
         candidates = []
 
-        # --- Collect candidates ---
         for ttype in self.target_types:
             objs = context.get(ttype.lower() + "s", [])
 
@@ -116,20 +125,8 @@ class UniversalScorerAgent(BaseAgent):
                     })
                     continue
 
-                result, bundle = self._score_item(context, scorable, ttype)
+                result, _ = self._score_item(context, scorable, ttype)
                 scored_items.append(result)
-
-                ScoringManager.save_score_to_memory(
-                    bundle,
-                    scorable,
-                    context,
-                    self.cfg,
-                    self.memory,
-                    self.logger,
-                    source="universal_scorer",
-                    model_name="ensemble",
-                    evaluator_name=str(self.scorers.keys()
-                )
 
                 self.report({
                     "event": "scored",
@@ -154,13 +151,49 @@ class UniversalScorerAgent(BaseAgent):
 
     def _score_item(self, context, scorable, ttype):
         score_results = {}
-        for _, scorer in self.scorers.items():
-            bundle = scorer.score(context, scorable=scorable, dimensions=self.dimensions)
-            for dim, result in bundle.results.items():
-                if dim not in score_results:
-                    score_results[dim] = result
+
+        for scorer_name in self.enabled_scorers:
+            try:
+                bundle = self.scoring.score(
+                    scorer_name,
+                    context=context,
+                    scorable=scorable,
+                    dimensions=self.dimensions
+                )
+                for dim, result in bundle.results.items():
+                    result.dimension = dim
+                    result.source = scorer_name
+                    key = f"{dim}::{result.source}"
+                    score_results[key] = result
+            except Exception as e:
+                self.logger.log("ScorerError", {"scorer": scorer_name, "scorable_id": scorable.id, "error": str(e)})
+                continue
+
+        bundle = ScoreBundle(results=dict(score_results))
+
+        # Save to memory
+        for key, result in score_results.items():
+            ScoringManager.save_score_to_memory(
+                ScoreBundle(results={result.dimension: result}),
+                scorable,
+                context,
+                self.cfg,
+                self.memory,
+                self.logger,
+                source=result.source, 
+                model_name=result.source,
+                evaluator_name=self.name,
+            )
+
+        report_scores = {
+            key: {"score": result.score,
+                "rationale": result.rationale,
+                "source": result.source}
+            for key, result in score_results.items()
+        }
+
         return {
-            "id": scorable.id,
-            "type": ttype,
-            "scores": {dim: {"score": r.score, "source": r.source} for dim, r in score_results.items()},
-        }, ScoreBundle(results=score_results)
+            "scorable_id": scorable.id,
+            "text": scorable.text,
+            "scores": report_scores,
+        }, bundle

@@ -1,11 +1,11 @@
 # stephanie/scoring/scorable_factory.py
-import trace
-from enum import Enum as PyEnum
 from typing import Optional
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseORM
+from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
+                                   ChatTurnORM)
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
@@ -17,8 +17,12 @@ from stephanie.scoring.scorable import Scorable
 class TargetType:
     AGENT_OUTPUT = "agent_output"
     DOCUMENT = "document"
+    CONVERSATION = "conversation"       # full conversation
+    CONVERSATION_TURN = "conversation_turn"  # user→assistant pair
+    CONVERSATION_MESSAGE = "conversation_message"  # single message
     GOAL = "goal"
     CASE = "case"
+    CASE_SCORABLE = "case_scorable"
     HYPOTHESIS = "hypothesis"
     CARTRIDGE = "cartridge"
     TRIPLE = "triple"
@@ -68,6 +72,7 @@ class ScorableFactory:
         Convert an ORM object into a Scorable.
         Mode controls whether to return summary, full, or default text.
         """
+
         if isinstance(obj, PromptORM):
             return ScorableFactory.from_prompt_pair(obj, mode)
 
@@ -103,7 +108,34 @@ class ScorableFactory:
             ])
             return Scorable(id=obj.trace_id, text=text, target_type=TargetType.PLAN_TRACE)
 
+        elif isinstance(obj, ChatConversationORM):
+            text = "\n".join([f"{m.role}: {m.text}" for m in obj.messages]).strip()
+            return Scorable(
+                id=str(obj.id),
+                text=text,
+                target_type=TargetType.CONVERSATION,
+                meta=obj.to_dict(include_messages=False)
+            )
 
+        elif isinstance(obj, ChatTurnORM):
+            user_text = obj.user_message.text if obj.user_message else ""
+            assistant_text = obj.assistant_message.text if obj.assistant_message else ""
+            text = f"USER: {user_text}\nASSISTANT: {assistant_text}"
+            return Scorable(
+                id=str(obj.id),
+                text=text.strip(),
+                target_type=TargetType.CONVERSATION_TURN,
+                meta=obj.to_dict()
+            )
+
+        elif isinstance(obj, ChatMessageORM):
+            text = obj.text or ""
+            return Scorable(
+                id=str(obj.id),
+                text=text.strip(),
+                target_type=TargetType.CONVERSATION_MESSAGE,
+                meta=obj.to_dict()
+            )
         else:
             raise ValueError(f"Unsupported ORM type for scoring: {type(obj)}")
 
@@ -135,12 +167,27 @@ class ScorableFactory:
     def from_dict(data: dict, target_type: TargetType = None, mode: str = "default") -> Scorable:
         """Convert dicts to Scorable. Supports summary vs. full text where applicable."""
         if target_type is None:
-           target_type = data.get("target_type", "document")
+            target_type = data.get("target_type") or data.get("scorable_type") or "document"
+
+        if target_type == TargetType.CASE_SCORABLE:
+            text = ""
+            meta = data.get("meta") or {}
+            if isinstance(meta, dict):
+                text = meta.get("text") or meta.get("content") or ""
+            if not text:
+                text = f"[{data.get('role')}] {data.get('scorable_type') or ''}"
+
+            return Scorable(
+                id=str(data.get("scorable_id") or data.get("id", "")),
+                text=text.strip(),
+                target_type=TargetType.CASE_SCORABLE,
+            )
+
+        # fallback to doc-like behavior
         title = data.get("title", "")
         summary = data.get("summary", "")
         in_text = data.get("text", "")
         text = ScorableFactory.get_text(title, summary, in_text, mode)
-
         return Scorable(id=str(data.get("id", "")), text=text, target_type=target_type)
 
     @staticmethod
@@ -223,27 +270,36 @@ class ScorableFactory:
         
 
     @staticmethod
-    def from_id(memory, target_type: str, target_id: str) -> str:
+    def from_id(memory, scorable_type: str, scorable_id: str):
         """
-        Extracts the text content from a Scorable object.
-        """ 
-        orm = None
-        if target_type == TargetType.DOCUMENT:
-            orm = memory.documents.get_by_id(target_id)
-        elif target_type == TargetType.HYPOTHESIS:
-            orm = memory.hypothesis.get_by_id(target_id)
-        elif target_type == TargetType.CARTRIDGE:
-            orm = memory.cartridge.get_by_id(target_id)
-        elif target_type == TargetType.TRIPLE:
-            orm = memory.triple.get_by_id(target_id)
-        elif target_type == TargetType.PROMPT:
-            orm = memory.prompt.get_by_id(target_id)
-        elif target_type == TargetType.THEOREM:
-            orm = memory.theorem.get_by_id(target_id)
-        elif target_type == TargetType.PLAN_TRACE:
-            orm = memory.plan_trace.get_by_id(target_id)
-        if orm is not None:
-            scorable = ScorableFactory.from_orm(orm)
-            return scorable
-        else:
-            raise ValueError(f"Unsupported target type for text extraction: {target_type}")
+        Resolve a scorable object from memory by its type and id,
+        returning a Scorable. Raises ValueError if unsupported or not found.
+        """
+
+        # Dispatch table mapping target_type -> (getter_function, cast_type)
+        dispatch = {
+            TargetType.CONVERSATION: (memory.chats.get_conversation, int),
+            TargetType.CONVERSATION_TURN: (memory.chats.get_turn_by_id, int),
+            TargetType.CONVERSATION_MESSAGE: (memory.chats.get_message_by_id, int),
+            TargetType.DOCUMENT: (memory.documents.get_by_id, int),
+            TargetType.HYPOTHESIS: (memory.hypotheses.get_by_id, int),
+            TargetType.CARTRIDGE: (memory.cartridges.get_by_id, int),
+            TargetType.TRIPLE: (memory.cartridge_triples.get_by_id, int),
+            TargetType.PROMPT: (memory.prompts.get_by_id, int), 
+            TargetType.THEOREM: (memory.theorems.get_by_id, int),  # plural fixed
+            TargetType.CASE: (memory.casebooks.get_case_by_id, int),
+            TargetType.CASE_SCORABLE: (memory.casebooks.get_case_scorable_by_id, int),
+            TargetType.PLAN_TRACE: (memory.plan_traces.get_by_id, str),
+            TargetType.PLAN_TRACE_STEP: (memory.plan_traces.get_step_by_id, str),
+        }
+
+        if scorable_type not in dispatch:
+            raise ValueError(f"Unsupported target type for text extraction: {scorable_type}")
+
+        getter, caster = dispatch[scorable_type]
+        orm = getter(caster(scorable_id))
+
+        if orm is None:
+            raise ValueError(f"No object found for {scorable_type} id={scorable_id}")
+
+        return ScorableFactory.from_orm(orm)
