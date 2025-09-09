@@ -82,11 +82,11 @@ class MemoryTool:
 
         embedding_cfg = self.cfg.get("embeddings", {})
         # Register stores
-        mxbai = EmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        mxbai = EmbeddingStore(embedding_cfg, self, logger)
         self.register_store(mxbai)
-        hnet = HNetEmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        hnet = HNetEmbeddingStore(embedding_cfg, self, logger)
         self.register_store(hnet)
-        hf = HuggingFaceEmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        hf = HuggingFaceEmbeddingStore(embedding_cfg, self, logger)
         self.register_store(hf)
 
         # Choose embedding backend based on config

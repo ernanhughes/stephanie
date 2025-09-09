@@ -45,7 +45,7 @@ from transformers import AutoModel, AutoTokenizer, pipeline
 
 from stephanie.scoring.scorable import Scorable
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 # -------------------------------
 # Projection Network
@@ -89,9 +89,9 @@ class EntityDetector:
                 aggregation_strategy="simple",
                 device=0 if device == "cuda" else -1
             )
-            logger.info("Initialized NER pipeline with dslim/bert-base-NER")
+            _logger.info("Initialized NER pipeline with dslim/bert-base-NER")
         except Exception as e:
-            logger.error(f"Failed to init NER pipeline: {e}")
+            _logger.error(f"Failed to init NER pipeline: {e}")
             self.ner_pipeline = None
 
     def detect_entities(self, text: str) -> List[Tuple[int, int, str]]:
@@ -104,7 +104,7 @@ class EntityDetector:
                 results = self.ner_pipeline(text)
                 return [(r["start"], r["end"], self._map_entity_type(r["entity_group"])) for r in results]
             except Exception as e:
-                logger.warning(f"NER pipeline failed: {e}")
+                _logger.warning(f"NER pipeline failed: {e}")
         # Fallback to heuristic-based detection
         return self._heuristic_entity_detection(text)
 
@@ -145,13 +145,13 @@ class AnnoyIndex:
                 self.index.load(index_file)
                 with open(meta_file, "r") as f:
                     self.metadata = json.load(f)
-                logger.info(f"Loaded Annoy index with {self.index.get_n_items()} items")
+                _logger.info(f"Loaded Annoy index with {self.index.get_n_items()} items")
             except Exception as e:
-                logger.error(f"Failed to load index: {e}")
+                _logger.error(f"Failed to load index: {e}")
                 self.index = annoy.AnnoyIndex(self.dim, "angular")
                 self.metadata = []
         else:
-            logger.info("Starting with empty Annoy index")
+            _logger.info("Starting with empty Annoy index")
 
     def add(self, embeddings: np.ndarray, metadata_list: List[Dict], n_trees: int = 10):
         """Add new embeddings with metadata and rebuild the Annoy index."""
@@ -178,7 +178,7 @@ class AnnoyIndex:
             # Rebuild with fresh trees
             self.index.build(n_trees)
             self._save_index()
-            logger.info(f"Annoy index rebuilt with {self.index.get_n_items()} items "
+            _logger.info(f"Annoy index rebuilt with {self.index.get_n_items()} items "
                         f"(added {added_count}, skipped {len(metadata_list) - added_count})")
 
     def search(self, query: np.ndarray, k: int = 10):
@@ -208,6 +208,7 @@ class AnnoyIndex:
         
         try:
             # Save to temporary files first
+            os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
             self.index.save(temp_index)
             with open(temp_meta, "w") as f:
                 json.dump(self.metadata, f, indent=2)
@@ -216,7 +217,7 @@ class AnnoyIndex:
             os.replace(temp_index, f"{self.index_path}.ann")
             os.replace(temp_meta, f"{self.index_path}_metadata.json")
         except Exception as e:
-            logger.error(f"Failed to save index: {e}")
+            _logger.error(f"Failed to save index: {e}")
             # Clean up temp files on failure
             if os.path.exists(temp_index):
                 os.remove(temp_index)
@@ -243,7 +244,7 @@ class AnnoyIndex:
     def validate(self) -> bool:
         """Validate that the index and metadata are consistent."""
         if self.index.get_n_items() != len(self.metadata):
-            logger.error(f"Index validation failed: {self.index.get_n_items()} items in index, {len(self.metadata)} in metadata")
+            _logger.error(f"Index validation failed: {self.index.get_n_items()} items in index, {len(self.metadata)} in metadata")
             return False
         return True
 
@@ -252,7 +253,7 @@ class NERRetrieverEmbedder:
     """Entity retriever using embedding store instead of custom projections."""
 
     def __init__(self, 
-                 model_name="meta-llama/Llama-3-8b", 
+                 model_name="meta-llama/Llama-3.2-1B-Instruct", 
                  layer=17,
                  device="cuda" if torch.cuda.is_available() else "cpu",
                  embedding_dim=500, 
@@ -261,11 +262,11 @@ class NERRetrieverEmbedder:
                  projection_dim=500, 
                  projection_dropout=0.1,
                  logger=None,
-                 memory=None,   # <-- Fix 1: accept memory + logger
+                 memory=None, 
                  cfg=None):
 
         self.device = device
-        self.logger = logger or logging.getLogger(__name__)  # <-- Fix 2: self.logger always available
+        self.logger = logger
         self.memory = memory
         self.cfg = cfg or {}
 
@@ -289,7 +290,7 @@ class NERRetrieverEmbedder:
                 dropout=projection_dropout,
             ).to(device).eval()
 
-        self.logger.info(
+        logger.info(
             f"NER Retriever initialized with {model_name} "
             f"layer {layer}, projection_enabled={projection_enabled}"
         )
@@ -376,7 +377,7 @@ class NERRetrieverEmbedder:
                         "source_text": scorable.text[:100] + "..."
                     })
                 except Exception as e:
-                    self.logger.error(f"Entity embedding failed: {e}")
+                    _logger.error(f"Entity embedding failed: {e}")
         if new_embeddings:
             self.index.add(np.array(new_embeddings), new_metadata)
         return len(new_embeddings)
@@ -416,12 +417,12 @@ class NERRetrieverEmbedder:
         
         # Log for monitoring
         if filtered_results:
-            logger.info(f"Found {len(filtered_results)} entities matching '{query}'")
+            _logger.info(f"Found {len(filtered_results)} entities matching '{query}'")
             for i, result in enumerate(filtered_results[:3]):  # Log top 3
                 cal_sim = result.get("calibrated_similarity", result.get("similarity", 0.0))
-                logger.debug(f"Top {i+1} match: '{result['entity_text']}' (sim={cal_sim:.4f})")
+                _logger.debug(f"Top {i+1} match: '{result['entity_text']}' (sim={cal_sim:.4f})")
         else:
-            logger.info(f"No entities found matching '{query}'")
+            _logger.info(f"No entities found matching '{query}'")
             
         return filtered_results
 
@@ -827,7 +828,7 @@ class NERRetrieverEmbedder:
             self.logger.info(f"Epoch {epoch+1}: avg loss {avg_loss:.4f}")
 
         self.projection.eval()
-        logger.info("Projection network training completed")
+        _logger.info("Projection network training completed")
 
     def _embed_text_for_training(self, text: str) -> torch.Tensor:
         """Embed text using mid-layer representation for training"""
@@ -860,7 +861,8 @@ class NERRetrieverEmbedder:
         return query.strip()
 
     def embed_type_query(self, query: str) -> np.ndarray:
-        """Embed a user-provided type description using last token representation."""
+        """Embed a user-provided type description using last token representation, 
+        robust to layer mismatches."""
         # Preprocess query
         query = self.preprocess_query(query)
         
@@ -873,13 +875,27 @@ class NERRetrieverEmbedder:
         
         with torch.no_grad():
             outputs = self.model(**inputs, output_hidden_states=True)
-            hidden_states = outputs.hidden_states[self.layer]
+            hidden_states_all = outputs.hidden_states
+            available_layers = len(hidden_states_all)
+
+            # Validate / adjust layer index
+            if self.layer is None:
+                self.layer = available_layers // 2  # middle layer default
+            elif self.layer >= available_layers:
+                _logger.info("NERLayerAdjusted" 
+                        f"requested: {self.layer}"
+                        f"available: {available_layers - 1}"
+                        f"using: {available_layers - 1}"
+                    )
+                self.layer = available_layers - 1  # last available layer
+
+            hidden_states = hidden_states_all[self.layer]
         
         # Get sequence length from attention mask
         seq_len = (inputs["attention_mask"][0] == 1).sum().item()
         
         # Use last token representation (paper-compliant)
-        query_vec = hidden_states[0, seq_len-1, :]
+        query_vec = hidden_states[0, seq_len - 1, :]
         
         # Project if enabled
         if self.projection_enabled and self.projection is not None:
@@ -948,7 +964,7 @@ class NERRetrieverEmbedder:
                 batch_loss = loss.item()
                 total_loss += batch_loss
                 progress_bar.update(1)
-                progress_bar.set_postfix({"epoch": epoch+1, "loss": batch_loss:.4f})
+                progress_bar.set_postfix({"epoch": epoch+1, "loss": batch_loss})
 
             avg_loss = total_loss / max(1, len(triplets)/batch_size)
             self.logger.info(f"Epoch {epoch+1}: avg loss {avg_loss:.4f}")

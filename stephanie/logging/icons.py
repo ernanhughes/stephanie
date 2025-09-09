@@ -49,6 +49,15 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "CentroidCalculationStart": "📍▶️",  # Centroid calculation started
+    "CentroidCalculationComplete": "📍✅",  # Centroid calculation completed
+    "ClassificationStart": "🏷️▶️",  # Knowledge classification started
+    "TextEmbeddingCreated": "📝➕",  # Text embedding created
+    "DomainSimilarityCalculated": "🏷️📊",  # Domain similarity calculated
+    "DistanceCalculation": "📏",  # Distance calculation
+    "ClassificationCompleted": "🏷️✅",  # Knowledge classification completed
+    "DynamicWeighting": "⚖️🔄",  # Dynamic weighting applied
+    "NERFailure": "🆘🏷️",  # NER failure
     "DocumentsTruncated": "📄✂️",  # Documents truncated
     "IdeaSharpeningFailed": "🧑‍🏫❌",
     "EvaluatorInit": "🧑‍🏫",

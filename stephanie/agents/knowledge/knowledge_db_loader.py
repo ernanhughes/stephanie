@@ -1,8 +1,9 @@
 # stephanie/agents/knowledge/knowledge_db_loader.py
 
+from itertools import count
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
 class KnowledgeDBLoaderAgent(BaseAgent):
@@ -45,6 +46,11 @@ class KnowledgeDBLoaderAgent(BaseAgent):
 
         # 2. Save retrieved doc dicts into context
         context[self.output_key] = docs
+
+        scorables = [ScorableFactory.from_dict(d) for d in docs]
+        count = self.memory.embedding.index_entities_from_scorables(scorables)
+        print(f"Indexed {count} entities into NER retriever")
+
         context["retrieved_ids"] = [d["id"] for d in docs]
 
         for d in docs:

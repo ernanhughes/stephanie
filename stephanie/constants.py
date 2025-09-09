@@ -1,4 +1,5 @@
 # stephanie/constants.py
+from __future__ import annotations
 
 # ==== Context Keys ====
 AGENT = "Agent"

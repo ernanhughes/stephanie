@@ -1,4 +1,6 @@
 # sis/main.py
+from __future__ import annotations
+
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles

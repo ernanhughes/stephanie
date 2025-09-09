@@ -1,4 +1,6 @@
 # stephanie/utils/serialization.py
+from __future__ import annotations
+
 """
 Utilities for handling serialization of complex objects, especially OmegaConf DictConfig objects.
 

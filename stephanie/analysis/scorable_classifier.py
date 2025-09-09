@@ -29,7 +29,7 @@ import numpy as np
 import yaml
 from sklearn.metrics.pairwise import cosine_similarity
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 class ScorableClassifier:
     """
@@ -47,7 +47,7 @@ class ScorableClassifier:
         centroids: Precomputed centroid embeddings for each domain
     """
     
-    def __init__(self, memory, logger, config_path="config/domain/seeds.yaml", metric="cosine", embed_fn=None):
+    def __init__(self, memory, logger, config_path="config/domain/seeds.yaml", metric="cosine"):
         """
         Initialize the domain classifier with configuration and metrics.
         
@@ -60,14 +60,13 @@ class ScorableClassifier:
         self.memory = memory
         self.logger = logger
         self.metric = metric
-        self.embed_fn = embed_fn
 
         # Log initialization with configuration details
-        self.logger.log("DomainClassifierInit", {
-            "config_path": config_path, 
-            "metric": metric,
-            "message": "Initializing domain classifier"
-        })
+        _logger.info("DomainClassifierInit" 
+            f"config_path: {config_path}" 
+            f"metric: {metric}"
+            f"message: Initializing domain classifier"
+        )
         
         try:
             # Load domain configuration from YAML file
@@ -196,17 +195,14 @@ class ScorableClassifier:
             
             # Get embeddings for all seed phrases
             for seed in seeds:
-                if self.embed_fn:
-                    embedding = self.embed_fn(seed)
-                else:
-                    embedding = self.memory.embedding.get_or_create(seed)
+                embedding = self.memory.embedding.get_or_create(seed)
                 seed_embs.append(embedding)
                 total_seeds += 1
             
             # Calculate centroid as mean of all seed embeddings
             if seed_embs:
                 centroids[domain] = np.mean(seed_embs, axis=0)
-                logger.debug("DomainCentroidCalculated"
+                _logger.debug("DomainCentroidCalculated"
                     f"domain : {domain}"
                     f"num_seeds : {len(seeds)}"
                     f"centroid_shape : {centroids[domain].shape}"
@@ -255,13 +251,10 @@ class ScorableClassifier:
             return self._classification_cache[cache_key]
 
         # Get embedding for input text
-        if self.embed_fn:
-            emb = self.embed_fn(text)
-        else:
-            emb = self.memory.embedding.get_or_create(text)
+        emb = self.memory.embedding.get_or_create(text)
         self.logger.log("TextEmbeddingCreated", {
             "text_length": len(text),
-            "embedding_shape": emb.shape,
+            "embedding_shape": len(emb),
             "message": "Created embedding for input text"
         })
         
@@ -301,10 +294,7 @@ class ScorableClassifier:
             })
             
             for tag in goal_tags:
-                if self.embed_fn:
-                    tag_emb = self.embed_fn(tag)
-                else:
-                    tag_emb = self.memory.embedding.get_or_create(tag)
+                tag_emb = self.memory.embedding.get_or_create(tag)
 
                 # Boost context tags by 50% to prioritize them
                 score = self._cosine_distance(emb, tag_emb) * 1.5

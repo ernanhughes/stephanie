@@ -13,41 +13,43 @@ from stephanie.utils.lru_cache import SimpleLRUCache
 
 
 class BaseEmbeddingStore(BaseStore):
-    def __init__(self, cfg, conn, db, table: str, name: str, embed_fn, logger=None, cache_size=10000):
-        super().__init__(db, logger)
+    def __init__(self, cfg, memory, table: str, name: str, logger, cache_size=10000):
+        super().__init__(memory.session, logger)
         self.cfg = cfg
-        self.conn = conn
+        self.memory = memory
+        self.conn = memory.conn
         self.dim = cfg.get("dim", 1024)
         self.hdim = self.dim // 2
         self.table = table
         self.name = name
         self.type = cfg.get("type", name)  # e.g. "hnet", "hf"
-        self.embed_fn = embed_fn
 
         # Cache: {hash -> (embedding_id, embedding_vector)}
         self._cache = SimpleLRUCache(max_size=cache_size)
         
         # Initialize NER Retriever if enabled in config
         self.ner_retriever = None
-        self.ner_enabled = cfg.get("enable_ner", False)
+        self.ner_enabled = cfg.get("enable_ner", True)
         self.ner_index_initialized = False
 
         
         if self.ner_enabled:
             try:
-                from stephanie.scoring.model.ner_retriever import \
+                from stephanie.models.ner_retriever import \
                     NERRetrieverEmbedder
                 self.ner_retriever = NERRetrieverEmbedder(
-                    model_name=cfg.get("ner_model", "meta-llama/Llama-3-8b"),
+                    model_name=cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct"),
                     layer=cfg.get("ner_layer", 17),
                     device=cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu"),
-                    embedding_dim=cfg.get("ner_dim", 500),
-                    index_path=cfg.get("ner_index_path", "data/ner_retriever/index")
+                    embedding_dim=cfg.get("ner_dim", 2048),  # hack want ner but not bothered managing a ner embedding yet
+                    index_path=cfg.get("ner_index_path", "data/ner_retriever/index"),
+                    logger=self.logger,
+                    memory=self.memory,
                 )
                 self.logger.log("NERRetrieverInitialized", {
-                    "model": cfg.get("ner_model", "meta-llama/Llama-3-8b"),
+                    "model": cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct"),
                     "layer": cfg.get("ner_layer", 17),
-                    "dim": cfg.get("ner_dim", 500),
+                    "dim": cfg.get("ner_dim", 2048),
                     "index_path": cfg.get("ner_index_path", "data/ner_retriever/index")
                 })
                 self.ner_index_initialized = True
@@ -381,6 +383,8 @@ class BaseEmbeddingStore(BaseStore):
             r["combined_score"] = ner_weight * r.get("calibrated_similarity", r.get("norm_similarity", 0.0))
             all_results.append(r)
 
+        print(f"Combined {len(semantic_results)} semantic + {len(ner_results)} NER results → {len(all_results)} total")
+        print(self.get_ner_index_status())
         if not semantic_results:
             self.logger.log("SemanticFailure", {
                 "query": query,
@@ -697,8 +701,7 @@ class BaseEmbeddingStore(BaseStore):
             from stephanie.analysis.scorable_classifier import \
                 ScorableClassifier
             self._domain_classifier = ScorableClassifier(
-                memory=None,
-                embed_fn=self.get_or_create,
+                memory=self.memory,
                 logger=self.logger,
                 config_path=self.cfg.get("domain_config", "config/domain/seeds.yaml")
             )

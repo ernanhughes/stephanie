@@ -1,0 +1,81 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: default
+  - scoring/service/default
+  - mars/default
+
+  - scorer/reward/default
+  - scorer/ebt/default
+  - scorer/hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
+  - scorer/epistemic_hrm/default
+
+
+
+  - agents/arxiv_search
+  - agents/modular_memento
+  - agents/memento
+  - agents/generation
+  - agents/cbr_dspy
+  - agents/cartridge
+  - agents/document_loader
+  - agents/document_profiler
+  - agents/hrm_trainer
+  - agents/document_reward_scorer
+  - agents/icl_reasoning
+  - agents/knowledge_loader
+  - agents/planner_reuse
+  - agents/planner_revise
+  - agents/knowledge_db_loader
+  - agents/pipeline_judge
+  - agents/paper_score
+  - agents/agent_scorer
+  - agents/plan_trace_scorer
+  - logging/json_logger
+
+embeddings:
+  backend: hnet
+
+goal:
+  goal_text: "Find and compare research on reinforcement learning methods that improve large language models through self-reflection and iterative feedback."
+  goal_type: tactical
+  goal_category: meta_learning
+  focus_area: self_reflection
+  strategy: literature_review
+  difficulty: medium
+  expected_formats:
+    - paper_comparison_table
+    - reasoning_trace_summary
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+pipeline:
+  name: cbr
+  tag: cbr
+  description: >
+    Implementation of the Case-Based Reasoning (CBR) framework from the 
+    Memento paper (https://arxiv.org/pdf/2508.16153).
+    This pipeline demonstrates the full CBR loop — retrieve, reuse, revise, retain —
+    by grounding reasoning in past cases (PlanTraces, evaluations, scorables),
+    adapting them to new tasks, and storing new cases for continual self-improvement.
+
+  stages:
+     - name: knowledge_db_loader
+       description: "Load prior retained knowledge from the database for retrieval"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    

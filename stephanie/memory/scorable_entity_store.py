@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from stephanie.models.scorable_entity import ScorableEntityORM
-from stephanie.scoring.model.ner_retriever import NERRetrieverEmbedder
+from stephanie.models.ner_retriever import NERRetrieverEmbedder
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class ScorableEntityStore:
         self.name = "scorable_entities"
 
         # Shared retriever (backed by memory.embedding)
-        self.retriever = NERRetrieverEmbedder(memory)
+        self.retriever = NERRetrieverEmbedder(memory=memory, logger=self.logger )
 
     def insert(self, data: dict) -> ScorableEntityORM:
         """
