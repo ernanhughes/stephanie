@@ -61,6 +61,15 @@ class ScorableEntityAgent(BaseAgent):
                 self.logger.log("ScorableEntitiesEnriched", record)
 
             context["enriched_entities"] = enriched
+            if enriched:
+                self.report({
+                    "event": "entity_enrichment",
+                    "step": "ScorableEntityAgent",
+                    "details": f"{len(enriched)} scorables enriched with entities.",
+                    "total_entities": sum(len(r["entities"]) for r in enriched),
+                    "scorable_ids": [r["id"] for r in enriched],
+                })
+
             return context
 
         except Exception as e:

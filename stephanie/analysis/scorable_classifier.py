@@ -47,7 +47,7 @@ class ScorableClassifier:
         centroids: Precomputed centroid embeddings for each domain
     """
     
-    def __init__(self, memory, logger, config_path="config/domain/seeds.yaml", metric="cosine"):
+    def __init__(self, memory, logger, config_path="config/domain/seeds.yaml", metric="cosine", embed_fn=None):
         """
         Initialize the domain classifier with configuration and metrics.
         
@@ -60,7 +60,8 @@ class ScorableClassifier:
         self.memory = memory
         self.logger = logger
         self.metric = metric
-        
+        self.embed_fn = embed_fn
+
         # Log initialization with configuration details
         self.logger.log("DomainClassifierInit", {
             "config_path": config_path, 
@@ -195,7 +196,10 @@ class ScorableClassifier:
             
             # Get embeddings for all seed phrases
             for seed in seeds:
-                embedding = self.memory.embedding.get_or_create(seed)
+                if self.embed_fn:
+                    embedding = self.embed_fn(seed)
+                else:
+                    embedding = self.memory.embedding.get_or_create(seed)
                 seed_embs.append(embedding)
                 total_seeds += 1
             
@@ -242,12 +246,19 @@ class ScorableClassifier:
             "has_context": context is not None,
             "message": "Starting domain classification"
         })
-        cache_key = (text, tuple(sorted(self.dimensions or [])))
+        cache_key = (
+            text,
+            self.metric,
+            tuple(sorted(self.centroids.keys()))  # domains being compared against
+        )
         if cache_key in self._classification_cache:
             return self._classification_cache[cache_key]
 
         # Get embedding for input text
-        emb = self.memory.embedding.get_or_create(text)
+        if self.embed_fn:
+            emb = self.embed_fn(text)
+        else:
+            emb = self.memory.embedding.get_or_create(text)
         self.logger.log("TextEmbeddingCreated", {
             "text_length": len(text),
             "embedding_shape": emb.shape,
@@ -290,7 +301,11 @@ class ScorableClassifier:
             })
             
             for tag in goal_tags:
-                tag_emb = self.memory.embedding.get_or_create(tag)
+                if self.embed_fn:
+                    tag_emb = self.embed_fn(tag)
+                else:
+                    tag_emb = self.memory.embedding.get_or_create(tag)
+
                 # Boost context tags by 50% to prioritize them
                 score = self._cosine_distance(emb, tag_emb) * 1.5
                 # Keep the highest score if tag appears multiple times

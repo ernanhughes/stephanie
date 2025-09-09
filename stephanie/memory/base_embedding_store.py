@@ -693,7 +693,8 @@ class BaseEmbeddingStore(BaseStore):
         if not hasattr(self, '_domain_classifier'):
             from stephanie.analysis.scorable_classifier import ScorableClassifier
             self._domain_classifier = ScorableClassifier(
-                memory=self.memory,
+                memory=None,
+                embed_fn=self.get_or_create,
                 logger=self.logger,
                 config_path=self.cfg.get("domain_config", "config/domain/seeds.yaml")
             )

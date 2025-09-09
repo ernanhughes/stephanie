@@ -16,6 +16,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/scorable_entity
   - agents/chat_to_casebook
   - agents/pacs_trainer
   - agents/universal_scorer
@@ -115,7 +116,7 @@ pipeline:
          Compute progress stats, select high-quality examples, and build RLVR-style datasets
          ready for PACS training.
        cls: stephanie.agents.pacs.casebook_preparation.CaseBookPreparationAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: pacs_trainer
@@ -124,7 +125,7 @@ pipeline:
          Replace unstable RL with a supervised loop that couples actor and critic signals ,
          using CaseBook trajectories as the source of rewards.
        cls: stephanie.agents.pacs.pacs_trainer.PACSTrainerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: skill_extraction
@@ -145,3 +146,14 @@ pipeline:
        enabled: false
        iterations: 1
 
+     - name: knowledge_db_loader
+       description: "Load prior retained knowledge from the database for retrieval"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    
+
+     - name: scorable_entity
+       description: "🗂️ Extract and prepare Scorable entities from the CaseBook"
+       cls: stephanie.agents.scorable_entity.ScorableEntityAgent
+       enabled: true
+       iterations: 1

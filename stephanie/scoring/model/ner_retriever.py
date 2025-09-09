@@ -249,17 +249,31 @@ class AnnoyIndex:
 
 
 class NERRetrieverEmbedder:
-    """Entity retriever using shared embedding store instead of custom projections."""
-    def __init__(self, model_name="meta-llama/Llama-3-8b", layer=17,
+    """Entity retriever using embedding store instead of custom projections."""
+
+    def __init__(self, 
+                 model_name="meta-llama/Llama-3-8b", 
+                 layer=17,
                  device="cuda" if torch.cuda.is_available() else "cpu",
-                 embedding_dim=500, index_path="data/ner_retriever/index",
-                 projection_enabled=False, projection_dim=500, projection_dropout=0.1):
+                 embedding_dim=500, 
+                 index_path="data/ner_retriever/index",
+                 projection_enabled=False, 
+                 projection_dim=500, 
+                 projection_dropout=0.1,
+                 logger=None,
+                 memory=None,   # <-- Fix 1: accept memory + logger
+                 cfg=None):
 
         self.device = device
+        self.logger = logger or logging.getLogger(__name__)  # <-- Fix 2: self.logger always available
+        self.memory = memory
+        self.cfg = cfg or {}
+
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(
             model_name, output_hidden_states=True, trust_remote_code=True
         ).to(device).eval()
+
         self.layer = layer
         self.embedding_dim = embedding_dim
         self.index = AnnoyIndex(dim=embedding_dim, index_path=index_path)
@@ -275,9 +289,14 @@ class NERRetrieverEmbedder:
                 dropout=projection_dropout,
             ).to(device).eval()
 
-        logger.info(f"NER Retriever initialized with {model_name} "
-                    f"layer {layer}, projection_enabled={projection_enabled}")
+        self.logger.info(
+            f"NER Retriever initialized with {model_name} "
+            f"layer {layer}, projection_enabled={projection_enabled}"
+        )
 
+    # ----------------------------
+    # Embedding methods
+    # ----------------------------
     def embed_entity(self, text: str, span: Tuple[int, int]) -> torch.Tensor:
         """Embed an entity span with robust character-to-token alignment."""
         if span[0] >= span[1] or span[0] < 0 or span[1] > len(text):
@@ -330,9 +349,12 @@ class NERRetrieverEmbedder:
         # Project if enabled
         if self.projection_enabled and self.projection is not None:
             entity_vec = self.projection(entity_vec)
-        
+
         return entity_vec
 
+    # ----------------------------
+    # Indexing
+    # ----------------------------
     def index_scorables(self, scorables: List[Scorable]) -> int:
         """Index entities from scorables into Annoy with metadata."""
         new_embeddings, new_metadata = [], []
@@ -343,7 +365,7 @@ class NERRetrieverEmbedder:
                     continue
                 try:
                     emb = self.embed_entity(scorable.text, (start, end))
-                    new_embeddings.append(emb)
+                    new_embeddings.append(emb.detach().cpu().numpy())  # <-- Fix 3: always NumPy
                     new_metadata.append({
                         "scorable_id": str(scorable.id),
                         "scorable_type": scorable.target_type,
@@ -354,7 +376,7 @@ class NERRetrieverEmbedder:
                         "source_text": scorable.text[:100] + "..."
                     })
                 except Exception as e:
-                    logger.error(f"Entity embedding failed: {e}")
+                    self.logger.error(f"Entity embedding failed: {e}")
         if new_embeddings:
             self.index.add(np.array(new_embeddings), new_metadata)
         return len(new_embeddings)
@@ -576,17 +598,46 @@ class NERRetrieverEmbedder:
         return max(0.0, min(1.0, calibrated))
 
     def _get_current_domain(self, query: str) -> str:
-        """Determine domain from query using classifier"""
+        """Determine domain from query using classifier with fallbacks"""
         if not hasattr(self, '_domain_classifier'):
-            from stephanie.analysis.scorable_classifier import ScorableClassifier
-            self._domain_classifier = ScorableClassifier(
-                memory=self.memory,
-                logger=self.logger,
-                config_path=self.cfg.get("domain_config", "config/domain/seeds.yaml")
-            )
+            try:
+                from stephanie.analysis.scorable_classifier import ScorableClassifier
+                self._domain_classifier = ScorableClassifier(
+                    memory=self.memory,
+                    logger=self.logger,
+                    config_path=self.cfg.get("domain_config", "config/domain/seeds.yaml")
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to initialize domain classifier: {e}")
+                # Fallback to simple keyword-based domain detection
+                return self._keyword_based_domain_detection(query)
         
-        return self._domain_classifier.classify(query)
-    
+        try:
+            return self._domain_classifier.classify(query)
+        except Exception as e:
+            self.logger.warning(f"Domain classification failed: {e}")
+            return self._keyword_based_domain_detection(query)
+
+    def _keyword_based_domain_detection(self, query: str) -> str:
+        """Simple keyword-based domain detection as fallback"""
+        query_lower = query.lower()
+        
+        domain_keywords = {
+            "legal": ["law", "court", "judge", "case", "legal", "act", "statute"],
+            "scientific": ["science", "research", "study", "experiment", "data", "hypothesis"],
+            "creative": ["story", "poem", "novel", "creative", "art", "music"],
+            "technical": ["code", "algorithm", "software", "programming", "technical"]
+        }
+        
+        # Count keyword matches
+        scores = {domain: 0 for domain in domain_keywords}
+        for domain, keywords in domain_keywords.items():
+            for kw in keywords:
+                if kw in query_lower:
+                    scores[domain] += 1
+        
+        # Return highest scoring domain or 'general'
+        return max(scores, key=scores.get) if max(scores.values()) > 0 else "general" 
 
     def _should_retrain_calibration(self, domain: str) -> bool:
         """Determine if calibration should be retrained for this domain"""
@@ -705,7 +756,7 @@ class NERRetrieverEmbedder:
         entities_by_type = {}
         for scorable in scorables:
             for start, end, etype in self.entity_detector.detect_entities(scorable.text):
-                entity_text = scorable.text[start:end].strip() Yeah they should be dry right or I give you mine if they're not
+                entity_text = scorable.text[start:end].strip() 
                 if len(entity_text) >= 2:
                     if etype not in entities_by_type:
                         entities_by_type[etype] = []
@@ -742,41 +793,38 @@ class NERRetrieverEmbedder:
     def train_projection(self, triplets: List[Tuple[str, str, str]], 
                         batch_size: int = 32, epochs: int = 3, lr: float = 1e-4):
         """Train projection network with contrastive learning"""
-        if not triplets:
+        if not triplets or not self.projection_enabled or self.projection is None:
             return
-            
+
         self.projection.train()
         optimizer = torch.optim.Adam(self.projection.parameters(), lr=lr)
         loss_fn = nn.TripletMarginLoss(margin=0.2)
-        
+
         for epoch in range(epochs):
             total_loss = 0
             random.shuffle(triplets)
-            
+
             for i in range(0, len(triplets), batch_size):
                 batch = triplets[i:i+batch_size]
                 anchor_batch, pos_batch, neg_batch = zip(*batch)
-                
-                # Get embeddings
+
                 anchor_embs = [self._embed_text_for_training(a) for a in anchor_batch]
                 pos_embs = [self._embed_text_for_training(p) for p in pos_batch]
                 neg_embs = [self._embed_text_for_training(n) for n in neg_batch]
-                
-                # Convert to tensors
-                anchor_tensor = torch.stack(anchor_embs)
-                pos_tensor = torch.stack(pos_embs)
-                neg_tensor = torch.stack(neg_embs)
-                
-                # Compute loss
+
+                anchor_tensor = self.projection(torch.stack(anchor_embs))   # <-- Fix 4: project during training
+                pos_tensor = self.projection(torch.stack(pos_embs))
+                neg_tensor = self.projection(torch.stack(neg_embs))
+
                 loss = loss_fn(anchor_tensor, pos_tensor, neg_tensor)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
-            
+
             avg_loss = total_loss / max(1, len(triplets)/batch_size)
-            logger.info(f"Epoch {epoch+1}: avg loss {avg_loss:.4f}")
-        
+            self.logger.info(f"Epoch {epoch+1}: avg loss {avg_loss:.4f}")
+
         self.projection.eval()
         logger.info("Projection network training completed")
 
@@ -859,3 +907,51 @@ class NERRetrieverEmbedder:
             "similarity_std": np.std(similarities) if similarities else 0,
             "calibrated_mean": np.mean(calibrated_similarities) if calibrated_similarities else 0
         })
+
+    def train_projection(self, triplets: List[Tuple[str, str, str]], 
+                        batch_size: int = 32, epochs: int = 3, lr: float = 1e-4):
+        """Train projection network with contrastive learning and progress monitoring"""
+        if not triplets or not self.projection_enabled or self.projection is None:
+            return
+
+        self.projection.train()
+        optimizer = torch.optim.Adam(self.projection.parameters(), lr=lr)
+        loss_fn = nn.TripletMarginLoss(margin=0.2)
+        
+        # Initialize progress tracking
+        total_batches = (len(triplets) + batch_size - 1) // batch_size
+        progress_bar = tqdm(total=total_batches * epochs, desc="Training Projection")
+        
+        for epoch in range(epochs):
+            total_loss = 0
+            random.shuffle(triplets)
+
+            for i in range(0, len(triplets), batch_size):
+                batch = triplets[i:i+batch_size]
+                anchor_batch, pos_batch, neg_batch = zip(*batch)
+
+                anchor_embs = [self._embed_text_for_training(a) for a in anchor_batch]
+                pos_embs = [self._embed_text_for_training(p) for p in pos_batch]
+                neg_embs = [self._embed_text_for_training(n) for n in neg_batch]
+
+                anchor_tensor = self.projection(torch.stack(anchor_embs))
+                pos_tensor = self.projection(torch.stack(pos_embs))
+                neg_tensor = self.projection(torch.stack(neg_embs))
+
+                loss = loss_fn(anchor_tensor, pos_tensor, neg_tensor)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                # Update progress
+                batch_loss = loss.item()
+                total_loss += batch_loss
+                progress_bar.update(1)
+                progress_bar.set_postfix({"epoch": epoch+1, "loss": batch_loss:.4f})
+
+            avg_loss = total_loss / max(1, len(triplets)/batch_size)
+            self.logger.info(f"Epoch {epoch+1}: avg loss {avg_loss:.4f}")
+
+        progress_bar.close()
+        self.projection.eval()
+        self.logger.info("Projection network training completed")
