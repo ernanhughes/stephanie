@@ -29,10 +29,10 @@ Dependencies:
 import json
 import logging
 import os
-from typing import Any, Dict, List, Tuple
-from datetime import datetime, timedelta
 import random
 import re
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Tuple
 
 import annoy
 import numpy as np
@@ -601,7 +601,8 @@ class NERRetrieverEmbedder:
         """Determine domain from query using classifier with fallbacks"""
         if not hasattr(self, '_domain_classifier'):
             try:
-                from stephanie.analysis.scorable_classifier import ScorableClassifier
+                from stephanie.analysis.scorable_classifier import \
+                    ScorableClassifier
                 self._domain_classifier = ScorableClassifier(
                     memory=self.memory,
                     logger=self.logger,

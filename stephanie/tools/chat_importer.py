@@ -1,4 +1,6 @@
 # stephanie/tools/chat_importer.py
+from __future__ import annotations
+
 import glob
 import hashlib
 import json

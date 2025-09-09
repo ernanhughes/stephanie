@@ -1,4 +1,6 @@
 # stephanie/tools/web_search.py
+from __future__ import annotations
+
 import httpx
 import requests
 from bs4 import BeautifulSoup

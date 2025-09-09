@@ -1,14 +1,16 @@
 # stephanie/memory/base_embedding_store.py
 import hashlib
+import json
+import os
+from datetime import datetime
 from typing import Dict, List, Tuple
+
 import numpy as np
 import torch
-import os
-import json
-from datetime import datetime
 
 from stephanie.memory import BaseStore
 from stephanie.utils.lru_cache import SimpleLRUCache
+
 
 class BaseEmbeddingStore(BaseStore):
     def __init__(self, cfg, conn, db, table: str, name: str, embed_fn, logger=None, cache_size=10000):
@@ -33,7 +35,8 @@ class BaseEmbeddingStore(BaseStore):
         
         if self.ner_enabled:
             try:
-                from stephanie.scoring.model.ner_retriever import NERRetrieverEmbedder
+                from stephanie.scoring.model.ner_retriever import \
+                    NERRetrieverEmbedder
                 self.ner_retriever = NERRetrieverEmbedder(
                     model_name=cfg.get("ner_model", "meta-llama/Llama-3-8b"),
                     layer=cfg.get("ner_layer", 17),
@@ -691,7 +694,8 @@ class BaseEmbeddingStore(BaseStore):
     def _get_current_domain(self, query: str) -> str:
         """Determine domain from query using classifier"""
         if not hasattr(self, '_domain_classifier'):
-            from stephanie.analysis.scorable_classifier import ScorableClassifier
+            from stephanie.analysis.scorable_classifier import \
+                ScorableClassifier
             self._domain_classifier = ScorableClassifier(
                 memory=None,
                 embed_fn=self.get_or_create,

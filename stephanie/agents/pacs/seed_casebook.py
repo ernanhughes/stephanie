@@ -1,6 +1,6 @@
 # stephanie/agents/maintenance/casebook_seeder.py
-from datetime import datetime
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent

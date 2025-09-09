@@ -1,5 +1,6 @@
 # stephanie/tools/view_ranking_trace.py
-# tools/view_ranking_trace.py
+from __future__ import annotations
+
 from collections import defaultdict
 
 import matplotlib.pyplot as plt

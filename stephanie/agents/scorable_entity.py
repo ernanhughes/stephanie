@@ -1,7 +1,7 @@
 # stephanie/agents/scorable_entity.py
 
 import traceback
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable

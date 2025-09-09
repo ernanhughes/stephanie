@@ -1,4 +1,6 @@
 # stephanie/tools/embedding_tool.py
+from __future__ import annotations
+
 from collections import OrderedDict
 
 import requests

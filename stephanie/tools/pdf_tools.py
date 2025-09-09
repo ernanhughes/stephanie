@@ -1,5 +1,6 @@
 # stephanie/tools/pdf_tools.py
-# pdf_tools.py
+from __future__ import annotations
+
 import os
 from pathlib import Path
 from typing import Union

@@ -3,13 +3,14 @@
 # repo_link.py — Push improver artifacts into repo + open PR + optional auto-merge
 # Combines: your clean CLI flow + my structured contrib/ layout, VPM-rich PR body, auto-merge, and hardening.
 
-import subprocess
-import json
 import hashlib
-import time
+import json
 import shutil
+import subprocess
+import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 
 class RepoLink:
     """
@@ -97,6 +98,14 @@ class RepoLink:
         if self.auto_merge and ci_status == "success":
             merged = self._auto_merge(pr_url, branch_name)
 
+        # After auto-merge:
+        if self.auto_merge and merged:
+            # Optional: delete local branch
+            try:
+                self._run(["git", "branch", "-d", branch_name], check=False)
+            except Exception:
+                pass
+
         return {
             "branch": branch_name,
             "pr_url": pr_url,
@@ -104,6 +113,11 @@ class RepoLink:
             "merged": merged,
             "artifacts_dir": str(target_dir)
         }
+
+    def create_pr(self, run_dir, vpm_row, artifact_type="code", dpo_pair_path=None, label="improver"):
+        return self.push_pr(run_dir=run_dir, vpm_row=vpm_row,
+                            dpo_pair_path=dpo_pair_path, label=label,
+                            artifact_type=artifact_type)
 
     # ---------- internals ----------
 

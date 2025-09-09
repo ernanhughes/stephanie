@@ -2,14 +2,16 @@
 
 # mutation.py — safe, measurable mutation-testing helper for the improver stack
 from __future__ import annotations
+
 import re
+import resource
 import shutil
 import subprocess
 import time
-import resource
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Any, Dict, List, Optional, Tuple
+
 
 @dataclass
 class MutationReport:
