@@ -1,0 +1,15 @@
+code:
+  tests_pass_rate: 1.0
+  coverage: 0.70
+  type_safe: 1.0
+  lint_clean: 1.0
+  complexity_ok: 0.8
+
+text:
+  coverage: 0.80
+  correctness: 0.75
+  coherence: 0.75
+  citation_support: 0.65
+  entity_consistency: 0.80
+  readability_min: 9.0
+  readability_max: 11.0 
