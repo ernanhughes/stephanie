@@ -2,13 +2,12 @@
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
-from stephanie.scoring.scorable_factory import TargetType
 
 
 class KnowledgeDBLoaderAgent(BaseAgent):
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
-        self.top_k = cfg.get("top_k", 3)
+        self.top_k = cfg.get("top_k", 10)
         self.include_full_text = cfg.get("include_full_text", False)
         self.search_method = cfg.get(
             "search_method", "document"
@@ -60,8 +59,8 @@ class KnowledgeDBLoaderAgent(BaseAgent):
             self.memory.pipeline_references.insert(
                 {
                     "pipeline_run_id": pipeline_run_id,
-                    "target_type": TargetType.DOCUMENT,
-                    "target_id": d["id"],
+                    "scorable_type": d["scorable_type"],
+                    "scorable_id": d["scorable_id"],
                     "relation_type": "retrieved",
                     "source": self.name,
                 }

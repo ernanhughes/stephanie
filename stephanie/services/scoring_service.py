@@ -29,6 +29,7 @@ You get:
 
 from __future__ import annotations
 
+import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
@@ -37,10 +38,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 # Core types
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.services.service_protocol import Service
 
 # NOTE: We don’t import ScoreStore here directly; we use `self.memory.scores` (already a ScoreStore).
 
-class ScoringService:
+class ScoringService(Service):
     """
     Central scoring gateway.
 
@@ -66,6 +68,31 @@ class ScoringService:
         self.register_from_cfg(self.enabled_scorer_names)
 
         self._log_init()
+
+
+    @property
+    def name(self) -> str:
+        return "scoring"
+    
+    def initialize(self, **kwargs) -> None:
+        """Initialize scoring models."""
+        self._load_models()
+        self.last_model_update = datetime.now()
+    
+    def health_check(self) -> Dict[str, Any]:
+        """Return health status and metrics."""
+        return {
+            "status": "healthy",
+            "model_count": len(self.models),
+            "last_updated": self.last_model_update.isoformat() if self.last_model_update else None,
+            "dimensions": list(self.models.keys())
+        }
+    
+    def shutdown(self) -> None:
+        """Cleanly shut down the service."""
+        self.models = {}
+        self.logger.log("ScoringServiceShutdown", {"status": "complete"})
+
 
     # ------------------------------------------------------------------ #
     # Initialization / registration

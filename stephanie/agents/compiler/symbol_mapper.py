@@ -1,11 +1,11 @@
 # stephanie/agents/compiler/symbol_mapper.py
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
-from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
+from stephanie.services.rules_service import RulesService
 
 
 class SymbolMapper:
     def __init__(self, cfg, memory, logger):
-        self.rule_engine = SymbolicRuleApplier(cfg, memory, logger)
+        self.rule_engine = RulesService(cfg, memory, logger)
 
     def tag_node(self, node: ReasoningNode) -> dict:
         tags = self.rule_engine.apply(node.thought)

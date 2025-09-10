@@ -1,4 +1,6 @@
 # stephanie/agents/base_agent.py
+from __future__ import annotations
+
 import random
 import re
 from abc import ABC, abstractmethod
@@ -7,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import litellm
+from stephanie.services.service_container import ServiceContainer
 import torch
 
 from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
@@ -14,11 +17,10 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
-from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
+from stephanie.services.rules_service import RulesService
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
-from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
-from stephanie.scoring.scoring_service import ScoringService
+from stephanie.services.scoring_service import ScoringService
 
 
 def remove_think_blocks(text: str) -> str:
@@ -34,8 +36,7 @@ class BaseAgent(ABC):
         self.memory = memory
         self.logger = logger
 
-        self.scoring: Optional[ScoringService] = None
-        self.reporter: Optional[Reporter] = None
+        self.container: Optional[ServiceContainer] = None
         
         self.enabled_scorers = self.cfg.get("enabled_scorers", ["sicql"])
 
@@ -60,7 +61,7 @@ class BaseAgent(ABC):
         self.scorable_details = {}
         self.is_scorable = False  # default
 
-        self.rule_applier = SymbolicRuleApplier(cfg, memory, logger)
+        self.rule_applier = RulesService(cfg, memory, logger)
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
 
         self.logger.log(
@@ -433,10 +434,11 @@ class BaseAgent(ABC):
         assert isinstance(scorable, Scorable), "Expected a Scorable instance"
         goal = context.get("goal", {"goal_text": ""})
         score_results = {}
+        scoring: ScoringService = self.container.get("scoring")
 
         for scorer_name in self.enabled_scorers:
             try:
-                bundle = self.scoring.score(
+                bundle = scoring.score(
                     scorer_name,
                     context=context,
                     scorable=scorable,

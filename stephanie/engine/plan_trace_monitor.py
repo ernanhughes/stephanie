@@ -17,7 +17,7 @@ from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.utils.serialization import default_serializer
 
 
-class PlanTraceMonitor:
+class PlanTraceService:
     """Monitors pipeline execution and creates PlanTraces for self-improvement.
     
     This component handles all PlanTrace-related functionality, keeping the Supervisor clean.

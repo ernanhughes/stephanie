@@ -97,8 +97,8 @@ class SeedCaseBookAgent(BaseAgent):
                 self.memory.pipeline_references.insert(
                     {
                         "pipeline_run_id": pipeline_run_id,
-                        "target_type": TargetType.DOCUMENT,
-                        "target_id": doc_id,
+                        "scorable_type": TargetType.DOCUMENT,
+                        "scorable_id": doc_id,
                         "relation_type": "seeded_case",
                         "source": self.name,
                     }

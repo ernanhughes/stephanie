@@ -1,8 +1,11 @@
+# stephanie/agents/compare.py
+from __future__ import annotations
+
 import json
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.reporting.comparison import ComparisonReporter
-
+All right but II can do no no OK
 
 class CompareAgent(BaseAgent):
     def __init__(self, cfg, memory, logger):

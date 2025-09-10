@@ -27,8 +27,8 @@ class PipelineReferenceStore:
         try:
             db_ref = PipelineReferenceORM(
                 pipeline_run_id=reference_dict.get("pipeline_run_id"),
-                target_type=reference_dict.get("target_type"),
-                target_id=reference_dict.get("target_id"),
+                scorable_type=reference_dict.get("scorable_type"),
+                scorable_id=reference_dict.get("scorable_id"),
                 relation_type=reference_dict.get("relation_type"),
                 source=reference_dict.get("source"),
             )
@@ -41,8 +41,8 @@ class PipelineReferenceStore:
                 "PipelineReferenceInserted"
                 f"reference_id: {ref_id}, "
                 f"pipeline_run_id: {db_ref.pipeline_run_id}, "
-                f"target_type: {db_ref.target_type}, "
-                f"target_id: {db_ref.target_id}"
+                f"scorable_type: {db_ref.scorable_type}, "
+                f"scorable_id: {db_ref.scorable_id}"
             )
 
             self.session.commit()
@@ -87,8 +87,8 @@ class PipelineReferenceStore:
         """
         return (
             self.session.query(PipelineReferenceORM)
-            .filter(PipelineReferenceORM.target_type == target_type)
-            .filter(PipelineReferenceORM.target_id == target_id)
+            .filter(PipelineReferenceORM.scorable_type == target_type)
+            .filter(PipelineReferenceORM.scorable_id == target_id)
             .order_by(PipelineReferenceORM.created_at.asc())
             .all()
         )
@@ -115,13 +115,13 @@ class PipelineReferenceStore:
                 PipelineReferenceORM.pipeline_run_id
                 == filters["pipeline_run_id"]
             )
-        if "target_type" in filters:
+        if "scorable_type" in filters:
             query = query.filter(
-                PipelineReferenceORM.target_type == filters["target_type"]
+                PipelineReferenceORM.scorable_type == filters["scorable_type"]
             )
-        if "target_id" in filters:
+        if "scorable_id" in filters:
             query = query.filter(
-                PipelineReferenceORM.target_id == filters["target_id"]
+                PipelineReferenceORM.scorable_id == filters["scorable_id"]
             )
         if "relation_type" in filters:
             query = query.filter(
@@ -167,8 +167,8 @@ class PipelineReferenceStore:
                         "PipelineReferenceResolveFailed",
                         {
                             "pipeline_run_id": pipeline_run_id,
-                            "target_type": ref.target_type,
-                            "target_id": ref.target_id,
+                            "scorable_type": ref.scorable_type,
+                            "scorable_id": ref.scorable_id,
                             "error": str(e),
                         },
                     )

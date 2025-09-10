@@ -1,4 +1,6 @@
 # stephanie/agents/auto_tuner.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from stephanie.agents.base_agent import BaseAgent

@@ -6,7 +6,7 @@ knowledge_db_loader:
   save_context: false
   skip_if_completed: false
 
-  top_k: 3
+  top_k: 10
   include_full_text: true
   search_method: document
 

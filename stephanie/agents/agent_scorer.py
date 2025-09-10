@@ -11,6 +11,7 @@ Meta-agent that scores the outputs of other agents.
 - Ranks performance vs similar past cases
 - Suggests alternative agent options for improvement
 """
+from __future__ import annotations
 
 import logging
 import time

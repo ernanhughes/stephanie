@@ -20,7 +20,7 @@ from stephanie.agents.knowledge.arxiv_search import ArxivSearchAgent
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
+from stephanie.engine.plan_trace_monitor import PlanTraceService
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.utils.serialization import to_serializable
 
@@ -34,7 +34,7 @@ class HNetValidationExperiment(BaseAgent):
         self.logger = logger
         
         # Initialize core components
-        self.plan_trace_monitor = PlanTraceMonitor(self.cfg, self.memory, self.logger)
+        self.plan_trace_monitor = PlanTraceService(self.cfg, self.memory, self.logger)
         self.plan_trace_monitor.scoring = self.scoring
         self.plan_trace_scorer = PlanTraceScorerAgent(self.cfg, self.memory, self.logger)
         self.plan_trace_monitor.scoring = self.scoring

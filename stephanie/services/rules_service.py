@@ -1,14 +1,16 @@
+import datetime
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import yaml
 
 from stephanie.memory.symbolic_rule_store import SymbolicRuleORM
+from stephanie.services.service_protocol import Service
 
 
-class SymbolicRuleApplier:
+class RulesService(Service):
     """
     Core component for applying symbolic rules to modify agent behavior, prompt configurations,
     and pipeline structure at runtime. Acts as the Meta-Controller from the symbolic learning paper.
@@ -34,6 +36,31 @@ class SymbolicRuleApplier:
         self.logger = logger
         self.enabled = cfg.get("symbolic", {}).get("enabled", False)
         self._rules = self._load_rules() if self.enabled else []
+
+    @property
+    def name(self) -> str:
+        return "rules"
+    
+    def initialize(self, **kwargs) -> None:
+        """Initialize scoring models."""
+        self._load_models()
+        self.last_model_update = datetime.now()
+    
+    def health_check(self) -> Dict[str, Any]:
+        """Return health status and metrics."""
+        return {
+            "status": "healthy",
+            "model_count": len(self.models),
+            "last_updated": self.last_model_update.isoformat() if self.last_model_update else None,
+            "dimensions": list(self.models.keys())
+        }
+    
+    def shutdown(self) -> None:
+        """Cleanly shut down the service."""
+        self.models = {}
+        self.logger.log("RulesServiceShutdown", {"status": "complete"})
+
+
 
     @property
     def rules(self) -> list:
