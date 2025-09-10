@@ -1,17 +1,18 @@
 # stephanie/agents/knowledge/knowledge_db_loader.py
 
-from itertools import count
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable_factory import TargetType
 
 
 class KnowledgeDBLoaderAgent(BaseAgent):
     def __init__(self, cfg, memory, logger):
         super().__init__(cfg, memory, logger)
-        self.top_k = cfg.get("top_k", 100)
+        self.top_k = cfg.get("top_k", 3)
         self.include_full_text = cfg.get("include_full_text", False)
-        self.search_method = cfg.get("search_method", "document")  # or "section"
+        self.search_method = cfg.get(
+            "search_method", "document"
+        )  # or "section"
         self.doc_ids_scoring = cfg.get("doc_ids_scoring", False)
         self.doc_ids = cfg.get("doc_ids", [])
 
@@ -23,7 +24,9 @@ class KnowledgeDBLoaderAgent(BaseAgent):
         # 1. Fetch documents
         if self.doc_ids_scoring:
             if not self.doc_ids:
-                self.logger.log("NoDocumentIdsProvided", "No document ids to score.")
+                self.logger.log(
+                    "NoDocumentIdsProvided", "No document ids to score."
+                )
                 return context
 
             docs = self.memory.documents.get_by_ids(self.doc_ids)
@@ -41,15 +44,15 @@ class KnowledgeDBLoaderAgent(BaseAgent):
             )
             self.logger.log(
                 "DocumentsSearched",
-                {"count": len(docs), "goal_text": goal_text, "top_k": self.top_k},
+                {
+                    "count": len(docs),
+                    "goal_text": goal_text,
+                    "top_k": self.top_k,
+                },
             )
 
         # 2. Save retrieved doc dicts into context
         context[self.output_key] = docs
-
-        scorables = [ScorableFactory.from_dict(d) for d in docs]
-        count = self.memory.embedding.index_entities_from_scorables(scorables)
-        print(f"Indexed {count} entities into NER retriever")
 
         context["retrieved_ids"] = [d["id"] for d in docs]
 

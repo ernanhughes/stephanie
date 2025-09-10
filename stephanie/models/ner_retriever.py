@@ -39,6 +39,7 @@ from contextlib import contextmanager
 from stephanie.models.hnsw_index import HNSWIndex
 
 import numpy as np
+
 # stephanie/scoring/model/ner_retriever.py
 import torch
 import torch.nn as nn
@@ -50,12 +51,19 @@ from stephanie.scoring.scorable import Scorable
 
 _logger = logging.getLogger(__name__)
 
+
 # -------------------------------
 # Projection Network
 # -------------------------------
 class NERRetrieverProjection(nn.Module):
     """Neural projection network to reduce embedding dimensionality while preserving semantic information."""
-    def __init__(self, input_dim: int = 4096, output_dim: int = 500, dropout: float = 0.1):
+
+    def __init__(
+        self,
+        input_dim: int = 4096,
+        output_dim: int = 500,
+        dropout: float = 0.1,
+    ):
         super().__init__()
         # Two-layer MLP with SiLU activation and dropout
         self.fc1 = nn.Linear(input_dim, output_dim)
@@ -75,7 +83,9 @@ class NERRetrieverProjection(nn.Module):
         x = self.act(x)
         x = self.dropout(x)
         x = self.fc2(x)
-        return F.normalize(x, p=2, dim=-1)  # L2 normalize output for cosine similarity
+        return F.normalize(
+            x, p=2, dim=-1
+        )  # L2 normalize output for cosine similarity
 
 
 # -------------------------------
@@ -83,6 +93,7 @@ class NERRetrieverProjection(nn.Module):
 # -------------------------------
 class EntityDetector:
     """Detects named entities in text using BERT-NER with fallback to heuristic rules."""
+
     def __init__(self, device: str = "cuda"):
         try:
             # Initialize HuggingFace NER pipeline
@@ -90,7 +101,7 @@ class EntityDetector:
                 "ner",
                 model="dslim/bert-base-NER",
                 aggregation_strategy="simple",
-                device=0 if device == "cuda" else -1
+                device=0 if device == "cuda" else -1,
             )
             _logger.info("Initialized NER pipeline with dslim/bert-base-NER")
         except Exception as e:
@@ -105,7 +116,14 @@ class EntityDetector:
             try:
                 # Use BERT-NER if available
                 results = self.ner_pipeline(text)
-                return [(r["start"], r["end"], self._map_entity_type(r["entity_group"])) for r in results]
+                return [
+                    (
+                        r["start"],
+                        r["end"],
+                        self._map_entity_type(r["entity_group"]),
+                    )
+                    for r in results
+                ]
             except Exception as e:
                 _logger.warning(f"NER pipeline failed: {e}")
         # Fallback to heuristic-based detection
@@ -113,9 +131,16 @@ class EntityDetector:
 
     def _map_entity_type(self, group: str) -> str:
         """Map BERT-NER entity types to simplified categories."""
-        return {"PER": "PERSON", "ORG": "ORG", "LOC": "LOC", "MISC": "MISC"}.get(group, "UNKNOWN")
+        return {
+            "PER": "PERSON",
+            "ORG": "ORG",
+            "LOC": "LOC",
+            "MISC": "MISC",
+        }.get(group, "UNKNOWN")
 
-    def _heuristic_entity_detection(self, text: str) -> List[Tuple[int, int, str]]:
+    def _heuristic_entity_detection(
+        self, text: str
+    ) -> List[Tuple[int, int, str]]:
         """Fallback entity detection using capitalization rules."""
         entities = []
         for word in text.split():
@@ -127,36 +152,44 @@ class EntityDetector:
         return entities
 
 
-
 class NERRetrieverEmbedder:
     """Entity retriever using embedding store instead of custom projections."""
 
-    def __init__(self, 
-                 model_name="meta-llama/Llama-3.2-1B-Instruct", 
-                 layer=17,
-                 device="cuda" if torch.cuda.is_available() else "cpu",
-                 embedding_dim=2048, 
-                 index_path="data/ner_retriever/index",
-                 projection_enabled=False, 
-                 projection_dim=2048, 
-                 projection_dropout=0.1,
-                 logger=None,
-                 memory=None, 
-                 cfg=None):
-
+    def __init__(
+        self,
+        model_name="meta-llama/Llama-3.2-1B-Instruct",
+        layer=17,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        embedding_dim=2048,
+        index_path="data/ner_retriever/index",
+        projection_enabled=False,
+        projection_dim=2048,
+        projection_dropout=0.1,
+        logger=None,
+        memory=None,
+        cfg=None,
+    ):
         self.device = device
         self.logger = logger
         self.memory = memory
         self.cfg = cfg or {}
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(
-            model_name, output_hidden_states=True, trust_remote_code=True
-        ).to(device).eval()
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        self.model = (
+            AutoModel.from_pretrained(
+                model_name, output_hidden_states=True, trust_remote_code=True
+            )
+            .to(device)
+            .eval()
+        )
 
         self.layer = layer
         self.embedding_dim = embedding_dim
         from stephanie.models.hnsw_index import HNSWIndex
+
         self.index = HNSWIndex(dim=embedding_dim, index_path=index_path)
         self.entity_detector = EntityDetector(device)
 
@@ -164,16 +197,21 @@ class NERRetrieverEmbedder:
         self.projection_enabled = projection_enabled
         self.projection = None
         if projection_enabled:
-            self.projection = NERRetrieverProjection(
-                input_dim=self.model.config.hidden_size,
-                output_dim=projection_dim,
-                dropout=projection_dropout,
-            ).to(device).eval()
+            self.projection = (
+                NERRetrieverProjection(
+                    input_dim=self.model.config.hidden_size,
+                    output_dim=projection_dim,
+                    dropout=projection_dropout,
+                )
+                .to(device)
+                .eval()
+            )
 
         logger.info(
             f"NER Retriever initialized with {model_name} "
             f"layer {layer}, projection_enabled={projection_enabled}"
         )
+
 
     # ----------------------------
     # Embedding methods
@@ -182,38 +220,39 @@ class NERRetrieverEmbedder:
         """Embed an entity span with robust character-to-token alignment + layer clamping."""
         hidden_size = (
             self.projection.fc2.out_features
-            if self.projection_enabled else self.model.config.hidden_size
+            if self.projection_enabled
+            else self.model.config.hidden_size
         )
-        
+
         if span[0] >= span[1] or span[0] < 0 or span[1] > len(text):
             return torch.zeros(hidden_size, device=self.device)
-            
+
         inputs = self.tokenizer(
-            text, 
-            return_tensors="pt", 
-            truncation=True, 
-            max_length=512
+            text, return_tensors="pt", truncation=True, max_length=512
         ).to(self.device)
-        
+
         with torch.no_grad():
             outputs = self.model(**inputs, output_hidden_states=True)
             available_layers = len(outputs.hidden_states)
 
             # ✅ Clamp layer index if too high
             if self.layer >= available_layers:
-                self.logger.log("NERLayerAdjusted", {
-                    "requested": self.layer,
-                    "available": available_layers - 1,
-                    "using": available_layers - 1
-                })
+                self.logger.log(
+                    "NERLayerAdjusted",
+                    {
+                        "requested": self.layer,
+                        "available": available_layers - 1,
+                        "using": available_layers - 1,
+                    },
+                )
                 self.layer = available_layers - 1
 
             hidden_states = outputs.hidden_states[self.layer]
-        
+
         # --- Robust char-to-token alignment ---
         start_token = inputs.char_to_token(0, span[0])
         end_token = inputs.char_to_token(0, span[1] - 1)
-        
+
         if start_token is None:
             for offset in range(1, min(10, span[0] + 1)):
                 start_token = inputs.char_to_token(0, span[0] - offset)
@@ -221,7 +260,7 @@ class NERRetrieverEmbedder:
                     break
             if start_token is None:
                 start_token = 1  # skip [CLS]
-                
+
         if end_token is None:
             for offset in range(1, min(10, len(text) - span[1] + 1)):
                 end_token = inputs.char_to_token(0, span[1] - 1 + offset)
@@ -229,62 +268,271 @@ class NERRetrieverEmbedder:
                     break
             if end_token is None or end_token < start_token:
                 end_token = min(inputs.input_ids.shape[1] - 1, start_token + 2)
-        
+
         start_token = max(1, start_token)  # skip [CLS]
-        end_token = min(inputs.input_ids.shape[1] - 1, max(start_token, end_token))
-        
+        end_token = min(
+            inputs.input_ids.shape[1] - 1, max(start_token, end_token)
+        )
+
         # --- Mean pooling across span ---
-        entity_vec = hidden_states[0, start_token:end_token+1, :].mean(dim=0)
-        
+        entity_vec = hidden_states[0, start_token : end_token + 1, :].mean(
+            dim=0
+        )
+
         if self.projection_enabled and self.projection is not None:
             entity_vec = self.projection(entity_vec)
 
         return entity_vec
 
+    def embed_entities_for_batch(
+        self, texts: List[str], spans_list: List[List[Tuple[int, int]]]
+    ):
+        """
+        Robust entity embedding:
+        - Handles bad spans (cs >= ce, out of range)
+        - Handles tokenizer char_to_token returning None
+        - Falls back to CLS or full-sequence average if span mapping fails
+        - Never throws; always returns a list of vectors
+        """
+        # Handle empty inputs early
+        if not texts or not spans_list:
+            return [[] for _ in range(len(texts))]
+        
+        # Tokenize as a batch
+        inputs = self.tokenizer(
+            texts,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=512,
+        ).to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model(**inputs, output_hidden_states=True)
+            available_layers = len(outputs.hidden_states)
+            
+            # Validate/adjust layer index
+            if self.layer >= available_layers:
+                self.logger.log("NERLayerAdjusted", {
+                    "requested": self.layer,
+                    "available": available_layers - 1,
+                    "using": available_layers - 1
+                })
+                layer_idx = available_layers - 1
+            else:
+                layer_idx = self.layer
+                
+            H = outputs.hidden_states[layer_idx]  # [B, T, D]
+
+        batch_vecs = []
+        for b, spans in enumerate(spans_list):
+            text = texts[b]
+            if not text or len(text.strip()) == 0:
+                # Handle empty text
+                batch_vecs.append([torch.zeros(
+                    self.projection.fc2.out_features if self.projection_enabled 
+                    else self.model.config.hidden_size,
+                    device=self.device
+                )])
+                continue
+                
+            vecs = []
+            for cs, ce in spans:
+                # Skip invalid spans
+                if ce <= cs or cs < 0 or ce > len(text):
+                    continue
+
+                st = inputs.char_to_token(b, cs)
+                et = inputs.char_to_token(b, ce - 1)
+
+                # Defensive fallbacks
+                if st is None:
+                    st = 1  # CLS fallback
+                if et is None or et < st:
+                    et = st
+
+                try:
+                    vec = H[b, st:et+1, :].mean(dim=0)
+                except Exception as e:
+                    # Log the issue
+                    self.logger.log("NEREmbeddingFallback", {
+                        "reason": str(e),
+                        "text_idx": b,
+                        "span": (cs, ce),
+                        "token_span": (st, et),
+                        "seq_length": H.shape[1]
+                    })
+                    
+                    # Tiered fallback strategy
+                    if H.shape[1] > 1:
+                        # Try [CLS] token first
+                        vec = H[b, 0, :]  
+                        # If that fails, use mean of entire sequence
+                        if torch.isnan(vec).any():
+                            vec = H[b].mean(dim=0)
+                    else:
+                        vec = H[b, 0, :]  # Last resort
+
+                vecs.append(vec)
+
+            # If no valid entities found, fall back to CLS representation
+            if not vecs:
+                vecs = [H[b, 0, :]]
+
+            batch_vecs.append(vecs)
+
+        # Apply projection if enabled
+        if self.projection_enabled and self.projection is not None:
+            try:
+                # Stack all vectors for efficient projection
+                all_vecs = [v for sublist in batch_vecs for v in sublist]
+                stacked = torch.stack(all_vecs)
+                projected = self.projection(stacked)
+                
+                # Reconstruct nested structure
+                projected_vecs = []
+                idx = 0
+                for sublist in batch_vecs:
+                    projected_vecs.append(projected[idx:idx+len(sublist)].tolist())
+                    idx += len(sublist)
+                batch_vecs = projected_vecs
+            except Exception as e:
+                self.logger.log("ProjectionError", {"error": str(e)})
+                # Continue with non-projected vectors
+
+        return batch_vecs
+
+    def embed_entities_for_text(
+        self, text: str, spans: List[Tuple[int, int]]
+    ) -> List[torch.Tensor]:
+        if not spans:
+            return []
+        inputs = self.tokenizer(
+            text,
+            return_tensors="pt",
+            padding="longest",
+            truncation=True,
+            max_length=512,
+        ).to(self.device)
+        with torch.no_grad():
+            outputs = self.model(**inputs, output_hidden_states=True)
+            layers = len(outputs.hidden_states)
+            if self.layer is None:
+                self.layer = layers // 2
+            elif self.layer >= layers:
+                self.layer = layers - 1
+            H = outputs.hidden_states[self.layer]  # [1, T, D]
+
+        vecs = []
+        # robust char->token mapping
+        for cs, ce in spans:
+            st = inputs.char_to_token(0, cs)
+            et = inputs.char_to_token(0, ce - 1)
+            if st is None:
+                for off in range(1, min(10, cs + 1)):
+                    st = inputs.char_to_token(0, cs - off)
+                    if st is not None:
+                        break
+            if st is None:
+                st = 1
+            if et is None:
+                for off in range(1, min(10, len(text) - ce + 1)):
+                    et = inputs.char_to_token(0, ce - 1 + off)
+                    if et is not None:
+                        break
+            if et is None or et < st:
+                et = min(inputs.input_ids.shape[1] - 1, st + 2)
+
+            st = max(1, st)
+            et = min(inputs.input_ids.shape[1] - 1, max(st, et))
+            vecs.append(H[0, st : et + 1, :].mean(dim=0))  # mean over span
+        if self.projection_enabled and self.projection is not None:
+            vecs = [self.projection(v) for v in vecs]
+        return vecs
+
     # ----------------------------
     # Indexing
     # ----------------------------
-    def index_scorables(self, scorables: List[Scorable]) -> int:
-        """Index entities from scorables into Annoy with metadata."""
-        new_embeddings, new_metadata = [], []
-        for scorable in tqdm(scorables, desc="Indexing entities"):
-            for start, end, entity_type in self.entity_detector.detect_entities(scorable.text):
-                entity_text = scorable.text[start:end].strip()
-                if len(entity_text) < 2:
+    def index_scorables(self, scorables, batch_size: int = 8):
+        new_embs, new_meta = [], []
+        batch_texts, batch_spans, batch_scorables = [], [], []
+
+        for s in scorables:
+            spans = self.entity_detector.detect_entities(s.text)
+            if not spans:
+                continue
+            spans = spans[: self.cfg.get("max_entities_per_scorable", 300)]
+            batch_texts.append(s.text)
+            batch_spans.append([(a, b, etype) for a, b, etype in spans])
+            batch_scorables.append(s)
+
+            # Process a batch
+            if len(batch_texts) >= batch_size:
+                new_embs, new_meta = self._process_batch(
+                    batch_texts,
+                    batch_spans,
+                    batch_scorables,
+                    new_embs,
+                    new_meta,
+                )
+                batch_texts, batch_spans, batch_scorables = [], [], []
+
+        # flush remaining
+        if batch_texts:
+            new_embs, new_meta = self._process_batch(
+                batch_texts, batch_spans, batch_scorables, new_embs, new_meta
+            )
+
+        if new_embs:
+            self.index.add(np.asarray(new_embs), new_meta, save=True)
+        return len(new_embs)
+
+    def _process_batch(self, texts, spans_list, scorables, new_embs, new_meta):
+        all_spans = [[(a, b) for a, b, _ in spans] for spans in spans_list]
+        batched_vecs = self.embed_entities_for_batch(
+            texts, all_spans
+        )  # new batched method
+
+        for s, spans, vecs in zip(scorables, spans_list, batched_vecs):
+            for (start, end, etype), emb in zip(spans, vecs):
+                ent = s.text[start:end].strip()
+                if len(ent) < 2:
                     continue
-                try:
-                    emb = self.embed_entity(scorable.text, (start, end))
-                    new_embeddings.append(emb.detach().cpu().numpy())  # <-- Fix 3: always NumPy
-                    new_metadata.append({
-                        "scorable_id": str(scorable.id),
-                        "scorable_type": scorable.target_type,
-                        "entity_text": entity_text,
+                new_embs.append(emb.detach().cpu().numpy())
+                new_meta.append(
+                    {
+                        "scorable_id": str(s.id),
+                        "scorable_type": s.target_type,
+                        "entity_text": ent,
                         "start": start,
                         "end": end,
-                        "entity_type": entity_type,
-                        "source_text": scorable.text[:100] + "..."
-                    })
-                except Exception as e:
-                    _logger.error(f"Entity embedding failed: {e}")
-        if new_embeddings:
-            self.index.add(np.array(new_embeddings), new_metadata)
-        return len(new_embeddings)
+                        "entity_type": etype,
+                        "source_text": s.text[:100] + "...",
+                    }
+                )
+        return new_embs, new_meta
 
-    def retrieve_entities(self, query: str, k: int = 5, min_similarity: float = 0.6, domain: str = None) -> List[Dict]:
+    def retrieve_entities(
+        self,
+        query: str,
+        k: int = 5,
+        min_similarity: float = 0.6,
+        domain: str = None,
+    ) -> List[Dict]:
         """Search for entities similar to the query with domain-aware calibration."""
         # Preprocess and embed the query
         query_emb = self.embed_type_query(query)
-        
+
         # Search index
-        results = self.index.search(query_emb, k*2)
-        
+        results = self.index.search(query_emb, k * 2)
+
         # Apply domain-specific calibration
         if domain is None:
             domain = self._get_current_domain(query)
-        
+
         # Load calibration data
         calibration = self._load_calibration_data(domain)
-        
+
         # Apply calibration to results
         for result in results:
             if "similarity" in result:
@@ -295,30 +543,45 @@ class NERRetrieverEmbedder:
                     # Apply system-specific constraints
                     if result["similarity"] > 0.8:
                         calibrated = min(1.0, calibrated * 1.05)
-                    result["calibrated_similarity"] = max(0.0, min(1.0, calibrated))
-        
+                    result["calibrated_similarity"] = max(
+                        0.0, min(1.0, calibrated)
+                    )
+
         # Filter by similarity threshold (using calibrated if available)
         filtered_results = [
-            r for r in results 
-            if r.get("calibrated_similarity", r.get("similarity", 0.0)) >= min_similarity
+            r
+            for r in results
+            if r.get("calibrated_similarity", r.get("similarity", 0.0))
+            >= min_similarity
         ][:k]
-        
+
         # Log for monitoring
         if filtered_results:
-            _logger.info(f"Found {len(filtered_results)} entities matching '{query}'")
+            _logger.info(
+                f"Found {len(filtered_results)} entities matching '{query}'"
+            )
             for i, result in enumerate(filtered_results[:3]):  # Log top 3
-                cal_sim = result.get("calibrated_similarity", result.get("similarity", 0.0))
-                _logger.debug(f"Top {i+1} match: '{result['entity_text']}' (sim={cal_sim:.4f})")
+                cal_sim = result.get(
+                    "calibrated_similarity", result.get("similarity", 0.0)
+                )
+                _logger.debug(
+                    f"Top {i + 1} match: '{result['entity_text']}' (sim={cal_sim:.4f})"
+                )
         else:
-            _logger.info(f"No entities found matching '{query}'")
-            
+            _logger.debug(f"No entities found matching '{query}'")
+
         return filtered_results
 
-    def collect_calibration_data(self, query: str, results: List[Dict], ground_truth: List[str], 
-                            domain: str = None) -> None:
+    def collect_calibration_data(
+        self,
+        query: str,
+        results: List[Dict],
+        ground_truth: List[str],
+        domain: str = None,
+    ) -> None:
         """
         Collect calibration data by comparing results against ground truth.
-        
+
         Args:
             query: User query
             results: Search results with scores
@@ -327,12 +590,16 @@ class NERRetrieverEmbedder:
         """
         if not domain:
             domain = self._get_current_domain(query)
-        
+
         # Calculate relevance for each result
         for result in results:
             is_relevant = str(result["id"]) in ground_truth
-            system_type = "ner" if result.get("retrieval_type") == "ner_entity" else "semantic"
-            
+            system_type = (
+                "ner"
+                if result.get("retrieval_type") == "ner_entity"
+                else "semantic"
+            )
+
             # Log for calibration
             calibration_entry = {
                 "query": query,
@@ -340,69 +607,78 @@ class NERRetrieverEmbedder:
                 "system": system_type,
                 "is_relevant": is_relevant,
                 "domain": domain,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
-            
+
             # Save to persistent storage
             self._save_calibration_entry(calibration_entry)
-        
+
         # Log for monitoring
-        self.logger.log("CalibrationDataCollected", {
-            "query": query[:50] + "..." if len(query) > 50 else query,
-            "domain": domain,
-            "total_results": len(results),
-            "relevant_count": sum(1 for r in results if str(r["id"]) in ground_truth)
-        })
+        self.logger.log(
+            "CalibrationDataCollected",
+            {
+                "query": query[:50] + "..." if len(query) > 50 else query,
+                "domain": domain,
+                "total_results": len(results),
+                "relevant_count": sum(
+                    1 for r in results if str(r["id"]) in ground_truth
+                ),
+            },
+        )
 
     def _save_calibration_entry(self, entry: Dict):
         """Save calibration entry to persistent storage"""
         # Create directory if needed
         os.makedirs("data/calibration/history", exist_ok=True)
-        
+
         # Save as timestamped JSON
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         with open(f"data/calibration/history/{timestamp}.json", "w") as f:
             json.dump(entry, f, indent=2)
 
-    def _load_historical_data(self, domain: str = "general", days: int = 30) -> List[Dict]:
+    def _load_historical_data(
+        self, domain: str = "general", days: int = 30
+    ) -> List[Dict]:
         """Load historical calibration data for the given domain"""
         history_dir = "data/calibration/history"
         if not os.path.exists(history_dir):
             return []
-        
+
         # Filter by domain and time window
         historical_data = []
         cutoff_time = datetime.now() - timedelta(days=days)
-        
+
         for filename in os.listdir(history_dir):
             if not filename.endswith(".json"):
                 continue
-                
+
             filepath = os.path.join(history_dir, filename)
             try:
                 with open(filepath, "r") as f:
                     entry = json.load(f)
-                    
+
                 # Skip entries outside our time window
                 entry_time = datetime.fromisoformat(entry["timestamp"])
                 if entry_time < cutoff_time:
                     continue
-                    
+
                 # Filter by domain
                 if domain == "all" or entry.get("domain") == domain:
-                    historical_data.append({
-                        "score": entry["score"],
-                        "accuracy": 1.0 if entry["is_relevant"] else 0.0,
-                        "system": entry["system"]
-                    })
+                    historical_data.append(
+                        {
+                            "score": entry["score"],
+                            "accuracy": 1.0 if entry["is_relevant"] else 0.0,
+                            "system": entry["system"],
+                        }
+                    )
             except Exception as e:
-                self.logger.log("CalibrationDataLoadFailed", {
-                    "error": str(e),
-                    "file": filename
-                })
-        
+                self.logger.log(
+                    "CalibrationDataLoadFailed",
+                    {"error": str(e), "file": filename},
+                )
+
         return historical_data
-    
+
     def _load_calibration_data(self, domain: str) -> Dict:
         """Load historical calibration data for the given domain with fallbacks"""
         # Try domain-specific calibration
@@ -412,68 +688,81 @@ class NERRetrieverEmbedder:
                 with open(domain_path, "r") as f:
                     return json.load(f)
             except Exception as e:
-                self.logger.log("DomainCalibrationLoadFailed", {
-                    "error": str(e),
-                    "domain": domain
-                })
-        
+                self.logger.log(
+                    "DomainCalibrationLoadFailed",
+                    {"error": str(e), "domain": domain},
+                )
+
         # Try general calibration
         general_path = "data/calibration/general_calibration.json"
         if os.path.exists(general_path):
             try:
                 with open(general_path, "r") as f:
                     calibration = json.load(f)
-                    self.logger.log("UsingFallbackCalibration", {
-                        "domain": domain,
-                        "fallback": "general"
-                    })
+                    self.logger.log(
+                        "UsingFallbackCalibration",
+                        {"domain": domain, "fallback": "general"},
+                    )
                     return calibration
             except Exception as e:
-                self.logger.log("GeneralCalibrationLoadFailed", {"error": str(e)})
-        
+                self.logger.log(
+                    "GeneralCalibrationLoadFailed", {"error": str(e)}
+                )
+
         # Default to identity function
-        self.logger.log("UsingDefaultCalibration", {"domain": domain})
+        _logger.debug(f"UsingDefaultCalibration for domain: {domain}")
         return {
-            "semantic": {"coefficients": [1.0, 0.0], "rmse": 0.0, "sample_size": 0},
+            "semantic": {
+                "coefficients": [1.0, 0.0],
+                "rmse": 0.0,
+                "sample_size": 0,
+            },
             "ner": {"coefficients": [1.0, 0.0], "rmse": 0.0, "sample_size": 0},
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
-    def _calibrate_confidence(self, semantic_results: List[Dict], ner_results: List[Dict], 
-                            query: str, domain: str = None) -> None:
+    def _calibrate_confidence(
+        self,
+        semantic_results: List[Dict],
+        ner_results: List[Dict],
+        query: str,
+        domain: str = None,
+    ) -> None:
         """Calibrate confidence between systems based on historical performance"""
         if not domain:
             domain = self._get_current_domain(query)
-        
+
         # Load calibration data
         calibration = self._load_calibration_data(domain)
-        
+
         # Apply domain-specific calibration
         for r in semantic_results:
             if "norm_score" in r:
                 r["calibrated_score"] = self._apply_calibration(
-                    r["norm_score"], 
+                    r["norm_score"],
                     calibration.get("semantic", {}),
-                    system_type="semantic"
+                    system_type="semantic",
                 )
-        
+
         for r in ner_results:
             if "norm_similarity" in r:
                 r["calibrated_similarity"] = self._apply_calibration(
-                    r["norm_similarity"], 
+                    r["norm_similarity"],
                     calibration.get("ner", {}),
-                    system_type="ner"
+                    system_type="ner",
                 )
 
-    def _apply_calibration(self, score: float, calibration: Dict, system_type: str) -> float:
+    def _apply_calibration(
+        self, score: float, calibration: Dict, system_type: str
+    ) -> float:
         """Apply advanced calibration based on historical accuracy"""
         if not calibration or "coefficients" not in calibration:
             return score
-        
+
         # Use polynomial calibration
         poly = np.poly1d(calibration["coefficients"])
         calibrated = float(poly(score))
-        
+
         # Apply system-specific constraints
         if system_type == "semantic":
             # Semantic scores should be more conservative
@@ -482,26 +771,32 @@ class NERRetrieverEmbedder:
             # NER scores benefit from slight boosting at high confidence
             if score > 0.8:
                 calibrated = min(1.0, calibrated * 1.05)
-        
+
         # Ensure valid range
         return max(0.0, min(1.0, calibrated))
 
     def _get_current_domain(self, query: str) -> str:
         """Determine domain from query using classifier with fallbacks"""
-        if not hasattr(self, '_domain_classifier'):
+        if not hasattr(self, "_domain_classifier"):
             try:
-                from stephanie.analysis.scorable_classifier import \
-                    ScorableClassifier
+                from stephanie.analysis.scorable_classifier import (
+                    ScorableClassifier,
+                )
+
                 self._domain_classifier = ScorableClassifier(
                     memory=self.memory,
                     logger=self.logger,
-                    config_path=self.cfg.get("domain_config", "config/domain/seeds.yaml")
+                    config_path=self.cfg.get(
+                        "domain_config", "config/domain/seeds.yaml"
+                    ),
                 )
             except Exception as e:
-                self.logger.error(f"Failed to initialize domain classifier: {e}")
+                self.logger.error(
+                    f"Failed to initialize domain classifier: {e}"
+                )
                 # Fallback to simple keyword-based domain detection
                 return self._keyword_based_domain_detection(query)
-        
+
         try:
             return self._domain_classifier.classify(query)
         except Exception as e:
@@ -511,23 +806,48 @@ class NERRetrieverEmbedder:
     def _keyword_based_domain_detection(self, query: str) -> str:
         """Simple keyword-based domain detection as fallback"""
         query_lower = query.lower()
-        
+
         domain_keywords = {
-            "legal": ["law", "court", "judge", "case", "legal", "act", "statute"],
-            "scientific": ["science", "research", "study", "experiment", "data", "hypothesis"],
+            "legal": [
+                "law",
+                "court",
+                "judge",
+                "case",
+                "legal",
+                "act",
+                "statute",
+            ],
+            "scientific": [
+                "science",
+                "research",
+                "study",
+                "experiment",
+                "data",
+                "hypothesis",
+            ],
             "creative": ["story", "poem", "novel", "creative", "art", "music"],
-            "technical": ["code", "algorithm", "software", "programming", "technical"]
+            "technical": [
+                "code",
+                "algorithm",
+                "software",
+                "programming",
+                "technical",
+            ],
         }
-        
+
         # Count keyword matches
         scores = {domain: 0 for domain in domain_keywords}
         for domain, keywords in domain_keywords.items():
             for kw in keywords:
                 if kw in query_lower:
                     scores[domain] += 1
-        
+
         # Return highest scoring domain or 'general'
-        return max(scores, key=scores.get) if max(scores.values()) > 0 else "general" 
+        return (
+            max(scores, key=scores.get)
+            if max(scores.values()) > 0
+            else "general"
+        )
 
     def _should_retrain_calibration(self, domain: str) -> bool:
         """Determine if calibration should be retrained for this domain"""
@@ -535,23 +855,27 @@ class NERRetrieverEmbedder:
         cal_path = f"data/calibration/{domain}_calibration.json"
         if not os.path.exists(cal_path):
             return True
-        
+
         # Get last training time
         try:
             with open(cal_path, "r") as f:
                 cal_data = json.load(f)
                 last_train = datetime.fromisoformat(cal_data["timestamp"])
-                
+
                 # Retrain if older than 7 days
                 if datetime.now() - last_train > timedelta(days=7):
                     return True
         except Exception as e:
-            self.logger.log("CalibrationTimestampCheckFailed", {"error": str(e)})
+            self.logger.log(
+                "CalibrationTimestampCheckFailed", {"error": str(e)}
+            )
             return True
-        
+
         # Check if enough new data has accumulated
         historical_data = self._load_historical_data(domain, days=1)
-        return len(historical_data) >= self.cfg.get("min_calibration_samples", 100)
+        return len(historical_data) >= self.cfg.get(
+            "min_calibration_samples", 100
+        )
 
     def auto_train_calibration(self, domain: str = "general"):
         """Automatically train calibration if needed"""
@@ -561,129 +885,160 @@ class NERRetrieverEmbedder:
                 self.train_calibration(historical_data, domain)
                 return True
         return False
-    
-    def evaluate_calibration(self, domain: str = "general", test_size: int = 100) -> Dict[str, float]:
+
+    def evaluate_calibration(
+        self, domain: str = "general", test_size: int = 100
+    ) -> Dict[str, float]:
         """
         Evaluate current calibration quality using held-out test data.
-        
+
         Args:
             domain: Domain to evaluate
             test_size: Number of samples to use for testing
-            
+
         Returns:
             Dictionary of evaluation metrics
         """
         # Load test data
         historical_data = self._load_historical_data(domain)
-        if len(historical_data) < test_size * 2:  # Need enough data for train/test split
-            return {"status": "insufficient_data", "sample_size": len(historical_data)}
-        
+        if (
+            len(historical_data) < test_size * 2
+        ):  # Need enough data for train/test split
+            return {
+                "status": "insufficient_data",
+                "sample_size": len(historical_data),
+            }
+
         # Split into train and test
         random.shuffle(historical_data)
         train_data = historical_data[:-test_size]
         test_data = historical_data[-test_size:]
-        
+
         # Train temporary model
         semantic_data = [d for d in train_data if d["system"] == "semantic"]
         ner_data = [d for d in train_data if d["system"] == "ner"]
-        
+
         semantic_model = self._train_calibration_model(semantic_data)
         ner_model = self._train_calibration_model(ner_data)
-        
+
         # Evaluate on test data
-        semantic_rmse = self._evaluate_calibration_model(semantic_model, 
-                                                    [d for d in test_data if d["system"] == "semantic"])
-        ner_rmse = self._evaluate_calibration_model(ner_model, 
-                                                [d for d in test_data if d["system"] == "ner"])
-        
+        semantic_rmse = self._evaluate_calibration_model(
+            semantic_model, [d for d in test_data if d["system"] == "semantic"]
+        )
+        ner_rmse = self._evaluate_calibration_model(
+            ner_model, [d for d in test_data if d["system"] == "ner"]
+        )
+
         # Compare to uncalibrated baseline
         baseline_rmse = self._evaluate_calibration_model(
-            {"coefficients": [1.0, 0.0]}, 
-            test_data
+            {"coefficients": [1.0, 0.0]}, test_data
         )
-        
-        improvement = (baseline_rmse - (semantic_rmse + ner_rmse)/2) / baseline_rmse * 100
-        
-        self.logger.log("CalibrationEvaluation", {
-            "domain": domain,
-            "semantic_rmse": semantic_rmse,
-            "ner_rmse": ner_rmse,
-            "baseline_rmse": baseline_rmse,
-            "improvement_pct": improvement,
-            "test_size": test_size
-        })
-        
+
+        improvement = (
+            (baseline_rmse - (semantic_rmse + ner_rmse) / 2)
+            / baseline_rmse
+            * 100
+        )
+
+        self.logger.log(
+            "CalibrationEvaluation",
+            {
+                "domain": domain,
+                "semantic_rmse": semantic_rmse,
+                "ner_rmse": ner_rmse,
+                "baseline_rmse": baseline_rmse,
+                "improvement_pct": improvement,
+                "test_size": test_size,
+            },
+        )
+
         return {
             "semantic_rmse": semantic_rmse,
             "ner_rmse": ner_rmse,
             "baseline_rmse": baseline_rmse,
             "improvement_pct": improvement,
-            "sample_size": len(test_data)
+            "sample_size": len(test_data),
         }
 
-    def _evaluate_calibration_model(self, model: Dict, data: List[Dict]) -> float:
+    def _evaluate_calibration_model(
+        self, model: Dict, data: List[Dict]
+    ) -> float:
         """Evaluate calibration model RMSE on test data"""
         if not data or "coefficients" not in model:
             return 1.0  # Worst possible RMSE
-        
+
         # Apply calibration
         calibrated_scores = [
-            float(np.polyval(model["coefficients"], d["score"])) 
-            for d in data
+            float(np.polyval(model["coefficients"], d["score"])) for d in data
         ]
-        
+
         # Calculate RMSE
         errors = [
             (calibrated - d["accuracy"]) ** 2
             for calibrated, d in zip(calibrated_scores, data)
         ]
-        
+
         return float(np.sqrt(np.mean(errors))) if errors else 1.0
 
-    def generate_triplets(self, scorables: List[Scorable], max_triplets: int = 1000) -> List[Tuple[str, str, str]]:
+    def generate_triplets(
+        self, scorables: List[Scorable], max_triplets: int = 1000
+    ) -> List[Tuple[str, str, str]]:
         """Generate contrastive learning triplets from CaseBooks"""
         # Group entities by type
         entities_by_type = {}
         for scorable in scorables:
-            for start, end, etype in self.entity_detector.detect_entities(scorable.text):
-                entity_text = scorable.text[start:end].strip() 
+            for start, end, etype in self.entity_detector.detect_entities(
+                scorable.text
+            ):
+                entity_text = scorable.text[start:end].strip()
                 if len(entity_text) >= 2:
                     if etype not in entities_by_type:
                         entities_by_type[etype] = []
                     entities_by_type[etype].append(entity_text)
-        
+
         # Generate triplets (anchor, positive, negative)
         triplets = []
-        valid_types = [t for t in entities_by_type.keys() if len(entities_by_type[t]) >= 2]
-        
+        valid_types = [
+            t for t in entities_by_type.keys() if len(entities_by_type[t]) >= 2
+        ]
+
         for _ in range(min(max_triplets, 10 * len(valid_types))):
             etype = random.choice(valid_types)
             entities = entities_by_type[etype]
-            
+
             if len(entities) < 2:
                 continue
-                
+
             anchor, positive = random.sample(entities, 2)
-            
+
             # Find negative example from different type
             other_types = [t for t in valid_types if t != etype]
             if not other_types:
                 continue
-                
+
             neg_type = random.choice(other_types)
             negative = random.choice(entities_by_type[neg_type])
-            
+
             triplets.append((anchor, positive, negative))
-            
+
             if len(triplets) >= max_triplets:
                 break
-                
+
         return triplets
 
-    def train_projection(self, triplets: List[Tuple[str, str, str]], 
-                        batch_size: int = 32, epochs: int = 3, lr: float = 1e-4):
+    def train_projection(
+        self,
+        triplets: List[Tuple[str, str, str]],
+        batch_size: int = 32,
+        epochs: int = 3,
+        lr: float = 1e-4,
+    ):
         """Train projection network with contrastive learning"""
-        if not triplets or not self.projection_enabled or self.projection is None:
+        if (
+            not triplets
+            or not self.projection_enabled
+            or self.projection is None
+        ):
             return
 
         self.projection.train()
@@ -695,14 +1050,22 @@ class NERRetrieverEmbedder:
             random.shuffle(triplets)
 
             for i in range(0, len(triplets), batch_size):
-                batch = triplets[i:i+batch_size]
+                batch = triplets[i : i + batch_size]
                 anchor_batch, pos_batch, neg_batch = zip(*batch)
 
-                anchor_embs = [self._embed_text_for_training(a) for a in anchor_batch]
-                pos_embs = [self._embed_text_for_training(p) for p in pos_batch]
-                neg_embs = [self._embed_text_for_training(n) for n in neg_batch]
+                anchor_embs = [
+                    self._embed_text_for_training(a) for a in anchor_batch
+                ]
+                pos_embs = [
+                    self._embed_text_for_training(p) for p in pos_batch
+                ]
+                neg_embs = [
+                    self._embed_text_for_training(n) for n in neg_batch
+                ]
 
-                anchor_tensor = self.projection(torch.stack(anchor_embs))   # <-- Fix 4: project during training
+                anchor_tensor = self.projection(
+                    torch.stack(anchor_embs)
+                )  # <-- Fix 4: project during training
                 pos_tensor = self.projection(torch.stack(pos_embs))
                 neg_tensor = self.projection(torch.stack(neg_embs))
 
@@ -712,8 +1075,8 @@ class NERRetrieverEmbedder:
                 optimizer.step()
                 total_loss += loss.item()
 
-            avg_loss = total_loss / max(1, len(triplets)/batch_size)
-            self.logger.info(f"Epoch {epoch+1}: avg loss {avg_loss:.4f}")
+            avg_loss = total_loss / max(1, len(triplets) / batch_size)
+            self.logger.info(f"Epoch {epoch + 1}: avg loss {avg_loss:.4f}")
 
         self.projection.eval()
         _logger.info("Projection network training completed")
@@ -721,27 +1084,32 @@ class NERRetrieverEmbedder:
     def _embed_text_for_training(self, text: str) -> torch.Tensor:
         """Embed text using mid-layer representation for training"""
         inputs = self.tokenizer(
-            text, 
-            return_tensors="pt", 
-            padding=True,
+            text,
+            return_tensors="pt",
+            padding="longest",
             truncation=True,
-            max_length=32
+            max_length=32,
         ).to(self.device)
-        
+
         with torch.no_grad():
             outputs = self.model(**inputs, output_hidden_states=True)
             hidden_states = outputs.hidden_states[self.layer]
-        
+
         # Use last token representation
         seq_len = (inputs["attention_mask"][0] == 1).sum().item()
-        query_vec = hidden_states[0, seq_len-1, :]
-        
+        query_vec = hidden_states[0, seq_len - 1, :]
+
         return query_vec
 
     def preprocess_query(self, query: str) -> str:
         """Preprocess query to improve retrieval performance."""
         # Remove common prefixes
-        query = re.sub(r"^(find all|show me|retrieve|get|list|identify)\s+", "", query, flags=re.IGNORECASE)
+        query = re.sub(
+            r"^(find all|show me|retrieve|get|list|identify)\s+",
+            "",
+            query,
+            flags=re.IGNORECASE,
+        )
         # Convert to lowercase for consistency
         query = query.lower()
         # Remove trailing punctuation
@@ -749,18 +1117,17 @@ class NERRetrieverEmbedder:
         return query.strip()
 
     def embed_type_query(self, query: str) -> np.ndarray:
-        """Embed a user-provided type description using last token representation, 
+        """Embed a user-provided type description using last token representation,
         robust to layer mismatches."""
         # Preprocess query
         query = self.preprocess_query(query)
-        
+
         inputs = self.tokenizer(
-            query, 
-            return_tensors="pt", 
-            truncation=True, 
-            max_length=32
+            query, return_tensors="pt",
+            padding="longest",
+            truncation=True, max_length=32
         ).to(self.device)
-        
+
         with torch.no_grad():
             outputs = self.model(**inputs, output_hidden_states=True)
             hidden_states_all = outputs.hidden_states
@@ -770,74 +1137,105 @@ class NERRetrieverEmbedder:
             if self.layer is None:
                 self.layer = available_layers // 2  # middle layer default
             elif self.layer >= available_layers:
-                _logger.info("NERLayerAdjusted" 
-                        f"requested: {self.layer}"
-                        f"available: {available_layers - 1}"
-                        f"using: {available_layers - 1}"
-                    )
+                _logger.info(
+                    "NERLayerAdjusted"
+                    f"requested: {self.layer}"
+                    f"available: {available_layers - 1}"
+                    f"using: {available_layers - 1}"
+                )
                 self.layer = available_layers - 1  # last available layer
 
             hidden_states = hidden_states_all[self.layer]
-        
+
         # Get sequence length from attention mask
         seq_len = (inputs["attention_mask"][0] == 1).sum().item()
-        
+
         # Use last token representation (paper-compliant)
         query_vec = hidden_states[0, seq_len - 1, :]
-        
+
         # Project if enabled
         if self.projection_enabled and self.projection is not None:
             query_vec = self.projection(query_vec)
-        
+
         return query_vec.cpu().detach().numpy()
 
-    def _log_retrieval_metrics(self, query: str, results: List[Dict], domain: str):
+    def _log_retrieval_metrics(
+        self, query: str, results: List[Dict], domain: str
+    ):
         """Log metrics for monitoring retrieval performance"""
         # Track entity types retrieved
         entity_types = {}
         for r in results:
             etype = r.get("entity_type", "UNKNOWN")
             entity_types[etype] = entity_types.get(etype, 0) + 1
-        
+
         # Track similarity distribution
         similarities = [r["similarity"] for r in results if "similarity" in r]
-        calibrated_similarities = [r["calibrated_similarity"] for r in results if "calibrated_similarity" in r]
-        
-        self.logger.log("NERRetrievalMetrics", {
-            "query": query[:50] + "..." if len(query) > 50 else query,
-            "domain": domain,
-            "total_results": len(results),
-            "entity_types": entity_types,
-            "similarity_mean": np.mean(similarities) if similarities else 0,
-            "similarity_std": np.std(similarities) if similarities else 0,
-            "calibrated_mean": np.mean(calibrated_similarities) if calibrated_similarities else 0
-        })
+        calibrated_similarities = [
+            r["calibrated_similarity"]
+            for r in results
+            if "calibrated_similarity" in r
+        ]
 
-    def train_projection(self, triplets: List[Tuple[str, str, str]], 
-                        batch_size: int = 32, epochs: int = 3, lr: float = 1e-4):
+        self.logger.log(
+            "NERRetrievalMetrics",
+            {
+                "query": query[:50] + "..." if len(query) > 50 else query,
+                "domain": domain,
+                "total_results": len(results),
+                "entity_types": entity_types,
+                "similarity_mean": np.mean(similarities)
+                if similarities
+                else 0,
+                "similarity_std": np.std(similarities) if similarities else 0,
+                "calibrated_mean": np.mean(calibrated_similarities)
+                if calibrated_similarities
+                else 0,
+            },
+        )
+
+    def train_projection(
+        self,
+        triplets: List[Tuple[str, str, str]],
+        batch_size: int = 32,
+        epochs: int = 3,
+        lr: float = 1e-4,
+    ):
         """Train projection network with contrastive learning and progress monitoring"""
-        if not triplets or not self.projection_enabled or self.projection is None:
+        if (
+            not triplets
+            or not self.projection_enabled
+            or self.projection is None
+        ):
             return
 
         self.projection.train()
         optimizer = torch.optim.Adam(self.projection.parameters(), lr=lr)
         loss_fn = nn.TripletMarginLoss(margin=0.2)
-        
+
         # Initialize progress tracking
         total_batches = (len(triplets) + batch_size - 1) // batch_size
-        progress_bar = tqdm(total=total_batches * epochs, desc="Training Projection")
-        
+        progress_bar = tqdm(
+            total=total_batches * epochs, desc="Training Projection"
+        )
+
         for epoch in range(epochs):
             total_loss = 0
             random.shuffle(triplets)
 
             for i in range(0, len(triplets), batch_size):
-                batch = triplets[i:i+batch_size]
+                batch = triplets[i : i + batch_size]
                 anchor_batch, pos_batch, neg_batch = zip(*batch)
 
-                anchor_embs = [self._embed_text_for_training(a) for a in anchor_batch]
-                pos_embs = [self._embed_text_for_training(p) for p in pos_batch]
-                neg_embs = [self._embed_text_for_training(n) for n in neg_batch]
+                anchor_embs = [
+                    self._embed_text_for_training(a) for a in anchor_batch
+                ]
+                pos_embs = [
+                    self._embed_text_for_training(p) for p in pos_batch
+                ]
+                neg_embs = [
+                    self._embed_text_for_training(n) for n in neg_batch
+                ]
 
                 anchor_tensor = self.projection(torch.stack(anchor_embs))
                 pos_tensor = self.projection(torch.stack(pos_embs))
@@ -847,15 +1245,17 @@ class NERRetrieverEmbedder:
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                
+
                 # Update progress
                 batch_loss = loss.item()
                 total_loss += batch_loss
                 progress_bar.update(1)
-                progress_bar.set_postfix({"epoch": epoch+1, "loss": batch_loss})
+                progress_bar.set_postfix(
+                    {"epoch": epoch + 1, "loss": batch_loss}
+                )
 
-            avg_loss = total_loss / max(1, len(triplets)/batch_size)
-            self.logger.info(f"Epoch {epoch+1}: avg loss {avg_loss:.4f}")
+            avg_loss = total_loss / max(1, len(triplets) / batch_size)
+            self.logger.info(f"Epoch {epoch + 1}: avg loss {avg_loss:.4f}")
 
         progress_bar.close()
         self.projection.eval()

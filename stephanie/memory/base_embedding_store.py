@@ -13,7 +13,7 @@ from stephanie.utils.lru_cache import SimpleLRUCache
 
 
 class BaseEmbeddingStore(BaseStore):
-    def __init__(self, cfg, memory, table: str, name: str, logger, cache_size=10000):
+    def __init__(self, cfg, memory, table: str, name: str, embed_fn, logger, cache_size=10000):
         super().__init__(memory.session, logger)
         self.cfg = cfg
         self.memory = memory
@@ -23,8 +23,9 @@ class BaseEmbeddingStore(BaseStore):
         self.table = table
         self.name = name
         self.type = cfg.get("type", name)  # e.g. "hnet", "hf"
+        self.embed_fn = embed_fn
 
-        # Cache: {hash -> (embedding_id, embedding_vector)}
+        # Cache: {hash -> (embeddi Hi ng_id, embedding_vector)}
         self._cache = SimpleLRUCache(max_size=cache_size)
         
         # Initialize NER Retriever if enabled in config

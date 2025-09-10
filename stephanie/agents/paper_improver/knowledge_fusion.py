@@ -31,20 +31,18 @@ Designed to be piped directly into DraftGeneratorAgent (as 'section plan').
 """
 
 from __future__ import annotations
-import json
 import re
-import time 
+from tqdm import tqdm
 import uuid
+import torch
 from dataclasses import dataclass
-from pathlib import Path
 import traceback
-from typing import Any, Dict, List, Optional, Tuple, Set
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-# Use the newer NERRetrieverEmbedder that supports Annoy index
 from stephanie.models.ner_retriever import NERRetrieverEmbedder, EntityDetector
 
 
@@ -71,12 +69,16 @@ class KFConfig:
     min_domain_score: float = 0.0
     ner_k: int = 12
     ner_min_sim: float = 0.60
-    ner_min_calibrated_sim: float = 0.45  # Critical: use calibrated similarity threshold
-    ephemeral_index_dir: str = "/tmp"   # index writes go to tmp; nothing to DB
+    ner_min_calibrated_sim: float = (
+        0.45  # Critical: use calibrated similarity threshold
+    )
+    ephemeral_index_dir: str = "/tmp"  # index writes go to tmp; nothing to DB
     max_chat_snippets: int = 12
     max_chunk_size: int = 5000  # For indexing large texts
-    entity_detection_fallback: bool = True  # Use heuristic fallback if BERT-NER fails
-
+    entity_detection_fallback: bool = (
+        True  # Use heuristic fallback if BERT-NER fails
+    )
+    enable_chunking: bool = False   
 
 class KnowledgeFusionAgent(BaseAgent):
     """
@@ -94,7 +96,10 @@ class KnowledgeFusionAgent(BaseAgent):
             ephemeral_index_dir=cfg.get("ephemeral_index_dir", "/tmp"),
             max_chat_snippets=cfg.get("max_chat_snippets", 12),
             max_chunk_size=cfg.get("max_chunk_size", 5000),
-            entity_detection_fallback=cfg.get("entity_detection_fallback", True),
+            entity_detection_fallback=cfg.get(
+                "entity_detection_fallback", True
+            ),
+            enable_chunking=cfg.get("enable_chunking", False)
         )
         # Domain backbone (no DB writes of domain tags)
         self.domain_clf = ScorableClassifier(
@@ -106,11 +111,13 @@ class KnowledgeFusionAgent(BaseAgent):
         # Entity layer (ANN over session-only content)
         self.entity_detector = EntityDetector(device=cfg.get("device", "cuda"))
         self.ner = NERRetrieverEmbedder(
-            model_name=cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct"),
-            layer=cfg.get("ner_layer", 17),
+            model_name=cfg.get(
+                "ner_model", "meta-llama/Llama-3.2-1B-Instruct"
+            ),
+            layer=cfg.get("ner_layer", 16), # in paper we seee 17 here the llm has on y 16 layers
             device=cfg.get("device", "cpu"),
             embedding_dim=cfg.get("ner_dim", 2048),
-            index_path=f"{self.kfc.ephemeral_index_dir}/ner_session_{uuid.uuid4().hex}",  # temp
+            index_path="data/ner_retriever/index",   # persistent path
             projection_enabled=cfg.get("ner_projection", False),
             projection_dim=cfg.get("ner_projection_dim", 2048),
             projection_dropout=cfg.get("ner_projection_dropout", 0.1),
@@ -124,50 +131,109 @@ class KnowledgeFusionAgent(BaseAgent):
 
         chat = self.memory.chats.get_top_conversations(limit=10)
         documents = context.get("documents", []) or []
-        for paper in documents:
+        for paper in tqdm(
+            documents, desc="KnowledgeFusion Papers", unit="paper"
+        ):
+            sections = (
+                self.memory.document_sections.get_by_document(paper.get("id"))
+                or []
+            )
+            sections = [
+                s.to_dict()
+                for s in sections
+                if s.section_text and len(s.section_text) > 20
+            ]
 
-            sections = self.memory.document_sections.get_by_document(paper.get("id")) or []
-            sections = [s.to_dict() for s in sections if s.section_text and len(s.section_text) > 20]
+            self.report(
+                {
+                    "event": "start",
+                    "step": "KnowledgeFusion",
+                    "details": f"Sections: {len(sections)}, Chat msgs: {len(chat)}",
+                    "paper_title": paper.get("title"),
+                }
+            )
 
-            self.report({
-                "event": "start",
-                "step": "KnowledgeFusion",
-                "details": f"Sections: {len(sections)}, Chat msgs: {len(chat)}",
-                "paper_title": paper.get("title"),
-            })
-
-            # 1) Build a session-only (ephemeral) entity index from paper sections + chat
+            # Build session index
             scorables = self._build_session_scorables(sections, chat, paper_id=paper.get("id"))
-            self._index_session_entities(scorables)
+            if self.kfc.enable_chunking:
+                self._index_session_entities_with_chunking(scorables)
+            else:
+                self._index_session_entities(scorables)
 
-            # 2) Produce a transient knowledge plan per section
+            # Progress bar for sections
             plans: List[Dict[str, Any]] = []
-            for sec in sections:
+            for sec in tqdm(
+                sections,
+                desc=f"Sections of {paper.get('title', 'paper')}",
+                unit="sec",
+            ):
                 try:
-                    # Critical: Pass section domains to entity expansion
-                    plan = self._plan_for_section(sec, goal, chat)
+                    chat_dicts = [msg[0].to_dict() for msg in chat] if chat else []
+                    plan = self._plan_for_section(sec, goal, chat_dicts)
                     plans.append(plan)
                 except Exception as e:
-                    self.logger.log("KnowledgeFusionSectionError", {
-                        "section": sec.get("section_name"), 
-                        "error": str(e),
-                        "traceback": traceback.format_exc()
-                    })
+                    self.logger.log(
+                        "KnowledgeFusionSectionError",{
+                            "section": sec.get("section_name"),
+                            "error": str(e),
+                            "traceback": traceback.format_exc(),
+                        },
+                    )
+
+                # Structured log progress %
+                pct = round(100 * len(plans) / max(1, len(sections)), 2)
+                self.logger.log(
+                    "KnowledgeFusionProgress",
+                    {
+                        "paper": paper.get("title"),
+                        "sections_done": len(plans),
+                        "sections_total": len(sections),
+                        "pct_complete": pct,
+                    },
+                )
 
             context[self.output_key] = plans
-            context["knowledge_plans"] = plans  # alias for convenience
+            context["knowledge_plans"] = plans
 
-            self.report({
-                "event": "end",
-                "step": "KnowledgeFusion",
-                "details": f"Produced {len(plans)} plans (transient)",
-            })
+            self.report(
+                {
+                    "event": "end",
+                    "step": "KnowledgeFusion",
+                    "details": f"Produced {len(plans)} plans (transient)",
+                }
+            )
         return context
+
+    def embed_entities_batch(self, text, spans):
+        inputs = self.tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            padding="longest",
+            max_length=512,
+        ).to(self.device)
+        with torch.no_grad():
+            outputs = self.model(**inputs, output_hidden_states=True)
+            hidden_states = outputs.hidden_states[self.layer][
+                0
+            ]  # (seq_len, dim)
+
+        entity_vecs = []
+        for start, end in spans:
+            start_token = inputs.char_to_token(0, start) or 1
+            end_token = inputs.char_to_token(0, end - 1) or start_token
+            entity_vec = hidden_states[start_token : end_token + 1, :].mean(
+                dim=0
+            )
+            entity_vecs.append(entity_vec.cpu().numpy())
+        return entity_vecs
 
     # ----------------------------
     # Internals
     # ----------------------------
-    def _plan_for_section(self, section: dict, goal: dict, chat: List[Dict[str, str]]) -> Dict[str, Any]:
+    def _plan_for_section(
+        self, section: dict, goal: dict, chat: List[Dict[str, str]]
+    ) -> Dict[str, Any]:
         sec_name = section.get("section_name", "section")
         text = section.get("section_text", "") or ""
         paper_id = section.get("paper_id")
@@ -188,7 +254,12 @@ class KnowledgeFusionAgent(BaseAgent):
         expanded_entities = self._expand_entities(surface_entities, domains)
 
         # C) Chat overlap: find chat snippets that share entities or are semantically close
-        chat_support = self._chat_overlap(chat, surface_entities, expanded_entities, limit=self.kfc.max_chat_snippets)
+        chat_support = self._chat_overlap(
+            chat,
+            surface_entities,
+            expanded_entities,
+            limit=self.kfc.max_chat_snippets,
+        )
 
         # D) Claims with entity grounding
         claims = self._extract_claims_with_entities(text, expanded_entities)
@@ -201,18 +272,20 @@ class KnowledgeFusionAgent(BaseAgent):
             "section_name": sec_name,
             "paper_id": paper_id,
             "paper_text": text,
-            "domains": domains,                    # transient
-            "entities": expanded_entities,         # transient
-            "chat_support": chat_support,          # transient
+            "domains": domains,  # transient
+            "entities": expanded_entities,  # transient
+            "chat_support": chat_support,  # transient
             "claims": claims,
             "tags": tags,
             # downstream knobs
             "goal_template": self.cfg.get("goal_template", "academic_summary"),
-            "generation_style": self.cfg.get("generation_style", "grounded_explanatory"),
+            "generation_style": self.cfg.get(
+                "generation_style", "grounded_explanatory"
+            ),
             "meta": {
                 "knowledge_hash": self._compute_hash(paper_id, text, chat),
-                "domain_confidence": self._get_domain_confidence(domains)
-            }
+                "domain_confidence": self._get_domain_confidence(domains),
+            },
         }
         # (No persistent writes of domains/entities here.)
         return plan
@@ -226,10 +299,12 @@ class KnowledgeFusionAgent(BaseAgent):
             "focus_area": goal.get("focus_area", ""),
             "goal_type": goal.get("type", "blog_generation"),
             "audience": goal.get("audience", "academic"),
-            "intent": goal.get("intent", "explanation")
+            "intent": goal.get("intent", "explanation"),
         }
 
-    def _detect_entities(self, text: str, source: str = "paper") -> List[Dict[str, Any]]:
+    def _detect_entities(
+        self, text: str, source: str = "paper"
+    ) -> List[Dict[str, Any]]:
         """Full NER pipeline with BERT-NER + heuristic fallback as per PACS.md"""
         # Primary: BERT-NER
         try:
@@ -237,15 +312,19 @@ class KnowledgeFusionAgent(BaseAgent):
             if results:
                 return self._format_entities(results, text, source)
         except Exception as e:
-            self.logger.log("NERFallback", {"error": str(e), "method": "bert-ner"})
-        
+            self.logger.log(
+                "NERFallback", {"error": str(e), "method": "bert-ner"}
+            )
+
         # Fallback: Heuristic rules if configured
         if self.kfc.entity_detection_fallback:
             return self._heuristic_entity_detection(text, source)
-        
+
         return []
 
-    def _format_entities(self, results: List[Tuple[int, int, str]], text: str, source: str) -> List[Dict[str, Any]]:
+    def _format_entities(
+        self, results: List[Tuple[int, int, str]], text: str, source: str
+    ) -> List[Dict[str, Any]]:
         """Format BERT-NER results to standardized entity structure with calibrated similarity."""
         entities = []
         for start, end, etype in results:
@@ -263,76 +342,116 @@ class KnowledgeFusionAgent(BaseAgent):
                 "GPE": "GPE",
                 "METHOD": "METHOD",
                 "METRIC": "METRIC",
-                "ACRONYM": "ACRONYM"
+                "ACRONYM": "ACRONYM",
             }
             std_type = type_map.get(etype, etype)
-            
+
             # Standard entity format with calibrated similarity
-            entities.append({
-                "text": text[start:end],
-                "type": std_type,
-                "start": start,
-                "end": end,
-                "source": source,
-                "similarity": 0.9,  # Raw similarity (BERT-NER is more reliable)
-                "calibrated_similarity": 0.9  # Will be updated during expansion
-            })
+            entities.append(
+                {
+                    "text": text[start:end],
+                    "type": std_type,
+                    "start": start,
+                    "end": end,
+                    "source": source,
+                    "similarity": 0.9,  # Raw similarity (BERT-NER is more reliable)
+                    "calibrated_similarity": 0.9,  # Will be updated during expansion
+                }
+            )
         return entities
 
-    def _heuristic_entity_detection(self, text: str, source: str) -> List[Dict[str, Any]]:
+    def _heuristic_entity_detection(
+        self, text: str, source: str
+    ) -> List[Dict[str, Any]]:
         """Heuristic entity detection as fallback per PACS.md."""
         entities = []
-        
+
         # 1. Acronyms (all-caps words > 2 chars)
         for match in re.finditer(r"\b([A-Z]{2,})\b", text):
-            entities.append({
-                "text": match.group(1),
-                "type": "ACRONYM",
-                "start": match.start(),
-                "end": match.end(),
-                "source": source,
-                "similarity": 0.7,
-                "calibrated_similarity": 0.7
-            })
-        
+            entities.append(
+                {
+                    "text": match.group(1),
+                    "type": "ACRONYM",
+                    "start": match.start(),
+                    "end": match.end(),
+                    "source": source,
+                    "similarity": 0.7,
+                    "calibrated_similarity": 0.7,
+                }
+            )
+
         # 2. Methods (common ML terms)
-        method_terms = ["MCTS", "Chain-of-Thought", "RAG", "Transformer", "AlphaZero", 
-                       "L2Norm", "Backprop", "Gradient", "Attention", "Embedding"]
+        method_terms = [
+            "MCTS",
+            "Chain-of-Thought",
+            "RAG",
+            "Transformer",
+            "AlphaZero",
+            "L2Norm",
+            "Backprop",
+            "Gradient",
+            "Attention",
+            "Embedding",
+        ]
         for term in method_terms:
-            for match in re.finditer(r"\b" + re.escape(term) + r"\b", text, re.IGNORECASE):
-                entities.append({
-                    "text": term,
-                    "type": "METHOD",
-                    "start": match.start(),
-                    "end": match.end(),
-                    "source": source,
-                    "similarity": 0.8,
-                    "calibrated_similarity": 0.8
-                })
-        
+            for match in re.finditer(
+                r"\b" + re.escape(term) + r"\b", text, re.IGNORECASE
+            ):
+                entities.append(
+                    {
+                        "text": term,
+                        "type": "METHOD",
+                        "start": match.start(),
+                        "end": match.end(),
+                        "source": source,
+                        "similarity": 0.8,
+                        "calibrated_similarity": 0.8,
+                    }
+                )
+
         # 3. Metrics (common ML metrics)
-        metric_terms = ["accuracy", "precision", "recall", "F1", "AUC", "RMSE", "MAE", 
-                       "BLEU", "ROUGE", "perplexity"]
+        metric_terms = [
+            "accuracy",
+            "precision",
+            "recall",
+            "F1",
+            "AUC",
+            "RMSE",
+            "MAE",
+            "BLEU",
+            "ROUGE",
+            "perplexity",
+        ]
         for term in metric_terms:
-            for match in re.finditer(r"\b" + re.escape(term) + r"\b", text, re.IGNORECASE):
-                entities.append({
-                    "text": term,
-                    "type": "METRIC",
-                    "start": match.start(),
-                    "end": match.end(),
-                    "source": source,
-                    "similarity": 0.75,
-                    "calibrated_similarity": 0.75
-                })
-        
+            for match in re.finditer(
+                r"\b" + re.escape(term) + r"\b", text, re.IGNORECASE
+            ):
+                entities.append(
+                    {
+                        "text": term,
+                        "type": "METRIC",
+                        "start": match.start(),
+                        "end": match.end(),
+                        "source": source,
+                        "similarity": 0.75,
+                        "calibrated_similarity": 0.75,
+                    }
+                )
+
         return entities
 
-    def _expand_entities(self, surface_entities: List[Dict[str, Any]], section_domains: List[Dict[str, float]]) -> List[Dict[str, Any]]:
+    def _expand_entities(
+        self,
+        surface_entities: List[Dict[str, Any]],
+        section_domains: List[Dict[str, float]],
+    ) -> List[Dict[str, Any]]:
         """Expand entities with domain-aware retrieval and calibrated similarity"""
         expanded = []
         # Get primary domain for calibration (highest scoring)
-        primary_domain = section_domains[0]["domain"] if section_domains else None
-        
+        primary_domain = (
+            section_domains[0]["domain"] if section_domains else None
+        )
+
         for ent in surface_entities:
             # Query with domain calibration
             try:
@@ -341,61 +460,82 @@ class KnowledgeFusionAgent(BaseAgent):
                     query=ent["text"],
                     k=self.kfc.ner_k,
                     min_similarity=self.kfc.ner_min_sim,
-                    domain=primary_domain
+                    domain=primary_domain,
                 )
             except Exception as e:
-                self.logger.log("NERQueryError", {"entity": ent["text"], "error": str(e)})
+                self.logger.log(
+                    "NERQueryError", {"entity": ent["text"], "error": str(e)}
+                )
                 sims = []
 
             similar = []
             for s in sims:
                 # Always prefer calibrated similarity if available
                 sim = s.get("calibrated_similarity", s.get("similarity", 0.0))
-                if sim >= self.kfc.ner_min_calibrated_sim:  # Critical: Use calibrated threshold
-                    similar.append({
-                        "entity_text": s.get("entity_text", ""),
-                        "similarity": float(s.get("similarity", 0.0)),
-                        "calibrated_similarity": float(sim),
-                        "entity_type": s.get("entity_type", "UNKNOWN"),
-                        "source_text": s.get("source_text", "")[:200],
-                        "scorable_id": s.get("scorable_id", ""),
-                        "scorable_type": s.get("scorable_type", ""),
-                        "domain": s.get("domain", primary_domain)
-                    })
-            
+                if (
+                    sim >= self.kfc.ner_min_calibrated_sim
+                ):  # Critical: Use calibrated threshold
+                    similar.append(
+                        {
+                            "entity_text": s.get("entity_text", ""),
+                            "similarity": float(s.get("similarity", 0.0)),
+                            "calibrated_similarity": float(sim),
+                            "entity_type": s.get("entity_type", "UNKNOWN"),
+                            "source_text": s.get("source_text", "")[:200],
+                            "scorable_id": s.get("scorable_id", ""),
+                            "scorable_type": s.get("scorable_type", ""),
+                            "domain": s.get("domain", primary_domain),
+                        }
+                    )
+
             # Only include if we have meaningful similar entities
-            if similar or ent["calibrated_similarity"] >= self.kfc.ner_min_calibrated_sim:
-                expanded.append({
-                    "text": ent["text"],
-                    "type": ent["type"],
-                    "source": ent["source"],
-                    "similar": similar,
-                    "similarity": ent["similarity"],
-                    "calibrated_similarity": ent["calibrated_similarity"]
-                })
-        
+            if (
+                similar
+                or ent["calibrated_similarity"]
+                >= self.kfc.ner_min_calibrated_sim
+            ):
+                expanded.append(
+                    {
+                        "text": ent["text"],
+                        "type": ent["type"],
+                        "source": ent["source"],
+                        "similar": similar,
+                        "similarity": ent["similarity"],
+                        "calibrated_similarity": ent["calibrated_similarity"],
+                    }
+                )
+
         # Dedup by head text, prioritize those with better calibrated similarity
         return self._dedup_entities(expanded)
 
-    def _dedup_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _dedup_entities(
+        self, entities: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """Deduplicate entities while preserving those with highest calibrated similarity"""
         by_head = {}
         for e in entities:
             key = e["text"].lower()
             # If we have calibrated similarity, use that for comparison
-            current_sim = by_head.get(key, {}).get("calibrated_similarity", 0.0)
+            current_sim = by_head.get(key, {}).get(
+                "calibrated_similarity", 0.0
+            )
             new_sim = e.get("calibrated_similarity", 0.0)
-            
+
             if key not in by_head or new_sim > current_sim:
                 by_head[key] = e
-        
+
         return list(by_head.values())
 
-    def _extract_claims_with_entities(self, text: str, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _extract_claims_with_entities(
+        self, text: str, entities: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """Extract claims with entity grounding as per PACS.md."""
         sents = [s for s in _sentences(text) if len(s) > 40]
-        claims = [{"claim_id": f"C{i+1}", "claim": s} for i, s in enumerate(sents[:5])]
-        
+        claims = [
+            {"claim_id": f"C{i + 1}", "claim": s}
+            for i, s in enumerate(sents[:5])
+        ]
+
         # Map entities to claims
         entity_map = {e["text"].lower(): e for e in entities}
         for claim in claims:
@@ -403,28 +543,41 @@ class KnowledgeFusionAgent(BaseAgent):
             for word in claim["claim"].split():
                 word_lower = word.lower().strip(".,;:")
                 if word_lower in entity_map:
-                    claim["grounded_entities"].append(entity_map[word_lower]["text"])
-        
+                    claim["grounded_entities"].append(
+                        entity_map[word_lower]["text"]
+                    )
+
         return claims
 
-    def _generate_tags(self, domains: List[Dict[str, float]], entities: List[Dict[str, Any]]) -> List[str]:
+    def _generate_tags(
+        self, domains: List[Dict[str, float]], entities: List[Dict[str, Any]]
+    ) -> List[str]:
         """Generate tags with domain weighting as per PACS.md."""
         # Top domains (weighted higher)
-        domain_tags = [d["domain"] for d in sorted(domains, key=lambda x: x["score"], reverse=True)[:3]]
-        
+        domain_tags = [
+            d["domain"]
+            for d in sorted(domains, key=lambda x: x["score"], reverse=True)[
+                :3
+            ]
+        ]
+
         # Top entities (weighted lower)
         entity_tags = []
         for entity in entities:
             # Prefer entities with high calibrated similarity
-            for similar in sorted(entity.get("similar", []), 
-                                 key=lambda x: x.get("calibrated_similarity", 0), 
-                                 reverse=True):
-                if (similar["calibrated_similarity"] > 0.7 and 
-                    similar["entity_text"] not in entity_tags):
+            for similar in sorted(
+                entity.get("similar", []),
+                key=lambda x: x.get("calibrated_similarity", 0),
+                reverse=True,
+            ):
+                if (
+                    similar["calibrated_similarity"] > 0.7
+                    and similar["entity_text"] not in entity_tags
+                ):
                     entity_tags.append(similar["entity_text"])
             if len(entity_tags) >= 5:
                 break
-        
+
         # Combine with domain weighting
         return _unique_keep_order(domain_tags + entity_tags)
 
@@ -433,7 +586,7 @@ class KnowledgeFusionAgent(BaseAgent):
         chat: List[Dict[str, str]],
         surface_entities: List[Dict[str, Any]],
         expanded_entities: List[Dict[str, Any]],
-        limit: int = 12
+        limit: int = 12,
     ) -> List[Dict[str, Any]]:
         """
         Rank chat snippets by entity overlap + embedding similarity to section entities.
@@ -452,7 +605,9 @@ class KnowledgeFusionAgent(BaseAgent):
             return results
 
         # Prepare an aggregate entity string as query anchor
-        query_anchor = ", ".join(sorted(list(entity_terms))[:24]) or "section entities"
+        query_anchor = (
+            ", ".join(sorted(list(entity_terms))[:24]) or "section entities"
+        )
         try:
             q_emb = self.memory.embedding.get_or_create(query_anchor)
         except Exception:
@@ -464,7 +619,11 @@ class KnowledgeFusionAgent(BaseAgent):
                 continue
             # quick overlap
             overlap = [t for t in entity_terms if t in text.lower()]
-            overlap_score = min(1.0, len(overlap) / max(1, len(entity_terms))) if entity_terms else 0.0
+            overlap_score = (
+                min(1.0, len(overlap) / max(1, len(entity_terms)))
+                if entity_terms
+                else 0.0
+            )
 
             # semantic proximity (optional if embedding infra present)
             sim_score = 0.0
@@ -473,24 +632,28 @@ class KnowledgeFusionAgent(BaseAgent):
                     c_emb = self.memory.embedding.get_or_create(text[:2000])
                     # cosine similarity
                     num = float((q_emb * c_emb).sum())
-                    den = (float((q_emb * q_emb).sum()) ** 0.5) * (float((c_emb * c_emb).sum()) ** 0.5) + 1e-8
+                    den = (float((q_emb * q_emb).sum()) ** 0.5) * (
+                        float((c_emb * c_emb).sum()) ** 0.5
+                    ) + 1e-8
                     sim_score = num / den
                 except Exception as e:
-                    self.logger.log("ChatOverlapEmbeddingError", {
-                        "error": str(e),
-                        "snippet_length": len(text)
-                    })
+                    self.logger.log(
+                        "ChatOverlapEmbeddingError",
+                        {"error": str(e), "snippet_length": len(text)},
+                    )
                     sim_score = 0.0
 
             score = 0.6 * overlap_score + 0.4 * sim_score
             if score > 0.05:  # keep useful ones
-                results.append({
-                    "snippet": text[:500],
-                    "overlap_entities": overlap[:8],
-                    "sim": round(float(score), 4),
-                    "role": item.get("role"),
-                    "ts": item.get("ts"),
-                })
+                results.append(
+                    {
+                        "snippet": text[:500],
+                        "overlap_entities": overlap[:8],
+                        "sim": round(float(score), 4),
+                        "role": item.get("role"),
+                        "ts": item.get("ts"),
+                    }
+                )
 
         # sort by score desc, truncate
         results.sort(key=lambda r: r["sim"], reverse=True)
@@ -503,7 +666,7 @@ class KnowledgeFusionAgent(BaseAgent):
         self,
         sections: List[Dict[str, Any]],
         chat: List[Dict[str, str]],
-        paper_id: Optional[Any] = None
+        paper_id: Optional[Any] = None,
     ) -> List[Scorable]:
         scorables: List[Scorable] = []
 
@@ -512,8 +675,10 @@ class KnowledgeFusionAgent(BaseAgent):
             text = sec.get("section_text", "") or ""
             if not text:
                 continue
-            sid = f"paper:{paper_id or 'unknown'}:{sec.get('section_name','section')}"
-            scorables.append(Scorable(id=sid, text=text, target_type=TargetType.DOCUMENT))
+            sid = f"paper:{paper_id or 'unknown'}:{sec.get('section_name', 'section')}"
+            scorables.append(
+                Scorable(id=sid, text=text, target_type=TargetType.DOCUMENT)
+            )
 
         # Recent chat messages as scorables (so entities from chat are retrievable)
         for i, msg in enumerate(chat or []):
@@ -524,6 +689,26 @@ class KnowledgeFusionAgent(BaseAgent):
 
     def _index_session_entities(self, scorables: List[Scorable]) -> None:
         """
+        Index entities for the *session only*. 
+        No DB writes; this just populates a throwaway ANN for dynamic retrieval.
+        """
+        total_indexed = 0
+        for scorable in scorables:
+            try:
+                if len(scorable.text.strip()) > 100:
+                    indexed = self.ner.index_scorables([scorable])
+                    total_indexed += indexed
+            except Exception as e:
+                self.logger.log(
+                    "NERIndexError",
+                    {"scorable_id": scorable.id, "error": str(e)},
+                )
+
+        self.logger.log("KnowledgeFusionIndexed", {"entities_indexed": total_indexed})
+
+
+    def _index_session_entities_with_chunking(self, scorables: List[Scorable]) -> None:
+        """
         Index entities for the *session only* (Annoy files in /tmp by default).
         No DB writes; this just populates a throwaway ANN for dynamic retrieval.
         """
@@ -533,15 +718,17 @@ class KnowledgeFusionAgent(BaseAgent):
             if len(scorable.text) > self.kfc.max_chunk_size:
                 chunks = []
                 for i in range(0, len(scorable.text), self.kfc.max_chunk_size):
-                    chunk = scorable.text[i:i+self.kfc.max_chunk_size]
-                    chunks.append(Scorable(
-                        id=f"{scorable.id}_chunk_{i//self.kfc.max_chunk_size}",
-                        text=chunk,
-                        target_type=scorable.target_type
-                    ))
+                    chunk = scorable.text[i : i + self.kfc.max_chunk_size]
+                    chunks.append(
+                        Scorable(
+                            id=f"{scorable.id}_chunk_{i // self.kfc.max_chunk_size}",
+                            text=chunk,
+                            target_type=scorable.target_type,
+                        )
+                    )
             else:
                 chunks = [scorable]
-            
+
             # Index chunks
             for chunk in chunks:
                 try:
@@ -550,19 +737,24 @@ class KnowledgeFusionAgent(BaseAgent):
                         self.ner.index_scorables([chunk])
                         total_indexed += 1
                 except Exception as e:
-                    self.logger.log("NERIndexChunkError", {
-                        "scorable_id": chunk.id,
-                        "error": str(e)
-                    })
-        
-        self.logger.log("KnowledgeFusionIndexed", {"entities_indexed": total_indexed})
+                    self.logger.log(
+                        "NERIndexChunkError",
+                        {"scorable_id": chunk.id, "error": str(e)},
+                    )
+
+        self.logger.log(
+            "KnowledgeFusionIndexed", {"entities_indexed": total_indexed}
+        )
 
     # ----------------------------
     # Utility methods
     # ----------------------------
-    def _compute_hash(self, paper_id: Optional[Any], text: str, chat: List[Dict]) -> str:
+    def _compute_hash(
+        self, paper_id: Optional[Any], text: str, chat: List[Dict]
+    ) -> str:
         """Compute hash of knowledge state for versioning"""
         import hashlib
+
         combined = f"{paper_id or 'unknown'}|||{text[:1000]}|||{len(chat)}"
         return hashlib.sha256(combined.encode()).hexdigest()[:8]
 
@@ -573,7 +765,7 @@ class KnowledgeFusionAgent(BaseAgent):
         # Weighted average of scores
         total = sum(d["score"] for d in domains)
         return min(1.0, total / len(domains))
-    
+
     def _fallback_chat_corpus(self, context: dict) -> List[Dict[str, str]]:
         """
         Best-effort: if the caller didn't pass chat_corpus, try to pull recent

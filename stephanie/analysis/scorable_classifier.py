@@ -109,11 +109,11 @@ class ScorableClassifier:
             Cosine similarity score between -1 and 1
         """
         similarity = float(cosine_similarity([emb1], [emb2])[0][0])
-        self.logger.log("DistanceCalculation", {
-            "metric": "cosine",
-            "similarity": similarity,
-            "message": "Calculated cosine similarity"
-        })
+        _logger.debug("DistanceCalculation"
+            "metric: cosine"
+            f"similarity: {similarity}"
+            "message Calculated cosine similarity"
+        )
         return similarity
 
     def _euclidean_distance(self, emb1: np.array, emb2: np.array) -> float:
@@ -132,12 +132,12 @@ class ScorableClassifier:
         """
         distance = np.linalg.norm(emb1 - emb2)
         negative_distance = -distance  # Convert to negative for consistency
-        self.logger.log("DistanceCalculation", {
-            "metric": "euclidean",
-            "distance": distance,
-            "negative_distance": negative_distance,
-            "message": "Calculated Euclidean distance"
-        })
+        _logger.debug("DistanceCalculation"
+            "metric: euclidean"
+            f"distance: {distance}"
+            f"negative_distance: {negative_distance}"
+            "message: Calculated Euclidean distance"
+        )
         return negative_distance
 
     def _huber_distance(self, emb1: np.array, emb2: np.array, delta: float = 1.0) -> float:
@@ -162,13 +162,13 @@ class ScorableClassifier:
         huber_loss = np.mean(0.5 * quadratic**2 + delta * linear)
         negative_huber = -huber_loss  # Convert to negative for consistency
         
-        self.logger.log("DistanceCalculation", {
-            "metric": "huber",
-            "huber_loss": huber_loss,
-            "negative_huber": negative_huber,
-            "delta": delta,
-            "message": "Calculated Huber distance"
-        })
+        _logger.debug("DistanceCalculation"
+            "metric: huber"
+            f"huber_loss: {huber_loss}"
+            f"negative_huber: {negative_huber}"
+            f"delta: {delta}"
+            "message: Calculated Huber distance"
+        )
         
         return negative_huber
 
@@ -278,12 +278,12 @@ class ScorableClassifier:
             
             scores[domain] = score
             
-            self.logger.log("DomainSimilarityCalculated", {
-                "domain": domain,
-                "score": score,
-                "metric": self.metric,
-                "message": f"Calculated similarity for domain {domain}"
-            })
+            _logger.debug("DomainSimilarityCalculated"
+                f"domain: {domain}"
+                f"score: {score}"
+                f"metric: {self.metric}"
+                f"message Calculated similarity for domain {domain}"
+            )
         
         # Add context-specific tags with weight boost
         if context:
