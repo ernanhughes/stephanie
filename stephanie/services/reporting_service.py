@@ -1,4 +1,4 @@
-# stephanie/reporting/reporter.py
+# stephanie/services/reporting_service.py
 from __future__ import annotations
 
 import asyncio
@@ -7,16 +7,18 @@ import math
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
+
+from stephanie.services.service_protocol import Service
 
 
+# --- Utility Functions ---
 def _truncate(v, max_len=400):
     if isinstance(v, str):
         return (v[:max_len] + "…") if len(v) > max_len else v
     return v
 
 def _safe(obj: Any, max_str=400) -> Any:
-    # sanitize for JSON + avoid huge payloads
     if obj is None or isinstance(obj, (int, float, bool)):
         if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
             return None
@@ -24,7 +26,7 @@ def _safe(obj: Any, max_str=400) -> Any:
     if isinstance(obj, str):
         return _truncate(obj, max_str)
     if isinstance(obj, (list, tuple)):
-        return [_safe(x, max_str) for x in obj[:50]]  # cap list length
+        return [_safe(x, max_str) for x in obj[:50]]
     if isinstance(obj, dict):
         return {str(k): _safe(v, max_str) for k, v in list(obj.items())[:100]}
     try:
@@ -32,6 +34,8 @@ def _safe(obj: Any, max_str=400) -> Any:
     except Exception:
         return None
 
+
+# --- Sink Interfaces ---
 class BaseSink:
     async def emit(self, event: Dict[str, Any]):  # override
         pass
@@ -52,36 +56,63 @@ class LoggerSink(BaseSink):
     def __init__(self, logger):
         self.logger = logger
     async def emit(self, event: Dict[str, Any]):
-        # keep logs tiny
         msg = {k: event[k] for k in ("ts","run_id","agent","stage","note") if k in event}
         try:
-            # assuming your logger has .log(event_type, payload)
             self.logger.log("CBRReport", msg)
         except Exception:
             pass
 
-class Reporter:
+
+# --- Reporting Service ---
+class ReportingService(Service):
     """
-    Efficient Reporter with two responsibilities:
-      1) Emit structured events to sinks (JSONL, logger, etc.)
-      2) Append compact entries into context["REPORTS"] for ReportFormatter
+    Service that emits structured events to sinks (JSONL, logger, etc.)
+    and appends compact entries into context["REPORTS"] for ReportFormatter.
     """
-    def __init__(self, sinks: list[BaseSink], enabled: bool = True, sample_rate: float = 1.0):
+
+    def __init__(self, sinks: List[BaseSink], enabled: bool = True, sample_rate: float = 1.0):
         self.enabled = enabled
         self.sinks = sinks
         self.sample_rate = float(sample_rate)
+
         self._q: asyncio.Queue = asyncio.Queue(maxsize=2048)
         self._consumer: Optional[asyncio.Task] = None
+        self._initialized = False
 
-    async def start(self):
-        if self._consumer is None:
-            self._consumer = asyncio.create_task(self._run())
+    # === Service Protocol ===
+    def initialize(self, **kwargs) -> None:
+        """Start background consumer loop for reporting."""
+        if not self._initialized:
+            loop = asyncio.get_event_loop()
+            self._consumer = loop.create_task(self._run())
+            self._initialized = True
 
-    async def stop(self):
+    def health_check(self) -> Dict[str, Any]:
+        return {
+            "status": "healthy" if self._initialized else "unhealthy",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "metrics": {
+                "queue_size": self._q.qsize(),
+                "queue_capacity": self._q.maxsize,
+                "sinks": len(self.sinks),
+                "consumer_running": bool(self._consumer and not self._consumer.done()),
+            },
+            "dependencies": {},
+        }
+
+    def shutdown(self) -> None:
+        """Stop consumer and clear queue."""
         if self._consumer:
             self._consumer.cancel()
             self._consumer = None
+        self._initialized = False
+        self._q = asyncio.Queue(maxsize=2048)
 
+    @property
+    def name(self) -> str:
+        return "reporting-service-v1"
+
+    # === Internal Worker ===
     async def _run(self):
         try:
             while True:
@@ -94,15 +125,23 @@ class Reporter:
         except asyncio.CancelledError:
             pass
 
-    # --------- PUBLIC API ---------
-    async def emit(self, *, ctx: Dict[str,Any], stage: str, status: Optional[str] = None,
-                   summary: Optional[str] = None, finalize: bool = False, **payload):
+    # === Public API ===
+    async def emit(
+        self,
+        *,
+        ctx: Dict[str,Any],
+        stage: str,
+        status: Optional[str] = None,
+        summary: Optional[str] = None,
+        finalize: bool = False,
+        **payload
+    ):
         """
-        stage:     logical stage name (will be the section header in the report)
-        status:    optional 'running'|'done'|'error' (shown in report)
-        summary:   optional short line under the stage header
-        finalize:  mark the stage as finished (sets end_time & status if provided)
-        payload:   free-form small fields (kept tiny & safe)
+        stage:     logical stage name
+        status:    'running' | 'done' | 'error'
+        summary:   short line for the report
+        finalize:  mark the stage as finished
+        payload:   free-form fields (kept small)
         """
         if not self.enabled:
             return
@@ -118,30 +157,32 @@ class Reporter:
             **_safe(payload),
         }
 
-        # (A) append to in-memory report on the context (for ReportFormatter)
+        # Append to context report
         try:
             self._append_ctx_report(ctx, event, status=status, summary=summary, finalize=finalize)
         except Exception:
             pass
 
-        # (B) queue for sinks
+        # Enqueue for sinks
         try:
             self._q.put_nowait(event)
         except asyncio.QueueFull:
-            pass  # drop silently to keep fast path fast
+            pass  # drop silently
 
-    # --------- INTERNAL: context["REPORTS"] appender ---------
-    def _append_ctx_report(self, ctx: Dict[str,Any], event: Dict[str,Any],
-                           status: Optional[str], summary: Optional[str], finalize: bool):
-        """
-        Build/append a stage block in ctx["REPORTS"] matching ReportFormatter expectations.
-        """
+    # === Context Reporting ===
+    def _append_ctx_report(
+        self,
+        ctx: Dict[str,Any],
+        event: Dict[str,Any],
+        status: Optional[str],
+        summary: Optional[str],
+        finalize: bool
+    ):
         reports = ctx.setdefault("REPORTS", [])
         stage_name = event.get("stage") or "stage"
         agent = event.get("agent") or "UnknownAgent"
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        # find existing stage entry for (stage, agent)
         row = None
         for r in reports:
             if r.get("stage") == stage_name and r.get("agent") == agent:
@@ -165,7 +206,6 @@ class Reporter:
             if summary:
                 row["summary"] = summary
 
-        # Create a compact entry; prefer 'event' or 'note' fields if provided
         entry_event = event.get("event") or event.get("note") or "event"
         entry_payload = {k: v for k, v in event.items()
                          if k not in {"ts","run_id","plan_trace_id","goal_id","agent","stage"}}

@@ -1,35 +1,30 @@
-# stephanie/scoring/service.py
+# stephanie/services/scoring_service.py
 """
-Scoring Service (central gateway)
-=================================
+Scoring Service Module
 
-What this is
-------------
-A single, opinionated entrypoint for all scoring I/O across the system.
+Central scoring gateway for the Stephanie AI system that provides a unified interface
+for all scoring operations. This service handles scorer registration, computation,
+persistence, and lifecycle management for all scoring components.
 
-- **Registration**: Auto-register scorers from `cfg.scorer.*` (or explicit list in `cfg.scoring.enabled_scorers`).
-- **Compute**: Call model scorers uniformly (goal-conditioned or not), get back a ScoreBundle.
-- **Persist**: When you want, persist bundles through EvaluationStore so Scores + Attributes are consistently written.
-- **Single-dimension I/O**: Canonical helpers for HRM and SICQL Q; generic `save_score`/`get_score` passthroughs too.
-- **Pairwise**: Built-in pairwise compare (native if scorer supports it; otherwise aggregate fallback with optional tie-breaks).
-- **Readiness**: Introspect scorer model readiness, with optional auto-train hook.
+Key Features:
+- Automatic scorer registration from configuration
+- Uniform scoring API across different scorer types
+- Built-in support for HRM and SICQL scoring paradigms
+- Pairwise comparison with tie-breaking mechanisms
+- Health monitoring and model readiness checks
+- Integration with memory systems for score persistence
 
-Design notes
-------------
-- We treat **HRM** as a *dimension* (`scores.dimension = "hrm"`). It’s ubiquitous and normalized to [0,1].
-- We treat **SICQL Q** as an **attribute** row (source="sicql", field `q_value`) so we don’t lose its rich diagnostics.
-- We DO NOT use `EvaluationORM.scores` JSON anymore (it caused drift & confusion).
-- Scorer `score(...)` is assumed to be **goal-conditioned** and expects a `goal=dict` (not a whole `context`).
-  The service extracts `goal` from `context` and passes it down correctly.
-
-You get:
-- Uniform API: register → score → (optional) persist → query point-values when you need them.
-- One place to adjust normalization / fallbacks / tie-break behavior.
+Design Principles:
+- Treat HRM as a canonical dimension (0-1 normalized)
+- Treat SICQL Q-values as attributes to preserve diagnostics
+- Avoid JSON score storage to prevent schema drift
+- Expect goal-conditioned scoring (extracts goal from context)
+- Provide both batch (ScoreBundle) and single-dimension I/O
 """
 
 from __future__ import annotations
 
-import datetime
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
@@ -40,47 +35,80 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.services.service_protocol import Service
 
-# NOTE: We don’t import ScoreStore here directly; we use `self.memory.scores` (already a ScoreStore).
 
 class ScoringService(Service):
     """
-    Central scoring gateway.
-
-    - Auto-registers scorers from cfg.scorer.*
-    - Uniform read/write APIs by (scorable_id, scorable_type, score_type[, dimension])
-    - Optional compute_if_missing using registered scorers
-    - Persist via EvaluationStore.save_bundle when computing, or ScoreStore when writing single dims
+    Central scoring gateway for the Stephanie AI system.
+    
+    This service provides a unified interface for all scoring operations, including:
+    - Automatic registration of scorers from configuration
+    - Score computation with optional persistence
+    - Single-dimension score storage and retrieval
+    - Pairwise comparison with tie-breaking
+    - Model health monitoring and readiness checks
+    
+    The service follows the Service protocol and integrates with Stephanie's memory system
+    for consistent score storage and retrieval.
+    
+    Attributes:
+        cfg (Dict[str, Any]): Configuration dictionary
+        memory: Reference to the memory service
+        logger: Reference to the logging service
+        embedding_type (str): Type of embeddings used by the memory system
+        _scorers (Dict[str, Any]): Dictionary of registered scorers
+        enabled_scorer_names (List[str]): List of scorer names to enable
     """
-
+    
     def __init__(self, cfg: Dict[str, Any], memory, logger):
+        """
+        Initialize the ScoringService.
+        
+        Args:
+            cfg: Configuration dictionary with scorer settings
+            memory: Reference to the memory service for score persistence
+            logger: Reference to the logging service for diagnostics
+        """
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
         self.embedding_type = self.memory.embedding.name
         self._scorers: Dict[str, Any] = {}   # name -> scorer instance
 
-        # Which scorers to enable:
+        # Determine which scorers to enable:
         # 1) explicit list in cfg.enabled_scorers
         # 2) else all keys present under cfg.scorer.*
         self.enabled_scorer_names: List[str] = self._resolve_scorer_names()
 
-        # Auto-register
+        # Auto-register scorers from configuration
         self.register_from_cfg(self.enabled_scorer_names)
 
         self._log_init()
 
-
     @property
     def name(self) -> str:
+        """Return the service name for identification."""
         return "scoring"
     
     def initialize(self, **kwargs) -> None:
-        """Initialize scoring models."""
-        self._load_models()
+        """
+        Initialize scoring models and prepare for operation.
+        
+        Args:
+            **kwargs: Additional initialization parameters
+        """
         self.last_model_update = datetime.now()
     
     def health_check(self) -> Dict[str, Any]:
-        """Return health status and metrics."""
+        """
+        Return health status and metrics for the scoring service.
+        
+        Returns:
+            Dictionary containing health information with keys:
+            - status: Overall service status
+            - model_count: Number of loaded models
+            - last_updated: Timestamp of last model update
+            - dimensions: List of available scoring dimensions
+        """
         return {
             "status": "healthy",
             "model_count": len(self.models),
@@ -89,16 +117,24 @@ class ScoringService(Service):
         }
     
     def shutdown(self) -> None:
-        """Cleanly shut down the service."""
+        """Cleanly shut down the service and release resources."""
         self.models = {}
         self.logger.log("ScoringServiceShutdown", {"status": "complete"})
-
 
     # ------------------------------------------------------------------ #
     # Initialization / registration
     # ------------------------------------------------------------------ #
     def _cfg_get(self, *keys, default=None):
-        """Config-safe getter that works for dicts and OmegaConf."""
+        """
+        Config-safe getter that works for both dictionaries and OmegaConf objects.
+        
+        Args:
+            *keys: Keys to traverse in the configuration
+            default: Default value to return if any key is not found
+            
+        Returns:
+            The value at the specified key path or the default value
+        """
         cur = self.cfg
         for k in keys:
             try:
@@ -111,6 +147,17 @@ class ScoringService(Service):
         return cur
 
     def _resolve_scorer_names(self) -> List[str]:
+        """
+        Determine which scorers to enable based on configuration.
+        
+        Returns:
+            List of scorer names to enable
+            
+        Note:
+            First checks for explicit list in cfg.scoring.service.enabled_scorers,
+            then falls back to all keys under cfg.scorer.*, and finally defaults
+            to ["hrm", "sicql"] if nothing is configured.
+        """
         names = []
         try:
             # use /scoring/service if available
@@ -131,6 +178,15 @@ class ScoringService(Service):
         return names
 
     def register_from_cfg(self, names: List[str]) -> None:
+        """
+        Register scorers from configuration for the specified names.
+        
+        Args:
+            names: List of scorer names to register
+            
+        Note:
+            Skips already registered scorers and logs any errors during registration.
+        """
         for name in names:
             if name in self._scorers:
                 continue
@@ -141,7 +197,18 @@ class ScoringService(Service):
 
     def _build_scorer(self, name: str, scorer_cfg: Dict[str, Any]):
         """
-        Map name -> scorer class. Keep this small and explicit.
+        Build a scorer instance for the specified name and configuration.
+        
+        Args:
+            name: Name of the scorer to build
+            scorer_cfg: Configuration for the scorer
+            
+        Returns:
+            Scorer instance or None if building fails
+            
+        Note:
+            Maps scorer names to their respective implementation classes.
+            Supports: hrm, sicql, svm, mrq, ebt, contrastive_ranker/contrastive/reward
         """
         try:
             if name == "hrm":
@@ -170,11 +237,19 @@ class ScoringService(Service):
         return None
 
     def register_scorer(self, name: str, scorer: Any) -> None:
+        """
+        Register a scorer instance with the service.
+        
+        Args:
+            name: Name to register the scorer under
+            scorer: Scorer instance to register
+        """
         self._scorers[name] = scorer
         if self.logger:
             self.logger.log("ScoringServiceScorerRegistered", {"name": name})
 
     def _log_init(self):
+        """Log initialization details for the scoring service."""
         if self.logger:
             self.logger.log("ScoringServiceInitialized", {
                 "enabled": self.enabled_scorer_names,
@@ -193,10 +268,22 @@ class ScoringService(Service):
     ):
         """
         Call the underlying scorer and return its ScoreBundle.
-        Does not persist automatically.
-
-        HOT: Our scorers typically expect **goal-only** (not full context).
-             We extract goal and call `scorer.score(goal=..., scorable, dimensions)`.
+        
+        Args:
+            scorer_name: Name of the registered scorer to use
+            scorable: The scorable object to score
+            context: Context dictionary containing goal and other information
+            dimensions: Optional list of dimensions to score against
+            
+        Returns:
+            ScoreBundle containing scoring results
+            
+        Raises:
+            ValueError: If the specified scorer is not registered
+            
+        Note:
+            Does not persist automatically. Extracts goal from context and passes
+            it to the scorer for goal-conditioned scoring.
         """
         scorer = self._scorers.get(scorer_name)
         if not scorer:
@@ -216,8 +303,23 @@ class ScoringService(Service):
         model_name: Optional[str] = None,
     ):
         """
-        Compute and persist using EvaluationStore.save_bundle (so ScoreORM + EvalAttributes
-        are written consistently by your existing pipeline).
+        Compute and persist scores using EvaluationStore.save_bundle.
+        
+        Args:
+            scorer_name: Name of the registered scorer to use
+            scorable: The scorable object to score
+            context: Context dictionary containing goal and other information
+            dimensions: Optional list of dimensions to score against
+            source: Optional source identifier for the evaluation
+            evaluator: Optional evaluator identifier
+            model_name: Optional model name identifier
+            
+        Returns:
+            ScoreBundle containing scoring results
+            
+        Note:
+            Persists scores using EvaluationStore.save_bundle to ensure consistent
+            storage of ScoreORM and EvalAttributes.
         """
         bundle = self.score(scorer_name, scorable, context, dimensions)
         try:
@@ -257,7 +359,23 @@ class ScoringService(Service):
         attributes: Optional[Dict[str, Any]] = None,
         **evaluation_kwargs,   # goal_id, plan_trace_id, pipeline_run_id, agent_name, etc.
     ):
-        """Convenience: persist a single dimension row (delegates to ScoreStore.save_score)."""
+        """
+        Persist a single dimension score by delegating to ScoreStore.save_score.
+        
+        Args:
+            scorable_id: Identifier of the scorable object
+            scorable_type: Type of the scorable object
+            score_type: Type of score being saved
+            score_value: Numeric value of the score
+            weight: Weight of the score (default: 1.0)
+            rationale: Optional rationale for the score
+            source: Optional source identifier
+            attributes: Optional additional attributes
+            **evaluation_kwargs: Additional evaluation context parameters
+            
+        Returns:
+            Result of the ScoreStore.save_score operation
+        """
         return self.memory.scores.save_score(
             scorable_id=scorable_id,
             scorable_type=scorable_type,
@@ -282,7 +400,22 @@ class ScoringService(Service):
         dimension_filter: Optional[str] = None,
         fallback_to_scores_json: bool = False,  # kept for legacy compat (no-op if you removed JSON)
     ) -> Optional[float]:
-        """Unified read backed by ScoreStore (ScoreORM → Attribute)."""
+        """
+        Retrieve a score by delegating to ScoreStore.get_score.
+        
+        Args:
+            scorable_id: Identifier of the scorable object
+            scorable_type: Type of the scorable object
+            score_type: Type of score to retrieve
+            normalize: Whether to normalize the score
+            attribute_sources: Tuple of attribute sources to check
+            attribute_field: Specific attribute field to retrieve
+            dimension_filter: Optional dimension filter
+            fallback_to_scores_json: Whether to fall back to JSON scores (legacy)
+            
+        Returns:
+            The retrieved score value or None if not found
+        """
         return self.memory.scores.get_score(
             scorable_id=scorable_id,
             scorable_type=scorable_type,
@@ -305,7 +438,18 @@ class ScoringService(Service):
         value: float,
         **evaluation_kwargs,
     ):
-        """Store HRM canonically as a `scores` row with dimension='hrm'."""
+        """
+        Store HRM score canonically as a dimension row.
+        
+        Args:
+            scorable_id: Identifier of the scorable object
+            scorable_type: Type of the scorable object
+            value: HRM score value (0-1 normalized)
+            **evaluation_kwargs: Additional evaluation context parameters
+            
+        Returns:
+            Result of the HRM score save operation
+        """
         return self.memory.scores.save_hrm_score(
             scorable_id=scorable_id,
             scorable_type=scorable_type,
@@ -326,7 +470,20 @@ class ScoringService(Service):
         dimensions: Optional[List[str]] = None,
     ) -> Optional[float]:
         """
-        Read latest HRM (0..1). Optionally compute with the registered HRM scorer if missing.
+        Retrieve HRM score with optional computation if missing.
+        
+        Args:
+            scorable_id: Identifier of the scorable object
+            scorable_type: Type of the scorable object
+            normalize: Whether to normalize the score (default: True)
+            compute_if_missing: Whether to compute the score if not found
+            compute_context: Context to use for computation if needed
+            scorable_builder: Function to build scorable from context
+            scorer_name: Name of the scorer to use for computation
+            dimensions: Dimensions to use for computation
+            
+        Returns:
+            HRM score value (0-1 normalized) or None if not found/computable
         """
         val = self.memory.scores.get_hrm_score(
             scorable_id=scorable_id,
@@ -361,6 +518,19 @@ class ScoringService(Service):
     # Model readiness / lifecycle
     # ------------------------------------------------------------------ #
     def get_model_status(self, name: str) -> dict:
+        """
+        Get the status of a scorer model.
+        
+        Args:
+            name: Name of the scorer to check
+            
+        Returns:
+            Dictionary with model status information including:
+            - name: Scorer name
+            - registered: Whether the scorer is registered
+            - ready: Whether the model is ready for use
+            - info: Additional model information if available
+        """
         s = self._scorers.get(name)
         if not s:
             return {"name": name, "registered": False, "ready": False, "info": None}
@@ -371,6 +541,20 @@ class ScoringService(Service):
         return {"name": name, "registered": True, "ready": ready, "info": info}
 
     def ensure_ready(self, required: list[str], auto_train: bool = False, fail_on_missing: bool = False) -> dict:
+        """
+        Ensure required scorers are ready, with optional auto-training.
+        
+        Args:
+            required: List of scorer names that must be ready
+            auto_train: Whether to automatically train missing models
+            fail_on_missing: Whether to raise an exception if models can't be made ready
+            
+        Returns:
+            Dictionary with readiness report for each required scorer
+            
+        Raises:
+            RuntimeError: If fail_on_missing is True and a required scorer is not ready
+        """
         report = {}
         for name in required or []:
             st = self.get_model_status(name)
@@ -400,7 +584,16 @@ class ScoringService(Service):
     # Pairwise reward convenience
     # ------------------------------------------------------------------ #
     def _coerce_scorable(self, x, default_type: str = "document"):
-        """Accept str|Scorable, return Scorable (text only is fine for pairwise)."""
+        """
+        Convert input to a Scorable object if it isn't already.
+        
+        Args:
+            x: Input to convert (string or Scorable)
+            default_type: Default type to use if input is a string
+            
+        Returns:
+            Scorable object representation of the input
+        """
         if isinstance(x, Scorable):
             return x
         return Scorable(id=None, text=str(x), target_type=default_type)
@@ -416,11 +609,27 @@ class ScoringService(Service):
         margin: float | None = None,
     ) -> dict:
         """
-        Generic pairwise compare via registered scorer.
-        Returns a rich dict: {winner, score_a, score_b, per_dimension, ...}
-
-        HOT: If the scorer implements `compare(...)`, we use it. Otherwise we
-             fall back to “score vs score” aggregation across dimensions.
+        Compare two items using the specified scorer.
+        
+        Args:
+            scorer_name: Name of the scorer to use for comparison
+            context: Context dictionary containing goal information
+            a: First item to compare (string or Scorable)
+            b: Second item to compare (string or Scorable)
+            dimensions: Optional list of dimensions to compare on
+            margin: Optional margin for tie-breaking
+            
+        Returns:
+            Dictionary with comparison results including:
+            - winner: Which item won ("a" or "b")
+            - score_a: Score for item a
+            - score_b: Score for item b
+            - mode: Comparison mode used
+            - per_dimension: Per-dimension scores if available
+            
+        Note:
+            Uses scorer's native compare method if available, otherwise falls back
+            to aggregate scoring. Applies goal similarity tie-breaking if margin is provided.
         """
         scorer = self._scorers.get(scorer_name)
         if not scorer:
@@ -487,7 +696,20 @@ class ScoringService(Service):
         margin: float | None = None,
     ) -> dict:
         """
-        Convenience: compare using the 'reward' scorer registration.
+        Compare two items using the 'reward' scorer.
+        
+        Args:
+            context: Context dictionary containing goal information
+            a: First item to compare (string or Scorable)
+            b: Second item to compare (string or Scorable)
+            dimensions: Optional list of dimensions to compare on
+            margin: Optional margin for tie-breaking
+            
+        Returns:
+            Dictionary with comparison results (see compare_pair for format)
+            
+        Note:
+            Uses configuration defaults for dimensions and margin if not provided.
         """
         # allow defaulting from cfg if not provided
         if dimensions is None:
@@ -507,8 +729,18 @@ class ScoringService(Service):
 
     def reward_decide(self, context: dict, a, b) -> str:
         """
-        Minimal API that returns just 'a' or 'b'.
-        (Useful to plug into components that expect a simple callable.)
+        Minimal API that returns just the winner of a comparison.
+        
+        Args:
+            context: Context dictionary containing goal information
+            a: First item to compare (string or Scorable)
+            b: Second item to compare (string or Scorable)
+            
+        Returns:
+            "a" or "b" indicating which item won
+            
+        Note:
+            Uses a deterministic fallback (length comparison) if comparison fails.
         """
         try:
             res = self.reward_compare(context=context, a=a, b=b)
@@ -521,6 +753,16 @@ class ScoringService(Service):
             return "a" if la >= lb else "b"
 
     def _cos1d(self, a, b) -> float:
+        """
+        Compute cosine similarity between two 1D vectors.
+        
+        Args:
+            a: First vector
+            b: Second vector
+            
+        Returns:
+            Cosine similarity value between the vectors
+        """
         a = np.asarray(a, dtype=float)
         b = np.asarray(b, dtype=float)
         na = np.linalg.norm(a)

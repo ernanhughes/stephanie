@@ -20,7 +20,7 @@ from stephanie.agents.knowledge.arxiv_search import ArxivSearchAgent
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.engine.plan_trace_monitor import PlanTraceService
+from stephanie.services.plan_trace_service import PlanTraceService
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.utils.serialization import to_serializable
 

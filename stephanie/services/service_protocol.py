@@ -1,29 +1,115 @@
 # stephanie/services/service_protocol.py
-from __future__ import annotations
+"""
+Service Protocol Module
 
+Defines the abstract base class (protocol) for all services in the Stephanie AI system.
+This ensures consistent interface implementation across all service types including:
+- Knowledge services
+- Scoring services
+- Reasoning services
+- Memory services
+- Integration services
+
+The Service protocol establishes the mandatory interface that all services must implement
+for proper integration with Stephanie's core system and service orchestration framework.
+"""
+
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Dict, Any
 
+
 class Service(ABC):
-    """Base protocol for all Stephanie services."""
+    """
+    Abstract base class defining the protocol for all Stephanie services.
+    
+    This protocol ensures all services implement a consistent interface for:
+    - Initialization and configuration
+    - Health monitoring and metrics reporting
+    - Graceful shutdown procedures
+    - Service identification
+    
+    All concrete service implementations must inherit from this class and
+    implement the abstract methods defined in this protocol.
+    
+    Attributes:
+        name (str): Read-only property returning the service name for logging and identification
+    """
     
     @abstractmethod
     def initialize(self, **kwargs) -> None:
-        """Initialize service with optional parameters."""
+        """
+        Initialize service with optional configuration parameters.
+        
+        This method is called once when the service is first created and should handle:
+        - Resource allocation
+        - Connection establishment
+        - Configuration validation
+        - Precomputation setup
+        
+        Args:
+            **kwargs: Service-specific configuration parameters
+            
+        Raises:
+            ServiceInitializationError: If service fails to initialize with provided parameters
+        """
         pass
     
     @abstractmethod
     def health_check(self) -> Dict[str, Any]:
-        """Return health status and metrics."""
+        """
+        Return comprehensive health status and performance metrics.
+        
+        Returns:
+            Dictionary containing health information with standard fields including:
+            - status: Overall service status (healthy, degraded, unhealthy)
+            - timestamp: Time of health check
+            - metrics: Service-specific performance metrics
+            - dependencies: Status of external dependencies
+            
+        Example:
+            {
+                "status": "healthy",
+                "timestamp": "2023-10-05T14:30:00Z",
+                "metrics": {
+                    "response_time_ms": 45.2,
+                    "queue_size": 0,
+                    "error_rate": 0.01
+                },
+                "dependencies": {
+                    "database": "connected",
+                    "cache": "connected"
+                }
+            }
+        """
         pass
     
     @abstractmethod
     def shutdown(self) -> None:
-        """Cleanly shut down the service."""
+        """
+        Cleanly shut down the service and release all resources.
+        
+        This method should ensure:
+        - All connections are properly closed
+        - Temporary resources are cleaned up
+        - In-progress operations are completed or safely terminated
+        - Any persistent state is properly saved
+        
+        The service should be designed to be restarted after shutdown.
+        """
         pass
     
     @property
     @abstractmethod
     def name(self) -> str:
-        """Service name for logging and identification."""
+        """
+        Service name for logging, identification and service discovery.
+        
+        Returns:
+            Unique string identifier for the service type
+            
+        Note:
+            Service names should follow the pattern: "domain-purpose-version"
+            Example: "knowledge-ner-v1", "scoring-relevance-v2"
+        """
         pass

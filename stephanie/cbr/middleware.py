@@ -4,7 +4,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 import numpy as np
 
 from stephanie.cbr.adaptor import DefaultAdaptor
-from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
+from stephanie.services.reporting_service import JsonlSink, LoggerSink, ReportingService
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 
@@ -27,7 +27,7 @@ class CBRMiddleware:
         micro_learner,
         scoring_service=None,
         adaptor: Optional[DefaultAdaptor] = None,
-        reporter: Reporter | None = None,
+        reporter: ReportingService | None = None,
     ):
         self.cfg = cfg
         self.memory = memory
@@ -91,7 +91,7 @@ class CBRMiddleware:
         )
         path = (rep_cfg or {}).get("path", "reports/cbr_events.jsonl")
         sample_rate = float((rep_cfg or {}).get("sample_rate", 1.0))
-        return Reporter(
+        return ReportingService(
             sinks=[JsonlSink(path), LoggerSink(logger)],
             enabled=bool((rep_cfg or {}).get("enabled", True)),
             sample_rate=sample_rate,

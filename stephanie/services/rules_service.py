@@ -1,8 +1,31 @@
+# stephanie/services/rules_service.py
+"""
+Symbolic Rules Service Module
+
+Core service for applying symbolic rules to modify agent behavior, prompt configurations,
+and pipeline structure at runtime. Acts as the Meta-Controller from the symbolic learning paper.
+
+This service implements the symbolic learning component of the Stephanie AI system,
+allowing for runtime modifications of agent behavior based on learned rules from
+previous executions. It supports loading rules from both YAML files and a database,
+and applies them to various components of the system including pipelines, agents, and prompts.
+
+Key Features:
+- Rule loading from multiple sources (YAML files and database)
+- Context-aware rule matching and application
+- Multi-level rule application (pipeline, agent, prompt)
+- Rule effect tracking for later analysis and optimization
+- Health monitoring and statistics collection
+"""
+
+from __future__ import annotations
+
 import datetime
 import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List
+import traceback
 
 import yaml
 
@@ -15,11 +38,25 @@ class RulesService(Service):
     Core component for applying symbolic rules to modify agent behavior, prompt configurations,
     and pipeline structure at runtime. Acts as the Meta-Controller from the symbolic learning paper.
     
+    This service enables dynamic adaptation of the AI system based on learned rules that capture
+    successful patterns from previous executions. Rules can modify pipeline structure, agent
+    configuration, and prompt parameters based on the current execution context.
+    
     Key responsibilities:
     - Loading symbolic rules from YAML files and database
     - Matching rules to current execution context
     - Applying rule-based modifications to agents, prompts, and pipelines
     - Tracking rule applications for later analysis and optimization
+    
+    Attributes:
+        cfg (Dict): Configuration dictionary
+        memory: Reference to the memory service
+        logger: Reference to the logging service
+        enabled (bool): Whether symbolic learning is enabled
+        _rules (List[SymbolicRuleORM]): Loaded symbolic rules
+        _rules_loaded (bool): Whether rules have been loaded
+        _last_loaded (datetime): Timestamp of last rule load
+        _rule_stats (Dict): Statistics about rule loading
     """
 
     def __init__(self, cfg: Dict, memory: Any, logger: Any):
@@ -35,36 +72,105 @@ class RulesService(Service):
         self.memory = memory
         self.logger = logger
         self.enabled = cfg.get("symbolic", {}).get("enabled", False)
-        self._rules = self._load_rules() if self.enabled else []
+        self._rules: List[SymbolicRuleORM] = []
+        self._rules_loaded = False
+        self._last_loaded = None
+        self._rule_stats = {
+            "total_rules": 0,
+            "rules_from_yaml": 0,
+            "rules_from_db": 0,
+            "last_load_time": None,
+            "load_duration": 0.0
+        }
 
     @property
     def name(self) -> str:
+        """Return the service name for identification."""
         return "rules"
     
     def initialize(self, **kwargs) -> None:
-        """Initialize scoring models."""
-        self._load_models()
-        self.last_model_update = datetime.now()
-    
+        """
+        Initialize rule service by loading rules if enabled.
+        
+        Args:
+            **kwargs: Additional initialization parameters
+            
+        Raises:
+            Exception: If rule loading fails and symbolic learning is enabled
+        """
+        if not self.enabled:
+            self.logger.log("RulesServiceDisabled", {
+                "reason": "symbolic learning not enabled in config"
+            })
+            return
+            
+        start_time = datetime.datetime.now()
+        try:
+            self._load_rules()
+            self._last_loaded = datetime.datetime.now()
+            self._rule_stats["load_duration"] = (self._last_loaded - start_time).total_seconds()
+            self.logger.log("RulesServiceInitialized", {
+                "total_rules": len(self._rules),
+                "rules_from_yaml": self._rule_stats["rules_from_yaml"],
+                "rules_from_db": self._rule_stats["rules_from_db"],
+                "load_time": self._rule_stats["load_duration"]
+            })
+        except Exception as e:
+            self.logger.log("RulesServiceInitError", {
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            })
+            raise
+
     def health_check(self) -> Dict[str, Any]:
-        """Return health status and metrics."""
+        """
+        Return health status and metrics specific to rule service.
+        
+        Returns:
+            Dictionary containing health information with keys:
+            - status: Overall service status ("healthy" or "disabled")
+            - enabled: Whether the service is enabled
+            - rules_loaded: Whether rules have been loaded
+            - total_rules: Total number of loaded rules
+            - rules_from_yaml: Number of rules loaded from YAML files
+            - rules_from_db: Number of rules loaded from database
+            - last_loaded: Timestamp of last rule load
+            - load_duration: Duration of last rule load in seconds
+        """
         return {
-            "status": "healthy",
-            "model_count": len(self.models),
-            "last_updated": self.last_model_update.isoformat() if self.last_model_update else None,
-            "dimensions": list(self.models.keys())
+            "status": "healthy" if self.enabled and self._rules_loaded else "disabled",
+            "enabled": self.enabled,
+            "rules_loaded": self._rules_loaded,
+            "total_rules": len(self._rules),
+            "rules_from_yaml": self._rule_stats["rules_from_yaml"],
+            "rules_from_db": self._rule_stats["rules_from_db"],
+            "last_loaded": self._last_loaded.isoformat() if self._last_loaded else None,
+            "load_duration": self._rule_stats["load_duration"]
         }
     
     def shutdown(self) -> None:
-        """Cleanly shut down the service."""
-        self.models = {}
-        self.logger.log("RulesServiceShutdown", {"status": "complete"})
-
-
+        """Cleanly shut down the service and release all resources."""
+        self._rules = []
+        self._rules_loaded = False
+        self.logger.log("RulesServiceShutdown", {
+            "status": "complete",
+            "rules_cleared": True
+        })
 
     @property
     def rules(self) -> list:
-        """Get all loaded symbolic rules."""
+        """
+        Get all loaded symbolic rules, loading them if necessary.
+        
+        Returns:
+            List of loaded symbolic rules or empty list if service is disabled
+        """
+        if not self.enabled:
+            return []
+            
+        if not self._rules_loaded:
+            self.initialize()
+            
         return self._rules
 
     def apply(self, context: dict) -> dict:
@@ -256,12 +362,14 @@ class RulesService(Service):
         Returns:
             Updated prompt configuration with rule-based modifications
         """
+        if not self.enabled:
+            return prompt_cfg
+            
         goal = context.get("goal", {})
         applicable_rules = [
             rule
             for rule in self.rules
-            if rule.agent_name == agent_name
-            # and self._matches_filter(rule.filter, goal)  # Optional filter matching
+            if rule.agent_name == agent_name and self._matches_metadata(rule, goal)
         ]
 
         if not applicable_rules:
@@ -276,13 +384,13 @@ class RulesService(Service):
                     {
                         "agent": agent_name,
                         "key": key,
-                        "old_value": prompt_cfg.get(key),
+                        "old_value": self.get_nested_value(prompt_cfg, key),
                         "new_value": value,
                         "rule_id": rule.id,
                         "emoji": "🛠️",
                     },
                 )
-                self.set_nested(prompt_cfg, key, value)
+                self.set_nested_value(prompt_cfg, key, value)
 
             # Record rule application for later analysis
             self.memory.rule_effects.insert(
@@ -294,24 +402,37 @@ class RulesService(Service):
 
         return prompt_cfg
 
-    def set_nested(self, cfg: dict, dotted_key: str, value: Any):
+    def set_nested_value(self, cfg: dict, key_path: str, value: Any):
         """
-        Set a nested configuration value using dot notation.
-        
-        Example: set_nested(cfg, "model.temperature", 0.7)
+        Set a nested value in a dictionary using dot notation.
         
         Args:
-            cfg: Configuration dictionary to modify
-            dotted_key: Key in dot notation (e.g., "model.name")
-            value: Value to set at the specified nested key
+            cfg: Dictionary to modify
+            key_path: Dot-separated path where value should be set
+            value: Value to set at the specified path
         """
-        keys = dotted_key.split(".")
-        d = cfg
-        for k in keys[:-1]:
-            if k not in d or not isinstance(d[k], dict):
-                d[k] = {}
-            d = d[k]
-        d[keys[-1]] = value
+        keys = key_path.split(".")
+        for key in keys[:-1]:
+            cfg = cfg.setdefault(key, {})
+        cfg[keys[-1]] = value
+
+    def get_nested_value(self, cfg: dict, key_path: str) -> Any:
+        """
+        Get a nested value from a dictionary using dot notation.
+        
+        Args:
+            cfg: Dictionary to search
+            key_path: Dot-separated path to the value (e.g., "model.name")
+            
+        Returns:
+            Value at the specified path or None if not found
+        """
+        keys = key_path.split(".")
+        for key in keys:
+            cfg = cfg.get(key, {})
+            if not isinstance(cfg, dict):
+                return cfg
+        return None
 
     def apply_to_prompt(self, cfg: Dict, context: Dict) -> Dict:
         """
@@ -335,7 +456,7 @@ class RulesService(Service):
         matching_rules = [
             r
             for r in self.rules
-            if r.target == "prompt" and self._matches_filter(r.filter, goal)
+            if r.target == "prompt" and self._matches_metadata(r, goal)
         ]
 
         if not matching_rules:
@@ -395,117 +516,6 @@ class RulesService(Service):
 
         return cfg
 
-    def _matches_filter(self, filter_dict: dict, target_obj: dict) -> bool:
-        """
-        Check if target object matches all conditions in the filter dictionary.
-        
-        Supports both single values and lists of acceptable values.
-        
-        Args:
-            filter_dict: Rule filter conditions (e.g., {"goal_type": "research"})
-            target_obj: Object to check against filters (e.g., goal metadata)
-            
-        Returns:
-            True if all filter conditions are satisfied, False otherwise
-        """
-        for key, value in filter_dict.items():
-            target_value = target_obj.get(key)
-            if isinstance(value, list):
-                if target_value not in value:
-                    return False
-            else:
-                if target_value != value:
-                    return False
-        return True
-
-    def track_pipeline_stage(self, stage_dict: dict, context: dict):
-        """Track pipeline stage execution for later analysis."""
-        self.memory.symbolic_rules.track_pipeline_stage(stage_dict, context)
-
-    def get_nested_value(d: dict, key_path: str) -> Any:
-        """
-        Get a nested value from a dictionary using dot notation.
-        
-        Args:
-            d: Dictionary to search
-            key_path: Dot-separated path to the value (e.g., "model.name")
-            
-        Returns:
-            Value at the specified path or None if not found
-        """
-        keys = key_path.split(".")
-        for key in keys:
-            d = d.get(key, {})
-        return d if d else None
-
-    def set_nested_value(d: dict, key_path: str, value: Any):
-        """
-        Set a nested value in a dictionary using dot notation.
-        
-        Args:
-            d: Dictionary to modify
-            key_path: Dot-separated path where value should be set
-            value: Value to set at the specified path
-        """
-        keys = key_path.split(".")
-        for key in keys[:-1]:
-            d = d.setdefault(key, {})
-        d[keys[-1]] = value
-
-    def _load_rules(self) -> List[SymbolicRuleORM]:
-        """
-        Load symbolic rules from both YAML files and database.
-        
-        Returns:
-            List of all loaded symbolic rules
-        """
-        rules = []
-        symbolic_dict = self.cfg.get("symbolic", {})
-        
-        # Load from YAML file if specified
-        if symbolic_dict.get("rules_file"):
-            rules += self._load_rules_from_yaml(symbolic_dict.get("rules_file"))
-            
-        # Load from database if enabled
-        if symbolic_dict.get("enable_db_rules", True):
-            rules += self.memory.symbolic_rules.get_all_rules()
-            
-        return rules
-
-    def _load_rules_from_yaml(self, path: str) -> List[SymbolicRuleORM]:
-        """
-        Load symbolic rules from a YAML configuration file.
-        
-        Args:
-            path: Path to the YAML file containing rule definitions
-            
-        Returns:
-            List of rules loaded from the YAML file
-        """
-        if not Path(path).exists():
-            self.logger.log("SymbolicRuleYAMLNotFound", {"path": path})
-            return []
-
-        with open(path, "r", encoding="utf-8") as f:
-            raw = yaml.safe_load(f)
-
-        rules_list = raw.get("rules", raw)
-        rules = []
-        existing_rules = {
-            r.rule_text for r in self.memory.symbolic_rules.get_all_rules()
-        }
-
-        # Convert YAML entries to SymbolicRuleORM objects
-        for item in rules_list:
-            if isinstance(item, dict) and item.get("rule_text") not in existing_rules:
-                rules.append(SymbolicRuleORM(**item))
-            else:
-                self.logger.log(
-                    "DuplicateSymbolicRuleSkipped", {"rule_text": item.get("rule_text")}
-                )
-                
-        return rules
-
     def _matches_metadata(self, rule: SymbolicRuleORM, goal: Dict[str, Any]) -> bool:
         """
         Check if a rule matches the goal metadata.
@@ -525,10 +535,142 @@ class RulesService(Service):
             return False
         if rule.difficulty and rule.difficulty != goal.get("difficulty"):
             return False
-        if hasattr(goal, "focus_area") and rule.goal_category:
-            if rule.goal_category != goal.get("focus_area"):
-                return False
+            
+        # Handle focus_area as alternative to goal_category
+        focus_area = goal.get("focus_area") or goal.get("focus_area")
+        if focus_area and rule.goal_category and rule.goal_category != focus_area:
+            return False
+            
         return True
+
+    def _load_rules(self) -> List[SymbolicRuleORM]:
+        """
+        Load symbolic rules from both YAML files and database.
+        
+        Returns:
+            List of all loaded symbolic rules
+            
+        Note:
+            This method loads rules from both YAML files (if specified in config)
+            and from the database (if enabled). It tracks statistics about the
+            loading process and handles errors gracefully.
+        """
+        if self._rules_loaded:
+            return self._rules
+
+        start_time = datetime.datetime.now()
+        rules = []
+        symbolic_dict = self.cfg.get("symbolic", {})
+        self._rule_stats["rules_from_yaml"] = 0
+        self._rule_stats["rules_from_db"] = 0
+        
+        # Load from YAML file if specified
+        if symbolic_dict.get("rules_file"):
+            try:
+                yaml_rules = self._load_rules_from_yaml(symbolic_dict.get("rules_file"))
+                rules.extend(yaml_rules)
+                self._rule_stats["rules_from_yaml"] = len(yaml_rules)
+            except Exception as e:
+                self.logger.log("SymbolicRuleYAMLError", {
+                    "path": symbolic_dict.get("rules_file"),
+                    "error": str(e)
+                })
+
+        # Load from database if enabled
+        if symbolic_dict.get("enable_db_rules", True):
+            try:
+                db_rules = self.memory.symbolic_rules.get_all_rules()
+                rules.extend(db_rules)
+                self._rule_stats["rules_from_db"] = len(db_rules)
+            except Exception as e:
+                self.logger.log("SymbolicRuleDBError", {
+                    "error": str(e)
+                })
+
+        self._rules = rules
+        self._rules_loaded = True
+        self._rule_stats["total_rules"] = len(rules)
+        self._last_loaded = datetime.datetime.now()
+        self._rule_stats["load_duration"] = (self._last_loaded - start_time).total_seconds()
+        
+        self.logger.log("RulesLoaded", {
+            "total": len(rules),
+            "from_yaml": self._rule_stats["rules_from_yaml"],
+            "from_db": self._rule_stats["rules_from_db"],
+            "duration": self._rule_stats["load_duration"]
+        })
+        
+        return rules
+
+    def _load_rules_from_yaml(self, path: str) -> List[SymbolicRuleORM]:
+        """
+        Load symbolic rules from a YAML configuration file.
+        
+        Args:
+            path: Path to the YAML file containing rule definitions
+            
+        Returns:
+            List of rules loaded from the YAML file
+            
+        Note:
+            This method handles YAML parsing and converts YAML entries to
+            SymbolicRuleORM objects. It skips duplicates and malformed entries.
+        """
+        path = Path(path)
+        if not path.exists():
+            self.logger.log("SymbolicRuleYAMLNotFound", {"path": str(path)})
+            return []
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = yaml.safe_load(f)
+                
+            rules_list = raw.get("rules", [])
+            if not rules_list:
+                self.logger.log("SymbolicRuleYAMLEmpty", {"path": str(path)})
+                return []
+                
+            rules = []
+            existing_rules = {r.rule_text for r in self.memory.symbolic_rules.get_all_rules()}
+            
+            # Convert YAML entries to SymbolicRuleORM objects
+            for item in rules_list:
+                if not isinstance(item, dict):
+                    continue
+                    
+                rule_text = item.get("rule_text", "").strip()
+                if not rule_text:
+                    continue
+                    
+                # Skip duplicates
+                if rule_text in existing_rules:
+                    continue
+                    
+                # Create rule with proper defaults
+                rule = SymbolicRuleORM(
+                    rule_text=rule_text,
+                    agent_name=item.get("agent_name", "all"),
+                    target=item.get("target", "pipeline"),
+                    attributes=item.get("attributes", {}),
+                    filter=item.get("filter", {}),
+                    source=item.get("source", "yaml"),
+                    goal_id=item.get("goal_id"),
+                    goal_type=item.get("goal_type"),
+                    goal_category=item.get("goal_category"),
+                    difficulty=item.get("difficulty"),
+                    priority=item.get("priority", 0),
+                    created_at=datetime.datetime.now()
+                )
+                rules.append(rule)
+                
+            return rules
+            
+        except Exception as e:
+            self.logger.log("SymbolicRuleYAMLParseError", {
+                "path": str(path),
+                "error": str(e)
+            })
+            return []
 
     @staticmethod
     def compute_context_hash(context_dict: dict) -> str:
@@ -542,6 +684,28 @@ class RulesService(Service):
             
         Returns:
             SHA256 hash of the canonicalized context
+            
+        Note:
+            This method creates a canonical representation of the context by
+            sorting keys and normalizing values to ensure consistent hashing
+            across different executions.
         """
-        canonical_str = json.dumps(context_dict, sort_keys=True)
+        if not context_dict:
+            return "empty_context"
+            
+        # Create a canonical representation for hashing
+        canonical_dict = {}
+        for k, v in sorted(context_dict.items()):
+            if isinstance(v, dict):
+                canonical_dict[k] = RulesService.compute_context_hash(v)
+            elif isinstance(v, list):
+                # Sort lists of primitives if possible
+                if all(isinstance(x, (str, int, float)) for x in v):
+                    canonical_dict[k] = sorted(v)
+                else:
+                    canonical_dict[k] = [RulesService.compute_context_hash(x) if isinstance(x, dict) else str(x) for x in v]
+            else:
+                canonical_dict[k] = str(v)
+                
+        canonical_str = json.dumps(canonical_dict, sort_keys=True)
         return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()

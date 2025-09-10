@@ -15,46 +15,84 @@ from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.utils.serialization import default_serializer
+from typing import Any
+from stephanie.services.service_protocol import Service
 
 
-class PlanTraceService:
-    """Monitors pipeline execution and creates PlanTraces for self-improvement.
-    
-    This component handles all PlanTrace-related functionality, keeping the Supervisor clean.
-    It creates PlanTraces at pipeline start, tracks stage execution, and scores completed traces.
+class PlanTraceService(Service):
+    """
+    Service that monitors pipeline execution and creates PlanTraces for self-improvement.
+
+    Responsibilities:
+    - Create PlanTraces at pipeline start
+    - Track stage execution and completion
+    - Score completed traces
+    - Apply retention policies
     """
 
     def __init__(self, cfg: Dict, memory, logger, scoring_service=None):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.enabled = cfg.get("plan_monitor", {}).get("enabled", False)
+
         monitor_cfg = cfg.get("plan_monitor", {})
+        self.enabled = monitor_cfg.get("enabled", False)
         self.save_output = monitor_cfg.get("save_output", False)
         self.output_dir = monitor_cfg.get("output_dir", "plan_traces")
-        if not os.path.exists(self.output_dir):
+        self.retention_policy = monitor_cfg.get("retention_policy", "keep_all")
+
+        if self.save_output and not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+
         self.current_plan_trace: Optional[PlanTrace] = None
-   
+        self.reuse_links = []  # (parent_trace_id, child_trace_id)
+        self.stage_start_times: Dict[int, float] = {}
+
         if self.enabled:
             self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, logger)
             self.agent_scorer = AgentScorerAgent(cfg, memory, logger)
             self.agent_scorer.scoring = scoring_service
-            self.stage_start_times: Dict[int, float] = {}
-        self.retention_policy = monitor_cfg.get("retention_policy", "keep_all")
-        self.reuse_links = []  # (parent_trace_id, child_trace_id)
-        
-        self.logger.log("PlanTraceMonitorInitialized", {
-            "enabled": self.enabled,
-            "save_output": self.save_output,
-            "cfg_keys": list(cfg.keys())
-        })
-    
+
+        self._initialized = False
+
+    # === Service Protocol ===
+    def initialize(self, **kwargs) -> None:
+        self._initialized = True
+        if self.logger:
+            self.logger.log("PlanTraceServiceInit", {"status": "initialized", "enabled": self.enabled})
+
+    def health_check(self) -> Dict[str, Any]:
+        return {
+            "status": "healthy" if self._initialized else "unhealthy",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "metrics": {
+                "enabled": self.enabled,
+                "current_trace": bool(self.current_plan_trace),
+                "reuse_links": len(self.reuse_links),
+                "stages_tracked": len(self.stage_start_times),
+            },
+            "dependencies": {
+                "scoring_service": "attached" if hasattr(self, "plan_trace_scorer") else "missing"
+            },
+        }
+
+    def shutdown(self) -> None:
+        """Reset and disable service."""
+        self.current_plan_trace = None
+        self.stage_start_times = {}
+        self._initialized = False
+        if self.logger:
+            self.logger.log("PlanTraceServiceShutdown", {})
+
+    @property
+    def name(self) -> str:
+        return "plan-trace-v1"
+
+    # === Domain Logic (unchanged from your version, except now under Service) ===
     def link_reuse(self, parent_trace_id: str, child_trace_id: str):
         self.memory.plan_traces.add_reuse_link(parent_trace_id, child_trace_id)
 
     def revise_trace(self, trace_id: str, revision: dict):
-        """Apply revision notes (feedback, corrections) to a stored trace."""
         trace: PlanTraceORM = self.memory.plan_traces.get_by_trace_id(trace_id)
         if not trace:
             return
@@ -64,9 +102,8 @@ class PlanTraceService:
         })
         self.memory.plan_traces.update(trace)
         self.logger.log("PlanTraceRevised", {"trace_id": trace_id, "revision": revision})
-    
+
     def apply_retention_policy(self):
-        """Decide which traces to retain after scoring/feedback."""
         if self.retention_policy == "keep_all":
             return
         elif self.retention_policy == "keep_top_k":
@@ -81,7 +118,6 @@ class PlanTraceService:
             for t in failed:
                 self.memory.plan_traces.delete(t.trace_id)
                 self.logger.log("PlanTraceDiscarded", {"trace_id": t.trace_id, "reason": "failed"})
-
 
     def start_pipeline(self, context: Dict, pipeline_run_id: str) -> None:
         if not self.enabled:
