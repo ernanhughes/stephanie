@@ -1,10 +1,7 @@
 # stephanie/agents/paper_improver/mutation.py
-
-# mutation.py — safe, measurable mutation-testing helper for the improver stack
 from __future__ import annotations
 
 import re
-import resource
 import shutil
 import subprocess
 import time
@@ -174,12 +171,7 @@ CI: true
 
     def _limit_resources(self):
         """Apply CPU and memory limits for safety."""
-        try:
-            resource.setrlimit(resource.RLIMIT_CPU, (self.cpu_seconds, self.cpu_seconds))
-            resource.setrlimit(resource.RLIMIT_AS, (self.mem_bytes, self.mem_bytes))
-        except Exception:
-            # Not all platforms support RLIMITs (e.g., Windows). Best effort.
-            pass
+        pass
 
     def _parse_results(self, text: str) -> Tuple[int, int, int, int, int]:
         """

@@ -6,10 +6,10 @@ from .text_improver import TextImprover
 from .vpm_controller import VPMController
 from .repo_link import RepoLink
 from .bandit_router import ExemplarBandit
-from .faithfulness import faithfulness_check
-from .mutation import run_mutation_test
-from .goals import score_with_goal
-from .curriculum import schedule_papers
+from .faithfulness import FaithfulnessBot
+from .mutation import MutationRunner
+from .goals import GoalScorer
+from .curriculum import CurriculumScheduler
 
 __all__ = [
     "CodeImprover",
@@ -17,8 +17,8 @@ __all__ = [
     "VPMController",
     "RepoLink",
     "ExemplarBandit",
-    "faithfulness_check",
-    "run_mutation_test",
-    "score_with_goal",
-    "schedule_papers"
+    "FaithfulnessBot",
+    "MutationRunner",
+    "GoalScorer",
+    "CurriculumScheduler"
 ]

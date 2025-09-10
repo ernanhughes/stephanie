@@ -8,7 +8,7 @@ import json
 import os
 import random
 import re
-import resource
+
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -265,12 +265,7 @@ def test_{fn_name}_shape():
 
     def _limit_resources(self):
         """Enforce CPU, memory (best effort); network blocking can be layered later."""
-        try:
-            resource.setrlimit(resource.RLIMIT_CPU, (60, 60))
-            resource.setrlimit(resource.RLIMIT_AS, (1_200_000_000, 1_200_000_000))  # ~1.2GB
-        except Exception:
-            # Non-POSIX or unsupported platform
-            pass
+        pass
 
     def _run_tests_and_lint(self, run_dir: Path, test_path: Path) -> Dict[str, Any]:
         env = os.environ.copy()

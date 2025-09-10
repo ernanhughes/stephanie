@@ -43,7 +43,7 @@ from typing import Any, Dict, List, Optional, Tuple, Set
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 # Use the newer NERRetrieverEmbedder that supports Annoy index
 from stephanie.models.ner_retriever import NERRetrieverEmbedder, EntityDetector
 
@@ -106,13 +106,13 @@ class KnowledgeFusionAgent(BaseAgent):
         # Entity layer (ANN over session-only content)
         self.entity_detector = EntityDetector(device=cfg.get("device", "cuda"))
         self.ner = NERRetrieverEmbedder(
-            model_name=cfg.get("ner_model", "meta-llama/Llama-3-8b"),
+            model_name=cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct"),
             layer=cfg.get("ner_layer", 17),
-            device=cfg.get("device", "cuda"),
-            embedding_dim=cfg.get("ner_dim", 500),
+            device=cfg.get("device", "cpu"),
+            embedding_dim=cfg.get("ner_dim", 2048),
             index_path=f"{self.kfc.ephemeral_index_dir}/ner_session_{uuid.uuid4().hex}",  # temp
             projection_enabled=cfg.get("ner_projection", False),
-            projection_dim=cfg.get("ner_projection_dim", 500),
+            projection_dim=cfg.get("ner_projection_dim", 2048),
             projection_dropout=cfg.get("ner_projection_dropout", 0.1),
             logger=self.logger,
             memory=self.memory,
@@ -122,11 +122,12 @@ class KnowledgeFusionAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {})
 
+        chat = self.memory.chats.get_top_conversations(limit=10)
         documents = context.get("documents", []) or []
         for paper in documents:
 
-            sections = context.get("sections", []) or []
-            chat = context.get("chat_corpus") or self._fallback_chat_corpus(context)
+            sections = self.memory.document_sections.get_by_document(paper.get("id")) or []
+            sections = [s.to_dict() for s in sections if s.section_text and len(s.section_text) > 20]
 
             self.report({
                 "event": "start",
@@ -516,11 +517,8 @@ class KnowledgeFusionAgent(BaseAgent):
 
         # Recent chat messages as scorables (so entities from chat are retrievable)
         for i, msg in enumerate(chat or []):
-            t = msg.get("text", "")
-            if not t:
-                continue
-            sid = f"chat:{i}"
-            scorables.append(Scorable(id=sid, text=t, target_type=TargetType.DOCUMENT))
+            scorable = ScorableFactory.from_orm(msg[0])
+            scorables.append(scorable)
 
         return scorables
 
@@ -549,7 +547,7 @@ class KnowledgeFusionAgent(BaseAgent):
                 try:
                     # Only index if it has meaningful content
                     if len(chunk.text.strip()) > 100:
-                        self.ner.index_scorable(chunk)
+                        self.ner.index_scorables([chunk])
                         total_indexed += 1
                 except Exception as e:
                     self.logger.log("NERIndexChunkError", {

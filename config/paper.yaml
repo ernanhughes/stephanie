@@ -16,7 +16,7 @@ defaults:
   - scorer/epistemic_hrm/default
 
 
-
+  - agents/knowledge_fusion
   - agents/arxiv_search
   - agents/modular_memento
   - agents/memento
@@ -79,3 +79,9 @@ pipeline:
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
        enabled: true
        iterations: 1    
+
+     - name: knowledge_fusion
+       description: "Fuse and deduplicate knowledge from multiple sources"
+       cls: stephanie.agents.paper_improver.knowledge_fusion.KnowledgeFusionAgent
+       enabled: true
+       iterations: 1

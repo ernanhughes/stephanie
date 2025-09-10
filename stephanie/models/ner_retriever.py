@@ -8,7 +8,7 @@ search to enable efficient entity retrieval from casebooks.
 Key Components:
 1. NERRetrieverProjection: Neural network for projecting entity embeddings to lower dimension
 2. EntityDetector: BERT-based named entity recognition with fallback heuristic
-3. AnnoyIndex: Wrapper for Annoy approximate nearest neighbor index
+3. HNSWIndex: Wrapper for HNSW approximate nearest neighbor index
 4. NERRetrieverEmbedder: Main class handling entity detection, embedding, and retrieval
 
 Primary Features:
@@ -31,10 +31,13 @@ import logging
 import os
 import random
 import re
+import gc
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
+from contextlib import contextmanager
+from stephanie.models.hnsw_index import HNSWIndex
 
-import annoy
 import numpy as np
 # stephanie/scoring/model/ner_retriever.py
 import torch
@@ -124,130 +127,6 @@ class EntityDetector:
         return entities
 
 
-# -------------------------------
-# Annoy Index Wrapper
-# -------------------------------
-class AnnoyIndex:
-    """Wrapper for Annoy approximate nearest neighbor index with metadata management."""
-    def __init__(self, dim: int = 500, index_path: str = "data/ner_retriever/index"):
-        self.dim = dim
-        self.index_path = index_path
-        self.index = annoy.AnnoyIndex(dim, "angular")  # Angular distance for cosine similarity
-        self.metadata = []
-        self._load_index()
-
-    def _load_index(self):
-        """Load existing index and metadata from disk if available."""
-        index_file = f"{self.index_path}.ann"
-        meta_file = f"{self.index_path}_metadata.json"
-        if os.path.exists(index_file) and os.path.exists(meta_file):
-            try:
-                self.index.load(index_file)
-                with open(meta_file, "r") as f:
-                    self.metadata = json.load(f)
-                _logger.info(f"Loaded Annoy index with {self.index.get_n_items()} items")
-            except Exception as e:
-                _logger.error(f"Failed to load index: {e}")
-                self.index = annoy.AnnoyIndex(self.dim, "angular")
-                self.metadata = []
-        else:
-            _logger.info("Starting with empty Annoy index")
-
-    def add(self, embeddings: np.ndarray, metadata_list: List[Dict], n_trees: int = 10):
-        """Add new embeddings with metadata and rebuild the Annoy index."""
-        if not len(embeddings):
-            return
-        
-        n_existing = self.index.get_n_items()
-        added_count = 0
-        
-        for i, (vec, meta) in enumerate(zip(embeddings, metadata_list)):
-            # Deduplicate by (scorable_id, entity_text)
-            if any(
-                m.get("scorable_id") == meta.get("scorable_id") and
-                m.get("entity_text") == meta.get("entity_text")
-                for m in self.metadata
-            ):
-                continue
-            
-            self.index.add_item(n_existing + added_count, vec)
-            self.metadata.append(meta)
-            added_count += 1
-        
-        if added_count > 0:
-            # Rebuild with fresh trees
-            self.index.build(n_trees)
-            self._save_index()
-            _logger.info(f"Annoy index rebuilt with {self.index.get_n_items()} items "
-                        f"(added {added_count}, skipped {len(metadata_list) - added_count})")
-
-    def search(self, query: np.ndarray, k: int = 10):
-        """Search index for nearest neighbors to query vector."""
-        if self.index.get_n_items() == 0:
-            return []
-            
-        query = query.astype(np.float32)
-        indices, distances = self.index.get_nns_by_vector(query, k, include_distances=True)
-        
-        results = []
-        for idx, dist in zip(indices, distances):
-            # Convert angular distance to cosine similarity
-            sim = 1 - (dist ** 2) / 2
-            if idx < len(self.metadata):
-                meta = self.metadata[idx].copy()
-                meta["similarity"] = float(sim)
-                meta["distance"] = float(dist)
-                results.append(meta)
-                
-        return results
-
-    def _save_index(self):
-        """Save index and metadata with atomic file replacement."""
-        temp_index = f"{self.index_path}.ann.tmp"
-        temp_meta = f"{self.index_path}_metadata.json.tmp"
-        
-        try:
-            # Save to temporary files first
-            os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
-            self.index.save(temp_index)
-            with open(temp_meta, "w") as f:
-                json.dump(self.metadata, f, indent=2)
-                
-            # Atomically replace old files
-            os.replace(temp_index, f"{self.index_path}.ann")
-            os.replace(temp_meta, f"{self.index_path}_metadata.json")
-        except Exception as e:
-            _logger.error(f"Failed to save index: {e}")
-            # Clean up temp files on failure
-            if os.path.exists(temp_index):
-                os.remove(temp_index)
-            if os.path.exists(temp_meta):
-                os.remove(temp_meta)
-            raise
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get statistics about the current index for monitoring."""
-        entity_types = {}
-        for meta in self.metadata:
-            etype = meta.get("entity_type", "UNKNOWN")
-            entity_types[etype] = entity_types.get(etype, 0) + 1
-            
-        return {
-            "total_entities": len(self.metadata),
-            "unique_scorables": len(set(m["scorable_id"] for m in self.metadata)),
-            "entity_types": entity_types,
-            "index_size": os.path.getsize(f"{self.index_path}.ann") if os.path.exists(f"{self.index_path}.ann") else 0,
-            "avg_similarity": np.mean([m["similarity"] for m in self.metadata if "similarity" in m]) 
-                            if self.metadata else 0
-        }
-    
-    def validate(self) -> bool:
-        """Validate that the index and metadata are consistent."""
-        if self.index.get_n_items() != len(self.metadata):
-            _logger.error(f"Index validation failed: {self.index.get_n_items()} items in index, {len(self.metadata)} in metadata")
-            return False
-        return True
-
 
 class NERRetrieverEmbedder:
     """Entity retriever using embedding store instead of custom projections."""
@@ -256,10 +135,10 @@ class NERRetrieverEmbedder:
                  model_name="meta-llama/Llama-3.2-1B-Instruct", 
                  layer=17,
                  device="cuda" if torch.cuda.is_available() else "cpu",
-                 embedding_dim=500, 
+                 embedding_dim=2048, 
                  index_path="data/ner_retriever/index",
                  projection_enabled=False, 
-                 projection_dim=500, 
+                 projection_dim=2048, 
                  projection_dropout=0.1,
                  logger=None,
                  memory=None, 
@@ -277,7 +156,8 @@ class NERRetrieverEmbedder:
 
         self.layer = layer
         self.embedding_dim = embedding_dim
-        self.index = AnnoyIndex(dim=embedding_dim, index_path=index_path)
+        from stephanie.models.hnsw_index import HNSWIndex
+        self.index = HNSWIndex(dim=embedding_dim, index_path=index_path)
         self.entity_detector = EntityDetector(device)
 
         # optional projection
@@ -299,10 +179,14 @@ class NERRetrieverEmbedder:
     # Embedding methods
     # ----------------------------
     def embed_entity(self, text: str, span: Tuple[int, int]) -> torch.Tensor:
-        """Embed an entity span with robust character-to-token alignment."""
+        """Embed an entity span with robust character-to-token alignment + layer clamping."""
+        hidden_size = (
+            self.projection.fc2.out_features
+            if self.projection_enabled else self.model.config.hidden_size
+        )
+        
         if span[0] >= span[1] or span[0] < 0 or span[1] > len(text):
-            return torch.zeros(self.projection.fc2.out_features if self.projection_enabled else self.model.config.hidden_size, 
-                            device=self.device)
+            return torch.zeros(hidden_size, device=self.device)
             
         inputs = self.tokenizer(
             text, 
@@ -313,41 +197,45 @@ class NERRetrieverEmbedder:
         
         with torch.no_grad():
             outputs = self.model(**inputs, output_hidden_states=True)
+            available_layers = len(outputs.hidden_states)
+
+            # ✅ Clamp layer index if too high
+            if self.layer >= available_layers:
+                self.logger.log("NERLayerAdjusted", {
+                    "requested": self.layer,
+                    "available": available_layers - 1,
+                    "using": available_layers - 1
+                })
+                self.layer = available_layers - 1
+
             hidden_states = outputs.hidden_states[self.layer]
         
-        # Get token indices for the span with robust fallbacks
+        # --- Robust char-to-token alignment ---
         start_token = inputs.char_to_token(0, span[0])
         end_token = inputs.char_to_token(0, span[1] - 1)
         
-        # Handle cases where char_to_token returns None
         if start_token is None:
-            # Search backward from span start
             for offset in range(1, min(10, span[0] + 1)):
                 start_token = inputs.char_to_token(0, span[0] - offset)
                 if start_token is not None:
                     break
-            # If still None, use the first meaningful token
             if start_token is None:
-                start_token = 1  # Skip [CLS]
+                start_token = 1  # skip [CLS]
                 
         if end_token is None:
-            # Search forward from span end
             for offset in range(1, min(10, len(text) - span[1] + 1)):
                 end_token = inputs.char_to_token(0, span[1] - 1 + offset)
                 if end_token is not None:
                     break
-            # If still None, set to start_token or next token
             if end_token is None or end_token < start_token:
                 end_token = min(inputs.input_ids.shape[1] - 1, start_token + 2)
         
-        # Ensure valid span
-        start_token = max(1, start_token)  # Skip [CLS]
+        start_token = max(1, start_token)  # skip [CLS]
         end_token = min(inputs.input_ids.shape[1] - 1, max(start_token, end_token))
         
-        # Pool across the entity span (mean pooling)
+        # --- Mean pooling across span ---
         entity_vec = hidden_states[0, start_token:end_token+1, :].mean(dim=0)
         
-        # Project if enabled
         if self.projection_enabled and self.projection is not None:
             entity_vec = self.projection(entity_vec)
 

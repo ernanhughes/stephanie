@@ -49,6 +49,8 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "NERLayerAdjusted": "🏷️⚙️",  # NER layer adjusted
+    "ClassificationComplete": "🏷️✅",  # Knowledge classification completed
     "CentroidCalculationStart": "📍▶️",  # Centroid calculation started
     "CentroidCalculationComplete": "📍✅",  # Centroid calculation completed
     "ClassificationStart": "🏷️▶️",  # Knowledge classification started
