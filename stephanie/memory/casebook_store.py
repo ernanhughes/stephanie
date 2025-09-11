@@ -21,17 +21,17 @@ class CaseBookStore:
     def get_by_name(self, name: str):
         return self.session.query(CaseBookORM).filter_by(name=name).one_or_none()
 
-    def ensure_casebook(self, name: str, description: str = "") -> CaseBookORM:
+    def ensure_casebook(self, name: str, description: str = "", tag: str = "", meta: dict = None) -> CaseBookORM:
         cb = self.get_by_name(name)
         if cb:
             return cb
-        cb = CaseBookORM(name=name, description=description)
+        cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
         self.session.add(cb)
         self.session.commit()
         return cb
 
-    def create_casebook(self, name, description=""):
-        cb = CaseBookORM(name=name, description=description)
+    def create_casebook(self, name, description="", tag="", meta=None):
+        cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
         self.session.add(cb)
         self.session.commit()
         return cb

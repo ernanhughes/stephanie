@@ -1545,5 +1545,17 @@ CREATE INDEX ix_scorable_entities_type
 CREATE INDEX ix_scorable_entities_text
     ON scorable_entities (entity_text);
 
+CREATE TABLE calibration_events (
+    id SERIAL PRIMARY KEY,
+    domain VARCHAR NOT NULL,
+    query VARCHAR NOT NULL,
+    raw_similarity FLOAT NOT NULL,
+    scorable_id VARCHAR NOT NULL,
+    scorable_type VARCHAR NOT NULL,
+    entity_type VARCHAR,
+    is_relevant BOOLEAN NOT NULL,
+    context JSON,
+    timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
+);
 
 COMMIT; 

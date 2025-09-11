@@ -722,8 +722,7 @@ class NERRetrieverEmbedder:
             )
         
         # Send to monitoring system (PACS: "self-correcting" capability)
-        if hasattr(self.logger, "log"):
-            self.logger.log("EntityRetrievalMetrics", metrics)
+        self.logger.log("EntityRetrievalMetrics", metrics)
         
         # PACS-specific alerting for calibration issues
         if metrics.get("calibration_mean_delta", 0) > 0.25:

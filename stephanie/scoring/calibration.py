@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
+_logger = logging.getLogger(__name__)
+
 class CalibrationManager:
     """Manages domain-aware calibration for knowledge retrieval."""
     
@@ -31,6 +33,30 @@ class CalibrationManager:
             "retrains": 0,
             "last_retrain": None
         }
+
+    def get_confidence(self, domain: str, query: str, raw_similarity: float = 0.8) -> float:
+        """
+        Estimate confidence that calibration is reliable for this domain/query.
+        Uses calibration curve + sample count.
+        """
+        cal = self.load_calibration(domain)
+        coeffs = cal.get("ner", {}).get("coefficients")
+        sample_count = cal.get("ner", {}).get("sample_count", 0)
+
+        if not coeffs:
+            return 0.5  # Neutral confidence if no calibration exists
+
+        poly = np.poly1d(coeffs)
+        calibrated = float(poly(raw_similarity))
+        calibrated = max(0.0, min(1.0, calibrated))
+
+        # Confidence is a mix of:
+        # - sample size (trust calibration if lots of data)
+        # - how close calibrated value is to [0,1] extremes
+        size_factor = min(1.0, sample_count / self.min_samples)
+        margin_factor = 1.0 - abs(0.5 - calibrated) * 2  # low if near 0.5, high if near 0/1
+
+        return round(0.5 * size_factor + 0.5 * margin_factor, 3)
 
     def load_calibration(self, domain: str = "general") -> Dict:
         """Load calibration data with domain hierarchy fallbacks."""
@@ -92,7 +118,7 @@ class CalibrationManager:
     def _log_fallback(self, requested: str, used: str):
         """Log domain fallback for monitoring."""
         self.stats["fallbacks"] += 1
-        self.logger.debug(f"Calibration fallback: {requested} → {used}")
+        _logger.debug(f"Calibration fallback: {requested} → {used}")
         
         # Log to monitoring system
         if hasattr(self.logger, "log"):
@@ -254,7 +280,7 @@ class CalibrationManager:
             json.dump(event, f, indent=2)
             
         # Log for monitoring
-        self.logger.debug(f"Logged calibration event for '{query}' (domain: {domain})")
+        _logger.debug(f"Logged calibration event for '{query}' (domain: {domain})")
 
     def _log_calibration_effectiveness(self, domain: str, historical_data: List[Dict]):
         """Log metrics about how calibration affects retrieval quality."""

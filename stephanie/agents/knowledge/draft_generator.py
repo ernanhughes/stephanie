@@ -36,7 +36,7 @@ class DraftGeneratorAgent(BaseAgent):
         self.vpm: VPMController = default_controller()
         self.goals = GoalScorer()
         self.ti = TextImprover(workdir=cfg.get("text_workdir", "./text_runs"))
-        self.fuser = KnowledgeFuser()
+        self.fuser = KnowledgeFuser(cfg, memory, logger)
 
         # chat ingestion options
         self.chat_max_messages = cfg.get("chat_max_messages", 200)

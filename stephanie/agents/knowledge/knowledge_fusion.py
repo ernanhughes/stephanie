@@ -36,6 +36,7 @@ from tqdm import tqdm
 from time import time
 import uuid
 import torch
+from datetime import datetime, timezone
 from dataclasses import dataclass
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
@@ -701,62 +702,178 @@ class KnowledgeFusionAgent(BaseAgent):
 
     def _index_session_entities(self, scorables: List[Scorable]) -> None:
         """
-        Index entities for the *session only*. 
-        No DB writes; this just populates a throwaway ANN for dynamic retrieval.
+        Instead of indexing directly, publish to KnowledgeBus for async processing.
+        No DB writes; no blocking.
         """
-        total_indexed = 0
+        total_queued = 0
+        events_published = 0
+
         for scorable in scorables:
+            text = scorable.text.strip()
+            if len(text) < 100:
+                continue
+
             try:
-                if len(scorable.text.strip()) > 100:
-                    indexed = self.ner.index_scorables([scorable])
-                    total_indexed += indexed
-            except Exception as e:
-                self.logger.log(
-                    "NERIndexError",
-                    {"scorable_id": scorable.id, "error": str(e)},
+                # Classify domains for this scorable
+                domains = self.domain_clf.classify(
+                    text=text,
+                    top_k=self.kfc.top_domains,
+                    min_value=self.kfc.min_domain_score
                 )
 
-        self.logger.log("KnowledgeFusionIndexed", {"entities_indexed": total_indexed})
+                # Detect entities
+                entities = self.entity_detector.extract_entities(text)
+                filtered_ents = [
+                    e for e in entities
+                    if e.get("score", 0) >= self.kfc.ner_min_sim
+                ]
 
+                # Build relationships (local heuristic)
+                relationships = []
+                for i, e1 in enumerate(filtered_ents):
+                    for j in range(i + 1, len(filtered_ents)):
+                        e2 = filtered_ents[j]
+                        distance = abs(e1["end"] - e2["start"])
+                        if distance < 100:
+                            rel_type = self._infer_relationship_type(e1, e2)
+                            confidence = self._calculate_relationship_confidence(e1, e2, distance, domains)
+                            if confidence >= 0.75:
+                                relationships.append({
+                                    "source": f"{scorable.id}:{e1['type']}:{e1['start']}-{e1['end']}",
+                                    "target": f"{scorable.id}:{e2['type']}:{e2['start']}-{e2['end']}",
+                                    "type": rel_type,
+                                    "confidence": confidence
+                                })
+
+                # Publish indexing job
+                event = {
+                    "event_type": "knowledge_graph.index_request",
+                    "payload": {
+                        "scorable_id": scorable.id,
+                        "scorable_type": scorable.target_type,
+                        "text": text,
+                        "entities": filtered_ents,
+                        "domains": domains,
+                        "relationships": relationships,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "source_agent": "KnowledgeFusionAgent"
+                    }
+                }
+
+                self.memory.bus.publish(event)
+                total_queued += len(filtered_ents)
+                events_published += 1
+
+            except Exception as e:
+                self.logger.log("KnowledgeFusionIndexEventFailed", {
+                    "scorable_id": scorable.id,
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                })
+
+        self.logger.log("KnowledgeFusionIndexEventsPublished", {
+            "events_published": events_published,
+            "entities_queued": total_queued
+        })
 
     def _index_session_entities_with_chunking(self, scorables: List[Scorable]) -> None:
         """
-        Index entities for the *session only* (Annoy files in /tmp by default).
-        No DB writes; this just populates a throwaway ANN for dynamic retrieval.
+        Chunk large texts and publish async indexing requests.
         """
-        total_indexed = 0
-        for scorable in scorables:
-            # Critical: Chunk large texts to prevent memory issues
-            if len(scorable.text) > self.kfc.max_chunk_size:
-                chunks = []
-                for i in range(0, len(scorable.text), self.kfc.max_chunk_size):
-                    chunk = scorable.text[i : i + self.kfc.max_chunk_size]
-                    chunks.append(
-                        Scorable(
-                            id=f"{scorable.id}_chunk_{i // self.kfc.max_chunk_size}",
-                            text=chunk,
-                            target_type=scorable.target_type,
-                        )
-                    )
-            else:
-                chunks = [scorable]
+        total_queued = 0
+        events_published = 0
 
-            # Index chunks
+        for scorable in scorables:
+            text = scorable.text.strip()
+            if not text:
+                continue
+
+            chunks = []
+
+            if len(text) > self.kfc.max_chunk_size:
+                for i in range(0, len(text), self.kfc.max_chunk_size):
+                    chunk_text = text[i:i + self.kfc.max_chunk_size]
+                    if len(chunk_text.strip()) > 50:
+                        chunk_id = f"{scorable.id}_chunk_{i // self.kfc.max_chunk_size}"
+                        chunks.append({
+                            "id": chunk_id,
+                            "text": chunk_text,
+                            "parent_id": scorable.id,
+                            "offset": i
+                        })
+            else:
+                chunks = [{"id": scorable.id, "text": text}]
+
             for chunk in chunks:
                 try:
-                    # Only index if it has meaningful content
-                    if len(chunk.text.strip()) > 100:
-                        self.ner.index_scorables([chunk])
-                        total_indexed += 1
-                except Exception as e:
-                    self.logger.log(
-                        "NERIndexChunkError",
-                        {"scorable_id": chunk.id, "error": str(e)},
+                    # Reuse domain classification logic
+                    domains = self.domain_clf.classify(
+                        text=chunk["text"],
+                        top_k=self.kfc.top_domains,
+                        min_value=self.kfc.min_domain_score
                     )
 
-        self.logger.log(
-            "KnowledgeFusionIndexed", {"entities_indexed": total_indexed}
-        )
+                    entities = self.entity_detector.extract_entities(chunk["text"])
+                    filtered_ents = [
+                        e for e in entities
+                        if e.get("score", 0) >= self.kfc.ner_min_sim
+                    ]
+
+                    # Adjust entity spans relative to chunk offset
+                    offset = chunk.get("offset", 0)
+                    for e in filtered_ents:
+                        e["start"] += offset
+                        e["end"] += offset
+
+                    # Relationships within chunk
+                    relationships = []
+                    for i, e1 in enumerate(filtered_ents):
+                        for j in range(i + 1, len(filtered_ents)):
+                            e2 = filtered_ents[j]
+                            distance = abs(e1["end"] - e2["start"])
+                            if distance < 100:
+                                rel_type = self._infer_relationship_type(e1, e2)
+                                confidence = self._calculate_relationship_confidence(e1, e2, distance, domains)
+                                if confidence >= 0.75:
+                                    relationships.append({
+                                        "source": f"{chunk['id']}:{e1['type']}:{e1['start']}-{e1['end']}",
+                                        "target": f"{chunk['id']}:{e2['type']}:{e2['start']}-{e2['end']}",
+                                        "type": rel_type,
+                                        "confidence": confidence
+                                    })
+
+                    # Publish event
+                    event = {
+                        "event_type": "knowledge_graph.index_request",
+                        "payload": {
+                            "scorable_id": chunk["id"],
+                            "scorable_type": f"{scorable.target_type}_chunk",
+                            "text": chunk["text"],
+                            "entities": filtered_ents,
+                            "domains": domains,
+                            "relationships": relationships,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "source_agent": "KnowledgeFusionAgent",
+                            "is_chunk": True,
+                            "original_scorable_id": scorable.id
+                        }
+                    }
+
+                    self.memory.bus.publish(event)
+                    total_queued += len(filtered_ents)
+                    events_published += 1
+
+                except Exception as e:
+                    self.logger.log("KnowledgeFusionChunkIndexEventFailed", {
+                        "chunk_id": chunk.get("id"),
+                        "error": str(e),
+                        "traceback": traceback.format_exc()
+                    })
+
+        self.logger.log("KnowledgeFusionChunkedIndexEventsPublished", {
+            "chunks_queued": events_published,
+            "entities_queued": total_queued
+        })
 
     # ----------------------------
     # Utility methods
@@ -814,6 +931,25 @@ class KnowledgeFusionAgent(BaseAgent):
         """Get parent domain from hierarchy configuration."""
         domain_hierarchy = self.cfg.get("domain_hierarchy", {})
         return domain_hierarchy.get(domain)
+    
+    def _infer_relationship_type(self, e1: Dict, e2: Dict) -> str:
+        ordered = e1["end"] < e2["start"]
+        first, second = (e1, e2) if ordered else (e2, e1)
+        type_pairs = {
+            ("METHOD", "DATASET"): "evaluates",
+            ("DATASET", "METRIC"): "measured_by",
+            ("MODEL", "TASK"): "performs",
+            ("AUTHOR", "PAPER"): "wrote",
+            ("PAPER", "METHOD"): "introduces"
+        }
+        return type_pairs.get((first["type"], second["type"]), "related_to")
+
+    def _calculate_relationship_confidence(self, e1: Dict, e2: Dict, distance: int, domains: List[Dict]) -> float:
+        base_score = 1.0 - (distance / 100)
+        domain_bonus = 0.1 if any(d["domain"] in {"ml", "nlp"} for d in domains) else 0.0
+        proximity_bonus = 0.1 if distance < 20 else 0.0
+        return max(min(base_score + domain_bonus + proximity_bonus, 1.0), 0.0)
+
 
 # stephanie/agents/knowledge/knowledge_fusion.py (add this class)
 class CalibrationTrainer:

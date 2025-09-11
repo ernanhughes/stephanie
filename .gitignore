@@ -6,6 +6,8 @@ outputs/
 /reports/
 /worldviews/
 /data/
+/text_runs/
+/runs/
 
 
 # Byte-compiled / optimized / DLL files

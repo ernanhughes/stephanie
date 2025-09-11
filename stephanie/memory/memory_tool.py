@@ -57,6 +57,7 @@ from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.memory.theorem_store import TheoremStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
+from stephanie.services.knowledge_bus import InProcessKnowledgeBus, KnowledgeBus
 
 
 class MemoryTool:
@@ -172,6 +173,13 @@ class MemoryTool:
             for store_class in cfg.get("extra_stores", []):
                 self.register_store(store_class(self.session, logger))
 
+
+        self.bus = self._setup_knowledge_bus()
+        self.logger.log("KnowledgeBusInitialized", {
+            "backend": self.cfg.get("bus", {}).get("backend", "inprocess")
+        })
+
+
     def register_store(self, store):
         store_name = getattr(store, "name", store.__class__.__name__)
         if store_name in self._stores:
@@ -223,6 +231,11 @@ class MemoryTool:
                 self.logger.log(
                     "SessionRefreshed", {"new_session_id": id(self.session)}
                 )
+
+    def _setup_knowledge_bus(self) -> KnowledgeBus:
+        return InProcessKnowledgeBus()
+
+
 
     @staticmethod
     def SessionLocal() -> Session:
