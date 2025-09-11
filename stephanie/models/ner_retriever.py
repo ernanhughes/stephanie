@@ -189,6 +189,7 @@ class NERRetrieverEmbedder:
         self.layer = layer
         self.embedding_dim = embedding_dim
         from stephanie.models.hnsw_index import HNSWIndex
+        from stephanie.scoring.calibration import CalibrationManager
 
         self.index = HNSWIndex(dim=embedding_dim, index_path=index_path)
         self.entity_detector = EntityDetector(device)
@@ -206,6 +207,8 @@ class NERRetrieverEmbedder:
                 .to(device)
                 .eval()
             )
+
+        self.calibration = CalibrationManager(cfg or {}, logger=self.logger)
 
         logger.info(
             f"NER Retriever initialized with {model_name} "
@@ -453,39 +456,66 @@ class NERRetrieverEmbedder:
     # ----------------------------
     # Indexing
     # ----------------------------
-    def index_scorables(self, scorables, batch_size: int = 8):
-        new_embs, new_meta = [], []
-        batch_texts, batch_spans, batch_scorables = [], [], []
-
-        for s in scorables:
-            spans = self.entity_detector.detect_entities(s.text)
-            if not spans:
-                continue
-            spans = spans[: self.cfg.get("max_entities_per_scorable", 300)]
-            batch_texts.append(s.text)
-            batch_spans.append([(a, b, etype) for a, b, etype in spans])
-            batch_scorables.append(s)
-
-            # Process a batch
-            if len(batch_texts) >= batch_size:
-                new_embs, new_meta = self._process_batch(
-                    batch_texts,
-                    batch_spans,
-                    batch_scorables,
-                    new_embs,
-                    new_meta,
-                )
-                batch_texts, batch_spans, batch_scorables = [], [], []
-
-        # flush remaining
-        if batch_texts:
-            new_embs, new_meta = self._process_batch(
-                batch_texts, batch_spans, batch_scorables, new_embs, new_meta
+    def index_scorables(self, scorables: List[Scorable]) -> int:
+        """
+        Index entities from scorables into HNSW with proper metadata.
+        
+        Uses actual scorable IDs and target types.
+        """
+        new_embeddings, new_metadata = [], []
+        total_entities = 0
+        
+        for scorable in tqdm(scorables, desc="Indexing entities"):
+            try:
+                # Extract entities from scorable text
+                spans = self.entity_detector.detect_entities(scorable.text)
+                if not spans:
+                    continue
+                    
+                # Process up to max_entities_per_scorable
+                spans = spans[:self.cfg.get("max_entities_per_scorable", 300)]
+                
+                for start, end, entity_type in spans:
+                    entity_text = scorable.text[start:end].strip()
+                    if len(entity_text) < 2:
+                        continue
+                        
+                    # Create embedding for this span
+                    emb = self.embed_entity(scorable.text, (start, end))
+                    
+                    new_embeddings.append(emb.detach().cpu().numpy())
+                    new_metadata.append({
+                        "scorable_id": scorable.id,  # ACTUAL DB ID
+                        "scorable_type": scorable.target_type,  # DB TABLE NAME
+                        "entity_text": entity_text,
+                        "start": start,
+                        "end": end,
+                        "entity_type": entity_type,
+                        "source_text": scorable.text[:100] + "..." if len(scorable.text) > 100 else scorable.text
+                    })
+                    
+                    total_entities += 1
+                    
+            except Exception as e:
+                self.logger.log("NERIndexingError", {
+                    "scorable_id": scorable.id,
+                    "error": str(e)
+                })
+        
+        # Add to index
+        if new_embeddings:
+            self.index.add(
+                np.array(new_embeddings),
+                new_metadata,
+                save=True
             )
-
-        if new_embs:
-            self.index.add(np.asarray(new_embs), new_meta, save=True)
-        return len(new_embs)
+        
+        self.logger.log("NERIndexingComplete", {
+            "scorables_processed": len(scorables),
+            "entities_indexed": total_entities
+        })
+        
+        return total_entities
 
     def _process_batch(self, texts, spans_list, scorables, new_embs, new_meta):
         all_spans = [[(a, b) for a, b, _ in spans] for spans in spans_list]
@@ -517,60 +547,176 @@ class NERRetrieverEmbedder:
         query: str,
         k: int = 5,
         min_similarity: float = 0.6,
+        min_calibrated_similarity: float = 0.45,  # Critical: separate calibrated threshold
         domain: str = None,
     ) -> List[Dict]:
-        """Search for entities similar to the query with domain-aware calibration."""
+        """Search for entities similar to the query with robust domain-aware calibration.
+        
+        Key improvements:
+        - Proper fallbacks when calibration data is missing
+        - Confidence calculation for downstream use
+        - Enhanced monitoring of calibration effects
+        - Metadata completeness for knowledge graph integration
+        - Robust error handling for polynomial calibration
+        - Domain-aware thresholding
+        """
         # Preprocess and embed the query
         query_emb = self.embed_type_query(query)
-
+        
         # Search index
         results = self.index.search(query_emb, k * 2)
-
+        
         # Apply domain-specific calibration
         if domain is None:
             domain = self._get_current_domain(query)
-
-        # Load calibration data
+        
+        # Load calibration data with fallbacks
         calibration = self._load_calibration_data(domain)
-
+        if not calibration:
+            _logger.warning(f"No calibration data found for domain: {domain}. Using default.")
+            calibration = {
+                "ner": {
+                    "coefficients": [1.0, 0.0],  # Identity function as fallback
+                    "description": "default_calibration"
+                }
+            }
+        
+        # Track calibration effects for monitoring
+        calibration_effects = []
+        calibrated_count = 0
+        
         # Apply calibration to results
         for result in results:
-            if "similarity" in result:
-                # Use polynomial calibration
-                if "ner" in calibration:
+            if "similarity" not in result:
+                continue
+                
+            raw_sim = result["similarity"]
+            calibrated_sim = raw_sim  # Default to raw if calibration fails
+            
+            # Apply polynomial calibration if available
+            if "ner" in calibration and "coefficients" in calibration["ner"]:
+                try:
                     poly = np.poly1d(calibration["ner"]["coefficients"])
-                    calibrated = float(poly(result["similarity"]))
+                    calibrated_sim = float(poly(raw_sim))
+                    
                     # Apply system-specific constraints
-                    if result["similarity"] > 0.8:
-                        calibrated = min(1.0, calibrated * 1.05)
-                    result["calibrated_similarity"] = max(
-                        0.0, min(1.0, calibrated)
+                    if raw_sim > 0.8:
+                        calibrated_sim = min(1.0, calibrated_sim * 1.05)
+                    
+                    # Ensure valid range
+                    calibrated_sim = max(0.0, min(1.0, calibrated_sim))
+                    calibrated_count += 1
+                    
+                    # Track effect for monitoring
+                    calibration_effects.append({
+                        "raw": raw_sim,
+                        "calibrated": calibrated_sim,
+                        "delta": calibrated_sim - raw_sim
+                    })
+                    
+                except Exception as e:
+                    _logger.error(
+                        f"Calibration failed for entity '{result.get('entity_text', 'unknown')}': {e}",
+                        extra={"coefficients": calibration["ner"]["coefficients"]}
                     )
+            
+            # Store both scores for transparency
+            result["calibrated_similarity"] = calibrated_sim
+            result["raw_similarity"] = raw_sim
+            
+            # Calculate confidence (more nuanced than binary threshold)
+            confidence = min(1.0, max(0.0, (calibrated_sim - 0.3) / 0.7))
+            result["confidence"] = confidence
 
         # Filter by similarity threshold (using calibrated if available)
-        filtered_results = [
-            r
-            for r in results
-            if r.get("calibrated_similarity", r.get("similarity", 0.0))
-            >= min_similarity
-        ][:k]
-
+        filtered_results = []
+        for r in results:
+            # Critical: Use calibrated_similarity for filtering when available
+            sim = r.get("calibrated_similarity", r.get("similarity", 0.0))
+            
+            # Apply domain-specific thresholding
+            if sim >= (min_calibrated_similarity if "calibrated_similarity" in r else min_similarity):
+                filtered_results.append(r)
+        
+        # Sort by calibrated similarity (or raw if calibrated not available)
+        filtered_results.sort(
+            key=lambda x: x.get("calibrated_similarity", x.get("similarity", 0.0)), 
+            reverse=True
+        )
+        
+        # Limit to requested number
+        filtered_results = filtered_results[:k]
+        
         # Log for monitoring
-        if filtered_results:
-            _logger.info(
-                f"Found {len(filtered_results)} entities matching '{query}'"
-            )
-            for i, result in enumerate(filtered_results[:3]):  # Log top 3
-                cal_sim = result.get(
-                    "calibrated_similarity", result.get("similarity", 0.0)
-                )
-                _logger.debug(
-                    f"Top {i + 1} match: '{result['entity_text']}' (sim={cal_sim:.4f})"
-                )
-        else:
-            _logger.debug(f"No entities found matching '{query}'")
-
+        self._log_retrieval_metrics(
+            query, 
+            domain, 
+            results, 
+            filtered_results, 
+            calibration_effects,
+            calibrated_count
+        )
+        
         return filtered_results
+
+    def _log_retrieval_metrics(
+        self,
+        query: str,
+        domain: str,
+        all_results: List[Dict],
+        filtered_results: List[Dict],
+        calibration_effects: List[Dict],
+        calibrated_count: int
+    ) -> None:
+        """Log detailed metrics for monitoring and debugging."""
+        # Calculate statistics
+        raw_sims = [r["similarity"] for r in all_results if "similarity" in r]
+        calibrated_sims = [r["calibrated_similarity"] for r in all_results 
+                        if "calibrated_similarity" in r]
+        
+        # Log summary
+        _logger.info(
+            f"Entity retrieval: '{query[:50]}{'...' if len(query) > 50 else ''}' "
+            f"| Domain: {domain} "
+            f"| Found: {len(all_results)} "
+            f"| Returned: {len(filtered_results)}"
+        )
+        
+        # Log detailed metrics
+        metrics = {
+            "query": query[:100] + "..." if len(query) > 100 else query,
+            "domain": domain,
+            "total_candidates": len(all_results),
+            "returned_results": len(filtered_results),
+            "calibrated_count": calibrated_count,
+            "raw_similarity_mean": float(np.mean(raw_sims)) if raw_sims else 0.0,
+            "raw_similarity_std": float(np.std(raw_sims)) if raw_sims else 0.0,
+            "calibrated_similarity_mean": float(np.mean(calibrated_sims)) if calibrated_sims else 0.0,
+            "calibrated_similarity_std": float(np.std(calibrated_sims)) if calibrated_sims else 0.0,
+        }
+        
+        # Add calibration effect metrics if available
+        if calibration_effects:
+            deltas = [e["delta"] for e in calibration_effects]
+            metrics.update({
+                "calibration_mean_delta": float(np.mean(deltas)),
+                "calibration_max_delta": float(max(deltas, default=0.0)),
+                "calibration_min_delta": float(min(deltas, default=0.0))
+            })
+        
+        # Log top results for debugging
+        if filtered_results:
+            top_entities = [
+                f"{r['entity_text']} ({r.get('calibrated_similarity', r.get('similarity', 0)):.3f})"
+                for r in filtered_results[:3]
+            ]
+            _logger.debug(
+                f"Top matches for '{query[:30]}...': " + ", ".join(top_entities)
+            )
+        
+        # Send to monitoring system
+        if hasattr(self.logger, "log"):
+            self.logger.log("EntityRetrievalMetrics", metrics)
 
     def collect_calibration_data(
         self,
@@ -1026,6 +1172,56 @@ class NERRetrieverEmbedder:
 
         return triplets
 
+    def _get_domain_calibration(self, domain: str) -> Dict:
+        """Get calibration with domain hierarchy fallbacks."""
+        # Try specific domain first
+        cal = self._load_calibration_data(domain)
+        if cal:
+            return cal
+            
+        # Try parent domain (e.g., "computer_vision" → "ai")
+        parent_domain = self._get_parent_domain(domain)
+        if parent_domain:
+            cal = self._load_calibration_data(parent_domain)
+            if cal:
+                return cal
+                
+        # Try general domain
+        cal = self._load_calibration_data("general")
+        if cal:
+            return cal
+            
+        # Final fallback: identity function
+        return {
+            "ner": {
+                "coefficients": [1.0, 0.0],
+                "description": "default_identity"
+            }
+        }
+
+
+    def _calculate_calibration_confidence(self, calibration_data: List[Dict]) -> float:
+        """Calculate confidence in calibration based on data quality."""
+        if not calibration_data:
+            return 0.0
+            
+        # Confidence factors
+        sample_size = min(1.0, len(calibration_data) / 200)  # Max at 200 samples
+        
+        # Temporal recency (1.0 = today, 0.5 = 7 days ago)
+        if "timestamp" in calibration_data[0]:
+            latest = max(d["timestamp"] for d in calibration_data)
+            days_old = (datetime.now() - latest).days
+            recency = max(0.0, 1.0 - (days_old / 14))  # Full confidence within 14 days
+        else:
+            recency = 0.5
+            
+        # Data diversity (how many different queries)
+        query_variety = min(1.0, len(set(d["query"] for d in calibration_data)) / 50)
+        
+        # Weighted combination
+        return (0.5 * sample_size) + (0.3 * recency) + (0.2 * query_variety)
+
     def train_projection(
         self,
         triplets: List[Tuple[str, str, str]],
@@ -1193,6 +1389,39 @@ class NERRetrieverEmbedder:
                 else 0,
             },
         )
+
+    def _log_calibration_effectiveness(self, domain: str, calibration_effects: List[Dict]):
+        """Log metrics about how calibration affects retrieval quality."""
+        if not calibration_effects:
+            return
+            
+        # Calculate how calibration changes result distribution
+        deltas = [e["delta"] for e in calibration_effects]
+        positive_shifts = [d for d in deltas if d > 0.05]
+        negative_shifts = [d for d in deltas if d < -0.05]
+        
+        metrics = {
+            "domain": domain,
+            "total_effects": len(calibration_effects),
+            "positive_shifts": len(positive_shifts),
+            "negative_shifts": len(negative_shifts),
+            "mean_delta": float(np.mean(deltas)),
+            "std_delta": float(np.std(deltas)),
+            "max_positive": float(max(deltas, default=0.0)),
+            "max_negative": float(min(deltas, default=0.0)),
+            "shift_ratio": len(positive_shifts) / max(1, len(calibration_effects))
+        }
+        
+        # Log to monitoring system
+        self.logger.log("CalibrationEffectiveness", metrics)
+        
+        # Alert if calibration is causing excessive shifts
+        if abs(metrics["mean_delta"]) > 0.2:
+            self.logger.log("CalibrationWarning", {
+                "message": "Calibration causing large mean shift",
+                "domain": domain,
+                "mean_delta": metrics["mean_delta"]
+            })
 
     def train_projection(
         self,

@@ -175,15 +175,15 @@ class KnowledgeGraphService(Service):
                 "error": str(e)
             })
 
-    def build_from_text(self, text: str, source_id: str, source_type: str = "document") -> Dict[str, Any]:
+    def build_from_text(self, text: str, scorable_id: str, scorable_type: str = "document") -> Dict[str, Any]:
         """
         Build knowledge graph from text by extracting entities and relationships.
         
         Args:
             text: Input text to process
-            source_id: Unique identifier for the source document
-            source_type: Type of source (e.g., "document", "chat", "code")
-            
+            scorable_id: Unique identifier for the source scorable (e.g., document ID)
+            scorable_type: Type of source (e.g., "document", "chat", "code")
+
         Returns:
             Dictionary with statistics about the built graph
         """
@@ -213,15 +213,15 @@ class KnowledgeGraphService(Service):
             node_ids = []
             for entity in entities:
                 # Create node ID based on entity properties
-                node_id = self._create_entity_node_id(entity, source_id)
+                node_id = self._create_entity_node_id(entity, scorable_id)
                 
                 # Add to graph if not exists
                 if not self._node_exists(node_id):
-                    self._add_entity_node(node_id, entity, domains, source_id, source_type)
+                    self._add_entity_node(node_id, entity, domains, scorable_id, scorable_type)
                     node_ids.append(node_id)
                 else:
                     # Update existing node with new context
-                    self._update_entity_node(node_id, entity, domains, source_id, source_type)
+                    self._update_entity_node(node_id, entity, domains, scorable_id, scorable_type)
                 
                 # Track node statistics
                 self._track_node_stats(entity["type"])
@@ -242,8 +242,8 @@ class KnowledgeGraphService(Service):
             self._stats["build_time"] += time.time() - start_time
             
             self.logger.log("KnowledgeGraphBuilt", {
-                "source_id": source_id,
-                "source_type": source_type,
+                "source_id": scorable_id,
+                "source_type": scorable_type,
                 "entities": len(entities),
                 "relationships": len(relationships),
                 "duration": time.time() - start_time
@@ -258,7 +258,7 @@ class KnowledgeGraphService(Service):
             
         except Exception as e:
             self.logger.log("KnowledgeGraphBuildError", {
-                "source_id": source_id,
+                "source_id": scorable_id,
                 "error": str(e),
                 "traceback": traceback.format_exc()
             })
@@ -465,13 +465,14 @@ class KnowledgeGraphService(Service):
             })
             return []
 
-    def _create_entity_node_id(self, entity: Dict[str, Any], source_id: str) -> str:
-        """Create a unique ID for an entity node."""
-        # Create a hash of the entity properties
-        entity_hash = hashlib.sha256(
-            f"{entity['text']}|{entity['type']}|{source_id}".encode()
-        ).hexdigest()[:12]
-        return f"entity:{entity_hash}"
+    def _create_entity_node_id(self, entity: Dict[str, Any], scorable_id: str) -> str:
+        """
+        Create a stable, traceable ID for entity nodes.
+        
+        Format: {scorable_id}:{entity_type}:{start}-{end}
+        Example: "47:METHOD:123-132"
+        """
+        return f"{scorable_id}:{entity['type']}:{entity['start']}-{entity['end']}"
 
     def _node_exists(self, node_id: str) -> bool:
         """Check if a node already exists in the graph."""
@@ -479,10 +480,10 @@ class KnowledgeGraphService(Service):
         return self._graph.node_exists(node_id)
 
     def _add_entity_node(self, node_id: str, entity: Dict[str, Any], domains: List[Dict[str, float]], 
-                         source_id: str, source_type: str):
-        """Add a new entity node to the graph."""
+                        scorable_id: str, scorable_type: str):
+        """Add a new entity node to the graph with proper scorable reference."""
         try:
-            # Create node metadata
+            # Create node metadata with proper scorable reference
             metadata = {
                 "node_id": node_id,
                 "text": entity["text"],
@@ -490,8 +491,8 @@ class KnowledgeGraphService(Service):
                 "domains": [d["domain"] for d in domains],
                 "domain_scores": {d["domain"]: d["score"] for d in domains},
                 "sources": [{
-                    "source_id": source_id,
-                    "source_type": source_type,
+                    "scorable_id": scorable_id, 
+                    "scorable_type": scorable_type, 
                     "start": entity["start"],
                     "end": entity["end"],
                     "source_text": entity["source_text"]
@@ -510,7 +511,8 @@ class KnowledgeGraphService(Service):
                 "node_id": node_id,
                 "text": entity["text"][:50],
                 "type": entity["type"],
-                "source_id": source_id
+                "scorable_id": scorable_id,  # ✅ ACTUAL DB ID
+                "scorable_type": scorable_type  # ✅ DB TABLE NAME
             })
             
         except Exception as e:

@@ -7,6 +7,7 @@ from stephanie.models.casebook import CaseORM
 from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
                                    ChatTurnORM)
 from stephanie.models.document import DocumentORM
+from stephanie.models.document_section import DocumentSectionORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
@@ -17,6 +18,7 @@ from stephanie.scoring.scorable import Scorable
 class TargetType:
     AGENT_OUTPUT = "agent_output"
     DOCUMENT = "document"
+    DOCUMENT_SECTION = "document_section"
     CONVERSATION = "conversation"       # full conversation
     CONVERSATION_TURN = "conversation_turn"  # user→assistant pair
     CONVERSATION_MESSAGE = "conversation_message"  # single message
@@ -95,6 +97,10 @@ class ScorableFactory:
         elif isinstance(obj, DocumentORM):
             text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
             return Scorable(id=obj.id, text=text, target_type=TargetType.DOCUMENT)
+
+        elif isinstance(obj, DocumentSectionORM):
+            text = f"{obj.section_name}\n{obj.section_text}"
+            return Scorable(id=obj.id, text=text, target_type=TargetType.DOCUMENT_SECTION)
 
         elif isinstance(obj, CaseORM):
             text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)

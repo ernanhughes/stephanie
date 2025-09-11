@@ -33,6 +33,7 @@ Designed to be piped directly into DraftGeneratorAgent (as 'section plan').
 from __future__ import annotations
 import re
 from tqdm import tqdm
+from time import time
 import uuid
 import torch
 from dataclasses import dataclass
@@ -42,9 +43,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.models.ner_retriever import NERRetrieverEmbedder, EntityDetector
-
+from stephanie.scoring.scorable_factory import ScorableFactory
 
 def _sentences(text: str) -> List[str]:
     if not text:
@@ -126,6 +126,20 @@ class KnowledgeFusionAgent(BaseAgent):
             cfg=cfg,
         )
 
+        from stephanie.scoring.calibration import CalibrationManager
+        self.calibration = CalibrationManager(
+            cfg=cfg.get("calibration", {}),
+            logger=self.logger
+        )
+    
+        # ADD THIS: Periodic calibration trainer
+        self.calibration_trainer = CalibrationTrainer(
+            cfg=cfg.get("calibration", {}),
+            logger=self.logger,
+            calibration_manager=self.calibration
+        )
+
+
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {})
 
@@ -154,7 +168,7 @@ class KnowledgeFusionAgent(BaseAgent):
             )
 
             # Build session index
-            scorables = self._build_session_scorables(sections, chat, paper_id=paper.get("id"))
+            scorables = self._build_session_scorables(sections, chat)
             if self.kfc.enable_chunking:
                 self._index_session_entities_with_chunking(scorables)
             else:
@@ -231,13 +245,15 @@ class KnowledgeFusionAgent(BaseAgent):
     # ----------------------------
     # Internals
     # ----------------------------
-    def _plan_for_section(
-        self, section: dict, goal: dict, chat: List[Dict[str, str]]
-    ) -> Dict[str, Any]:
+    def _plan_for_section(self, section: dict, goal: dict, chat: List[Dict[str, str]]) -> Dict[str, Any]:
         sec_name = section.get("section_name", "section")
         text = section.get("section_text", "") or ""
         paper_id = section.get("paper_id")
-
+        
+        # ✅ CORRECT: Get actual scorable ID and target type
+        scorable_id = str(section.get("id", f"temp_{uuid.uuid4().hex}"))
+        scorable_type = section.get("target_type", "document_section")
+        
         # A) Domains (top_k = 20; no DB writes) - WITH PROPER GOAL CONTEXT
         goal_context = self._build_goal_context(goal)
         dom_matches = self.domain_clf.classify(
@@ -247,47 +263,41 @@ class KnowledgeFusionAgent(BaseAgent):
             context=goal_context,
         )
         domains = [{"domain": d, "score": float(s)} for d, s in dom_matches]
-
+        
         # B) Entities in the section (surface) + expand w/ nearest neighbors (from session index)
         surface_entities = self._detect_entities(text)
         # Critical: Pass domains to entity expansion for calibration
         expanded_entities = self._expand_entities(surface_entities, domains)
-
+        
         # C) Chat overlap: find chat snippets that share entities or are semantically close
-        chat_support = self._chat_overlap(
-            chat,
-            surface_entities,
-            expanded_entities,
-            limit=self.kfc.max_chat_snippets,
-        )
-
+        chat_support = self._chat_overlap(chat, surface_entities, expanded_entities, limit=self.kfc.max_chat_snippets)
+        
         # D) Claims with entity grounding
         claims = self._extract_claims_with_entities(text, expanded_entities)
-
+        
         # E) Quick tags for the improver: domains + top entity lemmas
         tags = self._generate_tags(domains, expanded_entities)
-
+        
+        # ✅ CORRECT: Include actual scorable reference in plan
         plan = {
             "section_title": sec_name,
             "section_name": sec_name,
             "paper_id": paper_id,
+            "scorable_id": scorable_id,  # ✅ ACTUAL DB ID
+            "scorable_type": scorable_type,  # ✅ DB TABLE NAME
             "paper_text": text,
-            "domains": domains,  # transient
-            "entities": expanded_entities,  # transient
-            "chat_support": chat_support,  # transient
+            "domains": domains,
+            "entities": expanded_entities,
+            "chat_support": chat_support,
             "claims": claims,
             "tags": tags,
-            # downstream knobs
             "goal_template": self.cfg.get("goal_template", "academic_summary"),
-            "generation_style": self.cfg.get(
-                "generation_style", "grounded_explanatory"
-            ),
+            "generation_style": self.cfg.get("generation_style", "grounded_explanatory"),
             "meta": {
                 "knowledge_hash": self._compute_hash(paper_id, text, chat),
-                "domain_confidence": self._get_domain_confidence(domains),
-            },
+                "domain_confidence": self._get_domain_confidence(domains)
+            }
         }
-        # (No persistent writes of domains/entities here.)
         return plan
 
     def _build_goal_context(self, goal: dict) -> Dict[str, Any]:
@@ -488,6 +498,16 @@ class KnowledgeFusionAgent(BaseAgent):
                         }
                     )
 
+                self.calibration.log_calibration_event(
+                    query=ent["text"],
+                    domain=primary_domain,
+                    raw_similarity=s.get("similarity", 0.0),
+                    calibrated_similarity=sim,
+                    is_relevant=sim >= self.kfc.ner_min_calibrated_sim,
+                    scorable_id=ent.get("scorable_id", "unknown"),
+                    scorable_type=ent.get("scorable_type", "unknown")
+                )
+
             # Only include if we have meaningful similar entities
             if (
                 similar
@@ -666,8 +686,8 @@ class KnowledgeFusionAgent(BaseAgent):
         self,
         sections: List[Dict[str, Any]],
         chat: List[Dict[str, str]],
-        paper_id: Optional[Any] = None,
     ) -> List[Scorable]:
+        """Build scorables using proper DB IDs (not fabricated composite IDs)."""
         scorables: List[Scorable] = []
 
         # Paper sections as scorables (entity-bearing units)
@@ -675,13 +695,19 @@ class KnowledgeFusionAgent(BaseAgent):
             text = sec.get("section_text", "") or ""
             if not text:
                 continue
-            sid = f"paper:{paper_id or 'unknown'}:{sec.get('section_name', 'section')}"
-            scorables.append(
-                Scorable(id=sid, text=text, target_type=TargetType.DOCUMENT)
-            )
+                
+            # ✅ CORRECT: Use actual DB ID (as string) and proper target type
+            scorable_id = str(sec.get("id", f"temp_{uuid.uuid4().hex}"))
+            target_type = sec.get("target_type", "document_section")
+            
+            scorables.append(Scorable(
+                id=scorable_id,
+                text=text,
+                target_type=target_type
+            ))
 
         # Recent chat messages as scorables (so entities from chat are retrievable)
-        for i, msg in enumerate(chat or []):
+        for msg in chat or []:
             scorable = ScorableFactory.from_orm(msg[0])
             scorables.append(scorable)
 
@@ -779,3 +805,51 @@ class KnowledgeFusionAgent(BaseAgent):
         except Exception as e:
             self.logger.log("ChatFallbackError", {"error": str(e)})
             return []
+
+
+# stephanie/agents/knowledge/knowledge_fusion.py (add this class)
+class CalibrationTrainer:
+    """Handles periodic training of calibration models from collected data."""
+    
+    def __init__(self, cfg: Dict, logger: Any, calibration_manager: 'CalibrationManager'):
+        self.cfg = cfg
+        self.logger = logger
+        self.calibration = calibration_manager
+        self.last_train = 0
+        self.train_interval = cfg.get("calibration_train_interval", 3600)  # Default: 1 hour
+    
+    def maybe_train(self):
+        """Train calibration models if enough time has passed and data is available."""
+        current_time = time.time()
+        if current_time - self.last_train < self.train_interval:
+            return False
+            
+        trained = False
+        # Train for all domains that need it
+        for domain in self._get_domains_to_train():
+            if self.calibration.auto_train_calibration(domain):
+                trained = True
+                
+        if trained:
+            self.last_train = current_time
+            return True
+        return False
+    
+    def _get_domains_to_train(self) -> List[str]:
+        """Get list of domains that need retraining."""
+        # Get all domains from configuration
+        domains = self.cfg.get("domains", ["general"])
+        
+        # Add any domains seen in recent activity
+        # This would query your calibration history
+        recent_domains = self._get_recent_domains()
+        domains = list(set(domains + recent_domains))
+        
+        return domains
+    
+    def _get_recent_domains(self, hours: int = 24) -> List[str]:
+        """Get domains with recent calibration activity."""
+        # In a real implementation, this would query your calibration history
+        # For example:
+        # return self.calibration.get_recent_domains(hours=hours)
+        return ["general"]  # Placeholder

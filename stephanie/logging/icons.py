@@ -49,6 +49,9 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "DomainsExtractedFromContext": "🏷️📋",  # Domains extracted from context
+    "KnowledgeFusionProgress": "📰🔄",  # Knowledge fusion in progress
+    "ContextProcessing": "📂🔄",  # Context processing
     "NERLayerAdjusted": "🏷️⚙️",  # NER layer adjusted
     "ClassificationComplete": "🏷️✅",  # Knowledge classification completed
     "CentroidCalculationStart": "📍▶️",  # Centroid calculation started

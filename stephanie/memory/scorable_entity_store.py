@@ -24,7 +24,7 @@ class ScorableEntityStore:
         self.name = "scorable_entities"
 
         # Shared retriever (backed by memory.embedding)
-        self.retriever = NERRetrieverEmbedder(memory=memory, logger=self.logger )
+        self.retriever = NERRetrieverEmbedder(memory=memory, logger=self.logger)
 
     def insert(self, data: dict) -> ScorableEntityORM:
         """
