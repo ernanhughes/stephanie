@@ -11,13 +11,12 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 from stephanie.models.casebook import CaseBookORM
 
-from .text_improver import TextImprover
-from .vpm_controller import VPMController, VPMRow, default_controller, Signal
-from .goals import GoalScorer
+from stephanie.agents.paper_improver import TextImprover
+from stephanie.agents.paper_improver.vpm_controller import VPMController, VPMRow, Signal, default_controller
+from stephanie.agents.paper_improver import GoalScorer
 
 # 🔑 new: knowledge fusion (transient NER + 20 domains from paper + chat)
 from stephanie.agents.paper_improver.knowledge_fuser import KnowledgeFuser
-from stephanie.agents.knowledge.chat_knowledge import TWENTY_DOMAINS
 
 
 class DraftGeneratorAgent(BaseAgent):
@@ -75,7 +74,7 @@ class DraftGeneratorAgent(BaseAgent):
 
         # --------- Fuse knowledge (paper + chat) → plan ----------
         plan = self.fuser.fuse(
-            paper_text=paper_text,
+            text=paper_text,
             chat_messages=chat_messages,
             section_name=section_name
         )

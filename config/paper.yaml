@@ -15,7 +15,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
-
+  - agents/draft_generator
   - agents/knowledge_fusion
   - agents/arxiv_search
   - agents/modular_memento
@@ -82,6 +82,12 @@ pipeline:
 
      - name: knowledge_fusion
        description: "Fuse and deduplicate knowledge from multiple sources"
-       cls: stephanie.agents.paper_improver.knowledge_fusion.KnowledgeFusionAgent
+       cls: stephanie.agents.knowledge.knowledge_fusion.KnowledgeFusionAgent
+       enabled: true
+       iterations: 1
+
+     - name: draft_generator
+       description: "Generate an initial draft response based on the goal and fused knowledge"
+       cls: stephanie.agents.knowledge.draft_generator.DraftGeneratorAgent
        enabled: true
        iterations: 1

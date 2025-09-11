@@ -1,9 +1,13 @@
 from __future__ import annotations
-from typing import Dict, Any, List, Tuple
-import hashlib, time
+from typing import Dict, Any, List
+import hashlib
+import time
+
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 
 from .vpm_controller import VPMController, default_controller
-from stephanie.knowledge.chat_knowledge import ChatKnowledgeBuilder, TransientKnowledge, TWENTY_DOMAINS
+from stephanie.agents.knowledge.chat_knowledge_builder import ChatKnowledgeBuilder
+
 
 class KnowledgeFuser:
     """
@@ -13,16 +17,33 @@ class KnowledgeFuser:
       - builds units: claim + evidence + claim_id
       - merges entities (ABBR/REQUIRED) with de-dupe
     """
-    def __init__(self):
+    def __init__(self, cfg, memory, logger):
+        self.cfg = cfg
+        self.memory = memory
+        self.logger = logger
         self.ctrl: VPMController = default_controller()
+        self.domain_classifier = ScorableClassifier(
+                memory=self.memory,
+                logger=self.logger,
+                config_path="config/domain/seeds.yaml",
+                metric="cosine"
+            )
+        self.top_k_domains = cfg.get("top_k_domains", 3)
+        self.min_classification_score = cfg.get("min_classification_score", 0.6)
+
+
         self.builder = ChatKnowledgeBuilder()
 
-    def fuse(self, *, paper_text: str, chat_messages: List[Dict[str,Any]], section_name: str) -> Dict[str, Any]:
-        k = self.builder.build(chat_messages=chat_messages, paper_text=paper_text)
+    def fuse(self, *, text: str, chat_messages: List[Dict[str,Any]], section_name: str) -> Dict[str, Any]:
+        k = self.builder.build(chat_messages=chat_messages, paper_text=text)
         chat, paper = k["chat"], k["paper"]
 
         # Domain blending (element-wise max favors confident overlap)
-        domains = {d: max(chat.domains.get(d,0.0), paper.domains.get(d,0.0)) for d in TWENTY_DOMAINS}
+
+        domains = self.domain_classifier.classify(
+                text, self.top_k_domains, self.min_classification_score
+         )
+
         # Keep top 5 domains as section focus
         top_domains = sorted(domains.items(), key=lambda kv: kv[1], reverse=True)[:5]
 
@@ -51,7 +72,7 @@ class KnowledgeFuser:
             "section_title": section_name,
             "units": units,
             "entities": {"ABBR": abbr, "REQUIRED": required},
-            "paper_text": paper_text,
+            "paper_text": text,
             "domains": [{"domain": d, "score": float(s)} for d, s in top_domains],
             "meta": {
                 "knowledge_hash": hashlib.sha256((" ".join(seed)).encode()).hexdigest()[:10],

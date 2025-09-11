@@ -403,7 +403,11 @@ class NERRetrieverEmbedder:
                 self.logger.log("ProjectionError", {"error": str(e)})
                 # Continue with non-projected vectors
 
-        return batch_vecs
+        out = []
+        for sublist in batch_vecs:
+            out.append([v.detach().cpu().numpy() if isinstance(v, torch.Tensor) else np.array(v) for v in sublist])
+        return out
+
 
     def embed_entities_for_text(
         self, text: str, spans: List[Tuple[int, int]]
@@ -668,13 +672,13 @@ class NERRetrieverEmbedder:
         calibration_effects: List[Dict],
         calibrated_count: int
     ) -> None:
-        """Log detailed metrics for monitoring and debugging."""
+        """Log detailed metrics for monitoring and debugging - PACS-compliant."""
         # Calculate statistics
         raw_sims = [r["similarity"] for r in all_results if "similarity" in r]
         calibrated_sims = [r["calibrated_similarity"] for r in all_results 
                         if "calibrated_similarity" in r]
         
-        # Log summary
+        # Log summary with PACS alignment
         _logger.info(
             f"Entity retrieval: '{query[:50]}{'...' if len(query) > 50 else ''}' "
             f"| Domain: {domain} "
@@ -682,7 +686,7 @@ class NERRetrieverEmbedder:
             f"| Returned: {len(filtered_results)}"
         )
         
-        # Log detailed metrics
+        # Log detailed metrics for PACS monitoring
         metrics = {
             "query": query[:100] + "..." if len(query) > 100 else query,
             "domain": domain,
@@ -695,16 +699,19 @@ class NERRetrieverEmbedder:
             "calibrated_similarity_std": float(np.std(calibrated_sims)) if calibrated_sims else 0.0,
         }
         
-        # Add calibration effect metrics if available
+        # Add calibration effect metrics if available (PACS: "learning from history")
         if calibration_effects:
             deltas = [e["delta"] for e in calibration_effects]
             metrics.update({
                 "calibration_mean_delta": float(np.mean(deltas)),
                 "calibration_max_delta": float(max(deltas, default=0.0)),
-                "calibration_min_delta": float(min(deltas, default=0.0))
+                "calibration_min_delta": float(min(deltas, default=0.0)),
+                "calibration_effectiveness": self._calculate_calibration_effectiveness(
+                    calibration_effects
+                )
             })
         
-        # Log top results for debugging
+        # Log top results for debugging (PACS: "contextual glue")
         if filtered_results:
             top_entities = [
                 f"{r['entity_text']} ({r.get('calibrated_similarity', r.get('similarity', 0)):.3f})"
@@ -714,9 +721,34 @@ class NERRetrieverEmbedder:
                 f"Top matches for '{query[:30]}...': " + ", ".join(top_entities)
             )
         
-        # Send to monitoring system
+        # Send to monitoring system (PACS: "self-correcting" capability)
         if hasattr(self.logger, "log"):
             self.logger.log("EntityRetrievalMetrics", metrics)
+        
+        # PACS-specific alerting for calibration issues
+        if metrics.get("calibration_mean_delta", 0) > 0.25:
+            _logger.warning(
+                f"Large calibration shift detected: {metrics['calibration_mean_delta']:.3f} "
+                f"(domain: {domain}, query: {query[:20]}...)"
+            )
+
+    def _calculate_calibration_effectiveness(self, calibration_effects: List[Dict]) -> float:
+        """Calculate how well calibration aligns with relevance (PACS metric)."""
+        if not calibration_effects:
+            return 0.0
+            
+        # Calculate mean delta for relevant vs non-relevant
+        relevant_deltas = [e["delta"] for e in calibration_effects if e.get("is_relevant")]
+        non_relevant_deltas = [e["delta"] for e in calibration_effects if not e.get("is_relevant", False)]
+
+        if not relevant_deltas or not non_relevant_deltas:
+            return 0.0
+            
+        relevant_mean = np.mean(relevant_deltas)
+        non_relevant_mean = np.mean(non_relevant_deltas)
+        
+        # Effectiveness = how much more we boosted relevant items
+        return max(0.0, min(1.0, relevant_mean - non_relevant_mean))
 
     def collect_calibration_data(
         self,
@@ -1354,41 +1386,6 @@ class NERRetrieverEmbedder:
             query_vec = self.projection(query_vec)
 
         return query_vec.cpu().detach().numpy()
-
-    def _log_retrieval_metrics(
-        self, query: str, results: List[Dict], domain: str
-    ):
-        """Log metrics for monitoring retrieval performance"""
-        # Track entity types retrieved
-        entity_types = {}
-        for r in results:
-            etype = r.get("entity_type", "UNKNOWN")
-            entity_types[etype] = entity_types.get(etype, 0) + 1
-
-        # Track similarity distribution
-        similarities = [r["similarity"] for r in results if "similarity" in r]
-        calibrated_similarities = [
-            r["calibrated_similarity"]
-            for r in results
-            if "calibrated_similarity" in r
-        ]
-
-        self.logger.log(
-            "NERRetrievalMetrics",
-            {
-                "query": query[:50] + "..." if len(query) > 50 else query,
-                "domain": domain,
-                "total_results": len(results),
-                "entity_types": entity_types,
-                "similarity_mean": np.mean(similarities)
-                if similarities
-                else 0,
-                "similarity_std": np.std(similarities) if similarities else 0,
-                "calibrated_mean": np.mean(calibrated_similarities)
-                if calibrated_similarities
-                else 0,
-            },
-        )
 
     def _log_calibration_effectiveness(self, domain: str, calibration_effects: List[Dict]):
         """Log metrics about how calibration affects retrieval quality."""

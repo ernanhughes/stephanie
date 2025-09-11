@@ -49,6 +49,8 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "EntityRetrievalMetrics": "🏷️📊",  # Entity retrieval metrics
+    
     "DomainsExtractedFromContext": "🏷️📋",  # Domains extracted from context
     "KnowledgeFusionProgress": "📰🔄",  # Knowledge fusion in progress
     "ContextProcessing": "📂🔄",  # Context processing

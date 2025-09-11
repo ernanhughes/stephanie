@@ -45,6 +45,7 @@ from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.scoring.scorable import Scorable
 from stephanie.models.ner_retriever import NERRetrieverEmbedder, EntityDetector
 from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.calibration import CalibrationManager
 
 def _sentences(text: str) -> List[str]:
     if not text:
@@ -157,6 +158,7 @@ class KnowledgeFusionAgent(BaseAgent):
                 for s in sections
                 if s.section_text and len(s.section_text) > 20
             ]
+            self.calibration_trainer.maybe_train()
 
             self.report(
                 {
@@ -217,30 +219,6 @@ class KnowledgeFusionAgent(BaseAgent):
                 }
             )
         return context
-
-    def embed_entities_batch(self, text, spans):
-        inputs = self.tokenizer(
-            text,
-            return_tensors="pt",
-            truncation=True,
-            padding="longest",
-            max_length=512,
-        ).to(self.device)
-        with torch.no_grad():
-            outputs = self.model(**inputs, output_hidden_states=True)
-            hidden_states = outputs.hidden_states[self.layer][
-                0
-            ]  # (seq_len, dim)
-
-        entity_vecs = []
-        for start, end in spans:
-            start_token = inputs.char_to_token(0, start) or 1
-            end_token = inputs.char_to_token(0, end - 1) or start_token
-            entity_vec = hidden_states[start_token : end_token + 1, :].mean(
-                dim=0
-            )
-            entity_vecs.append(entity_vec.cpu().numpy())
-        return entity_vecs
 
     # ----------------------------
     # Internals
@@ -481,15 +459,26 @@ class KnowledgeFusionAgent(BaseAgent):
             similar = []
             for s in sims:
                 # Always prefer calibrated similarity if available
-                sim = s.get("calibrated_similarity", s.get("similarity", 0.0))
-                if (
-                    sim >= self.kfc.ner_min_calibrated_sim
-                ):  # Critical: Use calibrated threshold
+                raw_sim = s.get("similarity", 0.0)
+                calibrated_sim = s.get("calibrated_similarity", raw_sim)
+                
+                # Calculate confidence in this calibration
+                calibration_confidence = self.calibration.get_confidence(
+                    domain=primary_domain,
+                    query=ent["text"]
+                )
+                
+                # Apply confidence-weighted threshold
+                effective_threshold = self.kfc.ner_min_calibrated_sim * (0.8 + 0.4 * calibration_confidence)
+
+                
+                if calibrated_sim >= effective_threshold:
                     similar.append(
                         {
                             "entity_text": s.get("entity_text", ""),
-                            "similarity": float(s.get("similarity", 0.0)),
-                            "calibrated_similarity": float(sim),
+                            "similarity": float(raw_sim),
+                            "calibrated_similarity": float(calibrated_sim),
+                            "calibration_confidence": calibration_confidence,
                             "entity_type": s.get("entity_type", "UNKNOWN"),
                             "source_text": s.get("source_text", "")[:200],
                             "scorable_id": s.get("scorable_id", ""),
@@ -498,30 +487,27 @@ class KnowledgeFusionAgent(BaseAgent):
                         }
                     )
 
+                # Log calibration event
                 self.calibration.log_calibration_event(
                     query=ent["text"],
                     domain=primary_domain,
-                    raw_similarity=s.get("similarity", 0.0),
-                    calibrated_similarity=sim,
-                    is_relevant=sim >= self.kfc.ner_min_calibrated_sim,
+                    raw_similarity=raw_sim,
+                    calibrated_similarity=calibrated_sim,
+                    is_relevant=calibrated_sim >= self.kfc.ner_min_calibrated_sim,
                     scorable_id=ent.get("scorable_id", "unknown"),
                     scorable_type=ent.get("scorable_type", "unknown")
                 )
 
             # Only include if we have meaningful similar entities
-            if (
-                similar
-                or ent["calibrated_similarity"]
-                >= self.kfc.ner_min_calibrated_sim
-            ):
+            if similar or ent.get("calibrated_similarity", 0.0) >= self.kfc.ner_min_calibrated_sim:
                 expanded.append(
                     {
                         "text": ent["text"],
                         "type": ent["type"],
                         "source": ent["source"],
                         "similar": similar,
-                        "similarity": ent["similarity"],
-                        "calibrated_similarity": ent["calibrated_similarity"],
+                        "similarity": ent.get("similarity", 0.0),
+                        "calibrated_similarity": ent.get("calibrated_similarity", 0.0),
                     }
                 )
 
@@ -806,6 +792,28 @@ class KnowledgeFusionAgent(BaseAgent):
             self.logger.log("ChatFallbackError", {"error": str(e)})
             return []
 
+    def _get_domain_with_fallbacks(self, domain: str) -> str:
+        """Get domain with hierarchical fallbacks (specific → parent → general → identity)."""
+        # Try specific domain first
+        if self.calibration.has_calibration(domain):
+            return domain
+            
+        # Try parent domain (e.g., "computer_vision" → "ai")
+        parent_domain = self._get_parent_domain(domain)
+        if parent_domain and self.calibration.has_calibration(parent_domain):
+            return parent_domain
+            
+        # Try general domain
+        if self.calibration.has_calibration("general"):
+            return "general"
+            
+        # No calibration available - use identity function
+        return "identity"
+
+    def _get_parent_domain(self, domain: str) -> Optional[str]:
+        """Get parent domain from hierarchy configuration."""
+        domain_hierarchy = self.cfg.get("domain_hierarchy", {})
+        return domain_hierarchy.get(domain)
 
 # stephanie/agents/knowledge/knowledge_fusion.py (add this class)
 class CalibrationTrainer:
@@ -820,7 +828,7 @@ class CalibrationTrainer:
     
     def maybe_train(self):
         """Train calibration models if enough time has passed and data is available."""
-        current_time = time.time()
+        current_time = time()
         if current_time - self.last_train < self.train_interval:
             return False
             
