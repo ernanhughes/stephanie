@@ -10,7 +10,6 @@ from stephanie.utils.json_sanitize import safe_json
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver import GoalScorer, TextImprover
-# 🔑 new: knowledge fusion (transient NER + 20 domains from paper + chat)
 from stephanie.agents.knowledge.knowledge_fuser import KnowledgeFuser
 from stephanie.agents.paper_improver.vpm_controller import (Signal,
                                                             VPMController,
@@ -36,7 +35,7 @@ class DraftGeneratorAgent(BaseAgent):
         self.section_name_fallback = cfg.get("section_name_fallback", "Blog Section")
         self.vpm: VPMController = default_controller()
         self.goals = GoalScorer()
-        self.ti = TextImprover(cfg, memory, logger, workdir=cfg.get("text_workdir", "./text_runs"))
+        self.ti = TextImprover(cfg, memory=memory, logger=logger, workdir=cfg.get("text_workdir", "./text_runs"))
         self.fuser = KnowledgeFuser(cfg, memory, logger)
 
         # chat ingestion options

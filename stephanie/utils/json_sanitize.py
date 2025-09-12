@@ -63,3 +63,18 @@ def safe_json(obj: Any) -> str:
         except Exception:
             return "<unserializable>"
     return json.dumps(obj, default=default_serializer, ensure_ascii=False)
+
+
+def to_json_safe(obj: Any) -> Any:
+    """Convert tuples/np types to JSON-safe Python types."""
+    if isinstance(obj, dict):
+        return {k: to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [to_json_safe(v) for v in obj]
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    return obj

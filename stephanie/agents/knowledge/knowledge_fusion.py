@@ -1003,7 +1003,7 @@ class CalibrationTrainer:
 
         trained_any = False
         for domain in self._get_domains_to_train():
-            pos, neg, total = self.calibration.label_counts(domain)   # implement below
+            pos, neg, total = self.calibration.domain_counts(domain)   # implement below
             self.logger.info("CalibrationTrainer: label mix",
                             extra={"domain": domain, "pos": pos, "neg": neg, "total": total})
 

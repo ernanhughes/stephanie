@@ -19,6 +19,7 @@ from stephanie.agents.paper_improver.goals import GoalScorer
 from stephanie.knowledge.casebook_store import CaseBookStore
 from stephanie.knowledge.knowledge_bus import KnowledgeBus
 from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.utils.json_sanitize import safe_json
 from .faithfulness import FaithfulnessBot
 
@@ -57,28 +58,36 @@ def atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None:
 class TextImprover:
     def __init__(
         self,
-        cfg: Dict[str, Any],
-        memory: Any,
-        logger: Any = None,
+        cfg,
+        memory,
         workdir: str = "./text_runs",
         timeout: int = 60,
         seed: int = 0,
         faithfulness_topk: int = 5,
         kb: KnowledgeBus | None = None,
         casebooks: CaseBookStore | None = None,
+        calibration: CalibrationManager | None = None,  
+        logger=None,                                    
     ):
         self.cfg = cfg
         self.memory = memory
-        self.logger = logger
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
-
         self.run_id = 0
         self.timeout = timeout
         self.seed = seed
         self.faithfulness_topk = faithfulness_topk
         self.kb = kb or KnowledgeBus()
         self.casebooks = casebooks or CaseBookStore()
+
+        # NEW: logger + calibration wiring
+        self.logger = logger
+        self.calibration = calibration or CalibrationManager(
+            cfg=self.cfg.get("calibration", {}),  # pass calibration sub-config
+            memory=self.memory,
+            logger=self.logger,
+        )
+
         self.gs = GoalScorer()
 
     # --------------------------- public ---------------------------
@@ -306,15 +315,16 @@ class TextImprover:
                         0.25*calib_features["coherence"] + 0.25*calib_features["citation_support"]
 
         try:
-            self.memory.calibration_events.add({
-                "domain": primary_domain,
-                "features": calib_features,     # stored as JSON
-                "raw_similarity": float(raw_similarity),
-                "is_relevant": bool(label),
-                "case_id": case.id,
-                "section_title": plan_norm.get("section_title"),
-                "ts": time.time(),
-            })
+            # GOOD: use manager's sanitizer
+            self.calibration.log_event(
+                domain=primary_domain or "general",
+                query=(plan_norm.get("section_title") or "")[:2000],
+                raw_sim=float(raw_similarity or 0.0),
+                is_relevant=bool(label),
+                scorable_id=str(case.id),
+                scorable_type="text_draft",
+                entity_type=None,
+            )
         except Exception as e:
             self.logger.warning("CalibrationEventLogFailed", {"error": str(e)})
 
@@ -859,3 +869,32 @@ class TextImprover:
                 pass
         # Fallback
         print(f"[{event}] {payload}")
+
+    def _log_calibration_event(
+        self,
+        *,
+        domain: str,
+        query: str | None,
+        raw_sim: float,
+        is_relevant: bool,
+        scorable_id: str | None = None,
+        scorable_type: str | None = None,
+        entity_type: str | None = None,
+    ) -> None:
+        # Ensure non-null & length-limited strings to satisfy NOT NULL constraints
+        q = (query or "").strip()[:2000] or "N/A"
+        sid = (scorable_id or "").strip() or "unknown"
+        st = (scorable_type or "").strip() or "unknown"
+        et = (entity_type or "").strip() or None
+        try:
+            self.calibration.log_event(
+                domain=domain or "general",
+                query=q,
+                raw_sim=float(raw_sim),
+                is_relevant=bool(is_relevant),
+                scorable_id=sid,
+                scorable_type=st,
+                entity_type=et,
+            )
+        except Exception as e:
+            self.logger.error("CalibrationEventLogFailed", {"error": str(e)})

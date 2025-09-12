@@ -150,13 +150,10 @@ class KnowledgeGraphService(Service):
         self._pending_relationships.clear()
         self.logger.log("KnowledgeGraphShutdown", {"status": "stopped"})
 
-    # -------------------------
-    # Public Search API (Fixed)
-    # -------------------------
     def search_entities(self, text: str, k: int = 10) -> List[Tuple[str, float, Dict[str, Any]]]:
         """
-        Search KG using the SAME embedder used during indexing.
-        Results cached via entity_cache (keyed by raw text).
+OK        Search KG using the SAME embedder used during indexing.
+        Results cached via entity_cache keyed by scorable_embeddings.id (int).
         Returns: list of (node_id, score, metadata)
         """
         if not self._initialized or not self.enabled:
@@ -165,49 +162,57 @@ class KnowledgeGraphService(Service):
         start_time = time.time()
 
         try:
-            # ⚡ 1. Check cache first
-            if hasattr(self.memory, "entity_cache"):
-                cached = self.memory.entity_cache.get_by_embedding(text)
-                if cached and cached.results_json:
+            # 1) Ensure we have a canonical embedding and its integer id
+            #    (use the *same* embedder/model you index with)
+            embedding_vec = self._retriever.embed_type_query(text)
+
+            # Persist (or find) this embedding in your embedding store,
+            # tag it with type="ner" so we stay in the same space
+            if hasattr(self.memory, "embedding"):
+                # ensure returns an id for this exact text & type
+                emb_id = self.memory.embedding.ensure_query_embedding(
+                    text=text,
+                    embedding_vec=embedding_vec,
+                    embedding_type="ner"
+                )
+            else:
+                # fallback: try an id lookup; as last resort, fail open (no cache)
+                emb_id = getattr(self.memory, "get_id_for_text", lambda _t: None)(text)
+
+            # 2) Try cache → embedding_ref is an INT (FK to scorable_embeddings.id)
+            if emb_id and hasattr(self.memory, "entity_cache"):
+                cached_row = self.memory.entity_cache.get_by_embedding(emb_id)
+                if cached_row and cached_row.results_json:
                     self._stats["cache_hits"] += 1
                     self._stats["queries"] += 1
                     self._stats["query_time"] += time.time() - start_time
-                    return cached.results_json
+                    return cached_row.results_json
 
-            # 🧠 2. Embed text (must match indexing model)
-            embedding_vec = self._retriever.embed_type_query(text)
-
-            # 🔍 3. Search HNSW index
+            # 3) Miss → do the actual HNSW search
             raw_results = self._graph.search(embedding_vec, k=k)
 
-            # 🎯 4. Enrich results
-            enriched = [
-                (
-                    node_id,
+            # 4) Normalize to JSON-safe tuples (node_id, score, metadata)
+            enriched = []
+            for node_id, score, meta in raw_results:
+                enriched.append((
+                    str(node_id),
                     float(score),
-                    {**meta, "node_id": node_id, "score": float(score)},
-                )
-                for node_id, score, meta in raw_results
-            ]
+                    {**(meta or {}), "node_id": str(node_id), "score": float(score)}
+                ))
 
-            self.memory.entity_cache.upsert(
-                text,    
-                enriched,
-                embedding_type="ner",
-                scorable_type="query",
-            )
-            self._stats["cache_misses"] += 1
+            # 5) Upsert cache
+            if emb_id and hasattr(self.memory, "entity_cache"):
+                self.memory.entity_cache.upsert(emb_id, enriched)
+                self._stats["cache_misses"] += 1
 
-            # 📊 6. Stats
             self._stats["queries"] += 1
             self._stats["query_time"] += time.time() - start_time
             return enriched
 
         except Exception as e:
             self.logger.log("KnowledgeGraphSearchError", {
-                "text": text,
+                "text": text[:200],
                 "error": str(e),
-                "traceback": traceback.format_exc()
             })
             return []
 

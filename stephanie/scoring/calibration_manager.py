@@ -5,6 +5,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 from stephanie.models.quantile_fallback import QuantileThresholdCalibrator
+import os, re, pickle, glob
 
 _logger = logging.getLogger(__name__)
 
@@ -40,10 +41,11 @@ class CalibrationManager:
     def __init__(self, cfg: dict, memory, logger):
         self.cfg = cfg or {}
         self.memory = memory
-        self.logger = logger or _logger
+        self.logger = logger
         self.models: Dict[str, object] = {}      # hydrated calibrators (domain -> model)
         self.thresholds: Dict[str, float] = {}   # domain -> decision threshold
         self.min_samples = int(self.cfg.get("min_samples", 50))
+        self.data_dir = str(self.cfg.get("data_dir", "/data/calibration"))
 
     # ----------------------------
     # Logging API
@@ -110,54 +112,55 @@ class CalibrationManager:
             _logger.error(f"Failed to load calibration data for {domain}: {e}")
             return None
 
-    def label_counts(self, domain: str) -> Tuple[int, int, int]:
+    def domain_counts(self, domain: str) -> Tuple[int, int, int]:
         """(pos, neg, total) counts from the store."""
         try:
-            counts = self.memory.calibration_events.fetch_counts_by_label(domain) or {}
+            counts = self.memory.calibration_events.count_by_domain(domain) or {}
             pos = int(counts.get("pos", 0))
             neg = int(counts.get("neg", 0))
             return pos, neg, pos + neg
         except Exception as e:
-            _logger.error(f"label_counts failed for {domain}: {e}")
+            _logger.error(f"domain_counts failed for {domain}: {e}")
             return 0, 0, 0
 
-    def _load_training(self, domain: str) -> Tuple[np.ndarray, np.ndarray]:
+    def _load_training(self, domain: str):
         """
-        Returns arrays for training on 1D raw_similarity.
-        X is shape (N, 1), y is (N,)
+        Return (X, y, raw) where:
+        - X: 2D feature matrix (coverage, correctness, coherence, citation_support)
+        - y: binary labels (1=relevant, 0=not)
+        - raw: raw similarity scores (float in [0,1])
         """
-        try:
-            events = self.memory.calibration_events.fetch_events(domain, limit=10000) or []
-        except Exception:
-            # Fallback: derive from ORM → dicts
-            df = self.load_data(domain)
-            if df is None:
-                return np.zeros((0, 1), float), np.zeros((0,), int)
-            X = df["raw_similarity"].to_numpy(dtype=float).reshape(-1, 1)
-            y = df["is_relevant"].astype(int).to_numpy()
-            return X, y
-
-        rs, y = [], []
+        events = self.memory.calibration_events.fetch_events(domain, limit=10000) or []
+        X, y, raw = [], [], []
         for ev in events:
-            # ev is dict-like
-            rs.append(float(ev.get("raw_similarity", 0.0)))
+            f = (ev.get("features") or {})
+            X.append([
+                float(f.get("coverage", 0.0)),
+                float(f.get("correctness", 0.0)),
+                float(f.get("coherence", 0.0)),
+                float(f.get("citation_support", 0.0)),
+            ])
             y.append(1 if ev.get("is_relevant") else 0)
-        X = np.asarray(rs, dtype=float).reshape(-1, 1)
-        y = np.asarray(y, dtype=int)
-        return X, y
+            raw.append(float(ev.get("raw_similarity", 0.0)))
+        return np.asarray(X, dtype=float), np.asarray(y, dtype=int), np.asarray(raw, dtype=float)
 
     # ----------------------------
     # Training
     # ----------------------------
     def train_model(self, domain: str, allow_fallback: bool = True) -> bool:
-        X, y = self._load_training(domain)
-        n = X.shape[0]
-        if n < max(5, self.min_samples // 2):  # light guard for early stages
-            self.logger.info("Calibration: not enough samples", extra={"domain": domain, "n": int(n)})
+        """
+        Train a per-domain calibrator.
+        - Normal path: logistic regression on feature matrix X -> P(relevant)
+        - One-class path: quantile threshold fallback on raw similarity (or mean(X))
+        - No-sklearn path: parametric sigmoid on raw similarity
+        """
+        X, y, raw = self._load_training(domain)  # <-- THREE returns
+        n = int(X.shape[0])
+        if n == 0:
             return False
 
         uniq = np.unique(y)
-        # ---- One-class fallback ----
+        # ----- One-class / no-class fallback -----
         if uniq.size < 2:
             if not allow_fallback:
                 return False
@@ -166,51 +169,178 @@ class CalibrationManager:
             q = float(self.cfg.get("calibration", {}).get("fallback_quantile", 0.85))
             slope = float(self.cfg.get("calibration", {}).get("fallback_slope", 10.0))
 
-            cal = QuantileThresholdCalibrator(
-                positive=positive,
-                quantile=q,
-                slope=slope,
+            # Use raw similarity if available, otherwise mean of features
+            source = raw if raw.size else (X.mean(axis=1) if X.size else np.zeros((n,), dtype=float))
+
+            cal = QuantileThresholdCalibrator(positive=positive, quantile=q, slope=slope)
+            cal.fit(source)
+
+            # Persist with a sensible threshold (the learned quantile)
+            thresh = float(np.quantile(source, q)) if source.size else 0.5
+            self._persist(domain, cal, kind="quantile", threshold=thresh)
+            self.logger.info(
+                "Calibration: trained fallback quantile model",
+                extra={"domain": domain, "positive": positive, "n": n, "quantile": q, "threshold": thresh},
             )
-            cal.fit(X.ravel())  # expects 1D
-            threshold = 0.5  # probability threshold
-            self._persist(domain, cal, kind="quantile", threshold=threshold)
-            self.logger.info("Calibration: trained fallback quantile model",
-                             extra={"domain": domain, "positive": positive, "n": int(n), "q": q})
             return True
 
-        # ---- Two-class path ----
+        # ----- Two-class path -----
         try:
             from sklearn.linear_model import LogisticRegression
+
             clf = LogisticRegression(max_iter=1000)
-            clf.fit(X, y)
-            threshold = 0.5
-            self._persist(domain, clf, kind="logistic_raw", threshold=threshold)
-            self.logger.info("Calibration: trained logistic on raw", extra={"domain": domain, "n": int(n)})
-            return True
-        except Exception:
-            # sklearn not available → simple sigmoid calibrated on raw
-            pos = X[y == 1].ravel()
-            neg = X[y == 0].ravel()
-            mu_pos = float(pos.mean()) if pos.size else 0.75
-            mu_neg = float(neg.mean()) if neg.size else 0.25
-            mu = (mu_pos + mu_neg) / 2.0
-            sd = float(np.sqrt(((pos.std() ** 2) + (neg.std() ** 2)) / 2.0) or 1.0)
-            cal = SigmoidCalibrator(mu=mu, sd=sd)
-            threshold = 0.5
-            self._persist(domain, cal, kind="sigmoid_raw", threshold=threshold)
-            self.logger.info("Calibration: trained sigmoid fallback",
-                             extra={"domain": domain, "mu": round(mu, 4), "sd": round(sd, 4)})
+
+            # If X has no columns or is degenerate, regress on raw similarity instead
+            degenerate = (X.ndim != 2) or (X.shape[1] == 0) or np.allclose(X.std(axis=0), 0.0)
+            feats = raw.reshape(-1, 1) if (degenerate and raw.size) else X
+
+            clf.fit(feats, y)
+            # Use 0.5 as default decision threshold for P(relevant)
+            self._persist(domain, clf, kind="logistic", threshold=0.5)
+            self.logger.info("Calibration: trained logistic", extra={"domain": domain, "n": n, "degenerate_X": bool(degenerate)})
             return True
 
-    def _persist(self, domain: str, calibrator: object, kind: str, threshold: float = 0.5) -> None:
-        """Persist via the calibration_events store and hydrate local cache."""
-        try:
-            self.memory.calibration_events.persist_calibrator(domain, calibrator, kind=kind, threshold=threshold)
         except Exception as e:
-            self.logger.error(f"persist_calibrator failed for {domain}: {e}")
-        # hydrate local cache so immediate calls work
+            # ----- No-sklearn (or import) fallback: simple sigmoid on raw similarity -----
+            mu = float(raw.mean()) if raw.size else 0.0
+            sd = float(raw.std() or 1.0) if raw.size else 1.0
+
+            class _Sigmoid:
+                def __init__(self, mu, sd):
+                    self.mu, self.sd = mu, sd
+                def predict_proba(self, scores):
+                    z = (np.asarray(scores, float) - self.mu) / self.sd
+                    p = 1.0 / (1.0 + np.exp(-z))
+                    return np.stack([1 - p, p], axis=1)
+
+            cal = _Sigmoid(mu, sd)
+            self._persist(domain, cal, kind="sigmoid_mu_sd", threshold=0.5)
+            self.logger.info(
+                "Calibration: trained simple sigmoid (fallback)",
+                extra={"domain": domain, "n": n, "mu": mu, "sd": sd, "reason": str(e)},
+            )
+            return True
+
+    def _slug(self, name: str) -> str:
+        # safe filename for domain names like "ml/nlp:general"
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", (name or "general"))
+
+    def _cal_path(self, domain: str, kind: str | None = None) -> str:
+        # Prefer namespaced files: <domain>__<kind>.pkl; fallback to <domain>.pkl
+        slug = self._slug(domain)
+        if kind:
+            return os.path.join(self.data_dir, f"{slug}__{kind}.pkl")
+        return os.path.join(self.data_dir, f"{slug}.pkl")
+
+    def _dump_pickle_atomic(self, path: str, obj: object) -> None:
+        tmp = path + ".tmp"
+        with open(tmp, "wb") as f:
+            pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp, path)  # atomic on POSIX/NTFS
+
+    def _load_pickle_lenient(self, path: str):
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+        # Support legacy shapes:
+        # 1) {"model": <clf>, "threshold": 0.5}
+        # 2) {"calibrator": <clf>, "meta": {"threshold": 0.5, "kind": "..."}}
+        # 3) (<clf>, {"threshold": 0.5, "kind": "..."})
+        if isinstance(data, dict):
+            if "calibrator" in data:
+                return data["calibrator"], data.get("meta", {})
+            if "model" in data:
+                return data["model"], {"threshold": float(data.get("threshold", 0.5))}
+        if isinstance(data, tuple) and len(data) >= 2:
+            return data[0], (data[1] or {})
+        # As a last resort treat the whole payload as the calibrator
+        return data, {}
+
+    # ----------------------------
+    # Persist
+    # ----------------------------
+    def _persist(self, domain: str, calibrator: object, kind: str, threshold: float = 0.5) -> None:
+        """Persist calibrator to local disk (atomic pickle) and hydrate cache."""
+        try:
+            path = self._cal_path(domain, kind)
+            payload = {
+                "calibrator": calibrator,
+                "meta": {"threshold": float(threshold), "kind": kind, "version": 1},
+            }
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            # Save namespaced file
+            self._dump_pickle_atomic(path, payload)
+
+            # Also save/refresh a domain-wide pointer for quick lookup (optional)
+            # This allows _ensure_loaded(domain) to work without knowing 'kind'
+            generic_path = self._cal_path(domain)
+            self._dump_pickle_atomic(generic_path, payload)
+
+        except Exception as e:
+            # Local persistence should never crash the pipeline
+            self.logger.error(f"calibration._persist failed for {domain}: {e}")
+
+        # Hydrate local cache so immediate calls work
         self.models[domain] = calibrator
         self.thresholds[domain] = float(threshold)
+
+    # ----------------------------
+    # Inference
+    # ----------------------------
+    def _ensure_loaded(self, domain: str) -> bool:
+        """Load calibrator from local files into memory if needed."""
+        if domain in self.models:
+            return True
+
+        # Try generic domain file first
+        try:
+            generic_path = self._cal_path(domain)
+            if os.path.exists(generic_path):
+                cal, meta = self._load_pickle_lenient(generic_path)
+                thr = float((meta or {}).get("threshold", 0.5))
+                self.models[domain] = cal
+                self.thresholds[domain] = thr
+                return True
+        except Exception as e:
+            self.logger.error(f"calibration.load (generic) failed for {domain}: {e}")
+
+        # Then try any namespaced file <domain>__*.pkl
+        try:
+            pattern = self._cal_path(domain, kind="*")
+            for path in glob.glob(pattern):
+                cal, meta = self._load_pickle_lenient(path)
+                thr = float((meta or {}).get("threshold", 0.5))
+                self.models[domain] = cal
+                self.thresholds[domain] = thr
+                return True
+        except Exception as e:
+            self.logger.error(f"calibration.load (namespaced) failed for {domain}: {e}")
+
+        # (Optional) final fallback: try DB store if you keep it around
+        try:
+            if hasattr(self.memory, "calibration_events") and hasattr(self.memory.calibration_events, "load_calibrator"):
+                loaded = self.memory.calibration_events.load_calibrator(domain)
+                if loaded:
+                    if isinstance(loaded, tuple) and len(loaded) >= 2:
+                        cal, meta = loaded[0], loaded[1]
+                        thr = float((meta or {}).get("threshold", 0.5))
+                    elif isinstance(loaded, dict):
+                        cal = loaded.get("calibrator") or loaded.get("model")
+                        thr = float(loaded.get("threshold", 0.5))
+                    else:
+                        cal, thr = loaded, 0.5
+                    if cal is not None:
+                        self.models[domain] = cal
+                        self.thresholds[domain] = thr
+                        # Re-persist locally for next time
+                        self._persist(domain, cal, kind=(meta or {}).get("kind", "restored"), threshold=thr)
+                        return True
+        except Exception as e:
+            self.logger.error(f"calibration.load (db fallback) failed for {domain}: {e}")
+
+        return False
+
+    def is_trained(self, domain: str) -> bool:
+        return domain in self.models or os.path.exists(self._cal_path(domain))
 
     # ----------------------------
     # Inference
@@ -245,11 +375,6 @@ class CalibrationManager:
         self.thresholds[domain] = threshold
         return True
 
-    def is_trained(self, domain: str) -> bool:
-        if domain in self.models:
-            return True
-        return self._ensure_loaded(domain)
-
     def get_calibrated_probability(self, domain: str, raw_sim: float) -> float:
         domain = domain or "general"
         if not self._ensure_loaded(domain):
@@ -283,10 +408,24 @@ class CalibrationManager:
         return prob >= threshold
 
     def get_confidence(self, domain: str, query: str = None) -> float:
-        """How confident we are in our calibration for this domain (by sample count)."""
+        """
+        Return [0,1] expressing how confident we are in the calibration for `domain`.
+        Works whether the store returns an int or a dict of counts.
+        Normalizes by a configurable cap (default 1000 labeled examples).
+        """
+        cap = float(self.cfg.get("calibration", {}).get("confidence_cap", 1000.0))
+        total = 0
         try:
-            count = self.memory.calibration_events.count_by_domain(domain)
-        except Exception:
-            count = 0
-        # cap at 1.0 after 1k samples
-        return float(min(count / 1000.0, 1.0))
+            counts = self.memory.calibration_events.count_by_domain(domain)
+            if isinstance(counts, dict):
+                total = int(counts.get("total") or (counts.get("pos", 0) + counts.get("neg", 0)))
+            else:
+                total = int(counts or 0)
+        except Exception as e:
+            _logger.warning(f"get_confidence: count fetch failed for domain={domain}: {e}")
+            total = 0
+
+        # Avoid div-by-zero and clamp to [0,1]
+        if cap <= 0:
+            return 0.0
+        return float(min(total / cap, 1.0))
