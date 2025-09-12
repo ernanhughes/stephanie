@@ -39,15 +39,14 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from time import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import torch
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
-from stephanie.scoring.calibration import CalibrationManager
+from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory
 
@@ -134,7 +133,7 @@ class KnowledgeFusionAgent(BaseAgent):
             cfg=cfg,
         )
 
-        from stephanie.scoring.calibration import CalibrationManager
+        from stephanie.scoring.calibration_manager import CalibrationManager
         self.calibration = CalibrationManager(
             cfg=cfg.get("calibration", {}),
             memory=self.memory,
@@ -998,24 +997,40 @@ class CalibrationTrainer:
         self.lookback_hours = cfg.get("calibration_lookback_hours", 24)
 
     def maybe_train(self) -> bool:
-        """Check interval and retrain calibration models if needed."""
-        current_time = time()
-        if current_time - self.last_train < self.train_interval:
+        now = time()
+        if now - self.last_train < self.train_interval:
             return False
 
         trained_any = False
         for domain in self._get_domains_to_train():
-            try:
-                if self.calibration.train_model(domain):
-                    self.logger.info(f"CalibrationTrainer: trained model for domain '{domain}'")
-                    trained_any = True
-                else:
-                    _logger.debug(f"CalibrationTrainer: insufficient samples for domain '{domain}'")
-            except Exception as e:
-                _logger.error(f"CalibrationTrainer: training failed for domain '{domain}' : {e}")
+            pos, neg, total = self.calibration.label_counts(domain)   # implement below
+            self.logger.info("CalibrationTrainer: label mix",
+                            extra={"domain": domain, "pos": pos, "neg": neg, "total": total})
+
+            MIN_POS = self.cfg.get("calibration", {}).get("min_pos", 10)
+            MIN_NEG = self.cfg.get("calibration", {}).get("min_neg", 10)
+
+            if pos == 0 and neg == 0:
+                self.logger.info("CalibrationTrainer: no samples yet", extra={"domain": domain})
+                continue
+
+            # Train with fallback if single class; require balance for full model
+            if pos < 1 or neg < 1:
+                self.logger.warning("CalibrationTrainer: one-class data — using fallback",
+                                    extra={"domain": domain, "pos": pos, "neg": neg})
+                trained_any |= self.calibration.train_model(domain, allow_fallback=True)
+                continue
+
+            if pos < MIN_POS or neg < MIN_NEG:
+                self.logger.warning("CalibrationTrainer: skipping — insufficient class balance",
+                                    extra={"domain": domain, "pos": pos, "neg": neg,
+                                        "need_pos": MIN_POS, "need_neg": MIN_NEG})
+                continue
+
+            trained_any |= self.calibration.train_model(domain, allow_fallback=False)
 
         if trained_any:
-            self.last_train = current_time
+            self.last_train = now
         return trained_any
     
     def _get_domains_to_train(self) -> List[str]:
@@ -1034,7 +1049,7 @@ class CalibrationTrainer:
         try:
             # If CalibrationManager has a store:
             if hasattr(self.calibration, "memory") and hasattr(self.calibration.memory, "calibration_events"):
-                since = datetime.utcnow() - timedelta(hours=hours)
+                since = datetime.now() - timedelta(hours=hours)
                 return self.memory.calibration_events.get_recent_domains(since=since)
         except Exception as e:
             self.logger.warning(f"CalibrationTrainer: failed to fetch recent domains: {e}")

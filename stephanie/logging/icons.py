@@ -50,7 +50,7 @@ AGENT_EVENTS = {
 # =================
 KNOWLEDGE_OPS = {
     "EntityRetrievalMetrics": "🏷️📊",  # Entity retrieval metrics
-    
+    "KnowledgeFusionIndexEventsPublished": "📰📢",  # Knowledge fusion index events published
     "DomainsExtractedFromContext": "🏷️📋",  # Domains extracted from context
     "KnowledgeFusionProgress": "📰🔄",  # Knowledge fusion in progress
     "ContextProcessing": "📂🔄",  # Context processing

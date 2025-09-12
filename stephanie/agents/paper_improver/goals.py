@@ -378,12 +378,12 @@ class GoalScorer:
             )
 
             if self.logger:
-                _logger.info("GoalTemplateCreated", {
-                    "kind": kind,
-                    "goal": goal,
-                    "dims": dims,
-                    "message": "Dynamic goal template created on-the-fly"
-                })
+                _logger.info("GoalTemplateCreated"
+                    f"kind: {kind}"
+                    f"goal: {goal}"
+                    f"dims: {dims}"
+                    "message: Dynamic goal template created on-the-fly"
+                )
 
         tpl = self.templates[key]
         # Start with only numeric values

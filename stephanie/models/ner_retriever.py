@@ -26,14 +26,11 @@ Dependencies:
 - PyTorch, Transformers, Annoy, Numpy
 """
 
-import gc
 import json
 import logging
 import os
 import random
 import re
-import time
-from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
 
@@ -199,8 +196,7 @@ class NERRetrieverEmbedder:
 
         self.layer = layer
         self.embedding_dim = embedding_dim
-        from stephanie.models.hnsw_index import HNSWIndex
-        from stephanie.scoring.calibration import CalibrationManager
+        from stephanie.scoring.calibration_manager import CalibrationManager
 
         self.index = HNSWIndex(dim=embedding_dim, index_path=index_path)
         self.entity_detector = EntityDetector(device)
@@ -221,7 +217,7 @@ class NERRetrieverEmbedder:
 
         self.calibration = CalibrationManager(cfg=self.cfg, memory=self.memory, logger=self.logger)
 
-        logger.info(
+        _logger.info(
             f"NER Retriever initialized with {model_name} "
             f"layer {layer}, projection_enabled={projection_enabled}"
         )
@@ -680,7 +676,7 @@ class NERRetrieverEmbedder:
                         if "calibrated_similarity" in r]
         
         # Log summary with PACS alignment
-        _logger.info(
+        _logger.debug(
             f"Entity retrieval: '{query[:50]}{'...' if len(query) > 50 else ''}' "
             f"| Domain: {domain} "
             f"| Found: {len(all_results)} "
@@ -723,7 +719,7 @@ class NERRetrieverEmbedder:
             )
         
         # Send to monitoring system (PACS: "self-correcting" capability)
-        self.logger.log("EntityRetrievalMetrics", metrics)
+        _logger.debug(f"EntityRetrievalMetrics: {metrics}")
         
         # PACS-specific alerting for calibration issues
         if metrics.get("calibration_mean_delta", 0) > 0.25:

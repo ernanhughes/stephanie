@@ -211,6 +211,29 @@ class KnowledgeGraphService(Service):
             })
             return []
 
+
+    def build_context_for_plan(self, plan: dict, k: int = 5) -> dict:
+        """Return KG neighbors per claim_id for drafting/scoring."""
+        out = {"neighbors": {}}
+        for u in plan.get("units", []):
+            q = (u.get("claim") or u.get("evidence") or "").strip()
+            cid = u.get("claim_id")
+            if not q or not cid:
+                continue
+            hits = self.search_entities(q, k=k)  # [(node_id, score, meta), ...]
+            out["neighbors"][cid] = [
+                {
+                    "node_id": nid,
+                    "text": meta.get("text", ""),
+                    "type": meta.get("type", ""),
+                    "score": float(score),
+                    "sources": meta.get("sources", []),
+                    "domains": meta.get("domains", []),
+                }
+                for (nid, score, meta) in hits
+            ]
+        return out
+
     # -------------------------
     # Entity & Node Management
     # -------------------------
@@ -391,3 +414,5 @@ class KnowledgeGraphService(Service):
         domain_bonus = 0.1 if any(d["domain"] in {"ml", "nlp"} for d in domains) else 0.0
         proximity_bonus = 0.1 if distance < 20 else 0.0
         return max(min(base_score + domain_bonus + proximity_bonus, 1.0), 0.0)
+    
+    

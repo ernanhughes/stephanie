@@ -15,6 +15,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/document_profiler
   - agents/draft_generator
   - agents/knowledge_fusion
   - agents/arxiv_search
@@ -67,18 +68,19 @@ pipeline:
   name: cbr
   tag: cbr
   description: >
-    Implementation of the Case-Based Reasoning (CBR) framework from the 
-    Memento paper (https://arxiv.org/pdf/2508.16153).
-    This pipeline demonstrates the full CBR loop — retrieve, reuse, revise, retain —
-    by grounding reasoning in past cases (PlanTraces, evaluations, scorables),
-    adapting them to new tasks, and storing new cases for continual self-improvement.
-
+    A knowledge-intensive pipeline that retrieves, profiles, fuses, and generates responses based on prior knowledge and documents.
   stages:
      - name: knowledge_db_loader
        description: "Load prior retained knowledge from the database for retrieval"
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
        enabled: true
        iterations: 1    
+
+     - name: document_profiler
+       description: "Profile and index documents for relevance to the goal"
+       cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
+       enabled: true
+       iterations: 1
 
      - name: knowledge_fusion
        description: "Fuse and deduplicate knowledge from multiple sources"

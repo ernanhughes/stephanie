@@ -36,7 +36,7 @@ class DraftGeneratorAgent(BaseAgent):
         self.section_name_fallback = cfg.get("section_name_fallback", "Blog Section")
         self.vpm: VPMController = default_controller()
         self.goals = GoalScorer()
-        self.ti = TextImprover(cfg, memory, workdir=cfg.get("text_workdir", "./text_runs"))
+        self.ti = TextImprover(cfg, memory, logger, workdir=cfg.get("text_workdir", "./text_runs"))
         self.fuser = KnowledgeFuser(cfg, memory, logger)
 
         # chat ingestion options
@@ -56,7 +56,9 @@ class DraftGeneratorAgent(BaseAgent):
           - trajectory [steps]
           - champion_draft (text), champion_vpm (dict)
         """
-        paper = context.get("paper", {})
+        documents = context.get("documents", [])
+
+        paper = documents[0]
         section = context.get("section", {}) or {}
 
         # --------- Gather inputs ----------
@@ -81,6 +83,8 @@ class DraftGeneratorAgent(BaseAgent):
         )
         # Add explicit goal_template so TextImprover and downstream scorers can use it
         plan["goal_template"] = self.goal_template
+        kg_ctx = self.container.get("knowledge_graph").build_context_for_plan(plan, k=5)
+        plan["kg"] = kg_ctx  # pass into TextImprover
 
         # --------- CaseBook to log the trajectory ----------
         casebook = self._ensure_casebook(paper, section_name, plan)
@@ -356,6 +360,7 @@ class DraftGeneratorAgent(BaseAgent):
         self.memory.casebooks.add_scorable(
             case.id,
             scorable_type="reflection",
+            pipeline_run_id=context.get("pipeline_run_id"),
             text=safe_json(reflection),
             meta={"section": section_name},
             role="reflection"

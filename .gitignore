@@ -8,7 +8,7 @@ outputs/
 /data/
 /text_runs/
 /runs/
-
+/faithfulness_cache/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

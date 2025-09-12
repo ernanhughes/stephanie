@@ -673,6 +673,7 @@ class CaseBookStore:
     def add_scorable(
         self,
         case_id: int,
+        pipeline_run_id: int,
         text: str,
         scorable_type: Optional[str] = None,
         meta: Optional[dict] = None,
@@ -690,6 +691,7 @@ class CaseBookStore:
         """
         orm = DynamicScorableORM(
             case_id=case_id,
+            pipeline_run_id=pipeline_run_id,
             scorable_type=scorable_type,
             text=text,
             meta=meta or {},

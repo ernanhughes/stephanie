@@ -9,9 +9,11 @@ class KnowledgeDBLoaderAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.top_k = cfg.get("top_k", 10)
         self.include_full_text = cfg.get("include_full_text", False)
-        self.search_method = cfg.get(
-            "search_method", "document"
+        self.target_type = cfg.get(
+            "target_type", "document"
         )  # or "section"
+        self.include_ner = cfg.get("include_ner", False)
+
         self.doc_ids_scoring = cfg.get("doc_ids_scoring", False)
         self.doc_ids = cfg.get("doc_ids", [])
 
@@ -39,7 +41,7 @@ class KnowledgeDBLoaderAgent(BaseAgent):
             docs = [d.to_dict() for d in docs]
         else:
             docs = self.memory.embedding.search_related_scorables(
-                goal_text, top_k=self.top_k
+                goal_text, top_k=self.top_k, include_ner=self.include_ner, target_type=self.target_type
             )
             self.logger.log(
                 "DocumentsSearched",
@@ -68,7 +70,7 @@ class KnowledgeDBLoaderAgent(BaseAgent):
 
         self.logger.log(
             "KnowledgeDBLoaded",
-            {"count": len(docs), "search_method": self.search_method},
+            {"count": len(docs), "search_method": self.target_type},
         )
 
         return context

@@ -63,9 +63,9 @@ class ScorableClassifier:
         self.metric = metric
 
         # Log initialization with configuration details
-        _logger.info("DomainClassifierInit" 
-            f"config_path: {config_path}" 
-            f"metric: {metric}"
+        _logger.info("DomainClassifierInit\n" 
+            f"config_path: {config_path}\n" 
+            f"metric: {metric}\n"
             f"message: Initializing domain classifier"
         )
         

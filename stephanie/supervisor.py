@@ -446,6 +446,7 @@ class Supervisor:
                 agent_args["full_cfg"] = self.cfg
 
             agent = cls(**agent_args)
+            agent.container = self.container  # Inject container into agent
             self.logger.log("PipelineStageStart", {STAGE: stage.name})
 
             for i in range(stage.iterations or 1): 
