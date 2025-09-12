@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h3 class="mb-2">Conversation #{{ conversation.id }} — <code>{{ conversation.title }}</code></h3>
+      <div class="text-muted small">
+        Provider: <span class="badge bg-info text-dark">{{ conversation.provider }}</span>
+        <span class="mx-2">|</span>
+        Created: {{ conversation.created_at }}
+        <span class="mx-2">|</span>
+        Updated: {{ conversation.updated_at }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Messages -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="mb-2">Messages</h5>
+      <div class="list-group">
+        {% for m in conversation.messages %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between">
+              <strong>{{ m.role|capitalize }}</strong>
+              <span class="text-muted small">{{ m.created_at }}</span>
+            </div>
+            <pre class="mb-0" style="white-space: pre-wrap;">{{ m.text }}</pre>
+          </div>
+        {% endfor %}
+        {% if not conversation.messages %}
+          <div class="list-group-item text-muted">No messages in this conversation.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Turns -->
+  <div class="card shadow-sm mt-4">
+    <div class="card-body">
+      <h5 class="mb-2">Turns</h5>
+      <table class="table table-sm table-hover align-middle">
+        <thead>
+          <tr><th>ID</th><th>User</th><th>Assistant</th></tr>
+        </thead>
+        <tbody>
+        {% for t in conversation.turns %}
+          <tr>
+            <td>#{{ t.id }}</td>
+            <td>{{ t.user_message.text if t.user_message else '—' }}</td>
+            <td>{{ t.assistant_message.text if t.assistant_message else '—' }}</td>
+          </tr>
+        {% endfor %}
+        {% if not conversation.turns %}
+          <tr><td colspan="3" class="text-muted">No turns recorded.</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

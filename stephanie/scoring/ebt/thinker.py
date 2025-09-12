@@ -1,11 +1,8 @@
-All right# stephanie/agents/ebt/thinker.py
+# stephanie/agents/ebt/thinker.py
 import torch
 
-from stephanie.scoring.model.energy_based_scorer import EnergyBasedScorer
-
-
 class EBTThinker:
-    def __init__(self, model: EnergyBasedScorer, step_size=0.05, steps=10):
+    def __init__(self, model, step_size=0.05, steps=10):
         self.model = model
         self.step_size = step_size
         self.steps = steps

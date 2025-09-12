@@ -89,7 +89,7 @@ pipeline:
          🗂️ Import raw chat logs (JSON/HTML) from OpenAI, Qwen, Gemini, and DeepSeek.
          Parse, deduplicate, and normalize conversations into structured ORM objects.
        cls: stephanie.agents.pacs.chat_import.ChatImportAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: chat_to_casebook
@@ -98,7 +98,7 @@ pipeline:
          Each conversation (or turn/message, depending on granularity) becomes a Case
          with linked Scorables, tied to a goal context.
        cls: stephanie.agents.pacs.chat_to_casebook.ChatToCaseBookAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: universal_scorer
@@ -149,11 +149,11 @@ pipeline:
      - name: knowledge_db_loader
        description: "Load prior retained knowledge from the database for retrieval"
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
-       enabled: true
+       enabled: false
        iterations: 1    
 
      - name: scorable_entity
        description: "🗂️ Extract and prepare Scorable entities from the CaseBook"
        cls: stephanie.agents.scorable_entity.ScorableEntityAgent
-       enabled: true
+       enabled: false
        iterations: 1

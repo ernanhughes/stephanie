@@ -1,5 +1,5 @@
-scorable_embedding_backfill:
-  name: scorable_embedding_backfill
+text_improver:
+  name: text_improver
   enabled: true
   save_prompt: true
   save_context: false
@@ -10,6 +10,6 @@ scorable_embedding_backfill:
     api_key: null
   input_keys: ["goal", "hypotheses"]
   input_key: documents
-  output_key: scorable_embedding_backfill
+  output_key: text_improver
   prompt_mode: file
-  prompt_file: scorable_embedding_backfill.txt
+  prompt_file: text_improver.txt

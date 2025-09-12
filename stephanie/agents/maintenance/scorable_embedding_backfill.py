@@ -1,4 +1,4 @@
-# stephanie/agents/maintenance/document_embedding_backfill.py
+# stephanie/agents/maintenance/scorable_embedding_backfill.py
 
 from tqdm import tqdm
 
