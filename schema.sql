@@ -1558,4 +1558,24 @@ CREATE TABLE calibration_events (
     timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
 );
 
+CREATE TABLE dynamic_scorables (
+    id SERIAL PRIMARY KEY,
+    run_id VARCHAR NOT NULL,
+    pipeline_run_id VARCHAR NOT NULL,
+    case_id INTEGER REFERENCES cases(id) ON DELETE CASCADE,
+    scorable_type VARCHAR NOT NULL,
+    source VARCHAR,
+    text TEXT,
+    meta JSONB,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
+); 
+
+CREATE TABLE entity_cache (
+    id SERIAL PRIMARY KEY,
+    embedding_ref INTEGER NOT NULL REFERENCES scorable_embeddings(id),
+    results_json JSON,
+    last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
 COMMIT; 

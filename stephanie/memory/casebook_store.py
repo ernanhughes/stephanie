@@ -455,9 +455,9 @@ class CaseBookStore:
         goal_text: Optional[str] = None,
         mars_summary: Optional[str] = None,
         scores: Optional[dict] = None,
-        metadata: Optional[dict] = None,
         scorables: Optional[list[dict]] = None,
         prompt_text: Optional[str] = None,
+        meta: Optional[dict] = None,
         response_texts: Optional[list[str]] = None,
     ):
         """
@@ -483,6 +483,7 @@ class CaseBookStore:
             goal_id=goal_id,
             agent_name=agent_name, 
             prompt_text=prompt_text,
+            meta=meta or {},
         )
         self.session.add(case)
         self.session.flush()  # need case.id for scorable ids
@@ -655,3 +656,14 @@ class CaseBookStore:
     def get_case_scorable_by_id(self, case_scorable_id: int) -> Optional[CaseScorableORM]:
         """Load a single CaseScorable by its primary key."""
         return self.session.get(CaseScorableORM, case_scorable_id)
+    
+
+    def list_scorables(self, case_id: int, role: str = None):
+        """
+        Return all scorables for a given case.
+        Optionally filter by role.
+        """
+        q = self.session.query(CaseScorableORM).filter_by(case_id=case_id)
+        if role:
+            q = q.filter(CaseScorableORM.role == role)
+        return q.all()

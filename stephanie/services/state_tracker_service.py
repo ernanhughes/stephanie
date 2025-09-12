@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Dict, Any
+from typing import Any, Dict
 
 from stephanie.services.service_protocol import Service
 

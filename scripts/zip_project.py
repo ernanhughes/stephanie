@@ -26,4 +26,4 @@ def zip_project_directory(source_dir: str, output_filename: str = "stephanie.zip
 
 # Example usage
 if __name__ == "__main__":
-    zip_project_directory(".")
+    zip_project_directory("stephanie/")

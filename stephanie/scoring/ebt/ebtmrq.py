@@ -1,6 +1,6 @@
 # stephanie/scoring/energy_tuned_mrq.py
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List
 
 import torch
 from torch.nn.functional import sigmoid

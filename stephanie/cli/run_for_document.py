@@ -1,15 +1,19 @@
 # stephanie/cli/run_for_document.py
 from __future__ import annotations
 
-import json
-import yaml
 import argparse
+import json
 from pathlib import Path
+
+import yaml
+
+from stephanie.agents.paper_improver.orchestrator import run_paper_section
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-from stephanie.tools.plan_from_document import build_plan_from_memory, save_plan
+from stephanie.tools.plan_from_document import (build_plan_from_memory,
+                                                save_plan)
 from stephanie.tools.spec_from_document import build_spec_from_text, save_spec
-from stephanie.agents.paper_improver.orchestrator import run_paper_section
+
 
 def main():
     ap = argparse.ArgumentParser()

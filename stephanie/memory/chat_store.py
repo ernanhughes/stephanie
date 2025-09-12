@@ -24,6 +24,8 @@ class ChatStore:
             self.session.rollback() 
             raise
 
+    def get_all(self, limit: int = 100) -> list[ChatConversationORM]:
+        return self.session.query(ChatConversationORM).order_by(desc(ChatConversationORM.created_at)).limit(limit).all()
 
     def exists_conversation(self, file_hash: str) -> bool:
         return (

@@ -15,7 +15,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 
 class KnowledgeBus:

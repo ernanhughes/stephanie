@@ -36,8 +36,7 @@ class BaseEmbeddingStore(BaseStore):
         
         if self.ner_enabled:
             try:
-                from stephanie.models.ner_retriever import \
-                    NERRetrieverEmbedder
+                from stephanie.models.ner_retriever import NERRetrieverEmbedder
                 self.ner_retriever = NERRetrieverEmbedder(
                     model_name=cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct"),
                     layer=cfg.get("ner_layer", 17),

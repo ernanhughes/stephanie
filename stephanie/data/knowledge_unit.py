@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Dict, Any, List
+
 import hashlib
 from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType

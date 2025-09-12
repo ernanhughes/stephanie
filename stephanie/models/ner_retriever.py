@@ -26,20 +26,18 @@ Dependencies:
 - PyTorch, Transformers, Annoy, Numpy
 """
 
+import gc
 import json
 import logging
 import os
 import random
 import re
-import gc
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
-from contextlib import contextmanager
-from stephanie.models.hnsw_index import HNSWIndex
 
 import numpy as np
-
 # stephanie/scoring/model/ner_retriever.py
 import torch
 import torch.nn as nn
@@ -47,6 +45,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, pipeline
 
+from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.scoring.scorable import Scorable
 
 _logger = logging.getLogger(__name__)
@@ -108,26 +107,33 @@ class EntityDetector:
             _logger.error(f"Failed to init NER pipeline: {e}")
             self.ner_pipeline = None
 
-    def detect_entities(self, text: str) -> List[Tuple[int, int, str]]:
-        """Detect entities in text using either BERT-NER or fallback heuristic."""
+    def detect_entities(self, text: str) -> List[Dict[str, Any]]:
+        """Detect entities in text using either BERT-NER or fallback heuristic.
+        Always returns list of dicts with keys: text, type, start, end, score.
+        """
         if not text or len(text.strip()) < 2:
             return []
-        if self.ner_pipeline:
-            try:
-                # Use BERT-NER if available
+
+        entities: List[Dict[str, Any]] = []
+        try:
+            if self.ner_pipeline:
                 results = self.ner_pipeline(text)
-                return [
-                    (
-                        r["start"],
-                        r["end"],
-                        self._map_entity_type(r["entity_group"]),
-                    )
-                    for r in results
-                ]
-            except Exception as e:
-                _logger.warning(f"NER pipeline failed: {e}")
-        # Fallback to heuristic-based detection
-        return self._heuristic_entity_detection(text)
+                for r in results:
+                    entities.append({
+                        "text": text[r["start"]:r["end"]],
+                        "type": self._map_entity_type(r["entity_group"]),
+                        "start": r["start"],
+                        "end": r["end"],
+                        "score": float(r.get("score", 1.0)),
+                    })
+            else:
+                # fallback
+                entities = self._heuristic_entity_detection(text)
+        except Exception as e:
+            _logger.warning(f"NER pipeline failed: {e}")
+            entities = self._heuristic_entity_detection(text)
+
+        return entities
 
     def _map_entity_type(self, group: str) -> str:
         """Map BERT-NER entity types to simplified categories."""
@@ -138,17 +144,22 @@ class EntityDetector:
             "MISC": "MISC",
         }.get(group, "UNKNOWN")
 
-    def _heuristic_entity_detection(
-        self, text: str
-    ) -> List[Tuple[int, int, str]]:
-        """Fallback entity detection using capitalization rules."""
-        entities = []
+    def _heuristic_entity_detection(self, text: str) -> List[Dict[str, Any]]:
+        """Fallback entity detection using capitalization rules.
+        Returns dicts consistent with detect_entities.
+        """
+        entities: List[Dict[str, Any]] = []
         for word in text.split():
-            # Simple heuristic: capitalized words longer than 2 characters
             if word and word[0].isupper() and len(word) > 2:
                 start = text.find(word)
                 if start != -1:
-                    entities.append((start, start + len(word), "UNKNOWN"))
+                    entities.append({
+                        "text": word,
+                        "type": "UNKNOWN",
+                        "start": start,
+                        "end": start + len(word),
+                        "score": 0.5,  # heuristic confidence
+                    })
         return entities
 
 
@@ -208,7 +219,7 @@ class NERRetrieverEmbedder:
                 .eval()
             )
 
-        self.calibration = CalibrationManager(cfg or {}, logger=self.logger)
+        self.calibration = CalibrationManager(cfg=self.cfg, memory=self.memory, logger=self.logger)
 
         logger.info(
             f"NER Retriever initialized with {model_name} "
@@ -463,62 +474,52 @@ class NERRetrieverEmbedder:
     def index_scorables(self, scorables: List[Scorable]) -> int:
         """
         Index entities from scorables into HNSW with proper metadata.
-        
-        Uses actual scorable IDs and target types.
         """
         new_embeddings, new_metadata = [], []
         total_entities = 0
-        
+
         for scorable in tqdm(scorables, desc="Indexing entities"):
             try:
-                # Extract entities from scorable text
-                spans = self.entity_detector.detect_entities(scorable.text)
-                if not spans:
+                entities = self.entity_detector.detect_entities(scorable.text)
+                if not entities:
                     continue
-                    
-                # Process up to max_entities_per_scorable
-                spans = spans[:self.cfg.get("max_entities_per_scorable", 300)]
-                
-                for start, end, entity_type in spans:
-                    entity_text = scorable.text[start:end].strip()
+
+                entities = entities[:self.cfg.get("max_entities_per_scorable", 300)]
+
+                for ent in entities:
+                    entity_text = ent["text"].strip()
                     if len(entity_text) < 2:
                         continue
-                        
-                    # Create embedding for this span
-                    emb = self.embed_entity(scorable.text, (start, end))
-                    
+
+                    emb = self.embed_entity(scorable.text, (ent["start"], ent["end"]))
+
                     new_embeddings.append(emb.detach().cpu().numpy())
                     new_metadata.append({
-                        "scorable_id": scorable.id,  # ACTUAL DB ID
-                        "scorable_type": scorable.target_type,  # DB TABLE NAME
+                        "scorable_id": scorable.id,
+                        "scorable_type": scorable.target_type,
                         "entity_text": entity_text,
-                        "start": start,
-                        "end": end,
-                        "entity_type": entity_type,
-                        "source_text": scorable.text[:100] + "..." if len(scorable.text) > 100 else scorable.text
+                        "start": ent["start"],
+                        "end": ent["end"],
+                        "entity_type": ent["type"],
+                        "source_text": scorable.text[:100] + "..."
                     })
-                    
+
                     total_entities += 1
-                    
+
             except Exception as e:
                 self.logger.log("NERIndexingError", {
                     "scorable_id": scorable.id,
                     "error": str(e)
                 })
-        
-        # Add to index
+
         if new_embeddings:
-            self.index.add(
-                np.array(new_embeddings),
-                new_metadata,
-                save=True
-            )
-        
+            self.index.add(np.array(new_embeddings), new_metadata, save=True)
+
         self.logger.log("NERIndexingComplete", {
             "scorables_processed": len(scorables),
             "entities_indexed": total_entities
         })
-        
+
         return total_entities
 
     def _process_batch(self, texts, spans_list, scorables, new_embs, new_meta):
@@ -956,9 +957,8 @@ class NERRetrieverEmbedder:
         """Determine domain from query using classifier with fallbacks"""
         if not hasattr(self, "_domain_classifier"):
             try:
-                from stephanie.analysis.scorable_classifier import (
-                    ScorableClassifier,
-                )
+                from stephanie.analysis.scorable_classifier import \
+                    ScorableClassifier
 
                 self._domain_classifier = ScorableClassifier(
                     memory=self.memory,
@@ -1157,38 +1157,25 @@ class NERRetrieverEmbedder:
 
         return float(np.sqrt(np.mean(errors))) if errors else 1.0
 
-    def generate_triplets(
-        self, scorables: List[Scorable], max_triplets: int = 1000
-    ) -> List[Tuple[str, str, str]]:
+    def generate_triplets(self, scorables: List[Scorable], max_triplets: int = 1000) -> List[Tuple[str, str, str]]:
         """Generate contrastive learning triplets from CaseBooks"""
-        # Group entities by type
         entities_by_type = {}
         for scorable in scorables:
-            for start, end, etype in self.entity_detector.detect_entities(
-                scorable.text
-            ):
-                entity_text = scorable.text[start:end].strip()
+            for ent in self.entity_detector.detect_entities(scorable.text):
+                entity_text = ent["text"].strip()
                 if len(entity_text) >= 2:
-                    if etype not in entities_by_type:
-                        entities_by_type[etype] = []
-                    entities_by_type[etype].append(entity_text)
+                    entities_by_type.setdefault(ent["type"], []).append(entity_text)
 
-        # Generate triplets (anchor, positive, negative)
         triplets = []
-        valid_types = [
-            t for t in entities_by_type.keys() if len(entities_by_type[t]) >= 2
-        ]
+        valid_types = [t for t in entities_by_type if len(entities_by_type[t]) >= 2]
 
         for _ in range(min(max_triplets, 10 * len(valid_types))):
             etype = random.choice(valid_types)
             entities = entities_by_type[etype]
-
             if len(entities) < 2:
                 continue
 
             anchor, positive = random.sample(entities, 2)
-
-            # Find negative example from different type
             other_types = [t for t in valid_types if t != etype]
             if not other_types:
                 continue
@@ -1197,7 +1184,6 @@ class NERRetrieverEmbedder:
             negative = random.choice(entities_by_type[neg_type])
 
             triplets.append((anchor, positive, negative))
-
             if len(triplets) >= max_triplets:
                 break
 

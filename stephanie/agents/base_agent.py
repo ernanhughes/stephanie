@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import litellm
-from stephanie.services.service_container import ServiceContainer
 import torch
 
 from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
@@ -17,10 +16,11 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
-from stephanie.services.rules_service import RulesService
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
+from stephanie.services.rules_service import RulesService
 from stephanie.services.scoring_service import ScoringService
+from stephanie.services.service_container import ServiceContainer
 
 
 def remove_think_blocks(text: str) -> str:

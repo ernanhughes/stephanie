@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import time
+import traceback
 from collections import defaultdict, deque
 from datetime import datetime
 from statistics import mean
-import time
-import traceback
 from typing import Any, Dict, List, Optional
 
 from stephanie.services.service_protocol import Service

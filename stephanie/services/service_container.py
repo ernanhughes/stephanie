@@ -17,7 +17,9 @@ from service usage, making the system more modular and testable.
 """
 
 from __future__ import annotations
-from typing import Any, Dict, List, Callable
+
+from typing import Any, Callable, Dict, List
+
 from stephanie.services.service_protocol import Service
 
 

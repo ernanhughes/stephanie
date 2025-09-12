@@ -1,4 +1,8 @@
-# goals.py — goal templates, normalization, and portfolio scoring for VPM rows
+# stephanie/agents/paper_improver/goals.py
+"""
+goal templates, normalization, and portfolio scoring for VPM rows
+"""
+
 from __future__ import annotations
 
 import json
@@ -6,11 +10,10 @@ import math
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-try:
-    import yaml  # optional: only needed for load_yaml
-except Exception:  # pragma: no cover
-    yaml = None  # graceful degradation
+import yaml  # optional: only needed for load_yaml
 
+import logging
+_logger = logging.getLogger(__name__)
 
 # ----------------------------- data models -----------------------------
 
@@ -108,6 +111,27 @@ class GoalTemplate:
     min_bar: Dict[str, float] = field(default_factory=dict)
     hard_bars: bool = False
     normalize_weights: bool = True
+
+    @classmethod
+    def from_dims(cls, name: str, kind: str, dims: List[str], default_threshold: float = 0.5) -> "GoalTemplate":
+        """
+        Create a balanced fallback template from list of dimensions.
+        Useful when goal template doesn't exist.
+        """
+        n = len(dims)
+        weight_per_dim = 1.0 / max(1, n)
+        weights = {d: weight_per_dim for d in dims}
+        norms = {d: Normalization("pass_through") for d in dims}
+        min_bar = {d: default_threshold for d in dims}
+        return cls(
+            name=name,
+            kind=kind,
+            weights=weights,
+            norms=norms,
+            min_bar=min_bar,
+            hard_bars=False,
+            normalize_weights=True
+        )
 
     def _normed(self, vpm_dims: Dict[str, float]) -> Dict[str, float]:
         out: Dict[str, float] = {}
@@ -308,13 +332,15 @@ class GoalScorer:
         self,
         templates: Optional[Dict[str, GoalTemplate]] = None,
         judge: Optional[Callable[[Dict[str, Any]], Dict[str, float]]] = None,
+        logger=None,
     ):
         """
         judge (optional): function(row) -> extra dimension dict (e.g., external LLM judge).
         Any returned dims will be merged (and normalized via template norms if targeted).
         """
-        self.templates = templates or DEFAULT_TEMPLATES
+        self.templates = templates or dict(DEFAULT_TEMPLATES)  # copy defaults
         self.judge = judge
+        self.logger = logger
 
     def available(self, *, kind: str) -> List[str]:
         pre = f"{kind}/"
@@ -340,20 +366,67 @@ class GoalScorer:
         """
         key = f"{kind}/{goal}"
         if key not in self.templates:
-            raise KeyError(f"Unknown goal '{goal}' for kind '{kind}'. Available: {self.available(kind=kind)}")
+            # --- Dynamic fallback template creation ---
+            dims = list(vpm_row.keys())
+
+            # Use classmethod to create valid template
+            self.templates[key] = GoalTemplate.from_dims(
+                name=goal,
+                kind=kind,
+                dims=dims,
+                default_threshold=0.5
+            )
+
+            if self.logger:
+                _logger.info("GoalTemplateCreated", {
+                    "kind": kind,
+                    "goal": goal,
+                    "dims": dims,
+                    "message": "Dynamic goal template created on-the-fly"
+                })
 
         tpl = self.templates[key]
-        dims = dict(vpm_row)
+        # Start with only numeric values
+        dims = {
+            k: v for k, v in vpm_row.items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+        }
 
         # Pull in optional judge signals
         if self.judge:
             try:
                 extra = self.judge(vpm_row) or {}
-                dims.update(extra)
-            except Exception:
-                pass
+                # Only add numeric values from judge too
+                for k, v in extra.items():
+                    if isinstance(v, (int, float)) and not isinstance(v, bool):
+                        dims[k] = v
+                    else:
+                        _logger.info("JudgeReturnedNonNumeric"
+                            f"metric: {k}"
+                            f"value: {v}"
+                            f"type: {type(v).__name__}"
+                            f"warning: Judge returned non-numeric value; skipping"
+                        )
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(f"Judge execution failed: {e}")
+
+        _logger.info(
+            "ScoringInputDims | "
+            f"numeric_dims={list(dims.keys())} | "
+            f"ignored_keys={[k for k in vpm_row.keys() if k not in dims]} | "
+            f"raw_types={{{', '.join(f'{k}: {type(v).__name__}' for k, v in vpm_row.items())}}}"
+        )
 
         score, _normed = tpl.score(dims)
+
+        expl = tpl.explain(dims)
+
+        _logger.info("ScoringOutput "
+            f"score={round(float(score),4)} "
+            f"normalized={{{', '.join(f'{k}: {round(float(v),4)}' for k,v in expl['normalized'].items())}}} "
+            f"contrib={{{', '.join(f'{k}: {round(float(v),4)}' for k,v in expl['contrib'].items())}}}"
+        )
         unmet = tpl.unmet(dims, hysteresis=hysteresis)
         expl = tpl.explain(dims)
 
@@ -388,12 +461,8 @@ class GoalScorer:
 
         if method == "ewma":
             agg = 0.0
-            w = 1.0
-            denom = 0.0
-            # latest last
             for s in scores:
                 agg = alpha * s + (1 - alpha) * agg
-                denom = 1.0  # EWMA already normalized
             portfolio = agg
         else:
             portfolio = sum(scores) / len(scores)

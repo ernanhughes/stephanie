@@ -1,7 +1,10 @@
 # stephanie/models/calibration.py
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, JSON
-from stephanie.models.base import Base
 from datetime import datetime
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String
+
+from stephanie.models.base import Base
+
 
 class CalibrationEventORM(Base):
     __tablename__ = "calibration_events"

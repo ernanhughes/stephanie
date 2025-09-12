@@ -4,7 +4,7 @@ import os
 import time
 import traceback
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from omegaconf import OmegaConf
 
@@ -14,9 +14,8 @@ from stephanie.constants import PLAN_TRACE_ID, SCORABLE_DETAILS
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
 from stephanie.scoring.scorable_factory import ScorableFactory
-from stephanie.utils.serialization import default_serializer
-from typing import Any
 from stephanie.services.service_protocol import Service
+from stephanie.utils.serialization import default_serializer
 
 
 class PlanTraceService(Service):

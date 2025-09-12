@@ -28,6 +28,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import yaml
 from sklearn.metrics.pairwise import cosine_similarity
+from functools import lru_cache
 
 _logger = logging.getLogger(__name__)
 
@@ -222,33 +223,18 @@ class ScorableClassifier:
         
         return centroids
 
-    def classify(self, text: str, top_k: int = 3, min_value: float = 0.7, context: dict = None) -> List[Tuple[str, float]]:
+    @lru_cache(maxsize=2048)
+    def _classify_cached(self, text: str, metric: str, top_k: int, min_value: float, context_tags: Tuple[str, ...]) -> List[Tuple[str, float]]:
         """
-        Classify text into domains based on embedding similarity.
-        
-        Args:
-            text: Input text to classify
-            top_k: Number of top domains to return
-            min_value: Minimum similarity score to consider a valid match
-            context: Optional context dictionary with domain hints
-            
-        Returns:
-            List of (domain, score) tuples sorted by score descending
+        Cached inner classification logic.
+        Keyed by (text, metric, top_k, min_value, context_tags).
         """
-        self.logger.log("ClassificationStart", {
-            "text_snippet": text[:100] + "..." if len(text) > 100 else text,
-            "top_k": top_k,
-            "min_value": min_value,
-            "has_context": context is not None,
-            "message": "Starting domain classification"
-        })
-        cache_key = (
-            text,
-            self.metric,
-            tuple(sorted(self.centroids.keys()))  # domains being compared against
-        )
-        if cache_key in self._classification_cache:
-            return self._classification_cache[cache_key]
+        # Guard against empty text
+        if not text or not text.strip():
+            self.logger.log("ClassificationSkippedEmpty", {
+                "message": "Skipped classification because input text is empty"
+            })
+            return []
 
         # Get embedding for input text
         emb = self.memory.embedding.get_or_create(text)
@@ -257,79 +243,55 @@ class ScorableClassifier:
             "embedding_shape": len(emb),
             "message": "Created embedding for input text"
         })
-        
+
         scores = {}
-        
-        # Calculate similarity to each domain centroid
         for domain, centroid in self.centroids.items():
-            if self.metric == "cosine":
+            if metric == "cosine":
                 score = self._cosine_distance(emb, centroid)
-            elif self.metric == "euclidean":
+            elif metric == "euclidean":
                 score = self._euclidean_distance(emb, centroid)
-            elif self.metric == "huber":
+            elif metric == "huber":
                 score = self._huber_distance(emb, centroid)
             else:
-                error_msg = f"Unknown metric: {self.metric}"
-                self.logger.log("ClassificationError", {
-                    "error": error_msg,
-                    "message": "Invalid distance metric specified"
-                })
-                raise ValueError(error_msg)
-            
+                raise ValueError(f"Unknown metric: {metric}")
             scores[domain] = score
-            
-            _logger.debug("DomainSimilarityCalculated"
-                f"domain: {domain}"
-                f"score: {score}"
-                f"metric: {self.metric}"
-                f"message Calculated similarity for domain {domain}"
-            )
-        
+
         # Add context-specific tags with weight boost
-        if context:
-            goal_tags = self._extract_domains(context)
-            self.logger.log("ContextProcessing", {
-                "goal_tags": goal_tags,
-                "message": "Processing context for additional domain hints"
-            })
-            
-            for tag in goal_tags:
-                tag_emb = self.memory.embedding.get_or_create(tag)
+        for tag in context_tags:
+            tag_emb = self.memory.embedding.get_or_create(tag)
+            score = self._cosine_distance(emb, tag_emb) * 1.5
+            scores[tag] = max(scores.get(tag, 0.0), score)
 
-                # Boost context tags by 50% to prioritize them
-                score = self._cosine_distance(emb, tag_emb) * 1.5
-                # Keep the highest score if tag appears multiple times
-                scores[tag] = max(scores.get(tag, 0.0), score)
-                
-                self.logger.log("ContextTagProcessed", {
-                    "tag": tag,
-                    "score": score,
-                    "message": f"Processed context tag {tag}"
-                })
-        
-        # Sort scores in descending order
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        # compute as usual...
-        top_matches = sorted_scores[:top_k]
+        return sorted_scores[:top_k]
 
-        # cache result
-        self._classification_cache[cache_key] = top_matches
-        
-        # Log if all scores are below minimum threshold
-        if all(score < min_value for _, score in top_matches):
+    def classify(self, text: str, top_k: int = 3, min_value: float = 0.7, context: dict = None) -> List[Tuple[str, float]]:
+        """
+        Public domain classification wrapper.
+        """
+        # Extract context tags (as tuple for LRU cache key)
+        context_tags = tuple(self._extract_domains(context)) if context else tuple()
+
+        results = self._classify_cached(text, self.metric, top_k, min_value, context_tags)
+
+        if not results:
+            return []
+
+        # Log if all scores below threshold
+        if all(score < min_value for _, score in results):
             self.logger.log("LowDomainScore", {
                 "text_snippet": text[:100],
-                "top_scores": top_matches,
+                "top_scores": results,
                 "min_value": min_value,
                 "message": "All domain scores below minimum threshold"
             })
         else:
             self.logger.log("ClassificationComplete", {
-                "top_matches": top_matches,
+                "top_matches": results,
                 "message": "Domain classification completed successfully"
             })
-        
-        return top_matches
+
+        return results
 
     def _extract_domains(self, context: dict) -> List[str]:
         """

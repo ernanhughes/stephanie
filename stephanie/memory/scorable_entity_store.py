@@ -5,8 +5,8 @@ from typing import List
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from stephanie.models.scorable_entity import ScorableEntityORM
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
+from stephanie.models.scorable_entity import ScorableEntityORM
 
 logger = logging.getLogger(__name__)
 
@@ -101,18 +101,18 @@ class ScorableEntityStore:
         count = 0
         for scorable in scorables:
             entities = self.retriever.entity_detector.detect_entities(scorable.text)
-            for start, end, entity_type in entities:
-                entity_text = scorable.text[start:end].strip()
+            for ent in entities:
+                entity_text = ent["text"].strip()
                 if not entity_text:
                     continue
                 self.insert({
                     "scorable_id": str(scorable.id),
                     "scorable_type": scorable.target_type,
                     "entity_text": entity_text,
-                    "entity_type": entity_type,
-                    "start": start,
-                    "end": end,
-                    "similarity": None,
+                    "entity_type": ent["type"],
+                    "start": ent["start"],
+                    "end": ent["end"],
+                    "similarity": ent.get("score"),
                     "source_text": scorable.text[:100] + "..."
                 })
                 count += 1

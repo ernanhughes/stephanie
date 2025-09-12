@@ -23,9 +23,9 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List
-import traceback
 
 import yaml
 

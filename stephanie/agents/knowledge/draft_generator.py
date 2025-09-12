@@ -5,18 +5,18 @@ import json
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import GOAL
-from stephanie.models.casebook import CaseBookORM
-
-from stephanie.agents.paper_improver import TextImprover
-from stephanie.agents.paper_improver.vpm_controller import VPMController, VPMRow, Signal, default_controller
-from stephanie.agents.paper_improver import GoalScorer
-
+from stephanie.agents.paper_improver import GoalScorer, TextImprover
 # 🔑 new: knowledge fusion (transient NER + 20 domains from paper + chat)
-from stephanie.agents.paper_improver.knowledge_fuser import KnowledgeFuser
+from stephanie.agents.knowledge.knowledge_fuser import KnowledgeFuser
+from stephanie.agents.paper_improver.vpm_controller import (Signal,
+                                                            VPMController,
+                                                            VPMRow,
+                                                            default_controller)
+from stephanie.models.casebook import CaseBookORM
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
 class DraftGeneratorAgent(BaseAgent):
@@ -55,7 +55,6 @@ class DraftGeneratorAgent(BaseAgent):
           - trajectory [steps]
           - champion_draft (text), champion_vpm (dict)
         """
-        goal = context.get(GOAL, {})
         paper = context.get("paper", {})
         section = context.get("section", {}) or {}
 
@@ -76,7 +75,8 @@ class DraftGeneratorAgent(BaseAgent):
         plan = self.fuser.fuse(
             text=paper_text,
             chat_messages=chat_messages,
-            section_name=section_name
+            section_name=section_name,
+            context=context
         )
         # Add explicit goal_template so TextImprover and downstream scorers can use it
         plan["goal_template"] = self.goal_template
@@ -114,7 +114,7 @@ class DraftGeneratorAgent(BaseAgent):
             # Log step to CaseBook
             draft_path = Path(result["final_draft_path"])
             draft_text = draft_path.read_text() if draft_path.exists() else ""
-            traj_rec = self._log_step(casebook, plan, result, step, decision, draft_text)
+            traj_rec = self._log_step(casebook, plan, result, step, decision, draft_text, context=context)
             trajectory.append(traj_rec)
 
             # STOP / ESCALATE gates
@@ -160,21 +160,32 @@ class DraftGeneratorAgent(BaseAgent):
 
     def _collect_chat_messages(self, context: dict) -> List[Dict[str, Any]]:
         """
-        Non-persistent transient chat capture. Priority:
-          1) context["chat_messages"] if provided
-          2) memory.chat.last_n(self.chat_max_messages) if available
+        Return recent chat messages as list of dicts {role, text, ts, id, conversation_id}.
+        Priority:
+        1) context["chat_messages"] if provided
+        2) messages from top conversations in memory
         """
         msgs = context.get(self.chat_from_context_key)
         if isinstance(msgs, list) and msgs:
             return msgs[-self.chat_max_messages:]
 
-        # Optional: pull from your memory adapter if exposed
-        try:
-            if hasattr(self.memory, "chat") and hasattr(self.memory.chat, "last_n"):
-                return self.memory.chat.last_n(self.chat_max_messages)  # type: ignore
-        except Exception:
-            pass
-        return []
+        # Otherwise, pull from top conversations
+        conversations = self.memory.chats.get_top_conversations(limit=3, by="messages")
+        all_msgs = []
+        for conv, _ in conversations:
+            conv_msgs = self.memory.chats.get_messages(conv.id)
+            for m in conv_msgs:
+                all_msgs.append({
+                    "id": m.id,
+                    "conversation_id": m.conversation_id,
+                    "role": m.role,
+                    "text": m.text,
+                    "ts": getattr(m, "created_at", None)
+                })
+
+        # Return most recent N across conversations
+        all_msgs = sorted(all_msgs, key=lambda m: m.get("ts") or 0)
+        return all_msgs[-self.chat_max_messages:]
 
     def _ensure_casebook(self, paper: dict, section_name: str, plan: dict) -> CaseBookORM:
         casebook_name = f"blog_{paper.get('id','unknown')}_{section_name}_{int(time.time())}"
@@ -208,30 +219,71 @@ class DraftGeneratorAgent(BaseAgent):
             "stickiness": float(result.get("scores", {}).get("stickiness", 0.5)),
         }
 
-    def _log_step(self, casebook: CaseBookORM, plan: dict, result: dict, step: int, decision, draft_text: str) -> Dict[str, Any]:
+    def _log_step(
+        self,
+        casebook: CaseBookORM,
+        plan: dict,
+        result: dict,
+        step: int,
+        decision,
+        draft_text: str,
+        context: dict,
+    ) -> Dict[str, Any]:
+        run_id = str(uuid.uuid4())
+        pipeline_run_id = context.get("pipeline_run_id")
+        goal = context.get("goal", {})
+
+        # --- 1) Create dynamic scorables first ---
+        draft_scorable = self.memory.dynamic_scorables.add(
+            pipeline_run_id=pipeline_run_id,
+            scorable_type=TargetType.DYNAMIC,
+            source=self.name,
+            text=draft_text,
+            meta={
+                "step": step,
+                "decision": decision.signal.name,
+                "vpm_row": result["vpm_row"],
+                "edit_log": result.get("edit_log", []),
+            },
+        )
+        scorable = ScorableFactory.from_orm(draft_scorable)
+
+        # --- 2) Create case linking to scorables ---
         case = self.memory.casebooks.add_case(
             casebook_id=casebook.id,
-            goal_id=None,
+            goal_id=goal.get("id"),
             prompt_text=json.dumps({"plan_slice": self._plan_slice(plan)}),
             agent_name="draft_generator",
-            meta={"step": step, "decision": decision.signal.name, "vpm_row": result["vpm_row"]}
+            scorables=[scorable.to_dict()],
+            meta={
+                "step": step,
+                "decision": decision.signal.name,
+                "vpm_row": result["vpm_row"],
+            },
         )
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            scorable_id=str(uuid.uuid4()),
-            text=draft_text,
-            role="draft",
-            meta={"step": step, "vpm_row": result["vpm_row"], "edit_log": result.get("edit_log", [])}
-        )
-        # goal score snapshot (so SIS can render per-step)
-        goal_score = self.goals.score("text", self.goal_template, result["vpm_row"])
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            scorable_id=str(uuid.uuid4()),
-            text=json.dumps(goal_score),
-            role="goal_score",
-            meta={"step": step}
-        )
+
+        # --- 3) Goal scoring with fallback ---
+        kind = "text"
+        goal_text = goal.get("goal_text", "blog_general")
+        try:
+            goal_score = self.goals.score(kind, goal_text, result["vpm_row"])
+        except KeyError:
+            # Dynamically register a new GoalTemplate if missing
+            from stephanie.agents.paper_improver.goals import GoalTemplate
+
+            self.logger.log("GoalTemplateMissing", {
+                "kind": kind,
+                "goal": goal_text,
+                "message": "Creating dynamic fallback template"
+            })
+
+            self.goals.templates[f"{kind}/{goal_text}"] = GoalTemplate(
+                name=goal_text,
+                dims=list(result["vpm_row"].keys()),  # use all dims present
+                thresholds={d: 0.5 for d in result["vpm_row"].keys()},
+            )
+            goal_score = self.goals.score(kind, goal_text, result["vpm_row"])
+
         return {
             "step": step,
             "decision": decision.signal.name,

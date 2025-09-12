@@ -32,6 +32,7 @@ class Policy:
     # windows & smoothing
     window: int = 5
     ema_alpha: float = 0.4
+    edit_margin: float = 0.05   # <-- add this default
     patience: int = 3
     escalate_after: int = 2
     # oscillation & cooldowns

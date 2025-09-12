@@ -1,16 +1,20 @@
 # stephanie/agents/knowledge/chat_knowledge_builder.py
 from __future__ import annotations
-from typing import Dict, Any, List, Optional
-import logging
+
 import hashlib
+import logging
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 import torch
 
 from stephanie.analysis.scorable_classifier import ScorableClassifier
-from stephanie.models.ner_retriever import EntityDetector
-from stephanie.services.knowledge_graph_service import KnowledgeGraphService
-from stephanie.memory.chat_store import ChatStore
 from stephanie.data.knowledge_unit import KnowledgeUnit
+from stephanie.knowledge.casebook_store import Scorable
+from stephanie.memory.chat_store import ChatStore
+from stephanie.models.ner_retriever import EntityDetector
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 
 _logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ class ChatKnowledgeBuilder:
     def __init__(self, cfg: Dict[str, Any], memory: Any, logger: Optional[logging.Logger] = None):
         self.cfg = cfg
         self.memory = memory
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger
 
         # Lazily initialize components only if needed
         try:
@@ -44,7 +48,7 @@ class ChatKnowledgeBuilder:
             self.logger.info("Domain classifier loaded.")
         except Exception as e:
             self.classifier = None
-            self.logger.warning(f"Failed to initialize ScorableClassifier: {e}")
+            _logger.error(f"Failed to initialize ScorableClassifier: {e}")
 
         try:
             self.entity_detector = EntityDetector(
@@ -53,21 +57,21 @@ class ChatKnowledgeBuilder:
             self.logger.info("NER detector loaded.")
         except Exception as e:
             self.entity_detector = None
-            self.logger.warning(f"Failed to initialize EntityDetector: {e}")
+            _logger.error(f"Failed to initialize EntityDetector: {e}")
 
         try:
             self.kg_service = KnowledgeGraphService(cfg, memory, self.logger)
             self.logger.info("KnowledgeGraphService connected.")
         except Exception as e:
             self.kg_service = None
-            self.logger.warning(f"Failed to initialize KnowledgeGraphService: {e}")
+            _logger.error(f"Failed to initialize KnowledgeGraphService: {e}")
 
         try:
             self.chat_store = ChatStore(memory.session, logger=self.logger)
             self.logger.info("ChatStore connected.")
         except Exception as e:
             self.chat_store = None
-            self.logger.warning(f"Failed to initialize ChatStore: {e}")
+            _logger.error(f"Failed to initialize ChatStore: {e}")
 
     # ---------------------------
     # Public API
@@ -77,6 +81,7 @@ class ChatKnowledgeBuilder:
         chat_messages: List[Dict[str, Any]],
         paper_text: str,
         conversation_id: Optional[int] = None,
+        context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, KnowledgeUnit]:
         """
         Build aligned knowledge units from user chat and paper text.
@@ -95,8 +100,25 @@ class ChatKnowledgeBuilder:
             chat_hash = hashlib.sha256(chat_text.encode()).hexdigest()[:16]
             paper_hash = hashlib.sha256(paper_text.encode()).hexdigest()[:16]
 
-            chat_ku = self._process_with_ai(chat_text, source="chat", scorable_id=f"chat:{chat_hash}")
-            paper_ku = self._process_with_ai(paper_text, source="paper", scorable_id=f"paper:{paper_hash}")
+
+            chat_scorable = self.memory.dynamic_scorables.add(
+                pipeline_run_id=context.get("pipeline_run_id"),
+                scorable_type=TargetType.DYNAMIC,
+                source="chat_knowledge_builder",
+                text=chat_text,
+                meta={"hash": chat_hash, "kind": "chat"}
+            ) 
+
+            paper_scorable = self.memory.dynamic_scorables.add(
+                pipeline_run_id=context.get("pipeline_run_id"),
+                scorable_type=TargetType.DYNAMIC,
+                source="chat_knowledge_builder",
+                text=paper_text,
+                meta={"hash": paper_hash, "kind": "paper"}
+            ) 
+            chat_ku = self._process_with_ai(ScorableFactory.from_orm(chat_scorable), source="chat")
+            paper_ku = self._process_with_ai(ScorableFactory.from_orm(paper_scorable), source="paper")
+
 
             # Enrich with historical context
             if conversation_id and self.chat_store:
@@ -123,7 +145,9 @@ class ChatKnowledgeBuilder:
     # ---------------------------
     # Core Processing Pipeline
     # ---------------------------
-    def _process_with_ai(self, text: str, source: str, scorable_id: str) -> KnowledgeUnit:
+    def _process_with_ai(self, scorable: Scorable, source: str) -> KnowledgeUnit:
+        text = scorable.text
+        scorable_id = scorable.id
         if not text.strip():
             return KnowledgeUnit(text="", stats={"empty": True, "source": source})
 
@@ -135,21 +159,23 @@ class ChatKnowledgeBuilder:
         # 1. Domain Classification
         if self.classifier:
             try:
-                domain_scores = self.classifier.classify(scorable_id, text)
+                domain_matches = self.classifier.classify(text=text, top_k=5)
+                domain_scores = [{"domain": d, "score": float(s)} for d, s in domain_matches]
+
                 domains = {d["domain"]: float(d["score"]) for d in domain_scores if d.get("score", 0) > 0.01}
             except Exception as e:
-                self.logger.warning(f"[{source}] Domain classification failed: {e}")
+                _logger.error(f"[{source}] Domain classification failed: {e}")
         else:
             domains = {}
 
         # 2. Entity Detection
         if self.entity_detector:
             try:
-                raw_entities = self.entity_detector.extract_entities(text)
+                raw_entities = self.entity_detector.detect_entities(text)
                 for ent in raw_entities:
                     entities_by_type.setdefault(ent["type"], []).append(ent)
             except Exception as e:
-                self.logger.warning(f"[{source}] NER extraction failed: {e}")
+                _logger.error(f"[{source}] NER extraction failed: {e}")
         else:
             entities_by_type = {}
 
@@ -160,7 +186,7 @@ class ChatKnowledgeBuilder:
         if self.kg_service and self.kg_service._initialized:
             try:
                 for ent in raw_entities:
-                    # Try exact node ID first
+                    # Unique local provenance for this entity
                     node_id = f"{scorable_id}:{ent['type']}:{ent['start']}-{ent['end']}"
                     matched_nodes = []
 
@@ -169,12 +195,21 @@ class ChatKnowledgeBuilder:
                     results = self.kg_service._graph.search(query_vec, k=3)
 
                     for _, score, meta in results:
-                        if meta.get("text").lower() == ent["text"].lower():
-                            matched_nodes.append({**meta, "score": score})
+                        if meta.get("text", "").lower() == ent["text"].lower():
+                            matched_nodes.append({
+                                **meta,                       # KG-provided metadata
+                                "score": float(score),        # similarity score
+                                "node_id": node_id,           # our stable local ID
+                                "scorable_id": scorable_id,   # provenance back to source scorable
+                                "entity_text": ent["text"],   # original surface form
+                                "entity_type": ent["type"],   # PERSON, ORG, etc
+                                "span": f"{ent['start']}-{ent['end']}",
+                                "source": source              # chat | paper | context
+                            })
 
                     kg_nodes.extend(matched_nodes)
             except Exception as e:
-                self.logger.warning(f"[{source}] KG linking failed: {e}")
+                _logger.error(f"[{source}] KG linking failed: {e}")
         else:
             kg_nodes = []
 
@@ -278,5 +313,5 @@ class ChatKnowledgeBuilder:
                 scorable_id=f"context:{conversation_id}:{hash(combined)}"
             )
         except Exception as e:
-            self.logger.warning(f"Context enrichment failed for conv={conversation_id}: {e}")
+            _logger.error(f"Context enrichment failed for conv={conversation_id}: {e}")
             return KnowledgeUnit(text="", stats={"error": str(e)}) 

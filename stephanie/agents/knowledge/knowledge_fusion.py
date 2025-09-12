@@ -31,22 +31,28 @@ Designed to be piped directly into DraftGeneratorAgent (as 'section plan').
 """
 
 from __future__ import annotations
+
+import logging
 import re
-from tqdm import tqdm
-from time import time
-import uuid
-import torch
-from datetime import datetime, timezone
-from dataclasses import dataclass
 import traceback
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from time import time
 from typing import Any, Dict, List, Optional, Tuple
+
+import torch
+from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
-from stephanie.scoring.scorable import Scorable
-from stephanie.models.ner_retriever import NERRetrieverEmbedder, EntityDetector
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.scoring.calibration import CalibrationManager
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import ScorableFactory
+
+_logger = logging.getLogger(__name__)
+
 
 def _sentences(text: str) -> List[str]:
     if not text:
@@ -131,14 +137,16 @@ class KnowledgeFusionAgent(BaseAgent):
         from stephanie.scoring.calibration import CalibrationManager
         self.calibration = CalibrationManager(
             cfg=cfg.get("calibration", {}),
+            memory=self.memory,
             logger=self.logger
         )
     
         # ADD THIS: Periodic calibration trainer
         self.calibration_trainer = CalibrationTrainer(
             cfg=cfg.get("calibration", {}),
+            memory=self.memory,
             logger=self.logger,
-            calibration_manager=self.calibration
+            calibration_manager=self.calibration,
         )
 
 
@@ -308,45 +316,47 @@ class KnowledgeFusionAgent(BaseAgent):
         # Fallback: Heuristic rules if configured
         if self.kfc.entity_detection_fallback:
             return self._heuristic_entity_detection(text, source)
-
         return []
 
     def _format_entities(
-        self, results: List[Tuple[int, int, str]], text: str, source: str
+        self, results: List[Dict[str, Any]], text: str, source: str
     ) -> List[Dict[str, Any]]:
-        """Format BERT-NER results to standardized entity structure with calibrated similarity."""
+        """Format entity detector results into standardized structure with calibrated similarity."""
         entities = []
-        for start, end, etype in results:
-            # Map BERT-NER types to our standard types
-            type_map = {
-                "PER": "PERSON",
-                "ORG": "ORGANIZATION",
-                "LOC": "LOCATION",
-                "MISC": "MISC",
-                "DATE": "DATE",
-                "TIME": "TIME",
-                "MONEY": "MONEY",
-                "PERCENT": "PERCENT",
-                "FAC": "FACILITY",
-                "GPE": "GPE",
-                "METHOD": "METHOD",
-                "METRIC": "METRIC",
-                "ACRONYM": "ACRONYM",
-            }
+        type_map = {
+            "PER": "PERSON",
+            "ORG": "ORGANIZATION",
+            "LOC": "LOCATION",
+            "MISC": "MISC",
+            "DATE": "DATE",
+            "TIME": "TIME",
+            "MONEY": "MONEY",
+            "PERCENT": "PERCENT",
+            "FAC": "FACILITY",
+            "GPE": "GPE",
+            "METHOD": "METHOD",
+            "METRIC": "METRIC",
+            "ACRONYM": "ACRONYM",
+        }
+
+        for ent in results:
+            start = ent.get("start", 0)
+            end = ent.get("end", 0)
+            etype = ent.get("type", "UNKNOWN")
             std_type = type_map.get(etype, etype)
 
-            # Standard entity format with calibrated similarity
             entities.append(
                 {
-                    "text": text[start:end],
+                    "text": ent.get("text", text[start:end]),
                     "type": std_type,
                     "start": start,
                     "end": end,
                     "source": source,
-                    "similarity": 0.9,  # Raw similarity (BERT-NER is more reliable)
-                    "calibrated_similarity": 0.9,  # Will be updated during expansion
+                    "similarity": ent.get("score", 0.9),
+                    "calibrated_similarity": ent.get("score", 0.9),
                 }
             )
+
         return entities
 
     def _heuristic_entity_detection(
@@ -461,7 +471,11 @@ class KnowledgeFusionAgent(BaseAgent):
             for s in sims:
                 # Always prefer calibrated similarity if available
                 raw_sim = s.get("similarity", 0.0)
-                calibrated_sim = s.get("calibrated_similarity", raw_sim)
+                calibrated_prob = self.calibration.get_calibrated_probability(
+                    domain=primary_domain,
+                    raw_sim=raw_sim
+                )
+
                 
                 # Calculate confidence in this calibration
                 calibration_confidence = self.calibration.get_confidence(
@@ -472,13 +486,13 @@ class KnowledgeFusionAgent(BaseAgent):
                 # Apply confidence-weighted threshold
                 effective_threshold = self.kfc.ner_min_calibrated_sim * (0.8 + 0.4 * calibration_confidence)
 
-                
-                if calibrated_sim >= effective_threshold:
+                effective_threshold = self.kfc.ner_min_calibrated_sim
+                if calibrated_prob >= effective_threshold:
                     similar.append(
                         {
                             "entity_text": s.get("entity_text", ""),
                             "similarity": float(raw_sim),
-                            "calibrated_similarity": float(calibrated_sim),
+                            "calibrated_similarity": float(calibrated_prob),
                             "calibration_confidence": calibration_confidence,
                             "entity_type": s.get("entity_type", "UNKNOWN"),
                             "source_text": s.get("source_text", "")[:200],
@@ -489,17 +503,17 @@ class KnowledgeFusionAgent(BaseAgent):
                     )
 
                 # Log calibration event
-                self.calibration.log_calibration_event(
-                    query=ent["text"],
+                self.calibration.log_event(
                     domain=primary_domain,
-                    raw_similarity=raw_sim,
-                    calibrated_similarity=calibrated_sim,
-                    is_relevant=calibrated_sim >= self.kfc.ner_min_calibrated_sim,
+                    query=ent["text"],
+                    raw_sim=raw_sim,
+                    is_relevant=calibrated_prob >= self.kfc.ner_min_calibrated_sim,
                     scorable_id=ent.get("scorable_id", "unknown"),
-                    scorable_type=ent.get("scorable_type", "unknown")
+                    scorable_type=ent.get("scorable_type", "unknown"),
+                    entity_type=ent.get("type", None)
                 )
 
-            # Only include if we have meaningful similar entities
+           # Only include if we have meaningful similar entities
             if similar or ent.get("calibrated_similarity", 0.0) >= self.kfc.ner_min_calibrated_sim:
                 expanded.append(
                     {
@@ -715,17 +729,18 @@ class KnowledgeFusionAgent(BaseAgent):
 
             try:
                 # Classify domains for this scorable
-                domains = self.domain_clf.classify(
+                domain_matches = self.domain_clf.classify(
                     text=text,
                     top_k=self.kfc.top_domains,
                     min_value=self.kfc.min_domain_score
                 )
-
+                domains = [{"domain": d, "score": float(s)} for d, s in domain_matches]
                 # Detect entities
-                entities = self.entity_detector.extract_entities(text)
+                results = self.entity_detector.detect_entities(text)  # raw tuples
+                entities = self._format_entities(results, text, source="paper")  # normalize to dicts
                 filtered_ents = [
                     e for e in entities
-                    if e.get("score", 0) >= self.kfc.ner_min_sim
+                    if e.get("calibrated_similarity", e.get("similarity", 0)) >= self.kfc.ner_min_sim
                 ]
 
                 # Build relationships (local heuristic)
@@ -807,16 +822,18 @@ class KnowledgeFusionAgent(BaseAgent):
             for chunk in chunks:
                 try:
                     # Reuse domain classification logic
-                    domains = self.domain_clf.classify(
+                    domain_matches = self.domain_clf.classify(
                         text=chunk["text"],
                         top_k=self.kfc.top_domains,
                         min_value=self.kfc.min_domain_score
                     )
+                    domains = [{"domain": d, "score": float(s)} for d, s in domain_matches]
 
-                    entities = self.entity_detector.extract_entities(chunk["text"])
+                    results = self.entity_detector.detect_entities(text)  # raw tuples
+                    entities = self._format_entities(results, text, source="paper")  # normalize to dicts
                     filtered_ents = [
                         e for e in entities
-                        if e.get("score", 0) >= self.kfc.ner_min_sim
+                        if e.get("calibrated_similarity", e.get("similarity", 0)) >= self.kfc.ner_min_sim
                     ]
 
                     # Adjust entity spans relative to chunk offset
@@ -951,49 +968,58 @@ class KnowledgeFusionAgent(BaseAgent):
         return max(min(base_score + domain_bonus + proximity_bonus, 1.0), 0.0)
 
 
-# stephanie/agents/knowledge/knowledge_fusion.py (add this class)
 class CalibrationTrainer:
     """Handles periodic training of calibration models from collected data."""
     
-    def __init__(self, cfg: Dict, logger: Any, calibration_manager: 'CalibrationManager'):
+    def __init__(self, cfg: Dict, memory, logger: Any, calibration_manager: 'CalibrationManager'):
         self.cfg = cfg
+        self.memory = memory
         self.logger = logger
         self.calibration = calibration_manager
         self.last_train = 0
         self.train_interval = cfg.get("calibration_train_interval", 3600)  # Default: 1 hour
-    
-    def maybe_train(self):
-        """Train calibration models if enough time has passed and data is available."""
+        self.lookback_hours = cfg.get("calibration_lookback_hours", 24)
+
+    def maybe_train(self) -> bool:
+        """Check interval and retrain calibration models if needed."""
         current_time = time()
         if current_time - self.last_train < self.train_interval:
             return False
-            
-        trained = False
-        # Train for all domains that need it
+
+        trained_any = False
         for domain in self._get_domains_to_train():
-            if self.calibration.auto_train_calibration(domain):
-                trained = True
-                
-        if trained:
+            try:
+                if self.calibration.train_model(domain):
+                    self.logger.info(f"CalibrationTrainer: trained model for domain '{domain}'")
+                    trained_any = True
+                else:
+                    _logger.debug(f"CalibrationTrainer: insufficient samples for domain '{domain}'")
+            except Exception as e:
+                _logger.error(f"CalibrationTrainer: training failed for domain '{domain}' : {e}")
+
+        if trained_any:
             self.last_train = current_time
-            return True
-        return False
+        return trained_any
     
     def _get_domains_to_train(self) -> List[str]:
-        """Get list of domains that need retraining."""
-        # Get all domains from configuration
-        domains = self.cfg.get("domains", ["general"])
+        """Get domains that need retraining."""
+        # Configured domains
+        configured = self.cfg.get("domains", ["general"])
         
-        # Add any domains seen in recent activity
-        # This would query your calibration history
-        recent_domains = self._get_recent_domains()
-        domains = list(set(domains + recent_domains))
+        # Recently active domains
+        recent = self._get_recent_domains(self.lookback_hours)
         
-        return domains
-    
+        # Deduplicate + preserve order
+        return list(dict.fromkeys(configured + recent))
+
     def _get_recent_domains(self, hours: int = 24) -> List[str]:
-        """Get domains with recent calibration activity."""
-        # In a real implementation, this would query your calibration history
-        # For example:
-        # return self.calibration.get_recent_domains(hours=hours)
-        return ["general"]  # Placeholder
+        """Get domains with recent calibration activity (fallback: general)."""
+        try:
+            # If CalibrationManager has a store:
+            if hasattr(self.calibration, "memory") and hasattr(self.calibration.memory, "calibration_events"):
+                since = datetime.utcnow() - timedelta(hours=hours)
+                return self.memory.calibration_events.get_recent_domains(since=since)
+        except Exception as e:
+            self.logger.warning(f"CalibrationTrainer: failed to fetch recent domains: {e}")
+
+        return ["general"]

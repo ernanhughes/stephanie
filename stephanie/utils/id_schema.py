@@ -1,6 +1,8 @@
 # stephanie/utils/id_schema.py
 from __future__ import annotations
+
 import hashlib
+
 
 def canonical_node_id(scorable_type: str, scorable_pk: str|int, text: str, start: int, end: int) -> str:
     """

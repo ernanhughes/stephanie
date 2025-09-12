@@ -1,11 +1,12 @@
 # stephanie/models/hnsw_index.py
-import os
 import json
+import logging
+import os
+import time
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 import hnswlib
 import numpy as np
-import logging
-import time
-from typing import Dict, Any, List, Tuple, Optional, Set
 
 _logger = logging.getLogger(__name__)
 

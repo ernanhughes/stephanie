@@ -1,8 +1,8 @@
 # stephanie/utils/retry.py
-import time
-import random
 import functools
-from typing import Callable, TypeVar, Any
+import random
+import time
+from typing import Callable, TypeVar
 
 T = TypeVar('T')
 
@@ -17,7 +17,7 @@ def retry_with_backoff(max_retries: int = 3, backoff_in_seconds: float = 1.0):
             while retries <= max_retries:
                 try:
                     return func(*args, **kwargs)
-                except Exception as e:
+                except Exception:
                     if retries == max_retries:
                         raise
                     retries += 1

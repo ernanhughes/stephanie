@@ -1,4 +1,5 @@
 # stephanie/analysis/domain2vec_integrator.py
+import logging
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -8,8 +9,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.embedding import EmbeddingORM
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
-
-import logging
 
 _logger = logging.getLogger(__name__)
 

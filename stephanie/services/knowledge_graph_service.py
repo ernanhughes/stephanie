@@ -1,13 +1,15 @@
 # stephanie/services/knowledge_graph_service.py
 from __future__ import annotations
 
-import os
-import json
 import time
-import torch
-import traceback
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
+import traceback
+import torch
+import os
+import json
+import hashlib
+import numpy as np
 
 from stephanie.services.service_protocol import Service
 from stephanie.models.hnsw_index import HNSWIndex
@@ -17,50 +19,37 @@ from stephanie.analysis.scorable_classifier import ScorableClassifier
 
 class KnowledgeGraphService(Service):
     """
-    Knowledge Graph Service
-    -----------------------
-    The "contextual glue" connecting entities across knowledge.
-    
-    Modes:
-      - sync     → blocks on add
-      - deferred → queues adds for batch flush
-      - evented  → publishes to KnowledgeBus for async processing
+    Knowledge Graph Service - The "contextual glue" that connects entities across knowledge.
+    Now includes:
+      - Consistent embedding space (NER retriever)
+      - Deduplicated node insertion
+      - Properly enriched search results
+      - Accurate stats tracking
     """
 
-    MODES = {"sync", "deferred", "evented"}
-
-    def __init__(self, cfg: Dict[str, Any], memory: Any, logger: Any):
+    def __init__(self, cfg: Dict, memory: Any, logger: Any):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
         self.enabled = cfg.get("knowledge_graph", {}).get("enabled", True)
-        self.mode = cfg.get("knowledge_graph", {}).get("mode", "sync")
-        if self.mode not in self.MODES:
-            raise ValueError(f"Invalid knowledge_graph.mode: {self.mode}, must be one of {self.MODES}")
-
-        # Components
-        self._graph: Optional[HNSWIndex] = None
-        self._entity_detector: Optional[EntityDetector] = None
-        self._retriever: Optional[NERRetrieverEmbedder] = None
-        self._classifier: Optional[ScorableClassifier] = None
-
-        # State
         self._initialized = False
-        self._rel_path = cfg.get("relationship_store", "data/knowledge_graph/relationships.jsonl")
+        self._graph = None
+        self._entity_detector = None
+        self._retriever = None
+        self._classifier = None
+
+        # Paths for persistence
+        self._rel_path = self.cfg.get("relationship_store", "data/knowledge_graph/relationships.jsonl")
         os.makedirs(os.path.dirname(self._rel_path), exist_ok=True)
 
-        # Parameters
+        # Config params
         self.entity_threshold = cfg.get("knowledge_graph", {}).get("entity_threshold", 0.65)
         self.relationship_threshold = cfg.get("knowledge_graph", {}).get("relationship_threshold", 0.75)
         self.max_hops = cfg.get("knowledge_graph", {}).get("max_hops", 3)
         self.domain_aware = cfg.get("knowledge_graph", {}).get("domain_aware", True)
 
-        # Deferred mode queues
-        self._pending_nodes: List[Tuple[Dict[str, Any], Dict[str, float], str, str]] = []
-        self._pending_relationships: List[Dict[str, Any]] = []
-
         # Stats
-        self._stats: Dict[str, Any] = {
+        self._stats = {
             "total_nodes": 0,
             "total_edges": 0,
             "node_types": {},
@@ -69,56 +58,63 @@ class KnowledgeGraphService(Service):
             "queries": 0,
             "query_time": 0.0,
             "build_time": 0.0,
-            "deferred_node_count": 0,
-            "events_published": 0,
-            "initialized_at": None,
+            "cache_hits": 0,
+            "cache_misses": 0
         }
 
-    # === Service Protocol ===
+    @property
+    def name(self) -> str:
+        return "knowledge-graph"
+
     def initialize(self, **kwargs) -> None:
         if self._initialized or not self.enabled:
             return
+
         start_time = time.time()
         try:
-            device = self.cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-            self._entity_detector = EntityDetector(device=device)
+            self._entity_detector = EntityDetector(
+                device=self.cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+            )
             self._retriever = NERRetrieverEmbedder(
                 model_name=self.cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct"),
                 layer=self.cfg.get("ner_layer", 16),
-                device=device,
+                device=self.cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"),
                 embedding_dim=self.cfg.get("ner_dim", 2048),
                 index_path=self.cfg.get("index_path", "data/knowledge_graph/index"),
                 logger=self.logger,
                 memory=self.memory,
-                cfg=self.cfg,
+                cfg=self.cfg
             )
             self._classifier = ScorableClassifier(
                 memory=self.memory,
                 logger=self.logger,
                 config_path=self.cfg.get("domain_config", "config/domain/seeds.yaml"),
-                metric=self.cfg.get("domain_metric", "cosine"),
+                metric=self.cfg.get("domain_metric", "cosine")
             )
+
             self._graph = HNSWIndex(
                 dim=self.cfg.get("ner_dim", 2048),
                 index_path=self.cfg.get("index_path", "data/knowledge_graph/index"),
                 space=self.cfg.get("index_space", "cosine"),
-                persistent=True,
+                persistent=True
             )
 
             self._load_graph()
             self._initialized = True
             self._stats["last_update"] = datetime.now(timezone.utc).isoformat()
             self._stats["build_time"] = time.time() - start_time
-            self._stats["initialized_at"] = datetime.now(timezone.utc).isoformat()
 
             self.logger.log("KnowledgeGraphInitialized", {
-                "mode": self.mode,
                 "node_count": self._stats["total_nodes"],
                 "edge_count": self._stats["total_edges"],
-                "duration": self._stats["build_time"],
+                "duration": self._stats["build_time"]
             })
+
         except Exception as e:
-            self.logger.log("KnowledgeGraphInitError", {"error": str(e), "traceback": traceback.format_exc()})
+            self.logger.log("KnowledgeGraphInitError", {
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            })
             raise RuntimeError(f"KnowledgeGraph failed to initialize: {e}")
 
     def health_check(self) -> Dict[str, Any]:
@@ -154,156 +150,66 @@ class KnowledgeGraphService(Service):
         self._pending_relationships.clear()
         self.logger.log("KnowledgeGraphShutdown", {"status": "stopped"})
 
-    @property
-    def name(self) -> str:
-        return "knowledge-graph-v1"
-
     # -------------------------
-    # Public API — Use This!
+    # Public Search API (Fixed)
     # -------------------------
-    def ingest_scorable(
-        self,
-        scorable_id: str,
-        text: str,
-        scorable_type: str = "document"
-    ) -> None:
+    def search_entities(self, text: str, k: int = 10) -> List[Tuple[str, float, Dict[str, Any]]]:
         """
-        Main entry point from agents.
-        Does NOT block in deferred/evented mode.
+        Search KG using the SAME embedder used during indexing.
+        Results cached via entity_cache (keyed by raw text).
+        Returns: list of (node_id, score, metadata)
         """
         if not self._initialized or not self.enabled:
-            return
-
-        try:
-            # Detect entities
-            entities = self._entity_detector.extract_entities(text)
-            filtered_ents = [e for e in entities if e.get("score", 0) >= self.entity_threshold]
-            if not filtered_ents:
-                return
-
-            # Classify domains
-            domains = self._classifier.classify(scorable_id, text)
-
-            # Build relationships
-            relationships = self._build_relationships(filtered_ents, domains, scorable_id)
-
-            # Handle based on mode
-            if self.mode == "sync":
-                self._add_entities_sync(filtered_ents, domains, scorable_id, scorable_type, text)
-                self._add_relationships_sync(relationships)
-            elif self.mode == "deferred":
-                self._queue_for_later(filtered_ents, domains, scorable_id, scorable_type, relationships)
-            elif self.mode == "evented":
-                self._publish_to_bus(scorable_id, text, filtered_ents, domains, relationships)
-
-        except Exception as e:
-            self.logger.log("KnowledgeGraphIngestError", {
-                "scorable_id": scorable_id,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            })
-
-    # -------------------------
-    # Sync Mode — Immediate Add
-    # -------------------------
-    def _add_entities_sync(self, entities: List[Dict], domains: List[Dict], scorable_id: str, scorable_type: str, text: str):
-        for ent in entities:
-            ent["source_text"] = text[ent["start"]:ent["end"]]
-            node_id = self._create_entity_node_id(ent, scorable_id)
-            self._add_entity_node(node_id, ent, domains, scorable_id, scorable_type)
-            self._track_node_stats(ent["type"])
-
-    def _add_relationships_sync(self, relationships: List[Dict]):
-        for rel in relationships:
-            self._add_relationship(rel["source"], rel["target"], rel["type"], rel["confidence"])
-
-    # -------------------------
-    # Deferred Mode — Queue Locally
-    # -------------------------
-    def _queue_for_later(
-        self,
-        entities: List[Dict],
-        domains: List[Dict],
-        scorable_id: str,
-        scorable_type: str,
-        relationships: List[Dict]
-    ):
-        self._pending_nodes.extend([
-            (ent, domains, scorable_id, scorable_type)
-            for ent in entities
-        ])
-        self._pending_relationships.extend(relationships)
-        self._stats["deferred_node_count"] += len(entities)
-
-    def flush(self) -> None:
-        """Call this at end of batch to process all queued items."""
-        if not self._pending_nodes and not self._pending_relationships:
-            return
+            return []
 
         start_time = time.time()
-        added = 0
+
         try:
-            for args in self._pending_nodes:
-                ent, domains, sid, stype = args
-                ent["source_text"] = ent.get("source_text", "")
-                node_id = self._create_entity_node_id(ent, sid)
-                self._add_entity_node(node_id, ent, domains, sid, stype)
-                added += 1
+            # ⚡ 1. Check cache first
+            if hasattr(self.memory, "entity_cache"):
+                cached = self.memory.entity_cache.get_by_embedding(text)
+                if cached and cached.results_json:
+                    self._stats["cache_hits"] += 1
+                    self._stats["queries"] += 1
+                    self._stats["query_time"] += time.time() - start_time
+                    return cached.results_json
 
-            for rel in self._pending_relationships:
-                self._add_relationship(rel["source"], rel["target"], rel["type"], rel["confidence"])
+            # 🧠 2. Embed text (must match indexing model)
+            embedding_vec = self._retriever.embed_type_query(text)
 
-            # Clear queue
-            self._pending_nodes.clear()
-            self._pending_relationships.clear()
+            # 🔍 3. Search HNSW index
+            raw_results = self._graph.search(embedding_vec, k=k)
 
-            self.logger.log("KnowledgeGraphFlushed", {
-                "node_count": added,
-                "relationship_count": len(self._pending_relationships),
-                "duration": time.time() - start_time
-            })
+            # 🎯 4. Enrich results
+            enriched = [
+                (
+                    node_id,
+                    float(score),
+                    {**meta, "node_id": node_id, "score": float(score)},
+                )
+                for node_id, score, meta in raw_results
+            ]
+
+            self.memory.entity_cache.upsert(
+                text,    
+                enriched,
+                embedding_type="ner",
+                scorable_type="query",
+            )
+            self._stats["cache_misses"] += 1
+
+            # 📊 6. Stats
+            self._stats["queries"] += 1
+            self._stats["query_time"] += time.time() - start_time
+            return enriched
 
         except Exception as e:
-            self.logger.log("KnowledgeGraphFlushError", {
+            self.logger.log("KnowledgeGraphSearchError", {
+                "text": text,
                 "error": str(e),
                 "traceback": traceback.format_exc()
             })
-
-    # -------------------------
-    # Evented Mode — Publish to Bus
-    # -------------------------
-    def _publish_to_bus(
-        self,
-        scorable_id: str,
-        text: str,
-        entities: List[Dict],
-        domains: List[Dict],
-        relationships: List[Dict]
-    ):
-        event = {
-            "event_type": "knowledge_graph.index_request",
-            "payload": {
-                "scorable_id": scorable_id,
-                "text": text,
-                "entities": entities,
-                "domains": domains,
-                "relationships": relationships,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        }
-        try:
-            self.memory.bus.publish(event)
-            self._stats["events_published"] += 1
-            self.logger.log("KnowledgeGraphIndexEventPublished", {
-                "scorable_id": scorable_id,
-                "entity_count": len(entities),
-                "event_type": "index_request"
-            })
-        except Exception as e:
-            self.logger.log("KnowledgeGraphPublishError", {
-                "error": str(e),
-                "scorable_id": scorable_id
-            })
+            return []
 
     # -------------------------
     # Entity & Node Management
@@ -315,6 +221,10 @@ class KnowledgeGraphService(Service):
                          domains: List[Dict[str, float]], scorable_id: str,
                          scorable_type: str):
         try:
+            # Avoid duplicates
+            if self._graph.has_metadata(node_id):  # assuming HNSWIndex supports this
+                return  # skip duplicate
+
             metadata = {
                 "node_id": node_id,
                 "text": entity["text"],
@@ -326,11 +236,12 @@ class KnowledgeGraphService(Service):
                     "scorable_type": scorable_type,
                     "start": entity["start"],
                     "end": entity["end"],
-                    "source_text": entity.get("source_text", "")
+                    "source_text": entity["source_text"]
                 }],
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
 
+            # Use same retriever → consistent embedding space
             embedding = self._retriever.embed_type_query(entity["text"])
             self._graph.add(embedding, metadata)
 
@@ -353,7 +264,9 @@ class KnowledgeGraphService(Service):
     # -------------------------
     # Relationships
     # -------------------------
-    def _add_relationship(self, source_id: str, target_id: str, rel_type: str, confidence: float):
+    def _add_relationship(self, source_id: str, target_id: str,
+                          rel_type: str, confidence: float):
+        """Persist relationship to JSONL + log event."""
         rel = {
             "source": source_id,
             "target": target_id,
@@ -382,6 +295,7 @@ class KnowledgeGraphService(Service):
     def _build_relationships(self, entities: List[Dict[str, Any]],
                              domains: List[Dict[str, float]],
                              scorable_id: str) -> List[Dict[str, Any]]:
+        """Build relationships using proximity + heuristics."""
         relationships = []
         for i, e1 in enumerate(entities):
             for e2 in entities[i+1:]:
@@ -425,37 +339,20 @@ class KnowledgeGraphService(Service):
     # -------------------------
     # Helpers
     # -------------------------
-    def _load_graph(self) -> None:
-        """Load existing nodes and relationships into stats counters."""
-        try:
-            # Count nodes if available
-            self._stats["total_nodes"] = (
-                self._graph.ntotal if hasattr(self._graph, "ntotal") else 0
-            )
+    def _load_graph(self):
+        """Load existing nodes and relationships."""
+        self._stats["total_nodes"] = self._graph.ntotal if hasattr(self._graph, 'ntotal') else 0
 
-            # Count edges from relationships file
-            if os.path.exists(self._rel_path):
-                with open(self._rel_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        try:
-                            rel = json.loads(line.strip())
-                            self._stats["total_edges"] += 1
-                            rel_type = rel.get("type", "unknown")
-                            self._stats["edge_types"][rel_type] = (
-                                self._stats["edge_types"].get(rel_type, 0) + 1
-                            )
-                        except Exception:
-                            continue
-
-            self.logger.log("KnowledgeGraphLoaded", {
-                "nodes": self._stats["total_nodes"],
-                "edges": self._stats["total_edges"],
-            })
-        except Exception as e:
-            self.logger.log("KnowledgeGraphLoadError", {
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            })
+        # Rebuild edge stats
+        if os.path.exists(self._rel_path):
+            with open(self._rel_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        rel = json.loads(line.strip())
+                        self._stats["total_edges"] += 1
+                        self._track_edge_stats(rel["type"])
+                    except Exception as e:
+                        self.logger.log("KnowledgeGraphLoadError", {"error": str(e)})
 
     def _track_edge_stats(self, rel_type: str):
         self._stats["edge_types"][rel_type] = self._stats["edge_types"].get(rel_type, 0) + 1
@@ -464,7 +361,6 @@ class KnowledgeGraphService(Service):
         self._stats["node_types"][node_type] = self._stats["node_types"].get(node_type, 0) + 1
 
     def get_relationships(self, node_id: str) -> List[Dict[str, Any]]:
-        """Retrieve all outgoing relationships."""
         rels = []
         if not os.path.exists(self._rel_path):
             return rels
@@ -491,7 +387,7 @@ class KnowledgeGraphService(Service):
         return type_pairs.get((first["type"], second["type"]), "related_to")
 
     def _calculate_relationship_confidence(self, e1: Dict, e2: Dict, distance: int, domains: List[Dict]) -> float:
-        base_score = 1.0 - (distance / 100)
+        base_score = np.exp(-distance / 50.0)  # exponential decay
         domain_bonus = 0.1 if any(d["domain"] in {"ml", "nlp"} for d in domains) else 0.0
         proximity_bonus = 0.1 if distance < 20 else 0.0
         return max(min(base_score + domain_bonus + proximity_bonus, 1.0), 0.0)

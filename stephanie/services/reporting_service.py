@@ -7,7 +7,7 @@ import math
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 from stephanie.services.service_protocol import Service
 

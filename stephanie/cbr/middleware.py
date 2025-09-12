@@ -4,9 +4,10 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 import numpy as np
 
 from stephanie.cbr.adaptor import DefaultAdaptor
-from stephanie.services.reporting_service import JsonlSink, LoggerSink, ReportingService
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
+from stephanie.services.reporting_service import (JsonlSink, LoggerSink,
+                                                  ReportingService)
 
 
 class CBRMiddleware:

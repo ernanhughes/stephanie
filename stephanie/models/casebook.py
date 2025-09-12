@@ -123,6 +123,7 @@ class CaseORM(Base):
     agent_name = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.now)
+    meta = Column(SA_JSON, nullable=True)
 
     # Relationships
     scorables = relationship("CaseScorableORM", back_populates="case")

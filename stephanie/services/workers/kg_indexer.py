@@ -15,12 +15,11 @@ Supports:
 
 from __future__ import annotations
 
+import logging
 import time
 import traceback
-import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-import logging
 
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.utils.retry import retry_with_backoff
@@ -91,7 +90,7 @@ class KnowledgeGraphIndexerWorker:
 
         except KeyboardInterrupt:
             self.logger.info("KnowledgeGraphIndexerWorker stopped by user.")
-        except Exception as e:
+        except Exception:
             self.logger.critical("KnowledgeGraphIndexerWorker crashed", exc_info=True)
             raise
         finally:

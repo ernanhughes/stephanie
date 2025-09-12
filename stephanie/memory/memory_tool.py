@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from stephanie.logging import JSONLogger
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
+from stephanie.memory.calibration_event_store import CalibrationEventStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
 from stephanie.memory.cartridge_triple_store import CartridgeTripleStore
@@ -18,7 +19,9 @@ from stephanie.memory.document_domain_section_store import \
     DocumentSectionDomainStore
 from stephanie.memory.document_section_store import DocumentSectionStore
 from stephanie.memory.document_store import DocumentStore
+from stephanie.memory.dynamic_scorable_store import DynamicScorableStore
 from stephanie.memory.embedding_store import EmbeddingStore
+from stephanie.memory.entity_cache_store import EntityCacheStore
 from stephanie.memory.evaluation_attribute_store import \
     EvaluationAttributeStore
 from stephanie.memory.evaluation_store import EvaluationStore
@@ -57,7 +60,8 @@ from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.memory.theorem_store import TheoremStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
-from stephanie.services.knowledge_bus import InProcessKnowledgeBus, KnowledgeBus
+from stephanie.services.knowledge_bus import (InProcessKnowledgeBus,
+                                              KnowledgeBus)
 
 
 class MemoryTool:
@@ -165,7 +169,10 @@ class MemoryTool:
         self.register_store(MARSConflictStore(self.session, logger))
         self.register_store(CaseBookStore(self.session, logger))
         self.register_store(ChatStore(self.session, logger))
-        self.register_store(ScorableEntityStore(self.session, self, logger))
+        self.register_store(ScorableEntityStore(self.session, logger))
+        self.register_store(DynamicScorableStore(self.session, logger))
+        self.register_store(CalibrationEventStore(self.session, logger))
+        self.register_store(EntityCacheStore(self.session, logger))
 
 
         # Register extra stores if defined in config

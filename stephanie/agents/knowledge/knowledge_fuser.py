@@ -1,17 +1,17 @@
 # stephanie/agents/knowledge/knowledge_fuser.py
 from __future__ import annotations
-from typing import Dict, Any, List
-import hashlib
-import time
-import logging
-import traceback
 
+import hashlib
+import logging
+import time
+import traceback
+from typing import Any, Dict, List
+
+from stephanie.agents.knowledge.chat_knowledge_builder import \
+    ChatKnowledgeBuilder
 from stephanie.analysis.scorable_classifier import ScorableClassifier
-from stephanie.services.knowledge_graph_service import KnowledgeGraphService
-from stephanie.agents.knowledge.chat_knowledge_builder import (
-    ChatKnowledgeBuilder,
-)
 from stephanie.data.knowledge_unit import KnowledgeUnit
+from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 
 _logger = logging.getLogger(__name__)
 
@@ -68,6 +68,7 @@ class KnowledgeFuser:
         conversation_id: int = None,
         scorable_id: str = None,
         scorable_type: str = "document_section",
+        context: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """
         Fuse chat and paper knowledge into a structured content plan.
@@ -84,6 +85,7 @@ class KnowledgeFuser:
                 chat_messages=chat_messages,
                 paper_text=text,
                 conversation_id=conversation_id,
+                context=context,
             )
             chat_ku = k["chat"]
             paper_ku = k["paper"]
@@ -116,7 +118,7 @@ class KnowledgeFuser:
                             }
                         )
                     else:
-                        _logger.warning(
+                        _logger.error(
                             f"Unexpected domain score format: {item}"
                         )
 
@@ -125,7 +127,7 @@ class KnowledgeFuser:
                 ][: self.top_k_domains]
 
             except Exception as e:
-                self.logger.warning(f"Domain classification failed: {e}")
+                _logger.error(f"Domain classification failed: {e}")
                 top_domains = []
 
             # Step 3: Semantic phrase overlap (not just string match)
@@ -146,7 +148,7 @@ class KnowledgeFuser:
 
             # Final plan
             plan = {
-                "section_title": section_name,
+                "section_title": section_name, 
                 "units": units,
                 "entities": merged_entities,
                 "domains": top_domains,
@@ -194,24 +196,17 @@ class KnowledgeFuser:
     # ---------------------------
     # Helpers
     # ---------------------------
-    def _semantic_overlap(
-        self, chat_ku: KnowledgeUnit, paper_ku: KnowledgeUnit
-    ) -> List[str]:
-        """
-        Find semantically overlapping phrases (not just exact matches).
-        Uses anchors + high-salience phrases.
-        """
-        chat_set = {p.lower() for p in chat_ku.anchors + chat_ku.phrases}
-        paper_set = {p.lower() for p in paper_ku.anchors + paper_ku.phrases}
+    def _semantic_overlap(self, chat_ku, paper_ku):
+        def normalize_phrases(items):
+            return {
+                (p["span"] if isinstance(p, dict) else str(p)).lower()
+                for p in items if p
+            }
 
-        # Exact overlap first
-        exact = list(chat_set & paper_set)
+        chat_set = normalize_phrases(chat_ku.anchors + chat_ku.phrases)
+        paper_set = normalize_phrases(paper_ku.anchors + paper_ku.phrases)
 
-        # Fallback: use paper anchors if no overlap
-        if not exact:
-            return [a["span"] for a in paper_ku.anchors[:5]]
-
-        return exact[:10]  # limit
+        return list(chat_set & paper_set)
 
     def _generate_claims(
         self, overlaps: List[str], paper_ku: KnowledgeUnit, scorable_id: str

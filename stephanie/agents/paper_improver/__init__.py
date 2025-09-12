@@ -1,15 +1,15 @@
 # stephanie/agents/paper_improver/__init__.py
 
 # Expose core classes for agent import
+from .bandit_router import ExemplarBandit
 from .code_improver import CodeImprover
+from .curriculum import CurriculumScheduler
+from .faithfulness import FaithfulnessBot
+from .goals import GoalScorer
+from .mutation import MutationRunner
+from .repo_link import RepoLink
 from .text_improver import TextImprover
 from .vpm_controller import VPMController
-from .repo_link import RepoLink
-from .bandit_router import ExemplarBandit
-from .faithfulness import FaithfulnessBot
-from .mutation import MutationRunner
-from .goals import GoalScorer
-from .curriculum import CurriculumScheduler
 
 __all__ = [
     "CodeImprover",
