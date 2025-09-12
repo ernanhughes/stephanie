@@ -20,4 +20,4 @@ class WorldviewORM(Base):
     supporting_evidence = Column(JSON)  # Key evidence backing core claims
     confidence_score = Column(Float)  # Aggregate confidence
     generation = Column(Integer, default=0)  # Evolution index
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)

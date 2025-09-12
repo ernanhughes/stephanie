@@ -29,8 +29,8 @@ class HypothesisORM(Base):
     pipeline_signature = Column(String)
     enabled = Column(Boolean, default=True)
     version = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # Relationships
     goal = relationship("GoalORM", back_populates="hypotheses")

@@ -19,7 +19,7 @@ class CalibrationModelORM(Base):
     kind = Column(String(64), nullable=False)          # e.g., "quantile", "logistic_raw", "sigmoid_raw"
     threshold = Column(Float, nullable=False, default=0.5)
     payload = Column(LargeBinary, nullable=False)      # pickle.dumps(calibrator)
-    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, nullable=False)
 
     def to_dict(self):
         return {
@@ -43,7 +43,7 @@ class CalibrationEventORM(Base):
     entity_type = Column(String)
     is_relevant = Column(Boolean, nullable=False)  # Ground truth
     context = Column(JSON)  # Optional: goal, section, etc.
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.now)
 
     def to_dict(self):
         return {

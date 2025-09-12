@@ -1,4 +1,4 @@
-# stephanie/agents/paper_improver/text_improver.py
+# stephanie/agents/knowledge/text_improver.py
 from __future__ import annotations
 
 import hashlib
@@ -12,7 +12,6 @@ import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Optional (Unix-only) timeout support
 import signal as _signal
 
 from stephanie.agents.paper_improver.goals import GoalScorer
@@ -21,7 +20,7 @@ from stephanie.knowledge.knowledge_bus import KnowledgeBus
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.utils.json_sanitize import safe_json
-from .faithfulness import FaithfulnessBot
+from ..paper_improver.faithfulness import FaithfulnessBot
 
 
 FACTUAL_KWS = (
@@ -60,7 +59,7 @@ class TextImprover:
         self,
         cfg,
         memory,
-        workdir: str = "./text_runs",
+        workdir: str = "./data/text_runs",
         timeout: int = 60,
         seed: int = 0,
         faithfulness_topk: int = 5,

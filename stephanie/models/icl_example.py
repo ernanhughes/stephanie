@@ -17,4 +17,4 @@ class ICLExampleORM(Base):
     response = Column(Text)
     task_type = Column(String)
     score = Column(Float)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.now)

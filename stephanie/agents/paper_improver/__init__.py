@@ -8,12 +8,10 @@ from .faithfulness import FaithfulnessBot
 from .goals import GoalScorer
 from .mutation import MutationRunner
 from .repo_link import RepoLink
-from .text_improver import TextImprover
 from .vpm_controller import VPMController
 
 __all__ = [
     "CodeImprover",
-    "TextImprover",
     "VPMController",
     "RepoLink",
     "ExemplarBandit",

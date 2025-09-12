@@ -15,7 +15,7 @@ class ScoreAttributeORM(Base):
     key = Column(String(64), nullable=False)
     value = Column(Text, nullable=False)
     data_type = Column(String(32), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     
     # Relationship to ScoreORM
     score = relationship("ScoreORM", back_populates="attributes")

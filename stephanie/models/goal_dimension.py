@@ -15,7 +15,7 @@ class GoalDimensionORM(Base):
     rank = Column(Integer, default=0)
     source = Column(String, default="llm")
     similarity_score = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     goal = relationship("GoalORM", back_populates="dimensions")
 

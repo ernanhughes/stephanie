@@ -30,7 +30,7 @@ class PipelineReferenceORM(Base):
     relation_type = Column(String, nullable=True)
     source = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     # --- Helper method ---
     def resolve(self, memory, mode: str = "default"):

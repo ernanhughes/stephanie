@@ -23,13 +23,13 @@ from .faithfulness import \
     FaithfulnessBot  # optional use; safe if not provided at CLI
 from .goals import GoalScorer, build_templates_from_yaml, load_yaml
 from .repo_link import RepoLink
-from .text_improver import TextImprover
+from stephanie.agents.knowledge.text_improver import TextImprover
 from .vpm_controller import VPMController
 
 # --------------------------- helpers ---------------------------
 
 def _ts() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return datetime.now().isoformat(timespec="seconds") + "Z"
 
 def _write_json(path: Path, obj: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,7 +105,7 @@ def run_paper_section(
     vc = VPMController(..., goal_scorer=goal_scorer, state_path=f"{workdir}/vpm_state.json")
 
     t0 = time.time()
-    run_id = f"{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    run_id = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
     workdir_p = Path(workdir)
     trace_path = workdir_p / "trace.ndjson"
 

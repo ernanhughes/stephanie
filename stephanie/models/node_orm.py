@@ -20,7 +20,7 @@ class NodeORM(Base):
     hypothesis = Column(String)  # output or intermediate result
     metric = Column(Float)
     valid = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     def to_dict(self):
         return {

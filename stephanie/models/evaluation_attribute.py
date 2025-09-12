@@ -42,7 +42,7 @@ class EvaluationAttributeORM(Base):
     evaluation = relationship("EvaluationORM", back_populates="attributes")
 
     extra = Column(JSON, nullable=True)  # For future extensibility
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     def to_dict(self):
         return {

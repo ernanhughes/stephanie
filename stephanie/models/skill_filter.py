@@ -18,7 +18,7 @@ class SkillFilterORM(Base):
 
     domain = Column(String(32), index=True)
     description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     weight_delta_path = Column(String(256))
     weight_size_mb = Column(Float)

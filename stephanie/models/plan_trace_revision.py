@@ -18,7 +18,7 @@ class PlanTraceRevisionORM(Base):
     revision_type = Column(String, nullable=False)   # e.g. "correction", "improvement", "feedback"
     revision_text = Column(Text, nullable=False)     # free-form feedback
     source = Column(String, nullable=True)           # "user", "llm", "scorer", etc.
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     plan_trace = relationship("PlanTraceORM", back_populates="revisions")
 

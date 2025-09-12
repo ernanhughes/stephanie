@@ -12,7 +12,7 @@ class UnifiedMRQModelORM(Base):
     id = Column(Integer, primary_key=True)
     dimension = Column(String, nullable=False)
     model_path = Column(Text, nullable=False)
-    trained_on = Column(DateTime, default=datetime.utcnow)
+    trained_on = Column(DateTime, default=datetime.now)
     pair_count = Column(Integer)
     trainer_version = Column(String)
     notes = Column(Text)

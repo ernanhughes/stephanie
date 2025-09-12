@@ -18,7 +18,7 @@ class ModelVersionORM(Base):
     version = Column(Text, nullable=False)
     trained_on = Column(JSON)
     performance = Column(JSON)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=datetime.now)
     active = Column(Boolean, default=True)
     extra_data = Column(JSON)
     model_path = Column(Text, nullable=False)

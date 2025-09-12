@@ -75,7 +75,7 @@ class CalibrationEventStore:
                     _as_str(entity_type_raw) if entity_type_raw is not None else None
                 )
                 is_relevant = _as_bool(payload.get("is_relevant"), False)
-                timestamp = payload.get("timestamp") or datetime.datetime.utcnow()
+                timestamp = payload.get("timestamp") or datetime.datetime.now()
 
                 # Optional JSON column (only set if your ORM has it)
                 features = payload.get("features", None)

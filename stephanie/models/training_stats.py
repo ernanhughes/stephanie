@@ -43,7 +43,7 @@ class TrainingStatsORM(Base):
     invalid_samples = Column(Integer, default=0)
     
     # Timing
-    start_time = Column(DateTime, default=datetime.utcnow)
+    start_time = Column(DateTime, default=datetime.now)
     end_time = Column(DateTime, nullable=True)
     
     # Relationships
