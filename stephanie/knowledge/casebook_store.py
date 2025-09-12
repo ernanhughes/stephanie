@@ -27,6 +27,7 @@ class Scorable:
     case_id: str
     role: str         # "code", "text", "tests", "vpm", "dpo_pair", "edit_snippet"
     text: str
+    scorable_type: str
     meta: Dict[str, Any]
 
 class CaseBookStore:
@@ -51,9 +52,9 @@ class CaseBookStore:
         c = Case(id=uuid.uuid4().hex, casebook_id=d["casebook"]["id"], prompt_text=prompt_text, agent_name=agent_name, meta=meta)
         d["cases"].append(asdict(c)); p.write_text(json.dumps(d, indent=2)); return c
 
-    def add_scorable(self, casebook_name: str, case_id: str, role: str, text: str, meta: Dict[str, Any]) -> Scorable:
+    def add_scorable(self, casebook_name: str, case_id: str, role: str, text: str, scorable_type: str, meta: Dict[str, Any]) -> Scorable:
         p = self._book_path(casebook_name); d = json.loads(p.read_text())
-        s = Scorable(id=uuid.uuid4().hex, case_id=case_id, role=role, text=text, meta=meta)
+        s = Scorable(id=uuid.uuid4().hex, case_id=case_id, role=role, text=text, scorable_type=scorable_type, meta=meta)
         d["scorables"].append(asdict(s)); p.write_text(json.dumps(d, indent=2)); return s
 
     def list_casebooks_by_tag(self, tag: str) -> List[CaseBook]:

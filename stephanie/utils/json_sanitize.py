@@ -1,24 +1,20 @@
 # stephanie/utils/json_sanitize.py
 import math
 from typing import Any
-
-try:
-    import numpy as np
-    _HAS_NP = True
-except Exception:
-    _HAS_NP = False
+import json
+import numpy as np
 
 def _is_float(x: Any) -> bool:
     if isinstance(x, float):
         return True
-    if _HAS_NP and isinstance(x, (np.floating,)):
+    if isinstance(x, (np.floating,)):
         return True
     return False
 
 def _is_int(x: Any) -> bool:
     if isinstance(x, int) and not isinstance(x, bool):
         return True
-    if _HAS_NP and isinstance(x, (np.integer,)):
+    if isinstance(x, (np.integer,)):
         return True
     return False
 
@@ -45,10 +41,9 @@ def json_sanitize(obj: Any) -> Any:
     if isinstance(obj, (list, tuple, set)):
         return [json_sanitize(v) for v in obj]
 
-    if _HAS_NP:
-        import numpy as np
-        if isinstance(obj, np.ndarray):
-            return [json_sanitize(v) for v in obj.tolist()]
+    import numpy as np
+    if isinstance(obj, np.ndarray):
+        return [json_sanitize(v) for v in obj.tolist()]
 
     # mappings
     if isinstance(obj, dict):
@@ -59,3 +54,12 @@ def json_sanitize(obj: Any) -> Any:
         return str(obj)
     except Exception:
         return None
+
+
+def safe_json(obj: Any) -> str:
+    def default_serializer(x):
+        try:
+            return str(x)
+        except Exception:
+            return "<unserializable>"
+    return json.dumps(obj, default=default_serializer, ensure_ascii=False)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from stephanie.models.case_goal_state import CaseGoalStateORM
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable_factory import TargetType
 
@@ -667,3 +668,33 @@ class CaseBookStore:
         if role:
             q = q.filter(CaseScorableORM.role == role)
         return q.all()
+
+
+    def add_scorable(
+        self,
+        case_id: int,
+        text: str,
+        scorable_type: Optional[str] = None,
+        meta: Optional[dict] = None,
+        role: Optional[str] = None,
+    ) -> DynamicScorableORM:
+        """
+        Attach a scorable artifact to a case.
+
+        Args:
+            case_id: the owning CaseORM id
+            scorable_type: type/category of scorable ("vpm", "text", "code", etc.)
+            text: raw content of the scorable (JSON, markdown, code…)
+            meta: arbitrary metadata dict (stage, goal_eval, section, etc.)
+            role: optional semantic role ("reflection", "draft", etc.)
+        """
+        orm = DynamicScorableORM(
+            case_id=case_id,
+            scorable_type=scorable_type,
+            text=text,
+            meta=meta or {},
+            role=role,
+        )
+        self.session.add(orm)
+        self.session.commit()
+        return orm

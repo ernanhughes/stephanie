@@ -235,6 +235,23 @@ class KnowledgeFusionAgent(BaseAgent):
     def _plan_for_section(self, section: dict, goal: dict, chat: List[Dict[str, str]]) -> Dict[str, Any]:
         sec_name = section.get("section_name", "section")
         text = section.get("section_text", "") or ""
+        # 🔴 ADD: Fail fast if no content
+        if not text.strip():
+            self.logger.log("SectionTextMissing", {
+                "section_name": sec_name,
+                "paper_id": section.get("paper_id"),
+                "warning": "Skipping plan generation due to empty section_text"
+            })
+            return {
+                "section_title": sec_name,
+                "paper_id": section.get("paper_id"),
+                "error": "empty_section_text",
+                "domains": [],
+                "entities": [],
+                "claims": [],
+                "tags": [],
+                "meta": {"skipped": True}
+            }
         paper_id = section.get("paper_id")
         
         # ✅ CORRECT: Get actual scorable ID and target type

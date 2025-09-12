@@ -6,6 +6,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from stephanie.utils.json_sanitize import safe_json
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver import GoalScorer, TextImprover
@@ -35,7 +36,7 @@ class DraftGeneratorAgent(BaseAgent):
         self.section_name_fallback = cfg.get("section_name_fallback", "Blog Section")
         self.vpm: VPMController = default_controller()
         self.goals = GoalScorer()
-        self.ti = TextImprover(workdir=cfg.get("text_workdir", "./text_runs"))
+        self.ti = TextImprover(cfg, memory, workdir=cfg.get("text_workdir", "./text_runs"))
         self.fuser = KnowledgeFuser(cfg, memory, logger)
 
         # chat ingestion options
@@ -124,17 +125,36 @@ class DraftGeneratorAgent(BaseAgent):
         # --------- Champion selection (best goal score) ----------
         champion = self._select_champion(trajectory)
 
-        # Final champion scorable
-        self.memory.casebooks.add_scorable(
-            case_id=champion["case_id"],
-            scorable_id=str(uuid.uuid4()),
-            text=champion["draft_text"],
-            role="champion",
-            meta={"goal_score": champion["goal_score"], "step": champion["step"]}
+        draft_scorable = self.memory.dynamic_scorables.add(
+            pipeline_run_id=context.get("pipeline_run_id"),
+            scorable_type=TargetType.DYNAMIC,
+            source=self.name,
+            text=draft_text,
+            meta={
+                "step": step,
+                "decision": decision.signal.name,
+                "vpm_row": result["vpm_row"],
+                "edit_log": result.get("edit_log", []),
+            },
+        )
+
+        scorable = ScorableFactory.from_orm(draft_scorable)
+        goal = context.get("goal", {})
+        case = self.memory.casebooks.add_case(
+            casebook_id=casebook.id,
+            goal_id=goal.get("id"),
+            prompt_text=json.dumps({"plan_slice": self._plan_slice(plan)}),
+            agent_name="draft_generator",
+            scorables=[scorable.to_dict()],
+            meta={
+                "step": step,
+                "decision": decision.signal.name,
+                "vpm_row": result["vpm_row"],
+            },
         )
 
         # --------- Reflection ----------
-        self._log_reflection(casebook, section_name, trajectory, champion)
+        self._log_reflection(casebook, section_name, trajectory, champion, context=context)
 
         # --------- Emit context ----------
         context.update({
@@ -308,7 +328,7 @@ class DraftGeneratorAgent(BaseAgent):
             "case_id": best["case_id"],
         }
 
-    def _log_reflection(self, casebook: CaseBookORM, section_name: str, trajectory: List[Dict[str, Any]], champion: Dict[str, Any]):
+    def _log_reflection(self, casebook: CaseBookORM, section_name: str, trajectory: List[Dict[str, Any]], champion: Dict[str, Any], context: dict = {}) -> None:
         # Simple trend vectors (SIS can plot these)
         def series(dim: str) -> List[float]:
             return [float(t["vpm_row"].get(dim, 0.0)) for t in trajectory]
@@ -325,19 +345,20 @@ class DraftGeneratorAgent(BaseAgent):
             "novelty_trend": series("novelty"),
             "stickiness_trend": series("stickiness"),
         }
+        goal = context.get("goal", {})
         case = self.memory.casebooks.add_case(
             casebook_id=casebook.id,
-            goal_id=None,
+            goal_id=goal.get("id"),
             prompt_text=f"Reflection for trajectory: {section_name}",
             agent_name="draft_generator",
             meta={"type": "reflection"}
         )
         self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            scorable_id=str(uuid.uuid4()),
-            text=json.dumps(reflection),
-            role="reflection",
-            meta={"section": section_name}
+            case.id,
+            scorable_type="reflection",
+            text=safe_json(reflection),
+            meta={"section": section_name},
+            role="reflection"
         )
 
     def _plan_slice(self, plan: Dict[str, Any]) -> Dict[str, Any]:

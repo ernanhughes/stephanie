@@ -16,6 +16,7 @@ class DynamicScorableORM(Base):
     source = Column(String, nullable=True)            # e.g. "draft_generator", "policy_eval"
     text = Column(Text, nullable=True)                # optional, can be large
     meta = Column(JSON, nullable=True)
+    role = Column(String, nullable=True)              # e.g. "user", "assistant", "system"
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):

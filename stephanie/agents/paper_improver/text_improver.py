@@ -1,53 +1,67 @@
 # stephanie/agents/paper_improver/text_improver.py
-# TextImprover — plan → draft → score → edit → log → blog-ready (hardened)
 from __future__ import annotations
 
 import hashlib
 import json
 import random
 import re
+import uuid
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+import traceback
 
 from stephanie.agents.paper_improver.goals import GoalScorer
 from stephanie.knowledge.casebook_store import CaseBookStore
 from stephanie.knowledge.knowledge_bus import KnowledgeBus
+from stephanie.scoring.scorable_factory import TargetType
+from stephanie.utils.json_sanitize import safe_json
 
 from .faithfulness import FaithfulnessBot
+import signal
 
 FACTUAL_KWS = (
-    "show", "prove", "result", "achiev", "increase", "decrease",
-    "outperform", "error", "accuracy", "loss", "significant", "statistically"
+    "show",
+    "prove",
+    "result",
+    "achiev",
+    "increase",
+    "decrease",
+    "outperform",
+    "error",
+    "accuracy",
+    "loss",
+    "significant",
+    "statistically",
 )
+def _timeout_handler(signum, frame):
+    raise TimeoutError("TextImprover timed out")
 
-
-
-
-
-
-
-
-
-
-
+def atomic_write(path: Path, content: str):
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(path)  # atomic
 
 class TextImprover:
     def __init__(
         self,
+        cfg,
+        memory,
         workdir: str = "./text_runs",
         timeout: int = 60,
         seed: int = 0,
         faithfulness_topk: int = 5,
         kb: KnowledgeBus | None = None,
-        casebooks: CaseBookStore | None = None
+        casebooks: CaseBookStore | None = None,
     ):
+        self.cfg = cfg
+        self.memory = memory
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
         self.run_id = 0
         self.timeout = timeout
         self.seed = seed
-        self.faithfulness_topk = faithfulness_topk,
+        self.faithfulness_topk = faithfulness_topk
         self.kb = kb or KnowledgeBus()
         self.casebooks = casebooks or CaseBookStore()
         self.gs = GoalScorer()
@@ -55,12 +69,60 @@ class TextImprover:
     # --------------------------- public ---------------------------
 
     def improve(self, content_plan: Dict[str, Any]) -> Dict[str, Any]:
+        # Set up timeout
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(self.timeout)
+        try:
+            return self._improve_inner(content_plan)
+        except TimeoutError:
+            result = {
+                "error": "timeout",
+                "passed": False,
+                "scores": {},
+                "vpm_row": {},
+                "run_dir": "",
+                "dpo_pair_path": ""
+            }
+        except Exception as e:
+            result = {
+                "error": f"unexpected: {str(e)}",
+                "traceback": traceback.format_exc(),
+                "passed": False,
+                "scores": {},
+                "vpm_row": {},
+                "run_dir": ""
+            }
+        finally:
+            signal.alarm(0)  # cancel alarm
+
+        # Always log outcome
+        if "run_dir" in result and result["run_dir"]:
+            run_dir = Path(result["run_dir"])
+            (run_dir / "ERROR.json").write_text(json.dumps(result, indent=2))
+
+        return result
+
+    def _improve_inner(self, content_plan: Dict[str, Any]) -> Dict[str, Any]:
         self._seed_everything(self.seed)
         self.run_id += 1
-        plan_norm = self._sanitize_plan(content_plan)
-        plan_hash = hashlib.sha256(json.dumps(plan_norm, sort_keys=True).encode()).hexdigest()[:8]
-        run_dir = self.workdir / f"run_{self.run_id}_{plan_hash}"
-        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Validate and sanitize plan early
+        try:
+            plan_norm = self._sanitize_plan(content_plan)
+        except Exception as e:
+            return {
+                "error": f"invalid_plan: {str(e)}",
+                "passed": False,
+                "scores": {},
+                "vpm_row": {}
+            }
+
+        # Generate unique run directory
+        plan_hash = hashlib.sha256(
+            json.dumps(plan_norm, sort_keys=True).encode()
+        ).hexdigest()[:8]
+        run_dir = self.workdir / f"run_{int(time.time())}_{uuid.uuid4().hex}_{plan_hash}"
+        run_dir.mkdir(parents=True, exist_ok=False)
 
         meta = {
             "plan_sha": plan_hash,
@@ -68,59 +130,113 @@ class TextImprover:
             "timeout": self.timeout,
             "timestamp": time.time(),
         }
-        (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
+        atomic_write(run_dir / "meta.json", json.dumps(meta, indent=2))
 
-        # 1) Persist plan
+        # Persist plan
         plan_path = run_dir / "plan.json"
-        plan_path.write_text(json.dumps(plan_norm, indent=2))
+        atomic_write(plan_path, json.dumps(plan_norm, indent=2))
 
-        casebook_name = f"text_{plan_hash}_{content_plan.get('section_title','section')}"
-        cb = self.casebooks.ensure_casebook(casebook_name, ["text_improver","exemplar_text"], {"plan_sha": plan_hash})
-        case = self.casebooks.add_case(casebook_name, json.dumps(content_plan), agent_name="text_improver", meta={"run_dir": str(run_dir)})
+        # Setup casebook
+        casebook_name = f"text_{plan_hash}_{content_plan.get('section_title', 'section')}"
+        cb = self.casebooks.ensure_casebook(
+            casebook_name,
+            tags=["text_improver", "exemplar_text"],
+            meta={"plan_sha": plan_hash}
+        )
+        case = self.casebooks.add_case(
+            casebook_name=casebook_name,
+            prompt_text=json.dumps(content_plan),
+            agent_name="text_improver",
+            meta={"run_dir": str(run_dir)}
+        )
 
-        # 2) Generate draft
-        draft_path = self._generate_draft(plan_norm, run_dir)
+        # 1. Generate initial draft
+        try:
+            draft_path = self._generate_draft(plan_norm, run_dir)
+        except Exception as e:
+            self.logger.error("DraftGenerationFailed", {"error": str(e)})
+            return {
+                "error": f"draft_gen_failed: {str(e)}",
+                "passed": False,
+                "scores": {},
+                "vpm_row": {}
+            }
 
-        # 3) Score
-        initial_scores = self._score_draft(draft_path, plan_norm)
+        # 2. Score initial draft
+        try:
+            initial_scores = self._score_draft(draft_path, plan_norm)
+        except Exception as e:
+            self.logger.error("InitialScoringFailed", {"error": str(e)})
+            initial_scores = {}
 
+        # 3. Apply edit policy
+        try:
+            final_text, edits = self._apply_edit_policy(
+                draft_path=draft_path,
+                plan=plan_norm,
+                max_edits=6,
+                trace_path=run_dir / "trace.ndjson"
+            )
+        except Exception as e:
+            self.logger.error("EditPolicyFailed", {"error": str(e)})
+            final_text, edits = draft_path.read_text(), ["error_recovery"]
 
-        # 4) Edit-policy loop
-        final_text, edits = self._apply_edit_policy(draft_path, plan_norm, max_edits=6, trace_path=run_dir/"trace.ndjson")
+        # 4. Rescore final draft
+        try:
+            final_scores = self._score_draft(draft_path, plan_norm)
+        except Exception as e:
+            self.logger.error("FinalScoringFailed", {"error": str(e)})
+            final_scores = {}
 
-        # 5) Rescore
-        final_scores = self._score_draft(draft_path, plan_norm)
-
-        # after scoring:
+        # Build VPM row
         vpm_row = self._build_vpm_row(initial_scores, final_scores, plan_norm)
-        goal_eval = self.gs.score("text","academic_summary", vpm_row)
-        self.casebooks.add_scorable(casebook_name, case.id, "vpm", json.dumps(vpm_row), {"goal": goal_eval})
-        self.casebooks.add_scorable(casebook_name, case.id, "text", (run_dir/"draft.md").read_text(), {"stage":"final"})
+        goal_eval = self.gs.score("text", "academic_summary", vpm_row)
 
-        # 6) Optional faithfulness
-        vpm_row = self._build_vpm_row(initial_scores, final_scores, plan_norm)
+        # Log to casebook
+        self.casebooks.add_scorable(
+            casebook_name=casebook_name,
+            case_id=case.id,
+            role="vpm",
+            text=safe_json(vpm_row),
+            meta={"goal": goal_eval},
+            scorable_type=TargetType.DYNAMIC
+        )
+        self.casebooks.add_scorable(
+            casebook_name=casebook_name,
+            case_id=case.id,
+            role="text",
+            text=(run_dir / "draft.md").read_text(),
+            meta={"stage": "final"},
+            scorable_type=TargetType.DYNAMIC
+        )
+
+        # Optional: faithfulness check
         faithfulness_score = None
         paper_text = plan_norm.get("paper_text")
         if not paper_text and plan_norm.get("paper_text_path"):
             try:
-                paper_text = Path(plan_norm["paper_text_path"]).read_text()
-            except Exception:
-                paper_text = None
+                p = Path(plan_norm["paper_text_path"])
+                if p.exists():
+                    paper_text = p.read_text()
+            except Exception as e:
+                self.logger.warning("PaperTextLoadFailed", {"error": str(e)})
 
-        if paper_text:
+        if paper_text and len(paper_text.strip()) > 100:
             try:
                 bot = FaithfulnessBot(top_k=self.faithfulness_topk)
                 bot.prepare_paper(paper_text)
-                claims = [{"claim_id": u.get("claim_id"), "claim": u.get("claim", "")}
-                          for u in plan_norm.get("units", []) if u.get("claim")]
+                claims = [
+                    {"claim_id": u.get("claim_id"), "claim": u.get("claim", "")}
+                    for u in plan_norm.get("units", [])
+                    if u.get("claim")
+                ]
                 faithfulness_score = bot.get_faithfulness_score(claims)
                 final_scores["faithfulness"] = float(faithfulness_score)
                 vpm_row["faithfulness"] = round(float(faithfulness_score), 3)
-            except Exception:
-                # keep pipeline resilient
-                pass
+            except Exception as e:
+                self.logger.warning("FaithfulnessCheckFailed", {"error": str(e)})
 
-        # 7) DPO pair
+        # Build DPO pair
         dpo_pair = {
             "content_plan_slice": self._extract_plan_slice(plan_norm),
             "prompt": "Generate faithful, clear, well-cited prose from this plan.",
@@ -131,19 +247,36 @@ class TextImprover:
                 "plan_hash": plan_hash,
                 "initial_scores": initial_scores,
                 "final_scores": final_scores,
-                "score_deltas": {k: round(final_scores.get(k, 0.0) - initial_scores.get(k, 0.0), 4)
-                                 for k in set(initial_scores) | set(final_scores)},
+                "score_deltas": {
+                    k: round(final_scores.get(k, 0.0) - initial_scores.get(k, 0.0), 4)
+                    for k in set(initial_scores) | set(final_scores)
+                },
                 "applied_edits": edits,
             },
         }
-        (run_dir / "text_dpo_pair.json").write_text(json.dumps(dpo_pair, indent=2))
+        atomic_write(run_dir / "text_dpo_pair.json", json.dumps(dpo_pair, indent=2))
 
-        # Pass criteria: core dims ≥ 0.7; include faithfulness if present
-        core_ok = all(final_scores.get(d, 0.0) >= 0.7 for d in ("coverage", "correctness", "coherence"))
+        # Pass criteria
+        core_ok = all(
+            final_scores.get(d, 0.0) >= 0.7
+            for d in ("coverage", "correctness", "coherence")
+        )
         faithful_ok = True if faithfulness_score is None else (faithfulness_score >= 0.7)
 
-        self.casebooks.add_scorable(casebook_name, case.id, "dpo_pair", json.dumps(dpo_pair), dpo_pair["metadata"])
-        self.kb.publish("trajectory.step", {"casebook": cb.name, "case_id": case.id, "vpm": vpm_row, "goal": goal_eval})
+        # Final logging
+        self.casebooks.add_scorable(
+            case_id=case.id,
+            role="dpo_pair",
+            text=safe_json(dpo_pair),
+            meta=dpo_pair["metadata"],
+            scorable_type=TargetType.DYNAMIC
+        )
+        self.kb.publish("trajectory.step", {
+            "casebook": cb.name,
+            "case_id": case.id,
+            "vpm": vpm_row,
+            "goal": goal_eval
+        })
 
         return {
             "run_dir": str(run_dir),
@@ -155,6 +288,49 @@ class TextImprover:
             "passed": bool(core_ok and faithful_ok),
         }
 
+    # --------------------------- helpers ---------------------------
+
+    def _sanitize_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+        if not plan:
+            raise ValueError("Plan is None")
+        out = {}
+        out["section_title"] = plan.get("section_title") or "Section"
+        units_in = plan.get("units") or []
+        clean_units = []
+        for u in units_in:
+            if not isinstance(u, dict):
+                continue
+            claim = (u.get("claim") or "").strip()
+            evidence = (u.get("evidence") or "See paper").strip()
+            cid = u.get("claim_id")
+            if not claim:
+                continue
+            clean_units.append({"claim": claim, "evidence": evidence, "claim_id": cid})
+        if not clean_units:
+            raise ValueError(f"No valid units in plan for '{out['section_title']}'")
+        out["units"] = clean_units
+        ents = plan.get("entities") or {}
+        out["entities"] = {
+            "ABBR": dict(ents.get("ABBR") or {}),
+            "REQUIRED": list(ents.get("REQUIRED") or [])
+        }
+        if plan.get("paper_text"):
+            out["paper_text"] = plan["paper_text"]
+        if plan.get("paper_text_path"):
+            out["paper_text_path"] = plan["paper_text_path"]
+        if plan.get("outline"):
+            out["outline"] = plan["outline"]
+        return out
+
+    def _seed_everything(self, seed: int) -> None:
+        random.seed(seed)
+        try:
+            import numpy as np
+            np.random.seed(seed)
+        except ImportError:
+            pass
+
+
     # --------------------------- generation ---------------------------
 
     def _generate_draft(self, plan: Dict[str, Any], run_dir: Path) -> Path:
@@ -162,7 +338,9 @@ class TextImprover:
         units = plan.get("units", [])
         abbrs = plan.get("entities", {}).get("ABBR", {})
 
-        outline = plan.get("outline") or [u.get("claim_id") for u in units if u.get("claim_id")]
+        outline = plan.get("outline") or [
+            u.get("claim_id") for u in units if u.get("claim_id")
+        ]
         outline = [cid for cid in outline if cid]  # filter None
 
         # Lead-in paragraph summarizing the section from claims (safe, no new facts)
@@ -185,7 +363,11 @@ class TextImprover:
         # Assemble
         draft = f"# {title}\n\n{lead}\n\n"
         if outline:
-            draft += "### Outline\n" + "\n".join(f"- [{cid}]" for cid in outline) + "\n\n"
+            draft += (
+                "### Outline\n"
+                + "\n".join(f"- [{cid}]" for cid in outline)
+                + "\n\n"
+            )
         draft += "### Details\n" + "\n\n".join(bullets) + "\n"
 
         # Persist
@@ -194,10 +376,15 @@ class TextImprover:
         (run_dir / "initial_draft.md").write_text(draft_path.read_text())
         return draft_path
 
-    def _lead_paragraph(self, title: str, units: List[Dict[str, Any]], abbrs: Dict[str, str]) -> str:
+    def _lead_paragraph(
+        self, title: str, units: List[Dict[str, Any]], abbrs: Dict[str, str]
+    ) -> str:
         # Use first 2–3 claims as a safe summary scaffold; expand first use of ABBR if present
         claims = [u.get("claim", "") for u in units if u.get("claim")]
-        head = " ".join([c.rstrip(".") + "." for c in claims[:3]]) or "This section summarizes key findings and method decisions from the paper."
+        head = (
+            " ".join([c.rstrip(".") + "." for c in claims[:3]])
+            or "This section summarizes key findings and method decisions from the paper."
+        )
         # expand one ABBR if title contains the full term
         for full, abbr in abbrs.items():
             if full in title and abbr not in head:
@@ -207,10 +394,14 @@ class TextImprover:
 
     # --------------------------- scoring ---------------------------
 
-    def _score_draft(self, draft_path: Path, plan: Dict[str, Any]) -> Dict[str, float]:
+    def _score_draft(
+        self, draft_path: Path, plan: Dict[str, Any]
+    ) -> Dict[str, float]:
         text = draft_path.read_text()
         units = plan.get("units", [])
-        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+        sentences = [
+            s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()
+        ]
 
         # Coverage: (1) by claim_id anchors; (2) fuzzy overlap fallback
         ids = [u.get("claim_id") for u in units if u.get("claim_id")]
@@ -219,9 +410,20 @@ class TextImprover:
             coverage = covered_ids / len(ids)
         else:
             # fallback: fraction of unit claims whose 5+ char tokens appear
-            unit_terms = [set(re.findall(r"\b[a-zA-Z]{5,}\b", (u.get("claim","") or "").lower())) for u in units]
+            unit_terms = [
+                set(
+                    re.findall(
+                        r"\b[a-zA-Z]{5,}\b", (u.get("claim", "") or "").lower()
+                    )
+                )
+                for u in units
+            ]
             text_terms = set(re.findall(r"\b[a-zA-Z]{5,}\b", text.lower()))
-            hits = sum(1 for t in unit_terms if t and len(t & text_terms) / len(t) >= 0.5)
+            hits = sum(
+                1
+                for t in unit_terms
+                if t and len(t & text_terms) / len(t) >= 0.5
+            )
             coverage = hits / max(1, len(unit_terms))
 
         # Citation support: factual sentences require [#]
@@ -243,29 +445,51 @@ class TextImprover:
         num_words = max(1, len(words))
         num_sentences = max(1, len(sentences))
         syllables = sum(self._count_syllables(w) for w in words)
-        fkgl_raw = 0.39 * (num_words/num_sentences) + 11.8 * (syllables/num_words) - 15.59
+        fkgl_raw = (
+            0.39 * (num_words / num_sentences)
+            + 11.8 * (syllables / num_words)
+            - 15.59
+        )
         readability = float(max(6.0, min(15.0, fkgl_raw)))
 
         # Coherence: adjacency Jaccard + title drift penalty
         coh_scores = []
-        for i in range(len(sentences)-1):
-            s1 = set(re.findall(r'\w+', sentences[i].lower()))
-            s2 = set(re.findall(r'\w+', sentences[i+1].lower()))
+        for i in range(len(sentences) - 1):
+            s1 = set(re.findall(r"\w+", sentences[i].lower()))
+            s2 = set(re.findall(r"\w+", sentences[i + 1].lower()))
             denom = len(s1 | s2)
-            coh_scores.append((len(s1 & s2)/denom) if denom else 1.0)
-        coherence = sum(coh_scores) / max(1, len(coh_scores)) if coh_scores else 1.0
-        title_terms = set(re.findall(r"\b[a-zA-Z]{5,}\b", (plan.get("section_title","") or "").lower()))
+            coh_scores.append((len(s1 & s2) / denom) if denom else 1.0)
+        coherence = (
+            sum(coh_scores) / max(1, len(coh_scores)) if coh_scores else 1.0
+        )
+        title_terms = set(
+            re.findall(
+                r"\b[a-zA-Z]{5,}\b",
+                (plan.get("section_title", "") or "").lower(),
+            )
+        )
         text_terms = set(re.findall(r"\b[a-zA-Z]{5,}\b", text.lower()))
-        drift_penalty = 0.0 if not title_terms else max(0.0, 0.2 - len(title_terms & text_terms)/max(1,len(title_terms)))
+        drift_penalty = (
+            0.0
+            if not title_terms
+            else max(
+                0.0,
+                0.2 - len(title_terms & text_terms) / max(1, len(title_terms)),
+            )
+        )
         coherence = max(0.0, min(1.0, coherence - drift_penalty))
 
-        correctness = citation_support  # proxy until abstract-alignment plugged in
+        correctness = (
+            citation_support  # proxy until abstract-alignment plugged in
+        )
         novelty = 0.6  # placeholder
         stickiness = self._compute_stickiness(text, plan)
 
         # compactness metrics
         len_chars = len(text)
-        compression_ratio = len(re.sub(r"\s+", " ", text)) / max(1, len(text))  # ~1 means minimal whitespace
+        compression_ratio = len(re.sub(r"\s+", " ", text)) / max(
+            1, len(text)
+        )  # ~1 means minimal whitespace
 
         return {
             "coverage": coverage,
@@ -278,7 +502,7 @@ class TextImprover:
             "novelty": novelty,
             "stickiness": stickiness,
             "len_chars": float(len_chars),
-            "compactness": float(compression_ratio)
+            "compactness": float(compression_ratio),
         }
 
     def _compute_stickiness(self, text: str, plan: Dict[str, Any]) -> float:
@@ -289,12 +513,18 @@ class TextImprover:
                 plan_terms.add(w)
         if not plan_terms:
             return 1.0
-        text_words = set(re.findall(r'\b[a-zA-Z]{5,}\b', text.lower()))
+        text_words = set(re.findall(r"\b[a-zA-Z]{5,}\b", text.lower()))
         return len(plan_terms & text_words) / max(1, len(plan_terms))
 
     # --------------------------- edits ---------------------------
 
-    def _apply_edit_policy(self, draft_path: Path, plan: Dict[str, Any], max_edits: int = 6, trace_path: Optional[Path] = None):
+    def _apply_edit_policy(
+        self,
+        draft_path: Path,
+        plan: Dict[str, Any],
+        max_edits: int = 6,
+        trace_path: Optional[Path] = None,
+    ):
         text = draft_path.read_text()
         edits: List[str] = []
 
@@ -304,18 +534,21 @@ class TextImprover:
 
             # 1) Add one missing claim (deterministic, in plan order)
             if scores["coverage"] < 0.8:
-                missing = [u for u in plan.get("units", [])
-                           if u.get("claim_id") and f"[#{u['claim_id']}]" not in text]
+                missing = [
+                    u
+                    for u in plan.get("units", [])
+                    if u.get("claim_id") and f"[#{u['claim_id']}]" not in text
+                ]
                 if missing:
                     u = missing[0]
-                    line = f"- {u.get('claim','Claim')} [#{u['claim_id']}].\n  *Evidence: {u.get('evidence','See paper')}* [#]\n\n"
+                    line = f"- {u.get('claim', 'Claim')} [#{u['claim_id']}].\n  *Evidence: {u.get('evidence', 'See paper')}* [#]\n\n"
                     text = text.rstrip() + "\n" + line
                     edits.append(f"add_claim:{u['claim_id']}")
                     change = True
 
             # 2) Add citation markers to factual sentences lacking [#]
             if not change and scores["citation_support"] < 0.7:
-                sentences = re.split(r'(?<=[.!?])\s+', text)
+                sentences = re.split(r"(?<=[.!?])\s+", text)
                 for j, s in enumerate(sentences):
                     if self._is_factual_sentence(s) and "[#]" not in s:
                         sentences[j] = s.rstrip() + " [#]"
@@ -329,18 +562,25 @@ class TextImprover:
                 abbrs = plan.get("entities", {}).get("ABBR", {})
                 for full, abbr in abbrs.items():
                     if full not in text and abbr in text:
-                        text = re.sub(rf"\b{re.escape(abbr)}\b", f"{full} ({abbr})", text, count=1)
+                        text = re.sub(
+                            rf"\b{re.escape(abbr)}\b",
+                            f"{full} ({abbr})",
+                            text,
+                            count=1,
+                        )
                         edits.append(f"expand_abbr:{full}->{abbr}")
                         change = True
                         break
                     if text.count(full) > 1:
                         first = True
+
                         def _swap(m):
                             nonlocal first
                             if first:
                                 first = False
                                 return m.group(0)
                             return abbr
+
                         text = re.sub(rf"\b{re.escape(full)}\b", _swap, text)
                         edits.append(f"abbreviate_repeats:{full}->{abbr}")
                         change = True
@@ -382,7 +622,12 @@ class TextImprover:
             draft_path.write_text(self._normalize_ws(text))
             if trace_path:
                 with trace_path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps({"edit": i+1, "scores": scores, "op": edits[-1]}) + "\n")
+                    f.write(
+                        json.dumps(
+                            {"edit": i + 1, "scores": scores, "op": edits[-1]}
+                        )
+                        + "\n"
+                    )
 
         return text, edits
 
@@ -403,7 +648,12 @@ class TextImprover:
         s_low = s.lower()
         return any(kw in s_low for kw in FACTUAL_KWS)
 
-    def _build_vpm_row(self, initial: Dict[str, float], final: Dict[str, float], plan: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_vpm_row(
+        self,
+        initial: Dict[str, float],
+        final: Dict[str, float],
+        plan: Dict[str, Any],
+    ) -> Dict[str, Any]:
         return {
             "section": plan.get("section_title", "unknown"),
             "coverage_initial": round(initial.get("coverage", 0.0), 3),
@@ -411,7 +661,9 @@ class TextImprover:
             "correctness": round(final.get("correctness", 0.0), 3),
             "coherence": round(final.get("coherence", 0.0), 3),
             "citation_support": round(final.get("citation_support", 0.0), 3),
-            "entity_consistency": round(final.get("entity_consistency", 0.0), 3),
+            "entity_consistency": round(
+                final.get("entity_consistency", 0.0), 3
+            ),
             "readability": round(final.get("readability", 0.0), 2),
             "fkgl_raw": round(final.get("fkgl_raw", 0.0), 2),
             "novelty": round(final.get("novelty", 0.0), 3),
@@ -425,7 +677,7 @@ class TextImprover:
             "section_title": plan.get("section_title"),
             "claim_count": len(plan.get("units", [])),
             "required_entities": plan.get("entities", {}).get("REQUIRED", []),
-            "abbr": plan.get("entities", {}).get("ABBR", {})
+            "abbr": plan.get("entities", {}).get("ABBR", {}),
         }
 
     def _count_syllables(self, word: str) -> int:
@@ -466,7 +718,7 @@ class TextImprover:
     def _sanitize_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure required shape; drop nulls; keep keys we use."""
         out: Dict[str, Any] = {}
-        out["section_title"] = (plan.get("section_title") or "Section")
+        out["section_title"] = plan.get("section_title") or "Section"
         units_in = plan.get("units") or []
         clean_units: List[Dict[str, Any]] = []
         for u in units_in:
@@ -475,12 +727,14 @@ class TextImprover:
             claim = (u.get("claim") or "").strip()
             evidence = (u.get("evidence") or "See paper").strip()
             cid = u.get("claim_id")
-            clean_units.append({"claim": claim, "evidence": evidence, "claim_id": cid})
+            clean_units.append(
+                {"claim": claim, "evidence": evidence, "claim_id": cid}
+            )
         out["units"] = clean_units
         ents = plan.get("entities") or {}
         out["entities"] = {
             "ABBR": ents.get("ABBR") or {},
-            "REQUIRED": ents.get("REQUIRED") or []
+            "REQUIRED": ents.get("REQUIRED") or [],
         }
         # optional extras
         if plan.get("paper_text"):
@@ -495,6 +749,7 @@ class TextImprover:
         random.seed(seed)
         try:
             import numpy as np
+
             np.random.seed(seed)
         except Exception:
             pass

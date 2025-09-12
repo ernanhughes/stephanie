@@ -399,7 +399,6 @@ DEBUGGING = {
     "TrimmingSection": "✂️",  # Section trimming
     "ContextAfterStage": "🗃️➡️",  # Post-stage context
     "ClassificationStarted": "🏷️▶️",  # Classification started
-    "ClassificationCompleted": "🏷️✅",  # Classification completed
 }
 
 # ======================
