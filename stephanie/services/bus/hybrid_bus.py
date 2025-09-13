@@ -1,4 +1,4 @@
-# stephanie/knowledge/hybrid_bus.py
+# stephanie/services/bus/hybrid_bus.py
 """
 Hybrid event bus that auto-selects the best available transport:
 1. NATS JetStream (persistent, durable)

@@ -1,4 +1,4 @@
-# stephanie/knowledge/idempotency.py
+# stephanie/services/bus/idempotency.py
 from __future__ import annotations
 import asyncio
 import os

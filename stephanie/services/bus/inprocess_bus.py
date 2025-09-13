@@ -1,4 +1,4 @@
-# stephanie/knowledge/inprocess_bus.py
+# stephanie/services/bus/inprocess_bus.py
 """
 In-process event bus for development and testing.
 Provides a simple pub/sub implementation without external dependencies.

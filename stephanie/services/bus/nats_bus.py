@@ -1,4 +1,4 @@
-# stephanie/knowledge/nats_bus.py
+# stephanie/services/bus/nats_bus.py
 """
 NATS JetStream implementation of the BusProtocol.
 Handles persistent messaging with idempotency and DLQ support.
