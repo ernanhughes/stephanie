@@ -181,7 +181,7 @@ class SymbolicImpactAnalyzer:
         return results
 
 
-class LATSDSPyAgent(ScoringMixin, BaseAgent):
+class LATSDSPyAgent(BaseAgent):
     """
     Enhanced LATS agent with:
     - Tree search (MCTS + UCT)

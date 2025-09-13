@@ -342,38 +342,32 @@ class CalibrationManager:
     def is_trained(self, domain: str) -> bool:
         return domain in self.models or os.path.exists(self._cal_path(domain))
 
-    # ----------------------------
-    # Inference
-    # ----------------------------
     def _ensure_loaded(self, domain: str) -> bool:
-        """Load calibrator from store into memory if needed."""
         if domain in self.models:
             return True
-        try:
-            loaded = self.memory.calibration_events.load_calibrator(domain)
-        except Exception as e:
-            self.logger.error(f"load_calibrator failed for {domain}: {e}")
-            loaded = None
-
-        if not loaded:
-            return False
-
-        # support either tuple or dict from store
-        if isinstance(loaded, tuple) and len(loaded) >= 2:
-            calibrator, meta = loaded[0], loaded[1]
-            threshold = float((meta or {}).get("threshold", 0.5))
-        elif isinstance(loaded, dict):
-            calibrator = loaded.get("calibrator") or loaded.get("model")
-            threshold = float(loaded.get("threshold", 0.5))
-        else:
-            calibrator, threshold = loaded, 0.5
-
-        if calibrator is None:
-            return False
-
-        self.models[domain] = calibrator
-        self.thresholds[domain] = threshold
+        # tolerate stores without the new API
+        store = getattr(self.memory, "calibration_events", None)
+        loader = getattr(store, "load_calibrator", None)
+        data = loader(domain) if callable(loader) else None
+        if not data:
+            # sane identity default
+            data = {"coefficients": [1.0, 0.0]}
+            if self.logger:
+                self.logger.log("CalibrationDefaultUsed", {"domain": domain})
+        self.models[domain] = data
         return True
+
+    def get_calibrated_probability(self, domain: str, raw_sim: float) -> float:
+        self._ensure_loaded(domain)
+        model = self.models.get(domain) or {"coefficients": [1.0, 0.0]}
+        coeffs = model.get("coefficients", [1.0, 0.0])
+        # polynomial transform; clamp to [0,1]
+        try:
+            import numpy as np
+            val = float(np.polyval(coeffs, raw_sim))
+        except Exception:
+            val = float(raw_sim)
+        return max(0.0, min(1.0, val))
 
     def get_calibrated_probability(self, domain: str, raw_sim: float) -> float:
         domain = domain or "general"

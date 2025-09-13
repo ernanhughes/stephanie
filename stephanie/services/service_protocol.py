@@ -18,7 +18,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict
-
+from typing import Callable, Optional, Awaitable
+import asyncio
+import logging
+ 
 
 class Service(ABC):
     """
@@ -114,3 +117,34 @@ class Service(ABC):
             Example: "knowledge-ner-v1", "scoring-relevance-v2"
         """
         pass
+
+
+        # --- New: bus awareness (optional, progressive) ---
+    def set_bus(self, bus: Any) -> None:
+        """Inject an event bus. Optional for services that use events."""
+        self.bus = bus
+        # optional logger if service provides one
+        lg = getattr(self, "logger", None) or logging.getLogger(self.name)
+        try:
+            lg.info("ServiceBusAttached", extra={"service": self.name, "backend": getattr(bus, "get_backend", lambda: "unknown")()})
+        except Exception:
+            pass
+
+    async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], Awaitable[None]] | Callable[[Dict[str, Any]], None]) -> None:
+        """Subscribe if a bus exists; no-op otherwise."""
+        bus = getattr(self, "bus", None)
+        if not bus:
+            return
+        # wrap sync handlers
+        if not asyncio.iscoroutinefunction(handler):
+            async def _async_handler(payload: Dict[str, Any]):
+                handler(payload)
+            return await bus.subscribe(subject, _async_handler)
+        return await bus.subscribe(subject, handler)
+
+    async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
+        """Publish if a bus exists; no-op otherwise."""
+        bus = getattr(self, "bus", None)
+        if not bus:
+            return
+        await bus.publish(subject, payload)

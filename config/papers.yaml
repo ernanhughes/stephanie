@@ -2,6 +2,8 @@
 defaults:
   - _self_
   - db: postgres
+  - plan_monitor: disabled
+
   - agents/survey
   - agents/search_orchestrator
   - agents/knowledge_loader
@@ -19,6 +21,7 @@ goal:
   goal_text: "https://arxiv.org/pdf/2505.15143"
   goal_type: "similar_papers"
   focus_area: "AI research"
+
 
 
 post_judgment:

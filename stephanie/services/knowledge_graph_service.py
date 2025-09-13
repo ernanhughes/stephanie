@@ -1,6 +1,7 @@
 # stephanie/services/knowledge_graph_service.py
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
@@ -104,6 +105,9 @@ class KnowledgeGraphService(Service):
             self._stats["last_update"] = datetime.now(timezone.utc).isoformat()
             self._stats["build_time"] = time.time() - start_time
 
+            asyncio.create_task(self._setup_event_listeners())
+
+
             self.logger.log("KnowledgeGraphInitialized", {
                 "node_count": self._stats["total_nodes"],
                 "edge_count": self._stats["total_edges"],
@@ -116,6 +120,55 @@ class KnowledgeGraphService(Service):
                 "traceback": traceback.format_exc()
             })
             raise RuntimeError(f"KnowledgeGraph failed to initialize: {e}")
+
+    async def _setup_event_listeners(self):
+        """Subscribe to indexing events via the bus."""
+        await self.subscribe(
+            "knowledge_graph.index_request",
+            self._handle_index_request
+        )
+        self.logger.info("KnowledgeGraphService listening for index requests")
+
+
+    async def _handle_index_request(self, payload: Dict[str, Any]):
+        """Process an indexing request from the event bus."""
+        try:
+            scorable_id = payload["scorable_id"]
+            scorable_type = payload["scorable_type"]
+            text = payload["text"]
+            entities = payload["entities"]
+            domains = payload["domains"]
+            
+            # Index entities
+            for entity in entities:
+                self._add_entity_node(
+                    node_id=f"{scorable_id}:{entity['type']}:{entity['start']}-{entity['end']}",
+                    entity=entity,
+                    domains=domains,
+                    scorable_id=scorable_id,
+                    scorable_type=scorable_type
+                )
+                
+            # Build relationships
+            relationships = self._build_relationships(entities, domains, scorable_id)
+            for rel in relationships:
+                self._add_relationship(**rel)
+                
+            # Publish completion event
+            self.publish("knowledge_graph.index_complete", {
+                "scorable_id": scorable_id,
+                "node_count": len(entities),
+                "relationship_count": len(relationships),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+            
+        except Exception as e:
+            self.logger.error(f"Indexing failed: {str(e)}", exc_info=True)
+            # Publish failure event
+            self.publish("knowledge_graph.index_failed", {
+                "scorable_id": payload.get("scorable_id"),
+                "error": str(e)
+            })
 
     def health_check(self) -> Dict[str, Any]:
         status = "healthy" if self._initialized else "unhealthy"

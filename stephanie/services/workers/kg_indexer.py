@@ -101,7 +101,7 @@ class KnowledgeGraphIndexerWorker:
         self.running = False
         self.logger.info("KnowledgeGraphIndexerWorker stopped.", extra=self.stats)
 
-    def _process_event(self, event: Dict[str, Any]) -> None:
+    async def _process_event(self, event: Dict[str, Any]) -> None:
         start_time = time.time()
         payload = event.get("payload", {})
         scorable_id = payload.get("scorable_id", "unknown")
@@ -140,25 +140,25 @@ class KnowledgeGraphIndexerWorker:
             })
             self.stats["failed"] += 1
             # Optionally publish dead-letter event
-            self._publish_failure_event(event, str(e))
+            await self._publish_failure_event(event, str(e))
 
     @retry_with_backoff(max_retries=3, backoff_in_seconds=1)
-    def _add_entity_with_retry(self, scorable_id: str, entity: Dict[str, Any], domains: list) -> None:
+    async def _add_entity_with_retry(self, scorable_id: str, entity: Dict[str, Any], domains: list) -> None:
         """Add an entity with retry on transient errors."""
         node_id = f"{scorable_id}:{entity['type']}:{entity['start']}-{entity['end']}"
-        self.kg_service._add_entity_node(node_id, entity, domains, scorable_id, "document")
+        await self.kg_service._add_entity_node(node_id, entity, domains, scorable_id, "document")
 
     @retry_with_backoff(max_retries=3, backoff_in_seconds=0.5)
-    def _add_relationship_with_retry(self, rel: Dict[str, Any]) -> None:
+    async def _add_relationship_with_retry(self, rel: Dict[str, Any]) -> None:
         """Add a relationship with retry."""
-        self.kg_service._add_relationship(
+        await self.kg_service._add_relationship(
             source_id=rel["source"],
             target_id=rel["target"],
             rel_type=rel["type"],
             confidence=rel["confidence"]
         )
 
-    def _publish_failure_event(self, original_event: Dict[str, Any], error: str) -> None:
+    async def _publish_failure_event(self, original_event: Dict[str, Any], error: str) -> None:
         """Send failed job to DLQ or monitoring."""
         failure_event = {
             "event_type": "knowledge_graph.index_failed",
@@ -169,7 +169,11 @@ class KnowledgeGraphIndexerWorker:
             }
         }
         try:
-            self.memory.bus.publish(failure_event)
+            await self.memory.bus.publish(
+                subject=failure_event["event_type"],
+                payload=failure_event["payload"]
+            )
+
         except Exception as e:
             self.logger.error(f"Failed to publish failure event: {e}")
 

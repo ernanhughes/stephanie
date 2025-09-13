@@ -49,6 +49,10 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "RulesServiceDisabled": "🧩🚫",  # Rules service disabled
+    "PlanTraceServiceInit": "🖇️⚙️",  # Plan trace service initialized
+      
+    "KnowledgeGraphInitialized": "📰⚙️",  # Knowledge graph initialized
     "StateTrackerInit": "🗂️⚙️",  # State tracker initialized
     "NERRetrieverInitialized": "🏷️🔍",  # NER retriever initialized
     "EntityRetrievalMetrics": "🏷️📊",  # Entity retrieval metrics

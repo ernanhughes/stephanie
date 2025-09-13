@@ -75,7 +75,7 @@ class DraftGeneratorAgent(BaseAgent):
         })
 
         # --------- Fuse knowledge (paper + chat) → plan ----------
-        plan = self.fuser.fuse(
+        plan = await self.fuser.fuse(
             text=paper_text,
             chat_messages=chat_messages,
             section_name=section_name,

@@ -48,6 +48,9 @@ defaults:
   - agents/auto_tuner
   - logging/json_logger
 
+embeddings:
+  backend: hnet
+
 goal:
   goal_text: "How could an autonomous AI lab iteratively improve its own hypotheses using symbolic rules and evaluation feedback?"
   goal_type: "strategic"
@@ -96,12 +99,6 @@ report:
 web_search:
   engine: "searxng"
   instance_url: "http://localhost:8080"
-
-
-embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
 
 pipeline:
   name: default_pipeline

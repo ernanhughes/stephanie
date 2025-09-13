@@ -1,6 +1,7 @@
 # stephanie/memory/calibration_event_store.py
 
 import datetime
+import os
 from typing import Dict, List, Union, Mapping
 
 import numpy as np
@@ -49,10 +50,14 @@ class CalibrationEventStore:
     Provides persistence and query methods for calibration events.
     """
 
-    def __init__(self, session: Session, logger=None):
+    def __init__(self, session: Session, logger=None, model_dir: str = "data/calibration"):
         self.session = session
         self.logger = logger
         self.name = "calibration_events"
+        self.session = session
+        self.logger = logger
+        self.model_dir = model_dir
+        os.makedirs(self.model_dir, exist_ok=True)
 
     def add(self, event: Union[CalibrationEventORM, Mapping]) -> CalibrationEventORM:
         """
@@ -251,3 +256,57 @@ class CalibrationEventStore:
         Backwards-compat wrapper. Returns {"pos": int, "neg": int, "total": int}.
         """
         return self.count_by_domain(domain)
+
+    # ---- NEW ----
+    def load_calibrator(self, domain: str) -> dict | None:
+        """
+        Load a calibrator blob for a domain.
+        Falls back to general if domain file is missing.
+        Returns None if nothing is available.
+        """
+        path = os.path.join(self.model_dir, f"{domain}_calibration.json")
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            # fallback to general
+            gen = os.path.join(self.model_dir, "general_calibration.json")
+            if os.path.exists(gen):
+                with open(gen, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            return None
+        except Exception as e:
+            if self.logger:
+                self.logger.log("CalibrationLoadFailed", {"domain": domain, "error": str(e)})
+            return None
+
+    # ---- NEW ----
+    def save_calibrator(self, domain: str, model: dict) -> None:
+        """
+        Persist a calibrator blob for a domain (atomic write).
+        """
+        path = os.path.join(self.model_dir, f"{domain}_calibration.json")
+        tmp = path + ".tmp"
+        payload = dict(model)
+        payload.setdefault("timestamp", datetime.utcnow().isoformat())
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+            os.replace(tmp, path)
+            if self.logger:
+                self.logger.log("CalibrationSaved", {"domain": domain, "path": path})
+        except Exception as e:
+            if self.logger:
+                self.logger.log("CalibrationSaveFailed", {"domain": domain, "error": str(e)})
+
+    # Optional helpers (aliases)
+    def upsert_calibrator(self, domain: str, model: dict) -> None:
+        self.save_calibrator(domain, model)
+
+    def delete_calibrator(self, domain: str) -> None:
+        path = os.path.join(self.model_dir, f"{domain}_calibration.json")
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass

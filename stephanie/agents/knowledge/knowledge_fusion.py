@@ -182,7 +182,7 @@ class KnowledgeFusionAgent(BaseAgent):
             if self.kfc.enable_chunking:
                 self._index_session_entities_with_chunking(scorables)
             else:
-                self._index_session_entities(scorables)
+                await self._index_session_entities(scorables)
 
             # Progress bar for sections
             plans: List[Dict[str, Any]] = []
@@ -730,7 +730,7 @@ class KnowledgeFusionAgent(BaseAgent):
 
         return scorables
 
-    def _index_session_entities(self, scorables: List[Scorable]) -> None:
+    async def _index_session_entities(self, scorables: List[Scorable]) -> None:
         """
         Instead of indexing directly, publish to KnowledgeBus for async processing.
         No DB writes; no blocking.
@@ -791,7 +791,11 @@ class KnowledgeFusionAgent(BaseAgent):
                     }
                 }
 
-                self.memory.bus.publish(event)
+                await self.memory.bus.publish(
+                    subject=event["event_type"],
+                    payload=event["payload"]
+                )
+
                 total_queued += len(filtered_ents)
                 events_published += 1
 
@@ -807,7 +811,7 @@ class KnowledgeFusionAgent(BaseAgent):
             "entities_queued": total_queued
         })
 
-    def _index_session_entities_with_chunking(self, scorables: List[Scorable]) -> None:
+    async def _index_session_entities_with_chunking(self, scorables: List[Scorable]) -> None:
         """
         Chunk large texts and publish async indexing requests.
         """
@@ -892,7 +896,10 @@ class KnowledgeFusionAgent(BaseAgent):
                         }
                     }
 
-                    self.memory.bus.publish(event)
+                    await self.memory.bus.publish(
+                        subject=event["event_type"],
+                        payload=event["payload"]
+                    )
                     total_queued += len(filtered_ents)
                     events_published += 1
 

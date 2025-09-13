@@ -60,6 +60,7 @@ from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.memory.theorem_store import TheoremStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
+from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.knowledge_bus import (InProcessKnowledgeBus,
                                               KnowledgeBus)
 
@@ -85,6 +86,10 @@ class MemoryTool:
         )
         self.conn.autocommit = True
         register_vector(self.conn)  # Register pgvector extension
+
+        # Setup knowledge bus needed before embeddings bvecause of ner
+        self.bus = self._setup_knowledge_bus()
+
 
         embedding_cfg = self.cfg.get("embeddings", {})
         # Register stores
@@ -180,8 +185,6 @@ class MemoryTool:
             for store_class in cfg.get("extra_stores", []):
                 self.register_store(store_class(self.session, logger))
 
-
-        self.bus = self._setup_knowledge_bus()
         self.logger.log("KnowledgeBusInitialized", {
             "backend": self.cfg.get("bus", {}).get("backend", "inprocess")
         })
@@ -240,8 +243,8 @@ class MemoryTool:
                 )
 
     def _setup_knowledge_bus(self) -> KnowledgeBus:
-        return InProcessKnowledgeBus()
-
+        return HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)
+    
 
 
     @staticmethod

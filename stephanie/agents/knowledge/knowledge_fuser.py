@@ -59,7 +59,7 @@ class KnowledgeFuser:
             "entity_merge_strategy", "chat_priority"
         )
 
-    def fuse(
+    async def fuse(
         self,
         *,
         text: str,
@@ -142,7 +142,7 @@ class KnowledgeFuser:
             merged_entities = self._merge_entities(chat_ku, paper_ku)
 
             # Step 6: Optionally publish indexing event
-            self._publish_index_request(
+            await self._publish_index_request(
                 scorable_id, text, paper_ku, top_domains
             )
 
@@ -282,7 +282,7 @@ class KnowledgeFuser:
 
         return {"ABBR": abbr, "REQUIRED": required}
 
-    def _publish_index_request(
+    async def _publish_index_request(
         self,
         scorable_id: str,
         text: str,
@@ -331,7 +331,11 @@ class KnowledgeFuser:
         }
 
         try:
-            self.memory.bus.publish(event)
+            await self.memory.bus.publish(
+                subject=event["event_type"],
+                payload=event["payload"]
+            )
+
             _logger.debug(
                 "IndexRequestPublished"
                 f"scorable_id: {scorable_id}"

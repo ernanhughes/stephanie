@@ -33,6 +33,7 @@ import random
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
+from time import time
 
 import numpy as np
 # stephanie/scoring/model/ner_retriever.py
@@ -216,6 +217,10 @@ class NERRetrieverEmbedder:
             )
 
         self.calibration = CalibrationManager(cfg=self.cfg, memory=self.memory, logger=self.logger)
+
+        # Attach KV cache (best-effort)
+        self._kv = self._attach_kv_cache()
+        self._kv_ttl_sec = self.cfg.get("ner_kv_ttl_sec", 3600)  # default 1h
 
         _logger.info(
             f"NER Retriever initialized with {model_name} "
@@ -518,6 +523,57 @@ class NERRetrieverEmbedder:
 
         return total_entities
 
+
+    def _attach_kv_cache(self):
+        """Attach NATS KV cache for entity retrieval results."""
+        try:
+            bus = getattr(self.memory, "bus", None)
+            if bus and hasattr(bus, "get_kv"):
+                kv = bus.get_kv(
+                    bucket="ner.retrieve.cache",
+                    description="NER retrieval results (TTL 1h)",
+                    max_age_seconds=3600,
+                )
+                return kv
+        except Exception as e:
+            if self.logger:
+                self.logger.log("NERKVUnavailable", {"error": str(e)})
+        return None
+
+    def _cache_key(self, query: str, k: int, domain: str) -> str:
+        """Stable key for caching retrieval results."""
+        import hashlib, json
+        payload = {"q": query, "k": k, "d": domain or "general"}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+    def _kv_get(self, key: str):
+        if not self._kv:
+            return None
+        try:
+            raw = self._kv.get(key)
+            if not raw:
+                return None
+            doc = json.loads(raw.decode("utf-8"))
+            if (time.time() - float(doc.get("ts", 0))) > self._kv_ttl_sec:
+                return None
+            return doc.get("results")
+        except Exception as e:
+            if self.logger:
+                self.logger.log("NERKVGetError", {"error": str(e)})
+        return None
+
+    def _kv_put(self, key: str, results: List[Dict]):
+        if not self._kv:
+            return
+        try:
+            payload = {"ts": time.time(), "results": results}
+            self._kv.put(key, json.dumps(payload).encode("utf-8"))
+            if self.logger:
+                self.logger.log("NERKVStored", {"key": key, "items": len(results)})
+        except Exception as e:
+            if self.logger:
+                self.logger.log("NERKVPu tError", {"error": str(e)})
+
     def _process_batch(self, texts, spans_list, scorables, new_embs, new_meta):
         all_spans = [[(a, b) for a, b, _ in spans] for spans in spans_list]
         batched_vecs = self.embed_entities_for_batch(
@@ -561,6 +617,20 @@ class NERRetrieverEmbedder:
         - Robust error handling for polynomial calibration
         - Domain-aware thresholding
         """
+
+        key = self._cache_key(query, k, domain)
+
+        # 1) Check KV cache first
+        kv_hit = self._kv_get(key)
+        if kv_hit:
+            if self.logger:
+                self.logger.log("NERCacheHit", {
+                    "backend": "nats_kv",
+                    "items": len(kv_hit),
+                    "query": query[:50]
+                })
+            return kv_hit
+
         # Preprocess and embed the query
         query_emb = self.embed_type_query(query)
         
@@ -647,7 +717,9 @@ class NERRetrieverEmbedder:
         
         # Limit to requested number
         filtered_results = filtered_results[:k]
-        
+
+        self._kv_put(key, filtered_results)
+
         # Log for monitoring
         self._log_retrieval_metrics(
             query, 
@@ -972,7 +1044,7 @@ class NERRetrieverEmbedder:
 
         try:
             return self._domain_classifier.classify(query)
-        except Exception as e:
+        except Exception as e: 
             _logger.warning(f"Domain classification failed: {e}")
             return self._keyword_based_domain_detection(query)
 

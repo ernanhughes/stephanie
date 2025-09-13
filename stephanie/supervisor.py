@@ -48,7 +48,7 @@ class Supervisor:
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
         self.logger.log("SupervisorInit", {"cfg": cfg})
 
-        self.container = ServiceContainer()
+        self.container = ServiceContainer(cfg=cfg, logger=logger)
         # Register core services
         self._register_core_services(cfg, memory, logger)
 

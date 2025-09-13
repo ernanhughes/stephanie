@@ -17,8 +17,9 @@ from service usage, making the system more modular and testable.
 """
 
 from __future__ import annotations
-
+import asyncio, logging
 from typing import Any, Callable, Dict, List
+from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 
 from stephanie.services.service_protocol import Service
 
@@ -45,13 +46,28 @@ class ServiceContainer:
         db_service = container.get('database')  # Initializes config first, then database
     """
     
-    def __init__(self):
-        """Initialize an empty service container."""
-        self._services: Dict[str, Service] = {}  # Initialized service instances
-        self._factories: Dict[str, Callable[[], Service]] = {}  # Service factory functions
+    def __init__(self, cfg: Dict[str, Any], logger=None):
+        self.cfg = cfg
+        self.logger = logger or logging.getLogger("services")
+        self._factories: Dict[str, Callable[[], Service]] = {}
+        self._services: Dict[str, Service] = {}
         self._dependencies: Dict[str, List[str]] = {}  # Service dependency mapping
-        self._initialized: set = set()  # Track initialized services
-    
+        self._initialized: set = set()  # Track initialized services        
+        self._order: List[str] = []
+        self._bus = None
+
+    async def initialize(self):
+        self._bus = HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)
+        connected =await self._bus.connect()
+        if not connected:
+            self.logger.error("Failed to connect to event bus")
+        else:
+            self.logger.info(f"Connected to event bus backend: {self._bus.get_backend()}")
+        
+        # Then initialize services
+        for name in self._factories.keys():
+            self.get(name)
+
     def register(
         self, 
         name: str, 
@@ -76,43 +92,30 @@ class ServiceContainer:
         self._dependencies[name] = dependencies or []
     
     def get(self, name: str) -> Service:
-        """
-        Get a service, initializing it and its dependencies if needed.
-        
-        Args:
-            name: Name of the service to retrieve
-            
-        Returns:
-            Initialized service instance
-            
-        Raises:
-            KeyError: If the requested service is not registered
-            RuntimeError: If circular dependencies are detected
-            ServiceInitializationError: If service fails to initialize
-        """
-        # Return already initialized service
+        """Get a service, initializing it and its dependencies."""
         if name in self._services:
             return self._services[name]
-        
-        # Check if service is registered
+            
         if name not in self._factories:
             raise KeyError(f"Service '{name}' is not registered")
-        
-        # Check for circular dependencies (service is currently initializing)
-        if name in self._initialized:
-            raise RuntimeError(f"Circular dependency detected for service '{name}'")
-        
-        # Mark as initializing to detect cycles in dependencies
-        self._initialized.add(name)
-        
-        # Initialize all dependencies first
-        for dep_name in self._dependencies.get(name, []):
-            self.get(dep_name)
-        
-        # Create and initialize the service
+            
+        # Initialize dependencies first
+        for dep in self._dependencies.get(name, []):
+            self.get(dep)
+            
+        # Create service
         service = self._factories[name]()
+        
+        # Inject the bus if the service supports it
+        if hasattr(service, 'set_bus'):
+            service.set_bus(self._bus)
+        elif hasattr(service, 'bus'):
+            service.bus = self._bus
+            
+        # Initialize the service
         service.initialize()
         self._services[name] = service
+        self._initialized.add(name)
         
         return service
     
@@ -135,6 +138,23 @@ class ServiceContainer:
                 print(f"Error shutting down service '{name}': {e}")
         
         # Clear all state
+        self._services.clear()
+        self._initialized.clear()
+
+    async def shutdown(self):
+        """Gracefully shut down all services and the bus."""
+        # Shutdown in reverse initialization order
+        for name in reversed(list(self._initialized)):
+            try:
+                if hasattr(self._services[name], 'shutdown'):
+                    await self._services[name].shutdown()
+            except Exception as e:
+                self.logger.error(f"Error shutting down {name}: {str(e)}")
+                
+        # Shutdown the bus last
+        if self._bus:
+            await self._bus.close()
+            
         self._services.clear()
         self._initialized.clear()
     

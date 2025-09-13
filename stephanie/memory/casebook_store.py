@@ -5,6 +5,10 @@ import uuid
 from typing import List, Optional, Sequence
 
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from typing import Dict, Tuple
+from sqlalchemy import and_, func
+from sqlalchemy.orm import Query
 
 from stephanie.models.case_goal_state import CaseGoalStateORM
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
@@ -36,6 +40,119 @@ class CaseBookStore:
         self.session.add(cb)
         self.session.commit()
         return cb
+
+
+    def _apply_json_meta_filter(self, q: Query, column, meta_filter: Optional[Dict]) -> Tuple[Query, bool]:
+        """
+        Try to filter JSON meta in the database.
+        Returns (query, db_filtered). If db_filtered is False, caller should Python-filter.
+        """
+        if not meta_filter:
+            return q, True
+
+        dialect = (self.session.bind.dialect.name if self.session.bind is not None else "").lower()
+
+        if dialect == "postgresql":
+            # Uses JSONB containment: column @> meta_filter
+            q = q.filter(column.contains(meta_filter))
+            return q, True
+
+        if dialect == "sqlite":
+            # Use json_extract() per key
+            conds = [func.json_extract(column, f'$.{k}') == v for k, v in meta_filter.items()]
+            if conds:
+                q = q.filter(and_(*conds))
+                return q, True
+            return q, False
+
+        return q, False
+
+
+    # --- replace your get_by_case with this version ---
+    def get_by_case(
+        self,
+        *,
+        casebook_name: str,
+        case_id: int,
+        role: Optional[str] = None,
+        scorable_type: Optional[str] = None,
+        meta_filter: Optional[dict] = None,
+        limit: int = 50,
+    ):
+        """
+        Return scorable rows for a given (casebook_name, case_id), newest first.
+        Prefers DynamicScorableORM; falls back to CaseScorableORM if none.
+        """
+        cb = self.get_by_name(casebook_name)
+        if not cb:
+            return []
+
+        # ---- DynamicScorableORM path (has .text directly) ----
+        q = (
+            self.session.query(DynamicScorableORM)
+            .join(CaseORM, DynamicScorableORM.case_id == CaseORM.id)
+            .filter(CaseORM.casebook_id == cb.id, DynamicScorableORM.case_id == case_id)
+        )
+        if role:
+            q = q.filter(DynamicScorableORM.role == role)
+        if scorable_type:
+            q = q.filter(DynamicScorableORM.scorable_type == scorable_type)
+
+        # q, db_filtered = self._apply_json_meta_filter(q, DynamicScorableORM.meta, meta_filter)
+
+        order_col = getattr(DynamicScorableORM, "created_at", None)
+        q = q.order_by(desc(order_col) if order_col is not None else DynamicScorableORM.id.desc())
+        dyn_rows = q.limit(limit).all()
+
+        # Python-side fallback if dialect didn’t filter JSON
+        if meta_filter :
+            dyn_rows = [
+                r for r in dyn_rows
+                if isinstance(r.meta, dict) and all(r.meta.get(k) == v for k, v in meta_filter.items())
+            ]
+
+        if dyn_rows:
+            return dyn_rows
+
+        # ---- Legacy CaseScorableORM fallback (text usually in meta['text']) ----
+        q2 = (
+            self.session.query(CaseScorableORM)
+            .join(CaseORM, CaseScorableORM.case_id == CaseORM.id)
+            .filter(CaseORM.casebook_id == cb.id, CaseScorableORM.case_id == case_id)
+        )
+        if role:
+            q2 = q2.filter(CaseScorableORM.role == role)
+        if scorable_type:
+            q2 = q2.filter(CaseScorableORM.scorable_type == scorable_type)
+
+        q2, db_filtered_legacy = self._apply_json_meta_filter(q2, CaseScorableORM.meta, meta_filter)
+
+        order_col2 = getattr(CaseScorableORM, "created_at", None)
+        q2 = q2.order_by(desc(order_col2) if order_col2 is not None else CaseScorableORM.id.desc())
+        legacy_rows = q2.limit(limit).all()
+
+        if meta_filter and not db_filtered_legacy:
+            legacy_rows = [
+                r for r in legacy_rows
+                if isinstance(r.meta, dict) and all(r.meta.get(k) == v for k, v in meta_filter.items())
+            ]
+
+        # Wrap legacy rows so caller can access .text consistently
+        class _CompatRow:
+            __slots__ = ("id", "case_id", "role", "scorable_type", "meta", "text", "_row")
+            def __init__(self, row):
+                self._row = row
+                self.id = row.id
+                self.case_id = row.case_id
+                self.role = getattr(row, "role", None)
+                self.scorable_type = getattr(row, "scorable_type", None)
+                self.meta = getattr(row, "meta", {}) or {}
+                self.text = self.meta.get("text", "")
+
+            def __getattr__(self, name):
+                return getattr(self._row, name)
+
+        return [_CompatRow(r) for r in legacy_rows]
 
     def get_all_casebooks(self, limit: int = 100) -> List[CaseBookORM]:
         return self.session.query(CaseBookORM).limit(limit).all()

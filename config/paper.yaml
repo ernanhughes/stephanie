@@ -15,6 +15,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/dpo_pair_generator
   - agents/universal_scorer
   - agents/text_improver
   - agents/document_profiler
@@ -54,6 +55,14 @@ goal:
   expected_formats:
     - paper_comparison_table
     - reasoning_trace_summary
+
+bus:
+  backend: nats
+  servers:
+    - nats://localhost:4222
+
+knowledge_graph:
+  enabled: true
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -108,5 +117,12 @@ pipeline:
          relevance, implementability, alignment, etc.) using ensemble scorers (SICQL, HRM, EBT).
          Produces rich feedback that turns chats into labeled training data.
        cls: stephanie.agents.universal_scorer.UniversalScorerAgent
-       enabled: true
+       enabled: false
        iterations: 1 
+
+     - name: dpo_pair_generator
+       description: >
+         Generate pairs of preferred and non-preferred responses for DPO training.
+       cls: stephanie.agents.knowledge.dpo_pair_generator.DPOPairGeneratorAgent
+       enabled: true
+       iterations: 1
