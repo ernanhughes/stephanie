@@ -95,8 +95,8 @@ class EnergyTunedMRQ:
         
         # Step 2: Fallback if still uncertain
         if refined and energy_trace and energy_trace[-1] > self.fallback_threshold:
-            from stephanie.agents.llm import LLMScorer
-            llm_scorer = LLMScorer(self.config.get("llm", {}))
+            from stephanie.scoring.scorer.llm_scorer import LLMScorer
+            llm_scorer = LLMScorer(self.config.get("llm", {}), self.ebt.memory, self.logger, llm_fn=self.config.get("llm_fn"))
             llm_score = llm_scorer.score(context, refined_text if refined else text, dimension)
             final_score = llm_score["score"]
             source = "llm"

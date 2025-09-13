@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional
 from stephanie.utils.json_sanitize import safe_json
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.paper_improver import GoalScorer, TextImprover
+from stephanie.agents.paper_improver import GoalScorer
+from stephanie.agents.knowledge.improver import Improver
 from stephanie.agents.knowledge.knowledge_fuser import KnowledgeFuser
 from stephanie.agents.paper_improver.vpm_controller import (Signal,
                                                             VPMController,
@@ -35,7 +36,7 @@ class DraftGeneratorAgent(BaseAgent):
         self.section_name_fallback = cfg.get("section_name_fallback", "Blog Section")
         self.vpm: VPMController = default_controller()
         self.goals = GoalScorer()
-        self.ti = TextImprover(cfg, memory=memory, logger=logger, workdir=cfg.get("text_workdir", "./text_runs"))
+        self.ti = Improver(cfg, memory=memory, logger=logger, workdir=cfg.get("text_workdir", "./text_runs"))
         self.fuser = KnowledgeFuser(cfg, memory, logger)
 
         # chat ingestion options

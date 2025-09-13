@@ -973,7 +973,7 @@ class NERRetrieverEmbedder:
         try:
             return self._domain_classifier.classify(query)
         except Exception as e:
-            self.logger.warning(f"Domain classification failed: {e}")
+            _logger.warning(f"Domain classification failed: {e}")
             return self._keyword_based_domain_detection(query)
 
     def _keyword_based_domain_detection(self, query: str) -> str:

@@ -36,7 +36,7 @@ class GoalMonitorAgent:
 
         # Detect frozen or degraded goals
         if confidence < self.freeze_threshold and cycle_status == "oscillating":
-            self.logger.warning(
+            self.logger.log(
                 "Freezing goal due to instability",
                 extra={
                     "goal": goal,

@@ -23,7 +23,7 @@ from .faithfulness import \
     FaithfulnessBot  # optional use; safe if not provided at CLI
 from .goals import GoalScorer, build_templates_from_yaml, load_yaml
 from .repo_link import RepoLink
-from stephanie.agents.knowledge.text_improver import TextImprover
+from stephanie.agents.knowledge.improver import Improver
 from .vpm_controller import VPMController
 
 # --------------------------- helpers ---------------------------
@@ -98,7 +98,7 @@ def run_paper_section(
     gs = GoalScorer()
 
     ci = CodeImprover(backend=backend, workdir=f"{workdir}/code", kb=kb, casebooks=store)
-    ti = TextImprover(workdir=f"{workdir}/text", kb=kb, casebooks=store)
+    ti = Improver(workdir=f"{workdir}/text", kb=kb, casebooks=store)
 
     # controller with goal scorer + persistence
     goal_scorer = lambda kind, name, dims: gs.score(kind, name, dims)
@@ -123,7 +123,7 @@ def run_paper_section(
     # Controllers & improvers
     vc = VPMController()
     ci = None if skip_code else CodeImprover(backend=backend, workdir=str(workdir_p / "code"))
-    ti = None if skip_text else TextImprover(workdir=str(workdir_p / "text"))
+    ti = None if skip_text else Improver(workdir=str(workdir_p / "text"))
 
     # Collect report
     report: Dict[str, Any] = {

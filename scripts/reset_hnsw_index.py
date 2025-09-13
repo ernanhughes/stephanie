@@ -1,7 +1,6 @@
 # scripts/reset_hnsw_index.py
 import os
 import logging
-from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
 from stephanie.scoring.scorable_factory import TargetType, ScorableFactory
 from stephanie.scoring.scorable import Scorable

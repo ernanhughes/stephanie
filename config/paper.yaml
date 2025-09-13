@@ -15,6 +15,8 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/universal_scorer
+  - agents/text_improver
   - agents/document_profiler
   - agents/draft_generator
   - agents/knowledge_fusion
@@ -93,3 +95,18 @@ pipeline:
        cls: stephanie.agents.knowledge.draft_generator.DraftGeneratorAgent
        enabled: true
        iterations: 1
+
+     - name: text_improver
+       description: "Iteratively improve the draft response for clarity and completeness"
+       cls: stephanie.agents.knowledge.text_improver.TextImproverAgent
+       enabled: true
+       iterations: 1
+
+     - name: universal_scorer
+       description: >
+         📊 Score the generated Scorables across multiple dimensions (novelty, clarity,
+         relevance, implementability, alignment, etc.) using ensemble scorers (SICQL, HRM, EBT).
+         Produces rich feedback that turns chats into labeled training data.
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: true
+       iterations: 1 

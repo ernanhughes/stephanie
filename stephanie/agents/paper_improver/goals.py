@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import yaml  # optional: only needed for load_yaml
@@ -408,8 +408,7 @@ class GoalScorer:
                             f"warning: Judge returned non-numeric value; skipping"
                         )
             except Exception as e:
-                if self.logger:
-                    self.logger.warning(f"Judge execution failed: {e}")
+                _logger.error(f"Judge execution failed: {e}")
 
         _logger.info(
             "ScoringInputDims | "

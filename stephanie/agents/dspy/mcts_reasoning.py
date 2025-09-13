@@ -443,7 +443,7 @@ class MCTSReasoningAgent(BaseAgent):
                 score = float(self.score_cache[text] or 0.0)
             else:
                 scorable = Scorable(text=text)
-                bundle = self.scoring.score(
+                bundle = self.container.get("scoring").score(
                     self.scorer_name,
                     scorable=scorable,
                     context=context,
@@ -528,7 +528,7 @@ class MCTSReasoningAgent(BaseAgent):
             score = self.score_cache[text]
         else:
             sc = Scorable(text=text, target_type=self.scorable_type)
-            bundle = self.scoring.score(
+            bundle = self.container.get("scoring").score(
                 self.scorer_name,
                 scorable=sc,
                 context=context,

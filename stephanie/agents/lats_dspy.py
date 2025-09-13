@@ -449,7 +449,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
             # Score using dimensional scorers
             scorable = Scorable(text=comp)
 
-            score_result = self.scoring.score(self.scorer_name, scorable=scorable, context=scoring_context, dimensions=self.dimensions)
+            score_result = self.container.get("scoring").score(self.scorer_name, scorable=scorable, context=scoring_context, dimensions=self.dimensions)
             node_path = self.build_node_path(node)
             aggregated_result = score_result.aggregate()
             print(f"Scoring result for {node_path}: {aggregated_result}")
@@ -533,7 +533,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         # Fallback: dimensional scoring
         print(node)
         scorable = Scorable(text="\n".join(node["trace"]))
-        score_result = self.scoring.score(
+        score_result = self.container.get("scoring").score(
            self.scorer_name, scorable=scorable, context=context, dimensions=self.dimensions
         )
         return score_result.aggregate() / 100, score_result
@@ -662,7 +662,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         scorable = Scorable(text="\n".join(trace))
 
         # Score using dimensional scorers
-        score_result = self.scoring.score(
+        score_result = self.container.get("scoring").score(
             self.scorer_name,
             scorable=scorable,
             context={"goal": {"goal_text": goal_text}},  # Always a dict
@@ -735,7 +735,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
         scorable = Scorable(text="\n".join(trace))
 
         # Score across dimensions
-        score_result = self.scoring.score(
+        score_result = self.container.get("scoring").score(
             self.scorer_name,
             scorable=scorable,
             context={"goal": {"goal_text": trace["goal"]}},
@@ -775,7 +775,7 @@ class LATSDSPyAgent(ScoringMixin, BaseAgent):
     def _get_dimension_scores(self, trace) -> ScoreBundle:
         """Get scores across all dimensions"""
         hyp = {"text": "\n".join(trace)}
-        return self.scoring.score(self.scorer_name, 
+        return self.container.get("scoring").score(self.scorer_name, 
                                   scorable=hyp, 
                                   context={"goal": {"goal_text": trace["goal"]}}, 
                                   dimensions=["lats_node"])

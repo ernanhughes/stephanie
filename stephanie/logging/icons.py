@@ -49,6 +49,8 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "StateTrackerInit": "🗂️⚙️",  # State tracker initialized
+    "NERRetrieverInitialized": "🏷️🔍",  # NER retriever initialized
     "EntityRetrievalMetrics": "🏷️📊",  # Entity retrieval metrics
     "KnowledgeFusionIndexEventsPublished": "📰📢",  # Knowledge fusion index events published
     "DomainsExtractedFromContext": "🏷️📋",  # Domains extracted from context

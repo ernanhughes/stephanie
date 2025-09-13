@@ -436,7 +436,7 @@ class CBRMiddleware:
             scorer_name = self.adapt_scorer_name or "sicql"
             dims = self.adapt_dimensions  # None → scorer default
             if self.scoring:
-                bundle = self.scoring.score(
+                bundle = self.container.get("scoring").score(
                     scorer_name,
                     scorable=scorable,
                     context=context,

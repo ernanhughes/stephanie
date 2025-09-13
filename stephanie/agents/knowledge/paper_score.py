@@ -99,7 +99,7 @@ class PaperScoreAgent(BaseAgent):
 
         for scorer_name in self.enabled_scorers:
             try:
-                bundle = self.scoring.score(
+                bundle = self.container.get("scoring").score(
                     scorer_name,
                     context=context,
                     scorable=scorable,

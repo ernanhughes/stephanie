@@ -56,7 +56,7 @@ class ChatToCaseBookAgent(BaseAgent):
         super().__init__(cfg, memory, logger)
         self.limit = cfg.get("limit", 10)      # Number of top conversations to process
         self.metric = cfg.get("metric", "messages")  # Ranking metric: "messages" or "turns"
-        self.granularity = cfg.get("granularity", "conversation")  
+        self.granularity = cfg.get("granularity", "turns")  
         # Processing granularity: "conversation", "turns", or "messages"
 
     async def run(self, context: dict) -> dict:

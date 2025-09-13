@@ -47,7 +47,7 @@ class PlannerReuseAgent(BaseAgent):
                 scorable.get("score", 0.0)
             )  # keep KNN sim Wait stop this this is
             to_score = ScorableFactory.from_plan_trace(pt, goal_text=goal_text)
-            bundle = self.scoring.score(self.hrm_scorer, context=context, scorable=to_score, dimensions=self.dimensions)
+            bundle = self.container.get("scoring").score(self.hrm_scorer, context=context, scorable=to_score, dimensions=self.dimensions)
             score = bundle.aggregate()
             self.logger.log(
                 "PlannerReuseHRMScore",

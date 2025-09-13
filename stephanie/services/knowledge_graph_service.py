@@ -152,7 +152,7 @@ class KnowledgeGraphService(Service):
 
     def search_entities(self, text: str, k: int = 10) -> List[Tuple[str, float, Dict[str, Any]]]:
         """
-OK        Search KG using the SAME embedder used during indexing.
+        Search KG using the SAME embedder used during indexing.
         Results cached via entity_cache keyed by scorable_embeddings.id (int).
         Returns: list of (node_id, score, metadata)
         """
