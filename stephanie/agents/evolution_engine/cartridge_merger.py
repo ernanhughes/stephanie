@@ -6,7 +6,7 @@ from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 
 
 class CartridgeMerger:
-    def __init__(self, cfg, memory, logger=None):
+    def __init__(self, cfg, memory, container, logger=None):
         self.cfg = cfg
         self.memory = (
             memory  # Assumed to expose `.embed(texts: list[str]) -> list[np.array]`

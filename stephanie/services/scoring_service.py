@@ -58,8 +58,8 @@ class ScoringService(Service):
         _scorers (Dict[str, Any]): Dictionary of registered scorers
         enabled_scorer_names (List[str]): List of scorer names to enable
     """
-    
-    def __init__(self, cfg: Dict[str, Any], memory, logger):
+
+    def __init__(self, cfg: Dict[str, Any], memory, container, logger):
         """
         Initialize the ScoringService.
         
@@ -70,6 +70,7 @@ class ScoringService(Service):
         """
         self.cfg = cfg
         self.memory = memory
+        self.container = container
         self.logger = logger
         self.embedding_type = self.memory.embedding.name
         self._scorers: Dict[str, Any] = {}   # name -> scorer instance
@@ -213,24 +214,24 @@ class ScoringService(Service):
         try:
             if name == "hrm":
                 from stephanie.scoring.scorer.hrm_scorer import HRMScorer
-                return HRMScorer(scorer_cfg, memory=self.memory, logger=self.logger)
+                return HRMScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name == "sicql":
                 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
-                return SICQLScorer(scorer_cfg, memory=self.memory, logger=self.logger)
+                return SICQLScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name == "svm":
                 from stephanie.scoring.scorer.svm_scorer import SVMScorer
-                return SVMScorer(scorer_cfg, memory=self.memory, logger=self.logger)
+                return SVMScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name == "mrq":
                 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
-                return MRQScorer(scorer_cfg, memory=self.memory, logger=self.logger)
+                return MRQScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name == "ebt":
                 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
-                return EBTScorer(scorer_cfg, memory=self.memory, logger=self.logger)
+                return EBTScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name in ("contrastive_ranker", "contrastive", "reward"):
                 # We allow "reward" to be an alias for contrastive pairwise scorer.
                 from stephanie.scoring.scorer.contrastive_ranker_scorer import \
                     ContrastiveRankerScorer
-                return ContrastiveRankerScorer(scorer_cfg, memory=self.memory, logger=self.logger)
+                return ContrastiveRankerScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
         except Exception as e:
             if self.logger:
                 self.logger.log("ScoringServiceBuildScorerError", {"name": name, "error": str(e)})

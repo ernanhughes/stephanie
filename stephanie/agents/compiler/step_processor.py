@@ -11,9 +11,9 @@ class StepProcessorAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
     producing outputs and optionally scoring them.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.scorer = MRQScorer(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.scorer = MRQScorer(cfg, memory, container, logger)
         self.scorer.load_models()
 
     async def run(self, context: dict) -> dict:

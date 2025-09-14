@@ -9,8 +9,8 @@ from stephanie.agents.base_agent import BaseAgent
 
 
 class HardResetManager(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.reset_thresholds = cfg.get(
             "hard_reset_thresholds",
             {

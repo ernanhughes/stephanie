@@ -3,8 +3,8 @@ from typing import Dict, List
 
 
 class DefaultMicroLearner:
-    def __init__(self, cfg, memory, logger):
-        self.cfg, self.memory, self.logger = cfg, memory, logger
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg, self.memory, self.logger = cfg, memory, container, logger
 
     def learn(self, ctx: Dict, ranked: List[Dict], mars: Dict) -> None:
         if not ranked or len(ranked) < 2: return

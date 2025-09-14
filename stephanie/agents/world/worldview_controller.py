@@ -3,8 +3,8 @@ from stephanie.agents.base_agent import BaseAgent
 
 
 class WorldviewControllerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger, tools, pipelines):
-        super().__init__(cfg, memory=memory, logger=logger)
+    def __init__(self, cfg, memory, container, logger, tools, pipelines):
+        super().__init__(cfg, memory=memory, container=container, logger=logger)
         self.tools = (
             tools  # e.g. { "arxiv": ArxivSearcher(), "profiler": ProfilerAgent(), ... }
         )

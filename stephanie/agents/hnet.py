@@ -28,7 +28,7 @@ from stephanie.utils.serialization import to_serializable
 class HNetValidationExperiment(BaseAgent):
     """Comprehensive validation of HNet and PlanTrace system in one end-to-end experiment"""
     
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
@@ -70,9 +70,9 @@ class HNetValidationExperiment(BaseAgent):
         }
         
         # Initialize reasoning agent
-        self.reasoning_agent = ICLReasoningAgent(self.cfg, self.memory, self.logger)
-        self.knowledge_retriever = KnowledgeRetriever(self.cfg, self.memory, self.logger)
-        
+        self.reasoning_agent = ICLReasoningAgent(self.cfg, self.memory, self.container, self.logger)
+        self.knowledge_retriever = KnowledgeRetriever(self.cfg, self.memory, self.container, self.logger)
+
         # Results storage
         self.results = {
             "raw": [],
@@ -166,7 +166,7 @@ class HNetValidationExperiment(BaseAgent):
     
     def _load_arxiv_papers(self, count=100) -> List[Dict]:
 
-        agent = ArxivSearchAgent(self.cfg, self.memory, self.logger)
+        agent = ArxivSearchAgent(self.cfg, self.memory, self.container, self.logger)
         
         """Load arXiv papers on self-improving AI (cs.AI category)"""
         # In a real implementation, this would fetch papers from arXiv API

@@ -6,10 +6,10 @@ from stephanie.evaluator import MRQSelfEvaluator
 
 
 class IdeaSharpeningAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.target = cfg.get("target", "generation")
-        self.evaluator = MRQSelfEvaluator(cfg, memory, logger, device=self.device)
+        self.evaluator = MRQSelfEvaluator(cfg, memory, container, logger, device=self.device)
         self.templates = cfg.get("templates", ["critic"])
         self.save_count = cfg.get("save_count", 3)
 

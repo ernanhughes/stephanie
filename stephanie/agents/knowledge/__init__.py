@@ -4,8 +4,8 @@ from stephanie.constants import GOAL
 
 
 class KnowledgeDBLoaderAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.top_k = cfg.get("top_k", 10)
         self.include_full_text = cfg.get("include_full_text", False)
         self.search_method = cfg.get("search_method", "document")  # or "section"

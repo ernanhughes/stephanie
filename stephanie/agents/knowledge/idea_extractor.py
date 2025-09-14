@@ -18,8 +18,8 @@ class LearnableIdeaExtractorAgent(BaseAgent):
     test, and refine over time.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         # Components from config
         self.idea_parser = IdeaParser(cfg, logger=logger)
@@ -33,7 +33,7 @@ class LearnableIdeaExtractorAgent(BaseAgent):
             logger=logger,
             config_path=cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
         )
-        self.mrq_scorer = MRQScorer(cfg, memory=memory, logger=logger)  # Replace with your actual scorer
+        self.mrq_scorer = MRQScorer(cfg, memory=memory, container=container, logger=logger)  # Replace with your actual scorer
 
         # Settings
         self.top_k_domains = cfg.get("top_k_domains", 3)

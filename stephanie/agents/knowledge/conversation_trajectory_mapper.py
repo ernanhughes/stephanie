@@ -88,7 +88,7 @@ class ConversationTrajectoryMapper(BaseAgent):
     """
 
     def __init__(self, cfg: Dict[str, Any], memory: Any, logger: logging.Logger):
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.kfg = CTMConfig(
             min_causal_strength=cfg.get("min_causal_strength", 0.60),
             critical_sigma=cfg.get("critical_sigma", 0.5),

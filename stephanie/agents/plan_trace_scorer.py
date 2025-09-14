@@ -32,8 +32,8 @@ class PlanTraceScorerAgent(BaseAgent):
     to enable self-tuning of pipeline execution patterns.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg.get("agents", {}).get("plan_trace_scorer", {}), memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg.get("agents", {}).get("plan_trace_scorer", {}), memory, container=container, logger=logger)
         self.dimensions = self.cfg.get("dimensions", [])
         self.include_mars = self.cfg.get("include_mars", True)
 

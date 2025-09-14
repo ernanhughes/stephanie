@@ -15,8 +15,8 @@ class StepCompilerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
     Each step is a SymbolicNode with step_id, action, description, etc.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.scorer = MRQScorer(cfg=cfg, memory=memory, logger=logger)
         self.scorer.load_models()
 

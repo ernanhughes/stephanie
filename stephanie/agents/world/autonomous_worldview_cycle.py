@@ -20,11 +20,11 @@ class AutonomousWorldviewCycleAgent:
         self.worldview = worldview
         self.logger = logger or self._default_logger()
         self.config = config or {}
-        self.pipeline_runner = WorldviewPipelineRunner(worldview, logger=self.logger)
-        self.evaluator = WorldviewEvaluatorAgent(worldview, logger=self.logger)
-        self.belief_tuner = BeliefTunerAgent(worldview, logger=self.logger)
-        self.merger = WorldviewMergerAgent(worldview, logger=self.logger)
-        self.audit = WorldviewAuditAgent(worldview, logger=self.logger)
+        self.pipeline_runner = WorldviewPipelineRunner(worldview, container=self.container, logger=self.logger)
+        self.evaluator = WorldviewEvaluatorAgent(worldview, container=self.container, logger=self.logger)
+        self.belief_tuner = BeliefTunerAgent(worldview, container=self.container, logger=self.logger)
+        self.merger = WorldviewMergerAgent(worldview, container=self.container, logger=self.logger)
+        self.audit = WorldviewAuditAgent(worldview, container=self.container, logger=self.logger)
 
     def cycle_once(self):
         """

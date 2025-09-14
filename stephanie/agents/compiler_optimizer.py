@@ -7,8 +7,8 @@ from stephanie.constants import GOAL, PIPELINE_RUN_ID
 
 
 class CompilerOptimizerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.score_threshold = cfg.get("score_threshold", 5.0)  # optional tuning param
 
     async def run(self, context: dict) -> dict:

@@ -69,8 +69,8 @@ class CBRDSPyAgent(BaseAgent):
     to solve similar problems in the past.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         # Get model configuration from agent config with fallbacks
         model_config = cfg.get("model", {})

@@ -6,8 +6,8 @@ from stephanie.scoring.score_analyzer import ScoreAnalyzer
 
 
 class ScoreAnalysisAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.logger.log("AgentInit", {"agent": "ScoreAnalysisAgent"})
 
     async def run(self, context: dict) -> dict:

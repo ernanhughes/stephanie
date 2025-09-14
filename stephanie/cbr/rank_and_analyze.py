@@ -9,7 +9,7 @@ from stephanie.utils.score_utils import score_scorable
 
 
 class DefaultRankAndAnalyze:
-    def __init__(self, cfg, memory, logger, ranker, mars=None):
+    def __init__(self, cfg, memory, container, logger, ranker, mars=None):
         self.cfg = cfg 
         self.memory = memory
         self.logger = logger

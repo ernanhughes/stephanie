@@ -21,8 +21,8 @@ class DPOPairGeneratorAgent(BaseAgent):
     Designed to feed RL/DPO pipelines.
     """
 
-    def __init__(self, cfg: Dict[str, Any], memory: Any, logger: logging.Logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg: Dict[str, Any], memory: Any, container, logger: logging.Logger):
+        super().__init__(cfg, memory, container, logger)
         self.min_improvement_score = cfg.get("dpo_min_improvement", 0.1)
         self.max_pairs_per_run = cfg.get("dpo_max_pairs", 10)
         self.auto_publish = cfg.get("dpo_auto_publish", True)

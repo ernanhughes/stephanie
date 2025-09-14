@@ -20,8 +20,8 @@ class PaperScoreAgent(BaseAgent):
     Similar design to DocumentRewardScorer, but specialized for research papers.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get(
             "dimensions",
             ["novelty", "clarity", "relevance", "implementability", "alignment"],

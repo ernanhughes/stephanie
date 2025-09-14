@@ -5,8 +5,8 @@ from stephanie.constants import GOAL, PIPELINE_RUN_ID
 
 
 class KnowledgeDBLoaderAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.top_k = cfg.get("top_k", 10)
         self.include_full_text = cfg.get("include_full_text", False)
         self.target_type = cfg.get(

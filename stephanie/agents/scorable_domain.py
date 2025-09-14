@@ -19,8 +19,8 @@ class ScorableDomainAgent(BaseAgent):
     Each domain is tagged with source and confidence.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         # 1. Seed classifier (YAML-based controlled ontology)
         self.seed_classifier = ScorableClassifier(

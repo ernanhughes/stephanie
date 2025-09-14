@@ -11,7 +11,7 @@ class MRQSelfEvaluator(BaseEvaluator):
     Keeps the same interface so existing code won't break.
     """
 
-    def __init__(self, cfg, memory, logger, device="cpu"):
+    def __init__(self, cfg, memory, container, logger, device="cpu"):
         from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
         self.cfg = cfg
         self.device = device
@@ -19,7 +19,7 @@ class MRQSelfEvaluator(BaseEvaluator):
         self.logger = logger
 
         # Just use SICQL underneath for now
-        self.scorer = SICQLScorer(cfg, memory, logger)
+        self.scorer = SICQLScorer(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", ["value"])
 
     def judge(self, prompt, output_a, output_b, context=None):

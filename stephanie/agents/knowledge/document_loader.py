@@ -72,8 +72,8 @@ def guess_title_from_text(text: str) -> str:
 class DocumentLoaderAgent(BaseAgent):
     """Agent responsible for downloading, processing, and storing research documents"""
     
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         # Configuration parameters with defaults
         self.max_chars_for_summary = cfg.get("max_chars_for_summary", 8000)
         self.summarize_documents = cfg.get("summarize_documents", False)

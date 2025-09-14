@@ -8,8 +8,8 @@ from stephanie.constants import GOAL, PIPELINE
 class CaseBookPreparationAgent(BaseAgent):
     """Prepares CaseBook data for PACS training (RLVR dataset + verifier)."""
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.casebook_name = cfg.get("casebook_name", "default_casebook")
         self.verifier = cfg.get("verifier", "default_verifier")
 
@@ -24,7 +24,7 @@ class CaseBookPreparationAgent(BaseAgent):
                 raise ValueError(f"CaseBook '{self.casebook_name}' not found")
 
             # 2. Build RLVR dataset from CaseBook
-            from stephanie.pacs import CaseBookToRLVRDataset
+            from stephanie.scoring. import CaseBookToRLVRDataset
             dataset_builder = CaseBookToRLVRDataset(
                 memory=self.memory,   # use memory tool, not raw session
                 casebook=casebook

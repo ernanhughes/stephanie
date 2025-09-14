@@ -8,8 +8,8 @@ from stephanie.evaluator import ARMReasoningSelfEvaluator, LLMJudgeEvaluator
 
 
 class AdaptiveReasonerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         self.modes = ["adaptive", "instruction_guided", "consensus_guided"]
         self.mode = self.cfg.get("mode", "adaptive")

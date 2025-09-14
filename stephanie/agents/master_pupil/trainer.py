@@ -8,8 +8,8 @@ from stephanie.agents.master_pupil.finetuner import PupilFineTuner
 
 
 class TrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger, master=None, pupil=None):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger, master=None, pupil=None):
+        super().__init__(cfg, memory, container, logger)
         self.master = master
         self.pupil = pupil
         self.embedding_store = memory.embedding

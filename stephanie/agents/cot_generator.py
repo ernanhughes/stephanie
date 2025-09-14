@@ -19,8 +19,8 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
     using a configurable evaluator/scorer.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.logger.log("AgentInit", {"agent": "ChainOfThoughtGeneratorAgent"})
         self.num_candidates = cfg.get("num_candidates", 2)
         self.evaluator = self._init_evaluator(cfg)

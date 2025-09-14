@@ -29,15 +29,15 @@ class DraftGeneratorAgent(BaseAgent):
       4) Store every step in a CaseBook (for SIS + PACS/CBR)
     """
 
-    def __init__(self, cfg, memory, logger, reporter=None):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.max_steps = cfg.get("max_steps", 5)
         self.goal_template = cfg.get("goal_template", "academic_summary")
         self.section_name_fallback = cfg.get("section_name_fallback", "Blog Section")
         self.vpm: VPMController = default_controller()
         self.goals = GoalScorer()
         self.ti = Improver(cfg, memory=memory, logger=logger, workdir=cfg.get("text_workdir", "./text_runs"))
-        self.fuser = KnowledgeFuser(cfg, memory, logger)
+        self.fuser = KnowledgeFuser(cfg, memory, container, logger)
 
         # chat ingestion options
         self.chat_max_messages = cfg.get("chat_max_messages", 200)

@@ -21,8 +21,8 @@ class ScorableEmbeddingBackfillAgent(BaseAgent):
         "plan_trace": PlanTraceORM
     }
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.scorable_type = cfg.get("scorable_type", "case")
         self.embed_full_document = cfg.get("embed_full_document", True)
         self.embedding_type = self.memory.embedding.name  # e.g. "hf_embeddings"

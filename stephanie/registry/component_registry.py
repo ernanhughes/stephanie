@@ -20,7 +20,7 @@ def register(name: str, component: object) -> None:
         ValueError: If a component with the same name is already registered
     
     Example:
-        >>> register("state_tracker", StateTracker(cfg, memory, logger))
+        >>> register("state_tracker", StateTracker(cfg, memory, container, logger))
     """
     if name in _component_registry:
         raise ValueError(f"Component '{name}' is already registered")

@@ -7,8 +7,8 @@ from stephanie.analysis.policy_analyzer import PolicyAnalyzer
 
 
 class PolicyAnalysisAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "novelty"])
         self.analyzer = PolicyAnalyzer(memory.session, logger)
         self.output_dir = cfg.get("report_output_dir", f"reports/{self.name}")

@@ -15,8 +15,8 @@ from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
 
 class ScoringPolicyAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
@@ -30,7 +30,7 @@ class ScoringPolicyAgent(BaseAgent):
         self.step_size = cfg.get("step_size", 0.05)
 
         self.training_buffer_path = cfg.get("training_buffer_path", "ebt_buffer.json")
-        self.ebt = EBTInferenceAgent(cfg, memory=memory, logger=logger)
+        self.ebt = EBTInferenceAgent(cfg, memory=memory, container=container, logger=logger)
         self.training_buffer = EBTTrainingBuffer(self.logger, self.training_buffer_path)
 
 

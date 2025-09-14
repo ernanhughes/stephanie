@@ -15,8 +15,8 @@ class CostBenefitAnalyzerAgent(BaseAgent):
     Produces an 'efficiency score' per layer for dynamic pipeline optimization.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger or logging.getLogger(__name__))
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         self.min_evals = cfg.get("min_evaluations", 10)
         self.include_dimensions = cfg.get("include_dimensions", ["alignment"])

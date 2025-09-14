@@ -9,8 +9,8 @@ class ChatImportAgent(BaseAgent):
     and stores them as CaseBooks in Stephanie's memory.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.import_path = cfg.get("import_path", "data/chats")
         if cfg.get("purge_existing", True):
             self.memory.chats.purge_all(True)

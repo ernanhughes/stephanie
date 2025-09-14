@@ -29,8 +29,8 @@ class LATSNode:
 
 
 class LATSAgent(BaseAgent): 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         self.root = None
         self.nodes = []

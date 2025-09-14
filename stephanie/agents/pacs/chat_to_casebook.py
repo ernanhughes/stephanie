@@ -52,8 +52,8 @@ class ChatToCaseBookAgent(BaseAgent):
     3. "messages": One case per individual message (maximum granularity)
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.limit = cfg.get("limit", 10)      # Number of top conversations to process
         self.metric = cfg.get("metric", "messages")  # Ranking metric: "messages" or "turns"
         self.granularity = cfg.get("granularity", "turns")  

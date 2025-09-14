@@ -21,7 +21,7 @@ class ICLReasoningAgent(BaseAgent):
     """
 
     def __init__(self, cfg, memory=None, logger=None):
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.top_k_triplets = cfg.get("top_k_triplets", 5)
         self.min_value_threshold = cfg.get("min_triplet_score", 0.6)
         self.use_embeddings = cfg.get("use_triplet_embeddings", False)

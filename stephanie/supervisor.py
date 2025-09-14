@@ -71,7 +71,7 @@ class Supervisor:
         # Scoring service
         self.container.register(
             "scoring",
-            lambda: ScoringService(cfg, memory, logger),
+            lambda: ScoringService(cfg, memory, self.container, logger),
             dependencies=[]
         )
         
@@ -127,7 +127,7 @@ class Supervisor:
         self.container.register(
             "plan_trace",
             lambda: PlanTraceService(
-                cfg, memory, logger, self.container.get("scoring")
+                cfg, memory, self.container, logger=logger
             ),
             dependencies=["scoring", "state"]
         )
@@ -328,6 +328,7 @@ class Supervisor:
                 agent_args = {
                     "cfg": stage_dict,
                     "memory": self.memory,
+                    "container": self.container,
                     "logger": self.logger
                 }
                 if "full_cfg" in cls.__init__.__code__.co_varnames:

@@ -13,9 +13,9 @@ from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 
 class PlannerReuseAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.ranker = ScorableRanker(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.ranker = ScorableRanker(cfg, memory, container, logger)
         self.top_k = cfg.get("top_k", 100)
         self.min_hrm = cfg.get("min_hrm", 0.6)
         self.use_db_knn = cfg.get("use_db_knn", True)

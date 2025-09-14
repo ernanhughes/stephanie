@@ -9,8 +9,8 @@ class RelatedAgent(BaseAgent):
     Agent that searches for documents related to a given goal using embeddings.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.document_type = cfg.get("document_type", "document")
         self.embedding_type = self.memory.embedding.name  # e.g., "hnet"
         self.top_k = cfg.get("top_k", 50)

@@ -19,8 +19,8 @@ class UnifiedMRQAgent(BaseAgent):
     - Saves models and logs metadata to DB.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.target_dimensions = cfg.get(
             "target_dimensions", ["correctness", "originality", "clarity", "relevance"]
         )
@@ -28,7 +28,7 @@ class UnifiedMRQAgent(BaseAgent):
         self.top_k_similar = cfg.get("top_k_similar", 20)
         self.min_value_difference = cfg.get("min_value_difference", 10)
         self.output_dir = cfg.get("model_output_dir", "mrq_models")
-        self.trainer = MRQTrainer(memory, logger)
+        self.trainer = MRQTrainer(cfg, memory, container, logger)
 
     async def run(self, context: dict) -> dict:
         self.logger.log("UnifiedMRQStarted", {})

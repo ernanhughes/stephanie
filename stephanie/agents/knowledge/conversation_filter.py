@@ -104,8 +104,8 @@ class CFConfig:
 
 
 class ConversationFilterAgent(BaseAgent):
-    def __init__(self, cfg: Dict[str, Any], memory: Any, logger: logging.Logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg: Dict[str, Any], memory: Any, container: Any, logger):
+        super().__init__(cfg, memory, container, logger)
         self.kfg = CFConfig(**cfg.get("conversation_filter", {}))
         self.goal_scorer = GoalScorer(logger=logger)
         self.logger.info("ConversationFilterAgent initialized", {"config": asdict(self.kfg)})

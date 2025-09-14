@@ -11,8 +11,8 @@ from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
 
 
 class CompilerAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory, logger, full_cfg=None):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger, full_cfg=None):
+        super().__init__(cfg, memory, container, logger)
         self.tree = ReasoningTree()
         runner = PipelineRunnerAgent(
             cfg, memory=memory, logger=logger, full_cfg=full_cfg

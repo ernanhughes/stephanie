@@ -46,8 +46,8 @@ class TextImproverAgent(BaseAgent):
     Fully integrated with casebook, calibration, and event bus.
     """
 
-    def __init__(self, cfg: Dict[str, Any], memory: Any, logger: Any):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg: Dict[str, Any], memory: Any, container: Any, logger: Any):
+        super().__init__(cfg, memory, container, logger)
 
         # Core components
         self.workdir = Path(cfg.get("text_improve_workdir", "./data/text_runs"))

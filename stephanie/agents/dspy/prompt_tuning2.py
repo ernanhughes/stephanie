@@ -63,9 +63,9 @@ class DSPyEvaluator(BaseEvaluator):
 
 
 # Main agent class responsible for training and tuning prompts using DSPy
-class PromptTuningAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+class PromptTuningAgent2(BaseAgent):
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.agent_name = cfg.get("name", "prompt_tuning")
         self.prompt_key = cfg.get("prompt_key", "default")
         self.sample_size = cfg.get("sample_size", 20)
@@ -80,7 +80,7 @@ class PromptTuningAgent(BaseAgent):
         )
         dspy.configure(lm=lm)
 
-        self.scorer = MRQScorer(cfg, memory, logger)
+        self.scorer = MRQScorer(cfg, memory, container, logger)
         self.scorer.load_models()
 
     async def run(self, context: dict) -> dict:

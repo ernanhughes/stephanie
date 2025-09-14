@@ -17,8 +17,8 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 
 class MRQTrainer(BaseTrainer):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         self.early_stopping_patience = cfg.get("patience", 3)
         self.early_stopping_min_delta = cfg.get("min_delta", 1e-4)

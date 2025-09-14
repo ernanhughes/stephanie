@@ -24,7 +24,7 @@ class PaperSummarizer(BaseAgent):
         logger=None,
         llm_model_name: str = "qwen3",
     ):
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.prompt_loader = PromptLoader(cfg)
         self.summarize_prompt_key = cfg.get("summarize_prompt_key", "paper_summarize")
         self.llm = Predict(llm_model_name)

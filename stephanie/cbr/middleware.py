@@ -15,6 +15,7 @@ class CBRMiddleware:
         self,
         cfg,
         memory,
+        container,
         logger,
         ns,
         scope_mgr,
@@ -32,6 +33,7 @@ class CBRMiddleware:
     ):
         self.cfg = cfg
         self.memory = memory
+        self.container = container
         self.logger = logger
         self.ns = ns
         self.scope_mgr = scope_mgr
@@ -69,34 +71,7 @@ class CBRMiddleware:
         )  # None → use ranker/scoring defaults
 
         # Reporting
-        self.reporter = self._init_reporter(cfg, logger, reporter)
-
-        # ensure reporter task started
-        try:
-            import asyncio
-
-            asyncio.create_task(self.reporter.start())
-        except Exception:
-            pass
-
-    def _init_reporter(self, cfg, logger, reporter):
-        """
-        Initialize the reporter, using config or provided reporter.
-        """ 
-        if reporter is not None:
-            return reporter
-        rep_cfg = (
-            (cfg.get("cbr", {}).get("reporting", {}))
-            if isinstance(cfg, dict)
-            else {}
-        )
-        path = (rep_cfg or {}).get("path", "reports/cbr_events.jsonl")
-        sample_rate = float((rep_cfg or {}).get("sample_rate", 1.0))
-        return ReportingService(
-            sinks=[JsonlSink(path), LoggerSink(logger)],
-            enabled=bool((rep_cfg or {}).get("enabled", True)),
-            sample_rate=sample_rate,
-        )
+        self.reporter = container.get("reporting")
 
     async def run(
         self,

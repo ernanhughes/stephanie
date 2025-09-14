@@ -115,7 +115,7 @@ class AgentScorerAgent(BaseAgent):
             ranking = []
             if self.include_ranking:
                 candidates = self.memory.embedding.search_related_scorables(
-                    scorable.text, TargetType.AGENT_OUTPUT
+                    scorable.text, TargetType.AGENT_OUTPUT, include_ner=False
                 )
                 ranking = self.ranker.rank(
                     query=scorable, candidates=candidates, context=context

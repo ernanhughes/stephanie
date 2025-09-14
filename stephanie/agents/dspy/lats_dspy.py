@@ -192,8 +192,8 @@ class LATSDSPyAgent(BaseAgent):
     - DSPy optimization
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.max_depth = cfg.get("max_depth", 5)
         self.branching_factor = cfg.get("branching_factor", 3)
         self.ucb_weight = cfg.get("ucb_weight", 1.41)
@@ -208,13 +208,13 @@ class LATSDSPyAgent(BaseAgent):
 
         # Initialize sub-agents
         self.proximity_agent = ProximityAgent(
-            cfg.get("proximity", {}), memory=memory, logger=logger
+            cfg.get("proximity", {}), memory=memory, container=container, logger=logger
         )
         self.rule_tuner = RuleTunerAgent(
-            cfg.get("rule_tuner", {}), memory=memory, logger=logger
+            cfg.get("rule_tuner", {}), memory=memory, container=container, logger=logger
         )
         self.mrq_agent = UnifiedMRQAgent(
-            cfg.get("mrq", {}), memory=memory, logger=logger
+            cfg.get("mrq", {}), memory=memory, container=container, logger=logger
         )
 
         # Setup DSPy
@@ -230,8 +230,8 @@ class LATSDSPyAgent(BaseAgent):
 
         # Symbolic impact analyzer
         self.impact_analyzer = SymbolicImpactAnalyzer(self._get_score)
-        self.ranker = ScorableRanker(cfg, memory, logger)
-        self.mars = MARSCalculator(cfg, memory, logger)
+        self.ranker = ScorableRanker(cfg, memory, container, container=container, logger=logger)
+        self.mars = MARSCalculator(cfg, memory, container, container=container, logger=logger)
         
         self.score_map = {}
         self.completed_nodes = 0

@@ -28,8 +28,8 @@ class ScorerAgent(BaseAgent):
     to evaluate consistency across scoring models using the tensor-based architecture.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get(
             "dimensions", ["helpfulness", "truthfulness", "reasoning_quality"]
         )

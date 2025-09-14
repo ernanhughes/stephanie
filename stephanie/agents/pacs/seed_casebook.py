@@ -28,8 +28,8 @@ class SeedCaseBookAgent(BaseAgent):
       - mode: "one_case_per_doc" (default) or "single_case_with_many" (kept for future)
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.documents_key = cfg.get("documents_key") or self.input_key or self.name  # be flexible
         self.max_docs = int(cfg.get("max_docs", 50))
         # self.casebook_name = cfg.get("casebook_name", "default_casebook")

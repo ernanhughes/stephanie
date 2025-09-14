@@ -27,8 +27,8 @@ class LATSAgent(ScoringMixin, BaseAgent):
     - Mermaid visualization
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         # Configuration
         self.max_depth = cfg.get("max_depth", 5)

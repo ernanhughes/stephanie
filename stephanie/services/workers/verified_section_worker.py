@@ -19,16 +19,16 @@ class VerifiedSectionWorker:
     Worker that processes verification jobs from the queue.
     
     Usage:
-        worker = VerifiedSectionWorker(cfg, memory, logger)
+        worker = VerifiedSectionWorker(cfg, memory, container, logger)
         worker.start()
     """
     
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
         self.queue = VerificationQueue(memory, logger)
-        self.agent = VerifiedSectionGeneratorAgent(cfg, memory, logger)
+        self.agent = VerifiedSectionGeneratorAgent(cfg, memory, container, logger)
         self.logger = logger or logging.getLogger(__name__)
     
     async def handle_job(self, msg_bytes: bytes):

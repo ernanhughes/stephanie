@@ -20,8 +20,8 @@ class ScoreEnergyComparisonAgent(BaseAgent):
     This is Step 2 (Deep Analysis): Leveraging detailed model internals.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])
         
         # Configuration for sources to analyze (focus on those with rich attributes)

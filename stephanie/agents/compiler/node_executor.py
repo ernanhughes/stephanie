@@ -4,7 +4,7 @@ from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
 
 
 class NodeExecutor:
-    def __init__(self, cfg, memory, logger, pipeline_runner: PipelineRunnerAgent, tree):
+    def __init__(self, cfg, memory, container, logger, pipeline_runner: PipelineRunnerAgent, tree):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

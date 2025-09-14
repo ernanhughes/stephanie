@@ -7,10 +7,10 @@ from stephanie.utils.token_counter import TokenCounter
 
 
 class FinalAssemblerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.token_limit = cfg.get("token_limit", 2048)
-        self.scorer = MRQScorer(cfg, memory, logger)
+        self.scorer = MRQScorer(cfg, memory, container, logger)
         self.token_counter = TokenCounter(model_name="qwen:7b")
         self.max_steps = cfg.get("max_steps", 15)  # Limit on how many steps to include
         self.dimensions = cfg.get("dimensions", ["relevance"])

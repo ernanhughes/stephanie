@@ -79,8 +79,8 @@ class ContrastiveRankerScorer(BaseScorer):
     - Embeddings are pulled from memory.embedding; we assume deterministic dimension.
     """
 
-    def __init__(self, cfg: dict, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg: dict, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "contrastive_ranker"
 
         # Runtime containers keyed by dimension

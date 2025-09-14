@@ -59,6 +59,7 @@ from stephanie.memory.search_result_store import SearchResultStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.memory.theorem_store import TheoremStore
+from stephanie.memory.training_event_store import TrainingEventStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.knowledge_bus import (InProcessKnowledgeBus,
@@ -93,11 +94,11 @@ class MemoryTool:
 
         embedding_cfg = self.cfg.get("embeddings", {})
         # Register stores
-        mxbai = EmbeddingStore(embedding_cfg, self, logger)
+        mxbai = EmbeddingStore(embedding_cfg, memory=self, logger=logger)
         self.register_store(mxbai)
-        hnet = HNetEmbeddingStore(embedding_cfg, self, logger)
+        hnet = HNetEmbeddingStore(embedding_cfg, memory=self, logger=logger)
         self.register_store(hnet)
-        hf = HuggingFaceEmbeddingStore(embedding_cfg, self, logger)
+        hf = HuggingFaceEmbeddingStore(embedding_cfg, memory=self, logger=logger)
         self.register_store(hf)
 
         # Choose embedding backend based on config
@@ -178,6 +179,7 @@ class MemoryTool:
         self.register_store(DynamicScorableStore(self.session, logger))
         self.register_store(CalibrationEventStore(self.session, logger))
         self.register_store(EntityCacheStore(self.session, logger))
+        self.register_store(TrainingEventStore(self.session, logger))
 
 
         # Register extra stores if defined in config
@@ -245,21 +247,3 @@ class MemoryTool:
     def _setup_knowledge_bus(self) -> KnowledgeBus:
         return HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)
     
-
-
-    @staticmethod
-    def SessionLocal() -> Session:
-        """
-        Convenience method to create a standalone SQLAlchemy session.
-        Does not initialize the full MemoryTool.
-        """
-        return sessionmaker(bind=engine)()
-
-    @classmethod
-    def new_session(cls) -> Session:
-        """
-        Class method variant (alias for SessionLocal).
-        Useful if you want it bound to the class.
-        """
-        return sessionmaker(bind=engine)()
-

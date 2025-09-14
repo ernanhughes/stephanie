@@ -13,7 +13,7 @@ from stephanie.scoring.model.text_encoder import TextEncoder
 
 
 class ARMReasoningSelfEvaluator(BaseEvaluator):
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

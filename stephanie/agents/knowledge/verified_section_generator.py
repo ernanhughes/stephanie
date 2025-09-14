@@ -95,8 +95,8 @@ class VerifiedSectionGeneratorAgent(BaseAgent):
     """
     LATS/beam search over candidates from tile bundles, verified against knowledge tree.
     """
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         vcfg = cfg.get("verified_section", {})
         self.c = VConfig(**vcfg) if vcfg else VConfig()
         self.scorer = VerificationScorer(memory, logger, goal_template="blog_section")

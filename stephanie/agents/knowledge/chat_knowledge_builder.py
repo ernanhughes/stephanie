@@ -14,7 +14,6 @@ from stephanie.knowledge.casebook_store import Scorable
 from stephanie.memory.chat_store import ChatStore
 from stephanie.models.ner_retriever import EntityDetector
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 
 _logger = logging.getLogger(__name__)
 
@@ -28,13 +27,14 @@ class ChatKnowledgeBuilder:
       - Knowledge Graph linking (KnowledgeGraphService)
       - Conversation history (ChatStore)
 
-    Follows Stephanie agent pattern: initialized with cfg, memory, logger.
+    Follows Stephanie agent pattern: initialized with cfg, memory, container, logger.
     Gracefully degrades when subsystems fail.
     """
 
-    def __init__(self, cfg: Dict[str, Any], memory: Any, logger: Optional[logging.Logger] = None):
+    def __init__(self, cfg: Dict[str, Any], memory: Any, container, logger: Optional[logging.Logger] = None):
         self.cfg = cfg
         self.memory = memory
+        self.container = container
         self.logger = logger
 
         # Lazily initialize components only if needed
@@ -60,7 +60,7 @@ class ChatKnowledgeBuilder:
             _logger.error(f"Failed to initialize EntityDetector: {e}")
 
         try:
-            self.kg_service = KnowledgeGraphService(cfg, memory, self.logger)
+            self.kg_service = self.container.get("knowledge_graph")
             self.logger.info("KnowledgeGraphService connected.")
         except Exception as e:
             self.kg_service = None

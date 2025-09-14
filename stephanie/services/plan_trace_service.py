@@ -29,10 +29,11 @@ class PlanTraceService(Service):
     - Apply retention policies
     """
 
-    def __init__(self, cfg: Dict, memory, logger, scoring_service=None):
+    def __init__(self, cfg: Dict, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
+        self.container = container
 
         monitor_cfg = cfg.get("plan_monitor", {})
         self.enabled = monitor_cfg.get("enabled", False)
@@ -48,10 +49,11 @@ class PlanTraceService(Service):
         self.stage_start_times: Dict[int, float] = {}
 
         if self.enabled:
-            self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, logger)
-            self.agent_scorer = AgentScorerAgent(cfg, memory, logger)
-            self.agent_scorer.scoring = scoring_service
-
+            self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, container, logger)
+            self.plan_trace_scorer.container = self.container
+            self.agent_scorer = AgentScorerAgent(cfg, memory, container, logger)
+            self.agent_scorer.container = self.container
+    
         self._initialized = False
 
     # === Service Protocol ===

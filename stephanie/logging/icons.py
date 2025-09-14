@@ -77,7 +77,7 @@ KNOWLEDGE_OPS = {
     "GenerationStarted": "🧑‍🧒‍🧒▶️",
     "LLMJudgeResult": "🧑‍⚖️",
     "EvaluationCompleted": "🧑‍🏫✅",
-    "GenerationStart": "🧑‍🧒‍🧒▶️",  # Knowledge generation started
+    "GenerationStart": "▶️",  # Knowledge generation started
     "GoalContextOverride": "🎯🔄",  # Goal context override
     "MgrScoreParseError": "📊❌",  # Scoring parse error
     "SymbolicRulesFound": "🧩🔍",  # Symbolic rules found

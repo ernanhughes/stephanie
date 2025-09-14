@@ -167,9 +167,9 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
     
     Designed to run after ConversationFilterAgent and before VerifiedSectionGenerator.
     """
-    
-    def __init__(self, cfg: Dict[str, Any], memory: Any, logger: logging.Logger):
-        super().__init__(cfg, memory, logger)
+
+    def __init__(self, cfg: Dict[str, Any], memory: Any, container: Any, logger: logging.Logger):
+        super().__init__(cfg, memory, container, logger)
         
         # Configuration
         self.kt_cfg = KTConfig(**cfg.get("knowledge_tree", {}))

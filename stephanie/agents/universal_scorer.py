@@ -35,8 +35,8 @@ class UniversalScorerAgent(BaseAgent):
     if not already scored. Uses ensemble of configured scorers.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.enabled_scorers = cfg.get("enabled_scorers", ["sicql"])
         self.progress = cfg.get("progress", True)
         self.force_rescore = cfg.get("force_rescore", False)
@@ -68,7 +68,7 @@ class UniversalScorerAgent(BaseAgent):
         self.mars_calculator = MARSCalculator(
             dimension_config, self.memory, self.logger
         )
-        self.ranker = ScorableRanker(cfg, memory, logger)
+        self.ranker = ScorableRanker(cfg, memory, container, logger)
 
         _logger.debug(
             f"AgentScorerInitialized: "

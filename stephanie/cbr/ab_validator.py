@@ -3,8 +3,8 @@ from typing import Callable, Dict, Tuple
 
 
 class DefaultABValidator:
-    def __init__(self, cfg, memory, logger, ns, assessor):
-        self.cfg, self.memory, self.logger = cfg, memory, logger
+    def __init__(self, cfg, memory, container, logger, ns, assessor):
+        self.cfg, self.memory, self.logger = cfg, memory, container, logger
         self.ns, self.assessor = ns, assessor
         self.delta_eps = float(cfg.get("ab_validation",{}).get("delta_eps", 1e-6))
 

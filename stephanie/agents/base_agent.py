@@ -28,16 +28,15 @@ def remove_think_blocks(text: str) -> str:
 
 
 class BaseAgent(ABC):
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         agent_key = self.__class__.__name__.replace(AGENT, "").lower()
         self.name = cfg.get(NAME, agent_key)
         self.description = cfg.get("description", "")
         self.memory = memory
+        self.container = container
         self.logger = logger
 
-        self.container: Optional[ServiceContainer] = None
-        
         self.enabled_scorers = self.cfg.get("enabled_scorers", ["sicql"])
 
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
@@ -61,7 +60,7 @@ class BaseAgent(ABC):
         self.scorable_details = {}
         self.is_scorable = False  # default
 
-        self.rule_applier = RulesService(cfg, memory, logger)
+        self.rule_applier = self.container.get("rules")
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
 
         self.logger.log(

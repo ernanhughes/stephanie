@@ -179,7 +179,7 @@ class CaseBookStore:
         q = self.session.query(CaseBookORM).filter_by(
             pipeline_run_id=pipeline_run_id, agent_name=agent_name, tag=tag
         )
-        return q.one_or_none()
+        return q.first()
 
     def ensure_casebook_scope(self, pipeline_run_id: int | None, agent_name: str | None, tag: str = "default"):
         cb = self.get_scope(pipeline_run_id, agent_name, tag)

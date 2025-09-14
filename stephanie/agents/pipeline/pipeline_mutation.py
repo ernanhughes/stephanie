@@ -24,17 +24,18 @@ class PipelineMutationAgent(BaseAgent):
         self,
         cfg,
         memory,
+        container,
         logger,
         full_cfg=None,
     ):
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.full_cfg = full_cfg
         self.target_agent = cfg.get("target_agent", "default")
         self.mutation_prompt_template = cfg["rule_mutation_prompt"]
         self.max_runs = cfg.get("max_runs", 5)
 
         # Load base pipeline
-        self.base_pipeline_key = cfg.get("base_pipeline", "minimal")
+        self.base_pipeline_run_id = cfg.get("base_pipeline", "minimal")
         self.pipeline_registry_path = cfg.get(
             "pipeline_registry", "config/registry/pipeline_registry.yaml"
         )
@@ -50,13 +51,13 @@ class PipelineMutationAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         # Step 1: Generate pipeline config mutations
-        pipeline_def = self.pipeline_registry.get_pipeline(self.base_pipeline_key)
+        pipeline_def = self.pipeline_registry.get_pipeline(self.base_pipeline_run_id)
         if not pipeline_def:
-            self.logger.log("PipelineNotFound", {"pipeline": self.base_pipeline_key})
+            self.logger.log("PipelineNotFound", {"pipeline": self.base_pipeline_run_id})
             context["status"] = "pipeline_not_found"
             return context
 
-        _, pipeline = self._generate_pipeline_mutations(self.base_pipeline_key, context)
+        _, pipeline = self._generate_pipeline_mutations(self.base_pipeline_run_id, context)
 
         # Step 2: Generate symbolic rule mutations
         applicable_rules = self._get_applicable_rules(pipeline)

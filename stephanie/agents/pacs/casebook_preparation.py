@@ -9,8 +9,8 @@ from stephanie.dataloaders.casebook_to_rlvr import CaseBookToRLVRDataset
 class CaseBookPreparationAgent(BaseAgent):
     """Prepares CaseBook data for PACS training"""
 
-    def __init__(self, cfg, memory, logger, reporter=None):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger, reporter=None):
+        super().__init__(cfg, memory, container, logger)
         self.verifier = cfg.get("verifier", "default_verifier")
         self.reporter = reporter or getattr(self, "reporter", None)
         self.dimensions = cfg.get("dimensions", ["alignment"])

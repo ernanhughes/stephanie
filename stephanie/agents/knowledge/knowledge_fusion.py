@@ -92,8 +92,8 @@ class KnowledgeFusionAgent(BaseAgent):
     Fuse (domains ⨁ entities ⨁ chat overlap) into a transient knowledge plan.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.kfc = KFConfig(
             top_domains=cfg.get("top_domains", 20),
             min_domain_score=cfg.get("min_domain_score", 0.0),
@@ -281,13 +281,12 @@ class KnowledgeFusionAgent(BaseAgent):
         # E) Quick tags for the improver: domains + top entity lemmas
         tags = self._generate_tags(domains, expanded_entities)
         
-        # ✅ CORRECT: Include actual scorable reference in plan
         plan = {
             "section_title": sec_name,
             "section_name": sec_name,
             "paper_id": paper_id,
-            "scorable_id": scorable_id,  # ✅ ACTUAL DB ID
-            "scorable_type": scorable_type,  # ✅ DB TABLE NAME
+            "scorable_id": scorable_id,  
+            "scorable_type": scorable_type,  
             "paper_text": text,
             "domains": domains,
             "entities": expanded_entities,

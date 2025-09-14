@@ -17,7 +17,7 @@ class LLMScorer(BaseScorer):
     Uses structured templates and flexible response parsers.
     """
 
-    def __init__(self, cfg, memory, logger, prompt_loader=None, llm_fn=None):
+    def __init__(self, cfg, memory, container, logger, prompt_loader=None, llm_fn=None):
         self.cfg = cfg
         self.model_type = "llm"
         self.memory = memory

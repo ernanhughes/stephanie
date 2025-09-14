@@ -19,8 +19,8 @@ class FilterBankAgent(BaseAgent):
     Wraps filter application logic in the standard agent run() pattern.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.mode = cfg.get("mode", "visual")  # "visual" | "weight"
         self.alpha = cfg.get("alpha", 1.0)
         self.filter_ids = cfg.get("filters", [])  # list of filter IDs

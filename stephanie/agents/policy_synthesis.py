@@ -19,8 +19,8 @@ class PolicySynthesisAgent(BaseAgent):
     This is Step 5: Policy Synthesis and GILD Signal Preparation.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         
         # Configuration
         self.output_dir = cfg.get("report_output_dir", "logs/policy_synthesis_reports")

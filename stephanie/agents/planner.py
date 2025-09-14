@@ -3,7 +3,7 @@ from stephanie.agents import DOTSPlannerAgent, LookaheadAgent
 
 
 class PipelinePlannerAgent:
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
@@ -13,9 +13,9 @@ class PipelinePlannerAgent:
         self.lookahead_enabled = cfg.get("lookahead_enabled", True)
 
         if self.dots_enabled:
-            self.dots = DOTSPlannerAgent(cfg, memory, logger)
+            self.dots = DOTSPlannerAgent(cfg, memory, container, logger)
         if self.lookahead_enabled:
-            self.lookahead = LookaheadAgent(cfg, memory, logger)
+            self.lookahead = LookaheadAgent(cfg, memory, container, logger)
 
     async def run(self, context):
         if self.dots:

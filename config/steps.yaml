@@ -53,7 +53,7 @@ pipeline:
       iterations: 1
     - name: dspy_assembler
       description: "Assembles the prompts using the scores into a single good prompt"
-      cls: stephanie.agents.compiler.dspy_assembler.DSPyAssemblerAgent
+      cls: stephanie.agents.compiler.dspy.dspy_assembler.DSPyAssemblerAgent
       enabled: true
       iterations: 1
     

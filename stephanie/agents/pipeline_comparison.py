@@ -15,8 +15,8 @@ from stephanie.models.comparison_preference import ComparisonPreferenceORM
 
 
 class PipelineComparisonAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.print_results = cfg.get("print_results", True)
         self.tags = cfg.get("tags", [])
         self.analyzer = RuleEffectAnalyzer(

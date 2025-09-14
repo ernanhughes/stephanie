@@ -7,9 +7,9 @@ from stephanie.scoring.training.preference_pair_builder import \
 
 
 class EBTTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.trainer = EBTTrainer(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.trainer = EBTTrainer(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])
         self.pair_builder = PreferencePairBuilder(memory.session, logger)
 

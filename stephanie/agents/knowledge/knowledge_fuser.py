@@ -25,15 +25,16 @@ class KnowledgeFuser:
     """
 
     def __init__(
-        self, cfg: Dict[str, Any], memory: Any, logger: logging.Logger
+        self, cfg: Dict[str, Any], memory: Any, container, logger: logging.Logger
     ):
         self.cfg = cfg
         self.memory = memory
+        self.container = container
         self.logger = logger
 
         # Core components (already built in standard pattern)
         try:
-            self.builder = ChatKnowledgeBuilder(cfg, memory, logger)
+            self.builder = ChatKnowledgeBuilder(cfg, memory, container, logger)
             self.classifier = ScorableClassifier(
                 memory=memory,
                 logger=logger,
@@ -42,7 +43,7 @@ class KnowledgeFuser:
                 ),
                 metric=cfg.get("domain_metric", "cosine"),
             )
-            self.kg_service = KnowledgeGraphService(cfg, memory, logger)
+            self.kg_service = self.container.get("knowledge_graph")
             self.kg_service.initialize()  # ensure ready
         except Exception as e:
             _logger.error(

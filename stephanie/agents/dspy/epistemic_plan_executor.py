@@ -41,17 +41,17 @@ class EpistemicPlanExecutorAgent(BaseAgent):
     """
 
     def __init__(
-        self, cfg: Dict[str, Any], memory: Any = None, logger: Any = None
+        self, cfg: Dict[str, Any], memory: Any, container, logger: Any = None
     ):
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])
         self.plan_timeout_seconds = cfg.get("plan_timeout_seconds", 300)
         self.max_reasoning_steps = cfg.get("max_reasoning_steps", 5) # Configurable steps
         self.use_hrm_in_trace = cfg.get("use_hrm_in_trace", True) # Config flag
 
-        self.sicql_scorer = SICQLScorer(cfg=self.cfg.get("sicql", {}), memory=memory, logger=logger)
+        self.sicql_scorer = SICQLScorer(cfg=self.cfg.get("sicql", {}), memory=memory, container=container, logger=logger)
         if self.use_hrm_in_trace:
-            self.hrm_scorer = HRMScorer(cfg=self.cfg.get("hrm", {}), memory=memory, logger=logger)
+            self.hrm_scorer = HRMScorer(cfg=self.cfg.get("hrm", {}), memory=memory, container=container, logger=logger)
         else:
             self.hrm_scorer = None
         # Get the configured LM

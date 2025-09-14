@@ -14,8 +14,8 @@ from stephanie.utils.file_utils import load_json
 
 
 class SVMScorer(BaseScorer):
-    def __init__(self, cfg: dict, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg: dict, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "svm"
         self.models = {}        # dim -> (scaler, model)
         self.tuners = {}        # dim -> RegressionTuner

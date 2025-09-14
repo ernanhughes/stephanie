@@ -1,6 +1,7 @@
 # stephanie/evaluator/mrq_trainer.py
 from collections import defaultdict
 
+from stephanie.scoring.training.base_trainer import BaseTrainer
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -10,10 +11,11 @@ from stephanie.evaluator.hypothesis_value_predictor import \
 from stephanie.scoring.model.text_encoder import TextEncoder
 
 
-class MRQTrainer:
+class MRQTrainer(BaseTrainer):
     def __init__(
-        self, memory, logger, encoder=None, value_predictor=None, device="cpu"
+        self, cfg, memory, container, logger, encoder=None, value_predictor=None, device="cpu"
     ):
+        self.cfg = cfg
         self.memory = memory
         self.dim = memory.embedding.dim
         self.hdim = memory.embedding.hdim
