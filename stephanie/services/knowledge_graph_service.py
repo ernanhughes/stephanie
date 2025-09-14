@@ -4,12 +4,11 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Tuple
 import traceback
 import torch
 import os
 import json
-import hashlib
 import numpy as np
 
 from stephanie.services.service_protocol import Service
