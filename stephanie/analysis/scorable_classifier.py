@@ -302,7 +302,7 @@ class ScorableClassifier:
 
         # 2) Compute as before
         emb = self.memory.embedding.get_or_create(text)
-        self.logger.log("TextEmbeddingCreated", {"text_length": len(text), "embedding_shape": len(emb), "message": "Created embedding for input text"})
+        # self.logger.log("TextEmbeddingCreated", {"text_length": len(text), "embedding_shape": len(emb), "message": "Created embedding for input text"})
         scores = {}
         for domain, centroid in self.centroids.items():
             if metric == "cosine":

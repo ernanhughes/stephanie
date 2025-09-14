@@ -2,7 +2,7 @@
 defaults:
   - _self_
   - db: postgres
-  - plan_monitor: default
+  - plan_monitor: disabled
   - scoring/service/default
   - mars/default
 
@@ -15,6 +15,9 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/verified_section_generator
+  - agents/knowledge_tree_builder
+  - agents/conversation_filter
   - agents/dpo_pair_generator
   - agents/universal_scorer
   - agents/text_improver
@@ -126,3 +129,21 @@ pipeline:
        cls: stephanie.agents.knowledge.dpo_pair_generator.DPOPairGeneratorAgent
        enabled: true
        iterations: 1
+  
+     - name: conversation_filter
+       description: >
+         Filter and refine conversations to ensure relevance and quality.
+       cls: stephanie.agents.knowledge.conversation_filter.ConversationFilterAgent
+       enabled: true
+    
+     - name: knowledge_tree_builder
+       description: >
+         Build a knowledge tree from the conversation history.
+       cls: stephanie.agents.knowledge.knowledge_tree_builder.KnowledgeTreeBuilderAgent
+       enabled: true
+ 
+     - name: verified_section_generator
+       description: >
+         Worker that processes verification jobs from the queue.
+       cls: stephanie.agents.knowledge.verified_section_generator.VerifiedSectionGeneratorAgent
+       enabled: true

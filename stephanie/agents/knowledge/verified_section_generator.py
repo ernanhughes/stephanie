@@ -91,7 +91,7 @@ class VerificationScorer:
         calibrated = min(1.0, max(0.0, raw))
         return calibrated, parts
 
-class VerifiedSectionGenerator(BaseAgent):
+class VerifiedSectionGeneratorAgent(BaseAgent):
     """
     LATS/beam search over candidates from tile bundles, verified against knowledge tree.
     """

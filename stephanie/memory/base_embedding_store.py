@@ -120,6 +120,7 @@ class BaseEmbeddingStore(BaseStore):
             embedding_id = self.get_id_for_text(text)
 
         self._cache.set(text_hash, (embedding_id, embedding))
+        self.logger.log("TextEmbeddingCreated", {"text_length": len(text), "embedding_shape": len(embedding), "message": "Created embedding for input text"})
         return embedding
 
     def get_id_for_text(self, text: str) -> int | None:
