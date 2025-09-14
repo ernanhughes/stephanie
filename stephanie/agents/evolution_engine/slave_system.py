@@ -2,7 +2,7 @@
 import json
 
 import arxiv
-from knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 from openai import OpenAI
 
 

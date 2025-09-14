@@ -1,10 +1,8 @@
 # stephanie/agents/knowledge/document_reward_scorer.py
 import random
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-import numpy as np
-import pandas as pd
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent

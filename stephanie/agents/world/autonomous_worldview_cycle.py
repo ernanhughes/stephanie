@@ -7,7 +7,7 @@ from stephanie.agents.world.worldview_evaluator import WorldviewEvaluatorAgent
 from stephanie.agents.world.worldview_merger import WorldviewMergerAgent
 from stephanie.agents.world.worldview_pipeline_runner import \
     WorldviewPipelineRunner
-from stephanie.core.knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 
 
 class AutonomousWorldviewCycleAgent:

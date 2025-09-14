@@ -1,4 +1,4 @@
-# stephanie/core/knowledge_cartridge.py
+# stephanie/memcubes/knowledge_cartridge.py
 
 import json
 from datetime import datetime

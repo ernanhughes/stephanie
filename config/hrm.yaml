@@ -72,7 +72,7 @@ pipeline:
 
     - name: epistemic_plan_executor
       description: "Execute the epistemic plan to generate hypotheses"
-      cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
+      cls: stephanie.agents.dspy.epistemic_plan_executor.EpistemicPlanExecutorAgent
       enabled: true
       iterations: 1
 

@@ -4,7 +4,6 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import networkx as nx
 
-from stephanie.core.knowledge_cartridge import KnowledgeCartridge
 
 
 class WorldviewVisualizer:
