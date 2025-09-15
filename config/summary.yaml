@@ -9,6 +9,7 @@ defaults:
   - scorer/reward/default
   - scorer/ebt/default
   - scorer/hrm/default
+  - scorer/epistemic_hrm/default
   - scorer/mrq/default
   - scorer/sicql/default
   - scorer/svm/default

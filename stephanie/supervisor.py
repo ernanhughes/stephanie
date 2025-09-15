@@ -16,6 +16,7 @@ from stephanie.engine.context_manager import ContextManager
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.reporting import ReportFormatter
+from stephanie.services.cbr_service import CBRService
 from stephanie.services.cycle_watcher_service import CycleWatcherService
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.services.meta_confidence_service import MetaConfidenceService
@@ -27,6 +28,7 @@ from stephanie.services.scoring_service import ScoringService
 from stephanie.services.self_validation_service import SelfValidationService
 from stephanie.services.service_container import ServiceContainer
 from stephanie.services.state_tracker_service import StateTrackerService
+from stephanie.services.strategy_profile_service import StrategyProfileService
 from stephanie.services.training_service import TrainingService
 from stephanie.services.zeromodel import ZeroModelService
 from stephanie.utils.report_utils import get_stage_details
@@ -167,6 +169,18 @@ class Supervisor:
             dependencies=[]
         )
 
+        # Symbolic rule applier
+        self.container.register(
+            "cbr",
+            lambda: CBRService(cfg, memory, self.container, logger),
+            dependencies=[]
+        )
+
+
+        self.container.register(
+            "strategy",
+            lambda: StrategyProfileService(cfg=cfg, memory=memory, logger=logger, path=".cache/strategy_profiles.json", namespace="track_c")
+        )
 
     def _create_reward_model(self, cfg, memory, logger):
         scoring: ScoringService = self.container.get("scoring")

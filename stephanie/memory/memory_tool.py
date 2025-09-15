@@ -130,6 +130,7 @@ class MemoryTool:
             },
         )
 
+        self._meta: dict = {} 
 
         # Register stores
         self.register_store(GoalStore(self.session, logger))
@@ -218,6 +219,11 @@ class MemoryTool:
             if self.logger:
                 self.logger.log("SessionRollback", {"error": str(e)})
             raise
+
+    @property
+    def meta(self) -> dict:
+        """Lightweight, process-local key/value store for small state."""
+        return self._meta
 
     def close(self):
         """Close session at end of run"""

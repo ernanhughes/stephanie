@@ -31,7 +31,7 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
     """
 
     def __init__(
-        self, cfg: Dict[str, Any], memory: Any = None, logger: Any = None
+        self, cfg: Dict[str, Any], memory: Any = None, container: Any = None, logger: Any = None
     ):
         super().__init__(cfg, memory, container, logger)
         self.model_type = "epistemic_hrm"

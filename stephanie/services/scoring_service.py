@@ -215,6 +215,9 @@ class ScoringService(Service):
             if name == "hrm":
                 from stephanie.scoring.scorer.hrm_scorer import HRMScorer
                 return HRMScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
+            if name == "epistemic_hrm": 
+                from stephanie.scoring.scorer.ep_hrm_scorer import EpistemicPlanHRMScorer
+                return EpistemicPlanHRMScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name == "sicql":
                 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
                 return SICQLScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)

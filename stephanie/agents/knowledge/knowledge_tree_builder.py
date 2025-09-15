@@ -173,8 +173,8 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
         super().__init__(cfg, memory, container=container, logger=logger)
         
         # Configuration
-        self.kt_cfg = KTConfig(**cfg.get("knowledge_tree", {}))
-        
+        self.kt_cfg = KTConfig(**cfg.get("knowledge_graph", {}))
+
         # Components
         self.casebooks: CaseBookStore = cfg.get("casebooks") or CaseBookStore()
         self.classifier: Optional[ScorableClassifier] = cfg.get("classifier")
@@ -251,7 +251,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                 self._init_entity_extraction()
             
             # Build the knowledge tree
-            tree = self._build_knowledge_tree(
+            knowledge_graph = self._build_knowledge_graph(
                 paper_section, 
                 critical_messages,
                 conversation_trajectories,
@@ -260,7 +260,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             )
             
             # Update context
-            context["knowledge_tree"] = tree
+            context["knowledge_graph"] = knowledge_graph
             
             # Log results
             processing_time = time.time() - start_time
@@ -269,16 +269,16 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             self.logger.log("KnowledgeTreeBuilt", {
                 "section": section_name,
                 "paper_id": paper_id,
-                "claims": len(tree["claims"]),
-                "insights": len(tree["insights"]),
-                "entities": len(tree["entities"]),
-                "relationships": len(tree["relationships"]),
+                "claims": len(knowledge_graph["claims"]),
+                "insights": len(knowledge_graph["insights"]),
+                "entities": len(knowledge_graph["entities"]),
+                "relationships": len(knowledge_graph["relationships"]),
                 "processing_time": f"{processing_time:.2f}s"
             })
             
             # Optional: Publish tree to bus for verification
             if self.bus and context.get("publish_tree", True):
-                await self._publish_tree(tree)
+                await self._publish_tree(knowledge_graph)
                 
             return context
             
@@ -311,7 +311,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             })
             # Will use heuristic fallback in _extract_entities
     
-    def _build_knowledge_tree(self,
+    def _build_knowledge_graph(self,
                              paper_section: Dict[str, Any],
                              critical_messages: List[Dict[str, Any]],
                              conversation_trajectories: List[Dict[str, Any]],

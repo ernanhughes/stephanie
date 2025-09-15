@@ -151,7 +151,7 @@ class VerifiedSectionGeneratorAgent(BaseAgent):
 
     async def run(self, context: Dict[str,Any]) -> Dict[str,Any]:
         sec = context.get("paper_section") or {}
-        tree = context.get("knowledge_tree") or {}
+        tree = context.get("knowledge_graph") or {}
         crit = context.get("critical_messages", [])
         if not sec or not tree:
             self.logger.log("VerifiedSectionSkipped", {"reason":"missing_inputs"})
