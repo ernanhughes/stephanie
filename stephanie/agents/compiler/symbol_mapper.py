@@ -1,4 +1,6 @@
 # stephanie/agents/compiler/symbol_mapper.py
+from __future__ import annotations
+
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
 from stephanie.services.rules_service import RulesService
 

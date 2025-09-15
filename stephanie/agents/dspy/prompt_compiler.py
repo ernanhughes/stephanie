@@ -1,4 +1,6 @@
 # stephanie/agents/prompt_compiler.py
+from __future__ import annotations
+
 import dspy
 
 from stephanie.agents.base_agent import BaseAgent

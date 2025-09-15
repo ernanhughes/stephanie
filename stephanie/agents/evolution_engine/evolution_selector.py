@@ -1,4 +1,6 @@
 # stephanie/agents/evolution_engine/evolution_selector.py
+from __future__ import annotations
+
 import random
 
 

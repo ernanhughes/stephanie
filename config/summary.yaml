@@ -16,6 +16,7 @@ defaults:
   - scorer/epistemic_hrm/default
 
 
+  - agents/sharpened_paper_summarizer
   - agents/paper_summarizer
   - agents/verified_section_generator
   - agents/knowledge_tree_builder
@@ -101,6 +102,12 @@ pipeline:
      - name: paper_summarizer
        description: "Summarize the paper for relevance to the goal"
        cls: stephanie.agents.paper_summarizer.SimplePaperSummarizerAgent
+       enabled: false
+       iterations: 1
+
+     - name: sharpened_paper_summarizer
+       description: "Summarize the paper with a focus on sharpening key insights"
+       cls: stephanie.agents.sharpened_paper_summarizer.SharpenedPaperSummarizerAgent
        enabled: true
        iterations: 1
 

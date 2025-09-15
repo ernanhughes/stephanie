@@ -1,4 +1,6 @@
 # stephanie/agents/compiler/compiler.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.compiler.final_prompt_builder import FinalPromptBuilder
 from stephanie.agents.compiler.node_executor import NodeExecutor

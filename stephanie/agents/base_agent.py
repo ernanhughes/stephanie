@@ -6,7 +6,7 @@ import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import litellm
 import torch
@@ -18,9 +18,7 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
-from stephanie.services.rules_service import RulesService
 from stephanie.services.scoring_service import ScoringService
-from stephanie.services.service_container import ServiceContainer
 
 
 def remove_think_blocks(text: str) -> str:

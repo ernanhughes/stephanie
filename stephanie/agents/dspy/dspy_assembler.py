@@ -1,4 +1,6 @@
 # stephanie/agents/compiler/dspy_assembler.py
+from __future__ import annotations
+
 import dspy
 from dspy import (BootstrapFewShot, ChainOfThought, Example, InputField,
                   OutputField, Signature)

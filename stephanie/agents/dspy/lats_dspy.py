@@ -1,4 +1,6 @@
 # stephanie/agents/lats_dspy.py
+from __future__ import annotations
+
 import math
 import re
 from collections import defaultdict

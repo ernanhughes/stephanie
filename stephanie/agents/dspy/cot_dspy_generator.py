@@ -16,6 +16,7 @@ Key features:
 
 Intended to be paired with self-judging evaluators and symbolic optimizers.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 

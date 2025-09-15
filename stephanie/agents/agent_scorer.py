@@ -101,7 +101,7 @@ class AgentScorerAgent(BaseAgent):
                 }
             )
 
-            # === 1. Run configured scorers === You need to do a better one you need to do this one
+            # === 1. Run configured scorers === 
             scores, bundle = self._score(context=context, scorable=scorable)
             corpus = ScoreCorpus(bundles={scorable_id: bundle})
             # === 2. MARS Analysis ===

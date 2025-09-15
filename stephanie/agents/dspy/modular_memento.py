@@ -1,4 +1,6 @@
 # stephanie/agents/cbr/modular_memento.py
+from __future__ import annotations
+
 from stephanie.agents.dspy.mcts_reasoning import MCTSReasoningAgent
 from stephanie.cbr.ab_validator import DefaultABValidator
 from stephanie.cbr.case_selector import DefaultCaseSelector

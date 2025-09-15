@@ -14,6 +14,11 @@ class DynamicScorableORM(Base):
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=True)
     scorable_type = Column(String, nullable=False)    # e.g. "draft", "goal_score", "trace"
     source = Column(String, nullable=True)            # e.g. "draft_generator", "policy_eval"
+
+    source_scorable_id   = Column(Integer, nullable=True)
+    source_scorable_type = Column(String, nullable=True)
+
+
     text = Column(Text, nullable=True)                # optional, can be large
     meta = Column(JSON, nullable=True)
     role = Column(String, nullable=True)              # e.g. "user", "assistant", "system"

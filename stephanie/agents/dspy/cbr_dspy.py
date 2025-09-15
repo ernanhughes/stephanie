@@ -1,3 +1,4 @@
+# stephanie/agents/dspy/cbr_dspy.py
 """
 CBR Hypothesis DSPy Generator Agent
 
@@ -10,6 +11,7 @@ Key features:
 - Embeds CBR definition + example into the prompt automatically
 - Returns hypotheses as Scorables for downstream scoring/ranking
 """
+from __future__ import annotations
 
 import re
 from typing import List

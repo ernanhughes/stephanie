@@ -1566,9 +1566,15 @@ CREATE TABLE dynamic_scorables (
     scorable_type VARCHAR NOT NULL,
     source VARCHAR,
     text TEXT,
+    source_scorable_id int,
+    source_scorable_type text,
     meta JSONB,
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
 ); 
+
+
+CREATE INDEX IF NOT EXISTS ix_dynamic_scorables_srcptr
+  ON dynamic_scorables (source, source_scorable_type, source_scorable_id);
 
 CREATE TABLE entity_cache (
     id SERIAL PRIMARY KEY,

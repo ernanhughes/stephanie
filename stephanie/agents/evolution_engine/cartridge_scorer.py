@@ -1,4 +1,6 @@
 # stephanie/agents/evolution_engine/cartridge_scorer.py
+from __future__ import annotations
+
 from stephanie.agents.knowledge.paper_score import PaperScoreAgent
 from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 

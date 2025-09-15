@@ -1,8 +1,9 @@
 # stephanie/agents/ats/agentic_tree_search.py
+from __future__ import annotations
 
 import random
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from stephanie.agents.ats.solution_node import SolutionNode
 from stephanie.agents.base_agent import BaseAgent
