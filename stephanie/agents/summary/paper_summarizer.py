@@ -8,7 +8,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable_factory import TargetType
 
 SENTS_MIN_DEFAULT = 4
-SENTS_MAX_DEFAULT = 5
+SENTS_MAX_DEFAULT = 20
 
 
 class SimplePaperSummarizerAgent(BaseAgent):
@@ -104,7 +104,7 @@ class SimplePaperSummarizerAgent(BaseAgent):
                 "paper_id": doc.get("paper_id", doc_id),
                 "title": title,
                 "abstract": abstract,
-                "author_summary": arxiv_summary,
+                "arxiv_summary": arxiv_summary,
             }
 
             scorable_id = self._persist_scorable_document(
@@ -123,7 +123,7 @@ class SimplePaperSummarizerAgent(BaseAgent):
                             "paper_id": doc.get("paper_id", doc_id),
                             "title": title,
                             "abstract": abstract,
-                            "author_summary": arxiv_summary,
+                            "arxiv_summary": arxiv_summary,
                         },
                         summary=parsed["summary"],
                         metrics=metrics,
@@ -172,6 +172,8 @@ class SimplePaperSummarizerAgent(BaseAgent):
             meta={
                 "paper_id": paper.get("paper_id"),
                 "title": paper.get("title"),
+                "abstract": paper.get("abstract"),
+                "arxiv_summary": paper.get("arxiv_summary"), 
                 "text": full_text,
                 "summary": summary_text,
                 "metrics": metrics,
@@ -228,15 +230,15 @@ class SimplePaperSummarizerAgent(BaseAgent):
         )
 
         # --- Pairwise (ranker) vs author/arXiv summary if available ---
-        author_summary = paper.get("summary") or ""
-        if author_summary.strip():
+        arxiv_summary = paper.get("summary") or ""
+        if arxiv_summary.strip():
             author_metrics = self._compute_metrics(
-                author_summary, paper.get("abstract", ""), author_summary
+                arxiv_summary, paper.get("abstract", ""), arxiv_summary
             )
             prefer_baseline = metrics["overall"] > author_metrics["overall"]
 
-            pos_text = summary if prefer_baseline else author_summary
-            neg_text = author_summary if prefer_baseline else summary
+            pos_text = summary if prefer_baseline else arxiv_summary
+            neg_text = arxiv_summary if prefer_baseline else summary
 
             self.memory.training_events.add_pairwise(
                 model_key=self.model_key_ranker,
@@ -345,7 +347,7 @@ class SimplePaperSummarizerAgent(BaseAgent):
     # ---------- metrics (cheap + deterministic) ----------
 
     def _compute_metrics(
-        self, summary: str, abstract: str, author_summary: str
+        self, summary: str, abstract: str, arxiv_summary: str
     ) -> Dict[str, float]:
         # 1) Claim coverage from abstract sentences (first 2–3 + numeric lines)
         claims = self._extract_key_claims(abstract)
@@ -359,8 +361,8 @@ class SimplePaperSummarizerAgent(BaseAgent):
             self._cosine_similarity(summary, abstract) if abstract else 0.0
         )
         author_sim = (
-            self._cosine_similarity(summary, author_summary)
-            if author_summary
+            self._cosine_similarity(summary, arxiv_summary)
+            if arxiv_summary
             else 0.0
         )
         faithfulness = 0.7 * abstract_sim + 0.3 * author_sim
@@ -370,7 +372,7 @@ class SimplePaperSummarizerAgent(BaseAgent):
 
         # 4) Hallucination: count sentences with verbs + not present in sources by fuzzy sim
         hallucination_issues = self._detect_hallucinations(
-            summary, abstract, author_summary
+            summary, abstract, arxiv_summary
         )
         sent_count = max(
             1, len([s for s in re.split(r"(?<=[.!?])", summary) if s.strip()])
@@ -483,7 +485,7 @@ class SimplePaperSummarizerAgent(BaseAgent):
         return min(1.0, cues / 4.0)
 
     def _detect_hallucinations(
-        self, summary: str, abstract: str, author_summary: str
+        self, summary: str, abstract: str, arxiv_summary: str
     ) -> List[str]:
         # any sentence far from both sources is suspicious
         issues = []
@@ -496,8 +498,8 @@ class SimplePaperSummarizerAgent(BaseAgent):
                 self._cosine_similarity(sent, abstract) if abstract else 0.0
             )
             sim_b = (
-                self._cosine_similarity(sent, author_summary)
-                if author_summary
+                self._cosine_similarity(sent, arxiv_summary)
+                if arxiv_summary
                 else 0.0
             )
             if max(sim_a, sim_b) < 0.45 and re.search(r"[A-Za-z]", sent):

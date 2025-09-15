@@ -23,6 +23,8 @@ MIN_FIGURE_SCORE_DEFAULT = 0.80
 VERIFICATION_THRESHOLD_DEFAULT = 0.90
 CONVERGENCE_WINDOW_DEFAULT = 2
 KNOWLEDGE_TREE_CONF_DEFAULT = 0.70
+SENTS_MIN_DEFAULT = 4
+SENTS_MAX_DEFAULT = 20
 
 
 class KnowledgeInfusedVerifierAgent(BaseAgent):
@@ -44,8 +46,8 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         self.knowledge_tree_conf = float(cfg.get("knowledge_tree_conf", KNOWLEDGE_TREE_CONF_DEFAULT))
 
         # Sentence window (keep aligned with A/B)
-        self.min_sents = int(cfg.get("min_sents", 4))
-        self.max_sents = int(cfg.get("max_sents", 5))
+        self.min_sents = int(cfg.get("min_sents", SENTS_MIN_DEFAULT))
+        self.max_sents = int(cfg.get("max_sents", SENTS_MAX_DEFAULT))
 
         # Dependencies
         # Use Track A metrics util (deterministic, lightweight)

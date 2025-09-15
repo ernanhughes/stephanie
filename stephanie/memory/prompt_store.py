@@ -308,6 +308,6 @@ class PromptStore:
             self.session.rollback()
             if self.logger:
                 self.logger.log(
-                    "GetPromptsByPipelineFailed", {"error": str(e), "pipeline_id": pipeline_id}
+                    "GetPromptsByPipelineFailed", {"error": str(e), "pipeline_id": run_id}
                 )
             return []

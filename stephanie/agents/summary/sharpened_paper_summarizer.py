@@ -110,22 +110,32 @@ class SharpenedPaperSummarizerAgent(BaseAgent):
             refined_obj = None
             try:
                 refined_text = f"## Summary\n{enhanced['summary']}".strip()
+                abstract = self._fetch_abstract(doc.get("id") or doc_id)
                 refined_obj = self.memory.dynamic_scorables.add(
                     pipeline_run_id=context.get("pipeline_run_id"),
                     scorable_type=TargetType.DYNAMIC,
-                    source=self.name,
+                    source=self.name, 
                     text=refined_text,
+                    source_scorable_id=int(baseline_obj.id),
+                    source_scorable_type="dynamic",
                     meta={
                         "paper_id": doc_id,
                         "title": doc.get("title", ""),
+                        "abstract": abstract,
+                        "arxiv_summary": doc.get("summary", ""),
+                        "text": refined_text,
+                        "summary": enhanced.get("summary", ""),
                         "metrics": enhanced.get("metrics", {}),
+                        "hallucination_issues": enhanced.get("hallucination_issues", []),
+                        "figure_results": enhanced.get("figure_results", {}),
                         "origin": "track_b_super_sharpening",
+                        "iterations": enhanced.get("iterations", []),
+                        "processing_time": enhanced.get("processing_time", 0),
+                        "passes_guardrails": enhanced.get("passes_guardrails", False),
+                        "converged": enhanced.get("converged", False),
                     },
-                    # 👇 provenance to the baseline dynamic scorable
-                    source_scorable_id=int(baseline_obj.id),
-                    source_scorable_type="dynamic",
                 )
-                # ensure an embedding exists
+                # ensure embedding
                 self.memory.embedding.get_or_create(refined_text)
             except Exception as e:
                 self.memory.session.rollback()
@@ -138,14 +148,14 @@ class SharpenedPaperSummarizerAgent(BaseAgent):
                     "paper_id": doc_id,
                     "title": doc.get("title", ""),
                     "abstract": self._fetch_abstract(doc.get("id") or doc_id),
-                    "author_summary": doc.get("summary", ""),
+                    "arxiv_summary": doc.get("summary", ""),
                 }
 
                 # Baseline metrics (if we have them in baseline_obj.meta), else recompute quickly
                 baseline_metrics = (baseline_obj.meta or {}).get("metrics")
                 if not baseline_metrics:
                     baseline_metrics = self._score_summary(
-                        baseline_summary, paper_bundle["abstract"], paper_bundle["author_summary"]
+                        baseline_summary, paper_bundle["abstract"], paper_bundle["arxiv_summary"]
                     )
 
                 # Emit only if our enhanced pass actually exists
@@ -267,11 +277,11 @@ Rewrite now (one paragraph, {min_sents}-{max_sents} sentences):
         m = re.search(r"(?mi)^##\s*Summary\s*\n(.+?)(?=^##|\Z)", text, re.S)
         return (m.group(1).strip() if m else text.strip())
 
-    def _score_summary(self, summary: str, abstract: str, author_summary: str) -> Dict[str, float]:
-        return self.metrics._compute_metrics(summary, abstract, author_summary)
+    def _score_summary(self, summary: str, abstract: str, arxiv_summary: str) -> Dict[str, float]:
+        return self.metrics._compute_metrics(summary, abstract, arxiv_summary)
 
-    def _verify_hallucinations(self, summary: str, abstract: str, author_summary: str) -> Tuple[bool, List[str]]:
-        issues = self.metrics._detect_hallucinations(summary, abstract, author_summary)
+    def _verify_hallucinations(self, summary: str, abstract: str, arxiv_summary: str) -> Tuple[bool, List[str]]:
+        issues = self.metrics._detect_hallucinations(summary, abstract, arxiv_summary)
         return len(issues) == 0, issues
 
     def _verify_figure_grounding(self, summary: str, paper_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -374,12 +384,12 @@ Rewrite now (one paragraph, {min_sents}-{max_sents} sentences):
         )
 
         # pairwise vs author summary (optional)
-        author_summary = paper.get("author_summary", "") or ""
-        if author_summary.strip():
-            author_metrics = self._score_summary(author_summary, paper.get("abstract", ""), author_summary)
+        arxiv_summary = paper.get("arxiv_summary", "") or ""
+        if arxiv_summary.strip():
+            author_metrics = self._score_summary(arxiv_summary, paper.get("abstract", ""), arxiv_summary)
             prefer_enhanced = enhanced_metrics["overall"] > author_metrics["overall"]
-            pos = enhanced_summary if prefer_enhanced else author_summary
-            neg = author_summary if prefer_enhanced else enhanced_summary
+            pos = enhanced_summary if prefer_enhanced else arxiv_summary
+            neg = arxiv_summary if prefer_enhanced else enhanced_summary
 
             self.memory.training_events.add_pairwise(
                 model_key=self.model_key_ranker,

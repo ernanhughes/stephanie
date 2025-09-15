@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import networkx as nx
 
 
-
 class WorldviewVisualizer:
     """
     Visualizes key components of a worldview: belief systems, goal influence, cartridge scores,
