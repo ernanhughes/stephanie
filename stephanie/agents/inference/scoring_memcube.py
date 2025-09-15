@@ -1,4 +1,5 @@
 # stephanie/agents/inference/scoring_memcube.py
+from __future__ import annotations
 
 import torch
 

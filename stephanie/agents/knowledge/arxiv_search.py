@@ -6,6 +6,7 @@ Provides functionality to search and retrieve academic papers from arXiv.org
 based on research goals and extracted keywords. Includes robust error handling,
 query construction, and result processing capabilities.
 """
+from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta

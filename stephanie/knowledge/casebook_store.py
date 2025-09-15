@@ -1,4 +1,6 @@
 # stephanie/knowledge/casebook_store.py
+from __future__ import annotations
+
 import json
 import uuid
 from dataclasses import asdict, dataclass

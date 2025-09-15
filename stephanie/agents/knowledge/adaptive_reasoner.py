@@ -1,4 +1,6 @@
 # stephanie/agents/knowledge/adaptive_reasoner.py
+from __future__ import annotations
+
 from typing import Union
 
 from stephanie.agents.base_agent import BaseAgent

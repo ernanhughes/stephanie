@@ -1,4 +1,6 @@
 # stephanie/knowledge/knowledge_bus.py
+from __future__ import annotations
+
 import json
 import time
 import uuid

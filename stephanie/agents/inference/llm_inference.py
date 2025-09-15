@@ -1,4 +1,5 @@
 # stephanie/agents/inference/document_llm_inference.py
+from __future__ import annotations
 
 from tqdm import tqdm
 

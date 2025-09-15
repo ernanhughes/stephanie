@@ -1,4 +1,6 @@
 # stephanie/agents/inference/document_ebt_inference.py
+from __future__ import annotations
+
 import os
 from typing import Optional
 

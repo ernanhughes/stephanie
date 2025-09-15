@@ -1,4 +1,5 @@
-# stephanie/agents/knowledge/epistemic_trace_reward_scorer.py
+# stephanie/agents/inference/et_hrm_inference.py
+from __future__ import annotations
 
 import json
 import os
