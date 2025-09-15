@@ -1,4 +1,5 @@
 # stephanie/utils/graph_tools.py
+from __future__ import annotations
 
 def build_mermaid_graph(node, depth=0, max_depth=5, visited=None):
     """

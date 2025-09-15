@@ -1,4 +1,6 @@
 # stephanie/utils/json_sanitize.py
+from __future__ import annotations
+
 import math
 from typing import Any
 import json

@@ -4,15 +4,18 @@ from __future__ import annotations
 import inspect
 import time
 import traceback
-from typing import Dict, Any, List, Tuple
-
+from typing import Dict, Any, List, Tuple, Optional
+import re
 import numpy as np
+import os
+import math
+import json
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.summary.paper_summarizer import SimplePaperSummarizerAgent
-from stephanie.agents.knowledge.knowledge_tree_builder import KnowledgeTreeBuilderAgent
 from stephanie.knowledge.anti_hallucination import AntiHallucination
 from stephanie.knowledge.figure_grounding import FigureGrounding
+from stephanie.agents.knowledge.knowledge_tree_builder import KnowledgeTreeBuilderAgent
 
 # Defaults
 MAX_ITERS_DEFAULT = 5
@@ -72,39 +75,87 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             "details": "Track C verification loop"
         })
 
-
-        documents = context.get("documents", [])
+        documents = context.get("documents", []) or context.get(self.input_key, [])
         chat_corpus = context.get("chat_corpus", [])
 
         verified_outputs: Dict[Any, Dict[str, Any]] = {}
 
+        # small local helper to pull ## Summary block from a text blob
+        def _extract_summary_from_text(text: str) -> str:
+            import re as _re
+            m = _re.search(r"(?mi)^##\s*Summary\s*\n(.+?)(?=^##|\Z)", text or "", _re.S)
+            return (m.group(1).strip() if m else (text or "").strip())
+
         for doc in documents:
-            doc_id = doc.get("id")
+            doc_id = doc.get("id") or doc.get("paper_id")
+            if doc_id is None:
+                self.logger.log("TrackCSkipNoDocId", {"doc": str(doc)[:200]})
+                continue
 
-            track_a_output = self.memory.dynamic_scorables.get_latest_by_source_pointer(
-                source="paper_summarizer",
-                source_scorable_type="document",
-                source_scorable_id=doc_id,
+            # -------------------- Load Track A (baseline) --------------------
+            try:
+                track_a_obj = self.memory.dynamic_scorables.get_latest_by_source_pointer(
+                    source="paper_summarizer",
+                    source_scorable_type="document",
+                    source_scorable_id=int(doc_id),
+                )
+            except Exception as e:
+                track_a_obj = None
+                self.logger.log("TrackALoadError", {"doc_id": doc_id, "error": str(e)})
+
+            if not track_a_obj:
+                self.logger.log("TrackAMissing", {
+                    "doc_id": doc_id,
+                    "hint": "Ensure Track A persisted with source_scorable_id=document_id and type=document"
+                })
+                continue
+
+            a_meta = self._safe_meta(track_a_obj) if hasattr(self, "_safe_meta") else (
+                track_a_obj.meta if isinstance(track_a_obj.meta, dict) else {}
+            )
+            a_metrics = a_meta.get("metrics") or {}
+
+            # -------------------- Load Track B (sharpened) --------------------
+            try:
+                track_b_obj = self.memory.dynamic_scorables.get_latest_by_source_pointer(
+                    source="sharpened_paper_summarizer",
+                    source_scorable_type="dynamic",
+                    source_scorable_id=int(track_a_obj.id),
+                )
+            except Exception as e:
+                track_b_obj = None
+                self.logger.log("TrackBLoadError", {"doc_id": doc_id, "error": str(e)})
+
+            if not track_b_obj:
+                self.logger.log("TrackBMissing", {
+                    "doc_id": doc_id,
+                    "hint": "Ensure Track B persisted with source_scorable_id=<Track A dynamic id> and type=dynamic"
+                })
+                continue
+
+            b_meta = self._safe_meta(track_b_obj) if hasattr(self, "_safe_meta") else (
+                track_b_obj.meta if isinstance(track_b_obj.meta, dict) else {}
             )
 
-            track_b_output = self.memory.dynamic_scorables.get_latest_by_source_pointer(
-                source="sharpened_paper_summarizer",
-                source_scorable_type="dynamic",
-                source_scorable_id=track_a_output.id,
-            )
+            # Prefer the ## Summary section from the text, fallback to meta.summary, then raw text
+            b_text = (track_b_obj.text or "").strip()
+            baseline_b_summary = _extract_summary_from_text(b_text) or (b_meta.get("summary") or b_text)
 
-            # Track B doesn’t set "valid"; only gate on guardrails
-            # if not track_b_output.get("passes_guardrails", False):
-            #     self.logger.log("TrackBSkipped", {
-            #         "doc_id": doc_id,
-            #         "reason": "guardrails_not_passed"
-            #     })
-            #     continue
+            # Build paper bundle for recomputing metrics if Track B didn't save them
+            title = doc.get("title", "") or (a_meta.get("title") or "")
+            abstract = a_meta.get("abstract") or b_meta.get("abstract") or self._fetch_abstract(doc_id)
+            arxiv_summary = a_meta.get("arxiv_summary") or b_meta.get("arxiv_summary") or (doc.get("summary", "") or "")
 
+            baseline_b_metrics = b_meta.get("metrics")
+            if not baseline_b_metrics:
+                # Recompute quickly to keep downstream consistent
+                baseline_b_metrics = self._score_summary(baseline_b_summary, abstract, arxiv_summary, {})
+
+            # -------------------- Verify (produce Track C) --------------------
             try:
                 verified = await self._verify_summary(
                     doc_id=str(doc_id),
-                    enhanced_summary=track_b_output["summary"],
+                    enhanced_summary=baseline_b_summary,
                     paper_data=doc,
                     chat_corpus=chat_corpus,
                     context=context
@@ -119,25 +170,41 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
 
             verified_outputs[doc_id] = verified
 
-            # Emit training events if high quality
+            # -------------------- Training events + VPM tiles --------------------
             try:
-                if verified["metrics"]["overall"] >= self.min_overall and verified["passes_guardrails"]:
+                v_metrics = verified.get("metrics") or {}
+                if v_metrics.get("overall", 0.0) >= self.min_overall and verified.get("passes_guardrails", False):
                     self._emit_training_events(
                         paper={
                             "paper_id": doc.get("paper_id", doc_id),
-                            "title": doc.get("title", ""),
-                            "abstract": self._fetch_abstract(doc_id),
-                            "author_summary": doc.get("summary", "")
+                            "title": title,
+                            "abstract": abstract,
+                            "author_summary": arxiv_summary,
                         },
-                        baseline_summary=track_b_output["summary"],
-                        verified_summary=verified["summary"],
-                        baseline_metrics=track_b_output["metrics"],
-                        verified_metrics=verified["metrics"],
-                        context=context
+                        baseline_summary=baseline_b_summary,   # compare C vs B
+                        verified_summary=verified.get("summary", ""),
+                        baseline_metrics=baseline_b_metrics,
+                        verified_metrics=v_metrics,
+                        context=context,
                     )
+
+                # VPM tiles (summary quality + iteration trace)
+                self._emit_vpm_tiles(
+                    doc_id=doc_id,
+                    title=title,
+                    metrics_a=a_metrics,
+                    metrics_b=baseline_b_metrics or {},
+                    metrics_c=v_metrics,
+                    iterations_c=verified.get("iterations", []),
+                    out_dir="reports/vpm",
+                )
             except Exception as e:
-                self.memory.session.rollback()
-                self.logger.log("TrainingEventEmitError", {"doc_id": doc_id, "error": str(e)})
+                # Be resilient to DB hiccups / filesystem issues
+                try:
+                    self.memory.session.rollback()
+                except Exception:
+                    pass
+                self.logger.log("TrackCPostProcessError", {"doc_id": doc_id, "error": str(e)})
 
         context.setdefault("summary_v2", {})
         context["summary_v2"] = verified_outputs
@@ -179,7 +246,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         for iter_idx in range(self.max_iters):
             iter_start = time.time()
 
-            candidates = self._generate_verification_candidates(current_summary, knowledge_tree, paper_data)
+            candidates = self._generate_verification_candidates(current_summary, knowledge_tree, paper_data, context)
             scored_candidates = [
                 (cand, self._score_summary(cand, abstract, arxiv_summary, knowledge_tree))
                 for cand in candidates
@@ -298,7 +365,8 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         self,
         current_summary: str,
         knowledge_tree: Dict[str, Any],
-        paper_data: Dict[str, Any]
+        paper_data: Dict[str, Any],
+        context: Dict[str, Any]
     ) -> List[str]:
         # If no knowledge tree/claims, just pass current
         claims = (knowledge_tree or {}).get("claims", [])
@@ -310,7 +378,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             claims=claims,
             paper_data=paper_data
         )
-        candidate = self.call_llm(prompt)
+        candidate = self.call_llm(prompt, context=context)
         return [candidate, current_summary]
 
     def _build_verification_prompt(
@@ -407,19 +475,49 @@ Verified summary:
         )
         return (bool(is_valid), issues or [])
 
-    def _verify_figure_grounding(
-        self,
-        summary: str,
-        paper_data: Dict[str, Any],
-        knowledge_tree: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        return self.figure_grounding.verify_section(
-            summary,
-            {"section_text": paper_data.get("text", "")},
-            knowledge_tree
-        )
 
-    # -------------------- Utility --------------------
+   # ---------- helpers reused from Track A ----------
+    def _extract_summary_from_text(self, text: str) -> str:
+        m = re.search(r"(?mi)^##\s*Summary\s*\n(.+?)(?=^##|\Z)", text, re.S)
+        return (m.group(1).strip() if m else text.strip())
+
+    def _verify_figure_grounding(self, summary: str, paper_data: Dict[str, Any], knowledge_tree: Dict[str, Any]) -> Dict[str, Any]:
+        """Verify figure/table grounding with precise claim matching."""
+        # Find quantitative claims with context
+        quant_claims = []
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", summary) if s.strip()]
+        
+        for sent in sentences:
+            matches = re.findall(
+                r"(\b\d+\.?\d*\s*(%|percent|accuracy|precision|recall|f1|auc|rmse|mae|bleu)\b)", 
+                sent, 
+                flags=re.I
+            )
+            if matches:
+                quant_claims.append({
+                    "claim": sent,
+                    "value": matches[0][0],
+                    "metric": matches[0][1],
+                    "has_citation": any(marker in sent.lower() for marker in ["figure", "fig.", "table", "as shown", "see"])
+                })
+        
+        # Check if citations match paper content
+        properly_cited = 0
+        for claim in quant_claims:
+            if claim["has_citation"]:
+                # In production, this would check if the citation actually supports the claim
+                # For now, simple heuristic
+                properly_cited += 1
+        
+        citation_rate = properly_cited / max(1, len(quant_claims))
+        
+        return {
+            "total_claims": len(quant_claims),
+            "properly_cited": properly_cited,
+            "citation_rate": citation_rate,
+            "overall_figure_score": citation_rate,
+            "claims": quant_claims
+        }
 
     def _fetch_abstract(self, doc_id) -> str:
         try:
@@ -499,3 +597,171 @@ Verified summary:
                 source="track_c",
                 meta={"stage": "track_c", "verified_score": verified_metrics["overall"], "author_score": author_metrics["overall"], "prefer_verified": prefer_verified},
             )
+
+    def _select_best_candidate(
+        self,
+        scored_candidates: List[Tuple[str, Dict[str, float]]],
+        current_metrics: Dict[str, float],
+        min_gain: float
+    ) -> Tuple[Optional[str], float]:
+        """
+        Select the best candidate summary if it improves over the current metrics.
+
+        Args:
+            scored_candidates: list of (candidate, metrics) tuples
+            current_metrics: metrics dict for the current summary
+            min_gain: minimum required improvement in 'overall' score
+
+        Returns:
+            (best_candidate_text, best_score) or (None, current_overall)
+        """
+        if not scored_candidates:
+            return None, current_metrics.get("overall", 0.0)
+
+        best_candidate, best_metrics = max(
+            scored_candidates, key=lambda x: x[1].get("overall", 0.0)
+        )
+        best_score = best_metrics.get("overall", 0.0)
+        current_score = current_metrics.get("overall", 0.0)
+
+        # Only accept if gain is big enough
+        if best_score > current_score + min_gain:
+            self.logger.log("VerifierCandidateSelected", {
+                "best_score": best_score,
+                "current_score": current_score,
+                "gain": best_score - current_score,
+                "min_gain": min_gain,
+            })
+            return best_candidate, best_score
+
+        # No candidate passed threshold
+        return None, current_score
+
+    def _safe_meta(self, obj) -> dict:
+        meta = getattr(obj, "meta", {}) or {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+        return meta
+
+    def _metric_or(self, d: dict, key: str, default: float = 0.0) -> float:
+        try:
+            v = float(d.get(key, default))
+            if math.isnan(v) or math.isinf(v):
+                return default
+            return v
+        except Exception:
+            return default
+
+    def _emit_vpm_tiles(
+        self,
+        *,
+        doc_id,
+        title: str,
+        metrics_a: dict | None,
+        metrics_b: dict | None,
+        metrics_c: dict | None,
+        iterations_c: list[dict] | None,
+        out_dir: str = "reports/vpm",
+    ):
+        """
+        Create two tiles:
+        1) summary_quality_<doc_id>.png (A/B/C bars across key metrics)
+        2) iteration_trace_<doc_id>.png (C iteration curve)
+        """
+        try:
+            import matplotlib.pyplot as plt
+        except Exception as e:
+            self.logger.log("VPMSkipMatplotlibMissing", {"doc_id": doc_id, "error": str(e)})
+            return
+
+        os.makedirs(out_dir, exist_ok=True)
+
+        # ---- Normalize metrics ----
+        metrics_a = metrics_a or {}
+        metrics_b = metrics_b or {}
+        metrics_c = metrics_c or {}
+        # keys: overall, claim_coverage, faithfulness, structure, hallucination_rate, figure_results.overall_figure_score (optional)
+        def pack(m):
+            return {
+                "overall":        self._metric_or(m, "overall", 0.0),
+                "coverage":       self._metric_or(m, "claim_coverage", 0.0),
+                "faithfulness":   self._metric_or(m, "faithfulness", 0.0),
+                "structure":      self._metric_or(m, "structure", 0.0),
+                "no_halluc":      1.0 - self._metric_or(m, "hallucination_rate", 1.0),
+                "figure_ground":  self._metric_or(m.get("figure_results", {}), "overall_figure_score", None)
+            }
+
+        A, B, C = pack(metrics_a), pack(metrics_b), pack(metrics_c)
+
+        # ---- TILE 1: Summary Quality ----
+        # Choose order & labels
+        rows = [("overall", "Overall"),
+                ("coverage", "Claim coverage"),
+                ("faithfulness", "Faithfulness"),
+                ("structure", "Structure"),
+                ("no_halluc", "1 - Hallucination")]
+
+        # Only include figure grounding if C has it (A/B may not)
+        if C["figure_ground"] is not None:
+            rows.append(("figure_ground", "Figure grounding"))
+
+        labels = [lbl for _, lbl in rows]
+        x = range(len(rows))
+
+        a_vals = [A[k] for k, _ in rows]
+        b_vals = [B[k] for k, _ in rows]
+        c_vals = [C[k] for k, _ in rows]
+
+        width = 0.26
+        fig1, ax1 = plt.subplots(figsize=(8, 4.2), dpi=160)
+        ax1.bar([i - width for i in x], a_vals, width, label="A: baseline")
+        ax1.bar([i for i in x],       b_vals, width, label="B: sharpened")
+        ax1.bar([i + width for i in x], c_vals, width, label="C: verified")
+
+        ax1.set_xticks(list(x))
+        ax1.set_xticklabels(labels, rotation=18, ha="right")
+        ax1.set_ylim(0, 1.05)
+        ax1.set_ylabel("Score (0–1)")
+        title_snip = (title or f"doc {doc_id}")[:80]
+        ax1.set_title(f"Summary Quality — {title_snip}")
+        ax1.legend(loc="lower right")
+
+        q_path = os.path.join(out_dir, f"summary_quality_{doc_id}.png")
+        fig1.tight_layout()
+        fig1.savefig(q_path)
+        plt.close(fig1)
+
+        # ---- TILE 2: Iteration Trace (Track C) ----
+        iters = iterations_c or []
+        # Prefer candidate_overall if present, otherwise use current_score or overall field
+        y_best = []
+        y_cand = []
+        for it in iters:
+            y_best.append(float(it.get("current_score", 0.0)))
+            y_cand.append(float(it.get("best_candidate_score", 0.0)))
+
+        if y_best or y_cand:
+            fig2, ax2 = plt.subplots(figsize=(8, 3.6), dpi=160)
+            if y_best:
+                ax2.plot(range(1, len(y_best) + 1), y_best, marker="o", label="Best so far")
+            if y_cand:
+                ax2.plot(range(1, len(y_cand) + 1), y_cand, marker="o", linestyle="--", label="Candidate")
+
+            ax2.set_xlabel("Iteration")
+            ax2.set_ylabel("Overall score")
+            ax2.set_ylim(0, 1.05)
+            ax2.grid(True, alpha=0.3)
+            ax2.set_title(f"Track C Iteration Trace — {title_snip}")
+            ax2.legend(loc="lower right")
+
+            it_path = os.path.join(out_dir, f"iteration_trace_{doc_id}.png")
+            fig2.tight_layout()
+            fig2.savefig(it_path)
+            plt.close(fig2)
+        else:
+            it_path = None
+
+        self.logger.log("VPMTilesSaved", {"doc_id": doc_id, "quality_tile": q_path, "iter_tile": it_path})

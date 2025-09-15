@@ -1,4 +1,5 @@
 # stephanie/utils/pipeline_runner.py
+from __future__ import annotations
 
 from omegaconf import OmegaConf
 

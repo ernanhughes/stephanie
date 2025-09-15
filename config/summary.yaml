@@ -102,13 +102,13 @@ pipeline:
      - name: paper_summarizer
        description: "Summarize the paper for relevance to the goal"
        cls: stephanie.agents.summary.paper_summarizer.SimplePaperSummarizerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: sharpened_paper_summarizer
        description: "Summarize the paper with a focus on sharpening key insights"
        cls: stephanie.agents.summary.sharpened_paper_summarizer.SharpenedPaperSummarizerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: knowledge_infused_summarizer

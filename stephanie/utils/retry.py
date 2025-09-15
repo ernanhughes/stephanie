@@ -1,4 +1,6 @@
 # stephanie/utils/retry.py
+from __future__ import annotations
+
 import functools
 import random
 import time

@@ -58,6 +58,7 @@ from typing import Any, Dict, List, Optional, Tuple, Set
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from dataclasses import asdict
+import hashlib
 
 import numpy as np
 from stephanie.agents.base_agent import BaseAgent
@@ -169,7 +170,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
     """
 
     def __init__(self, cfg: Dict[str, Any], memory: Any, container: Any, logger: logging.Logger):
-        super().__init__(cfg, memory, container, logger)
+        super().__init__(cfg, memory, container=container, logger=logger)
         
         # Configuration
         self.kt_cfg = KTConfig(**cfg.get("knowledge_tree", {}))
@@ -277,7 +278,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             
             # Optional: Publish tree to bus for verification
             if self.bus and context.get("publish_tree", True):
-                self._publish_tree(tree)
+                await self._publish_tree(tree)
                 
             return context
             
@@ -373,6 +374,59 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             }
         }
     
+
+    def _merge_entities(
+        self, 
+        paper_entities: List[Dict[str, Any]], 
+        insight_entities: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Merge and deduplicate paper + insight entities into one unified set.
+        Deduplication is done by normalized text match (case/punct stripped).
+        """
+        all_entities: List[Dict[str, Any]] = []
+        seen: Dict[str, str] = {}  # normalized_text -> entity_id
+
+        for ent in paper_entities + insight_entities:
+            norm_text = self._normalize_entity(ent.get("text", ""))
+            if not norm_text:
+                continue
+
+            if norm_text in seen:
+                # merge meta into the already-existing entity
+                existing = next((e for e in all_entities if e["id"] == seen[norm_text]), None)
+                if existing:
+                    # optional: merge sources or add provenance
+                    existing_sources = set(existing.get("source", "").split(","))
+                    new_source = ent.get("source", "")
+                    if new_source and new_source not in existing_sources:
+                        existing["source"] = ",".join(existing_sources | {new_source})
+
+                    # merge calibrated similarity (take max)
+                    existing["calibrated_similarity"] = max(
+                        existing.get("calibrated_similarity", 0.0),
+                        ent.get("calibrated_similarity", 0.0)
+                    )
+
+                    # merge embeddings if both exist (average them)
+                    if existing.get("embedding") is not None and ent.get("embedding") is not None:
+                        try:
+                            import numpy as np
+                            e1 = np.array(existing["embedding"])
+                            e2 = np.array(ent["embedding"])
+                            existing["embedding"] = ((e1 + e2) / 2.0).tolist()
+                        except Exception:
+                            pass
+            else:
+                # new entity
+                eid = ent.get("id") or f"ent_{uuid.uuid4().hex[:8]}"
+                ent["id"] = eid
+                all_entities.append(ent)
+                seen[norm_text] = eid
+
+        self.stats["total_entities"] += len(all_entities)
+        return all_entities
+
     def _get_entities(self,
                      section_text: str,
                      insights: List[Dict[str, Any]],
@@ -688,6 +742,65 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             
         return paths
     
+
+    def _extract_entities(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Extract entities from text using the configured detector/retriever.
+        Falls back to regex-based heuristic if components not initialized.
+        """
+        entities: List[Dict[str, Any]] = []
+        if not text or not text.strip():
+            return entities
+
+        try:
+            # Ensure detector/retriever initialized
+            if not self._entity_detector or not self._retriever:
+                self._init_entity_extraction()
+
+            # Detect entities
+            dets = self._entity_detector.detect_entities(text)
+            for i, d in enumerate(dets):
+                span = (d.get("start", 0), d.get("end", len(d["text"])))
+
+                # Embed returns a tensor (vector), not a dict
+                emb = self._retriever.embed_entity(d["text"], span)
+                if hasattr(emb, "detach"):  # torch.Tensor
+                    emb = emb.detach().cpu().numpy()
+
+                # Simple calibration heuristic: normalize length of vector
+                calibrated_sim = float(d.get("score", 0.0))
+                if emb is not None and len(emb) > 0:
+                    norm = float(np.linalg.norm(emb))
+                    if norm > 0:
+                        calibrated_sim = min(1.0, calibrated_sim + (1.0 / norm))
+
+                entities.append({
+                    "id": f"ent_{uuid.uuid4().hex[:8]}",
+                    "text": d["text"],
+                    "type": d.get("label", "UNK"),
+                    "start": d.get("start", -1),
+                    "end": d.get("end", -1),
+                    "source": "auto",
+                    "similarity": float(d.get("score", 0.0)),
+                    "calibrated_similarity": calibrated_sim,
+                    "embedding": emb.tolist() if emb is not None else None
+                })
+        except Exception as e:
+            # fallback: regex heuristic for proper nouns/acronyms
+            self.logger.warning("EntityExtractionFallback", {"error": str(e)})
+            matches = re.findall(r"\b([A-Z][A-Za-z0-9\-]{2,})\b", text)
+            for m in set(matches):
+                entities.append({
+                    "id": f"ent_{uuid.uuid4().hex[:8]}",
+                    "text": m,
+                    "type": "Heuristic",
+                    "source": "fallback",
+                    "similarity": 0.5,
+                    "calibrated_similarity": 0.5
+                })
+
+        return entities
+
     def _extract_evidence_spans(self, 
                               text1: str, 
                               text2: str, 
@@ -766,7 +879,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
         text = re.sub(r"\s+", " ", text).strip()
         return text
     
-    def _publish_tree(self, tree: Dict[str, Any]):
+    async def _publish_tree(self, tree: Dict[str, Any]):
         """Publish knowledge tree to the bus for verification."""
         try:
             # Create a job ID based on tree content
@@ -801,7 +914,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                 "paper_id": tree["paper_id"],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            self.bus.publish("verify.section", envelope)
+            await self.bus.publish("verify.section", envelope)
             
             self.logger.log("VerificationJobEnqueued", {
                 "job_id": tree_hash,

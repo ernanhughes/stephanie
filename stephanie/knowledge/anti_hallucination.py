@@ -158,7 +158,11 @@ class AntiHallucination:
     def _citation_exists(self, citation: str, paper_section: Dict[str, Any]) -> bool:
         """Check if a citation exists in the paper."""
         # Simple check for now - in reality would use citation database
-        text = paper_section["section_text"]
+        text = paper_section.get("section_text")
+        if not text:
+            # fallback: stitch from available fields
+            text = "\n\n".join(f"{k}: {v}" for k, v in paper_section.items() if isinstance(v, str))
+            
         
         # Check for reference section
         if "references" in text.lower():
@@ -180,7 +184,7 @@ class AntiHallucination:
         for ref in figure_refs:
             fig_num = ref["figure_num"]
             if fig_num in paper_figures:
-                paper_fig = paper_figures[fig_num]
+                paper_fig = paper_figures.get(int(fig_num))
                 
                 # Check if claim about figure matches paper content
                 if not self._figure_claim_matches(ref["context"], paper_fig):
@@ -216,22 +220,6 @@ class AntiHallucination:
                 
         return references
     
-    def _extract_figure_content(self, paper_section: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """Extract figure content from paper section."""
-        content = {}
-        
-        # Look for figure captions in the paper text
-        text = paper_section["section_text"]
-        figure_captions = re.findall(r"Figure\s+(\d+)[.:]\s*(.*?)(?=\s*Figure\s+\d+|$)", text, re.I | re.S)
-        
-        for num, caption in figure_captions:
-            content[num] = {
-                "caption": caption.strip(),
-                "description": self._extract_figure_description(text, num)
-            }
-            
-        return content
-    
     def _extract_figure_description(self, text: str, figure_num: str) -> str:
         """Extract description related to a figure."""
         pattern = r"(Figure\s+{0}.*?)(?=\s*Figure\s+\d+|\Z)".format(figure_num)
@@ -246,7 +234,40 @@ class AntiHallucination:
             return description[:500]
             
         return ""
-    
+
+    def _extract_figure_content(self, paper_section: Dict[str, Any]) -> str:
+        """
+        Safely flatten a paper_section dict into text for figure alignment.
+        Handles cases where section_text may not exist.
+        """
+        if not paper_section:
+            return ""
+
+        # If already has section_text, return directly
+        if "section_text" in paper_section:
+            return paper_section["section_text"]
+
+        # Otherwise flatten all string fields into one text block
+        parts = []
+        for k, v in paper_section.items():
+            if not v:
+                continue
+            if isinstance(v, str):
+                parts.append(f"{k}:\n{v}")
+            elif isinstance(v, dict):
+                parts.append(f"{k}:\n" + "\n".join(
+                    f"{sk}:\n{sv}" for sk, sv in v.items() if isinstance(sv, str)
+                ))
+            elif isinstance(v, list):
+                joined = "\n".join(str(item) for item in v if isinstance(item, str))
+                if joined:
+                    parts.append(f"{k}:\n{joined}")
+            else:
+                parts.append(f"{k}:\n{str(v)}")
+
+        return "\n\n".join(parts)
+
+
     def _figure_claim_matches(self, claim: str, paper_fig: Dict[str, Any]) -> bool:
         """Check if a figure claim matches paper content."""
         # Check if claim mentions key elements from figure caption

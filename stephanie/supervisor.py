@@ -28,6 +28,7 @@ from stephanie.services.self_validation_service import SelfValidationService
 from stephanie.services.service_container import ServiceContainer
 from stephanie.services.state_tracker_service import StateTrackerService
 from stephanie.services.training_service import TrainingService
+from stephanie.services.zeromodel import ZeroModelService
 from stephanie.utils.report_utils import get_stage_details
 
 
@@ -160,6 +161,11 @@ class Supervisor:
             dependencies=[]
         )
 
+        self.container.register(
+            "zeromodel",
+            lambda: ZeroModelService(cfg, memory, logger),
+            dependencies=[]
+        )
 
 
     def _create_reward_model(self, cfg, memory, logger):
