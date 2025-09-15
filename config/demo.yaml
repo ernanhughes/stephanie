@@ -98,7 +98,7 @@ pipeline:
 
     - name: epistemic_plan_hrm_trainer  
       description: "Train the HRM model to predict document values based on epistemic plans"
-      cls: stephanie.agents.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
+      cls: stephanie.agents.maintenance.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
       enabled: false
       iterations: 1
 

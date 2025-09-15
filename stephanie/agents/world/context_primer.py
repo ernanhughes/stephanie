@@ -1,5 +1,5 @@
 # stephanie/agents/world/context_primer.py
-
+from __future__ import annotations
 
 class ContextPrimerAgent:
     def __init__(self, memory, embedding_model, logger=None):

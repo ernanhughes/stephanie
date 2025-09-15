@@ -1,4 +1,6 @@
-# stephanie/agents/summarization/simple_paper_summarizer.py
+# stephanie/agents/summary/paper_summarizer.py
+from __future__ import annotations
+
 import re
 from typing import Dict, Any, List, Tuple, Optional
 

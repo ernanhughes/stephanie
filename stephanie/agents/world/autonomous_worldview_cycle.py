@@ -1,4 +1,6 @@
 # stephanie/agents/world/autonomous_worldview_cycle.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from stephanie.agents.world.belief_tuner import BeliefTunerAgent

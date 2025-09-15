@@ -15,7 +15,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
-
+  - agents/knowledge_infused_summarizer
   - agents/sharpened_paper_summarizer
   - agents/paper_summarizer
   - agents/verified_section_generator
@@ -108,6 +108,12 @@ pipeline:
      - name: sharpened_paper_summarizer
        description: "Summarize the paper with a focus on sharpening key insights"
        cls: stephanie.agents.sharpened_paper_summarizer.SharpenedPaperSummarizerAgent
+       enabled: false
+       iterations: 1
+
+     - name: knowledge_infused_summarizer
+       description: "Summarize the paper with knowledge infusion to reduce hallucinations"
+       cls: stephanie.agents.knowledge_infused_summarizer.KnowledgeInfusedVerifierAgent
        enabled: true
        iterations: 1
 
@@ -143,7 +149,7 @@ pipeline:
          Generate pairs of preferred and non-preferred responses for DPO training.
        cls: stephanie.agents.knowledge.dpo_pair_generator.DPOPairGeneratorAgent
        enabled: false
-       iterations: 1
+       iterations: 1 OK
   
      - name: conversation_filter
        description: >

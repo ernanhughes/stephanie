@@ -15,6 +15,8 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+
+  - agents/knowledge_infused_summarizer
   - agents/verified_section_generator
   - agents/knowledge_tree_builder
   - agents/conversation_filter

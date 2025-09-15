@@ -1,4 +1,6 @@
 # stephanie/agents/world/worldview_create.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.world.db.locator import WorldviewDBLocator
 

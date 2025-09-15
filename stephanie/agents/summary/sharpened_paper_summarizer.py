@@ -1,3 +1,4 @@
+# stephanie/agents/summary/sharpened_paper_summarizer.py
 from __future__ import annotations
 
 import re
@@ -6,7 +7,7 @@ from typing import Dict, Any, List, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.agents.paper_summarizer import SimplePaperSummarizerAgent
+from stephanie.agents.summary.paper_summarizer import SimplePaperSummarizerAgent
 
 
 MAX_ITERS_DEFAULT = 4
