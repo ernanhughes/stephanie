@@ -32,23 +32,29 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 from PIL import Image
+import time
 
 # Import ZeroModel components directly
 from zeromodel.core import ZeroModel
 from zeromodel.vpm.image import VPMImageWriter, VPMImageReader
+
+
+from zeromodel.pipeline.normalize.normalize import Normalize
+from zeromodel.pipeline.feature_engineer import FeatureEngineer
+from zeromodel.pipeline.organize import Organize
+from zeromodel.pipeline.explainability import OcclusionExplainer
 from zeromodel.pipeline.executor import PipelineExecutor
-from zeromodel.pipeline.stages import (
-    NormalizeStage,
-    FeatureEngineeringStage,
-    OrganizationStage,
-    OcclusionExplainer
-)
+
 from zeromodel.normalizer import DynamicNormalizer
 from zeromodel.provenance import create_vpf
 
 from stephanie.services.service_protocol import Service
 from stephanie.knowledge.casebook_store import CaseBookStore
+from stephanie.models.casebook import CaseBookORM
 
+from typing import Tuple
+
+from datetime import datetime
 
 class ZeroModelService(Service):
     """

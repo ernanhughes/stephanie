@@ -667,101 +667,71 @@ Verified summary:
         out_dir: str = "reports/vpm",
     ):
         """
-        Create two tiles:
-        1) summary_quality_<doc_id>.png (A/B/C bars across key metrics)
-        2) iteration_trace_<doc_id>.png (C iteration curve)
+        Delegate VPM tile generation to ZeroModelService.
+        
+        This replaces the direct matplotlib implementation with a service call,
+        keeping the agent focused on verification logic while leveraging
+        ZeroModel's specialized visualization capabilities.
         """
         try:
-            import matplotlib.pyplot as plt
+            # Get ZeroModelService from container
+            zero_model_service = self.container.get("zero_model")
+            if not zero_model_service:
+                self.logger.log("VPMSkipServiceMissing", {
+                    "doc_id": doc_id,
+                    "reason": "zero_model service not available in container"
+                })
+                return
+                
+            # Prepare data for service
+            vpm_data = self._prepare_vpm_data(doc_id, title, metrics_a, metrics_b, metrics_c, iterations_c)
+            
+            # Generate tiles via service
+            result = zero_model_service.generate_summary_vpm_tiles(
+                vpm_data=vpm_data,
+                output_dir=out_dir
+            )
+            
+            # Log results
+            self.logger.log("VPMTilesGenerated", {
+                "doc_id": doc_id,
+                "quality_tile": result.get("quality_tile_path"),
+                "iter_tile": result.get("iteration_trace_path"),
+                "service": "zero_model"
+            })
+            
         except Exception as e:
-            self.logger.log("VPMSkipMatplotlibMissing", {"doc_id": doc_id, "error": str(e)})
-            return
+            self.logger.log("VPMTileGenerationError", {
+                "doc_id": doc_id,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            })
 
-        os.makedirs(out_dir, exist_ok=True)
-
-        # ---- Normalize metrics ----
+    def _prepare_vpm_data(self, doc_id, title, metrics_a, metrics_b, metrics_c, iterations_c):
+        """Prepare normalized data structure for VPM tile generation."""
+        # Normalize metrics
         metrics_a = metrics_a or {}
         metrics_b = metrics_b or {}
         metrics_c = metrics_c or {}
-        # keys: overall, claim_coverage, faithfulness, structure, hallucination_rate, figure_results.overall_figure_score (optional)
+        
         def pack(m):
             return {
-                "overall":        self._metric_or(m, "overall", 0.0),
-                "coverage":       self._metric_or(m, "claim_coverage", 0.0),
-                "faithfulness":   self._metric_or(m, "faithfulness", 0.0),
-                "structure":      self._metric_or(m, "structure", 0.0),
-                "no_halluc":      1.0 - self._metric_or(m, "hallucination_rate", 1.0),
-                "figure_ground":  self._metric_or(m.get("figure_results", {}), "overall_figure_score", None)
+                "overall": self._metric_or(m, "overall", 0.0),
+                "coverage": self._metric_or(m, "claim_coverage", 0.0),
+                "faithfulness": self._metric_or(m, "faithfulness", 0.0),
+                "structure": self._metric_or(m, "structure", 0.0),
+                "no_halluc": 1.0 - self._metric_or(m, "hallucination_rate", 1.0),
+                "figure_ground": self._metric_or(m.get("figure_results", {}), "overall_figure_score", None)
             }
-
-        A, B, C = pack(metrics_a), pack(metrics_b), pack(metrics_c)
-
-        # ---- TILE 1: Summary Quality ----
-        # Choose order & labels
-        rows = [("overall", "Overall"),
-                ("coverage", "Claim coverage"),
-                ("faithfulness", "Faithfulness"),
-                ("structure", "Structure"),
-                ("no_halluc", "1 - Hallucination")]
-
-        # Only include figure grounding if C has it (A/B may not)
-        if C["figure_ground"] is not None:
-            rows.append(("figure_ground", "Figure grounding"))
-
-        labels = [lbl for _, lbl in rows]
-        x = range(len(rows))
-
-        a_vals = [A[k] for k, _ in rows]
-        b_vals = [B[k] for k, _ in rows]
-        c_vals = [C[k] for k, _ in rows]
-
-        width = 0.26
-        fig1, ax1 = plt.subplots(figsize=(8, 4.2), dpi=160)
-        ax1.bar([i - width for i in x], a_vals, width, label="A: baseline")
-        ax1.bar([i for i in x],       b_vals, width, label="B: sharpened")
-        ax1.bar([i + width for i in x], c_vals, width, label="C: verified")
-
-        ax1.set_xticks(list(x))
-        ax1.set_xticklabels(labels, rotation=18, ha="right")
-        ax1.set_ylim(0, 1.05)
-        ax1.set_ylabel("Score (0–1)")
-        title_snip = (title or f"doc {doc_id}")[:80]
-        ax1.set_title(f"Summary Quality — {title_snip}")
-        ax1.legend(loc="lower right")
-
-        q_path = os.path.join(out_dir, f"summary_quality_{doc_id}.png")
-        fig1.tight_layout()
-        fig1.savefig(q_path)
-        plt.close(fig1)
-
-        # ---- TILE 2: Iteration Trace (Track C) ----
-        iters = iterations_c or []
-        # Prefer candidate_overall if present, otherwise use current_score or overall field
-        y_best = []
-        y_cand = []
-        for it in iters:
-            y_best.append(float(it.get("current_score", 0.0)))
-            y_cand.append(float(it.get("best_candidate_score", 0.0)))
-
-        if y_best or y_cand:
-            fig2, ax2 = plt.subplots(figsize=(8, 3.6), dpi=160)
-            if y_best:
-                ax2.plot(range(1, len(y_best) + 1), y_best, marker="o", label="Best so far")
-            if y_cand:
-                ax2.plot(range(1, len(y_cand) + 1), y_cand, marker="o", linestyle="--", label="Candidate")
-
-            ax2.set_xlabel("Iteration")
-            ax2.set_ylabel("Overall score")
-            ax2.set_ylim(0, 1.05)
-            ax2.grid(True, alpha=0.3)
-            ax2.set_title(f"Track C Iteration Trace — {title_snip}")
-            ax2.legend(loc="lower right")
-
-            it_path = os.path.join(out_dir, f"iteration_trace_{doc_id}.png")
-            fig2.tight_layout()
-            fig2.savefig(it_path)
-            plt.close(fig2)
-        else:
-            it_path = None
-
-        self.logger.log("VPMTilesSaved", {"doc_id": doc_id, "quality_tile": q_path, "iter_tile": it_path})
+        
+        return {
+            "doc_id": doc_id,
+            "title": title[:80],
+            "metrics": {
+                "A": pack(metrics_a),
+                "B": pack(metrics_b),
+                "C": pack(metrics_c)
+            },
+            "iterations": iterations_c or [],
+            "timestamp": time.time()
+        }

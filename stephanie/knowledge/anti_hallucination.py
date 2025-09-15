@@ -171,30 +171,17 @@ class AntiHallucination:
             
         return True  # Assume citations are valid if no references section
     
-    def _check_figure_alignment(self, section: str, paper_section: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Check for figure claims that don't match paper content."""
+    def _check_figure_alignment(self, section: str, paper_section: Dict[str, Any]) -> List[str]:
         issues = []
-        
-        # Extract figure references from section
-        figure_refs = self._extract_figure_references(section)
-        
-        # Extract figure content from paper
         paper_figures = self._extract_figure_content(paper_section)
-        
-        for ref in figure_refs:
-            fig_num = ref["figure_num"]
-            if fig_num in paper_figures:
-                paper_fig = paper_figures.get(int(fig_num))
-                
-                # Check if claim about figure matches paper content
-                if not self._figure_claim_matches(ref["context"], paper_fig):
-                    issues.append({
-                        "type": "figure_misalignment",
-                        "text": f"Figure {fig_num}: {ref['context']}",
-                        "severity": "medium",
-                        "suggestion": f"Align with paper description: {paper_fig['caption']}"
-                    })
-                    
+
+        if not paper_figures:
+            return issues  # no figures found, nothing to align
+
+        cited_figs = re.findall(r"(?:Figure|Fig\.)\s*(\d+)", section, re.I)
+        for fig_num in cited_figs:
+            if fig_num not in paper_figures:
+                issues.append(f"Figure {fig_num} cited but not found in paper.")
         return issues
     
     def _extract_figure_references(self, text: str) -> List[Dict[str, Any]]:
@@ -235,37 +222,34 @@ class AntiHallucination:
             
         return ""
 
-    def _extract_figure_content(self, paper_section: Dict[str, Any]) -> str:
+    def _extract_figure_content(self, paper_section: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         """
-        Safely flatten a paper_section dict into text for figure alignment.
-        Handles cases where section_text may not exist.
+        Extract figure content from paper section.
+        Returns dict like { "1": {"caption": "...", "content": "..."}, ... }
         """
-        if not paper_section:
-            return ""
+        # Flatten dict into one big text block if needed
+        if isinstance(paper_section, dict):
+            text = "\n".join(f"{k}: {v}" for k, v in paper_section.items() if isinstance(v, str))
+        elif isinstance(paper_section, str):
+            text = paper_section
+        else:
+            text = str(paper_section)
 
-        # If already has section_text, return directly
-        if "section_text" in paper_section:
-            return paper_section["section_text"]
+        figures: Dict[str, Dict[str, Any]] = {}
 
-        # Otherwise flatten all string fields into one text block
-        parts = []
-        for k, v in paper_section.items():
-            if not v:
-                continue
-            if isinstance(v, str):
-                parts.append(f"{k}:\n{v}")
-            elif isinstance(v, dict):
-                parts.append(f"{k}:\n" + "\n".join(
-                    f"{sk}:\n{sv}" for sk, sv in v.items() if isinstance(sv, str)
-                ))
-            elif isinstance(v, list):
-                joined = "\n".join(str(item) for item in v if isinstance(item, str))
-                if joined:
-                    parts.append(f"{k}:\n{joined}")
-            else:
-                parts.append(f"{k}:\n{str(v)}")
+        # Simple regex: look for "Figure 1: caption text..."
+        import re
+        matches = re.finditer(r"(?:Figure|Fig\.)\s*(\d+)[\.:]?\s*(.+?)(?=(?:Figure|Fig\.|\Z))",
+                            text, re.IGNORECASE | re.DOTALL)
+        for m in matches:
+            fig_num = m.group(1)
+            caption = m.group(2).strip()
+            figures[fig_num] = {
+                "caption": caption,
+                "content": caption  # can later add OCR or embedding if needed
+            }
 
-        return "\n\n".join(parts)
+        return figures
 
 
     def _figure_claim_matches(self, claim: str, paper_fig: Dict[str, Any]) -> bool:
