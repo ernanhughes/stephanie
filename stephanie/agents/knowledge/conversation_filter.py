@@ -25,13 +25,15 @@ Output context additions:
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Optional
+
 import logging
-import numpy as np
 import re
 import time
 import traceback
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver.goals import GoalScorer

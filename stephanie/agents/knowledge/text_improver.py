@@ -9,19 +9,19 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal as _signal
 import time
-import uuid
 import traceback
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import signal as _signal
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.agents.paper_improver.goals import GoalScorer
 from stephanie.knowledge.casebook_store import CaseBookStore
 from stephanie.knowledge.knowledge_bus import KnowledgeBus
-from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.calibration_manager import CalibrationManager
-from stephanie.agents.paper_improver.goals import GoalScorer
+from stephanie.scoring.scorable_factory import TargetType
 from stephanie.utils.json_sanitize import safe_json
 
 

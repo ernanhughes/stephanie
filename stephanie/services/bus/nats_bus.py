@@ -5,19 +5,20 @@ Handles persistent messaging with idempotency and DLQ support.
 """
 
 from __future__ import annotations
+
+import asyncio
 import json
+import logging
 import time
 import uuid
-import asyncio
 from typing import Any, Callable, Dict, List, Optional
-import logging
 
 from nats.aio.client import Client as NATS
-from nats.errors import TimeoutError, NoServersError
+from nats.errors import NoServersError, TimeoutError
 from nats.js.api import ConsumerConfig, DeliverPolicy
 
 from .bus_protocol import BusProtocol
-from .idempotency import NatsKVIdempotencyStore, InMemoryIdempotencyStore
+from .idempotency import InMemoryIdempotencyStore, NatsKVIdempotencyStore
 
 
 class NatsKnowledgeBus(BusProtocol):

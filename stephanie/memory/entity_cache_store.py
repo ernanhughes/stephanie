@@ -4,9 +4,9 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from stephanie.utils.json_sanitize import to_json_safe
 
 from stephanie.models.entity_cache import EntityCacheORM
+from stephanie.utils.json_sanitize import to_json_safe
 
 
 class EntityCacheStore:

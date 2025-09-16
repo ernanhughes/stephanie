@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import re
 import time
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.agents.summary.paper_summarizer import \
+    SimplePaperSummarizerAgent
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.agents.summary.paper_summarizer import SimplePaperSummarizerAgent
-
 
 MAX_ITERS_DEFAULT = 4
 MIN_GAIN_DEFAULT = 0.02

@@ -16,12 +16,11 @@ for proper integration with Stephanie's core system and service orchestration fr
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any, Dict
-from typing import Callable, Optional, Awaitable
 import asyncio
 import logging
- 
+from abc import ABC, abstractmethod
+from typing import Any, Awaitable, Callable, Dict, Optional
+
 
 class Service(ABC):
     """

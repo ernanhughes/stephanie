@@ -1,7 +1,6 @@
 # stephanie/agents/compiler/step_compiler.py
 from __future__ import annotations
 
-
 from dataclasses import asdict
 
 from stephanie.agents.base_agent import BaseAgent

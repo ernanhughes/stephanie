@@ -1,5 +1,6 @@
 # stephanie/analysis/policy_analyzer.py
 import json
+import logging
 from typing import Any, Dict, List
 
 import numpy as np
@@ -10,7 +11,6 @@ from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.score import ScoreORM
 
-import logging
 _logger = logging.getLogger(__name__)
 
 class PolicyAnalyzer:

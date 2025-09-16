@@ -1,6 +1,7 @@
 # stephanie/agents/ebt/thinker.py
 import torch
 
+
 class EBTThinker:
     def __init__(self, model, step_size=0.05, steps=10):
         self.model = model

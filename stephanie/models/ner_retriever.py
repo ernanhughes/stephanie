@@ -32,8 +32,8 @@ import os
 import random
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple
 from time import time
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 # stephanie/scoring/model/ner_retriever.py
@@ -542,7 +542,8 @@ class NERRetrieverEmbedder:
 
     def _cache_key(self, query: str, k: int, domain: str) -> str:
         """Stable key for caching retrieval results."""
-        import hashlib, json
+        import hashlib
+        import json
         payload = {"q": query, "k": k, "d": domain or "general"}
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 

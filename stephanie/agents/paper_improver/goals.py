@@ -6,13 +6,13 @@ goal templates, normalization, and portfolio scoring for VPM rows
 from __future__ import annotations
 
 import json
+import logging
 import math
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import yaml  # optional: only needed for load_yaml
 
-import logging
 _logger = logging.getLogger(__name__)
 
 # ----------------------------- data models -----------------------------

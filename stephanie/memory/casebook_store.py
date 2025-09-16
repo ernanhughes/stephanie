@@ -2,13 +2,10 @@
 import hashlib
 # stephanie/memory/casebook_store.py
 import uuid
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from typing import Dict, Tuple
-from sqlalchemy import and_, func
-from sqlalchemy.orm import Query
+from sqlalchemy import and_, desc, func
+from sqlalchemy.orm import Query, Session
 
 from stephanie.models.case_goal_state import CaseGoalStateORM
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM

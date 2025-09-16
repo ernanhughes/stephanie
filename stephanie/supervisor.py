@@ -18,6 +18,7 @@ from stephanie.memory.memory_tool import MemoryTool
 from stephanie.reporting import ReportFormatter
 from stephanie.services.cbr_service import CBRService
 from stephanie.services.cycle_watcher_service import CycleWatcherService
+from stephanie.services.knowledge_base_service import KnowledgeBaseService
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.services.meta_confidence_service import MetaConfidenceService
 from stephanie.services.plan_trace_service import PlanTraceService
@@ -160,6 +161,12 @@ class Supervisor:
         self.container.register(
             "knowledge_graph",
             lambda: KnowledgeGraphService(cfg, memory, logger),
+            dependencies=[]
+        )
+        # Knowledge Graph service
+        self.container.register(
+            "kbase",
+            lambda: KnowledgeBaseService(cfg, memory, logger),
             dependencies=[]
         )
 

@@ -6,11 +6,12 @@ Processes verification jobs from the queue and runs the VerifiedSectionGenerator
 """
 
 import json
-import traceback
-from typing import Dict, Any
 import logging
+import traceback
+from typing import Any, Dict
 
-from stephanie.agents.knowledge.verified_section_generator import VerifiedSectionGeneratorAgent
+from stephanie.agents.knowledge.verified_section_generator import \
+    VerifiedSectionGeneratorAgent
 from stephanie.services.verification_queue import VerificationQueue
 
 

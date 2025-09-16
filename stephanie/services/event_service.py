@@ -1,15 +1,17 @@
 # stephanie/services/event_service.py
 from __future__ import annotations
-import time
-import uuid
+
 import socket
+import time
 import traceback
+import uuid
 from typing import Awaitable, Callable, Optional
 
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
-from stephanie.services.bus.idempotency import (
-    IdempotencyStore, JsonlIdempotencyStore, NatsKVIdempotencyStore
-)
+from stephanie.services.bus.idempotency import (IdempotencyStore,
+                                                JsonlIdempotencyStore,
+                                                NatsKVIdempotencyStore)
+
 Handler = Callable[[dict], Awaitable[None]]
 RpcHandler = Callable[[dict], Awaitable[dict]]
 

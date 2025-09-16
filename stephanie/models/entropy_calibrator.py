@@ -1,8 +1,10 @@
-import numpy as np
-import joblib
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
 from typing import Tuple
+
+import joblib
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+
 
 class EntropyCalibrator:
     """

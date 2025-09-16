@@ -7,11 +7,13 @@ Ensures quantitative claims properly cite and align with paper figures/tables.
 """
 
 from __future__ import annotations
-import re
+
 import logging
+import re
 import traceback
-from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 
 class FigureGrounding:
     """

@@ -4,8 +4,9 @@ from __future__ import annotations
 import json
 
 import arxiv
-from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 from openai import OpenAI
+
+from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 
 
 class ResearchSlave:

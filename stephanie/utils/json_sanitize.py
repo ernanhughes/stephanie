@@ -1,10 +1,12 @@
 # stephanie/utils/json_sanitize.py
 from __future__ import annotations
 
+import json
 import math
 from typing import Any
-import json
+
 import numpy as np
+
 
 def _is_float(x: Any) -> bool:
     if isinstance(x, float):

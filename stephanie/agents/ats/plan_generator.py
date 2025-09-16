@@ -1,7 +1,6 @@
 # stephanie/agents/ats/plan_generator.py
 from __future__ import annotations
 
-
 from stephanie.agents.base_agent import BaseAgent
 
 

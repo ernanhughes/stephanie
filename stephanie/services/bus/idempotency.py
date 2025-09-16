@@ -1,9 +1,10 @@
 # stephanie/services/bus/idempotency.py
 from __future__ import annotations
+
 import asyncio
 import os
-from typing import Set
 import time
+from typing import Set
 
 
 class IdempotencyStore:

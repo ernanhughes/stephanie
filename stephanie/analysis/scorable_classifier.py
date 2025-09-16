@@ -23,19 +23,20 @@ Usage:
 """
 
 import asyncio
+import hashlib
+import json
 import logging
+import time  # NEW
+from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import yaml
 from sklearn.metrics.pairwise import cosine_similarity
-from stephanie.services.bus.bus_protocol import BusProtocol
-from stephanie.services.bus.idempotency import IdempotencyStore, InMemoryIdempotencyStore
-from functools import lru_cache
 
-import hashlib
-import json
-import time  # NEW
+from stephanie.services.bus.bus_protocol import BusProtocol
+from stephanie.services.bus.idempotency import (IdempotencyStore,
+                                                InMemoryIdempotencyStore)
 
 _logger = logging.getLogger(__name__)
 

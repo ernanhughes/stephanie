@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable_factory import TargetType

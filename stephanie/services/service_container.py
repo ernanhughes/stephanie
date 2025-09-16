@@ -17,10 +17,12 @@ from service usage, making the system more modular and testable.
 """
 
 from __future__ import annotations
-import asyncio, logging
-from typing import Any, Callable, Dict, List
-from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 
+import asyncio
+import logging
+from typing import Any, Callable, Dict, List
+
+from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.service_protocol import Service
 
 

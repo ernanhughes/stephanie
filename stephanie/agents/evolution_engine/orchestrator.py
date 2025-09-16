@@ -7,7 +7,8 @@ from datetime import datetime
 from evolution_selector import EvolutionarySelector
 from slave_system import ResearchSlave
 
-from stephanie.agents.evolution_engine.instruction_engine import InstructionEngine
+from stephanie.agents.evolution_engine.instruction_engine import \
+    InstructionEngine
 from stephanie.reporting.report_generator import ReportGenerator
 
 

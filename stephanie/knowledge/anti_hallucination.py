@@ -7,9 +7,11 @@ Fails verification for sections with hallucinated content.
 """
 
 from __future__ import annotations
-import re
-from typing import Dict, List, Tuple, Any
+
 import logging
+import re
+from typing import Any, Dict, List, Tuple
+
 
 class AntiHallucination:
     """
@@ -32,6 +34,63 @@ class AntiHallucination:
             r"\bcited in \d{4}\b",   # "cited in 2023" when paper is from 2022
         ]
     
+    # verify_section should already wrap these calls and return (bool, issues).
+    # If yours raises, keep a try/except and soft-pass with a diagnostic token.
+
+    def _entity_text(self, e) -> str:
+        """Return lowercase text for an entity-like object (dict or str)."""
+        if isinstance(e, str):
+            return e.strip()
+        if isinstance(e, dict):
+            return (e.get("text")
+                    or e.get("name")
+                    or e.get("label")
+                    or e.get("value")
+                    or "").strip()
+        return ""
+
+    def _normalize_tree(self, tree: dict) -> dict:
+        """Coerce various KG/KT shapes into a stable schema we can consume."""
+        t = tree or {}
+
+        # entities may live under 'entities' or 'nodes'
+        raw_entities = t.get("entities")
+        if raw_entities is None:
+            raw_entities = t.get("nodes") or []
+
+        entities = []
+        for e in raw_entities if isinstance(raw_entities, (list, tuple)) else []:
+            txt = self._entity_text(e)
+            if txt:
+                entities.append({"text": txt})
+
+        # claims are sometimes strings or dicts with various keys
+        raw_claims = t.get("claims") or []
+        claims = []
+        for c in raw_claims if isinstance(raw_claims, (list, tuple)) else []:
+            if isinstance(c, str):
+                claims.append({"text": c.strip()})
+            elif isinstance(c, dict):
+                ctxt = (c.get("text") or c.get("claim") or c.get("value") or "").strip()
+                if ctxt:
+                    claims.append({"text": ctxt})
+
+        # relationships (optional – pass through as-is if list[dict])
+        relationships = t.get("relationships")
+        if not isinstance(relationships, list):
+            relationships = []
+
+        return {
+            "entities": entities,                # [{text}]
+            "claims": claims,                    # [{text}]
+            "relationships": relationships,      # [dict, ...]
+            "claim_coverage": float(t.get("claim_coverage", 0.0) or 0.0),
+            "evidence_strength": float(t.get("evidence_strength", 0.0) or 0.0),
+        }
+
+    def _as_list(self, x):
+        return x if isinstance(x, (list, tuple)) else []
+
     def verify_section(self, 
                       section: str, 
                       knowledge_tree: Dict[str, Any],
@@ -48,7 +107,12 @@ class AntiHallucination:
             (is_valid, issues) where is_valid is False if hallucinations found
         """
         issues = []
-        
+        try:
+            knowledge_tree = self._normalize_tree(knowledge_tree or {})
+        except Exception:
+            knowledge_tree = {"entities": [], "claims": [], "relationships": [],
+                          "claim_coverage": 0.0, "evidence_strength": 0.0}
+
         # 1. Check for quantitative claims without citations
         quant_issues = self._check_quantitative_claims(section, knowledge_tree)
         issues.extend(quant_issues)
@@ -108,28 +172,40 @@ class AntiHallucination:
                 
         return issues
     
-    def _is_claim_supported(self, claim: str, tree: Dict[str, Any]) -> bool:
-        """Check if a claim is supported by the knowledge tree."""
-        # Check against paper claims
-        for paper_claim in tree.get("claims", []):
-            if self._text_similarity(claim, paper_claim["text"]) > 0.6:
-                return True
-                
-        # Check against verified insights
-        for insight in tree.get("insights", []):
-            if self._text_similarity(claim, insight["text"]) > 0.6:
-                return True
-                
-        # Check for entity support
-        entities = tree.get("entities", [])
-        claim_entities = self._extract_entities(claim)
-        
-        # If claim has entities that appear in the knowledge tree
-        for entity in entities:
-            for claim_entity in claim_entities:
-                if entity["text"].lower() in claim_entity.lower():
+    def _is_claim_supported(self, claim_sentence: str, tree: dict) -> bool:
+        """
+        Decide if a claim sentence is supported by known entities/claims in the tree.
+        We consider it supported if any normalized entity overlaps with a claim entity
+        span or the claim itself (lexical containment), with optional fuzzy thresholds elsewhere.
+        """
+        # Claim entities: however you extract them now; ensure strings
+        claim_entities = self._as_list(self._extract_claim_entities(claim_sentence))
+        norm_claim_entities = []
+        for ce in claim_entities:
+            if isinstance(ce, str):
+                s = ce.strip()
+            elif isinstance(ce, dict):
+                s = self._entity_text(ce)
+            else:
+                s = ""
+            if s:
+                norm_claim_entities.append(s)
+
+        # If the extractor returns nothing, fall back to the full sentence
+        if not norm_claim_entities:
+            norm_claim_entities = [claim_sentence.strip()]
+
+        # KG entities (already normalized to [{"text": ...}] by _normalize_tree)
+        kg_entities = [e["text"] for e in self._as_list(tree.get("entities")) if isinstance(e, dict) and e.get("text")]
+
+        # Simple lexical overlap / containment
+        for ent in kg_entities:
+            ent_l = ent.lower()
+            for ce in norm_claim_entities:
+                ce_l = ce.lower()
+                if ent_l and ((ent_l in ce_l) or (ce_l in ent_l)):
                     return True
-                    
+
         return False
     
     def _extract_entities(self, text: str) -> List[str]:
@@ -289,3 +365,88 @@ class AntiHallucination:
             "critical_issues": severity_counts["high"],
             "needs_revision": len(issues) > 0
         }
+    
+        # optional spaCy cache
+    _nlp = None
+
+    def _get_nlp(self):
+        """Lazy-load spaCy; tolerate absence gracefully."""
+        if getattr(self, "_nlp", None) is not None:
+            return self._nlp
+        # try:
+        #     # import spacy
+        #     # try:
+        #     #     self._nlp = spacy.load("en_core_web_sm")
+        #     # except Exception:
+        #     #     # fallback: blank model (no NER), we'll still use regex
+        #     #     self._nlp = spacy.blank("en")
+        # except Exception:
+        self._nlp = None
+        return self._nlp
+
+    def _extract_claim_entities(self, text: str):
+        """
+        Return a list of entity-like strings from a claim sentence.
+        Order of preference:
+        1) spaCy NER + noun chunks (if available)
+        2) regex heuristics (TitleCase, model names, quoted phrases)
+        3) simple NP-ish fallback
+        Always returns list[str]; duplicates removed case-insensitively.
+        """
+        out = []
+
+        # 1) spaCy (if available)
+        nlp = self._get_nlp()
+        if nlp and getattr(nlp, "pipe_names", None):
+            try:
+                doc = nlp(text)
+                for ent in getattr(doc, "ents", []):
+                    t = ent.text.strip()
+                    if len(t) >= 2:
+                        out.append(t)
+                for chunk in getattr(doc, "noun_chunks", []):
+                    t = chunk.text.strip()
+                    if len(t) >= 2:
+                        out.append(t)
+            except Exception:
+                pass
+
+        # 2) Heuristics if nothing found
+        if not out:
+            patterns = [
+                r"[A-Z][\w\-]+(?:\s+[A-Z][\w\-]+){0,3}",      # TitleCase spans up to 4 words
+                r"\b(?:[A-Za-z]+Net|ResNet|BERT|RoBERTa|GPT-\d+|ViT|T5)\b",  # common model names
+                r"[\"“”']([^\"“”']{3,})[\"“”']"               # quoted phrases
+            ]
+            for pat in patterns:
+                for m in re.finditer(pat, text):
+                    out.append(m.group(0).strip())
+
+            # lightweight NP-ish fallback (see helper below)
+            out.extend(self._simple_np_chunks(text))
+
+        # Dedup by lowercase key, keep longest first
+        uniq = {}
+        for span in sorted(out, key=lambda s: (-len(s), s.lower())):
+            key = span.lower()
+            if key not in uniq:
+                uniq[key] = span
+
+        return list(uniq.values())
+
+    def _simple_np_chunks(self, text: str):
+        """
+        Very simple phrase builder: groups alnum-ish tokens into short phrases.
+        Not linguistic—just a safety net when no NER is available.
+        """
+        tokens = re.findall(r"[A-Za-z0-9%\.\/\-\+\_]{2,}", text)
+        phrases, buf = [], []
+        for tok in tokens:
+            buf.append(tok)
+            if len(buf) >= 3:
+                phrases.append(" ".join(buf))
+                buf = []
+        if buf:
+            phrases.append(" ".join(buf))
+        # Filter to phrases that have at least one letter
+        return [p for p in phrases if any(c.isalpha() for c in p)]

@@ -6,18 +6,18 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from stephanie.utils.json_sanitize import safe_json
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.paper_improver import GoalScorer
 from stephanie.agents.knowledge.improver import Improver
 from stephanie.agents.knowledge.knowledge_fuser import KnowledgeFuser
+from stephanie.agents.paper_improver import GoalScorer
 from stephanie.agents.paper_improver.vpm_controller import (Signal,
                                                             VPMController,
                                                             VPMRow,
                                                             default_controller)
 from stephanie.models.casebook import CaseBookORM
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.utils.json_sanitize import safe_json
 
 
 class DraftGeneratorAgent(BaseAgent):

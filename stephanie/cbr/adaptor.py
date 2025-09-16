@@ -32,12 +32,12 @@ Config keys (examples):
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+import hashlib
 import logging
 import math
 import re
-import hashlib
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # -------- Optional DSPy import --------
 _HAS_DSPY = True

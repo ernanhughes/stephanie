@@ -4,6 +4,8 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 import logging
 
+from stephanie.data.plan_trace import PlanTrace
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ def view_plan_trace(request: Request, trace_id: str):
     templates = request.app.state.templates
 
     try:
-        trace = memory.plan_traces.get_by_trace_id(trace_id)
+        trace: PlanTrace = memory.plan_traces.get_by_trace_id(trace_id)
         if not trace:
             return templates.TemplateResponse(
                 "plan_trace.html",
@@ -63,7 +65,7 @@ def view_plan_trace(request: Request, trace_id: str):
             )
 
         # Collect related stages + steps
-        stages = getattr(trace, "pipeline_stages", []) or []
+        stages =  memory.pipeline_stages.get_by_run_id(trace.pipeline_run_id) or []
         steps = trace.execution_steps or []
 
         return templates.TemplateResponse(

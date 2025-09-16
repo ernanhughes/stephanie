@@ -11,8 +11,9 @@ Signals:
 """
 
 from __future__ import annotations
-from typing import List, Dict
+
 import re
+from typing import Dict, List
 
 TITLE_PRI = [
     ("method", 1.0),

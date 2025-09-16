@@ -2,19 +2,21 @@
 from __future__ import annotations
 
 import asyncio
-import time
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Tuple
-import traceback
-import torch
-import os
 import json
-import numpy as np
+import os
+import re
+import time
+import traceback
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Tuple
 
-from stephanie.services.service_protocol import Service
+import numpy as np
+import torch
+
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.services.service_protocol import Service
 
 
 class KnowledgeGraphService(Service):
@@ -47,6 +49,33 @@ class KnowledgeGraphService(Service):
         self.relationship_threshold = cfg.get("knowledge_graph", {}).get("relationship_threshold", 0.75)
         self.max_hops = cfg.get("knowledge_graph", {}).get("max_hops", 3)
         self.domain_aware = cfg.get("knowledge_graph", {}).get("domain_aware", True)
+
+        # also used by the verification/knowledge-tree path (separate from indexing threshold)
+        self.verification_threshold = self.cfg.get("knowledge_graph", {}).get("verification_threshold", 0.90)
+
+        kg_cfg = (cfg.get("knowledge_graph") or {})
+
+        # hard limits / guards used by build_tree & helpers
+        self.max_nodes = int(kg_cfg.get("max_nodes", 200))
+        self.max_relationships = int(kg_cfg.get("max_relationships", 1000))
+        self.max_rels_per_node = int(kg_cfg.get("max_rels_per_node", 16))
+        self.max_entities_per_section = int(kg_cfg.get("max_entities_per_section", 128))
+
+        # (if you didn’t add these earlier, include them now too)
+        self.min_claim_len = int(kg_cfg.get("min_claim_len", 30))
+        self.max_claim_len = int(kg_cfg.get("max_claim_len", 420))
+
+        # service mode + deferred buffers (health_check/shutdown reference these)
+        self.mode = kg_cfg.get("mode", "online")  # "online" | "deferred"
+        self._pending_nodes: list = []
+        self._pending_relationships: list = []
+
+        # how we split into candidate claims (regex on sentence boundaries)
+        self.claim_split_regex = kg_cfg.get("claim_split_regex", r"[.!?]\s+")
+
+        # verification gate you might use elsewhere
+        self.verification_threshold = float(kg_cfg.get("verification_threshold", 0.90))
+
 
         # Stats
         self._stats = {
@@ -176,8 +205,6 @@ class KnowledgeGraphService(Service):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": {
                 **self._stats,
-                "mode": self.mode,
-                "deferred_queue": len(self._pending_nodes),
             },
             "dependencies": {
                 "embedding_index": "ready" if self._graph else "missing",
@@ -187,12 +214,7 @@ class KnowledgeGraphService(Service):
         }
 
     def shutdown(self) -> None:
-        """Clean shutdown, flush deferred, clear state."""
-        if self.mode == "deferred":
-            try:
-                self.flush()
-            except Exception:
-                pass
+        """Clean shutdown, clear state."""
         self._initialized = False
         self._entity_detector = None
         self._retriever = None
@@ -201,6 +223,88 @@ class KnowledgeGraphService(Service):
         self._pending_nodes.clear()
         self._pending_relationships.clear()
         self.logger.log("KnowledgeGraphShutdown", {"status": "stopped"})
+
+
+    def build_tree(self, *, paper_text: str, paper_id: str = "", chat_corpus: List[Dict[str, Any]] = None,
+                   trajectories: List[Dict[str, Any]] = None, domains: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Build a lightweight knowledge_tree for verification use.
+        Does NOT do any image work.
+        """
+        chat_corpus = chat_corpus or []
+        trajectories = trajectories or []
+        domains = domains or []
+
+        # extract
+        entities = self._extract_entities_safe(paper_text)
+        claims = self._extract_claims_simple(paper_text, min_len=self.min_claim_len)
+        insights = [m["text"] for m in chat_corpus if isinstance(m, dict) and m.get("text")]
+
+        # relationships (claim↔insight) filtered by verification_threshold
+        relationships: List[Dict[str, Any]] = []
+        strength_accum, count = 0.0, 0
+        for c in claims:
+            smax = 0.0
+            for ins in insights:
+                s = self._rel_strength_claim_insight(c, ins, entities, domains)
+                if s >= float(self.verification_threshold):
+                    relationships.append({
+                        "source": self._node_id("claim", c),
+                        "target": self._node_id("insight", ins),
+                        "type": "supports",
+                        "confidence": float(s),
+                    })
+                smax = max(smax, s)
+            if smax > 0:
+                strength_accum += smax; count += 1
+
+        temporal = self._temporal_edges(trajectories)
+        # keep only strong temporal edges if you want, else include all; here we include all
+        relationships.extend(temporal)
+
+        # nodes (truncate to avoid blow-up)
+        nodes: List[Dict[str, Any]] = []
+        for e in entities[: self.max_nodes]:
+            nodes.append({"id": self._node_id("ent", e["text"]), "text": e["text"], "type": "entity"})
+        for c in claims[: self.max_nodes - len(nodes)]:
+            nodes.append({"id": self._node_id("claim", c), "text": c, "type": "claim"})
+        for ins in insights[: self.max_nodes - len(nodes)]:
+            nodes.append({"id": self._node_id("insight", ins), "text": ins, "type": "insight"})
+
+        # metrics
+        claim_coverage = self._estimate_claim_coverage(claims, insights)
+        evidence_strength = (strength_accum / max(1, count)) if count else 0.0
+        temporal_coherence = self._temporal_coherence_metric(temporal)
+        domain_alignment = self._domain_alignment_metric(domains, claims, entities)
+
+        # gaps
+        gaps: List[Dict[str, Any]] = []
+        for i, c in enumerate(claims):
+            addressed = any(self._contains_concept(ins, c) for ins in insights)
+            if not addressed:
+                gaps.append({
+                    "claim_id": f"gap_{i+1}",
+                    "claim_text": c,
+                    "gap_type": "missing_explanation",
+                    "severity": self._gap_severity(c),
+                })
+
+        return {
+            "nodes": nodes,
+            "relationships": relationships,
+            "claims": [{"id": self._node_id("claim", c), "text": c} for c in claims],
+            "entities": [e["text"] for e in entities],
+            "claim_coverage": float(self._clamp01(claim_coverage)),
+            "evidence_strength": float(self._clamp01(evidence_strength)),
+            "temporal_coherence": float(self._clamp01(temporal_coherence)),
+            "domain_alignment": float(self._clamp01(domain_alignment)),
+            "knowledge_gaps": gaps,
+            "meta": {
+                "paper_id": paper_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "verification_threshold": float(self.verification_threshold),
+            },
+        }
 
     def search_entities(self, text: str, k: int = 10) -> List[Tuple[str, float, Dict[str, Any]]]:
         """
@@ -291,9 +395,155 @@ class KnowledgeGraphService(Service):
             ]
         return out
 
+
+    def export_for_vpm(self, knowledge_tree: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Produce a minimal VPM payload (no images). ZeroModel will own all image work.
+        metrics per node are broadcast from global tree metrics; you can specialize later.
+        """
+        nodes = knowledge_tree.get("nodes", [])
+        entities = [n.get("text", "") for n in nodes]
+        metrics = ["coverage", "evidence", "temporal", "domain"]
+
+        cov = float(knowledge_tree.get("claim_coverage", 0.0))
+        evd = float(knowledge_tree.get("evidence_strength", 0.0))
+        tmp = float(knowledge_tree.get("temporal_coherence", 0.0))
+        dom = float(knowledge_tree.get("domain_alignment", 0.0))
+
+        matrix = [[cov, evd, tmp, dom] for _ in nodes]
+
+        rels = []
+        for r in knowledge_tree.get("relationships", []):
+            src = r.get("source"); tgt = r.get("target")
+            src_i = next((i for i, n in enumerate(nodes) if n.get("id") == src), None)
+            tgt_i = next((i for i, n in enumerate(nodes) if n.get("id") == tgt), None)
+            if src_i is not None and tgt_i is not None:
+                rels.append({
+                    "source_idx": src_i,
+                    "target_idx": tgt_i,
+                    "type": r.get("type", "rel"),
+                    "confidence": float(r.get("confidence", 0.0)),
+                })
+
+        return {
+            "entities": entities,
+            "metrics": metrics,
+            "matrix": matrix,
+            "relationships": rels,
+        }
+
+    def _estimate_claim_coverage(self, claims: List[str], insights: List[str]) -> float:
+        if not claims:
+            return 0.0
+        covered = 0
+        for c in claims:
+            if any(self._contains_concept(i, c) for i in insights):
+                covered += 1
+        return covered / max(1, len(claims))
+
+    def _temporal_coherence_metric(self, temporal_rels: List[Dict[str, Any]]) -> float:
+        if not temporal_rels:
+            return 0.0
+        ok, tot = 0, 0
+        for r in temporal_rels:
+            if "time_delta" in r:
+                tot += 1
+                if (r.get("time_delta") or 0) >= 0:
+                    ok += 1
+        return (ok / tot) if tot else 0.8  # neutral default
+
+    def _domain_alignment_metric(self, domains: List[Dict[str, Any]], claims: List[str], ents: List[Dict[str, Any]]) -> float:
+        if not domains:
+            return 0.7
+        names = [str(d.get("domain", "")).lower() for d in domains if isinstance(d, dict)]
+        text = " ".join(claims + [e.get("text","") for e in ents])
+        score = sum(1 for d in names if d and d in text.lower())
+        return self._clamp01(score / max(1, len(names)))
+
+    def _gap_severity(self, claim: str) -> float:
+        sev = 0.50
+        if re.search(r"\b(critical|essential|must|key|fundamental|core)\b", claim, re.I):
+            sev += 0.30
+        if re.search(r"\b\d+(\.\d+)?\s*(%|percent|accuracy|precision|recall|f1|auc|rmse|mae|bleu)\b", claim, re.I):
+            sev += 0.20
+        return self._clamp01(sev)
+
+    def _temporal_edges(self, trajectories: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        rels: List[Dict[str, Any]] = []
+        for traj in trajectories or []:
+            msgs = traj.get("messages") or []
+            for i in range(1, len(msgs)):
+                a, b = msgs[i - 1], msgs[i]
+                a_id = self._node_id("msg", a.get("text", ""))
+                b_id = self._node_id("msg", b.get("text", ""))
+                conf = 0.90
+                rtype = "temporal_sequence"
+                if self._contains_causal_language(b.get("text", "")):
+                    rtype = "causal_sequence"; conf = 0.95
+                rels.append({
+                    "source": a_id, "target": b_id, "type": rtype, "confidence": conf,
+                    "timestamp": b.get("timestamp"),
+                    "time_delta": (b.get("timestamp", 0) or 0) - (a.get("timestamp", 0) or 0),
+                })
+        return rels
+
+
+    def _rel_strength_claim_insight(
+        self, claim: str, insight: str, entities: List[Dict[str, Any]], domains: List[Dict[str, Any]]
+    ) -> float:
+        j = self._jaccard(self._token_set(claim), self._token_set(insight))
+
+        ent_texts = [e.get("text", "") for e in entities]
+        ce = {t.lower() for t in ent_texts if t and t.lower() in claim.lower()}
+        ie = {t.lower() for t in ent_texts if t and t.lower() in insight.lower()}
+        overlap = (len(ce & ie) / max(1, len(ce | ie))) if (ce or ie) else 0.0
+        entity_bonus = 0.30 * overlap
+
+        domain_boost = 0.0
+        if self.domain_aware:
+            names = {str(d.get("domain", "")).lower() for d in (domains or []) if isinstance(d, dict)}
+            if any(x in names for x in {"ml", "machine learning", "nlp"}):
+                domain_boost = 0.15
+
+        return self._clamp01(j + entity_bonus + domain_boost)
+
     # -------------------------
     # Entity & Node Management
     # -------------------------
+
+    def _extract_entities_safe(self, text: str) -> List[Dict[str, Any]]:
+        try:
+            if not text:
+                return []
+            ents = self._entity_detector.detect(text) if hasattr(self._entity_detector, "detect") else []
+            if ents:
+                return [e for e in ents if isinstance(e, dict) and e.get("text")]
+        except Exception as e:
+            self.logger and self.logger.log("KGEntityExtractionError", {"error": str(e)})
+
+        # heuristic fallback (capitalized tokens)
+        tokens = re.findall(r"\b[A-Z][A-Za-z0-9\-\_]{2,}\b", text or "")
+        uniq = {}
+        for t in tokens:
+            key = self._normalize_entity(t)
+            if key not in uniq:
+                uniq[key] = {"text": t, "type": "TERM", "start": -1, "end": -1, "source_text": t}
+        return list(uniq.values())
+
+    def _extract_claims_simple(self, text: str, min_len: int = None) -> List[str]:
+        min_len = min_len or self.min_claim_len
+        cand = re.split(r"(?<=[\.\!\?])\s+", text or "")
+        out: List[str] = []
+        for s in cand:
+            s = (s or "").strip()
+            if len(s) < min_len:
+                continue
+            if re.search(r"\b(we|our|this paper|results|achieve|improve|demonstrate|propose)\b", s, re.I):
+                out.append(s)
+            elif re.search(r"\b\d+(\.\d+)?\s*(%|percent|accuracy|precision|recall|f1|auc|rmse|mae|bleu)\b", s, re.I):
+                out.append(s)
+        return out[:256]
+
     def _create_entity_node_id(self, entity: Dict[str, Any], scorable_id: str) -> str:
         return f"{scorable_id}:{entity['type']}:{entity['start']}-{entity['end']}"
 
@@ -473,3 +723,43 @@ class KnowledgeGraphService(Service):
         return max(min(base_score + domain_bonus + proximity_bonus, 1.0), 0.0)
     
     
+        # ---------- tiny helpers ----------
+    @staticmethod
+    def _token_set(s: str) -> set:
+        return set(re.findall(r"[a-z0-9]+", (s or "").lower()))
+
+    @staticmethod
+    def _jaccard(a: set, b: set) -> float:
+        if not a and not b:
+            return 0.0
+        return len(a & b) / max(1, len(a | b))
+
+    @staticmethod
+    def _clamp01(x: float) -> float:
+        try:
+            return max(0.0, min(1.0, float(x)))
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _normalize_entity(text: str) -> str:
+        return re.sub(r"[^\w\s]", "", (text or "").lower()).strip()
+
+    @staticmethod
+    def _contains_causal_language(text: str) -> bool:
+        t = (text or "").lower()
+        pats = [r"therefore", r"as a result", r"because", r"consequently", r"thus", r"hence", r"led to", r"so we"]
+        return any(re.search(p, t) for p in pats)
+
+    @staticmethod
+    def _contains_concept(a: str, b: str) -> bool:
+        # conservative concept overlap
+        A = KnowledgeGraphService._token_set(a)
+        B = KnowledgeGraphService._token_set(b)
+        return KnowledgeGraphService._jaccard(A, B) >= 0.18
+
+    @staticmethod
+    def _node_id(kind: str, text: str) -> str:
+        import hashlib
+        h = hashlib.sha1((kind + "|" + (text or "")).encode("utf-8")).hexdigest()[:16]
+        return f"{kind}:{h}"

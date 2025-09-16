@@ -12,9 +12,9 @@ import logging
 from typing import Any, Callable, Dict, Optional
 
 from .bus_protocol import BusProtocol
-from .nats_bus import NatsKnowledgeBus
-from .inprocess_bus import InProcessKnowledgeBus
 from .idempotency import InMemoryIdempotencyStore
+from .inprocess_bus import InProcessKnowledgeBus
+from .nats_bus import NatsKnowledgeBus
 
 
 class HybridKnowledgeBus(BusProtocol):

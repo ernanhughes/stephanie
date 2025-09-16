@@ -1,11 +1,15 @@
 # stephanie/scoring/calibration_manager.py
+import glob
 import logging
+import os
+import pickle
+import re
 from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
 from stephanie.models.quantile_fallback import QuantileThresholdCalibrator
-import os, re, pickle, glob
 
 _logger = logging.getLogger(__name__)
 

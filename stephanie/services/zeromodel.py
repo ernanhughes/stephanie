@@ -1,15 +1,15 @@
 # stephanie/services/zero_model_service.py
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Tuple
+
 import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-
-from stephanie.services.service_protocol import Service
-
 # ZeroModel 1.5 (pre) — use its pipeline + logger; no PIL/imageio here.
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger  # NOTE: capital G only on Gif
+
+from stephanie.services.service_protocol import Service
 
 _DEFAULT_PIPELINE = [
     {"name": "normalize", "params": {}},            # infers metric names if not given
@@ -124,16 +124,124 @@ class ZeroModelService(Service):
         track = np.asarray([[float(x.get("best_candidate_score", 0.0))] for x in iters], dtype=np.float32)
         mat_iter = track  # (steps, 1)
 
-        gif = GifLogger(fps=1, max_frames=4)
+        gif = GifLogger()
         # Quality panel (single frame)
-        gif.add_frame_from_vpm(mat_quality, metrics={"step": 0})
+        gif.add_frame(mat_quality, metrics={"step": 0})
         # Iteration panel (single frame)
-        gif.add_frame_from_vpm(mat_iter, metrics={"step": 1})
+        gif.add_frame(mat_iter, metrics={"step": 1})
 
         # Save two PNGs (requires small helper in ZeroModel; see patch below)
         quality_path = f"{output_dir.rstrip('/')}/{filenames[0]}"
         iter_path    = f"{output_dir.rstrip('/')}/{filenames[1]}"
-        gif.save_png(quality_path, index=0)
-        gif.save_png(iter_path,    index=1)
+        # gif.save_gif(path=quality_path, fps=6, optimize=True, loop=0)
+        # gif.save_gif(path=iter_path, fps=6, OK so optimize=True, loop=0)
 
         return {"quality_tile_path": quality_path, "iteration_trace_path": iter_path}
+
+# stephanie/services/zero_model_service.py  (add to the class)
+
+    # --- helpers for verifier ---
+
+    def emit_iteration_tile(
+        self,
+        *,
+        doc_id: str,
+        iteration: int,
+        metrics: Dict[str, float],
+        output_dir: str = "reports/vpm/iters",
+    ) -> str:
+        """
+        Emit a single PNG (or 1-frame GIF fallback) visualizing an iteration score triple.
+        Metrics accepted: overall, knowledge_verification, hrm_score (others ignored).
+        """
+        assert self._pipeline is not None, "ZeroModelAdapter not initialized"
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 1 row x N metrics matrix
+        keys = ["overall", "knowledge_verification", "hrm_score"]
+        row = [float(metrics.get(k, 0.0) or 0.0) for k in keys]
+        mat = np.asarray([row], dtype=np.float32)
+
+        # Use logger to own pixels
+        gif = GifLogger(fps=1, max_frames=4)
+        gif.add_frame(mat, metrics={"iter": iteration})
+
+        out_png = os.path.join(output_dir, f"{doc_id}_iter_{iteration:02d}.png")
+        if hasattr(gif, "save_png"):
+            gif.save_png(out_png, frame_index=-1)
+        else:
+            # Fallback: 1-frame GIF if PNG support isn’t available yet
+            out_png = os.path.join(output_dir, f"{doc_id}_iter_{iteration:02d}.gif")
+            gif.save_gif(out_png, fps=1)
+        return out_png
+
+    def _emit_timeline(self, mat: np.ndarray, out_path: str, fps: Optional[int] = None) -> Dict[str, Any]:
+        """Small wrapper so older callers work."""
+        return self.render_timeline_from_matrix(mat, out_path, fps=fps or self._gif_fps)
+
+    def generate_summary_vpm_tiles(
+        self,
+        *,
+        vpm_data: Dict[str, Any],
+        output_dir: str,
+        filenames: Tuple[str, str] = ("quality.png", "iteration.png"),
+    ) -> Dict[str, Any]:
+        """
+        Now actually writes files. Uses GifLogger.save_png if present; else 1-frame GIFs.
+        """
+        assert self._pipeline is not None, "ZeroModelAdapter not initialized"
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+
+        metrics = ["overall", "coverage", "faithfulness", "structure", "no_halluc"]
+        abc = []
+        for k in ("A", "B", "C"):
+            m = (vpm_data.get("metrics", {}).get(k) or {})
+            abc.append([float(m.get(x, 0.0)) for x in metrics])
+        mat_quality = np.asarray(abc, dtype=np.float32)               # (3,5)
+
+        iters = vpm_data.get("iterations", []) or []
+        track = np.asarray([[float(x.get("best_candidate_score", 0.0))] for x in iters], dtype=np.float32)
+        mat_iter = track if track.size else np.asarray([[0.0]], dtype=np.float32)   # (T,1) or (1,1)
+
+        gif = GifLogger(fps=1, max_frames=self._max_frames)
+        # encode two frames so downstream can show a mini-gallery if desired
+        gif.add_frame(mat_quality, metrics={"panel": "quality"})
+        gif.add_frame(mat_iter,    metrics={"panel": "iteration"})
+
+        quality_path = os.path.join(output_dir, filenames[0])
+        iter_path    = os.path.join(output_dir, filenames[1])
+
+        if hasattr(gif, "save_png"):
+            gif.save_png(quality_path, frame_index=0)
+            gif.save_png(iter_path,    frame_index=1)
+        else:
+            # fallback: 1-frame GIFs
+            gif_q = GifLogger(fps=1) 
+            gif_q.add_frame(mat_quality, metrics={}); 
+            gif_q.save_gif(quality_path.replace(".png", ".gif"), fps=1)
+            gif_i = GifLogger(fps=1) 
+            gif_i.add_frame(mat_iter,    metrics={})
+            gif_i.save_gif(iter_path.replace(".png", ".gif"), fps=1)
+
+        return {"quality_tile_path": quality_path, "iteration_trace_path": iter_path}
+
+    def save_png(self, path: str, frame_index: int = -1):
+        """
+        Write one frame to PNG. Requires imageio (v3) or PIL; if unavailable, raise a clear error.
+        """
+        try:
+            import imageio.v3 as iio
+        except Exception:
+            try:
+                import numpy as np
+                from PIL import Image
+                idx = frame_index if frame_index >= 0 else (len(self.frames) - 1)
+                arr = np.asarray(self.frames[idx])
+                Image.fromarray((arr * 255).clip(0,255).astype("uint8") if arr.max() <= 1.0 else arr).save(path)
+                return
+            except Exception as e:
+                raise RuntimeError("GifLogger.save_png requires imageio or PIL") from e
+        idx = frame_index if frame_index >= 0 else (len(self.frames) - 1)
+        iio.imwrite(path, self.frames[idx])

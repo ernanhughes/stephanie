@@ -21,9 +21,8 @@ from .bandit_router import ExemplarBandit
 
 # Optional mutation testing (graceful if absent)
 try:
-    from .mutation import (
-        MutationRunner,
-    )  # our module; returns dict with "score"
+    from .mutation import \
+        MutationRunner  # our module; returns dict with "score"
 
     HAS_MUTATION = True
 except Exception:

@@ -1,11 +1,14 @@
 # stephanie/agents/knowledge/verified_section_generator.py
 from __future__ import annotations
+
 import hashlib
 import random
-from typing import Any, Dict, List, Tuple
 from dataclasses import dataclass
+from typing import Any, Dict, List, Tuple
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver.goals import GoalScorer
+
 
 def _hash(x: str) -> str: return hashlib.sha256(x.encode("utf-8")).hexdigest()[:12]
 def _toklen(s: str) -> int: return max(1, len(s)//4)

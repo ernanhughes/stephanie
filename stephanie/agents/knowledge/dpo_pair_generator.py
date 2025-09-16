@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import traceback
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import logging
-import traceback
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.knowledge.casebook_store import CaseBookStore

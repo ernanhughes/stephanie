@@ -1,8 +1,8 @@
 # stephanie/memory/dynamic_scorable_store.py
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
 from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 from stephanie.models.dynamic_scorable import DynamicScorableORM
 

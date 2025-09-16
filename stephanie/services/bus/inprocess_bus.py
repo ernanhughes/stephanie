@@ -5,11 +5,12 @@ Provides a simple pub/sub implementation without external dependencies.
 """
 
 from __future__ import annotations
+
 import asyncio
 import logging
-from typing import Any, Callable, Dict, List, Optional
-from time import time
 import uuid
+from time import time
+from typing import Any, Callable, Dict, List, Optional
 
 from .bus_protocol import BusProtocol
 from .idempotency import InMemoryIdempotencyStore

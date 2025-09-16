@@ -1,7 +1,8 @@
 # stephanie/services/bus/kv_sync.py
-import threading
 import asyncio
+import threading
 from typing import Optional
+
 
 class SyncKV:
     def __init__(self, js, bucket, max_age_seconds=None, description=None):

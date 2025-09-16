@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from stephanie.agents.knowledge.improver import Improver
 from stephanie.agents.paper_improver.goals import GoalScorer
 from stephanie.knowledge.casebook_store import CaseBookStore
 # stephanie/agents/paper_improver/orchestrator.py (diffs only)
@@ -23,7 +24,6 @@ from .faithfulness import \
     FaithfulnessBot  # optional use; safe if not provided at CLI
 from .goals import GoalScorer, build_templates_from_yaml, load_yaml
 from .repo_link import RepoLink
-from stephanie.agents.knowledge.improver import Improver
 from .vpm_controller import VPMController
 
 # --------------------------- helpers ---------------------------

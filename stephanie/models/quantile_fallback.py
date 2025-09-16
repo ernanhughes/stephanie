@@ -1,6 +1,7 @@
 # calibrators/quantile_fallback.py
 import numpy as np
 
+
 class QuantileThresholdCalibrator:
     def __init__(self, positive=True, quantile=0.85, slope=10.0):
         self.positive = positive

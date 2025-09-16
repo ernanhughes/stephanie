@@ -2,12 +2,12 @@
 
 import datetime
 import os
-from typing import Dict, List, Union, Mapping
+from typing import Dict, List, Mapping, Union
 
 import numpy as np
+from sqlalchemy import case, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
 
 from stephanie.models.calibration import CalibrationEventORM
 

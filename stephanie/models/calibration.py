@@ -1,14 +1,12 @@
 # stephanie/models/calibration.py
-from datetime import datetime
-
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String
-
-from stephanie.models.base import Base
-
 # stephanie/models/calibration.py
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, LargeBinary, DateTime, UniqueConstraint
+
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, Integer,
+                        LargeBinary, String, UniqueConstraint)
+
 from stephanie.models.base import Base
+
 
 class CalibrationModelORM(Base):
     __tablename__ = "calibration_models"

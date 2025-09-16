@@ -5,7 +5,7 @@ import json
 import os
 import threading
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
 
 from stephanie.services.service_protocol import Service
