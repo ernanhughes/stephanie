@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import asyncio
 import json
 import os
 import re
@@ -9,9 +10,10 @@ import time
 import traceback
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
-
+import math
 import numpy as np
 
+from stephanie.utils.json_sanitize import sanitize_for_json
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.summary.paper_summarizer import (
     SimplePaperSummarizerAgent,
@@ -151,6 +153,10 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         self.model_key_retriever = cfg.get(
             "model_key_retriever", "retriever.mrq.v1"
         )
+
+        self.audit_enabled = bool(cfg.get("enable_audit_report", True))
+        self.report_dir = str(cfg.get("audit_report_dir", "reports/track_c"))
+        os.makedirs(self.report_dir, exist_ok=True)
 
         self.logger.log(
             "KnowledgeInfusedVerifierInit",
@@ -370,6 +376,26 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
 
         context.setdefault("summary_v2", {})
         context["summary_v2"] = verified_outputs
+
+        if self.audit_enabled:
+            context.setdefault("reports", [])
+            # push all generated .md files for this batch
+            # (we already called self.report() for each, but some UIs read context["reports"])
+            try:
+                md_files = [
+                    f for f in os.listdir(self.report_dir) if f.endswith(".md")
+                ]
+                for f in md_files:
+                    context["reports"].append(
+                        {
+                            "agent": self.name,
+                            "type": "markdown",
+                            "path": os.path.join(self.report_dir, f),
+                        }
+                    )
+            except Exception:
+                pass
+
         return context
 
     # -------------------- core verification loop --------------------
@@ -415,6 +441,18 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             getattr(track_b, "id", None),
         ]
 
+        audit = {
+            "doc_id": str(doc_id),
+            "title": goal_title,
+            "start_overall": float(current_metrics.get("overall", 0.0)),
+            "baseline_metrics": current_metrics,
+            "iterations": [],  # we’ll append per-iter snapshots here
+            "strategy_before": self.strategy.to_dict(),
+            "track_a_id": getattr(track_a, "id", None),
+            "track_b_id": getattr(track_b, "id", None),
+            "kbase_hints": [],
+        }
+
         for iter_idx in range(self.max_iters):
             iter_start = time.time()
 
@@ -431,12 +469,24 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                 context=context,
                 abstract=abstract,
             )
-            candidate = (
-                self.call_llm(prompt, context=context) or current_summary
-            )
+            # hash + excerpt for report (avoid dumping huge prompts verbatim)
+            import hashlib
 
-            # PACS refinement
-            candidate = self._pacs_refine(candidate, abstract, context, paper_data, knowledge_graph) or candidate
+            prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[
+                :12
+            ]
+            prompt_excerpt = prompt[:600]
+
+            # PACS refinement (get details for the report)
+            raw_llm = self.call_llm(prompt, context=context) or current_summary
+            candidate, panel_detail = self._pacs_refine(
+                raw_llm,
+                abstract,
+                context,
+                paper_data,
+                knowledge_graph,
+                return_panel=True,
+            )
 
             # score candidate
             cand_metrics = self._score_summary(
@@ -481,6 +531,9 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                 "gain": gain,
                 "processing_time": time.time() - iter_start,
                 "knowledge_graph_conf": self.knowledge_graph_conf,
+                "prompt_hash": prompt_hash,
+                "prompt_excerpt": prompt_excerpt,
+                "panel_detail": panel_detail or {},
             }
             if knowledge_graph:
                 iter_payload["claim_coverage"] = knowledge_graph.get(
@@ -490,6 +543,10 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                     "evidence_strength", 0.0
                 )
             iterations.append(iter_payload)
+            if self.audit_enabled:
+                audit["iterations"].append(iter_payload)
+                if panel_detail and not audit.get("kbase_hints"):
+                    audit["kbase_hints"] = panel_detail.get("kb_hints", [])
 
             # accept if improves enough
             if (
@@ -592,20 +649,26 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
 
         # persist as dynamic scorable
         try:
-            scorable_id = self.memory.dynamic_scorables.add(
-                pipeline_run_id=context.get("pipeline_run_id"),
-                scorable_type=TargetType.DYNAMIC,
-                source=self.name,
-                text=best_summary,
-                meta={
+            safe_meta = sanitize_for_json(
+                {
                     "paper_id": paper_data.get("paper_id", doc_id),
                     "title": paper_data.get("title", ""),
                     "metrics": best_metrics,
                     "origin": "track_c_verified",
                     "verification_trace": result["verification_trace"],
-                    "hallucination_issues": hallucination_issues,
-                    "figure_results": figure_results,
-                },
+                    "hallucination_issues": result.get(
+                        "hallucination_issues", []
+                    ),
+                    "figure_results": result.get("figure_results", {}),
+                }
+            )
+
+            scorable_id = self.memory.dynamic_scorables.add(
+                pipeline_run_id=context.get("pipeline_run_id"),
+                scorable_type=TargetType.DYNAMIC,
+                source=self.name,
+                text=best_summary,
+                meta=safe_meta,  # ← sanitized!
                 source_scorable_id=getattr(track_b, "id", None),
                 source_scorable_type="dynamic",
             )
@@ -653,6 +716,49 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             self.logger.log(
                 "KBUpdateWarn", {"doc_id": doc_id, "error": str(e)}
             )
+
+        if self.audit_enabled:
+            try:
+                audit["strategy_after"] = self.strategy.to_dict()
+                audit["final_metrics"] = result["metrics"]
+                audit["passes_guardrails"] = result["passes_guardrails"]
+                audit["hallucination_issues"] = result.get(
+                    "hallucination_issues", []
+                )
+                audit["figure_results"] = result.get("figure_results", {})
+                timeline_png = self._plot_iteration_timeline(
+                    audit["iterations"],
+                    out_path=os.path.join(
+                        self.report_dir, f"{doc_id}_timeline.png"
+                    ),
+                )
+                transfer_png = self.generate_transfer_curve(
+                    output_path=os.path.join(
+                        self.report_dir, "transfer_curve.png"
+                    )
+                )
+                report_md = self._write_audit_report(
+                    doc_id=str(doc_id),
+                    title=goal_title,
+                    audit=audit,
+                    timeline_path=timeline_png,
+                    transfer_curve_path=transfer_png,
+                    abc_gif_path=result.get(
+                        "quality_tile_path"
+                    ),  # if ZeroModel returned one
+                )
+                # expose to pipeline context + report stream
+                self.report(
+                    {
+                        "event": "verification_report",
+                        "doc_id": str(doc_id),
+                        "path": report_md,
+                    }
+                )
+            except Exception as e:
+                self.logger.log(
+                    "AuditReportError", {"doc_id": doc_id, "error": str(e)}
+                )
 
         return result
 
@@ -892,6 +998,8 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         context: Dict[str, Any],
         paper_data: Dict[str, Any] | None = None,
         knowledge_tree: Dict[str, Any] | None = None,
+        *,
+        return_panel: bool = False,
     ) -> str:
         title = (
             (paper_data or {}).get("title")
@@ -941,10 +1049,11 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             except Exception:
                 continue
         if not panel:
-            return candidate
+            return (candidate, None) if return_panel else candidate
 
-        # score by role, include real figure grounding for risk critic
+        # score by role...
         best_text, best_score = candidate, -1.0
+        role_scores = []
         for role, text in panel:
             m = self.metrics_calculator._compute_metrics(text, abstract, "")
             if role == "risk":
@@ -952,19 +1061,21 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                     text, paper_data or {}, knowledge_tree or {}
                 )
             role_score = self._role_weighted_score(role, m, weights=work_w)
+            role_scores.append(
+                {"role": role, "score": role_score, "metrics": m, "text": text}
+            )
             if role_score > best_score:
                 best_text, best_score = text, role_score
 
-        self.logger.log(
-            "PACSRefine",
-            {
-                "kb_hints": kb_ctx.get("hints", []),
-                "kb_templates_count": len(kb_ctx.get("templates", [])),
-                "nudges": nudges,
-                "weights_used": work_w,
-            },
-        )
-        return best_text
+        details = {
+            "kb_hints": kb_ctx.get("hints", []),
+            "kb_templates_count": len(kb_ctx.get("templates", [])),
+            "nudges": nudges,
+            "weights_used": work_w,
+            "panel": role_scores,
+        }
+        self.logger.log("PACSRefine", details)
+        return (best_text, details) if return_panel else best_text
 
     def _role_weighted_score(
         self,
@@ -986,14 +1097,14 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         base = float(m.get("overall", 0.0))
         wmap = weights or self.strategy.pacs_weights
         w = wmap.get(role, 0.33)
-        
+
         if role == "skeptic":
             role_focus = skeptic_focus
         elif role == "editor":
             role_focus = editor_focus
         else:
             role_focus = risk_focus
-            
+
         score = 0.5 * base + 0.5 * role_focus
         return w * score
 
@@ -1037,8 +1148,20 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
     ) -> str:
         title = paper_data.get("title", "")
         domain = self._derive_domain(paper_data, context or {})
-        abs_text = abstract if abstract is not None else self._fetch_abstract(paper_data.get("id") or paper_data.get("paper_id"))
-        kb_ctx = self.kbase.context_for_paper(title=title, abstract=abs_text, domain=domain) if self.kbase else {}
+        abs_text = (
+            abstract
+            if abstract is not None
+            else self._fetch_abstract(
+                paper_data.get("id") or paper_data.get("paper_id")
+            )
+        )
+        kb_ctx = (
+            self.kbase.context_for_paper(
+                title=title, abstract=abs_text, domain=domain
+            )
+            if self.kbase
+            else {}
+        )
         tmpl_text = ""
         if kb_ctx.get("templates"):
             bullets = []
@@ -1449,138 +1572,64 @@ Verified summary:
         context: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
-        Build (or fetch) a knowledge graph/tree for this paper.
-
-        Resolution order:
-        1) service "knowledge_graph" (prefer) or "knowledge_tree"
-            - tries .build_tree(...), then .build(...), then .run(...)
-        2) fallback local KnowledgeTreeBuilderAgent().run(tree_context)
-
-        Handles sync/async call styles and normalizes the result to a dict with:
-        nodes, relationships, claims, claim_coverage, evidence_strength,
-        temporal_coherence, domain_alignment, knowledge_gaps
+        Minimal KG builder that ONLY uses the service's build_tree(...).
+        Returns a normalized dict with expected keys.
         """
 
-        def _as_graph(raw: Any) -> Dict[str, Any]:
-            """Normalize various return shapes to a single graph dict."""
-            if not isinstance(raw, dict):
-                return {}
-            # accept nested keys or direct dicts
-            kg = raw.get("knowledge_graph") or raw
-            if not isinstance(kg, dict):
-                return {}
+        def _empty_kg() -> Dict[str, Any]:
+            return {
+                "nodes": [],
+                "relationships": [],
+                "claims": [],
+                "claim_coverage": 0.0,
+                "evidence_strength": 0.0,
+                "temporal_coherence": 0.0,
+                "domain_alignment": 0.0,
+                "knowledge_gaps": [],
+                "meta": {"paper_id": str(doc_id)},
+            }
 
-            # ensure expected fields (non-destructive)
+        def _normalize(kg: Any) -> Dict[str, Any]:
+            if not isinstance(kg, dict):
+                kg = {}
+            kg = kg.get("knowledge_graph") or kg
+            if not isinstance(kg, dict):
+                kg = {}
+            # ensure expected fields
             kg.setdefault("nodes", [])
-            kg.setdefault("claims", [])
             kg.setdefault("relationships", [])
+            kg.setdefault("claims", [])
             kg.setdefault("claim_coverage", 0.0)
             kg.setdefault("evidence_strength", 0.0)
             kg.setdefault("temporal_coherence", 0.0)
             kg.setdefault("domain_alignment", 0.0)
             kg.setdefault("knowledge_gaps", [])
+            kg.setdefault("meta", {})
+            kg["meta"].setdefault("paper_id", str(doc_id))
             return kg
 
-        async def _maybe_await(x):
-            return (await x) if inspect.iscoroutine(x) else x
-
-        # 1) Prepare shared builder context
-        tree_context = {
-            "paper_section": {
-                "section_name": "Full Paper",
-                "section_text": paper_data.get("text", ""),
-                "paper_id": paper_data.get("paper_id") or doc_id,
-            },
-            "chat_corpus": chat_corpus,
-            "critical_messages": context.get("critical_messages", []),
-            "conversation_trajectories": context.get(
-                "conversation_trajectories", []
-            ),
-            "domains": context.get("domains", []),
-            "fusion_entities": context.get("fusion_entities", {}),
-        }
-
-        # 2) Try a registered service first (graph then tree)
         svc = self.container.get("knowledge_graph")
+        if not (svc and hasattr(svc, "build_tree")):
+            self.logger.log("KGMissingBuildTree", {"doc_id": doc_id})
+            return _empty_kg()
 
+        paper_text = (paper_data.get("text") or "").strip()
         try:
-            if svc:
-                # a) .build_tree(...) (preferred for your new KG service)
-                if hasattr(svc, "build_tree") and callable(
-                    getattr(svc, "build_tree")
-                ):
-                    # Map to the common build_tree signature used in your KG service
-                    kwargs = {
-                        "paper_text": paper_data.get("text", ""),
-                        "paper_id": str(doc_id),
-                        "chat_corpus": chat_corpus,
-                        "trajectories": context.get(
-                            "conversation_trajectories", []
-                        ),
-                        "domains": context.get("domains", []),
-                    }
-                    result = await _maybe_await(svc.build_tree(**kwargs))
-                    self.logger.log(
-                        "KGBuildPath",
-                        {
-                            "service": svc.__class__.__name__,
-                            "method": "build_tree",
-                        },
-                    )
-                    return _as_graph(result)
-
-                # b) .build(...) (support older/newer services that use 'build')
-                if hasattr(svc, "build") and callable(getattr(svc, "build")):
-                    # Introspect to pass only what the service accepts
-                    sig = inspect.signature(svc.build)
-                    call_kwargs = {}
-                    candidates = {
-                        "paper_text": paper_data.get("text", ""),
-                        "paper_id": str(doc_id),
-                        "paper_data": paper_data,
-                        "chat_corpus": chat_corpus,
-                        "context": context,
-                        "tree_context": tree_context,
-                        "doc_id": doc_id,
-                        "trajectories": context.get(
-                            "conversation_trajectories", []
-                        ),
-                        "domains": context.get("domains", []),
-                    }
-                    for p in sig.parameters.values():
-                        if p.name in candidates:
-                            call_kwargs[p.name] = candidates[p.name]
-                    result = await _maybe_await(svc.build(**call_kwargs))
-                    self.logger.log(
-                        "KGBuildPath",
-                        {"service": svc.__class__.__name__, "method": "build"},
-                    )
-                    return _as_graph(result)
-
-                # c) .run(tree_context) (legacy agent-like interface exposed as a service)
-                if hasattr(svc, "run") and callable(getattr(svc, "run")):
-                    result = await _maybe_await(svc.run(tree_context))
-                    self.logger.log(
-                        "KGBuildPath",
-                        {"service": svc.__class__.__name__, "method": "run"},
-                    )
-                    return _as_graph(result)
-
-            # 3) Fallback: local builder agent
-            from stephanie.agents.knowledge.knowledge_tree_builder import (
-                KnowledgeTreeBuilderAgent,
+            # build_tree is sync; run it in a worker so we don't block the event loop
+            kg = await asyncio.to_thread(
+                svc.build_tree,
+                paper_text=paper_text,
+                paper_id=str(doc_id),
+                chat_corpus=chat_corpus or [],
+                trajectories=context.get("conversation_trajectories", [])
+                or [],
+                domains=context.get("domains", []) or [],
             )
-
-            agent = KnowledgeTreeBuilderAgent(
-                self.cfg, self.memory, self.container, self.logger
-            )
-            result = await _maybe_await(agent.run(tree_context))
             self.logger.log(
                 "KGBuildPath",
-                {"service": "KnowledgeTreeBuilderAgent", "method": "run"},
+                {"service": svc.__class__.__name__, "method": "build_tree"},
             )
-            return _as_graph(result)
-
+            return _normalize(kg)
         except Exception as e:
             self.logger.log(
                 "KnowledgeGraphBuildFailed",
@@ -1590,7 +1639,7 @@ Verified summary:
                     "traceback": traceback.format_exc(),
                 },
             )
-            return {}
+            return _empty_kg()
 
     # --- Emit one VPM tile per iteration (safe wrapper) ---
     def _emit_vpm_tile(
@@ -1679,16 +1728,32 @@ Verified summary:
         hrm_score = None
         try:
             if self.use_hrm:
-                _goal = goal_title or (context.get("goal", {}).get("goal_text", ""))
+                _goal = goal_title or (
+                    context.get("goal", {}).get("goal_text", "")
+                )
                 hrm_score, _ = self._hrm_epistemic(summary, _goal, context)
         except Exception:
             hrm_score = None
+
+        # normalize HRM to [0,1]
+        if hrm_score is not None:
+            hs = float(hrm_score)
+            if hs < 0.0 or hs > 1.0:
+                # treat as a logit-like raw signal
+                hs = 1.0 / (1.0 + math.exp(-hs))
+                self.logger.log(
+                    "HRMScoreNormalized", {"raw": hrm_score, "norm": hs}
+                )
+            # hard clamp
+            hrm_score = max(0.0, min(1.0, hs))
 
         # 4) blend
         #   keep your prior weighting; add a small HRM term if present
         overall = 0.8 * base.get("overall", 0.0) + 0.2 * ver
         if hrm_score is not None:
-            overall = (1.0 - self.hrm_weight) * overall + self.hrm_weight * float(hrm_score)
+            overall = (
+                1.0 - self.hrm_weight
+            ) * overall + self.hrm_weight * float(hrm_score)
 
         out = dict(base)
         out["knowledge_verification"] = float(ver)
@@ -1696,3 +1761,228 @@ Verified summary:
             out["hrm_score"] = float(hrm_score)
         out["overall"] = float(overall)
         return out
+
+    def _plot_iteration_timeline(
+        self, iters: List[Dict[str, Any]], out_path: str
+    ) -> Optional[str]:
+        if not iters:
+            return None
+        try:
+            import matplotlib.pyplot as plt
+        except Exception:
+            self.logger.log(
+                "TimelinePlotSkip", {"reason": "matplotlib not available"}
+            )
+            return None
+
+        xs = [it["iteration"] for it in iters]
+        ys = [float(it.get("best_candidate_score", 0.0)) for it in iters]
+        cs = [float(it.get("current_score", 0.0)) for it in iters]
+
+        plt.figure(figsize=(8.6, 4.2))
+        plt.plot(xs, cs, linewidth=2, label="current score")
+        plt.plot(xs, ys, linewidth=2, label="candidate score")
+        plt.title("Track C: Per-Iteration Verification Scores")
+        plt.xlabel("Iteration")
+        plt.ylabel("Overall score")
+        plt.grid(True, linestyle="--", alpha=0.5)
+        plt.legend()
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        plt.savefig(out_path, dpi=200, bbox_inches="tight")
+        plt.close()
+        return out_path
+
+    def _write_audit_report(
+        self,
+        *,
+        doc_id: str,
+        title: str,
+        audit: Dict[str, Any],
+        timeline_path: Optional[str],
+        transfer_curve_path: Optional[str],
+        abc_gif_path: Optional[str] = None,
+    ) -> str:
+        """
+        Render a compact Markdown report that shows:
+        - overview & baseline vs. final metrics,
+        - iteration timeline figure,
+        - PACS panel snapshots (scores per role),
+        - knowledge verification, hallucination & figure grounding,
+        - strategy shifts,
+        - transfer learning curve (global).
+        """
+
+        def f(x):  # short float
+            try:
+                return f"{float(x):.3f}"
+            except Exception:
+                return str(x)
+
+        base = audit.get("baseline_metrics", {})
+        final = audit.get("final_metrics", {})
+        issues = audit.get("hallucination_issues", [])
+        figure = audit.get("figure_results", {})
+        hints = audit.get("kbase_hints", [])
+        strat_b = audit.get("strategy_before", {})
+        strat_a = audit.get("strategy_after", {})
+
+        lines = []
+        lines.append(f"# Verification Report — {title or doc_id}")
+        lines.append("")
+        lines.append(
+            f"**Doc ID:** `{doc_id}`  |  **Start overall:** {f(audit.get('start_overall'))}  |  **Final overall:** {f(final.get('overall', 0.0))}"
+        )
+        lines.append("")
+        if abc_gif_path:
+            lines.append(
+                f"![ABC tile]({os.path.relpath(abc_gif_path, self.report_dir)})"
+            )
+            lines.append("")
+
+        # Overview table
+        lines.append("## Overview (Baseline → Final)")
+        lines.append("")
+        rows = [
+            ("overall", base.get("overall"), final.get("overall")),
+            (
+                "knowledge_verification",
+                base.get("knowledge_verification"),
+                final.get("knowledge_verification"),
+            ),
+            (
+                "coverage",
+                base.get("claim_coverage", base.get("coverage")),
+                final.get("claim_coverage", final.get("coverage")),
+            ),
+            (
+                "faithfulness",
+                base.get("faithfulness"),
+                final.get("faithfulness"),
+            ),
+            ("structure", base.get("structure"), final.get("structure")),
+            (
+                "hallucination_rate (↓)",
+                base.get("hallucination_rate"),
+                final.get("hallucination_rate"),
+            ),
+            (
+                "figure_grounding",
+                (base.get("figure_results") or {}).get("overall_figure_score")
+                if isinstance(base.get("figure_results"), dict)
+                else None,
+                (final.get("figure_results") or {}).get("overall_figure_score")
+                if isinstance(final.get("figure_results"), dict)
+                else None,
+            ),
+        ]
+        lines.append("| metric | baseline | final |")
+        lines.append("|---|---:|---:|")
+        for k, b, c in rows:
+            lines.append(f"| {k} | {f(b)} | {f(c)} |")
+        lines.append("")
+
+        # Iteration timeline
+        if timeline_path:
+            rel = os.path.relpath(timeline_path, self.report_dir)
+            lines.append("## Iteration Timeline")
+            lines.append("")
+            lines.append(f"![Iteration scores]({rel})")
+            lines.append("")
+
+        # Iteration snapshots (compact)
+        lines.append("## Iteration Snapshots")
+        lines.append("")
+        for it in audit.get("iterations", []):
+            lines.append(
+                f"### Iter {it['iteration']} — gain: {f(it.get('gain', 0.0))}, cand: {f(it.get('best_candidate_score'))}"
+            )
+            lines.append(f"- prompt: `{it.get('prompt_hash')}` — excerpt:")
+            excerpt = (it.get("prompt_excerpt") or "").replace("\n", " ")
+            lines.append(
+                f"  > {excerpt[:240]}{'…' if len(excerpt) > 240 else ''}"
+            )
+            pd = it.get("panel_detail") or {}
+            if pd.get("weights_used"):
+                w = pd["weights_used"]
+                lines.append(
+                    f"- PACS weights used: skeptic={f(w.get('skeptic'))}, editor={f(w.get('editor'))}, risk={f(w.get('risk'))}"
+                )
+            # show top-1 panel improvement
+            best = None
+            for entry in pd.get("panel") or []:
+                if not best or float(entry.get("score", -1)) > float(
+                    best.get("score", -1)
+                ):
+                    best = entry
+            if best:
+                lines.append(
+                    f"- Best panel: **{best['role']}** (score {f(best['score'])})"
+                )
+            lines.append("")
+
+        # Knowledge verification & guardrails
+        lines.append("## Knowledge Verification & Guardrails")
+        lines.append("")
+        lines.append(
+            f"- Claim coverage (final): {f(final.get('claim_coverage', final.get('coverage')))}"
+        )
+        lines.append(
+            f"- Evidence strength (final): {f(audit['iterations'][-1].get('evidence_strength') if audit.get('iterations') else None)}"
+        )
+        if issues:
+            lines.append(
+                f"- Hallucination issues: {len(issues)} (listed below)"
+            )
+        if isinstance(figure, dict):
+            lines.append(
+                f"- Figure grounding: {figure.get('properly_cited', 0)}/{figure.get('total_claims', 0)} cited (rate={f(figure.get('citation_rate'))})"
+            )
+        lines.append("")
+        if issues:
+            lines.append("<details><summary>Hallucination issues</summary>\n")
+            for x in issues[:20]:
+                lines.append(f"- {str(x)[:240]}")
+            lines.append("\n</details>\n")
+
+        # Strategy evolution
+        lines.append("## Strategy Evolution")
+        lines.append("")
+        try:
+            wb = (
+                (strat_b.get("pacs_weights") or {})
+                if isinstance(strat_b, dict)
+                else {}
+            )
+            wa = (
+                (strat_a.get("pacs_weights") or {})
+                if isinstance(strat_a, dict)
+                else {}
+            )
+            lines.append(
+                f"- Threshold: {f((strat_b or {}).get('verification_threshold'))} → {f((strat_a or {}).get('verification_threshold'))}"
+            )
+            lines.append(
+                f"- PACS weights: skeptic {f(wb.get('skeptic'))}→{f(wa.get('skeptic'))}, editor {f(wb.get('editor'))}→{f(wa.get('editor'))}, risk {f(wa.get('risk'))}→{f(wa.get('risk'))}"
+            )
+        except Exception:
+            pass
+        if hints:
+            lines.append("")
+            lines.append("### KBase Hints Applied")
+            for h in hints:
+                lines.append(f"- {h}")
+            lines.append("")
+
+        # Transfer (global)
+        if transfer_curve_path:
+            rel = os.path.relpath(transfer_curve_path, self.report_dir)
+            lines.append("## Transfer Learning Trend (Global)")
+            lines.append("")
+            lines.append(f"![Transfer curve]({rel}) But how you doing")
+            lines.append("")
+
+        # finalize
+        out_md = os.path.join(self.report_dir, f"{doc_id}.md")
+        with open(out_md, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        return out_md

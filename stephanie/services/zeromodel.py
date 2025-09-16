@@ -5,7 +5,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-# ZeroModel 1.5 (pre) — use its pipeline + logger; no PIL/imageio here.
+
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger  # NOTE: capital G only on Gif
 
@@ -138,9 +138,6 @@ class ZeroModelService(Service):
 
         return {"quality_tile_path": quality_path, "iteration_trace_path": iter_path}
 
-# stephanie/services/zero_model_service.py  (add to the class)
-
-    # --- helpers for verifier ---
 
     def emit_iteration_tile(
         self,
@@ -219,29 +216,10 @@ class ZeroModelService(Service):
         else:
             # fallback: 1-frame GIFs
             gif_q = GifLogger(fps=1) 
-            gif_q.add_frame(mat_quality, metrics={}); 
+            gif_q.add_frame(mat_quality, metrics={})
             gif_q.save_gif(quality_path.replace(".png", ".gif"), fps=1)
             gif_i = GifLogger(fps=1) 
             gif_i.add_frame(mat_iter,    metrics={})
             gif_i.save_gif(iter_path.replace(".png", ".gif"), fps=1)
 
         return {"quality_tile_path": quality_path, "iteration_trace_path": iter_path}
-
-    def save_png(self, path: str, frame_index: int = -1):
-        """
-        Write one frame to PNG. Requires imageio (v3) or PIL; if unavailable, raise a clear error.
-        """
-        try:
-            import imageio.v3 as iio
-        except Exception:
-            try:
-                import numpy as np
-                from PIL import Image
-                idx = frame_index if frame_index >= 0 else (len(self.frames) - 1)
-                arr = np.asarray(self.frames[idx])
-                Image.fromarray((arr * 255).clip(0,255).astype("uint8") if arr.max() <= 1.0 else arr).save(path)
-                return
-            except Exception as e:
-                raise RuntimeError("GifLogger.save_png requires imageio or PIL") from e
-        idx = frame_index if frame_index >= 0 else (len(self.frames) - 1)
-        iio.imwrite(path, self.frames[idx])

@@ -445,8 +445,20 @@ MODELS = {
 # ETHICS & REVIEWS
 # ============= 
 SPECIAL = {
+    "KGBuildPath": "📰🛤️",  # Knowledge graph build path
+    "VPMTilesGenerated": "🗺️✅",  # VPM tiles generated
+    "PACSRefine": "📊🔍",  # PACS refinement started
+    "HRMScoreNormalized": "📊🔧",  # HRM score normalized
+    "DomainCacheHit": "🏷️💾✅",  # Domain cache hit
+    "CombinedSearchPostStd": "🔍➕",  # Combined search post-STD
+    "RetrievalEmpty": "🔍🚫",  # Retrieval returned no results    
+    "CrossPaperSignalCaptured": "📄🔗",  # Cross-paper signal captured
+    "TransferAnalyzeSkip": "⏭️📊",  # Transfer analysis skipped
+    "StrategyProfileServiceInit": "🎯⚙️",  # Strategy profile service initialized
+    "KBaseInitialized": "📰⚙️",  # Knowledge base initialized
     "ScoringServiceScorerRegistered": "📊✅",  # Scoring service scorer registered
     "ScoringServiceInitialized": "📊🔧",  # Scoring service initialized
+    "NERMissing": "🏷️❌",  # NER component missing
     "CBRRank": "📊📈",  # CBR ranking started
     "CBRRetrieve": "🔍📚",  # CBR retrieval started
     "CBRReuse": "♻️📚",  # CBR reuse started

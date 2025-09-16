@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any
-
+from typing import Any, Mapping, Iterable
+from datetime import date, datetime 
 import numpy as np
 
 
@@ -82,3 +82,74 @@ def to_json_safe(obj: Any) -> Any:
     if isinstance(obj, (np.ndarray,)):
         return obj.tolist()
     return obj
+
+def _to_native_scalar(x: Any) -> Any:
+    # numpy → python
+    if np is not None:
+        if isinstance(x, (np.floating,)):
+            val = float(x)
+            return None if (math.isnan(val) or math.isinf(val)) else val
+        if isinstance(x, (np.integer,)):
+            return int(x)
+        if isinstance(x, (np.bool_,)):
+            return bool(x)
+        if x is np.nan or x is np.inf or x is -np.inf:
+            return None
+
+    # plain python numbers
+    if isinstance(x, float):
+        return None if (math.isnan(x) or math.isinf(x)) else x
+    if isinstance(x, (int, bool, str)) or x is None:
+        return x
+
+    # datetimes
+    if isinstance(x, (datetime, date)):
+        return x.isoformat()
+
+    # bytes
+    if isinstance(x, (bytes, bytearray)):
+        try:
+            return x.decode("utf-8", errors="replace")
+        except Exception:
+            return str(x)
+
+    return x
+
+def sanitize_for_json(obj: Any, *, max_depth: int = 100) -> Any:
+    """
+    Recursively convert obj into JSON-serializable python natives.
+    - numpy scalars → python scalars
+    - NaN/±Inf → None
+    - sets/tuples → lists
+    - datetimes → ISO strings
+    - unknown objects → str(obj)
+    """
+    if max_depth <= 0:
+        return str(obj)
+
+    # Fast path for common scalars
+    v = _to_native_scalar(obj)
+    if v is not obj:
+        return v
+    if isinstance(obj, (int, float, bool, str)) or obj is None:
+        return obj
+
+    # Mappings/dicts
+    if isinstance(obj, Mapping):
+        out = {}
+        for k, vv in obj.items():
+            # force key to string
+            kk = str(k)
+            out[kk] = sanitize_for_json(vv, max_depth=max_depth - 1)
+        return out
+
+    # Iterables (lists, tuples, sets, generators)
+    if isinstance(obj, Iterable) and not isinstance(obj, (str, bytes, bytearray)):
+        return [sanitize_for_json(x, max_depth=max_depth - 1) for x in obj]
+
+    # Fallback
+    try:
+        json.dumps(obj)  # will raise if not serializable
+        return obj
+    except Exception:
+        return str(obj)
