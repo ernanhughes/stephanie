@@ -62,8 +62,7 @@ from stephanie.memory.theorem_store import TheoremStore
 from stephanie.memory.training_event_store import TrainingEventStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
-from stephanie.services.knowledge_bus import (InProcessKnowledgeBus,
-                                              KnowledgeBus)
+from stephanie.services.bus.knowledge_bus import KnowledgeBus
 
 
 class MemoryTool:
