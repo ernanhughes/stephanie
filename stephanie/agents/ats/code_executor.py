@@ -1,6 +1,5 @@
 # stephanie/agents/ats/code_executor.py
-
-from typing import Any, Dict, Optional
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 
@@ -9,7 +8,9 @@ class CodeExecutor:
     def __init__(self, agent: BaseAgent):
         self.agent = agent
 
-    async def score_complexity(self, task_description: str, plan: str) -> float:
+    async def score_complexity(
+        self, task_description: str, plan: str
+    ) -> float:
         prompt = f"""
         Rate the complexity of this task and plan on a scale of 1–5.
         Task: {task_description}

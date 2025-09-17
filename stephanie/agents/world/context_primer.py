@@ -1,4 +1,5 @@
 # stephanie/agents/world/context_primer.py
+from __future__ import annotations
 
 
 class ContextPrimerAgent:

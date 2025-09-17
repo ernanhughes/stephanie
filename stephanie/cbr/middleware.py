@@ -4,9 +4,9 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 import numpy as np
 
 from stephanie.cbr.adaptor import DefaultAdaptor
-from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
+from stephanie.services.reporting_service import ReportingService
 
 
 class CBRMiddleware:
@@ -14,6 +14,7 @@ class CBRMiddleware:
         self,
         cfg,
         memory,
+        container,
         logger,
         ns,
         scope_mgr,
@@ -27,10 +28,11 @@ class CBRMiddleware:
         micro_learner,
         scoring_service=None,
         adaptor: Optional[DefaultAdaptor] = None,
-        reporter: Reporter | None = None,
+        reporter: ReportingService | None = None,
     ):
         self.cfg = cfg
         self.memory = memory
+        self.container = container
         self.logger = logger
         self.ns = ns
         self.scope_mgr = scope_mgr
@@ -68,34 +70,7 @@ class CBRMiddleware:
         )  # None → use ranker/scoring defaults
 
         # Reporting
-        self.reporter = self._init_reporter(cfg, logger, reporter)
-
-        # ensure reporter task started
-        try:
-            import asyncio
-
-            asyncio.create_task(self.reporter.start())
-        except Exception:
-            pass
-
-    def _init_reporter(self, cfg, logger, reporter):
-        """
-        Initialize the reporter, using config or provided reporter.
-        """ 
-        if reporter is not None:
-            return reporter
-        rep_cfg = (
-            (cfg.get("cbr", {}).get("reporting", {}))
-            if isinstance(cfg, dict)
-            else {}
-        )
-        path = (rep_cfg or {}).get("path", "reports/cbr_events.jsonl")
-        sample_rate = float((rep_cfg or {}).get("sample_rate", 1.0))
-        return Reporter(
-            sinks=[JsonlSink(path), LoggerSink(logger)],
-            enabled=bool((rep_cfg or {}).get("enabled", True)),
-            sample_rate=sample_rate,
-        )
+        self.reporter = container.get("reporting")
 
     async def run(
         self,
@@ -435,7 +410,7 @@ class CBRMiddleware:
             scorer_name = self.adapt_scorer_name or "sicql"
             dims = self.adapt_dimensions  # None → scorer default
             if self.scoring:
-                bundle = self.scoring.score(
+                bundle = self.container.get("scoring").score(
                     scorer_name,
                     scorable=scorable,
                     context=context,

@@ -1,4 +1,5 @@
-# stephanie/agents/knowledge/epistemic_trace_reward_scorer.py
+# stephanie/agents/inference/et_hrm_inference.py
+from __future__ import annotations
 
 import json
 import os
@@ -20,12 +21,12 @@ class EpistemicTraceHRMInferenceAgent(BaseAgent):
     Stores score results in memory and context.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])
         self.export_dir = cfg.get("export_dir", "reports/epistemic_plan_executor")
 
-        self.scorer = EpistemicPlanHRMScorer(cfg.get("hrm", {}), memory=memory, logger=logger)
+        self.scorer = EpistemicPlanHRMScorer(cfg.get("hrm", {}), memory=memory, container=container, logger=logger)
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         self.logger.log("EpistemicTraceRewardScoringStarted", {

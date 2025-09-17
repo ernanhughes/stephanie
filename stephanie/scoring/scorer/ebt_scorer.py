@@ -17,8 +17,8 @@ from stephanie.utils.model_locator import ModelLocator
 
 
 class EBTScorer(BaseScorer):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "ebt"
         self.embedding_type = self.memory.embedding.name
         self.dim = memory.embedding.dim

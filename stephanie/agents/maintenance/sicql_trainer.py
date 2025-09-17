@@ -1,16 +1,15 @@
 # stephanie/agents/maintenance/sicql_trainer_agent.py
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.scoring.training.preference_pair_builder import \
     PreferencePairBuilder
 from stephanie.scoring.training.sicql_trainer import SICQLTrainer
 
 
-class SICQLTrainerAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.trainer = SICQLTrainer(cfg, memory, logger)
+class SICQLTrainerAgent(BaseAgent):
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.trainer = SICQLTrainer(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])
         self.pair_builder = PreferencePairBuilder(memory.session, logger)
 

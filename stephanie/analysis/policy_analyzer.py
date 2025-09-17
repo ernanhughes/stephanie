@@ -1,5 +1,6 @@
 # stephanie/analysis/policy_analyzer.py
 import json
+import logging
 from typing import Any, Dict, List
 
 import numpy as np
@@ -10,6 +11,7 @@ from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.score import ScoreORM
 
+_logger = logging.getLogger(__name__)
 
 class PolicyAnalyzer:
     def __init__(self, session: Session, logger=None):
@@ -280,11 +282,11 @@ class PolicyAnalyzer:
         ref_scores = [d[1]["score"] for d in matched_data]
         
         if len(sicql_scores) < 5:
-            self.logger.warning("Low sample count for correlation", extra={
-                "source": label,
-                "sample_count": len(sicql_scores),
-                "dimension": sicql_data[0].get("dimension", "unknown")
-            })
+            _logger.warning("Low sample count for correlation"
+                f"source: {label}"
+                f"sample_count: {len(sicql_scores)}"
+                f"dimension: {sicql_data[0].get("dimension", "unknown")}"
+            )
         
         if len(sicql_scores) < 2:
             score_correlation = None

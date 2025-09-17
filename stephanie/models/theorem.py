@@ -26,7 +26,7 @@ class TheoremORM(Base):
     pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id", ondelete="SET NULL"), nullable=True)
     pipeline_run = relationship("PipelineRunORM", back_populates="theorems")
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     cartridges = relationship(
         "CartridgeORM", secondary=theorem_cartridges, back_populates="theorems"
@@ -72,7 +72,7 @@ class CartridgeORM(Base):
     sections = Column(JSON)
     triples = Column(JSON)
     domain_tags = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     triples_rel = relationship(
         "CartridgeTripleORM", back_populates="cartridge", cascade="all, delete-orphan"

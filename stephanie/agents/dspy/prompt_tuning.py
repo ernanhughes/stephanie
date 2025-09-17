@@ -1,4 +1,6 @@
 # stephanie/agents/prompt_tuning.py
+from __future__ import annotations
+
 import re
 from abc import ABC, abstractmethod
 
@@ -60,8 +62,8 @@ class DSPyEvaluator(BaseEvaluator):
 
 # Main agent class responsible for training and tuning prompts using DSPy
 class PromptTuningAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.agent_name = cfg.get("name", "prompt_tuning")
         self.prompt_key = cfg.get("prompt_key", "default")
         self.sample_size = cfg.get("sample_size", 20)

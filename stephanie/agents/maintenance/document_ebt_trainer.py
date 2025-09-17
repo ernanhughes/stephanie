@@ -46,7 +46,7 @@ class DocumentEBTDataset(Dataset):
 
 
 class DocumentEBTTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         """
         Unified EBT trainer with versioning and evolution management
         
@@ -60,7 +60,7 @@ class DocumentEBTTrainerAgent(BaseAgent):
                 - early_stopping: Enable early stopping
                 - min_delta: Minimum improvement for early stopping
         """
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "ebt"
         self.target_type = "document"
         self.dimensions = cfg.get("dimensions", ["default"])
@@ -72,7 +72,7 @@ class DocumentEBTTrainerAgent(BaseAgent):
         self.min_delta = cfg.get("min_delta", 0.001)
 
         # Initialize model evolution manager
-        self.model_evolution = ModelEvolutionManager(cfg, memory, logger)
+        self.model_evolution = ModelEvolutionManager(cfg, memory, container, logger)
 
     async def run(self, context: dict) -> dict:
         goal_text = context.get("goal", {}).get("goal_text")

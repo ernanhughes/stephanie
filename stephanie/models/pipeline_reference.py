@@ -23,14 +23,14 @@ class PipelineReferenceORM(Base):
     pipeline_run_id = Column(Integer, nullable=False, index=True)
 
     # Polymorphic target
-    target_type = Column(String, nullable=False)  # e.g. "document", "plan_trace"
-    target_id = Column(String, nullable=False)    # foreign entity's id, stored as string
+    scorable_type = Column(String, nullable=False)  # e.g. "document", "plan_trace"
+    scorable_id = Column(String, nullable=False)    # foreign entity's id, stored as string
 
     # Optional: why/how it was referenced
     relation_type = Column(String, nullable=True)
     source = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     # --- Helper method ---
     def resolve(self, memory, mode: str = "default"):
@@ -41,5 +41,5 @@ class PipelineReferenceORM(Base):
         from stephanie.scoring.scorable_factory import ScorableFactory
 
         return ScorableFactory.from_id(
-            memory=memory, scorable_type=self.target_type, scorable_id=self.target_id
+            memory=memory, scorable_type=self.scorable_type, scorable_id=self.scorable_id
         )

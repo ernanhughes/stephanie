@@ -19,8 +19,8 @@ from stephanie.utils.model_utils import get_model_path, save_model_with_version
 
 
 class TrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = cfg.get("model_type", "ebt")
         self.output_key = cfg.get("output_key", "training_pairs")
         self.target_type = cfg.get("target_type", "document")
@@ -30,7 +30,7 @@ class TrainerAgent(BaseAgent):
         self.encoder = TextEncoder().to(self.device)
         self.value_predictor = ValuePredictor().to(self.device)
         self.evolution_manager = ModelEvolutionManager(
-            self.cfg, self.memory, self.logger
+            self.cfg, self.memory, self.container, self.logger
         )
 
     async def run(self, context: dict) -> dict:

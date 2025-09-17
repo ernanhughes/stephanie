@@ -34,7 +34,7 @@ class MARSResultORM(Base):
     scorer_metrics = Column(JSON, nullable=True)
     metric_correlations = Column(JSON, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     def to_dict(self):
         return {

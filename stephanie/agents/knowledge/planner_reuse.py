@@ -13,9 +13,9 @@ from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 
 class PlannerReuseAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.ranker = ScorableRanker(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.ranker = ScorableRanker(cfg, memory, container, logger)
         self.top_k = cfg.get("top_k", 100)
         self.min_hrm = cfg.get("min_hrm", 0.6)
         self.use_db_knn = cfg.get("use_db_knn", True)
@@ -47,7 +47,7 @@ class PlannerReuseAgent(BaseAgent):
                 scorable.get("score", 0.0)
             )  # keep KNN sim Wait stop this this is
             to_score = ScorableFactory.from_plan_trace(pt, goal_text=goal_text)
-            bundle = self.scoring.score(self.hrm_scorer, context=context, scorable=to_score, dimensions=self.dimensions)
+            bundle = self.container.get("scoring").score(self.hrm_scorer, context=context, scorable=to_score, dimensions=self.dimensions)
             score = bundle.aggregate()
             self.logger.log(
                 "PlannerReuseHRMScore",

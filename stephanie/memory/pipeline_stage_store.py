@@ -1,17 +1,25 @@
 # stephanie/memory/pipeline_stage_store.py
+from __future__ import annotations
+
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_stage import PipelineStageORM
 
 
-class PipelineStageStore:
+class PipelineStageStore(BaseSQLAlchemyStore):
+    orm_model = PipelineStageORM
+    default_order_by = PipelineStageORM.timestamp.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "pipeline_stages"
 
+    def name(self) -> str:
+        return self.name
+    
     def insert(self, stage_dict: dict) -> int:
         """
         Inserts a new pipeline stage into the database.

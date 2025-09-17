@@ -22,18 +22,19 @@ class SelfEditGeneratorAgent(ScoringMixin, BaseAgent):
     def __init__(
         self,
         cfg,
-        memory=None,
+        memory,
+        container,
         logger=None,
         config: SelfEditGeneratorConfig = SelfEditGeneratorConfig(),
     ):
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.config = config
         self.prompt_files = self.cfg.get("prompt_files", [])
 
     async def run(self, context: dict) -> dict:
         all_edits = []
 
-        mrq_scorer = MRQScorer(self.cfg, memory=self.memory, logger=self.logger)
+        mrq_scorer = MRQScorer(self.cfg, memory=self.memory, container=self.container, logger=self.logger)
         mrq_scorer.train_from_database(cfg=self.cfg)
 
         for prompt_file in self.prompt_files:

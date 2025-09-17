@@ -9,12 +9,12 @@ from stephanie.agents.master_pupil.trainer import TrainerAgent
 
 
 class EvaluatorAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.master = MasterAgent(cfg, memory, logger)
-        self.pupil = PupilAgent(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.master = MasterAgent(cfg, memory, container, logger)
+        self.pupil = PupilAgent(cfg, memory, container, logger)
         self.trainer = TrainerAgent(
-            cfg, memory, logger, master=self.master, pupil=self.pupil
+            cfg, memory, container, logger, master=self.master, pupil=self.pupil
         )
 
     async def run(self, context: dict) -> dict:

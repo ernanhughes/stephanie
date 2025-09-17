@@ -54,8 +54,8 @@ class ContextManager:
             "trace": [],
             "metadata": {
                 "run_id": run_id or str(uuid.uuid4()),
-                "start_time": datetime.utcnow().isoformat(),
-                "last_modified": datetime.utcnow().isoformat(),
+                "start_time": datetime.now().isoformat(),
+                "last_modified": datetime.now().isoformat(),
                 "token_count": 0,
                 "components": {}
             }
@@ -137,7 +137,7 @@ class ContextManager:
             "source": source,
             "score": score,
             "priority": priority,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now().isoformat()
         }
         
         # Update metadata
@@ -196,7 +196,7 @@ class ContextManager:
             "inputs": self._strip_non_serializable(inputs),
             "outputs": self._strip_non_serializable(outputs),
             "description": description,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "added_keys": list(set(outputs.keys()) - set(inputs.keys()))
         })
         self._update_metadata()
@@ -204,7 +204,7 @@ class ContextManager:
 
     def _update_metadata(self):
         """Update metadata with latest changes"""
-        self._data["metadata"]["last_modified"] = datetime.utcnow().isoformat()
+        self._data["metadata"]["last_modified"] = datetime.now().isoformat()
         
         # Count tokens
         token_count = 0
@@ -451,7 +451,7 @@ class ContextManager:
                     # Generate a unique filename based on path and timestamp
                     # Sanitize path for filename use
                     safe_path = path.replace('.', '_').replace('[', '_').replace(']', '_')
-                    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                     run_id = self._data.get("metadata", {}).get("run_id", "unknown_run")[:8] # Shorten run_id for filename
                     filename = f"context_large_data_{safe_path}_{run_id}_{timestamp}.json"
                     filepath = os.path.join(self.large_data_dump_dir, filename)
@@ -478,7 +478,7 @@ class ContextManager:
                             "original_type": type(obj).__name__,
                             "dumped_to_file": filepath,
                             "original_size_bytes": obj_size_bytes,
-                            "dump_timestamp": datetime.utcnow().isoformat(),
+                            "dump_timestamp": datetime.now().isoformat(),
                             # Optionally keep small metadata if needed for immediate logic
                             # "summary_keys": list(obj.keys())[:10] if isinstance(obj, dict) else None
                         }
@@ -521,7 +521,7 @@ class ContextManager:
                 if obj_size_bytes > self.large_data_threshold_bytes:
                     # --- Dump the large list ---
                     safe_path = path.replace('.', '_').replace('[', '_').replace(']', '_')
-                    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                     run_id = self._data.get("metadata", {}).get("run_id", "unknown_run")[:8]
                     filename = f"context_large_data_{safe_path}_{run_id}_{timestamp}.json"
                     filepath = os.path.join(self.large_data_dump_dir, filename)
@@ -542,7 +542,7 @@ class ContextManager:
                             "original_type": type(obj).__name__,
                             "dumped_to_file": filepath,
                             "original_size_bytes": obj_size_bytes,
-                            "dump_timestamp": datetime.utcnow().isoformat(),
+                            "dump_timestamp": datetime.now().isoformat(),
                             # "item_count": len(obj) # Example metadata
                         }
                     except Exception as dump_error:

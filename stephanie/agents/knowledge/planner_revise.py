@@ -18,8 +18,8 @@ class PlannerReviseAgent(BaseAgent):
       - Persist all signals; adopt revised plan if above threshold
     """
 
-    def __init__(self, cfg, memory, logger, full_cfg=None):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger, full_cfg=None):
+        super().__init__(cfg, memory, container, logger)
         self.min_revise_score = cfg.get("min_revise_score", 0.65)
         self.enable_edit = cfg.get("enable_edit", True)
         self.revise_dimensions = cfg.get(

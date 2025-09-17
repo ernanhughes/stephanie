@@ -7,8 +7,8 @@ from stephanie.constants import GOAL
 
 
 class KnowledgeLoaderAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.domain_seeds = cfg.get("domain_seeds", {})
         self.top_k = cfg.get("top_k", 3)
         self.threshold = cfg.get("domain_threshold", 0.0)

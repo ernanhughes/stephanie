@@ -1,8 +1,10 @@
 # stephanie/utils/timing.py
+from __future__ import annotations
+
 import functools
 import inspect
 import time
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Callable, Optional, TypeVar
 
 T = TypeVar('T')
 

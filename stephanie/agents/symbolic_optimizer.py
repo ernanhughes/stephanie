@@ -7,8 +7,8 @@ from stephanie.memory.symbolic_rule_store import SymbolicRuleORM
 
 
 class SymbolicOptimizerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.score_target = cfg.get("score_target", "correctness")
         self.min_values = cfg.get("min_values", 2)
 

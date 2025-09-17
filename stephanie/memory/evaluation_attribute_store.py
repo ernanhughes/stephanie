@@ -1,19 +1,26 @@
 # stephanie/memory/evaluation_attribute_store.py
+from __future__ import annotations
 
 from typing import Optional
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 
 
-class EvaluationAttributeStore:
+class EvaluationAttributeStore(BaseSQLAlchemyStore):
+    orm_model = EvaluationAttributeORM
+    default_order_by = EvaluationAttributeORM.created_at.desc()
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "evaluation_attributes"
         self.table_name = "evaluation_attributes"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, attribute: EvaluationAttributeORM) -> int:
         """Insert a single evaluation attribute with enhanced error handling"""

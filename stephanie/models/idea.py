@@ -20,7 +20,7 @@ class IdeaORM(Base):
     origin = Column(String)
     extra_data = Column(JSON)
     goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     # Relationship to GoalORM
     goal = relationship("GoalORM", back_populates="ideas")

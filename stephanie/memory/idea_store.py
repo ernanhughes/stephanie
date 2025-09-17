@@ -1,10 +1,14 @@
 # stephanie/memory/idea_store.py
-# stores/idea_store.py
-from stephanie.memory import BaseStore
+from __future__ import annotations
+
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.idea import IdeaORM
 
 
-class IdeaStore(BaseStore):
+class IdeaStore(BaseSQLAlchemyStore):
+    orm_model = IdeaORM
+    default_order_by = IdeaORM.created_at.desc()
+
     def __init__(self, session, logger):
         super().__init__(session, logger)
         self.name = "ideas"

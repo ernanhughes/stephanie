@@ -30,7 +30,7 @@ class SelfRewardingAgent(BaseAgent):
     """
 
     def __init__(self, cfg: SelfRewardingConfig, memory, logger):
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.cfg = cfg
         self.prompt_loader = PromptLoader(cfg.get("prompt_dir", "prompts"))
         self.scorer = self._init_scorer()

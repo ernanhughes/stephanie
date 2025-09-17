@@ -20,8 +20,8 @@ class ScorableRanker(BaseScorer):
       - rank(query, candidates, extra_signals) → List[EvaluationORM]
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "scorable_rank"
 
         # Embedding backend
@@ -196,7 +196,8 @@ class ScorableRanker(BaseScorer):
         # Score all candidates
         scored = []
         for cand in candidates:
-            cand_emb = self.memory.embedding.get_or_create(cand.text)
+            text = cand.text if hasattr(cand, "text") else cand.get("text", cand.get("source_text", ""))
+            cand_emb = self.memory.embedding.get_or_create(text)
             if cand_emb is None:
                 continue
 

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+
+  <div class="d-flex justify-content-between align-items-baseline mb-3">
+    <h2 class="mb-0">Mind Snapshots</h2>
+    <a href="/mind/view" class="btn btn-sm btn-primary">Open Live Viewer</a>
+  </div>
+
+  <div class="text-muted small mb-3">
+    Directory: <code>{{ snapshot_dir }}</code>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Snapshot</th>
+              <th>Modified</th>
+              <th>Size</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in snapshots %}
+            <tr>
+              <td><code>{{ s.file }}</code></td>
+              <td class="text-muted">
+                {{ s.mtime }} 
+                <span class="small">(unix)</span>
+              </td>
+              <td class="text-muted">{{ s.size }} bytes</td>
+              <td>
+                <a class="btn btn-sm btn-outline-primary" href="/mind/view?id={{ s.id }}">View</a>
+                <a class="btn btn-sm btn-outline-secondary" href="/mind/snapshot?id={{ s.id }}" target="_blank">JSON</a>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not snapshots %}
+            <tr><td colspan="4" class="text-muted">No snapshots found in this directory.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

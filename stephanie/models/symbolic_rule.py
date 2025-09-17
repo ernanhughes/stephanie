@@ -17,8 +17,8 @@ class SymbolicRuleORM(Base):
 
     # General metadata
     source = Column(String)  # e.g., 'manual', 'lookahead', 'pipeline_stage'
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # New design: generalized rules
     target = Column(

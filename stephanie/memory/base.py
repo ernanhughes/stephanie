@@ -19,3 +19,5 @@ class BaseStore(ABC):
     def teardown(self):
         """Optional: Cleanup logic for the store."""
         pass
+
+

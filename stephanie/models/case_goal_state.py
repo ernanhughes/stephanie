@@ -39,9 +39,9 @@ class CaseGoalStateORM(Base):
     trust     = Column(Float,   nullable=False, default=0.0)   # [-1,1] convenience score
 
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow,
-                        onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.now,
+                        onupdate=datetime.now)
 
     __table_args__ = (
         UniqueConstraint("casebook_id", "goal_id", name="uq_case_goal_state"),

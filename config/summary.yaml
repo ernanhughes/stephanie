@@ -1,0 +1,171 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: disabled
+  - scoring/service/default
+  - mars/default
+
+  - scorer/reward/default
+  - scorer/ebt/default
+  - scorer/hrm/default
+  - scorer/epistemic_hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
+  - scorer/epistemic_hrm/default
+
+  - agents/knowledge_infused_summarizer
+  - agents/sharpened_paper_summarizer
+  - agents/paper_summarizer
+  - agents/verified_section_generator
+  - agents/knowledge_tree_builder
+  - agents/conversation_filter
+  - agents/dpo_pair_generator
+  - agents/universal_scorer
+  - agents/text_improver
+  - agents/document_profiler
+  - agents/draft_generator
+  - agents/knowledge_fusion
+  - agents/arxiv_search
+  - agents/modular_memento
+  - agents/memento
+  - agents/generation
+  - agents/cbr_dspy
+  - agents/cartridge
+  - agents/document_loader
+  - agents/document_profiler
+  - agents/hrm_trainer
+  - agents/document_reward_scorer
+  - agents/icl_reasoning
+  - agents/knowledge_loader
+  - agents/planner_reuse
+  - agents/planner_revise
+  - agents/knowledge_db_loader
+  - agents/pipeline_judge
+  - agents/paper_score
+  - agents/agent_scorer
+  - agents/plan_trace_scorer
+  - logging/json_logger
+
+embeddings:
+  backend: hnet
+
+goal:
+  goal_text: "Find and compare research on reinforcement learning methods that improve large language models through self-reflection and iterative feedback."
+  goal_type: tactical
+  goal_category: meta_learning
+  focus_area: self_reflection
+  strategy: literature_review
+  difficulty: medium
+  expected_formats:
+    - paper_comparison_table
+    - reasoning_trace_summary
+
+bus:
+  backend: nats
+  servers:
+    - nats://localhost:4222
+
+knowledge_graph:
+  enabled: true
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+pipeline:
+  name: summary_pipeline
+  tag: summary_pipeline
+  description: >
+    A pipeline to demonstrate that learning from learning is the best way to use AI.
+  stages:
+     - name: knowledge_db_loader
+       description: "Load prior retained knowledge from the database for retrieval"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    
+
+     - name: document_profiler
+       description: "Profile and index documents for relevance to the goal"
+       cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
+       enabled: false
+       iterations: 1
+
+     - name: paper_summarizer
+       description: "Summarize the paper for relevance to the goal"
+       cls: stephanie.agents.summary.paper_summarizer.SimplePaperSummarizerAgent
+       enabled: false
+       iterations: 1
+
+     - name: sharpened_paper_summarizer
+       description: "Summarize the paper with a focus on sharpening key insights"
+       cls: stephanie.agents.summary.sharpened_paper_summarizer.SharpenedPaperSummarizerAgent
+       enabled: false
+       iterations: 1
+
+     - name: knowledge_infused_summarizer
+       description: "Summarize the paper with knowledge infusion to reduce hallucinations"
+       cls: stephanie.agents.summary.knowledge_infused_summarizer.KnowledgeInfusedVerifierAgent
+       enabled: true
+       iterations: 1
+
+     - name: knowledge_fusion
+       description: "Fuse and deduplicate knowledge from multiple sources"
+       cls: stephanie.agents.knowledge.knowledge_fusion.KnowledgeFusionAgent
+       enabled: false
+       iterations: 1
+
+     - name: draft_generator
+       description: "Generate an initial draft response based on the goal and fused knowledge"
+       cls: stephanie.agents.knowledge.draft_generator.DraftGeneratorAgent
+       enabled: false
+       iterations: 1
+
+     - name: text_improver
+       description: "Iteratively improve the draft response for clarity and completeness"
+       cls: stephanie.agents.knowledge.text_improver.TextImproverAgent
+       enabled: false
+       iterations: 1
+
+     - name: universal_scorer
+       description: >
+         📊 Score the generated Scorables across multiple dimensions (novelty, clarity,
+         relevance, implementability, alignment, etc.) using ensemble scorers (SICQL, HRM, EBT).
+         Produces rich feedback that turns chats into labeled training data.
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false
+       iterations: 1 
+
+     - name: dpo_pair_generator
+       description: >
+         Generate pairs of preferred and non-preferred responses for DPO training.
+       cls: stephanie.agents.knowledge.dpo_pair_generator.DPOPairGeneratorAgent
+       enabled: false
+       iterations: 1 OK
+  
+     - name: conversation_filter
+       description: >
+         Filter and refine conversations to ensure relevance and quality.
+       cls: stephanie.agents.knowledge.conversation_filter.ConversationFilterAgent
+       enabled: false
+    
+     - name: knowledge_tree_builder
+       description: >
+         Build a knowledge tree from the conversation history.
+       cls: stephanie.agents.knowledge.knowledge_tree_builder.KnowledgeTreeBuilderAgent
+       enabled: false
+ 
+     - name: verified_section_generator
+       description: >
+         Worker that processes verification jobs from the queue.
+       cls: stephanie.agents.knowledge.verified_section_generator.VerifiedSectionGeneratorAgent
+       enabled: false

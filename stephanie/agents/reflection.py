@@ -5,8 +5,8 @@ from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
 class ReflectionAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
     async def run(self, context: dict) -> dict:
         hypotheses = self.get_scorables(context)

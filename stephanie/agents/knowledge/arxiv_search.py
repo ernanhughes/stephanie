@@ -6,6 +6,7 @@ Provides functionality to search and retrieve academic papers from arXiv.org
 based on research goals and extracted keywords. Includes robust error handling,
 query construction, and result processing capabilities.
 """
+from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
@@ -16,8 +17,8 @@ from stephanie.agents.base_agent import BaseAgent
 
 
 class ArxivSearchAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         # Configuration with defaults
         self.year_start = cfg.get("year_start", 2021)
         self.year_end = cfg.get("year_end", 2025)

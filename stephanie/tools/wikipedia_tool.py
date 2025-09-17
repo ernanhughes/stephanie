@@ -1,4 +1,6 @@
 # stephanie/tools/wikipedia_tool.py
+from __future__ import annotations
+
 import wikipedia
 
 from stephanie.tools.cos_sim_tool import get_top_k_similar

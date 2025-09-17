@@ -1,4 +1,6 @@
 # sis/main.py
+from __future__ import annotations
+
 from datetime import datetime
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -7,6 +9,8 @@ from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from sis.routes import db, pipelines, models, logs, plan_traces, documents, mars
 from sis.routes import casebooks as casebooks_routes
+from sis.routes import chats
+
 import yaml
 
 def datetimeformat(value, fmt="%Y-%m-%d %H:%M:%S"):
@@ -49,3 +53,4 @@ app.include_router(plan_traces.router)
 app.include_router(documents.router)
 app.include_router(mars.router)
 app.include_router(casebooks_routes.router)
+app.include_router(chats.router)

@@ -21,7 +21,7 @@ class GoalORM(Base):
     difficulty = Column(String, default="medium")
     goal_category = Column(String, default="analyze")
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     prompts = relationship("PromptORM", back_populates="goal")
     hypotheses = relationship("HypothesisORM", back_populates="goal")

@@ -702,8 +702,8 @@ class PACSTrainer(BaseTrainer):
     - Safety mechanisms to prevent model collapse
     """
     
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

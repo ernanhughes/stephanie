@@ -12,8 +12,8 @@ class BeliefCartridgeORM(Base):
     __tablename__ = "belief_cartridges"
 
     id = Column(String, primary_key=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     source_id = Column(String, index=True)  # e.g., paper ID
     source_type = Column(String, index=True)  # e.g., "paper", "blog", "experiment"

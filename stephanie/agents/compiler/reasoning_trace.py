@@ -1,6 +1,8 @@
 # stephanie/agents/compiler/reasoning_trace.py
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 
@@ -13,7 +15,7 @@ class ReasoningNode:
     action: str
     response: str
     score: float = 0.0
-    children: List["ReasoningNode"] = field(default_factory=list)
+    children: List[ReasoningNode] = field(default_factory=list)
     metadata: Dict = field(default_factory=dict)
 
 
@@ -37,7 +39,12 @@ class ReasoningTree:
         return node.id
 
     def add_child(
-        self, parent_id: str, thought: str, action: str, response: str, score: float
+        self,
+        parent_id: str,
+        thought: str,
+        action: str,
+        response: str,
+        score: float,
     ) -> str:
         node = ReasoningNode(
             id=str(uuid4()),

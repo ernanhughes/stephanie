@@ -17,8 +17,8 @@ class HRMTrainer(BaseTrainer):
     Trainer Agent for the Hierarchical Reasoning Model (HRM).
     Integrates with Stephanie's training framework.
     """
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         
         # --- HRM Specific Config ---
         self.model_type = "hrm"

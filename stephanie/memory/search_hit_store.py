@@ -3,12 +3,21 @@
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.search_hit import SearchHitORM
 
 
-class SearchHitStore:
-    def __init__(self, db: Session):
-        self.db = db
+class SearchHitStore(BaseSQLAlchemyStore):
+    orm_model = SearchHitORM
+    default_order_by = SearchHitORM.created_at
+
+
+    def __init__(self, db: Session, logger=None):
+        super().__init__(db, logger)
+        self.name = "search_hits"
+
+    def name(self) -> str:
+        return self.name
 
     def add_hit(self, hit_data: dict) -> SearchHitORM:
         hit = SearchHitORM(**hit_data)

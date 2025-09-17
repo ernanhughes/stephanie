@@ -54,7 +54,7 @@ class CaseBookORM(Base):
     agent_name   = Column(String, nullable=True, index=True)
     tag          = Column(String, nullable=False, default="default")
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     meta = Column(SA_JSON, nullable=True)
     # --- relationships ---
@@ -123,6 +123,7 @@ class CaseORM(Base):
     agent_name = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.now)
+    meta = Column(SA_JSON, nullable=True)
 
     # Relationships
     scorables = relationship("CaseScorableORM", back_populates="case")

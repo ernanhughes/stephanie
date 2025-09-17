@@ -1,16 +1,15 @@
 # stephanie/agents/maintenance/ebt_trainer_agent.py
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.scoring.training.ebt_trainer import EBTTrainer
 from stephanie.scoring.training.preference_pair_builder import \
     PreferencePairBuilder
 
 
-class EBTTrainerAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.trainer = EBTTrainer(cfg, memory, logger)
+class EBTTrainerAgent(BaseAgent):
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.trainer = EBTTrainer(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])
         self.pair_builder = PreferencePairBuilder(memory.session, logger)
 

@@ -1,4 +1,6 @@
 # stephanie/agents/automind.py
+from __future__ import annotations
+
 from stephanie.agents.ats.solution_node import SolutionNode
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.judge import JudgeAgent
@@ -10,8 +12,8 @@ from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class AutoMindAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         self.embedding_store = EmbeddingStore(cfg.embedding)
         self.judge = JudgeAgent(cfg.judge) if cfg.judge else None

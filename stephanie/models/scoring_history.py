@@ -21,4 +21,4 @@ class ScoringHistoryORM(Base):
     uncertainty_score = Column(Float)
     method = Column(Text, nullable=False)
     source = Column(Text)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    created_at = Column(TIMESTAMP, default=datetime.now)

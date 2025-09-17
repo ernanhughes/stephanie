@@ -1,4 +1,6 @@
 # stephanie/utils/lru_cache.py
+from __future__ import annotations
+
 from collections import OrderedDict
 
 

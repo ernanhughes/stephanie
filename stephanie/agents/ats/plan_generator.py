@@ -1,6 +1,5 @@
 # stephanie/agents/ats/plan_generator.py
-
-from typing import Any, Dict, Optional
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 

@@ -1,11 +1,13 @@
 # stephanie/agents/world/worldview_create.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.world.db.locator import WorldviewDBLocator
 
 
 class WorldViewCeate(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.base_directory = cfg.get("base_directory", "worldviews")
         self.pipelines = cfg.get("pipelines", [])
         self.locater = WorldviewDBLocator(self.base_directory)

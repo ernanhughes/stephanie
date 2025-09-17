@@ -8,10 +8,10 @@ from stephanie.scoring.training.preference_pair_builder import \
 
 
 class MRQTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.pair_builder = PreferencePairBuilder(memory.session, logger)
-        self.trainer = MRQTrainer(cfg, memory=memory, logger=logger)
+        self.trainer = MRQTrainer(cfg, memory=memory, container=container, logger=logger)
 
 
     def _extract_samples(self, context):

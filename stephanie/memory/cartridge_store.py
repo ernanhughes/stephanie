@@ -1,16 +1,22 @@
 # stephanie/memory/cartridge_store.py
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.scorable_embedding import ScorableEmbeddingORM
 from stephanie.models.theorem import CartridgeORM
 
 
-class CartridgeStore:
+class CartridgeStore(BaseSQLAlchemyStore):
+    orm_model = CartridgeORM
+    default_order_by = CartridgeORM.id.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "cartridges"
 
+    def name(self) -> str:
+        return self.name
+    
     def _ensure_scorable_embedding(
         self,
         embedding_id: int,

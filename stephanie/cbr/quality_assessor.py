@@ -37,7 +37,7 @@ class DefaultQualityAssessor:
         source_match: "exact"            # "exact" | "substring"
     """
 
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

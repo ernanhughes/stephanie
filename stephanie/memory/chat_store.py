@@ -1,19 +1,27 @@
 # stephanie/memory/chat_store.py
+from __future__ import annotations
+
 from sqlalchemy import desc, func, text
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
                                    ChatTurnORM)
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 
 
-class ChatStore:
+class ChatStore(BaseSQLAlchemyStore):
+    orm_model = ChatConversationORM
+    default_order_by = ChatConversationORM.created_at.desc()
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "chats"
 
+    def name(self) -> str:
+        return self.name
+    
     def add_conversation(self, data: dict) -> ChatConversationORM:
         try:
             conv = ChatConversationORM(**data)
@@ -24,6 +32,8 @@ class ChatStore:
             self.session.rollback() 
             raise
 
+    def get_all(self, limit: int = 100) -> list[ChatConversationORM]:
+        return self.session.query(ChatConversationORM).order_by(desc(ChatConversationORM.created_at)).limit(limit).all()
 
     def exists_conversation(self, file_hash: str) -> bool:
         return (

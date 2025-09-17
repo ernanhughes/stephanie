@@ -1,7 +1,7 @@
 # stephanie/agents/scorable_entity.py
 
 import traceback
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
@@ -17,8 +17,8 @@ class ScorableEntityAgent(BaseAgent):
     - Provides metadata for cross-CaseBook linking
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.min_length = cfg.get("entity_min_length", 2)
         self.max_entities = cfg.get("max_entities_per_scorable", 20)
         self.ner_enabled = memory.embedding.is_ner_enabled()

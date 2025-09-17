@@ -2,6 +2,7 @@
 """
 MCTSReasoningAgent (enhanced, patched)
 """
+from __future__ import annotations
 
 import logging
 import math
@@ -16,7 +17,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.utils.llm_response_parser import parse_scored_block
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------------------------------
@@ -49,16 +50,16 @@ class LoggingLM(dspy.LM):
             prompt = kwargs.get("prompt")
             messages = kwargs.get("messages")
             if prompt:
-                logger.debug(
+                _logger.debug(
                     "=== DSPy PROMPT ===\n%s\n====================", prompt
                 )
             if messages:
-                logger.debug(
+                _logger.debug(
                     "=== DSPy MESSAGES ===\n%s\n====================", messages
                 )
         result = super().__call__(*args, **kwargs)
         if self._debug_prompts:
-            logger.debug(
+            _logger.debug(
                 "=== DSPy RESPONSE ===\n%s\n====================", result
             )
         return result
@@ -104,8 +105,8 @@ class MCTSReasoningProgram(dspy.Module):
 # Agent
 # -------------------------------------------------------------------------
 class MCTSReasoningAgent(BaseAgent):
-    def __init__(self, cfg, memory, log):
-        super().__init__(cfg, memory, log)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container=container, logger=logger)
 
         # search / scoring knobs
         self.max_depth = int(cfg.get("max_depth", 4))
@@ -182,7 +183,7 @@ class MCTSReasoningAgent(BaseAgent):
         self._best_so_far = (float("-inf"), None)  # (score, node)
         self.top_k = int(cfg.get("top_k_leaves", 3))
 
-        logger.debug(
+        _logger.debug(
             "MCTSInitialized depth=%s bf=%s sims=%s ucb=%s dims=%s max_lm_calls=%s eval_at=%s stride=%s",
             self.max_depth,
             self.branching_factor,
@@ -443,7 +444,7 @@ class MCTSReasoningAgent(BaseAgent):
                 score = float(self.score_cache[text] or 0.0)
             else:
                 scorable = Scorable(text=text)
-                bundle = self.scoring.score(
+                bundle = self.container.get("scoring").score(
                     self.scorer_name,
                     scorable=scorable,
                     context=context,
@@ -528,7 +529,7 @@ class MCTSReasoningAgent(BaseAgent):
             score = self.score_cache[text]
         else:
             sc = Scorable(text=text, target_type=self.scorable_type)
-            bundle = self.scoring.score(
+            bundle = self.container.get("scoring").score(
                 self.scorer_name,
                 scorable=sc,
                 context=context,

@@ -6,8 +6,8 @@ from stephanie.utils.visualization_utils import save_dataframe_plot  # Optional
 
 
 class ScoringReportAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger=None):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger=None):
+        super().__init__(cfg, memory, container, logger)
         self.store = ScoringStore(memory.session, logger)
         self.goal_id = cfg.get("goal_id", 4148)
 

@@ -1,9 +1,12 @@
 # stephanie/agents/evolution_engine/slave_system.py
+from __future__ import annotations
+
 import json
 
 import arxiv
-from knowledge_cartridge import KnowledgeCartridge
 from openai import OpenAI
+
+from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 
 
 class ResearchSlave:

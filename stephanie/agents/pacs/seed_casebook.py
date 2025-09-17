@@ -1,6 +1,6 @@
 # stephanie/agents/maintenance/casebook_seeder.py
-from datetime import datetime
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
@@ -28,8 +28,8 @@ class SeedCaseBookAgent(BaseAgent):
       - mode: "one_case_per_doc" (default) or "single_case_with_many" (kept for future)
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.documents_key = cfg.get("documents_key") or self.input_key or self.name  # be flexible
         self.max_docs = int(cfg.get("max_docs", 50))
         # self.casebook_name = cfg.get("casebook_name", "default_casebook")
@@ -97,8 +97,8 @@ class SeedCaseBookAgent(BaseAgent):
                 self.memory.pipeline_references.insert(
                     {
                         "pipeline_run_id": pipeline_run_id,
-                        "target_type": TargetType.DOCUMENT,
-                        "target_id": doc_id,
+                        "scorable_type": TargetType.DOCUMENT,
+                        "scorable_id": doc_id,
                         "relation_type": "seeded_case",
                         "source": self.name,
                     }

@@ -32,8 +32,8 @@ class PlanTraceScorerAgent(BaseAgent):
     to enable self-tuning of pipeline execution patterns.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg.get("agents", {}).get("plan_trace_scorer", {}), memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg.get("agents", {}).get("plan_trace_scorer", {}), memory, container=container, logger=logger)
         self.dimensions = self.cfg.get("dimensions", [])
         self.include_mars = self.cfg.get("include_mars", True)
 
@@ -45,7 +45,7 @@ class PlanTraceScorerAgent(BaseAgent):
         self.scorers = self._initialize_scorers()
         
         # Initialize MARS calculator
-        self.mars_calculator = MARSCalculator(cfg.get("mars", {}), self.memory, self.logger)
+        self.mars_calculator = MARSCalculator(cfg.get("mars", {}), self.memory, self.container, self.logger)
 
         # Pattern extraction parameters
         self.high_agreement_threshold = self.cfg.get("high_agreement_threshold", 0.8)
@@ -67,27 +67,27 @@ class PlanTraceScorerAgent(BaseAgent):
 
         if "svm" in self.enabled_scorers:
             scorers["svm"] = SVMScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "mrq" in self.enabled_scorers:
             scorers["mrq"] = MRQScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "sicql" in self.enabled_scorers:
             scorers["sicql"] = SICQLScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "ebt" in self.enabled_scorers:
             scorers["ebt"] = EBTScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "hrm" in self.enabled_scorers:
             scorers["hrm"] = HRMScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "contrastive_ranker" in self.enabled_scorers:
             scorers["contrastive_ranker"] = ContrastiveRankerScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
 
         return scorers

@@ -15,7 +15,7 @@ defaults:
   - agents/document_reward_scorer
   - agents/document_svm_trainer
   - agents/document_svm_inference
-  - agents/document_embedding_backfill
+  - agents/scorable_embedding_backfill
   - agents/document_llm_inference
   - agents/knowledge_db_loader
   - agents/ethics
@@ -93,9 +93,9 @@ pipeline:
       enabled: false
       iterations: 1
 
-    - name: document_embedding_backfill
+    - name: scorable_embedding_backfill
       description: "Backfill document embeddings for existing documents"
-      cls: stephanie.agents.maintenance.document_embedding_backfill.DocumentEmbeddingBackfillAgent
+      cls: stephanie.agents.maintenance.scorable_embedding_backfill.DocumentEmbeddingBackfillAgent
       enabled: false
       iterations: 1
 

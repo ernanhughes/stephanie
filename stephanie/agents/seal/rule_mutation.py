@@ -11,8 +11,8 @@ class RuleMutationAgent(BaseAgent):
     Ensures all mutations are valid, novel, and tracked.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.target_agent = cfg["target_agent"]
         self.rule_mutation_prompt = cfg["rule_mutation_prompt"]
         self.template_path = cfg["template_path"]

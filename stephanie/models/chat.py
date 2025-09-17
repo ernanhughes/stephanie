@@ -64,7 +64,7 @@ class ChatMessageORM(Base):
     )
 
     order_index = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     meta = Column(JSON, default={})
 
     conversation = relationship("ChatConversationORM", back_populates="messages")

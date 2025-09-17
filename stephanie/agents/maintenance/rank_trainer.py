@@ -5,8 +5,8 @@ from stephanie.scoring.training.rank_trainer import ContrastiveRankerTrainer
 
 
 class ContrastiveRankerTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.pair_builder = PreferencePairBuilder(memory.session, logger)
         self.model_type = "contrastive_ranker"
         self.min_pairs = cfg.get("min_pairs", 100)

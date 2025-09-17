@@ -1,4 +1,6 @@
 # stephanie/utils/token_counter.py
+from __future__ import annotations
+
 import tiktoken
 from transformers import AutoTokenizer
 

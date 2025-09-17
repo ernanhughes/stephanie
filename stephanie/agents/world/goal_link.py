@@ -1,4 +1,6 @@
 # stephanie/agents/world/goal_link.py
+from __future__ import annotations
+
 from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.models.goal import GoalORM

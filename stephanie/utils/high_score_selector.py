@@ -1,4 +1,6 @@
 # stephanie/utils/high_score_selector.py
+from __future__ import annotations
+
 import json
 from collections import defaultdict
 

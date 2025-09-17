@@ -60,7 +60,7 @@ pipeline:
 
     - name: epistemic_plan_hrm_trainer  
       description: "Train the HRM model to predict document values based on epistemic plans"
-      cls: stephanie.agents.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
+      cls: stephanie.agents.maintenance.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
       enabled: true
       iterations: 1
 
@@ -72,7 +72,7 @@ pipeline:
 
     - name: epistemic_plan_executor
       description: "Execute the epistemic plan to generate hypotheses"
-      cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
+      cls: stephanie.agents.dspy.epistemic_plan_executor.EpistemicPlanExecutorAgent
       enabled: true
       iterations: 1
 

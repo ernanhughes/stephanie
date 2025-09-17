@@ -1,10 +1,12 @@
 # stephanie/agents/compiler/node_executor.py
+from __future__ import annotations
+
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
 from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
 
 
 class NodeExecutor:
-    def __init__(self, cfg, memory, logger, pipeline_runner: PipelineRunnerAgent, tree):
+    def __init__(self, cfg, memory, container, logger, pipeline_runner: PipelineRunnerAgent, tree):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger

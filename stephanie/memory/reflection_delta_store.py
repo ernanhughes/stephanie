@@ -1,20 +1,24 @@
 # stephanie/memory/reflection_delta_store.py
+from __future__ import annotations
+
 from typing import Optional
 
-from stephanie.memory.base import BaseStore
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.reflection_delta import ReflectionDeltaORM
 
+class ReflectionDeltaStore(BaseSQLAlchemyStore):
+    orm_model = ReflectionDeltaORM
+    default_order_by = ReflectionDeltaORM.created_at
 
-class ReflectionDeltaStore(BaseStore):
     def __init__(self, db, logger=None):
         super().__init__(db, logger)
         self.name = "reflection_deltas"
 
-    def __repr__(self):
-        return f"<{self.name} connected={self.db is not None}>"
-
     def name(self) -> str:
         return "reflection_deltas"
+
+    def __repr__(self):
+        return f"<{self.name} connected={self.db is not None}>"
 
     def insert(self, delta: ReflectionDeltaORM) -> int:
         try:
@@ -43,7 +47,9 @@ class ReflectionDeltaStore(BaseStore):
         except Exception as e:
             self.db.rollback()
             if self.logger:
-                self.logger.log("ReflectionDeltaInsertFailed", {"error": str(e)})
+                self.logger.log(
+                    "ReflectionDeltaInsertFailed", {"error": str(e)}
+                )
             raise
 
     def get_by_goal_id(self, goal_id: int) -> list[ReflectionDeltaORM]:
@@ -56,7 +62,9 @@ class ReflectionDeltaStore(BaseStore):
             )
         except Exception as e:
             if self.logger:
-                self.logger.log("ReflectionDeltasFetchFailed", {"error": str(e)})
+                self.logger.log(
+                    "ReflectionDeltasFetchFailed", {"error": str(e)}
+                )
             return []
 
     def get_by_run_ids(
@@ -70,7 +78,9 @@ class ReflectionDeltaStore(BaseStore):
             )
         except Exception as e:
             if self.logger:
-                self.logger.log("ReflectionDeltaFetchFailed", {"error": str(e)})
+                self.logger.log(
+                    "ReflectionDeltaFetchFailed", {"error": str(e)}
+                )
             return None
 
     def get_all(self, limit: int = 100) -> list[ReflectionDeltaORM]:
@@ -83,7 +93,9 @@ class ReflectionDeltaStore(BaseStore):
             )
         except Exception as e:
             if self.logger:
-                self.logger.log("ReflectionDeltasFetchFailed", {"error": str(e)})
+                self.logger.log(
+                    "ReflectionDeltasFetchFailed", {"error": str(e)}
+                )
             return []
 
     def find(self, filters: dict) -> list[ReflectionDeltaORM]:
@@ -91,7 +103,9 @@ class ReflectionDeltaStore(BaseStore):
             query = self.db.query(ReflectionDeltaORM)
 
             if "goal_id" in filters:
-                query = query.filter(ReflectionDeltaORM.goal_id == filters["goal_id"])
+                query = query.filter(
+                    ReflectionDeltaORM.goal_id == filters["goal_id"]
+                )
 
             if "run_id_a" in filters and "run_id_b" in filters:
                 query = query.filter(
@@ -106,12 +120,15 @@ class ReflectionDeltaStore(BaseStore):
 
             if "strategy_diff" in filters:
                 query = query.filter(
-                    ReflectionDeltaORM.strategy_diff == filters["strategy_diff"]
+                    ReflectionDeltaORM.strategy_diff
+                    == filters["strategy_diff"]
                 )
 
             return query.order_by(ReflectionDeltaORM.created_at.desc()).all()
 
         except Exception as e:
             if self.logger:
-                self.logger.log("ReflectionDeltasFetchFailed", {"error": str(e)})
+                self.logger.log(
+                    "ReflectionDeltasFetchFailed", {"error": str(e)}
+                )
             return []

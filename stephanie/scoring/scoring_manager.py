@@ -36,7 +36,7 @@ class ScoringManager(BaseAgent):
         scorer: Optional[FallbackScorer] = None,
         scoring_profile: str = "default",
     ):
-        super().__init__(cfg, memory, logger)
+        super().__init__(cfg, memory, container, logger)
         self.dimension_specs = dimension_specs
         self.prompt_loader = prompt_loader
         self.output_format = cfg.get("output_format", "simple")  # default
@@ -51,10 +51,10 @@ class ScoringManager(BaseAgent):
             from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
             from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
-            svm_scorer = SVMScorer(cfg, memory, logger)
-            mrq_scorer = MRQScorer(cfg, memory, logger)
-            sicql_scorer = SICQLScorer(cfg, memory, logger)
-            llm_scorer = LLMScorer(cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=self.call_llm)
+            svm_scorer = SVMScorer(cfg, memory, container, logger)
+            mrq_scorer = MRQScorer(cfg, memory, container, logger)
+            sicql_scorer = SICQLScorer(cfg, memory, container, logger)
+            llm_scorer = LLMScorer(cfg, memory, container, logger, prompt_loader=prompt_loader, llm_fn=self.call_llm)
             
             self.scorer = FallbackScorer(
                 cfg=self.cfg,
@@ -175,17 +175,17 @@ class ScoringManager(BaseAgent):
 
         if data["scorer"] == "mrq":
             # Use MRQ scoring profile if specified
-            scorer = MRQScorer(cfg, memory, logger)
+            scorer = MRQScorer(cfg, memory, container, logger)
         elif data["scorer"] == "svm":
             # Use SVM scoring profile if specified
-            scorer = SVMScorer(cfg, memory, logger)
+            scorer = SVMScorer(cfg, memory, container, logger)
         elif data["scorer"] == "sicql":
             # Use SICQL scoring profile if specified
-            scorer = SICQLScorer(cfg, memory, logger)
+            scorer = SICQLScorer(cfg, memory, container, logger)
         else:
             # Default to LLM scoring profile
             scorer = LLMScorer(
-                cfg, memory, logger, prompt_loader=prompt_loader, llm_fn=llm_fn
+                cfg, memory, container, logger, prompt_loader=prompt_loader, llm_fn=llm_fn
             )
         return cls(
             dimension_specs=dimension_specs,
@@ -439,7 +439,7 @@ class ScoringManager(BaseAgent):
         
         weighted_score = bundle.aggregate()
         if goal and "id" in goal:
-            ScoreDeltaCalculator(cfg, memory, logger).log_score_delta(
+            ScoreDeltaCalculator(cfg, memory, container, logger).log_score_delta(
                 scorable, weighted_score, goal["id"]
             )
         

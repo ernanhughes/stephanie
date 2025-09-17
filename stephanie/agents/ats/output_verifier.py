@@ -1,4 +1,5 @@
 # stephanie/agents/ats/output_verifier.py
+from __future__ import annotations
 
 from typing import Optional
 

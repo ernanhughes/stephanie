@@ -1,12 +1,16 @@
 # stephanie/memory/method_plan_store.py
-# stores/method_plan_store.py
+from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
-from stephanie.memory import BaseStore
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.method_plan import MethodPlanORM
 
 
-class MethodPlanStore(BaseStore):
+class MethodPlanStore(BaseSQLAlchemyStore):
+    orm_model = MethodPlanORM
+    default_order_by = MethodPlanORM.id.desc()
+    
     def __init__(self, session, logger):
         super().__init__(session, logger)
         self.name = "method_plans"

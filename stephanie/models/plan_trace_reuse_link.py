@@ -13,7 +13,7 @@ class PlanTraceReuseLinkORM(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     parent_trace_id = Column(String, ForeignKey("plan_traces.trace_id"), nullable=False)
     child_trace_id = Column(String, ForeignKey("plan_traces.trace_id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     parent_trace = relationship("PlanTraceORM", foreign_keys=[parent_trace_id])
     child_trace = relationship("PlanTraceORM", foreign_keys=[child_trace_id])

@@ -6,9 +6,10 @@ knowledge_db_loader:
   save_context: false
   skip_if_completed: false
 
-  top_k: 100
+  top_k: 4
+  include_ner: false
   include_full_text: true
-  search_method: document
+  target_type: document
 
   model:
     name: ollama/qwen3

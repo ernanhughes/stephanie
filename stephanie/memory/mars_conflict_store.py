@@ -1,13 +1,19 @@
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.mars_conflict import MARSConflictORM
 
 
-class MARSConflictStore:
+class MARSConflictStore(BaseSQLAlchemyStore):
+    orm_model = MARSConflictORM
+    default_order_by = MARSConflictORM.created_at.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "mars_conflicts"
+
+    def name(self) -> str:
+        return self.name
 
     def add(self, pipeline_run_id, plan_trace_id, dimension, conflict, delta, explanation, agreement_score=None, preferred_model=None):
         orm = MARSConflictORM(

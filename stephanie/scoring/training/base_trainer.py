@@ -63,7 +63,7 @@ class BaseTrainer:
         def model_exists(self) -> bool:
             return False
 
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
@@ -131,3 +131,8 @@ class BaseTrainer:
         if self.logger:
             self.logger.log(name, payload)
 
+
+    def train_step(self, max_steps: int = 50, dimension: str | None = None) -> dict:
+        """Perform training step for specified dimension or all dimensions."""
+        # raise NotImplementedError("train_step must be implemented in subclasses")
+        return {}

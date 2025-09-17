@@ -1,4 +1,6 @@
 # stephanie/utils/similarity_utils.py
+from __future__ import annotations
+
 """
 similarity_utils.py
 -------------------

@@ -1,5 +1,6 @@
 # stephanie/memory/hypothesis_store.py
-# stores/hypothesis_store.py
+from __future__ import annotations
+
 from difflib import SequenceMatcher
 from typing import Optional
 
@@ -7,19 +8,22 @@ import numpy as np
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 from stephanie.models.hypothesis import HypothesisORM
 
 
-class HypothesisStore:
+class HypothesisStore(BaseSQLAlchemyStore):
+    orm_model = HypothesisORM
+    default_order_by = HypothesisORM.created_at.desc()
+    
     def __init__(self, session: Session, logger=None, embedding_store=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.embedding_store = embedding_store  # Optional embedding model
         self.name = "hypotheses"
 
     def name(self) -> str:
-        return "hypotheses"
+        return self.name
 
     def insert(self, hypothesis: HypothesisORM) -> int:
         """

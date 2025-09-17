@@ -60,7 +60,7 @@ class CaseBookToRLVRDataset:
                     "scorable_id": scorable.id,
                 }
                 # Still create RLVRItem with a baseline reward
-                reward = self.scoring.score("sicql", scorable=scorable,
+                reward = self.container.get("scoring").score("sicql", scorable=scorable,
                                             context=_as_context(source),
                                             dimensions=self.dimensions).aggregate()
                 dataset.append(RLVRItem(prompt, scorable.text, reward, meta))
@@ -86,9 +86,9 @@ class CaseBookToRLVRDataset:
                     scorable = ScorableFactory.from_id(self.memory, scorable_id, scorable_type)
                     # Score both scorables
 
-                    reward_a = self.scoring.score("sicql", scorable=scorable, context=_as_context(source), dimensions=self.dimensions).aggregate()
+                    reward_a = self.container.get("scoring").score("sicql", scorable=scorable, context=_as_context(source), dimensions=self.dimensions).aggregate()
                     scorable_other = ScorableFactory.from_orm(sc_other)
-                    reward_b = self.scoring.score("sicql", scorable=scorable_other, context=_as_context(source), dimensions=self.dimensions).aggregate()
+                    reward_b = self.container.get("scoring").score("sicql", scorable=scorable_other, context=_as_context(source), dimensions=self.dimensions).aggregate()
 
                     # Store two RLVR items with relative reward
                     dataset.append(RLVRItem(prompt, scorable.text, reward_a, meta))

@@ -1,4 +1,5 @@
 # stephanie/memory/execution_step_store.py
+from __future__ import annotations
 
 from typing import List, Optional
 
@@ -7,20 +8,26 @@ from sqlalchemy.orm import Session
 
 # Import the ORM
 from stephanie.data.plan_trace import ExecutionStep
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.plan_trace import ExecutionStepORM
 
 
-class ExecutionStepStore:
+class ExecutionStepStore(BaseSQLAlchemyStore):
     """
     Store for managing ExecutionStepORM objects in the database.
     Provides methods to insert, retrieve, and query execution steps.
     """
+    orm_model = ExecutionStepORM
+    default_order_by = ExecutionStepORM.created_at
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "execution_steps"
         self.table_name = "execution_steps"
 
+    def name(self) -> str:
+        return self.name
+    
     def add(self, step: ExecutionStep) -> int:
         """
         Adds a new ExecutionStep to the store.

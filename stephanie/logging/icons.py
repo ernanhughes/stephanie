@@ -49,13 +49,35 @@ AGENT_EVENTS = {
 # KNOWLEDGE STORAGE
 # =================
 KNOWLEDGE_OPS = {
+    "RulesServiceDisabled": "🧩🚫",  # Rules service disabled
+    "PlanTraceServiceInit": "🖇️⚙️",  # Plan trace service initialized
+      
+    "KnowledgeGraphInitialized": "📰⚙️",  # Knowledge graph initialized
+    "StateTrackerInit": "🗂️⚙️",  # State tracker initialized
+    "NERRetrieverInitialized": "🏷️🔍",  # NER retriever initialized
+    "EntityRetrievalMetrics": "🏷️📊",  # Entity retrieval metrics
+    "KnowledgeFusionIndexEventsPublished": "📰📢",  # Knowledge fusion index events published
+    "DomainsExtractedFromContext": "🏷️📋",  # Domains extracted from context
+    "KnowledgeFusionProgress": "📰🔄",  # Knowledge fusion in progress
+    "ContextProcessing": "📂🔄",  # Context processing
+    "NERLayerAdjusted": "🏷️⚙️",  # NER layer adjusted
+    "ClassificationComplete": "🏷️✅",  # Knowledge classification completed
+    "CentroidCalculationStart": "📍▶️",  # Centroid calculation started
+    "CentroidCalculationComplete": "📍✅",  # Centroid calculation completed
+    "ClassificationStart": "🏷️▶️",  # Knowledge classification started
+    "TextEmbeddingCreated": "📝➕",  # Text embedding created
+    "DomainSimilarityCalculated": "🏷️📊",  # Domain similarity calculated
+    "DistanceCalculation": "📏",  # Distance calculation
+    "ClassificationCompleted": "🏷️✅",  # Knowledge classification completed
+    "DynamicWeighting": "⚖️🔄",  # Dynamic weighting applied
+    "NERFailure": "🆘🏷️",  # NER failure
     "DocumentsTruncated": "📄✂️",  # Documents truncated
     "IdeaSharpeningFailed": "🧑‍🏫❌",
     "EvaluatorInit": "🧑‍🏫",
     "GenerationStarted": "🧑‍🧒‍🧒▶️",
     "LLMJudgeResult": "🧑‍⚖️",
     "EvaluationCompleted": "🧑‍🏫✅",
-    "GenerationStart": "🧑‍🧒‍🧒▶️",  # Knowledge generation started
+    "GenerationStart": "▶️",  # Knowledge generation started
     "GoalContextOverride": "🎯🔄",  # Goal context override
     "MgrScoreParseError": "📊❌",  # Scoring parse error
     "SymbolicRulesFound": "🧩🔍",  # Symbolic rules found
@@ -383,7 +405,6 @@ DEBUGGING = {
     "TrimmingSection": "✂️",  # Section trimming
     "ContextAfterStage": "🗃️➡️",  # Post-stage context
     "ClassificationStarted": "🏷️▶️",  # Classification started
-    "ClassificationCompleted": "🏷️✅",  # Classification completed
 }
 
 # ======================
@@ -424,8 +445,20 @@ MODELS = {
 # ETHICS & REVIEWS
 # ============= 
 SPECIAL = {
+    "KGBuildPath": "📰🛤️",  # Knowledge graph build path
+    "VPMTilesGenerated": "🗺️✅",  # VPM tiles generated
+    "PACSRefine": "📊🔍",  # PACS refinement started
+    "HRMScoreNormalized": "📊🔧",  # HRM score normalized
+    "DomainCacheHit": "🏷️💾✅",  # Domain cache hit
+    "CombinedSearchPostStd": "🔍➕",  # Combined search post-STD
+    "RetrievalEmpty": "🔍🚫",  # Retrieval returned no results    
+    "CrossPaperSignalCaptured": "📄🔗",  # Cross-paper signal captured
+    "TransferAnalyzeSkip": "⏭️📊",  # Transfer analysis skipped
+    "StrategyProfileServiceInit": "🎯⚙️",  # Strategy profile service initialized
+    "KBaseInitialized": "📰⚙️",  # Knowledge base initialized
     "ScoringServiceScorerRegistered": "📊✅",  # Scoring service scorer registered
     "ScoringServiceInitialized": "📊🔧",  # Scoring service initialized
+    "NERMissing": "🏷️❌",  # NER component missing
     "CBRRank": "📊📈",  # CBR ranking started
     "CBRRetrieve": "🔍📚",  # CBR retrieval started
     "CBRReuse": "♻️📚",  # CBR reuse started

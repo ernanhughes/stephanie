@@ -21,8 +21,8 @@ from stephanie.utils.metrics import compute_uncertainty
 
 
 class BeliefCartridgeBuilder(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "novelty"])
         self.embedding_types = cfg.get("embedding_types", ["hnet", "mxbai", "hf"])
         self.enabled_scorers = cfg.get("enabled_scorers", ["mrq", "ebt", "svm", "llm"])

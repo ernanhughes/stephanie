@@ -15,8 +15,8 @@ class SurveyAgent(BaseAgent):
     > 'Each idea is mapped to testable components before being executed'
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.max_queries = cfg.get("max_queries", 5)
 
     async def run(self, context: dict) -> dict:

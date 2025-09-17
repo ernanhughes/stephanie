@@ -149,11 +149,11 @@ pipeline:
      - name: knowledge_db_loader
        description: "Load prior retained knowledge from the database for retrieval"
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
-       enabled: true
+       enabled: false
        iterations: 1    
 
      - name: scorable_entity
        description: "🗂️ Extract and prepare Scorable entities from the CaseBook"
        cls: stephanie.agents.scorable_entity.ScorableEntityAgent
-       enabled: true
+       enabled: false
        iterations: 1

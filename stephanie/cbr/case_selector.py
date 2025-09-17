@@ -4,8 +4,8 @@ from typing import List
 
 
 class DefaultCaseSelector:
-    def __init__(self, cfg, memory, logger):
-        self.cfg, self.memory, self.logger = cfg, memory, logger
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg, self.memory, self.logger = cfg, memory, container, logger
 
     @staticmethod 
     def _top_scorables_from_case(case, k=3) -> List[str]:

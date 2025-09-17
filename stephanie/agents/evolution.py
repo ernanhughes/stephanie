@@ -23,8 +23,8 @@ class EvolutionAgent(BaseAgent):
     "The Evolution agent continuously refines and improves existing hypotheses..."
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.use_grafting = cfg.get("use_grafting", False)
         self.preferences = cfg.get("preferences", ["novelty", "feasibility"])
 

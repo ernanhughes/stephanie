@@ -18,8 +18,8 @@ class DimensionGeneratorAgent(BaseAgent):
     to evaluate ideas in context.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         # Settings
         self.default_dimensions = cfg.get(

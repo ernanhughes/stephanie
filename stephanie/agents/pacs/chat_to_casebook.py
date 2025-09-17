@@ -1,3 +1,4 @@
+# stephanie/agents/pacs/chat_to_casebook.py
 """
 Chat to CaseBook Conversion Agent
 
@@ -19,10 +20,10 @@ The agent supports three granularity levels:
 This transformation is crucial for creating the training data that enables
 Stephanie to learn from human-AI collaboration patterns.
 """
+from __future__ import annotations
 
 from datetime import datetime
 
-# stephanie/agents/pacs/chat_to_casebook.py
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 from stephanie.models.casebook import CaseBookORM
@@ -52,30 +53,32 @@ class ChatToCaseBookAgent(BaseAgent):
     3. "messages": One case per individual message (maximum granularity)
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.limit = cfg.get("limit", 10)      # Number of top conversations to process
-        self.metric = cfg.get("metric", "messages")  # Ranking metric: "messages" or "turns"
-        self.granularity = cfg.get("granularity", "conversation")  
-        # Processing granularity: "conversation", "turns", or "messages"
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.limit = cfg.get("limit", 100)
+        self.metric = cfg.get("metric", "messages")
+        self.granularity = cfg.get("granularity", "turns")
+
+        self.idempotency_store = memory.bus.idempotency_store 
+
+    # -------- idempotency helpers --------
+    def _conv_key(self, conv_id) -> str:
+        return f"chat2casebook:{conv_id}"
+
+    async def _already_converted(self, conv_id) -> bool:
+        try:
+            return await self.idempotency_store.seen(self._conv_key(conv_id))
+        except Exception:
+            return False
+
+    async def _mark_converted(self, conv_id) -> None:
+        try:
+            await self.idempotency_store.mark(self._conv_key(conv_id))
+        except Exception:
+            pass
 
     async def run(self, context: dict) -> dict:
-        """
-        Main execution method that converts conversations to CaseBooks.
-        
-        Args:
-            context: Execution context containing goal information and other state
-            
-        Returns:
-            Updated context with list of created CaseBook IDs
-            
-        Process:
-            1. Selects top conversations based on configured metric
-            2. Converts each conversation to a CaseBook with appropriate granularity
-            3. Creates associated goals based on conversation topics
-            4. Generates scorables at the specified granularity level
-            5. Reports progress and errors throughout the process
-        """
+
         goal = context.get(GOAL, {})
         self.report({
             "event": "start",
@@ -85,21 +88,27 @@ class ChatToCaseBookAgent(BaseAgent):
             "goal": goal.get("goal_text") if goal else None
         })
 
-        # --- 1. Select top conversations based on configured metric
-        top_convs = self.memory.chats.get_top_conversations(
-            limit=self.limit, by=self.metric
-        )
-        self.report({
-            "event": "selected_conversations",
-            "count": len(top_convs),
-            "metric": self.metric
-        })
+        top_convs = self.memory.chats.get_top_conversations(limit=self.limit, by=self.metric)
+        self.report({"event": "selected_conversations", "count": len(top_convs), "metric": self.metric})
 
         casebooks_created = []
         for idx, (conv, count) in enumerate(top_convs, 1):
+            # Gate 1: idempotency store
+            if await self._already_converted(conv.id):
+                self.report({
+                    "event": "skip_already_converted",
+                    "reason": "idempotency_store",
+                    "conversation_id": conv.id,
+                    "title": conv.title,
+                    "index": idx,
+                    "total": len(top_convs)
+                })
+                continue
+
             try:
-                cb = self._convert_conversation(conv)
+                cb = self._convert_conversation(conv)  # Gate 2 happens inside
                 casebooks_created.append(cb)
+                await self._mark_converted(conv.id)
                 self.report({
                     "event": "converted",
                     "conversation_id": conv.id,
@@ -119,17 +128,14 @@ class ChatToCaseBookAgent(BaseAgent):
                     "total": len(top_convs)
                 })
 
-        self.report({
-            "event": "completed",
-            "casebooks_created": len(casebooks_created)
-        })
-
+        self.report({"event": "completed", "casebooks_created": len(casebooks_created)})
         context["casebooks_created"] = [cb.id for cb in casebooks_created]
         return context
 
     def _convert_conversation(self, conv: ChatConversationORM) -> CaseBookORM:
         """
         Convert a single conversation into a CaseBook with Cases and Scorables.
+        Skips if a casebook for this conversation already has cases.
         
         Args:
             conv: The ChatConversationORM to convert
@@ -143,68 +149,63 @@ class ChatToCaseBookAgent(BaseAgent):
             3. Generates scorables based on configured granularity
             4. Creates cases with associated scorables
         """
-        # --- 1. Create or retrieve CaseBook for this conversation
-        cb = self.memory.casebooks.ensure_casebook(
-            name=f"{conv.title}",
-            description=f"Imported chat conversation: {conv.id} - {conv.title}"
-        )
-        self.report({
-            "event": "casebook_created",
-            "conversation_id": conv.id,
-            "casebook_id": cb.id,
-            "title": conv.title
-        })
+        # Make the casebook name unique/stable per conversation
+        cb_name = f"[chat:{conv.id}] {conv.title}"
 
-        # --- 2. Create or link goal based on conversation topic
+        # Create/retrieve the casebook (include meta for future querying, if supported)
+        cb = self.memory.casebooks.ensure_casebook(
+            name=cb_name,
+            description=f"Imported chat conversation: {conv.id} - {conv.title}",
+            meta={"conversation_id": conv.id} if hasattr(self.memory.casebooks, "ensure_casebook") else None
+        )
+        self.report({"event": "casebook_created", "conversation_id": conv.id, "casebook_id": cb.id, "title": conv.title})
+
+        # Gate 2: if this casebook already has cases, skip conversion
+        existing = self.memory.casebooks.count_cases(cb.id)
+        if existing > 0:
+            self.report({
+                "event": "skip_already_converted",
+                "reason": "existing_cases_in_casebook",
+                "conversation_id": conv.id,
+                "casebook_id": cb.id,
+                "existing_cases": existing
+            })
+            return cb
+
+        # Create/link goal for this conversation
         goal = self.memory.goals.get_or_create({
             "goal_text": conv.title,
             "description": f"Conversation imported on {conv.created_at or datetime.now()}"
         }).to_dict()
-        self.report({
-            "event": "goal_linked",
-            "conversation_id": conv.id,
-            "goal_id": goal["id"],
-            "goal_text": goal["goal_text"]
-        })
+        self.report({"event": "goal_linked", "conversation_id": conv.id, "goal_id": goal["id"], "goal_text": goal["goal_text"]})
 
-        # --- 3. Generate scorables based on configured granularity
+        # Generate scorables at requested granularity
         if self.granularity == "conversation":
-            # Single scorable for the entire conversation
             scorables = [self.memory.chats.scorable_from_conversation(conv)]
         elif self.granularity == "turns":
-            # One scorable per user→assistant turn
             turns = self.memory.chats.get_turns_for_conversation(conv.id)
             scorables = [self.memory.chats.scorable_from_turn(t) for t in turns]
         elif self.granularity == "messages":
-            # One scorable per individual message
             msgs = self.memory.chats.get_messages(conv.id)
             scorables = [self.memory.chats.scorable_from_message(m) for m in msgs]
         else:
             raise ValueError(f"Unsupported granularity: {self.granularity}")
 
-        self.report({
-            "event": "scorables_generated",
-            "conversation_id": conv.id,
-            "granularity": self.granularity,
-            "count": len(scorables)
-        })
+        self.report({"event": "scorables_generated", "conversation_id": conv.id, "granularity": self.granularity, "count": len(scorables)})
 
-        # --- 4. Create cases with associated scorables
+        # Create cases with associated scorables
         for sc in scorables:
             case = self.memory.casebooks.add_case(
-                prompt_text=conv.title, 
+                prompt_text=conv.title,
                 casebook_id=cb.id,
                 goal_id=goal["id"],
                 agent_name="chat_to_casebook",
                 scorables=[{
-                    "scorable_id": sc.id,              
-                    "scorable_type": sc.target_type,   
+                    "scorable_id": sc.id,
+                    "scorable_type": sc.target_type,
                     "text": sc.text,
                     "source": self.name,
-                    "meta": {
-                        "conversation_id": conv.id,
-                        **(sc.meta or {})
-                    },
+                    "meta": {"conversation_id": conv.id, **(sc.meta or {})},
                 }]
             )
             self.report({

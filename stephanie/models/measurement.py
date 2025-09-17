@@ -27,7 +27,7 @@ class MeasurementORM(Base):
     # Contextual metadata
     context = Column(JSON)  # Optional: goal_id, session_id, etc.
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     def __repr__(self):
         return (

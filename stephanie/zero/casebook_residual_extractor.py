@@ -1,3 +1,4 @@
+# stephanie/zero/casebook_residual_extractor.py
 from __future__ import annotations
 
 import os

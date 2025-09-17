@@ -36,4 +36,4 @@ class TrainingEventORM(Base):
 
     fp           = Column(String(40), nullable=True, unique=True)
     processed    = Column(Boolean, nullable=False, default=False)
-    created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at   = Column(DateTime, nullable=False, default=datetime.now)

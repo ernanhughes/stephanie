@@ -1,4 +1,6 @@
 # stephanie/agents/compiler/step_processor.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 from stephanie.agents.mixins.scoring_mixin import ScoringMixin
@@ -11,9 +13,9 @@ class StepProcessorAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
     producing outputs and optionally scoring them.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.scorer = MRQScorer(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.scorer = MRQScorer(cfg, memory, container, logger)
         self.scorer.load_models()
 
     async def run(self, context: dict) -> dict:

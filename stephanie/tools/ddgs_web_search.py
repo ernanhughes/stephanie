@@ -1,4 +1,6 @@
 # stephanie/tools/ddgs_web_search.py
+from __future__ import annotations
+
 import asyncio
 
 from duckduckgo_search import DDGS

@@ -12,8 +12,8 @@ class MemCubeTrainerAgent(BaseAgent, MemCubeTrainerMixin):
     Agent that trains dimension-specific models using MemCube data and SRFT-style refinement.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", ["usefulness", "ethics", "clarity"])
         self.model_cfg = cfg.get("training_config", {
             "epochs": 5,

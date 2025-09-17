@@ -8,8 +8,8 @@ from stephanie.scoring.training.base_trainer import BaseTrainer
 
 
 class EBTTrainer(BaseTrainer):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "ebt"
         self.num_actions = 3 #cfg.get("num_actions", 3)
 

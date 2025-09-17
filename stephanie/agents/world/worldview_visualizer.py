@@ -1,10 +1,10 @@
 # stephanie/agents/world/worldview_visualizer.py
+from __future__ import annotations
+
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
 import networkx as nx
-
-from stephanie.core.knowledge_cartridge import KnowledgeCartridge
 
 
 class WorldviewVisualizer:

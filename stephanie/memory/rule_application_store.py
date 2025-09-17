@@ -1,19 +1,27 @@
 # stephanie/memory/rule_application_store.py
+from __future__ import annotations
+
 from typing import List, Optional
 
 from sqlalchemy import and_, desc
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.rule_application import RuleApplicationORM
 
 
-class RuleApplicationStore:
+class RuleApplicationStore(BaseSQLAlchemyStore):
+    orm_model = RuleApplicationORM
+    default_order_by = RuleApplicationORM.applied_at
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "rule_applications"
         self.table_name = "rule_applications"
 
+    def name(self) -> str:
+        return self.name
+    
     def add(self, application: RuleApplicationORM) -> RuleApplicationORM:
         try:
             self.session.add(application)

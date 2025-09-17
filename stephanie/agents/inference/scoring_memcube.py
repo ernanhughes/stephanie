@@ -1,4 +1,5 @@
 # stephanie/agents/inference/scoring_memcube.py
+from __future__ import annotations
 
 import torch
 
@@ -12,16 +13,16 @@ from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class ScoringMemcubeAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.ebt_refine_threshold = cfg.get("ebt_refine_threshold", 0.7)
         self.llm_fallback_threshold = cfg.get("llm_fallback_threshold", 0.9)
         self.steps = cfg.get("optimization_steps", 10)
         self.step_size = cfg.get("step_size", 0.05)
 
-        self.ebt = EBTInferenceAgent(cfg.get("ebt"), self.memory, self.logger)
-        self.mrq = MRQInferenceAgent(cfg.get("mrq"), self.memory, self.logger)
-        self.llm = LLMInferenceAgent(cfg.get("llm"), self.memory, self.logger)
+        self.ebt = EBTInferenceAgent(cfg.get("ebt"), self.memory, self.container, self.logger)
+        self.mrq = MRQInferenceAgent(cfg.get("mrq"), self.memory, self.container, self.logger)
+        self.llm = LLMInferenceAgent(cfg.get("llm"), self.memory, self.container, self.logger)
 
     async def run(self, context: dict) -> dict:
         goal_text = context["goal"]["goal_text"]

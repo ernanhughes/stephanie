@@ -75,7 +75,7 @@ pipeline:
     - name: document_reward_scorer
       description: "Score the documents based on their relevance and quality"
       cls: stephanie.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     - name: document_profiler
@@ -98,20 +98,20 @@ pipeline:
 
     - name: epistemic_plan_hrm_trainer  
       description: "Train the HRM model to predict document values based on epistemic plans"
-      cls: stephanie.agents.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
+      cls: stephanie.agents.maintenance.epistemic_plan_hrm_trainer.EpistemicPlanHRMTrainerAgent
       enabled: false
       iterations: 1
 
     - name: et_hrm_inference
       description: "Use HRM to infer epistemic traces from documents"
       cls: stephanie.agents.inference.et_hrm_inference.EpistemicTraceHRMInferenceAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     - name: epistemic_plan_executor
       description: "Execute the epistemic plan to generate hypotheses"
-      cls: stephanie.agents.epistemic_plan_executor.EpistemicPlanExecutorAgent
-      enabled: false
+      cls: stephanie.agents.dspy.epistemic_plan_executor.EpistemicPlanExecutorAgent
+      enabled: true
       iterations: 1
 
     - name: knowledge_db_loader

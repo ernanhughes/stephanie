@@ -1,4 +1,5 @@
 # stephanie/agents/inference/document_llm_inference.py
+from __future__ import annotations
 
 from tqdm import tqdm
 
@@ -18,8 +19,8 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
     using configured reward model (e.g., SVM-based or regression-based).
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "llm"
         self.evaluator = "llm"
         self.force_rescore = cfg.get("force_rescore", False)

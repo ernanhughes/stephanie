@@ -29,4 +29,4 @@ def get_scorer(scorer_type: str, cfg: dict, memory, logger):
     if scorer_type not in SCORER_REGISTRY:
         raise ValueError(f"Unknown scorer type: {scorer_type}")
 
-    return SCORER_REGISTRY[scorer_type](cfg, memory, logger)
+    return SCORER_REGISTRY[scorer_type](cfg, memory, container, logger)

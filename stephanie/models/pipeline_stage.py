@@ -33,7 +33,7 @@ class PipelineStageORM(Base):
     agent_class = Column(String, nullable=False)
 
     # Timestamp
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime, default=datetime.now, nullable=False)
 
     # Status and scoring
     status = Column(String, nullable=False, index=True)  # accepted, rejected, retry, partial, pending

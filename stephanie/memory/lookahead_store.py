@@ -1,22 +1,26 @@
 # stephanie/memory/lookahead_store.py
-# stores/lookahead_store.py
+from __future__ import annotations
+
 import json
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.lookahead import LookaheadORM
 
 
-class LookaheadStore:
+class LookaheadStore(BaseSQLAlchemyStore):
+    orm_model = LookaheadORM
+    default_order_by = LookaheadORM.created_at.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "lookahead"
 
     def name(self) -> str:
-        return "lookahead"
+        return self.name
 
     def insert(self, goal_id: int, result: LookaheadORM):
         """

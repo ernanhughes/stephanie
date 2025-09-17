@@ -21,4 +21,4 @@ class ComparisonPreferenceORM(Base):
     dimension_scores = Column(JSON)
     reason = Column(Text)
     source = Column(String, default="pipeline_comparison")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)

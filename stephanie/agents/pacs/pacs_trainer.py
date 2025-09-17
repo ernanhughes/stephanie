@@ -13,9 +13,9 @@ class PACSTrainerAgent(BaseAgent):
     on them, logging results dimension by dimension.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.trainer = PACSTrainer(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.trainer = PACSTrainer(cfg, memory, container, logger)
         self.casebook_name = cfg.get("casebook_name", "default_casebook")
         self.verifier = cfg.get("verifier", "default_verifier")
         self.dimensions = cfg.get("dimensions", ["alignment"])

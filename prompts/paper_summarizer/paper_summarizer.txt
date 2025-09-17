@@ -1,0 +1,28 @@
+You are an expert blog writer who turns scientific papers into engaging posts...
+
+Paper Title: {{title}}
+
+Inputs you may use:
+- Abstract:
+{{abstract}}
+
+- arXiv summary:
+{{summary}}
+
+Task:
+1) Write a concise **Summary** of the paper in exactly {{min_sents}}–{{max_sents}} sentences.
+2) Finally, write a short **Blog post introduction** (3–5 sentences)...
+
+Rules (faithfulness-first):
+- Use ONLY facts present in the Abstract and arXiv summary.
+- If a detail is missing, write "not specified" rather than guessing.
+- Do not include equations, citations, links, or bullet points.
+- No first-person voice. No rhetorical questions.
+
+Formatting (output EXACTLY in this structure):
+
+## Summary
+<{{min_sents}}–{{max_sents}} sentences. One paragraph. No bullet points.>
+
+## Blog post introduction
+<3–5 sentences: 1) hook the problem, 2) what the paper attempts...>

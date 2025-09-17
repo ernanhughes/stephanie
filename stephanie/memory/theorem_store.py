@@ -1,17 +1,25 @@
 # stephanie/memory/theorem_store.py
+from __future__ import annotations
+
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.theorem import TheoremORM
 
 
-class TheoremStore:
+class TheoremStore(BaseSQLAlchemyStore):
+    orm_model = TheoremORM
+    default_order_by = TheoremORM.created_at
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "theorems"
 
+    def name(self) -> str:
+        return self.name
+    
     def add_theorem(self, data: dict) -> TheoremORM:
         """
         Adds a new theorem or updates an existing one if a matching statement already exists.

@@ -1,4 +1,6 @@
 # stephanie/tools/chat_importer.py
+from __future__ import annotations
+
 import glob
 import hashlib
 import json
@@ -13,7 +15,6 @@ from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 logger = logging.getLogger(__name__)
 
 
-
 def _turn_hash(user_text: str, assistant_text: str) -> str:
     """
     Compute a stable hash for a user→assistant turn.
@@ -21,6 +22,7 @@ def _turn_hash(user_text: str, assistant_text: str) -> str:
     """
     key = (user_text.strip() + "||" + assistant_text.strip()).encode("utf-8")
     return hashlib.sha256(key).hexdigest()
+
 
 def file_hash(path):
     with open(path, "rb") as f:
@@ -35,17 +37,20 @@ def safe_timestamp(ts):
     except Exception:
         return None
 
+
 def conversation_to_chat(memory, bundle: dict, context: dict):
     title = bundle.get("title", "Untitled Conversation")
     conversation_id = bundle.get("id") or bundle.get("conversation_id")
 
-    conv = memory.chats.add_conversation({
-        "provider": "openai",
-        "external_id": conversation_id,
-        "title": title,
-        "created_at": safe_timestamp(bundle.get("created_at")),
-        "meta": {"raw": bundle}
-    })
+    conv = memory.chats.add_conversation(
+        {
+            "provider": "openai",
+            "external_id": conversation_id,
+            "title": title,
+            "created_at": safe_timestamp(bundle.get("created_at")),
+            "meta": {"raw": bundle},
+        }
+    )
 
     turns = []
     if "mapping" in bundle:
@@ -66,6 +71,7 @@ def conversation_to_chat(memory, bundle: dict, context: dict):
 
     return conv
 
+
 def import_conversations(memory, path: str, context: dict) -> dict:
     """
     Walks a directory, parses chat files, and imports them into memory as ChatConversations.
@@ -75,7 +81,9 @@ def import_conversations(memory, path: str, context: dict) -> dict:
     total_skipped = 0
     total_convs = 0
 
-    for fp in glob.glob(os.path.join(path, "*.json")) + glob.glob(os.path.join(path, "*.html")):
+    for fp in glob.glob(os.path.join(path, "*.json")) + glob.glob(
+        os.path.join(path, "*.html")
+    ):
         total_files += 1
         h = file_hash(fp)
 
@@ -104,19 +112,9 @@ def import_conversations(memory, path: str, context: dict) -> dict:
     return {
         "files_processed": total_files,
         "files_skipped": total_skipped,
-        "conversations_imported": total_convs
+        "conversations_imported": total_convs,
     }
 
-def parse_html(html_content: str):
-    """Parses a ChatGPT-style HTML export."""
-    soup = BeautifulSoup(html_content, "html.parser")
-    turns = []
-    # Simplified parsing logic; needs to be robust to handle different structures.
-    for element in soup.select("div.markdown"):
-        role = "user" if "user-role" in str(element.parent) else "assistant"
-        text = element.get_text(separator="\n").strip()
-        turns.append({"role": role, "text": text})
-    return turns
 
 def parse_html(html_content: str):
     """Parses a ChatGPT-style HTML export."""
@@ -128,6 +126,19 @@ def parse_html(html_content: str):
         text = element.get_text(separator="\n").strip()
         turns.append({"role": role, "text": text})
     return turns
+
+
+def parse_html(html_content: str):
+    """Parses a ChatGPT-style HTML export."""
+    soup = BeautifulSoup(html_content, "html.parser")
+    turns = []
+    # Simplified parsing logic; needs to be robust to handle different structures.
+    for element in soup.select("div.markdown"):
+        role = "user" if "user-role" in str(element.parent) else "assistant"
+        text = element.get_text(separator="\n").strip()
+        turns.append({"role": role, "text": text})
+    return turns
+
 
 def parse_json(json_obj):
     """
@@ -157,9 +168,17 @@ def parse_json(json_obj):
 
                 # content could be dict with "parts" or a raw string
                 if isinstance(content, dict) and "parts" in content:
-                    text = "\n".join(part for part in content.get("parts", []) if isinstance(part, str)).strip()
+                    text = "\n".join(
+                        part
+                        for part in content.get("parts", [])
+                        if isinstance(part, str)
+                    ).strip()
                 else:
-                    text = (content or "").strip() if isinstance(content, str) else ""
+                    text = (
+                        (content or "").strip()
+                        if isinstance(content, str)
+                        else ""
+                    )
 
                 if role in {"user", "assistant"} and text:
                     turns.append({"role": role, "text": text})
@@ -172,7 +191,9 @@ def parse_json(json_obj):
                     continue
                 role = (msg.get("author") or {}).get("role")
                 parts = (msg.get("content") or {}).get("parts") or []
-                text = "\n".join(p for p in parts if isinstance(p, str)).strip()
+                text = "\n".join(
+                    p for p in parts if isinstance(p, str)
+                ).strip()
                 if role in {"user", "assistant"} and text:
                     turns.append({"role": role, "text": text})
 
@@ -193,6 +214,7 @@ def parse_json(json_obj):
     parsed = _parse_one(json_obj)
     return [parsed] if parsed else []
 
+
 def normalize_turns(turns: list):
     """Normalizes the text content of turns."""
     for turn in turns:
@@ -200,13 +222,17 @@ def normalize_turns(turns: list):
         # Basic normalization: strip PII, clean whitespace, etc.
         turn["text"] = text.strip()
     return turns
-def conversation_to_casebook(memory, bundle: dict, context: dict) -> CaseBookORM:
+
+
+def conversation_to_casebook(
+    memory, bundle: dict, context: dict
+) -> CaseBookORM:
     title = bundle.get("title", "Untitled Conversation")
     conversation_id = bundle.get("id") or bundle.get("conversation_id")
 
     cb = memory.casebooks.ensure_casebook(
         name=f"chat_{conversation_id or title[:200]}",
-        description=f"Imported chat conversation: {title}"
+        description=f"Imported chat conversation: {title}",
     )
     logger.info(f"[CaseBook] Created or loaded: {cb.name} (id={cb.id})")
 
@@ -237,7 +263,9 @@ def conversation_to_casebook(memory, bundle: dict, context: dict) -> CaseBookORM
         if sc.meta and sc.meta.get("turn_hash")
     }
 
-    logger.info(f"[Dedup] Existing scorables in CaseBook {cb.id}: {len(existing_hashes)}")
+    logger.info(
+        f"[Dedup] Existing scorables in CaseBook {cb.id}: {len(existing_hashes)}"
+    )
 
     # --- 4. Add new turns as cases/scorables ---
     for i in range(len(turns) - 1):
@@ -256,20 +284,25 @@ def conversation_to_casebook(memory, bundle: dict, context: dict) -> CaseBookORM
                 goal_text=goal.get("goal_text"),
                 agent_name="chat_import",
                 prompt_text=user_text,
-                scorables=[{
-                    "text": assistant_text,
-                    "role": "assistant",
-                    "source": "chat",
-                    "meta": {"turn_hash": thash},
-                }],
-                response_texts=assistant_text
+                scorables=[
+                    {
+                        "text": assistant_text,
+                        "role": "assistant",
+                        "source": "chat",
+                        "meta": {"turn_hash": thash},
+                    }
+                ],
+                response_texts=assistant_text,
             )
             logger.info(f"[Case] Added case id={case.id} to CaseBook {cb.id}")
-            logger.info(f"[Scorable] Added scorable for case id={case.id}, hash={thash[:10]}…")
+            logger.info(
+                f"[Scorable] Added scorable for case id={case.id}, hash={thash[:10]}…"
+            )
 
             existing_hashes.add(thash)
 
     return cb
+
 
 def normalize_turns(turns: list):
     """Normalizes the text content of turns. Skips empty/system messages."""
@@ -277,7 +310,7 @@ def normalize_turns(turns: list):
     for turn in turns:
         # Gracefully handle missing text fields
         text = turn.get("text")
-        
+
         # If text is missing but message.content.parts exists
         if not text and "message" in turn:
             content = turn["message"].get("content", {})
@@ -290,12 +323,12 @@ def normalize_turns(turns: list):
             # skip completely empty/system turns
             continue
 
-        normalized.append({
-            "role": turn.get("role", "unknown"),
-            "text": text.strip()
-        })
+        normalized.append(
+            {"role": turn.get("role", "unknown"), "text": text.strip()}
+        )
 
     return normalized
+
 
 def _extract_turns_from_mapping(mapping: dict) -> list[dict]:
     """
@@ -309,7 +342,11 @@ def _extract_turns_from_mapping(mapping: dict) -> list[dict]:
     """
 
     # Find roots (nodes with no parent)
-    roots = [node_id for node_id, node in mapping.items() if node.get("parent") is None]
+    roots = [
+        node_id
+        for node_id, node in mapping.items()
+        if node.get("parent") is None
+    ]
     if not roots:
         return []
 

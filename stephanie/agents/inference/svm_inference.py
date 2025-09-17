@@ -1,4 +1,6 @@
 # stephanie/agents/inference/document_svm_inference.py
+from __future__ import annotations
+
 import os
 
 import numpy as np
@@ -17,8 +19,8 @@ from stephanie.utils.model_locator import ModelLocator
 
 
 class SVMInferenceAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_path = cfg.get("model_path", "models")
         self.model_type = cfg.get("model_type", "svm")
         self.target_type = cfg.get("target_type", "document")

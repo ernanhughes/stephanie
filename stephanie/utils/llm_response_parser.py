@@ -1,4 +1,6 @@
 # stephanie/utils/llm_text_parsers.py
+from __future__ import annotations
+
 import re
 from typing import Any, Dict, List, Optional
 

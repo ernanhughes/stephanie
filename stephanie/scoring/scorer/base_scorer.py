@@ -9,9 +9,10 @@ from stephanie.scoring.scorer.model_locator_mixin import ModelLocatorMixin
 
 
 class BaseScorer(ModelLocatorMixin, abc.ABC):
-    def __init__(self, cfg: dict, memory, logger):
+    def __init__(self, cfg: dict, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
+        self.container = container
         self.logger = logger
 
         self.embedding_type = self.memory.embedding.name

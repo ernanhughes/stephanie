@@ -18,4 +18,4 @@ class ContextComponent:
     def __post_init__(self):
         """Ensure timestamp is set"""
         if not self.timestamp:
-            self.timestamp = datetime.utcnow().isoformat()
+            self.timestamp = datetime.now().isoformat()

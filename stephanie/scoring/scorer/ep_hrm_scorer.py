@@ -22,8 +22,8 @@ class EpistemicPlanHRMScorer(BaseScorer):
     produce a quality score.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "epistemic_hrm"  # This identifies the scorer type
 
         # Use the embedding details from memory

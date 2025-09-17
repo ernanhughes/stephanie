@@ -13,8 +13,8 @@ from stephanie.zero.casebook_residual_extractor import \
 class SkillValidationAgent(BaseAgent):
     """Validates skill filter alignment in both weight-space and VPM-space."""
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.validation_cases = cfg.get("validation_cases", 100)
         self.output_dir = cfg.get("output_dir", "skill_filters")
 

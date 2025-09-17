@@ -1,5 +1,6 @@
 # stephanie/memory/prompt_store.py
-# stores/prompt_store.py
+from __future__ import annotations
+
 import json
 import re
 from difflib import SequenceMatcher
@@ -9,15 +10,21 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import dialect
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 from stephanie.models.prompt import PromptORM
 
 
-class PromptStore:
+class PromptStore(BaseSQLAlchemyStore):
+    orm_model = PromptORM
+    default_order_by = PromptORM.timestamp.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "prompts"
+
+    def name(self) -> str:
+        return self.name
 
     def get_or_create_goal(
         self,
@@ -32,7 +39,11 @@ class PromptStore:
         """
         try:
             # Try to find by text
-            goal = self.session.query(GoalORM).filter_by(goal_text=goal_text).first()
+            goal = (
+                self.session.query(GoalORM)
+                .filter_by(goal_text=goal_text)
+                .first()
+            )
             if not goal:
                 # Create new
                 goal = GoalORM(
@@ -65,7 +76,7 @@ class PromptStore:
             raise
 
     def get_by_id(self, prompt_id: int) -> Optional[PromptORM]:
-        return self.session.query(PromptORM).get(prompt_id)        
+        return self.session.query(PromptORM).get(prompt_id)
 
     def save(
         self,
@@ -86,7 +97,9 @@ class PromptStore:
             goal_text = goal.get("goal_text", "")
             goal_type = goal.get("goal_type")
             # Get or create the associated goal
-            goal_orm = self.get_or_create_goal(goal_text=goal_text, goal_type=goal_type)
+            goal_orm = self.get_or_create_goal(
+                goal_text=goal_text, goal_type=goal_type
+            )
 
             # Deactivate previous versions of this prompt key/agent combo
             self.session.query(PromptORM).filter_by(
@@ -109,19 +122,15 @@ class PromptStore:
             self.session.add(db_prompt)
             self.session.flush()  # Get ID immediately
 
-            if self.logger:
-                self.logger.log(
-                    "PromptStored",
-                    {
-                        "prompt_id": db_prompt.id,
-                        "prompt_key": prompt_key,
-                        "goal_id": goal_orm.id,
-                        "agent": agent_name,
-                        "strategy": strategy,
-                        "length": len(prompt_text),
-                        "timestamp": db_prompt.timestamp.isoformat(),
-                    },
-                )
+            self.logger.log(
+                "PromptStored",
+                {
+                    "id": db_prompt.id,
+                    "text": prompt_text[:30],
+                    "agent": agent_name,
+                    "length": len(prompt_text),
+                },
+            )
 
             return db_prompt.id
 
@@ -129,7 +138,8 @@ class PromptStore:
             self.session.rollback()
             if self.logger:
                 self.logger.log(
-                    "PromptStoreFailed", {"error": str(e), "prompt_key": prompt_key}
+                    "PromptStoreFailed",
+                    {"error": str(e), "prompt_key": prompt_key},
                 )
             raise
 
@@ -244,7 +254,9 @@ class PromptStore:
         matches.sort(reverse=True, key=lambda x: x[0])
         return [p.to_dict() for similarity, p in matches]
 
-    def get_prompt_training_set(self, goal: str, limit: int = 500) -> list[dict]:
+    def get_prompt_training_set(
+        self, goal: str, limit: int = 500
+    ) -> list[dict]:
         try:
             sql = text("""
                 SELECT 
@@ -308,6 +320,7 @@ class PromptStore:
             self.session.rollback()
             if self.logger:
                 self.logger.log(
-                    "GetPromptsByPipelineFailed", {"error": str(e), "pipeline_id": pipeline_id}
+                    "GetPromptsByPipelineFailed",
+                    {"error": str(e), "pipeline_id": run_id},
                 )
             return []

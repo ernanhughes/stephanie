@@ -4,12 +4,12 @@ from stephanie.agents.seal.self_edit_generator import SelfEditGeneratorAgent
 
 
 class SEALController:
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.edit_generator = SelfEditGeneratorAgent(cfg, memory, logger)
-        self.mutation_agent = RuleMutationAgent(cfg, memory, logger)
+        self.edit_generator = SelfEditGeneratorAgent(cfg, memory, container, logger)
+        self.mutation_agent = RuleMutationAgent(cfg, memory, container, logger)
 
     async def run_seal(self, context):
         # Outer loop

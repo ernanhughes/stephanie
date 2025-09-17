@@ -24,7 +24,7 @@ class SharpeningResultORM(Base):
     score_diff = Column(Float, nullable=False)
     best_score = Column(Float, nullable=False)
     prompt_template = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     def to_dict(self, include_nulls=False):
         data = {

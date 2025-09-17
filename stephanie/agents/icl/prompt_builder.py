@@ -1,4 +1,7 @@
 # stephanie/agents/icl/prompt_builder.py
+from __future__ import annotations
+
+
 class PromptBuilder:
     """Helper class for systematically building prompts for In-Context Learning"""
 

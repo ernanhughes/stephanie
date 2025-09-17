@@ -19,8 +19,8 @@ class HRMScorer(BaseScorer):
     goal/document pairs. The HRM performs internal multi-step reasoning to
     produce a quality score.
     """
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "hrm" # This identifies the scorer type
         
         # Use the embedding details from memory

@@ -1,4 +1,7 @@
 # stephanie/agents/icl/base_icl_strategy.py
+from __future__ import annotations
+
+
 class BaseICLStrategy:
     def __init__(self, memory, logger, cfg):
         self.memory = memory

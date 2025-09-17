@@ -9,8 +9,8 @@ from stephanie.models.sharpening_result import SharpeningResultORM
 
 
 class SharpeningAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.target = cfg.get("target", "generation")
         self.evaluator = MRQSelfEvaluator(memory, logger, device=self.device)
         self.templates = cfg.get("templates", ["critic"])

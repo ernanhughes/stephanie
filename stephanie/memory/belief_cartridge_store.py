@@ -1,4 +1,5 @@
 # stephanie/memory/belief_cartridge_store.py
+from __future__ import annotations
 
 import json
 import os
@@ -12,13 +13,18 @@ from sqlalchemy.orm import Session
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 
-
-class BeliefCartridgeStore:
+class BeliefCartridgeStore(BaseSQLAlchemyStore):
+    orm_model = BeliefCartridgeORM
+    default_order_by = BeliefCartridgeORM.created_at
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session=session, logger=logger)
         self.name = "belief_cartridges"
+
+    def name(self) -> str:
+        return self.name
 
     def add_or_update_cartridge(self, data: dict) -> BeliefCartridgeORM:
         existing = self.session.query(BeliefCartridgeORM).filter_by(id=data["id"]).first()

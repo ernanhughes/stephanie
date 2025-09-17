@@ -1,4 +1,5 @@
 # stephanie/utils/pipeline_runner.py
+from __future__ import annotations
 
 from omegaconf import OmegaConf
 
@@ -11,7 +12,7 @@ class PipelineRunner:
     Can be reused across agents or CLI tools.
     """
 
-    def __init__(self, full_cfg, memory, logger):
+    def __init__(self, full_cfg, memory, container, logger):
         self.full_cfg = full_cfg
         self.memory = memory
         self.logger = logger

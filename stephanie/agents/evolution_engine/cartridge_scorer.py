@@ -1,14 +1,16 @@
 # stephanie/agents/evolution_engine/cartridge_scorer.py
+from __future__ import annotations
+
 from stephanie.agents.knowledge.paper_score import PaperScoreAgent
-from stephanie.core.knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 
 
 class CartridgeScorer:
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.memory = memory
         self.logger = logger
         self.cfg = cfg
-        self.scorer = PaperScoreAgent(cfg, memory, logger)
+        self.scorer = PaperScoreAgent(cfg, memory, container, logger)
 
     def evaluate(self, cartridge: KnowledgeCartridge):
         """Evaluate cartridge quality using internal PaperScore logic"""

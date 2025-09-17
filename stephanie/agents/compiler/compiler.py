@@ -1,4 +1,6 @@
 # stephanie/agents/compiler/compiler.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.compiler.final_prompt_builder import FinalPromptBuilder
 from stephanie.agents.compiler.node_executor import NodeExecutor
@@ -11,8 +13,8 @@ from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
 
 
 class CompilerAgent(ScoringMixin, BaseAgent):
-    def __init__(self, cfg, memory, logger, full_cfg=None):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger, full_cfg=None):
+        super().__init__(cfg, memory, container, logger)
         self.tree = ReasoningTree()
         runner = PipelineRunnerAgent(
             cfg, memory=memory, logger=logger, full_cfg=full_cfg

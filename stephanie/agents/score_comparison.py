@@ -24,8 +24,8 @@ class ScoreComparisonAgent(BaseAgent):
     This is Step 1: Comprehensive Score Aggregation and Comparison.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])  # Default dimensions, can be overridden in config
         
         # Configuration for sources to compare

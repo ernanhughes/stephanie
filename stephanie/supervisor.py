@@ -1,4 +1,5 @@
 # stephanie/supervisor.py
+from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
@@ -12,20 +13,25 @@ from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
                                  SCORABLE_DETAILS, SKIP_IF_COMPLETED, STAGE)
 from stephanie.engine.context_manager import ContextManager
-from stephanie.engine.cycle_watcher import CycleWatcher
-from stephanie.engine.meta_confidence import MetaConfidenceTracker
-from stephanie.engine.plan_trace_monitor import PlanTraceMonitor
-from stephanie.engine.self_validation import SelfValidationEngine
-from stephanie.engine.state_tracker import StateTracker
-from stephanie.engine.symbolic_rule_applier import SymbolicRuleApplier
-from stephanie.engine.training_controller import TrainingController
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-from stephanie.registry.component_registry import (get_registered_component,
-                                                   register)
 from stephanie.reporting import ReportFormatter
-from stephanie.reporting.reporter import JsonlSink, LoggerSink, Reporter
-from stephanie.scoring.scoring_service import ScoringService
+from stephanie.services.cbr_service import CBRService
+from stephanie.services.cycle_watcher_service import CycleWatcherService
+from stephanie.services.knowledge_base_service import KnowledgeBaseService
+from stephanie.services.knowledge_graph_service import KnowledgeGraphService
+from stephanie.services.meta_confidence_service import MetaConfidenceService
+from stephanie.services.plan_trace_service import PlanTraceService
+from stephanie.services.reporting_service import (JsonlSink, LoggerSink,
+                                                  ReportingService)
+from stephanie.services.rules_service import RulesService
+from stephanie.services.scoring_service import ScoringService
+from stephanie.services.self_validation_service import SelfValidationService
+from stephanie.services.service_container import ServiceContainer
+from stephanie.services.state_tracker_service import StateTrackerService
+from stephanie.services.strategy_profile_service import StrategyProfileService
+from stephanie.services.training_service import TrainingService
+from stephanie.services.zeromodel import ZeroModelService
 from stephanie.utils.report_utils import get_stage_details
 
 
@@ -45,7 +51,11 @@ class Supervisor:
         self.memory = memory or MemoryTool(cfg=cfg.db, logger=logger)
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
         self.logger.log("SupervisorInit", {"cfg": cfg})
-        self.rule_applier = SymbolicRuleApplier(cfg, self.memory, self.logger)
+
+        self.container = ServiceContainer(cfg=cfg, logger=logger)
+        # Register core services
+        self._register_core_services(cfg, memory, logger)
+
         print(f"Parsing pipeline stages from config: {cfg.pipeline}")
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
 
@@ -54,67 +64,146 @@ class Supervisor:
             "context": self.context
         })
 
-        # Initialize and register core components
-        state_tracker = StateTracker(cfg, self.memory, self.logger)
-        confidence_tracker = MetaConfidenceTracker(cfg, self.memory, self.logger)
-        scoring_service = ScoringService(cfg, self.memory, self.logger)
+        self.logger.log("SupervisorComponentsRegistered", {
+            "services": list(self.container._services.keys()),
+            "service_count": len(self.container._services)
+        })
 
-        def trainer_fn(goal, dimension):
-            print(f"[TRAIN] Training RM for goal: {goal}, dimension: {dimension}")
-            # Insert actual training logic here
-
-        # Stub judgment and reward model evaluators
-        def reward_model_fn(context, doc_a, doc_b):
-            return scoring_service.reward_compare("reward", context, doc_a, doc_b)
-
-        def llm_judge_fn(context, doc_a, doc_b):
-            return scoring_service.compare_pair("reward", context, doc_a, doc_b)
-
-        validator = SelfValidationEngine(
-            cfg=cfg,
-            memory=self.memory,
-            logger=self.logger,
-            reward_model=reward_model_fn,
-            llm_judge=llm_judge_fn,
+    def _register_core_services(self, cfg, memory, logger):
+        """Register all core services with the container."""
+        
+        # Scoring service
+        self.container.register(
+            "scoring",
+            lambda: ScoringService(cfg, memory, self.container, logger),
+            dependencies=[]
+        )
+        
+        # State tracking
+        self.container.register(
+            "state",
+            lambda: StateTrackerService(cfg, memory, logger),
+            dependencies=[]
+        )
+        
+        # Confidence tracking
+        self.container.register(
+            "confidence",
+            lambda: MetaConfidenceService(cfg, memory, logger),
+            dependencies=["state"]
+        )
+        
+        # Cycle watcher
+        self.container.register(
+            "cycle",
+            lambda: CycleWatcherService(cfg, memory, logger),
+            dependencies=["state"]
+        )
+        
+        # Validation engine
+        self.container.register(
+            "validation",
+            lambda: SelfValidationService(
+                cfg=cfg,
+                memory=memory,
+                logger=logger,
+                reward_model=self._create_reward_model(cfg, memory, logger),
+                llm_judge=self._create_llm_judge(cfg, memory, logger),
+            ),
+            dependencies=["scoring"]
+        )
+        
+        # Training controller
+        self.container.register(
+            "training",
+            lambda: TrainingService(
+                cfg=cfg,
+                memory=memory,
+                logger=logger,
+                validator=self.container.get("validation"),
+                tracker=self.container.get("confidence"),
+                trainer_fn=self._create_trainer_fn(cfg, memory, logger),
+            ),
+            dependencies=["validation", "confidence"]
+        )
+        
+        # Plan trace monitor
+        self.container.register(
+            "plan_trace",
+            lambda: PlanTraceService(
+                cfg, memory, self.container, logger=logger
+            ),
+            dependencies=["scoring", "state"]
+        )
+        
+        # Reporter service
+        self.container.register(
+            "reporting",
+            lambda: ReportingService(
+                sinks=[
+                    JsonlSink(cfg.logging.logger.report_path or "reports/pipeline_events.jsonl"),
+                    LoggerSink(logger),
+                ],
+                enabled=True,
+                sample_rate=1.0,
+            ),
+            dependencies=[]
         )
 
-        training_controller = TrainingController(
-            cfg=cfg,
-            memory=self.memory,
-            logger=self.logger,
-            validator=validator,
-            tracker=confidence_tracker,
-            trainer_fn=trainer_fn,
+        # Symbolic rule applier
+        self.container.register(
+            "rules",
+            lambda: RulesService(cfg, memory, logger),
+            dependencies=[]
         )
 
-        # --- Reporting Service ---
-        reporter = Reporter(
-            sinks=[
-                JsonlSink(cfg.logging.logger.report_path or "reports/pipeline_events.jsonl"),
-                LoggerSink(self.logger),
-            ],
-            enabled=True,
-            sample_rate=1.0,
+        # Knowledge Graph service
+        self.container.register(
+            "knowledge_graph",
+            lambda: KnowledgeGraphService(cfg, memory, logger),
+            dependencies=[]
         )
 
-        # Register for global access
-        register("scoring_service", scoring_service)
-        register("state_tracker", state_tracker)
-        register("confidence_tracker", confidence_tracker)
-        register("cycle_watcher", CycleWatcher(cfg, self.memory, self.logger))
-        register("training_controller", training_controller)
-        register("self_validation", validator)
-        register("plan_trace_monitor", PlanTraceMonitor(cfg, self.memory, self.logger, scoring_service))
-        register("reporter_service", reporter)
-        self.logger.log(
-            "SupervisorComponentsRegistered",
-            {
-                "state_tracker": state_tracker,
-                "confidence_tracker": confidence_tracker,
-                "training_controller": training_controller,
-                "self_validation": validator,
-                "report_path": cfg.report.path or "reports/pipeline_events.jsonl",
-            },
+        # Knowledge Base service
+        self.container.register(
+            "kbase",
+            lambda: KnowledgeBaseService(cfg, memory, logger),
+            dependencies=[]
+        )
+
+        self.container.register(
+            "zeromodel",
+            lambda: ZeroModelService(cfg, memory, logger),
+            dependencies=[]
+        )
+
+        # Symbolic rule applier
+        self.container.register(
+            "cbr",
+            lambda: CBRService(cfg, memory, self.container, logger),
+            dependencies=[]
+        )
+
+        self.container.register(
+            "strategy",
+            lambda: StrategyProfileService(cfg=cfg, memory=memory, logger=logger, path=".cache/strategy_profiles.json", namespace="track_c")
+        )
+
+    def _create_reward_model(self, cfg, memory, logger):
+        scoring: ScoringService = self.container.get("scoring")
+        return lambda context, doc_a, doc_b: scoring.reward_compare(
+            "reward", context, doc_a, doc_b
+        )
+
+    def _create_llm_judge(self, cfg, memory, logger):
+        scoring: ScoringService = self.container.get("scoring")
+        return lambda context, doc_a, doc_b: scoring.compare_pair(
+            "reward", context, doc_a, doc_b
+        )
+
+    def _create_trainer_fn(self, cfg, memory, logger):
+        return lambda goal, dimension: print(
+            f"[TRAIN] Training RM for goal: {goal}, dimension: {dimension}"
         )
 
     def _init_context(self):
@@ -191,8 +280,7 @@ class Supervisor:
         run_id = self.memory.pipeline_runs.insert(pipeline_run_data)
         self.context[PIPELINE_RUN_ID] = run_id
 
-        plan_trace_monitor: PlanTraceMonitor = get_registered_component("plan_trace_monitor")
-
+        plan_trace_monitor: PlanTraceService = self.container.get("plan_trace")
         plan_trace_monitor.start_pipeline(self.context(), run_id)
 
 
@@ -200,7 +288,8 @@ class Supervisor:
         await self.maybe_adjust_pipeline(self.context())
 
         # Apply symbolic rules directly via context manager data
-        self.context._data = self.rule_applier.apply(self.context())
+        rules: RulesService = self.container.get("rules")
+        self.context._data = rules.apply(self.context())
 
         try:
             # Run pipeline stages with simple dict (agents stay unaware of ContextManager)
@@ -235,7 +324,7 @@ class Supervisor:
         ]
 
     async def _run_pipeline_stages(self, context: dict) -> dict:
-        plan_trace_monitor: PlanTraceMonitor = get_registered_component("plan_trace_monitor")
+        plan_trace_monitor: PlanTraceService = self.container.get("plan_trace")
         final_output_key = ""
         for stage_idx, stage in enumerate(self.pipeline_stages):
             stage_details = {
@@ -261,18 +350,18 @@ class Supervisor:
                 cls = hydra.utils.get_class(stage.cls)
                 stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
                 final_output_key = stage_dict.get("output_key", final_output_key)
-                self.rule_applier.apply_to_agent(stage_dict, context)
+                rules: RulesService = self.container.get("rules")
+                rules.apply_to_agent(stage_dict, context)
                 agent_args = {
                     "cfg": stage_dict,
                     "memory": self.memory,
-                    "logger": self.logger,
+                    "container": self.container,
+                    "logger": self.logger
                 }
                 if "full_cfg" in cls.__init__.__code__.co_varnames:
                     agent_args["full_cfg"] = self.cfg
                 agent = cls(**agent_args)
-                agent.scoring = get_registered_component("scoring_service")
-                agent.reporter = get_registered_component("reporter_service") or agent.reporter
-
+                agent.container = self.container  # Inject container into agent
                 self.logger.log("PipelineStageStart", {STAGE: stage.name})
                 
                 for i in range(stage.iterations or 1): 
@@ -374,7 +463,8 @@ class Supervisor:
         try:
             cls = hydra.utils.get_class(stage.cls)
             stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
-            self.rule_applier.apply_to_agent(stage_dict, context)
+            rules: RulesService = self.container.get("rules")
+            rules.apply_to_agent(stage_dict, context)
             agent_args = {
                 "cfg": stage_dict,
                 "memory": self.memory,
@@ -384,6 +474,7 @@ class Supervisor:
                 agent_args["full_cfg"] = self.cfg
 
             agent = cls(**agent_args)
+            agent.container = self.container  # Inject container into agent
             self.logger.log("PipelineStageStart", {STAGE: stage.name})
 
             for i in range(stage.iterations or 1): 
@@ -539,7 +630,8 @@ class Supervisor:
         try:
             lookahead_cfg = OmegaConf.to_container(self.cfg.dynamic, resolve=True)
             stage_dict = OmegaConf.to_container(self.cfg.agents.lookahead, resolve=True)
-            stage_dict = self.rule_applier.apply_to_agent(stage_dict, context)
+            rules: RulesService = self.container.get("rules")
+            rules.apply_to_agent(stage_dict, context)
             agent_cls = hydra.utils.get_class(lookahead_cfg["cls"])
             lookahead_agent = agent_cls(
                 cfg=stage_dict, memory=self.memory, logger=self.logger

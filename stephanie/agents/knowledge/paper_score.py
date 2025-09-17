@@ -12,7 +12,7 @@ from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scoring_manager import ScoringManager
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 class PaperScoreAgent(BaseAgent):
     """
@@ -20,8 +20,8 @@ class PaperScoreAgent(BaseAgent):
     Similar design to DocumentRewardScorer, but specialized for research papers.
     """
 
-    def __init__(self, cfg, memory, log):
-        super().__init__(cfg, memory, log)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get(
             "dimensions",
             ["novelty", "clarity", "relevance", "implementability", "alignment"],
@@ -35,7 +35,7 @@ class PaperScoreAgent(BaseAgent):
         # Initialize MARS calculator
         self.enabled_scorers = cfg.get("enabled_scorers", [])
 
-        logger.debug(
+        _logger.debug(
             "PaperScoreAgentInitialized:"
             f"dimensions={self.dimensions}, "
             f"scorers={self.enabled_scorers}, "
@@ -99,7 +99,7 @@ class PaperScoreAgent(BaseAgent):
 
         for scorer_name in self.enabled_scorers:
             try:
-                bundle = self.scoring.score(
+                bundle = self.container.get("scoring").score(
                     scorer_name,
                     context=context,
                     scorable=scorable,

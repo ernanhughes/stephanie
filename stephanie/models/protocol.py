@@ -34,8 +34,8 @@ class ProtocolORM(Base):
     last_used = Column(DateTime, nullable=True)
     disabled = Column(Boolean, default=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     def __repr__(self):
         return f"<Protocol(name={self.name}, capability={self.capability}, tags={self.tags})>"

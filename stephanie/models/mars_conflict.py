@@ -23,7 +23,7 @@ class MARSConflictORM(Base):
     preferred_model = Column(String, nullable=True)
     explanation = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     def to_dict(self):
         return {

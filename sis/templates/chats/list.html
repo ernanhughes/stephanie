@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-baseline mb-3">
+    <h2 class="mb-0">Chat Conversations</h2>
+    <form class="d-flex gap-2" method="get" action="/chats">
+      <input class="form-control form-control-sm" name="provider" placeholder="provider" value="{{ filters.provider or '' }}">
+      <button class="btn btn-sm btn-outline-primary">Filter</button>
+    </form>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>ID</th>
+          <th>Provider</th>
+          <th>Title</th>
+          <th>Created</th>
+          <th>Updated</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for chat in chats %}
+        <tr>
+          <td>#{{ chat.id }}</td>
+          <td><span class="badge bg-info text-dark">{{ chat.provider }}</span></td>
+          <td><code>{{ chat.title }}</code></td>
+          <td class="text-muted">{{ chat.created_at }}</td>
+          <td class="text-muted">{{ chat.updated_at }}</td>
+          <td><a class="btn btn-sm btn-outline-secondary" href="/chats/{{ chat.id }}">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

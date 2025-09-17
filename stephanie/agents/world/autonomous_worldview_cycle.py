@@ -1,4 +1,6 @@
 # stephanie/agents/world/autonomous_worldview_cycle.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from stephanie.agents.world.belief_tuner import BeliefTunerAgent
@@ -7,7 +9,7 @@ from stephanie.agents.world.worldview_evaluator import WorldviewEvaluatorAgent
 from stephanie.agents.world.worldview_merger import WorldviewMergerAgent
 from stephanie.agents.world.worldview_pipeline_runner import \
     WorldviewPipelineRunner
-from stephanie.core.knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
 
 
 class AutonomousWorldviewCycleAgent:
@@ -20,11 +22,11 @@ class AutonomousWorldviewCycleAgent:
         self.worldview = worldview
         self.logger = logger or self._default_logger()
         self.config = config or {}
-        self.pipeline_runner = WorldviewPipelineRunner(worldview, logger=self.logger)
-        self.evaluator = WorldviewEvaluatorAgent(worldview, logger=self.logger)
-        self.belief_tuner = BeliefTunerAgent(worldview, logger=self.logger)
-        self.merger = WorldviewMergerAgent(worldview, logger=self.logger)
-        self.audit = WorldviewAuditAgent(worldview, logger=self.logger)
+        self.pipeline_runner = WorldviewPipelineRunner(worldview, container=self.container, logger=self.logger)
+        self.evaluator = WorldviewEvaluatorAgent(worldview, container=self.container, logger=self.logger)
+        self.belief_tuner = BeliefTunerAgent(worldview, container=self.container, logger=self.logger)
+        self.merger = WorldviewMergerAgent(worldview, container=self.container, logger=self.logger)
+        self.audit = WorldviewAuditAgent(worldview, container=self.container, logger=self.logger)
 
     def cycle_once(self):
         """

@@ -48,6 +48,9 @@ defaults:
   - agents/auto_tuner
   - logging/json_logger
 
+embeddings:
+  backend: hnet
+
 goal:
   goal_text: "How could an autonomous AI lab iteratively improve its own hypotheses using symbolic rules and evaluation feedback?"
   goal_type: "strategic"
@@ -97,17 +100,11 @@ web_search:
   engine: "searxng"
   instance_url: "http://localhost:8080"
 
-
-embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
-
 pipeline:
   name: default_pipeline
   description: "Default hypothesis generation and refinement pipeline"
   stages:
      - name: lats
-       cls: stephanie.agents.lats_dspy.LATSDSPyAgent
+       cls: stephanie.agents.dspy.lats_dspy.LATSDSPyAgent
        enabled: true
        iterations: 1

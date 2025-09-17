@@ -1,4 +1,6 @@
-# stephanie/memory/generic_embedding_store.py
+# stephanie/memory/generic_embedding_store.
+from __future__ import annotations
+
 import hashlib
 
 import torch

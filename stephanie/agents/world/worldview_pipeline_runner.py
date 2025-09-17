@@ -1,5 +1,5 @@
 # stephanie/agents/world/worldview_pipeline_runner.py
-# worldview_pipeline_runner.py
+from __future__ import annotations
 
 from datetime import datetime
 
@@ -14,8 +14,8 @@ class WorldviewPipelineRunner(BaseAgent):
     Orchestrates execution based on worldview goals and configuration.
     """
 
-    def __init__(self, cfg, memory, logger, full_cfg=None):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger, full_cfg=None):
+        super().__init__(cfg, memory, container, logger)
         self.full_cfg = full_cfg
         self.pipeline_registry_path = cfg.get(
             "pipeline_registry_path", "config/registry/pipeline.yaml"
@@ -36,14 +36,14 @@ class WorldviewPipelineRunner(BaseAgent):
         database_path = context.get("worldview_path")
         pipelines = context.get("pipelines")
 
-        for pipeline_key in pipelines:
-            pipeline_def = self.pipeline_registry.get_pipeline(pipeline_key)
+        for pipeline_run_id in pipelines:
+            pipeline_def = self.pipeline_registry.get_pipeline(pipeline_run_id)
             if not pipeline_def:
                 self.logger.log(
                     "PipelineNotFound",
                     {
                         "goal_id": goal_id,
-                        "pipeline": pipeline_key,
+                        "pipeline": pipeline_run_id,
                         "timestamp": datetime.now().isoformat(),
                     },
                 )
@@ -54,7 +54,7 @@ class WorldviewPipelineRunner(BaseAgent):
                 "PipelineExecutionStarted",
                 {
                     "goal_id": goal_id,
-                    "pipeline": pipeline_key,
+                    "pipeline": pipeline_run_id,
                     "timestamp": datetime.now().isoformat(),
                     "inputs": inputs,
                 },
@@ -70,7 +70,7 @@ class WorldviewPipelineRunner(BaseAgent):
                 "PipelineExecutionFinished",
                 {
                     "goal_id": goal_id,
-                    "pipeline": pipeline_key,
+                    "pipeline": pipeline_run_id,
                     "timestamp": datetime.now().isoformat(),
                     "output_summary": str(result)[:300],
                 },

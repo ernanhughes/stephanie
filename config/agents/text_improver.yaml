@@ -1,0 +1,15 @@
+text_improver:
+  name: text_improver
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: text_improver
+  prompt_mode: file
+  prompt_file: text_improver.txt

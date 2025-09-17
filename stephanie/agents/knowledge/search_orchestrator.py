@@ -12,8 +12,8 @@ from stephanie.tools.wikipedia_tool import WikipediaTool
 
 
 class SearchOrchestratorAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.web_search_tool = WebSearchTool(cfg.get("web_search", {}), self.logger)
         self.wikipedia_tool = WikipediaTool(self.memory, self.logger)
         self.max_results = cfg.get("max_results", 5)

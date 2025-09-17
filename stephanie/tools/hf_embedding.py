@@ -1,4 +1,5 @@
 # stephanie/embeddings/huggingface_embedder.py
+from __future__ import annotations
 
 import time
 

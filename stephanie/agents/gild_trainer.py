@@ -21,8 +21,8 @@ from stephanie.scoring.training.preference_pair_builder import \
 
 
 class GILDTrainerAgent(BaseAgent):
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.beta = cfg.get("beta", 1.0)  # Temperature for advantage weighting
         self.learning_rate = cfg.get("learning_rate", 1e-4)
         self.epochs = cfg.get(

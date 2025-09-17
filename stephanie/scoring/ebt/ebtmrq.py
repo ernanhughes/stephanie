@@ -1,10 +1,11 @@
 # stephanie/scoring/energy_tuned_mrq.py
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List
 
 import torch
 from torch.nn.functional import sigmoid
 
+_logger = logging.getLogger(__name__)
 
 class EnergyTunedMRQ:
     """
@@ -59,12 +60,12 @@ class EnergyTunedMRQ:
         energy = self.ebt.get_energy(context, text, dimension)
         uncertainty = sigmoid(torch.tensor(energy)).item()
         
-        self.logger.debug("InitialScore", {
-            "dimension": dimension,
-            "mrq_score": raw_score,
-            "energy": energy,
-            "uncertainty": uncertainty
-        })
+        _logger.debug("InitialScore"
+            f"dimension: {dimension}"
+            f"mrq_score: {raw_score}"
+            f"energy: {energy}"
+            f"uncertainty: {uncertainty}"
+        )
         
         # Track refinement state
         refined = False
@@ -94,8 +95,8 @@ class EnergyTunedMRQ:
         
         # Step 2: Fallback if still uncertain
         if refined and energy_trace and energy_trace[-1] > self.fallback_threshold:
-            from stephanie.agents.llm import LLMScorer
-            llm_scorer = LLMScorer(self.config.get("llm", {}))
+            from stephanie.scoring.scorer.llm_scorer import LLMScorer
+            llm_scorer = LLMScorer(self.config.get("llm", {}), self.ebt.memory, self.logger, llm_fn=self.config.get("llm_fn"))
             llm_score = llm_scorer.score(context, refined_text if refined else text, dimension)
             final_score = llm_score["score"]
             source = "llm"

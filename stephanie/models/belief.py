@@ -20,4 +20,4 @@ class BeliefORM(Base):
     novelty_score = Column(Float)
     domain = Column(String)
     status = Column(String, default="active")  # active | deprecated | pending_review
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)

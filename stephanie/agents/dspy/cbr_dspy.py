@@ -1,3 +1,4 @@
+# stephanie/agents/dspy/cbr_dspy.py
 """
 CBR Hypothesis DSPy Generator Agent
 
@@ -10,6 +11,7 @@ Key features:
 - Embeds CBR definition + example into the prompt automatically
 - Returns hypotheses as Scorables for downstream scoring/ranking
 """
+from __future__ import annotations
 
 import re
 from typing import List
@@ -69,8 +71,8 @@ class CBRDSPyAgent(BaseAgent):
     to solve similar problems in the past.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         # Get model configuration from agent config with fallbacks
         model_config = cfg.get("model", {})

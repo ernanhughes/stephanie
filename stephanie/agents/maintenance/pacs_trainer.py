@@ -1,12 +1,11 @@
 # stephanie/agents/maintenance/pacs_trainer_agent.py
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.dataloaders.casebook_to_rlvr import CaseBookToRLVRDataset
 from stephanie.scoring.training.pacs_trainer import PACSTrainer
 
 
-class PACSTrainerAgent(ScoringMixin, BaseAgent):
+class PACSTrainerAgent(BaseAgent):
     """
     Agent wrapper for the PACSTrainer.
     
@@ -14,17 +13,15 @@ class PACSTrainerAgent(ScoringMixin, BaseAgent):
     on them, logging results dimension by dimension.
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.trainer = PACSTrainer(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.trainer = PACSTrainer(cfg, memory, container, logger)
         self.casebook_name = cfg.get("casebook_name", "default_casebook")
         self.verifier = cfg.get("verifier", "default_verifier")
         self.dimensions = cfg.get("dimensions", ["alignment"])
 
     async def run(self, context: dict) -> dict:
-        goal = context.get("goal", {})
         results = {}
-
         # Build RLVR dataset from CaseBook
         dataset_builder = CaseBookToRLVRDataset(
             memory=self.memory,

@@ -1,24 +1,30 @@
 # stephanie/memory/skill_filter_store.py
+from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.skill_filter import SkillFilterORM
 
 
-class SkillFilterStore:
+class SkillFilterStore(BaseSQLAlchemyStore):
     """
     Store for SkillFilterORM objects.
     Provides CRUD and search utilities for skill filters.
     """
+    orm_model = SkillFilterORM
+    default_order_by = SkillFilterORM.created_at
 
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger or (lambda msg: print(f"[SkillFilterStore] {msg}"))
+        super().__init__(session, logger)
         self.name = "skill_filters"
 
+    def name(self) -> str:
+        return self.name
+    
     # --- Create ---
     def add_filter(self, data: Dict[str, Any]) -> SkillFilterORM:
         """

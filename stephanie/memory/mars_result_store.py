@@ -1,14 +1,22 @@
 # stephanie/memory/mars_result_store.py
+from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.mars_result import MARSResultORM
 
 
-class MARSResultStore:
+class MARSResultStore(BaseSQLAlchemyStore):
+    orm_model = MARSResultORM
+    default_order_by = MARSResultORM.created_at.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "mars_results"
+
+    def name(self) -> str:
+        return self.name
 
     def add(self, pipeline_run_id, plan_trace_id, result: dict):
         orm = MARSResultORM(

@@ -29,6 +29,6 @@ class LookaheadORM(Base):
     extra_data = Column("metadata", Text)  # Renamed to avoid conflict with SQLAlchemy
     run_id = Column(String)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     goal = relationship("GoalORM", back_populates="lookaheads")

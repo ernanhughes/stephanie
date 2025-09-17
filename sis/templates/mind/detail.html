@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid px-0">
+
+  <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+    <div>
+      <h5 class="mb-0">Stephanie — Live Mind Viewer</h5>
+      <div class="text-muted small">
+        Snapshot: <code>{{ snap_id or 'LIVE (snapshot.json)' }}</code> · Path: <code>{{ snap_path }}</code>
+      </div>
+    </div>
+    <div>
+      <a href="/mind" class="btn btn-sm btn-outline-secondary">Back to List</a>
+      <a href="/mind/snapshot{% if snap_id %}?id={{ snap_id }}{% endif %}" target="_blank" class="btn btn-sm btn-outline-primary">Open JSON</a>
+    </div>
+  </div>
+
+  <div id="hud" class="position-absolute m-3 px-3 py-2 rounded-3" style="background:rgba(0,0,0,.45); z-index: 10; color:#e8eef8;">
+    <div class="fw-semibold">HUD</div>
+    <div id="stats" class="small">nodes: 0 · edges: 0</div>
+    <div class="small mt-2">
+      <div><span class="badge" style="background:#6aa9ff;">&nbsp;</span> CaseBook</div>
+      <div><span class="badge" style="background:#c88cff;">&nbsp;</span> Case</div>
+      <div><span class="badge" style="background:#9aa3b0;">&nbsp;</span> Scorable</div>
+      <div><span class="badge" style="background:#ffd86a; color:#333;">&nbsp;</span> Decision</div>
+    </div>
+  </div>
+
+  <canvas id="c" style="width:100vw; height: calc(100vh - 64px); display:block; background:#0b0e12;"></canvas>
+
+</div>
+
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js";
+
+const snapId = {{ snap_id|tojson }};
+const statsEl = document.getElementById('stats');
+const canvas = document.getElementById('c');
+
+const colors = { casebook:"#6aa9ff", case:"#c88cff", scorable:"#9aa3b0", decision:"#ffd86a" };
+
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, 2, 0.1, 1000);
+camera.position.set(0, 40, 120);
+const light = new THREE.DirectionalLight(0xffffff, 1.0); light.position.set(1,1,1);
+scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+
+const nodes = new Map();
+const edges = [];
+
+function hex(c){ return new THREE.Color(c); }
+function sphere(color="#9aa3b0", r=1){
+  const g = new THREE.SphereGeometry(r, 16, 16);
+  const m = new THREE.MeshStandardMaterial({color:hex(color), metalness:0.2, roughness:0.6});
+  return new THREE.Mesh(g,m);
+}
+function line(from, to, color="#5b6472", w=1.0){
+  const g = new THREE.BufferGeometry().setFromPoints([from, to]);
+  const m = new THREE.LineBasicMaterial({color:hex(color), linewidth:w});
+  return new THREE.Line(g,m);
+}
+
+function upsertNode(n){
+  const type = n.type || "scorable";
+  const col = colors[type] || "#9aa3b0";
+  const vpm = n.meta?.vpm || {};
+  const score = n.score ?? (vpm.tests_pass_rate ?? vpm.correctness ?? 0.0);
+  const size = 1.2 + 2.5 * Number(score);
+  const pos = new THREE.Vector3(n.pos?.x||0, n.pos?.y||0, n.pos?.z||0);
+
+  let entry = nodes.get(n.id);
+  if(!entry){
+    const mesh = sphere(col, size);
+    mesh.position.copy(pos);
+    mesh.userData = { id:n.id, type, label:n.label || n.id };
+    scene.add(mesh);
+    nodes.set(n.id, {mesh, data:n, _size:size});
+  }else{
+    entry.mesh.scale.setScalar(size / (entry._size || 1.0));
+    entry.mesh.position.copy(pos);
+    entry.data = n;
+    entry._size = size;
+  }
+}
+
+function addEdge(e){
+  const a = nodes.get(e.src)?.mesh?.position;
+  const b = nodes.get(e.dst)?.mesh?.position;
+  if(!a || !b) return;
+  const col = (e.type === "edit") ? "#8be9fd" : "#5b6472";
+  const l = line(a.clone(), b.clone(), col, Math.max(1, e.w||1));
+  scene.add(l); edges.push({line:l, data:e});
+}
+
+function syncGraph(snap){
+  statsEl.textContent = `nodes: ${(snap.nodes||[]).length} · edges: ${(snap.edges||[]).length}`;
+  (snap.nodes || []).forEach(upsertNode);
+  edges.forEach(e => scene.remove(e.line)); edges.length = 0;
+  (snap.edges || []).forEach(addEdge);
+}
+
+function resizeRendererToDisplaySize(){
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const need = (canvas.width !== w || canvas.height !== h);
+  if(need){ renderer.setSize(w, h, false); }
+  return need;
+}
+function animate(){
+  if(resizeRendererToDisplaySize()){
+    const cv = renderer.domElement;
+    camera.aspect = cv.clientWidth / cv.clientHeight; camera.updateProjectionMatrix();
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+
+// initial fetch
+const q = snapId ? `?id=${encodeURIComponent(snapId)}` : "";
+fetch(`/mind/snapshot${q}`).then(r=>r.json()).then(syncGraph);
+
+// live updates
+const proto = (location.protocol === "https:") ? "wss" : "ws";
+const ws = new WebSocket(`${proto}://${location.host}/mind/ws${q}`);
+ws.onmessage = (ev)=>{ try { syncGraph(JSON.parse(ev.data)); } catch(e){} };
+
+// simple drag orbit
+let dragging=false, lx=0, ly=0;
+canvas.addEventListener("mousedown", e=>{dragging=true; lx=e.clientX; ly=e.clientY;});
+window.addEventListener("mouseup", ()=>dragging=false);
+window.addEventListener("mousemove", e=>{
+  if(!dragging) return;
+  const dx=(e.clientX-lx)/200, dy=(e.clientY-ly)/200; lx=e.clientX; ly=e.clientY;
+  camera.position.applyAxisAngle(new THREE.Vector3(0,1,0), -dx);
+  camera.position.y += dy*20; camera.lookAt(0,0,0);
+});
+</script>
+{% endblock %}

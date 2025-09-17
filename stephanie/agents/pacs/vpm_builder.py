@@ -11,8 +11,8 @@ class VPMBuilderAgent(BaseAgent):
     Agent that builds a Vector of Policies and Measures (VPM)
     from a given CaseBook and its associated evaluation metrics.
     """
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         self.metrics = cfg.get("metrics", ["alignment", "clarity"])
 
     async def run(self, context: dict) -> dict:

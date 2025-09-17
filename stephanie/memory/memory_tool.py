@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from stephanie.logging import JSONLogger
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
+from stephanie.memory.calibration_event_store import CalibrationEventStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
 from stephanie.memory.cartridge_triple_store import CartridgeTripleStore
@@ -18,7 +19,9 @@ from stephanie.memory.document_domain_section_store import \
     DocumentSectionDomainStore
 from stephanie.memory.document_section_store import DocumentSectionStore
 from stephanie.memory.document_store import DocumentStore
+from stephanie.memory.dynamic_scorable_store import DynamicScorableStore
 from stephanie.memory.embedding_store import EmbeddingStore
+from stephanie.memory.entity_cache_store import EntityCacheStore
 from stephanie.memory.evaluation_attribute_store import \
     EvaluationAttributeStore
 from stephanie.memory.evaluation_store import EvaluationStore
@@ -48,6 +51,7 @@ from stephanie.memory.rule_application_store import RuleApplicationStore
 from stephanie.memory.rule_effect_store import RuleEffectStore
 from stephanie.memory.scorable_domain_store import ScorableDomainStore
 from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
+from stephanie.memory.scorable_entity_store import ScorableEntityStore
 from stephanie.memory.scorable_rank_store import ScorableRankStore
 from stephanie.memory.score_store import ScoreStore
 from stephanie.memory.scoring_store import ScoringStore
@@ -55,7 +59,11 @@ from stephanie.memory.search_result_store import SearchResultStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.memory.theorem_store import TheoremStore
+from stephanie.memory.training_event_store import TrainingEventStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
+from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
+from stephanie.services.knowledge_bus import (InProcessKnowledgeBus,
+                                              KnowledgeBus)
 
 
 class MemoryTool:
@@ -80,13 +88,17 @@ class MemoryTool:
         self.conn.autocommit = True
         register_vector(self.conn)  # Register pgvector extension
 
+        # Setup knowledge bus needed before embeddings bvecause of ner
+        self.bus = self._setup_knowledge_bus()
+
+
         embedding_cfg = self.cfg.get("embeddings", {})
         # Register stores
-        mxbai = EmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        mxbai = EmbeddingStore(embedding_cfg, memory=self, logger=logger)
         self.register_store(mxbai)
-        hnet = HNetEmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        hnet = HNetEmbeddingStore(embedding_cfg, memory=self, logger=logger)
         self.register_store(hnet)
-        hf = HuggingFaceEmbeddingStore(embedding_cfg, self.conn, self.session, logger)
+        hf = HuggingFaceEmbeddingStore(embedding_cfg, memory=self, logger=logger)
         self.register_store(hf)
 
         # Choose embedding backend based on config
@@ -118,6 +130,7 @@ class MemoryTool:
             },
         )
 
+        self._meta: dict = {} 
 
         # Register stores
         self.register_store(GoalStore(self.session, logger))
@@ -163,11 +176,22 @@ class MemoryTool:
         self.register_store(MARSConflictStore(self.session, logger))
         self.register_store(CaseBookStore(self.session, logger))
         self.register_store(ChatStore(self.session, logger))
+        self.register_store(ScorableEntityStore(self.session, logger))
+        self.register_store(DynamicScorableStore(self.session, logger))
+        self.register_store(CalibrationEventStore(self.session, logger))
+        self.register_store(EntityCacheStore(self.session, logger))
+        self.register_store(TrainingEventStore(self.session, logger))
+
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):
                 self.register_store(store_class(self.session, logger))
+
+        self.logger.log("KnowledgeBusInitialized", {
+            "backend": self.cfg.get("bus", {}).get("backend", "inprocess")
+        })
+
 
     def register_store(self, store):
         store_name = getattr(store, "name", store.__class__.__name__)
@@ -196,6 +220,11 @@ class MemoryTool:
                 self.logger.log("SessionRollback", {"error": str(e)})
             raise
 
+    @property
+    def meta(self) -> dict:
+        """Lightweight, process-local key/value store for small state."""
+        return self._meta
+
     def close(self):
         """Close session at end of run"""
         try:
@@ -221,19 +250,6 @@ class MemoryTool:
                     "SessionRefreshed", {"new_session_id": id(self.session)}
                 )
 
-    @staticmethod
-    def SessionLocal() -> Session:
-        """
-        Convenience method to create a standalone SQLAlchemy session.
-        Does not initialize the full MemoryTool.
-        """
-        return sessionmaker(bind=engine)()
-
-    @classmethod
-    def new_session(cls) -> Session:
-        """
-        Class method variant (alias for SessionLocal).
-        Useful if you want it bound to the class.
-        """
-        return sessionmaker(bind=engine)()
-
+    def _setup_knowledge_bus(self) -> KnowledgeBus:
+        return HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)
+    

@@ -1,15 +1,22 @@
 # stephanie/memory/pattern_store.py
-# stores/pattern_stat_store.py
+from __future__ import annotations
+
 from datetime import datetime
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.pattern_stat import PatternStatORM
 
 
-class PatternStatStore:
+class PatternStatStore(BaseSQLAlchemyStore):
+    orm_model = PatternStatORM
+    default_order_by = PatternStatORM.created_at.desc()
+
     def __init__(self, session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "pattern_stats"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, stats: list[PatternStatORM]):
         """Insert multiple pattern stats at once"""

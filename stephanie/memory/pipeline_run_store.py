@@ -1,19 +1,26 @@
 # stephanie/memory/pipeline_run_store.py
-# stores/pipeline_run_store.py
+from __future__ import annotations
+
 import json
 from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_run import PipelineRunORM
 
 
-class PipelineRunStore:
+class PipelineRunStore(BaseSQLAlchemyStore):
+    orm_model = PipelineRunORM
+    default_order_by = PipelineRunORM.created_at.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "pipeline_runs"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, run_dict: dict) -> int:
         """

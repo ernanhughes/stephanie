@@ -1,14 +1,23 @@
 # stephanie/memory/scorable_rank_store.py
+from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.scorable_rank import ScorableRankORM
 
 
-class ScorableRankStore:
+class ScorableRankStore(BaseSQLAlchemyStore):
+    orm_model = ScorableRankORM
+    default_order_by = ScorableRankORM.created_at
+
     def __init__(self, session: Session, logger=None):
         self.session = session
         self.logger = logger
         self.name = "scorable_ranks"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, data: dict) -> int:
         obj = ScorableRankORM(**data)

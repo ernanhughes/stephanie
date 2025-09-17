@@ -8,12 +8,14 @@ from torch.utils.data import DataLoader, TensorDataset
 from stephanie.evaluator.hypothesis_value_predictor import \
     HypothesisValuePredictor
 from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.scoring.training.base_trainer import BaseTrainer
 
 
-class MRQTrainer:
+class MRQTrainer(BaseTrainer):
     def __init__(
-        self, memory, logger, encoder=None, value_predictor=None, device="cpu"
+        self, cfg, memory, container, logger, encoder=None, value_predictor=None, device="cpu"
     ):
+        self.cfg = cfg
         self.memory = memory
         self.dim = memory.embedding.dim
         self.hdim = memory.embedding.hdim

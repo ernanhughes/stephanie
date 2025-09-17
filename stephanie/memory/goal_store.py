@@ -1,21 +1,25 @@
 # stephanie/memory/goal_store.py
+from __future__ import annotations
 
 from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 
 
-class GoalStore:
+class GoalStore(BaseSQLAlchemyStore):
+    orm_model = GoalORM
+    default_order_by = GoalORM.created_at.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "goals"
 
     def name(self) -> str:
-        return "goals"
+        return self.name
 
     def get_from_text(self, goal_text: str):
         return (

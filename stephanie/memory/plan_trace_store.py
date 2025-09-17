@@ -1,4 +1,6 @@
 # stephanie/memory/plan_trace_store.py
+from __future__ import annotations
+
 import traceback
 from typing import List, Optional
 
@@ -7,23 +9,30 @@ from sqlalchemy.orm import Session
 
 # Import the ORM
 from stephanie.data.plan_trace import PlanTrace
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 from stephanie.models.plan_trace import ExecutionStepORM, PlanTraceORM
 from stephanie.models.plan_trace_reuse_link import PlanTraceReuseLinkORM
 from stephanie.models.plan_trace_revision import PlanTraceRevisionORM
 
 
-class PlanTraceStore:
+class PlanTraceStore(BaseSQLAlchemyStore):
     """
     Store for managing PlanTraceORM objects in the database.
     Provides methods to insert, retrieve, update, and query plan traces.
     """
+    orm_model = PlanTraceORM
+    default_order_by = PlanTraceORM.created_at.desc()
+
     def __init__(self, session: Session, logger=None):
         self.session = session
         self.logger = logger
         self.name = "plan_traces"
         self.table_name = "plan_traces"
 
+    def name(self) -> str:
+        return self.name
+    
     def add(self, plan_trace: PlanTrace) -> int:
         """
         Adds a new PlanTrace to the store.

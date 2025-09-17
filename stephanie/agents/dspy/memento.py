@@ -1,3 +1,4 @@
+# stephanie/agents/dspy/memento.py
 """
 MementoAgent: Case-Based Reasoning with A/B Guardrails and Non-Regression
 
@@ -45,16 +46,13 @@ class MementoAgent(MCTSReasoningAgent):
     All runtime scratch is kept under context["_MEMENTO"].
     """
 
-    def __init__(self, cfg, memory, logger):
-        super().__init__(cfg, memory, logger)
-        self.cfg = cfg
-        self.memory = memory
-        self.logger = logger
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
         # Ranker + (optional) MARS
-        self.ranker = ScorableRanker(cfg, memory, logger)
+        self.ranker = ScorableRanker(cfg, memory, container, logger)
         self.include_mars = cfg.get("include_mars", True)
-        self.mars = MARSCalculator(cfg, memory, logger) if self.include_mars else None
+        self.mars = MARSCalculator(cfg, memory, container, logger) if self.include_mars else None
 
         # Behavior knobs
         self.casebook_tag = cfg.get("casebook_tag", "default")
@@ -482,7 +480,7 @@ class MementoAgent(MCTSReasoningAgent):
                 agent_name=self.__class__.__name__,
                 mars_summary=mars_results,
                 scores=scores_payload,
-                metadata={
+                meta={
                     "pipeline_run_id": context.get(PIPELINE_RUN_ID),
                     "casebook_tag": self._casebook_tag_runtime,
                     "hypothesis_count": len(ranked),
@@ -665,41 +663,26 @@ class MementoAgent(MCTSReasoningAgent):
 
             pairs_for_validation.append({"text_a": pos_text, "text_b": neg_text, "weight": pair_w})
 
-            if hasattr(self.memory, "training_store") and self.memory.training_store:
-                try:
-                    self.memory.training_store.add_pairwise(
-                        model_key=model_key_ranker,
-                        dimension=dimension,
-                        query_text=goal_text,
-                        pos_text=pos_text,
-                        neg_text=neg_text,
-                        weight=pair_w,
-                        trust=neg_w,
-                        goal_id=goal_id,
-                        pipeline_key=pipeline_run_id,
-                        agent_name=agent_name,
-                        source="memento",
-                        meta={"run_id": pipeline_run_id},
-                    )
-                except Exception as e:
-                    self.logger.log("TrainStoreAddPairwiseError", {"error": str(e)})
-            elif hasattr(self.memory, "training_buffers") and self.memory.training_buffers:
-                try:
-                    self.memory.training_buffers.sicql.add_pairwise(
-                        query_text=goal_text,
-                        positives=[pos_text],
-                        negatives=[neg_text],
-                        goal_id=goal_id,
-                        weight=pair_w,
-                        source="memento",
-                    )
-                except Exception as e:
-                    self.logger.log("TrainBuffersPairwiseError", {"error": str(e)})
-
-        # Pointwise: emit positive once, negatives once
-        if hasattr(self.memory, "training_store") and self.memory.training_store:
             try:
-                self.memory.training_store.add_pointwise(
+                self.memory.training_events.add_pairwise(
+                    model_key=model_key_ranker,
+                    dimension=dimension,
+                    query_text=goal_text,
+                    pos_text=pos_text,
+                    neg_text=neg_text,
+                    weight=pair_w,
+                    trust=neg_w,
+                    goal_id=goal_id,
+                    pipeline_run_id=pipeline_run_id,
+                    agent_name=agent_name,
+                    source="memento",
+                    meta={"run_id": pipeline_run_id},
+                )
+            except Exception as e:
+                self.logger.log("TrainStoreAddPairwiseError", {"error": str(e)})
+
+            try:
+                self.memory.training_events.add_pointwise(
                     model_key=model_key_retriever,
                     dimension=dimension,
                     query_text=goal_text,
@@ -708,13 +691,13 @@ class MementoAgent(MCTSReasoningAgent):
                     weight=pos_w,
                     trust=pos_w,
                     goal_id=goal_id,
-                    pipeline_key=pipeline_run_id,
+                    pipeline_run_id=pipeline_run_id,
                     agent_name=agent_name,
                     source="memento",
                     meta={"run_id": pipeline_run_id},
                 )
                 for nt in neg_texts:
-                    self.memory.training_store.add_pointwise(
+                    self.memory.training_events.add_pointwise(
                         model_key=model_key_retriever,
                         dimension=dimension,
                         query_text=goal_text,
@@ -723,44 +706,29 @@ class MementoAgent(MCTSReasoningAgent):
                         weight=0.5,
                         trust=0.0,
                         goal_id=goal_id,
-                        pipeline_key=pipeline_run_id,
+                        pipeline_run_id=pipeline_run_id,
                         agent_name=agent_name,
                         source="memento",
                         meta={"run_id": pipeline_run_id},
                     )
             except Exception as e:
                 self.logger.log("TrainStoreAddPointwiseError", {"error": str(e)})
-        elif hasattr(self.memory, "training_buffers") and self.memory.training_buffers:
-            try:
-                self.memory.training_buffers.mrq.add(
-                    positives=[(goal_text, pos_text)],
-                    negatives=[(goal_text, n) for n in neg_texts],
-                    goal_id=goal_id,
-                    pos_weight=pos_w,
-                    neg_weight=0.5,
-                    source="memento",
-                )
-            except Exception as e:
-                self.logger.log("TrainBuffersPointwiseError", {"error": str(e)})
 
         # Kick controller (validate+maybe-train)
         try:
-            if hasattr(self.memory, "training_controller") and self.memory.training_controller:
-                self.memory.training_controller.maybe_train(goal=goal_id, dimension=dimension, pairs=pairs_for_validation)
+            self.container.get("training").maybe_train(goal=goal_id, dimension=dimension, pairs=pairs_for_validation)
         except Exception as e:
             self.logger.log("TrainingControllerCallFailed", {"error": str(e)})
 
         # Tiny online steps (best-effort)
         try:
-            if hasattr(self.memory, "trainers") and hasattr(self.memory.trainers, "sicql"):
-                steps = int(self.cfg.get("trainer", {}).get("sicql", {}).get("online_steps", 50))
-                self.memory.trainers.sicql.train_step(max_steps=steps)
+            steps = int(self.cfg.get("trainer", {}).get("sicql", {}).get("online_steps", 50))
+            self.container.get("training").trainers["sicql"].train_step(max_steps=steps)
         except Exception:
             pass
         try:
-            if hasattr(self.memory, "trainers") and hasattr(self.memory.trainers, "mrq"):
-                steps = int(self.cfg.get("trainer", {}).get("mrq", {}).get("online_steps", 50))
-                self.memory.trainers.mrq.train_step(max_steps=steps)
+            steps = int(self.cfg.get("trainer", {}).get("mrq", {}).get("online_steps", 50))
+            self.container.get("training").trainers["mrq"].train_step(max_steps=steps)
         except Exception:
             pass
 
