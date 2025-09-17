@@ -345,7 +345,9 @@ class KnowledgeGraphService(Service):
                     return cached_row.results_json
 
             # 3) Miss → do the actual HNSW search
-            raw_results = self._graph.search(embedding_vec, k=k)
+            # 3) Miss → do the actual HNSW search
+            # Prefer tuple adapter if available
+            raw_results = self._graph.search_tuples(embedding_vec, k=k)
 
             # 4) Normalize to JSON-safe tuples (node_id, score, metadata)
             enriched = []

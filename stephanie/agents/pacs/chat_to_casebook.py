@@ -55,7 +55,7 @@ class ChatToCaseBookAgent(BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.limit = cfg.get("limit", 100)
+        self.limit = cfg.get("limit", 1000)
         self.metric = cfg.get("metric", "messages")
         self.granularity = cfg.get("granularity", "turns")
 

@@ -1,6 +1,7 @@
 # stephanie/models/hnsw_index.py
 from __future__ import annotations
 
+import atexit
 import hashlib
 import json
 import logging
@@ -8,7 +9,8 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
+import atexit
+        
 import hnswlib
 import numpy as np
 
@@ -53,7 +55,7 @@ class HNSWIndex:
         self.metadata: List[Dict[str, Any]] = []
         self.entity_key_to_idx: Dict[str, int] = {}
         self.initiated = False
-        
+        self.node_id_to_idx: Dict[str, int] = {}
         # Stats tracking
         self.stats = {
             "total_adds": 0,
@@ -64,6 +66,16 @@ class HNSWIndex:
         }
 
         self._load_index_or_init()
+        #sve on exit
+        atexit.register(self.flush)
+
+    @property
+    def ntotal(self) -> int:
+        return self.index.get_current_count() if self.index is not None else 0
+
+    def all_metadata(self) -> List[Dict[str, Any]]:
+        return list(self.metadata)
+
 
     # ---------- Path handling ----------
     def _normalize_prefix(self, p: str) -> str:
@@ -262,6 +274,21 @@ class HNSWIndex:
                     meta["similarity"] = 1.0 / (1.0 + float(dist))
                 out.append(meta)
         return out
+    
+    def search_tuples(self, query: np.ndarray | List[float], k: int = 10) -> List[Tuple[str, float, Dict[str, Any]]]:
+        """
+        Adapter: return (node_id, score, metadata) tuples for KG callers.
+        - node_id: prefer metadata['node_id'], otherwise fall back to our dedup key
+        - score: prefer calibrated_similarity if present, else similarity
+        """
+        rows = self.search(query, k=k) or []
+        out: List[Tuple[str, float, Dict[str, Any]]] = []
+        for meta in rows:
+            nid = str(meta.get("node_id") or self._get_entity_key(meta))
+            score = float(meta.get("calibrated_similarity", meta.get("similarity", 0.0)))
+            out.append((nid, score, meta))
+        return out
+
 
     # ---------- Save / Load ----------
     def _atomic_json_dump(self, path: str, obj: Any) -> None:
@@ -274,13 +301,17 @@ class HNSWIndex:
         if not self.persistent:
             return False
         now = time.time()
-        if not force and now - self.stats["last_save_time"] < min_interval:
+
+        files_exist = os.path.exists(self.index_bin) and os.path.exists(self.meta_file)
+        first_save = self.stats["save_count"] == 0 or not files_exist
+        must_save = force or first_save
+
+        if not must_save and (now - self.stats["last_save_time"] < min_interval):
             return False
+
         try:
             Path(self.index_prefix).parent.mkdir(parents=True, exist_ok=True)
-            # index
             self.index.save_index(self.index_bin)
-            # metadata + keymap (atomic)
             self._atomic_json_dump(self.meta_file, self.metadata)
             self._atomic_json_dump(self.keymap_file, {k: int(v) for k, v in self.entity_key_to_idx.items()})
             self.stats["last_save_time"] = now
@@ -338,12 +369,26 @@ class HNSWIndex:
             self.index.set_ef(self.ef_search)
 
     # ---------- Convenience ----------
+
+    def _rebuild_keymap(self) -> None:
+        self.entity_key_to_idx = {}
+        self.node_id_to_idx = {}
+        for i, meta in enumerate(self.metadata):
+            key = self._get_entity_key(meta)
+            self.entity_key_to_idx[key] = i
+            nid = meta.get("node_id")
+            if nid:
+                self.node_id_to_idx[str(nid)] = i
+
     def has_metadata(self, key: str) -> bool:
-        """Check if a node/entity with a given key exists (node_id or dedup key)."""
-        if key.startswith("node_id::"):
-            return key in self.entity_key_to_idx
-        # try as node_id
-        if key in self.entity_key_to_idx:
+        # direct node_id hit
+        if key in self.node_id_to_idx:
             return True
-        # try normalized dedup
-        return any(self._get_entity_key(m) == key for m in self.metadata)
+        # "node_id::<id>" form
+        if key.startswith("node_id::") and key in self.entity_key_to_idx:
+            return True
+        # slow fallback
+        return any(
+            m.get("node_id") == key or self._get_entity_key(m) == key
+            for m in self.metadata
+        )

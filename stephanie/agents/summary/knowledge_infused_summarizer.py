@@ -2,17 +2,16 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import math
 import os
 import re
 import time
 import traceback
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+import logging
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.summary.paper_summarizer import \
@@ -21,6 +20,7 @@ from stephanie.knowledge.anti_hallucination import AntiHallucination
 from stephanie.knowledge.figure_grounding import FigureGrounding
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.utils.json_sanitize import sanitize_for_json
+from stephanie.models.strategy import StrategyProfile
 
 # -------------------- Defaults --------------------
 MAX_ITERS_DEFAULT = 5
@@ -37,44 +37,7 @@ CBR_CASES_DEFAULT = 3
 PACS_WEIGHTS_DEFAULT = {"skeptic": 0.34, "editor": 0.33, "risk": 0.33}
 
 
-@dataclass
-class StrategyProfile:
-    """Evolving verification strategy state persisted across runs."""
-
-    verification_threshold: float = 0.90
-    pacs_weights: Dict[str, float] = field(
-        default_factory=lambda: PACS_WEIGHTS_DEFAULT.copy()
-    )
-    strategy_version: int = 1
-    last_updated: float = field(default_factory=time.time)
-
-    def update(self, new_weights: Dict[str, float], new_threshold: float):
-        self.pacs_weights = new_weights
-        self.verification_threshold = new_threshold
-        self.strategy_version += 1
-        self.last_updated = time.time()
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "verification_threshold": self.verification_threshold,
-            "pacs_weights": self.pacs_weights,
-            "strategy_version": self.strategy_version,
-            "last_updated": self.last_updated,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StrategyProfile":
-        return cls(
-            verification_threshold=float(
-                data.get("verification_threshold", 0.90)
-            ),
-            pacs_weights=dict(
-                data.get("pacs_weights", PACS_WEIGHTS_DEFAULT.copy())
-            ),
-            strategy_version=int(data.get("strategy_version", 1)),
-            last_updated=float(data.get("last_updated", time.time())),
-        )
-
+_logger = logging.getLogger(__name__)
 
 class KnowledgeInfusedVerifierAgent(BaseAgent):
     """
@@ -132,6 +95,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         self.kbase = container.get("kbase")  # KnowledgeBaseService
 
         # strategy state (persist across runs)
+        self.strategy_scope = cfg.get("strategy_scope", "track_c")
         self.strategy_store = container.get(
             "strategy"
         )  # StrategyProfileService
@@ -177,7 +141,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         # Prefer service; never assume memory.meta exists
         if getattr(self, "strategy_store", None):
             return self.strategy_store.load(
-                agent_name=self.name, scope="track_c"
+                agent_name=self.name, scope=self.strategy_scope
             )
         # ephemeral fallback (won't persist across runs)
         return StrategyProfile()
@@ -185,9 +149,10 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
     def _save_strategy_profile(self, strategy: StrategyProfile):
         if getattr(self, "strategy_store", None):
             self.strategy_store.save(
-                agent_name=self.name, profile=strategy, scope="track_c"
+                agent_name=self.name, profile=strategy, scope=self.strategy_scope
             )
             self.strategy = strategy
+            self.verification_threshold = strategy.verification_threshold
 
     def _derive_domain(self, paper_data, context):
         doms = context.get("domains") or []
@@ -806,23 +771,29 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             else None,
             "ts": time.time(),
         }
-
-        # Optional: calibration table
+        # Optional: calibration events (soft dependency)
         try:
-            calib = getattr(self.memory, "calibration", None)
-            if calib and hasattr(calib, "add_sample"):
-                calib.add_sample(
-                    domain=domain,
-                    parameters={
-                        "verification_threshold": payload[
-                            "verification_threshold"
-                        ],
-                        "pacs_weights": payload["pacs_weights"],
+            self.memory.calibration_events.add({
+                    "domain": domain or "general",
+                    "query": f"{paper_id}:{domain}",                # any non-null string
+                    "raw_similarity": float(metrics.get("overall", 0.0)),
+                    "is_relevant": bool(float(metrics.get("overall", 0.0)) >= self.min_overall),
+                    "scorable_id": str(paper_id),
+                    "scorable_type": "paper",
+                    "entity_type": "summary_verification",
+                    "features": {
+                        "quality": float(metrics.get("overall", 0.0)),
+                        "knowledge_verification": float(metrics.get("knowledge_verification", 0.0)),
+                        "hrm_score": None if metrics.get("hrm_score") is None else float(metrics["hrm_score"]),
+                        "verification_threshold": float(strategy.verification_threshold),
+                        "pacs_weights": dict(strategy.pacs_weights or {}),
+                        "iterations": int(len(iterations or [])),
+                        "first_iter_score": payload.get("first_iter_score"),
+                        "last_iter_score": payload.get("last_iter_score"),
                     },
-                    outcome={"quality": payload["final_quality"]},
-                )
+                })
         except Exception as e:
-            self.logger.log("CalibrationAddWarn", {"error": str(e)})
+            _logger.error("CalibrationAddWarn", {"error": str(e)})
 
         # Optional: casebook of signals (simple append-only log)
         try:
@@ -860,7 +831,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             if not (casebooks and hasattr(casebooks, "get_by_casebook")):
                 self.logger.log(
                     "TransferAnalyzeSkip", {"reason": "casebooks missing"}
-                )
+                ) All right I want to do one more thing
                 return None
 
             rows = (
@@ -1218,26 +1189,23 @@ Constraints:
 Verified summary:
 """.strip()
 
-    def _verify_against_knowledge_tree(
-        self, summary: str, knowledge_tree: Dict[str, Any]
-    ) -> float:
+    def _verify_against_knowledge_tree(self, summary: str, knowledge_tree: Dict[str, Any]) -> float:
         if not knowledge_tree:
             return 0.5
         claims = knowledge_tree.get("claims", []) or []
         covered = 0
         for claim in claims:
             text = claim.get("text", "")
-            if text and self.metrics_calculator._contains_concept(
-                summary, text
-            ):
+            if text and self.metrics_calculator._contains_concept(summary, text):
                 covered += 1
         claim_coverage = covered / max(1, len(claims))
         rels = knowledge_tree.get("relationships", []) or []
-        strong = [
-            r
-            for r in rels
-            if float(r.get("confidence", 0.0)) >= self.verification_threshold
-        ]
+        if self.strategy:
+            threshold = self.strategy.verification_threshold
+            _logger.info(f"Using strategy threshold: {threshold}")
+        else:
+            threshold = self.verification_threshold
+        strong = [r for r in rels if float(r.get("confidence", 0.0)) >= threshold]
         evidence_strength = len(strong) / max(1, len(rels))
         return (0.7 * claim_coverage) + (0.3 * evidence_strength)
 

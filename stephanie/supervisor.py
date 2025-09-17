@@ -186,7 +186,7 @@ class Supervisor:
 
         self.container.register(
             "strategy",
-            lambda: StrategyProfileService(cfg=cfg, memory=memory, logger=logger, path=".cache/strategy_profiles.json", namespace="track_c")
+            lambda: StrategyProfileService(cfg=cfg, memory=memory, logger=logger, namespace="track_c")
         )
 
     def _create_reward_model(self, cfg, memory, logger):

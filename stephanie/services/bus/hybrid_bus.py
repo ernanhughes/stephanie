@@ -21,10 +21,15 @@ import logging
 from typing import Any, Callable, Dict, Optional
 
 from .bus_protocol import BusProtocol
+from .errors import (
+    BusConnectionError,
+    BusPublishError,
+    BusSubscribeError,
+    BusRequestError,
+)
 from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
-from .nats_bus import NatsKnowledgeBus
-# Note: Redis bus implementation would be imported here when available
+from .nats_bus import NatsKnowledgeBus  # <-- OK now; nats_bus no longer imports hybrid_bus
 
 
 class HybridKnowledgeBus(BusProtocol):
@@ -54,8 +59,8 @@ class HybridKnowledgeBus(BusProtocol):
         self.logger = logger or logging.getLogger(__name__)
         self._bus: Optional[BusProtocol] = None
         self._idem_store = None
-        self._backend = None
-        
+        self._backend: Optional[str] = None
+
     async def connect(self) -> bool:
         """
         Connect to the best available bus backend.
@@ -70,14 +75,14 @@ class HybridKnowledgeBus(BusProtocol):
         """
         bus_config = self.cfg.get("bus", {})
         preferred_backend = bus_config.get("backend")
-        
-        # 1. Try NATS first (preferred for production)
-        if preferred_backend in [None, "nats"]:
+
+        # 1) NATS first (unless explicitly disabled)
+        if preferred_backend in (None, "nats"):
             try:
                 nats_bus = NatsKnowledgeBus(
                     servers=bus_config.get("servers", ["nats://localhost:4222"]),
                     stream=bus_config.get("stream", "stephanie"),
-                    logger=self.logger
+                    logger=self.logger,
                 )
                 if await nats_bus.connect():
                     self._bus = nats_bus
@@ -86,98 +91,67 @@ class HybridKnowledgeBus(BusProtocol):
                     self.logger.info("Connected to NATS JetStream bus")
                     return True
             except Exception as e:
-                self.logger.warning(f"NATS connection failed: {str(e)}")
-                
-        # 2. Try Redis if configured (implementation needed)
-        if preferred_backend == "redis":
-            self.logger.warning("Redis bus backend not yet implemented")
-            # Redis bus implementation would go here
-            
+                self.logger.warning(f"NATS connection failed: {e}")
+
+        # 2) (Optional) Redis would go here
+
         # 3. Fall back to in-process (for development)
         try:
-            inprocess_bus = InProcessKnowledgeBus(logger=self.logger)
-            if await inprocess_bus.connect():
-                self._bus = inprocess_bus
+            inproc = InProcessKnowledgeBus(logger=self.logger)
+            if await inproc.connect():
+                self._bus = inproc
                 self._backend = "inprocess"
-                self._idem_store = inprocess_bus.idempotency_store
-                self.logger.info("Connected to in-process event bus (development mode)")
+                self._idem_store = inproc.idempotency_store
+                self.logger.info("Connected to in-process event bus (dev mode)")
                 return True
         except Exception as e:
-            self.logger.error(f"In-process bus failed: {str(e)}")
-            
+            self.logger.error(f"In-process bus failed: {e}")
+
         self.logger.error("No bus backend available")
         return False
-        
+
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
         """Publish an event with standard envelope."""
         if not self._bus and not await self.connect():
-            self.logger.error("Cannot publish - no bus connection available")
-            return
-                
+            raise BusConnectionError("No bus connection available")
         try:
             await self._bus.publish(subject, payload)
         except Exception as e:
-            self.logger.error(f"Failed to publish to {subject}: {str(e)}")
+            self.logger.error(f"Failed to publish to {subject}: {e}")
             raise BusPublishError(f"Failed to publish to {subject}") from e
-        
+
     async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], None]) -> None:
         """Subscribe to events with idempotency handling."""
         if not self._bus and not await self.connect():
-            self.logger.error("Cannot subscribe - no bus connection available")
-            return
-                
+            raise BusConnectionError("No bus connection available")
         try:
             await self._bus.subscribe(subject, handler)
         except Exception as e:
-            self.logger.error(f"Failed to subscribe to {subject}: {str(e)}")
+            self.logger.error(f"Failed to subscribe to {subject}: {e}")
             raise BusSubscribeError(f"Failed to subscribe to {subject}") from e
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         """Send a request and wait for a reply."""
         if not self._bus and not await self.connect():
-            self.logger.error("Cannot send request - no bus connection available")
-            return None
-                
+            raise BusConnectionError("No bus connection available")
         try:
             return await self._bus.request(subject, payload, timeout)
         except Exception as e:
-            self.logger.error(f"Request failed for {subject}: {str(e)}")
-            return None
-        """Gracefully shut down the connection."""
+            self.logger.error(f"Request failed for {subject}: {e}")
+            raise BusRequestError(f"Request failed for {subject}") from e
+
+    async def close(self) -> None:
+        """<<< This was missing, causing the ABC error >>>"""
         if self._bus:
             try:
                 await self._bus.close()
                 self.logger.info("Bus connection closed")
             except Exception as e:
-                self.logger.error(f"Error during bus shutdown: {str(e)}")
-            
+                self.logger.error(f"Error during bus shutdown: {e}")
+
     def get_backend(self) -> str:
-        """Return the active backend name."""
         return self._backend or "none"
-        
+
     @property
     def idempotency_store(self):
-        """Access the idempotency store for this bus."""
-        if not self._idem_store:
-            # Fallback to in-memory if nothing else is available
-            return InMemoryIdempotencyStore()
-        return self._idem_store
-
-
-# Custom exceptions for better error handling
-class BusError(Exception):
-    """Base exception for all bus-related errors."""
-    pass
-
-class BusPublishError(BusError):
-    """Raised when message publishing fails."""
-    pass
-
-class BusSubscribeError(BusError):
-    """Raised when subscription fails."""
-    pass
-
-class BusConnectionError(BusError):
-    """Raised when connection to bus backend fails."""
-    pass
-
+        return self._idem_store or InMemoryIdempotencyStore()

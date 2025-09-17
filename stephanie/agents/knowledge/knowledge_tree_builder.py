@@ -67,9 +67,7 @@ import torch
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.knowledge.casebook_store import CaseBookStore
-from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
-from stephanie.scoring.scorable_factory import TargetType
 
 # Constants from the new analysis
 _MIN_INSIGHT_SCORE = 0.70

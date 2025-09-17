@@ -21,8 +21,8 @@ Usage:
     classifier = ScorableClassifier(memory, logger)
     domains = classifier.classify(text, top_k=3, context=goal_context)
 """
+from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -35,12 +35,9 @@ import yaml
 from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.services.bus.bus_protocol import BusProtocol
-from stephanie.services.bus.idempotency import (IdempotencyStore,
-                                                InMemoryIdempotencyStore)
+from stephanie.services.bus.idempotency import InMemoryIdempotencyStore
 
 _logger = logging.getLogger(__name__)
-
-# ... existing imports ...
 
 
 class ScorableClassifier:
@@ -417,6 +414,7 @@ class ScorableClassifier:
         centroids = {}
         total_seeds = 0
         
+        start = time.time()
         self.logger.log("CentroidCalculationStart", {
             "message": "Starting centroid calculation for all domains"
         })
@@ -447,6 +445,7 @@ class ScorableClassifier:
                 })
         
         self.logger.log("CentroidCalculationComplete", {
+            
             "total_domains": len(centroids),
             "total_seeds": total_seeds,
             "message": "Completed centroid calculation for all domains"
