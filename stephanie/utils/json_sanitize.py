@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any, Mapping, Iterable
-from datetime import date, datetime 
+from datetime import date, datetime
+from typing import Any, Iterable, Mapping
+
 import numpy as np
 
 

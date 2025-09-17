@@ -48,9 +48,6 @@ class MementoAgent(MCTSReasoningAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.cfg = cfg
-        self.memory = memory
-        self.logger = logger
 
         # Ranker + (optional) MARS
         self.ranker = ScorableRanker(cfg, memory, container, logger)

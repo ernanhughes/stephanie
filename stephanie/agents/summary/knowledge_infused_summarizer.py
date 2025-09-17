@@ -1,26 +1,26 @@
 # stephanie/agents/summary/knowledge_infused_summarizer.py
 from __future__ import annotations
 
-import inspect
 import asyncio
+import inspect
 import json
+import math
 import os
 import re
 import time
 import traceback
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
-import math
+
 import numpy as np
 
-from stephanie.utils.json_sanitize import sanitize_for_json
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.summary.paper_summarizer import (
-    SimplePaperSummarizerAgent,
-)
+from stephanie.agents.summary.paper_summarizer import \
+    SimplePaperSummarizerAgent
 from stephanie.knowledge.anti_hallucination import AntiHallucination
 from stephanie.knowledge.figure_grounding import FigureGrounding
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.utils.json_sanitize import sanitize_for_json
 
 # -------------------- Defaults --------------------
 MAX_ITERS_DEFAULT = 5

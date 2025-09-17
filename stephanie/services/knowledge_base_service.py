@@ -4,15 +4,14 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
 import threading
+import time
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from stephanie.services.service_protocol import Service
-
 
 # --------------------------- Datamodel ---------------------------
 

@@ -163,7 +163,8 @@ class Supervisor:
             lambda: KnowledgeGraphService(cfg, memory, logger),
             dependencies=[]
         )
-        # Knowledge Graph service
+
+        # Knowledge Base service
         self.container.register(
             "kbase",
             lambda: KnowledgeBaseService(cfg, memory, logger),
@@ -182,7 +183,6 @@ class Supervisor:
             lambda: CBRService(cfg, memory, self.container, logger),
             dependencies=[]
         )
-
 
         self.container.register(
             "strategy",

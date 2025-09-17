@@ -27,13 +27,13 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class AgentScorerAgent(BaseAgent):
-    def __init__(self, cfg, memory, log):
+    def __init__(self, cfg, memory, container, logger):
         super().__init__(
-            cfg.get("agents", {}).get("agent_scorer", {}), memory, log
+            cfg.get("agents", {}).get("agent_scorer", {}), memory, container=container, logger=logger
         )
         self.dimensions = self.cfg.get(
             "dimensions",
@@ -54,11 +54,11 @@ class AgentScorerAgent(BaseAgent):
 
         # Components
         self.mars_calculator = MARSCalculator(
-            dimension_config, self.memory, self.logger
+            dimension_config, self.memory, self.container, self.logger
         )
-        self.ranker = ScorableRanker(cfg, memory, log)
+        self.ranker = ScorableRanker(cfg, memory, self.container, logger)
 
-        logger.debug(
+        _logger.debug(
             f"AgentScorerInitialized: "
             f"enabled_scorers={self.enabled_scorers}, "
             f"include_mars={self.include_mars}, "
@@ -146,7 +146,7 @@ class AgentScorerAgent(BaseAgent):
                 },
             )
 
-            logger.info(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
+            _logger.info(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
             return context
 
         except Exception as e:

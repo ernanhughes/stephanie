@@ -45,7 +45,7 @@ class PlanTraceScorerAgent(BaseAgent):
         self.scorers = self._initialize_scorers()
         
         # Initialize MARS calculator
-        self.mars_calculator = MARSCalculator(cfg.get("mars", {}), self.memory, self.logger)
+        self.mars_calculator = MARSCalculator(cfg.get("mars", {}), self.memory, self.container, self.logger)
 
         # Pattern extraction parameters
         self.high_agreement_threshold = self.cfg.get("high_agreement_threshold", 0.8)
@@ -67,27 +67,27 @@ class PlanTraceScorerAgent(BaseAgent):
 
         if "svm" in self.enabled_scorers:
             scorers["svm"] = SVMScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "mrq" in self.enabled_scorers:
             scorers["mrq"] = MRQScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "sicql" in self.enabled_scorers:
             scorers["sicql"] = SICQLScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "ebt" in self.enabled_scorers:
             scorers["ebt"] = EBTScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "hrm" in self.enabled_scorers:
             scorers["hrm"] = HRMScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
         if "contrastive_ranker" in self.enabled_scorers:
             scorers["contrastive_ranker"] = ContrastiveRankerScorer(
-                self.cfg, memory=self.memory, logger=self.logger
+                self.cfg, memory=self.memory, container=self.container, logger=self.logger
             )
 
         return scorers

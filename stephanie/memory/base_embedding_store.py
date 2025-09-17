@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-import logging
 
 from stephanie.memory import BaseStore
 from stephanie.utils.lru_cache import SimpleLRUCache
@@ -148,7 +148,7 @@ class BaseEmbeddingStore(BaseStore):
                     embedding_id = row[0]
             self.conn.commit()
         except Exception as e:
-            self.logger and self.logger.log("EmbeddingInsertFailed", {"error": str(e)})
+            _logger.error(f"EmbeddingInsertFailed error: {str(e)}")
 
         # Fall back: lookup id if INSERT didn't return
         if embedding_id is None:
@@ -343,7 +343,7 @@ class BaseEmbeddingStore(BaseStore):
                         metas = [m for m in (idx.all_metadata() or []) if m.get("text")]
                         if metas:
                             try:
-                                from rapidfuzz import process, fuzz
+                                from rapidfuzz import fuzz, process
                                 choices = [m.get("text") for m in metas]
                                 top = process.extract(q, choices, scorer=fuzz.token_set_ratio, limit=min(5, max(1, top_k)))
                                 mapped = []
@@ -507,7 +507,8 @@ class BaseEmbeddingStore(BaseStore):
 
     def _get_current_domain(self, query: str) -> str:
         if not hasattr(self, "_domain_classifier"):
-            from stephanie.analysis.scorable_classifier import ScorableClassifier
+            from stephanie.analysis.scorable_classifier import \
+                ScorableClassifier
             self._domain_classifier = ScorableClassifier(
                 memory=self.memory,
                 logger=self.logger,
