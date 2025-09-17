@@ -1,4 +1,6 @@
 # stephanie/memory/hnet_embedding_store.py
+from __future__ import annotations
+
 from stephanie.memory.base_embedding_store import BaseEmbeddingStore
 from stephanie.tools import get_embedding
 

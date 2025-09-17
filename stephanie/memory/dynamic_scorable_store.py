@@ -1,18 +1,26 @@
 # stephanie/memory/dynamic_scorable_store.py
+from __future__ import annotations
+
 from typing import List, Optional
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.dynamic_scorable import DynamicScorableORM
 
 
-class DynamicScorableStore:
+class DynamicScorableStore(BaseSQLAlchemyStore):
+    orm_model = DynamicScorableORM
+    default_order_by = DynamicScorableORM.created_at.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "dynamic_scorables"
 
+    def name(self) -> str:
+        return self.name
+    
     def add(
         self,
         pipeline_run_id: str,

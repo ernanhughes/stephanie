@@ -1,24 +1,31 @@
+# stephanie/memory/scorable_domain_store.py
+from __future__ import annotations
 import logging
 from typing import List
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.scorable_domain import ScorableDomainORM
 
 logger = logging.getLogger(__name__)    
 
 
-class ScorableDomainStore:
+class ScorableDomainStore(BaseSQLAlchemyStore):
     """
     Store for domain classifications linked to any Scorable
     (documents, plan_traces, prompts, etc.)
     """
+    orm_model = ScorableDomainORM
+    default_order_by = ScorableDomainORM.created_at
 
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "scorable_domains"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, data: dict) -> ScorableDomainORM:
         """

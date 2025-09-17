@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.training_event import TrainingEventORM
 
 
@@ -15,11 +16,17 @@ def _sha1(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
 
-class TrainingEventStore:
+class TrainingEventStore(BaseSQLAlchemyStore):
+    orm_model = TrainingEventORM
+    default_order_by = TrainingEventORM.created_at
+
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "training_events"
+
+    def name(self) -> str:
+        return self.name
 
     # ---- Emitters -----------------------------------------------------------
     def add_pairwise(

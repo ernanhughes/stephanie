@@ -1,19 +1,28 @@
 # stephanie/memory/score_attribute_store.py
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.score import ScoreORM
 from stephanie.models.score_attribute import ScoreAttributeORM
 
 
-class ScoreAttributeStore:
+class ScoreAttributeStore(BaseSQLAlchemyStore):
+    orm_model = ScoreAttributeORM
+    default_order_by = ScoreAttributeORM.created_at
+
     def __init__(self, session: Session, logger=None):
         self.session = session
         self.logger = logger
         self.name = "score_attributes"
         self.table_name = "score_attributes"
+
+    def name(self) -> str:
+        return self.name
 
     def add_attribute(self, attribute: ScoreAttributeORM) -> ScoreAttributeORM:
         """Add a single score attribute to the database"""

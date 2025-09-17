@@ -1,16 +1,22 @@
 # stephanie/memory/sharpening_store.py
-# stores/sharpening_store.py
+from __future__ import annotations
+
 from sqlalchemy.orm import Session
 
-from stephanie.models import PromptORM
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.sharpening_prediction import SharpeningPredictionORM
 
 
-class SharpeningStore:
+class SharpeningStore(BaseSQLAlchemyStore):
+    orm_model = SharpeningPredictionORM
+    default_order_by = SharpeningPredictionORM.created_at
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "sharpening"
+
+    def name(self) -> str:
+        return self.name
 
     def insert_sharpening_prediction(self, prediction_dict: dict):
         """

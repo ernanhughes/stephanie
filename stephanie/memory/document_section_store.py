@@ -1,13 +1,21 @@
 # stephanie/memory/document_section_store.py
+from __future__ import annotations
+
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.document_section import DocumentSectionORM
 
 
-class DocumentSectionStore:
+class DocumentSectionStore(BaseSQLAlchemyStore):
+    orm_model = DocumentSectionORM
+    default_order_by = DocumentSectionORM.id.desc()
+    
     def __init__(self, session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "document_sections"
 
+    def name(self) -> str:
+        return self.name
+    
     def insert(self, section_dict):
         section = DocumentSectionORM(**section_dict)
         self.session.add(section)

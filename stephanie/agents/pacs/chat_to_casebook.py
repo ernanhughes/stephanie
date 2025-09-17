@@ -77,22 +77,8 @@ class ChatToCaseBookAgent(BaseAgent):
         except Exception:
             pass
 
-    def _case_count(self, casebook_id: int) -> int:
-        """
-        Best-effort count of existing cases in a casebook.
-        Works with either count_cases(...) or get_cases(...).
-        """
-        try:
-            if hasattr(self.memory.casebooks, "count_cases"):
-                return int(self.memory.casebooks.count_cases(casebook_id) or 0)
-            if hasattr(self.memory.casebooks, "get_cases"):
-                cases = self.memory.casebooks.get_cases(casebook_id) or []
-                return len(cases)
-        except Exception:
-            pass
-        return 0
-
     async def run(self, context: dict) -> dict:
+
         goal = context.get(GOAL, {})
         self.report({
             "event": "start",
@@ -175,7 +161,7 @@ class ChatToCaseBookAgent(BaseAgent):
         self.report({"event": "casebook_created", "conversation_id": conv.id, "casebook_id": cb.id, "title": conv.title})
 
         # Gate 2: if this casebook already has cases, skip conversion
-        existing = self._case_count(cb.id)
+        existing = self.memory.casebooks.count_cases(cb.id)
         if existing > 0:
             self.report({
                 "event": "skip_already_converted",

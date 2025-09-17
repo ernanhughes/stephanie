@@ -1,23 +1,31 @@
+# stephanie/memory/scorable_embedding_store.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.scorable_embedding import ScorableEmbeddingORM
 from stephanie.scoring.scorable import Scorable
 
 
-class ScorableEmbeddingStore:
+class ScorableEmbeddingStore(BaseSQLAlchemyStore):
     """
     Store for embeddings linked to any Scorable
     (documents, plan_traces, prompts, responses, etc.).
     """
+    orm_model = ScorableEmbeddingORM
+    default_order_by = ScorableEmbeddingORM.created_at
 
     def __init__(self, session: Session, logger=None, embedding=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "scorable_embeddings"
         self.embedding = embedding
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, data: dict) -> int:
         """

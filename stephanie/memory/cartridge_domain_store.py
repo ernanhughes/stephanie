@@ -1,15 +1,23 @@
 # stephanie/memory/cartridge_domain_store.py
+from __future__ import annotations
+
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.cartridge_domain import CartridgeDomainORM
 
 
-class CartridgeDomainStore:
+class CartridgeDomainStore(BaseSQLAlchemyStore):
+    orm_model = CartridgeDomainORM
+    default_order_by = CartridgeDomainORM.id.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "cartridge_domains"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, data: dict) -> CartridgeDomainORM:
         """

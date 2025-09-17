@@ -3,6 +3,7 @@
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.cartridge_domain import CartridgeDomainORM
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.evaluation import EvaluationORM
@@ -10,11 +11,16 @@ from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable_factory import TargetType
 
 
-class CartridgeTripleStore:
+class CartridgeTripleStore(BaseSQLAlchemyStore):
+    orm_model = CartridgeTripleORM
+    default_order_by = CartridgeTripleORM.id.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "cartridge_triples"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, data: dict) -> CartridgeTripleORM:
         """

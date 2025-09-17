@@ -1,17 +1,25 @@
 # stephanie/memory/prompt_program_store.py
+from __future__ import annotations
+
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.prompt import PromptProgramORM
 
 
-class PromptProgramStore:
+class PromptProgramStore(BaseSQLAlchemyStore):
+    orm_model = PromptProgramORM
+    default_order_by = PromptProgramORM.version.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "prompt_programs"
         self.table_name = "prompt_programs"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, prompt_dict: dict) -> PromptProgramORM:
         prompt = PromptProgramORM(**prompt_dict)

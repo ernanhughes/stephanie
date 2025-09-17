@@ -1,4 +1,6 @@
 # stephanie/memory/memcube_store.py
+from __future__ import annotations
+
 import json
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,6 +13,7 @@ from stephanie.memcubes.memcube_factory import MemCubeFactory
 
 
 class MemcubeStore:
+
     def __init__(self, session: Session, logger=None):
         self.session = session
         self.logger = logger

@@ -28,6 +28,7 @@ class BaseSQLAlchemyStore(BaseStore):
     def __init__(self, session: Session, logger=None):
         super().__init__(db=session, logger=logger)
         self.session: Session = session
+        self.logger = logger
         assert self.orm_model is not None, "Subclasses must set orm_model"
 
     # -------- Standard APIs --------

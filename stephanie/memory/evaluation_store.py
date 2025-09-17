@@ -1,5 +1,6 @@
 # stephanie/memory/evaluation_store.py
-# stores/score_store.py
+from __future__ import annotations
+
 import json
 from datetime import datetime
 from typing import Optional
@@ -7,6 +8,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from stephanie.data.score_bundle import ScoreBundle
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models import RuleApplicationORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.evaluation_rule_link import EvaluationRuleLinkORM
@@ -16,12 +18,17 @@ from stephanie.models.score_attribute import ScoreAttributeORM
 from stephanie.scoring.scorable import Scorable
 
 
-class EvaluationStore:
+class EvaluationStore(BaseSQLAlchemyStore):
+    orm_model = EvaluationORM
+    default_order_by = EvaluationORM.created_at.desc()
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)   
         self.name = "evaluations"
         self.table_name = "evaluations"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, evaluation: EvaluationORM):
         """

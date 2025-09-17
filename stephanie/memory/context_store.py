@@ -1,4 +1,5 @@
 # stephanie/memory/context_store.py
+from __future__ import annotations
 
 import json
 import os
@@ -8,18 +9,25 @@ from typing import Optional
 import yaml
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.context_state import ContextStateORM
 
 
-class ContextStore:
+class ContextStore(BaseSQLAlchemyStore):
+    orm_model = ContextStateORM
+    default_order_by = ContextStateORM.timestamp.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "context"
         self.dump_dir = logger.log_path if logger else None
         if self.dump_dir:
             self.dump_dir = os.path.dirname(self.dump_dir)
 
+
+    def name(self) -> str:
+        return self.name
+    
     def save(
         self,
         run_id: str,

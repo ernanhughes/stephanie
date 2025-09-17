@@ -1,11 +1,20 @@
+# stephanie/memory/goal_dimensions_store.py
+from __future__ import annotations
+
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.goal_dimension import GoalDimensionORM
 
 
-class GoalDimensionsStore:
+class GoalDimensionsStore(BaseSQLAlchemyStore):
+    orm_model = GoalDimensionORM
+    default_order_by = GoalDimensionORM.rank.asc()
+
     def __init__(self, session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "goal_dimensions"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, row: dict) -> GoalDimensionORM:
         obj = GoalDimensionORM(**row)

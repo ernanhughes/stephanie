@@ -1,4 +1,5 @@
 # stephanie/memory/calibration_event_store.py
+from __future__ import annotations
 
 import datetime
 import os
@@ -9,6 +10,7 @@ from sqlalchemy import case, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.calibration import CalibrationEventORM
 
 
@@ -44,20 +46,22 @@ def _as_bool(x, default: bool = False) -> bool:
         return default
 
 
-class CalibrationEventStore:
+class CalibrationEventStore(BaseSQLAlchemyStore):
     """
     Store for CalibrationEventORM.
     Provides persistence and query methods for calibration events.
     """
+    orm_model = CalibrationEventORM
+    default_order_by = CalibrationEventORM.timestamp.desc()
 
     def __init__(self, session: Session, logger=None, model_dir: str = "data/calibration"):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "calibration_events"
-        self.session = session
-        self.logger = logger
         self.model_dir = model_dir
         os.makedirs(self.model_dir, exist_ok=True)
+
+    def name(self) -> str:
+        return self.name    
 
     def add(self, event: Union[CalibrationEventORM, Mapping]) -> CalibrationEventORM:
         """

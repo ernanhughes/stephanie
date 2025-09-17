@@ -1,19 +1,27 @@
 # stephanie/memory/rule_effect_store.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.rule_application import RuleApplicationORM
 
 
-class RuleEffectStore:
+class RuleEffectStore(BaseSQLAlchemyStore):
+    orm_model = RuleApplicationORM
+    default_order_by = RuleApplicationORM.applied_at
+
     def __init__(self, db: Session, logger=None):
-        self.db = db
-        self.logger = logger
+        super().__init__(db, logger)
         self.name = "rule_effects"
         self.table_name = "rule_applications"
 
+    def name(self) -> str:
+        return self.name
+    
     def insert(
         self,
         rule_id: int,

@@ -1,9 +1,12 @@
 # stephanie/memory/pipeline_reference_store.py
+from __future__ import annotations
+
 import logging
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_reference import PipelineReferenceORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory
@@ -11,11 +14,16 @@ from stephanie.scoring.scorable_factory import ScorableFactory
 logger = logging.getLogger(__name__)
 
 
-class PipelineReferenceStore:
+class PipelineReferenceStore(BaseSQLAlchemyStore):
+    orm_model = PipelineReferenceORM
+    default_order_by = PipelineReferenceORM.created_at.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "pipeline_references"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, reference_dict: dict) -> int:
         """

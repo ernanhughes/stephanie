@@ -1,21 +1,28 @@
 # stephanie/memory/mrq_store.py
-# stores/mrq_store.py
+from __future__ import annotations
+
 import json
 from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models import (MRQMemoryEntryORM, MRQPreferencePairORM,
                               ReflectionDeltaORM)
 
 
-class MRQStore:
+class MRQStore(BaseSQLAlchemyStore):
+    orm_model = MRQMemoryEntryORM
+    default_order_by = MRQMemoryEntryORM.created_at.desc()
+    
     def __init__(self, cfg: dict, session: Session, logger=None):
-        self.db = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "mrq"
         self.cfg = cfg
+
+    def name(self) -> str:
+        return self.name
 
     def log_evaluations(self):
         return self.cfg.get("log_evaluations", True)

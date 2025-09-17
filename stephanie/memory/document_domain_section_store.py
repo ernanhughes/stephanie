@@ -2,15 +2,21 @@
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.document_section_domain import DocumentSectionDomainORM
 
 
-class DocumentSectionDomainStore:
+class DocumentSectionDomainStore(BaseSQLAlchemyStore):
+    orm_model = DocumentSectionDomainORM
+    default_order_by = DocumentSectionDomainORM.id.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "document_section_domains"
 
+    def name(self) -> str:
+        return self.name
+    
     def insert(self, data: dict) -> DocumentSectionDomainORM:
         """
         Insert or update a domain classification entry for a document section.

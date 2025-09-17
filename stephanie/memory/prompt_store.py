@@ -1,5 +1,6 @@
 # stephanie/memory/prompt_store.py
-# stores/prompt_store.py
+from __future__ import annotations
+
 import json
 import re
 from difflib import SequenceMatcher
@@ -9,15 +10,21 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import dialect
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 from stephanie.models.prompt import PromptORM
 
 
-class PromptStore:
+class PromptStore(BaseSQLAlchemyStore):
+    orm_model = PromptORM
+    default_order_by = PromptORM.timestamp.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "prompts"
+
+    def name(self) -> str:
+        return self.name
 
     def get_or_create_goal(
         self,

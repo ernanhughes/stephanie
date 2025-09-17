@@ -1,20 +1,28 @@
 # stephanie/memory/symbolic_rule_store.py
+from __future__ import annotations
+
 from typing import List
 
 import yaml
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.symbolic_rule import SymbolicRuleORM
 
 
-class SymbolicRuleStore:
+class SymbolicRuleStore(BaseSQLAlchemyStore):
+    orm_model = SymbolicRuleORM
+    default_order_by = SymbolicRuleORM.created_at
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "symbolic_rules"
         self.table_name = "symbolic_rules"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, rule: SymbolicRuleORM):
         self.session.add(rule)

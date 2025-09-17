@@ -1,30 +1,37 @@
 # stephanie/memory/scorable_entity_store.py
+from __future__ import annotations
+
 import logging
 from typing import List
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
 from stephanie.models.scorable_entity import ScorableEntityORM
 
 logger = logging.getLogger(__name__)
 
 
-class ScorableEntityStore:
+class ScorableEntityStore(BaseSQLAlchemyStore):
     """
     Store for named entities linked to any Scorable
     (documents, plan_traces, prompts, etc.)
     """
+    orm_model = ScorableEntityORM
+    default_order_by = ScorableEntityORM.created_at
 
     def __init__(self, session: Session, memory, logger=None):
-        self.session = session
+        super().__init__(session, logger)
         self.memory = memory
-        self.logger = logger or logging.getLogger(__name__)
         self.name = "scorable_entities"
 
         # Shared retriever (backed by memory.embedding)
         self.retriever = NERRetrieverEmbedder(memory=memory, logger=self.logger)
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, data: dict) -> ScorableEntityORM:
         """

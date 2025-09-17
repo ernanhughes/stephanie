@@ -1,12 +1,14 @@
 # stephanie/memory/casebook_store.py
+from __future__ import annotations
+
 import hashlib
-# stephanie/memory/casebook_store.py
 import uuid
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query, Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.case_goal_state import CaseGoalStateORM
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 from stephanie.models.dynamic_scorable import DynamicScorableORM
@@ -14,14 +16,19 @@ from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable_factory import TargetType
 
 
-class CaseBookStore:
+class CaseBookStore(BaseSQLAlchemyStore):
+    orm_model = CaseBookORM
+    default_order_by = CaseBookORM.id.desc()
+    
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "casebooks"
 
+    def name(self) -> str:
+        return self.name
+    
     def get_by_name(self, name: str):
-        return self.session.query(CaseBookORM).filter_by(name=name).one_or_none()
+        return self.session.query(CaseBookORM).filter_by(name=name).first()
 
     def ensure_casebook(self, name: str, description: str = "", tag: str = "", meta: dict = None) -> CaseBookORM:
         cb = self.get_by_name(name)
@@ -38,6 +45,8 @@ class CaseBookStore:
         self.session.commit()
         return cb
 
+    def count_cases(self, casebook_id: int) -> int:
+        return self.session.query(func.count(CaseORM.id)).filter_by(casebook_id=casebook_id).scalar() or 0
 
     def _apply_json_meta_filter(self, q: Query, column, meta_filter: Optional[Dict]) -> Tuple[Query, bool]:
         """

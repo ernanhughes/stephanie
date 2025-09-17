@@ -1,13 +1,17 @@
 # stephanie/memory/search_result_store.py
-# stores/search_result_store.py
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from stephanie.memory import BaseStore
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.search_result import SearchResultORM
 
 
-class SearchResultStore(BaseStore):
+class SearchResultStore(BaseSQLAlchemyStore):
+    orm_model = SearchResultORM
+    default_order_by = SearchResultORM.created_at
+
     def __init__(self, session, logger):
         super().__init__(session, logger)
         self.name = "search_results"

@@ -1,15 +1,24 @@
+# stephanie/memory/report_store.py
+from __future__ import annotations
+
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.report import ReportORM
 
 
-class ReportStore:
+class ReportStore(BaseSQLAlchemyStore):
+    orm_model = ReportORM
+    default_order_by = ReportORM.created_at
+
     def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+        super().__init__(session, logger)
         self.name = "reports"
+
+    def name(self) -> str:
+        return self.name
 
     def insert(self, run_id, goal, summary, path=None, content=None) -> ReportORM:
         try:
