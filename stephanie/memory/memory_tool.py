@@ -187,9 +187,6 @@ class MemoryTool:
             for store_class in cfg.get("extra_stores", []):
                 self.register_store(store_class(self.session, logger))
 
-        self.logger.log("KnowledgeBusInitialized", {
-            "backend": self.cfg.get("bus", {}).get("backend", "inprocess")
-        })
 
 
     def register_store(self, store):
@@ -250,5 +247,7 @@ class MemoryTool:
                 )
 
     def _setup_knowledge_bus(self) -> KnowledgeBus:
-        return HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)
+        bus = HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)
+        self.logger.log("KnowledgeBusInitialized", {"type": bus.get_backend()})
+        return bus
     

@@ -3,63 +3,36 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple
-
-import numpy as np
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from stephanie.services.service_protocol import Service
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
+from stephanie.constants import INCLUDE_MARS
 
 
-# ---------- small utils ----------
-def _cos(a: np.ndarray, b: np.ndarray) -> float:
-    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
-    if na == 0.0 or nb == 0.0:
-        return 0.0
-    return float(np.dot(a, b) / (na * nb))
-
-def _safe_text(x: Any) -> str:
-    if x is None:
-        return ""
-    if isinstance(x, str):
-        return x
-    try:
-        return str(x)
-    except Exception:
-        return ""
-
-
+# ---- Public view of a case (normalized) ----
 @dataclass
-class _CaseView:
-    """Uniform view over different case/scorable shapes."""
+class CaseView:
     id: Any
     goal_text: str
     summary: str
     lessons: str
     winner_rationale: str
-    raw: Any
-    score: Optional[float] = None   # similarity score if provided by retriever
+    score: Optional[float] = None
+    casebook_name: Optional[str] = None
+
+
+LLMFn = Callable[[str, Dict[str, Any] | None], str]
 
 
 class CBRService(Service):
     """
-    Case-based retrieval that prefers the *dense retriever* path:
-
-        memory.embedding.search_related_scorables(
-            goal_text, top_k=pool_k, include_ner=..., target_type=...
-        )
-
-    Falls back to:
-      1) store-native search_* methods if present
-      2) full scan + cosine similarity
-
-    Output items are normalized so your agent’s `_retrieve_case_pack` can do:
-
-        for c in cbr.retrieve(...):
-            pack.append({
-               "title": c["goal_text"],
-               "why_it_won": c["scores"]["winner_rationale"],
-               "patch": c["lessons"],
-            })
+    Case-Book Based Reasoning:
+      R1) RETRIEVE  cases from the paper/blog casebook (fallback: global embedding search)
+      R2) REUSE    (adapt) best cases to the new goal using the LLM
+      R3) REVISE   score + iterate (simple loop now; MCTS hook included)
+      R4) RETAIN   persist the new best case back into the casebook
     """
 
     def __init__(self, cfg, memory, container, logger):
@@ -69,35 +42,32 @@ class CBRService(Service):
         self.logger = logger
         self._initialized = False
 
-        # deps
-        self.cb = getattr(memory, "casebooks", None)
-        self.embed = getattr(memory, "embedding", None)
-
-        # knobs
         c = self.cfg.get("cbr", {}) or {}
         self.pool_k = int(c.get("pool_k", 64))
-        self.include_ner = bool(c.get("include_ner", False))
-        self.target_type = c.get("target_type", "case")  # str | list[str] | None
-        self.max_pool = int(c.get("max_pool", 10000))
         self.min_text_len = int(c.get("min_text_len", 8))
+        self.adapt_iters = int(c.get("adapt_iters", 1))   # keep small; agent already iterates
+        self.top_k_default = int(c.get("top_k", 5))
+
+        # LLM adapter
+        self.llm = container.get("llm") 
+
+        # scoring
+        self.scorer = container.get("scoring") 
+
+        self.mars = MARSCalculator(cfg, memory, self.container, logger) if cfg.get(INCLUDE_MARS, True) else None
 
     # --- Service protocol ---
     def initialize(self, **kwargs) -> None:
         self._initialized = True
-        try:
-            self.logger and self.logger.log("CBRServiceInit", {"status": "ok", "mode": "dense-first"})
-        except Exception:
-            pass
+        if self.logger:
+            self.logger.log("CBRv2Init", {"pool_k": self.pool_k, "adapt_iters": self.adapt_iters})
 
     def health_check(self) -> Dict[str, Any]:
         return {
             "status": "healthy" if self._initialized else "uninitialized",
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "metrics": {},
             "dependencies": {
-                "casebooks": bool(self.cb),
-                "embedding": bool(self.embed),
-                "dense_search": bool(self._has_dense_api()),
+                "embedding": self.memory.embedding.name,
             },
         }
 
@@ -106,244 +76,240 @@ class CBRService(Service):
 
     @property
     def name(self) -> str:
-        return "cbr-service-v2-dense"
+        return "cbr-service-v2"
 
-    # --- Public API used by your agent ---
-    def retrieve(self, *, goal_text: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        goal_text = (_safe_text(goal_text) or "").strip()
-        if not goal_text:
+    # ============================================================
+    # ==============  PUBLIC, SIMPLE ENTRY POINTS  ===============
+    # ============================================================
+
+    def retrieve(self, *, goal_text: str, top_k: int | None = None,
+                 casebook_name: Optional[str] = None) -> List[CaseView]:
+        """
+        Prefer cases in the given casebook (blog::<paper_id>::<slug>), else fallback to global search.
+        """
+        if not goal_text or not goal_text.strip():
             return []
 
-        # 1) DENSE FIRST: embedding.search_related_scorables
-        if self._has_dense_api():
+        # 1) Casebook-scoped retrieval if we can
+        cases: List[CaseView] = []
+        if casebook_name and hasattr(self.memory, "casebooks"):
             try:
-                dense = self._dense_search(goal_text, pool_k=max(top_k, self.pool_k))
-                if dense:
-                    return self._pack_for_agent(self._truncate(dense, top_k))
+                # try a native casebook search if you have it; else filter all cases by casebook_name
+                rows = self.memory.casebooks.search(
+                    query_text=goal_text,
+                    casebook_name=casebook_name,
+                    top_k=self.pool_k,
+                )
+                for r in rows or []:
+                    meta = getattr(r, "meta", {}) or {}
+                    cases.append(self._from_casebook_row(r, casebook_name, meta))
             except Exception as e:
-                self._log("DenseSearchError", {"error": str(e)})
+                if self.logger:
+                    self.logger.log("CBRCasebookSearchWarn", {"error": str(e)})
 
-        # 2) store-native search_* if exposed
-        native = self._find_cases_native(goal_text)
-        if native:
-            ranked = self._rank_by_similarity(goal_text, native)
-            return self._pack_for_agent(self._truncate(ranked, top_k))
-
-        # 3) fallback: full scan + cosine
-        scanned = self._find_cases_fallback(goal_text)
-        ranked = self._rank_by_similarity(goal_text, scanned)
-        return self._pack_for_agent(self._truncate(ranked, top_k))
-
-    # ---------- dense retriever path ----------
-    def _has_dense_api(self) -> bool:
-        return bool(self.embed and hasattr(self.embed, "search_related_scorables"))
-
-    def _dense_search(self, goal_text: str, pool_k: int) -> List[_CaseView]:
-        """
-        Calls memory.embedding.search_related_scorables and normalizes results.
-        We accept any scorable target_type; restrict via cfg["cbr"]["target_type"] if desired.
-        """
-        hits = self.embed.search_related_scorables(
-            goal_text,
-            top_k=int(pool_k),
-            include_ner=self.include_ner,
-            target_type=self.target_type,  # may be None, str, or list[str] in your implementation
-        ) or []
-
-        views: List[_CaseView] = []
-        for h in hits:
-            cv = self._from_scorable(h)
-            if len(cv.goal_text) >= self.min_text_len or len(cv.summary) >= self.min_text_len:
-                views.append(cv)
-        # If retriever supplied "score", preserve ordering; otherwise we’ll re-rank later if needed
-        return views
-
-    def _from_scorable(self, s: Any) -> _CaseView:
-        """Normalize a scorable or dict from the dense retriever into a _CaseView."""
-        if isinstance(s, dict):
-            meta = s.get("metadata") or s.get("meta") or {}
-            score = s.get("score") or meta.get("score")
-            return _CaseView(
-                id=s.get("id"),
-                goal_text=_safe_text(meta.get("goal_text") or meta.get("title") or s.get("title")),
-                summary=_safe_text(s.get("text") or meta.get("text") or meta.get("summary")),
-                lessons=_safe_text(meta.get("lessons")),
-                winner_rationale=_safe_text((meta.get("scores") or {}).get("winner_rationale") or meta.get("winner_rationale")),
-                raw=s,
-                score=float(score) if score is not None else None,
-            )
-
-        # object-like
-        meta = getattr(s, "metadata", None) or getattr(s, "meta", None) or {}
-        score = getattr(s, "score", None) or meta.get("score")
-        return _CaseView(
-            id=getattr(s, "id", None),
-            goal_text=_safe_text(meta.get("goal_text") or meta.get("title") or getattr(s, "title", None)),
-            summary=_safe_text(getattr(s, "text", None) or meta.get("text") or meta.get("summary")),
-            lessons=_safe_text(meta.get("lessons")),
-            winner_rationale=_safe_text((meta.get("scores") or {}).get("winner_rationale") or meta.get("winner_rationale")),
-            raw=s,
-            score=float(score) if score is not None else None,
-        )
-
-    # ---------- native store path ----------
-    def _find_cases_native(self, goal_text: str) -> List[_CaseView]:
-        if not self.cb:
-            return []
-        for name in ("search_cases_for_goal_text", "search_cases_by_goal", "search_cases", "find_cases_by_text", "query_cases"):
-            fn = getattr(self.cb, name, None)
-            if callable(fn):
-                try:
-                    raw = fn(goal_text=goal_text, limit=self.max_pool)
-                except TypeError:
-                    try:
-                        raw = fn(goal_text)  # positional
-                    except Exception:
-                        continue
-                return [self._to_view(c) for c in self._as_iter(raw)]
-        return []
-
-    # ---------- fallback full-scan path ----------
-    def _find_cases_fallback(self, goal_text: str) -> List[_CaseView]:
-        if not self.cb:
-            return []
-        views: List[_CaseView] = []
-        for case in self._iter_all_cases(self.cb):
-            cv = self._to_view(case)
-            if len(cv.goal_text) >= self.min_text_len:
-                views.append(cv)
-            if len(views) >= self.max_pool:
-                break
-        return views
-
-    # ---------- ranking ----------
-    def _rank_by_similarity(self, goal_text: str, cases: List[_CaseView]) -> List[_CaseView]:
-        if not cases:
-            return []
-        # If dense path gave us scores, use them
-        if any(cv.score is not None for cv in cases):
-            return sorted(cases, key=lambda cv: (cv.score is None, -(cv.score or 0.0)))
-        # Else use embeddings for cosine
-        if self.embed:
+        # 2) Fallback to embedding search across all “case” scorables
+        if not cases and hasattr(self.memory, "embedding"):
             try:
-                qv = np.asarray(self.embed.get_or_create(goal_text), dtype=float)
-                scored: List[Tuple[float, _CaseView]] = []
-                for cv in cases:
-                    base = cv.goal_text or cv.summary
-                    vv = np.asarray(self.embed.get_or_create(base), dtype=float)
-                    scored.append((_cos(qv, vv), cv))
-                scored.sort(key=lambda t: t[0], reverse=True)
-                return [cv for s, cv in scored]
-            except Exception:
-                pass
-        # Fallback trivial
-        return sorted(cases, key=lambda cv: len(cv.goal_text + " " + cv.summary), reverse=True)
+                hits = self.memory.embedding.search_related_scorables(
+                    goal_text,
+                    top_k=self.pool_k,
+                    include_ner=False,
+                    target_type="case",
+                )
+                for h in hits or []:
+                    cv = self._from_embedding_hit(h)
+                    # keep scoping if a casebook_name was requested
+                    if not casebook_name or cv.casebook_name == casebook_name:
+                        cases.append(cv)
+            except Exception as e:
+                if self.logger:
+                    self.logger.log("CBREmbeddingSearchWarn", {"error": str(e)})
 
-    # ---------- normalization helpers ----------
-    def _to_view(self, case_obj: Any) -> _CaseView:
-        if isinstance(case_obj, dict):
-            meta = case_obj.get("meta", {}) or {}
-            scores = case_obj.get("scores", {}) or meta.get("scores", {}) or {}
-            return _CaseView(
-                id=case_obj.get("id"),
-                goal_text=_safe_text(case_obj.get("goal_text") or meta.get("goal_text")),
-                summary=_safe_text(meta.get("summary") or meta.get("text") or case_obj.get("text")),
-                lessons=_safe_text(case_obj.get("lessons") or meta.get("lessons")),
-                winner_rationale=_safe_text(scores.get("winner_rationale") or meta.get("winner_rationale")),
-                raw=case_obj,
-            )
-        meta = getattr(case_obj, "meta", None) or {}
-        scores = getattr(case_obj, "scores", None) or meta.get("scores", {}) or {}
-        return _CaseView(
-            id=getattr(case_obj, "id", None),
-            goal_text=_safe_text(getattr(case_obj, "goal_text", None) or meta.get("goal_text")),
-            summary=_safe_text(meta.get("summary") or meta.get("text") or getattr(case_obj, "text", None)),
-            lessons=_safe_text(getattr(case_obj, "lessons", None) or meta.get("lessons")),
-            winner_rationale=_safe_text(getattr(scores, "winner_rationale", None) if hasattr(scores, "winner_rationale") else scores.get("winner_rationale")),
-            raw=case_obj,
-        )
+        # length filter + sort by score desc (None -> worst)
+        filtered = [c for c in cases if max(len(c.goal_text), len(c.summary)) >= self.min_text_len]
+        filtered.sort(key=lambda c: (c.score is not None, c.score), reverse=True)
+        k = int(top_k or self.top_k_default)
+        return filtered[:k]
 
-    def _pack_for_agent(self, views: List[_CaseView]) -> List[Dict[str, Any]]:
-        out: List[Dict[str, Any]] = []
-        for cv in views:
+    def retrieve_pack(self, *, goal_text: str, k: int = 3, casebook_name: Optional[str] = None) -> List[Dict[str, str]]:
+        """
+        Shape the cases into the exact pack your Track-C agent expects.
+        Returns: [{"title", "why_it_won", "patch", "summary"}, ...]
+        """
+        out = []
+        for c in self.retrieve(goal_text=goal_text, top_k=k, casebook_name=casebook_name):
             out.append({
-                "id": cv.id,
-                "goal_text": cv.goal_text or cv.summary,  # ensure something usable
-                "scores": {"winner_rationale": cv.winner_rationale},
-                "lessons": cv.lessons,
-                "text": cv.summary,
+                "title": (c.goal_text or "")[:160],
+                "why_it_won": (c.winner_rationale or "")[:240],
+                "patch": (c.lessons or "")[:240],
+                "summary": (c.summary or "")[:400],
             })
         return out
 
-    # generic iteration helpers
-    def _as_iter(self, maybe_iter: Any) -> Iterable[Any]:
-        if maybe_iter is None:
-            return []
-        if isinstance(maybe_iter, (list, tuple, set)):
-            return maybe_iter
+    def adapt(self, *, goal_text: str, documents_text: str,
+              base: CaseView, context: Optional[Dict[str, Any]] = None) -> str:
+        """
+        LLM-based adaptation that reuses lessons and rationale from a prior case.
+        """
+        if not self.llm:
+            # minimal fallback: return original summary
+            return base.summary
+
+        prompt = f"""You are a Case-Based Reasoning adapter.
+
+NEW GOAL:
+{goal_text}
+
+CURRENT CONTEXT (documents excerpt):
+\"\"\"{documents_text[:2000]}\"\"\"
+
+PAST CASE:
+- Prior goal: {base.goal_text}
+- Why it won: {base.winner_rationale}
+- Lessons: {base.lessons}
+- Best summary/solution:
+\"\"\"{base.summary[:1800]}\"\"\"
+
+Task:
+Adapt the past case to the NEW GOAL, using its lessons. Be concrete and faithful to the provided context.
+Return only the adapted draft (no commentary). Keep it concise and structured.
+"""
         try:
-            return list(maybe_iter)
-        except Exception:
-            return [maybe_iter]
+            return (self.llm(prompt, context or {}) or "").strip()
+        except Exception as e:
+            if self.logger:
+                self.logger.log("CBRAdaptLLMError", {"error": str(e)})
+            return base.summary
 
-    def _iter_all_cases(self, store: Any) -> Iterable[Any]:
-        for book in self._iter_casebooks(store):
-            yield from self._iter_cases_in_book(book)
-        for m in ("list_cases", "all_cases", "iter_cases", "get_all_cases"):
-            fn = getattr(store, m, None)
-            if callable(fn):
-                try:
-                    for c in self._as_iter(fn()):
-                        yield c
-                    return
-                except Exception:
-                    continue
-
-    def _iter_casebooks(self, store: Any) -> Iterable[Any]:
-        for m in ("list_casebooks", "all_casebooks", "iter_casebooks", "get_all_casebooks"):
-            fn = getattr(store, m, None)
-            if callable(fn):
-                try:
-                    yield from self._as_iter(fn())
-                    return
-                except Exception:
-                    continue
-        for attr in ("casebooks", "books", "all", "items"):
-            coll = getattr(store, attr, None)
-            if coll is not None:
-                try:
-                    for b in coll:
-                        yield b
-                    return
-                except Exception:
-                    continue
-
-    def _iter_cases_in_book(self, book: Any) -> Iterable[Any]:
-        for m in ("list_cases", "all_cases", "iter_cases", "get_cases"):
-            fn = getattr(book, m, None)
-            if callable(fn):
-                try:
-                    yield from self._as_iter(fn())
-                    return
-                except Exception:
-                    continue
-        for attr in ("cases", "items"):
-            coll = getattr(book, attr, None)
-            if coll is not None:
-                try:
-                    for c in coll:
-                        yield c
-                    return
-                except Exception:
-                    continue
-
-    @staticmethod
-    def _truncate(items: List[_CaseView], k: int) -> List[_CaseView]:
-        k = max(1, int(k))
-        return items[:k]
-
-    def _log(self, event: str, payload: Dict[str, Any]):
+    def assess(self, *, goal_text: str, draft_text: str, context: Optional[Dict[str, Any]] = None) -> float:
+        """
+        Score a draft (0..1). Uses MARS if available, else ranker probability, else a neutral 0.5.
+        """
         try:
-            self.logger and self.logger.log(event, payload)
+            if self.mars:
+                s = self.mars.score(goal_text=goal_text, text=draft_text, context=context or {})
+                return float(max(0.0, min(1.0, s)))
         except Exception:
             pass
+        try:
+            # ScorableRanker may provide a calibrated 'preference' or probability
+            p = self.scorer.score_pairwise(query_text=goal_text, pos_text=draft_text, neg_text="", context=context or {})
+            return float(max(0.0, min(1.0, p)))
+        except Exception:
+            return 0.5
+
+    def revise(self, *, goal_text: str, documents_text: str,
+               seeds: List[CaseView], iters: int | None = None,
+               context: Optional[Dict[str, Any]] = None) -> Tuple[str, float, CaseView]:
+        """
+        Simple hill-climb: adapt each seed once per iter; keep best draft.
+        Returns (best_text, best_score, best_seed_case).
+        """
+        iters = int(iters or self.adapt_iters)
+        best_text, best_score, best_seed = "", -1.0, None
+
+        for _ in range(max(1, iters)):
+            for s in seeds:
+                draft = self.adapt(goal_text=goal_text, documents_text=documents_text, base=s, context=context)
+                score = self.assess(goal_text=goal_text, draft_text=draft, context=context)
+                if score > best_score:
+                    best_text, best_score, best_seed = draft, score, s
+        return best_text, best_score, best_seed
+
+    def retain(self, *, casebook_name: str, goal_text: str, draft_text: str,
+               seed: Optional[CaseView], score: float,
+               extra_meta: Optional[Dict[str, Any]] = None) -> Any:
+        """
+        Persist new/updated case back into the casebook.
+        """
+        meta = {
+            "goal_text": goal_text,
+            "summary": draft_text,
+            "lessons": (seed.lessons if seed else ""),
+            "winner_rationale": (seed.winner_rationale if seed else "derived_by_adaptation"),
+            "score": float(score),
+            "origin": "cbr_v2",
+        }
+        if extra_meta:
+            meta.update(extra_meta)
+
+        try:
+            if hasattr(self.memory, "casebooks") and hasattr(self.memory.casebooks, "add"):
+                case_id = self.memory.casebooks.add(
+                    casebook_name=casebook_name,
+                    role="case",
+                    text=draft_text,
+                    meta=meta,
+                )
+                if self.logger:
+                    self.logger.log("CBRRetainSaved", {"casebook": casebook_name, "case_id": getattr(case_id, "id", case_id)})
+                return case_id
+        except Exception as e:
+            if self.logger:
+                self.logger.log("CBRRetainError", {"error": str(e), "casebook": casebook_name})
+        return None
+
+    # ---- optional: a tiny MCTS-like search (breadth-limited) ----
+    def mcts_search(self, *, goal_text: str, documents_text: str, seeds: List[CaseView],
+                    depth: int = 2, width: int = 3, context: Optional[Dict[str, Any]] = None) -> Tuple[str, float, List[CaseView]]:
+        """
+        Very small beam-style search (width) for depth steps. Good enough to start.
+        Returns (best_text, best_score, path_seed_cases)
+        """
+        frontier: List[Tuple[str, float, List[CaseView]]] = []
+        # seed layer
+        for s in seeds[:width]:
+            draft = self.adapt(goal_text=goal_text, documents_text=documents_text, base=s, context=context)
+            score = self.assess(goal_text=goal_text, draft_text=draft, context=context)
+            frontier.append((draft, score, [s]))
+
+        best_draft, best_score, best_path = ("", -1.0, [])
+        for _ in range(max(1, depth - 1)):
+            # expand current frontier with top seeds again (reuse top-k as “moves”)
+            frontier.sort(key=lambda t: t[1], reverse=True)
+            new_frontier: List[Tuple[str, float, List[CaseView]]] = []
+            for draft, _, path in frontier[:width]:
+                for s in seeds[:width]:
+                    ndraft = self.adapt(goal_text=goal_text, documents_text=documents_text, base=s, context=context)
+                    nscore = self.assess(goal_text=goal_text, draft_text=ndraft, context=context)
+                    new_frontier.append((ndraft, nscore, path + [s]))
+                    if nscore > best_score:
+                        best_draft, best_score, best_path = ndraft, nscore, path + [s]
+            frontier = new_frontier
+
+        if best_score < 0 and frontier:
+            best_draft, best_score, best_path = max(frontier, key=lambda t: t[1])
+        return best_draft, best_score, best_path
+
+    def _from_casebook_row(self, row: Any, casebook_name: str, meta: Dict[str, Any]) -> CaseView:
+        goal_text = (meta.get("goal_text") or meta.get("title") or meta.get("goal") or "").strip()
+        summary = (meta.get("summary") or getattr(row, "text", "") or "").strip()
+        lessons = (meta.get("lessons") or "").strip()
+        winner_rationale = (meta.get("winner_rationale") or meta.get("scores", {}).get("winner_rationale") or "").strip()
+        score = meta.get("score")
+        try:
+            score = float(score) if score is not None else None
+        except Exception:
+            score = None
+        return CaseView(
+            id=getattr(row, "id", None),
+            goal_text=goal_text,
+            summary=summary,
+            lessons=lessons,
+            winner_rationale=winner_rationale,
+            score=score,
+            casebook_name=casebook_name,
+        )
+
+    def _from_embedding_hit(self, hit: Dict[str, Any]) -> CaseView:
+        meta = hit.get("metadata", {}) or hit.get("meta", {}) or {}
+        scores = meta.get("scores", {}) or {}
+        return CaseView(
+            id=hit.get("id", meta.get("id")),
+            goal_text=meta.get("goal_text", meta.get("title", "")) or "",
+            summary=meta.get("summary", meta.get("text", "")) or "",
+            lessons=meta.get("lessons", "") or "",
+            winner_rationale=scores.get("winner_rationale", meta.get("winner_rationale", "")) or "",
+            score=hit.get("score", meta.get("score")),
+            casebook_name=meta.get("casebook_name"),
+        )

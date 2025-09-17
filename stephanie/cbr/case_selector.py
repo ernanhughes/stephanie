@@ -15,7 +15,8 @@ class DefaultCaseSelector:
             outs.sort(key=lambda cs: getattr(cs, "rank", 1_000_000))
             for cs in outs[:k]:
                 sid = getattr(cs, "scorable_id", None)
-                if sid: out.append(sid)
+                if sid: 
+                    out.append(sid)
         except Exception:
             pass
         return out

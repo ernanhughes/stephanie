@@ -15,6 +15,15 @@ from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable_factory import TargetType
 
+import logging
+_logger = logging.getLogger(__name__)
+
+
+def _trunc(s: str | None, n: int = 200) -> str | None:
+    if not isinstance(s, str):
+        return s
+    return s if len(s) <= n else s[:n] + "…"
+
 
 class CaseBookStore(BaseSQLAlchemyStore):
     orm_model = CaseBookORM
@@ -23,30 +32,42 @@ class CaseBookStore(BaseSQLAlchemyStore):
     def __init__(self, session: Session, logger=None):
         super().__init__(session, logger)
         self.name = "casebooks"
+        _logger.info("CaseBookStore.__init__(name=%s)", self.name)
 
     def name(self) -> str:
         return self.name
     
     def get_by_name(self, name: str):
-        return self.session.query(CaseBookORM).filter_by(name=name).first()
+        _logger.info("get_by_name(name=%s) -> querying", name)
+        row = self.session.query(CaseBookORM).filter_by(name=name).first()
+        _logger.info("get_by_name(name=%s) -> %s", name, f"id={row.id}" if row else "None")
+        return row
 
     def ensure_casebook(self, name: str, description: str = "", tag: str = "", meta: dict = None) -> CaseBookORM:
+        _logger.info("ensure_casebook(name=%s, tag=%s)", name, tag)
         cb = self.get_by_name(name)
         if cb:
+            _logger.info("ensure_casebook -> exists id=%s", cb.id)
             return cb
         cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
         self.session.add(cb)
         self.session.commit()
+        _logger.info("ensure_casebook -> created id=%s", cb.id)
         return cb
 
     def create_casebook(self, name, description="", tag="", meta=None):
+        _logger.info("create_casebook(name=%s, tag=%s)", name, tag)
         cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
         self.session.add(cb)
         self.session.commit()
+        _logger.info("create_casebook -> id=%s", cb.id)
         return cb
 
     def count_cases(self, casebook_id: int) -> int:
-        return self.session.query(func.count(CaseORM.id)).filter_by(casebook_id=casebook_id).scalar() or 0
+        _logger.info("count_cases(casebook_id=%s)", casebook_id)
+        cnt = self.session.query(func.count(CaseORM.id)).filter_by(casebook_id=casebook_id).scalar() or 0
+        _logger.info("count_cases -> %s", cnt)
+        return cnt
 
     def _apply_json_meta_filter(self, q: Query, column, meta_filter: Optional[Dict]) -> Tuple[Query, bool]:
         """
@@ -57,24 +78,26 @@ class CaseBookStore(BaseSQLAlchemyStore):
             return q, True
 
         dialect = (self.session.bind.dialect.name if self.session.bind is not None else "").lower()
+        _logger.info("_apply_json_meta_filter(dialect=%s, keys=%s)", dialect, list(meta_filter.keys()))
 
         if dialect == "postgresql":
-            # Uses JSONB containment: column @> meta_filter
             q = q.filter(column.contains(meta_filter))
+            _logger.info("_apply_json_meta_filter -> using JSONB containment")
             return q, True
 
         if dialect == "sqlite":
-            # Use json_extract() per key
             conds = [func.json_extract(column, f'$.{k}') == v for k, v in meta_filter.items()]
             if conds:
                 q = q.filter(and_(*conds))
+                _logger.info("_apply_json_meta_filter -> using sqlite json_extract")
                 return q, True
+            _logger.info("_apply_json_meta_filter -> sqlite no conds, fallback to Python filter")
             return q, False
 
+        _logger.info("_apply_json_meta_filter -> unsupported dialect, Python filter")
         return q, False
 
 
-    # --- replace your get_by_case with this version ---
     def get_by_case(
         self,
         *,
@@ -89,8 +112,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
         Return scorable rows for a given (casebook_name, case_id), newest first.
         Prefers DynamicScorableORM; falls back to CaseScorableORM if none.
         """
+        _logger.info("get_by_case(casebook_name=%s, case_id=%s, role=%s, scorable_type=%s, limit=%s)",
+                     casebook_name, case_id, role, scorable_type, limit)
         cb = self.get_by_name(casebook_name)
         if not cb:
+            _logger.warning("get_by_case -> casebook not found: %s", casebook_name)
             return []
 
         # ---- DynamicScorableORM path (has .text directly) ----
@@ -104,23 +130,25 @@ class CaseBookStore(BaseSQLAlchemyStore):
         if scorable_type:
             q = q.filter(DynamicScorableORM.scorable_type == scorable_type)
 
-        # q, db_filtered = self._apply_json_meta_filter(q, DynamicScorableORM.meta, meta_filter)
-
         order_col = getattr(DynamicScorableORM, "created_at", None)
         q = q.order_by(desc(order_col) if order_col is not None else DynamicScorableORM.id.desc())
         dyn_rows = q.limit(limit).all()
+        _logger.info("get_by_case -> DynamicScorableORM fetched=%s", len(dyn_rows))
 
-        # Python-side fallback if dialect didn’t filter JSON
-        if meta_filter :
+        if meta_filter:
+            before = len(dyn_rows)
             dyn_rows = [
                 r for r in dyn_rows
                 if isinstance(r.meta, dict) and all(r.meta.get(k) == v for k, v in meta_filter.items())
             ]
+            _logger.info("get_by_case -> meta Python-filtered Dynamic rows %s -> %s", before, len(dyn_rows))
 
         if dyn_rows:
+            _logger.info("get_by_case -> returning %s DynamicScorableORM rows", len(dyn_rows))
             return dyn_rows
 
         # ---- Legacy CaseScorableORM fallback (text usually in meta['text']) ----
+        _logger.info("get_by_case -> falling back to CaseScorableORM")
         q2 = (
             self.session.query(CaseScorableORM)
             .join(CaseORM, CaseScorableORM.case_id == CaseORM.id)
@@ -135,87 +163,98 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
         order_col2 = getattr(CaseScorableORM, "created_at", None)
         q2 = q2.order_by(desc(order_col2) if order_col2 is not None else CaseScorableORM.id.desc())
-        legacy_rows = q2.limit(limit).all()
+        rows = q2.limit(limit).all()
+        _logger.info("get_by_case -> CaseScorableORM fetched=%s (db_filtered=%s)", len(rows), db_filtered_legacy)
 
-        if meta_filter and not db_filtered_legacy:
-            legacy_rows = [
-                r for r in legacy_rows
-                if isinstance(r.meta, dict) and all(r.meta.get(k) == v for k, v in meta_filter.items())
-            ]
-
-        # Wrap legacy rows so caller can access .text consistently
-        class _CompatRow:
-            __slots__ = ("id", "case_id", "role", "scorable_type", "meta", "text", "_row")
-            def __init__(self, row):
-                self._row = row
-                self.id = row.id
-                self.case_id = row.case_id
-                self.role = getattr(row, "role", None)
-                self.scorable_type = getattr(row, "scorable_type", None)
-                self.meta = getattr(row, "meta", {}) or {}
-                self.text = self.meta.get("text", "")
-
-            def __getattr__(self, name):
-                return getattr(self._row, name)
-
-        return [_CompatRow(r) for r in legacy_rows]
+        return rows
 
     def get_all_casebooks(self, limit: int = 100) -> List[CaseBookORM]:
-        return self.session.query(CaseBookORM).limit(limit).all()
+        _logger.info("get_all_casebooks(limit=%s)", limit)
+        rows = self.session.query(CaseBookORM).limit(limit).all()
+        _logger.info("get_all_casebooks -> %s rows", len(rows))
+        return rows
 
     def get_cases_for_goal(self, goal_id):
-        return self.session.query(CaseORM).filter_by(goal_id=goal_id).all()
+        _logger.info("get_cases_for_goal(goal_id=%s)", goal_id)
+        rows = self.session.query(CaseORM).filter_by(goal_id=goal_id).all()
+        _logger.info("get_cases_for_goal -> %s rows", len(rows))
+        return rows
 
     def get_cases_for_agent(self, agent_name):
-        return self.session.query(CaseORM).filter_by(agent_name=agent_name).all()
+        _logger.info("get_cases_for_agent(agent_name=%s)", agent_name)
+        rows = self.session.query(CaseORM).filter_by(agent_name=agent_name).all()
+        _logger.info("get_cases_for_agent -> %s rows", len(rows))
+        return rows
 
     def get_for_run_id(self, run_id: int):
-        return self.session.query(CaseBookORM).filter_by(pipeline_run_id=run_id).first()
+        _logger.info("get_for_run_id(run_id=%s)", run_id)
+        row = self.session.query(CaseBookORM).filter_by(pipeline_run_id=run_id).first()
+        _logger.info("get_for_run_id -> %s", f"id={row.id}" if row else "None")
+        return row
 
     def get_cases_for_casebook(self, casebook_id: int):
-        return self.session.query(CaseORM).filter_by(casebook_id=casebook_id).all()
+        _logger.info("get_cases_for_casebook(casebook_id=%s)", casebook_id)
+        rows = self.session.query(CaseORM).filter_by(casebook_id=casebook_id).all()
+        _logger.info("get_cases_for_casebook -> %s rows", len(rows))
+        return rows
 
     # in CaseBookStore
     def get_goal_state(self, casebook_id: int, goal_id: str):
-        return (self.session.query(CaseGoalStateORM)
-                .filter_by(casebook_id=casebook_id, goal_id=goal_id)
-                .one_or_none())
+        _logger.info("get_goal_state(casebook_id=%s, goal_id=%s)", casebook_id, goal_id)
+        row = (self.session.query(CaseGoalStateORM)
+               .filter_by(casebook_id=casebook_id, goal_id=goal_id)
+               .one_or_none())
+        _logger.info("get_goal_state -> %s", "found" if row else "None")
+        return row
 
     def get_scope(self, pipeline_run_id: int | None, agent_name: str | None, tag: str = "default"):
+        _logger.info("get_scope(run_id=%s, agent=%s, tag=%s)", pipeline_run_id, agent_name, tag)
         q = self.session.query(CaseBookORM).filter_by(
             pipeline_run_id=pipeline_run_id, agent_name=agent_name, tag=tag
         )
-        return q.first()
+        row = q.first()
+        _logger.info("get_scope -> %s", f"id={row.id}" if row else "None")
+        return row
 
     def ensure_casebook_scope(self, pipeline_run_id: int | None, agent_name: str | None, tag: str = "default"):
+        _logger.info("ensure_casebook_scope(run_id=%s, agent=%s, tag=%s)", pipeline_run_id, agent_name, tag)
         cb = self.get_scope(pipeline_run_id, agent_name, tag)
         if cb: 
+            _logger.info("ensure_casebook_scope -> exists id=%s", cb.id)
             return cb
         name = f"cb:{agent_name or 'all'}:{pipeline_run_id or 'all'}:{tag}"
         cb = CaseBookORM(name=name, description="Scoped casebook",
                          pipeline_run_id=pipeline_run_id, agent_name=agent_name, tag=tag)
         self.session.add(cb)
         self.session.commit()
+        _logger.info("ensure_casebook_scope -> created id=%s", cb.id)
         return cb
 
     # Scoped retrieval (strict)
     def get_cases_for_goal_in_casebook(self, casebook_id: int, goal_id: str):
-        return (self.session.query(CaseORM)
+        _logger.info("get_cases_for_goal_in_casebook(casebook_id=%s, goal_id=%s)", casebook_id, goal_id)
+        rows = (self.session.query(CaseORM)
                 .filter_by(casebook_id=casebook_id, goal_id=goal_id).all())
+        _logger.info("get_cases_for_goal_in_casebook -> %s rows", len(rows))
+        return rows
 
     # Flexible retrieval (union of scopes, ordered by specificity)
     def get_cases_for_goal_scoped(self, goal_id: str,
                                   scopes: list[tuple[str|None, str|None, str]]):
+        _logger.info("get_cases_for_goal_scoped(goal_id=%s, scopes=%s)", goal_id, scopes)
         casebook_ids = []
         for p,a,t in scopes:
             cb = self.get_scope(p, a, t)
             if cb: 
                 casebook_ids.append(cb.id)
         if not casebook_ids: 
+            _logger.info("get_cases_for_goal_scoped -> no scoped casebooks")
             return []
-        return (self.session.query(CaseORM)
+        rows = (self.session.query(CaseORM)
                 .filter(CaseORM.goal_id==goal_id, CaseORM.casebook_id.in_(casebook_ids))
                 .all())
+        _logger.info("get_cases_for_goal_scoped -> %s rows", len(rows))
+        return rows
 
     def ensure_goal_state(
         self,
@@ -225,9 +264,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         case_id: Optional[int] = None,
         quality: Optional[float] = None,
     ) -> CaseGoalStateORM:
-        """
-        Ensure a CaseGoalState row exists; optionally seed champion fields.
-        """
+        _logger.info("ensure_goal_state(casebook_id=%s, goal_id=%s, case_id=%s, quality=%s)",
+                     casebook_id, goal_id, case_id, quality)
         state = self.get_goal_state(casebook_id, goal_id)
         if state is None:
             state = CaseGoalStateORM(
@@ -238,6 +276,10 @@ class CaseBookStore(BaseSQLAlchemyStore):
             )
             self.session.add(state)
             self.session.commit()
+            _logger.info("ensure_goal_state -> created")
+        else:
+            _logger.info("ensure_goal_state -> exists (champion_case_id=%s, quality=%s)",
+                          state.champion_case_id, state.champion_quality)
         return state
 
     def upsert_goal_state(
@@ -252,17 +294,9 @@ class CaseBookStore(BaseSQLAlchemyStore):
         delta: Optional[float] = None,
         ema_alpha: float = 0.2,
     ) -> CaseGoalStateORM:
-        """
-        Create or update the goal state for (casebook_id, goal_id).
-
-        - If no row exists, it is created and optionally seeded with (case_id, quality).
-        - If a row exists and case_id is provided:
-            * if only_if_better=True, champion is updated only when `quality > current`.
-            * otherwise champion is updated unconditionally (use when you've already decided it's improved).
-        - If `improved` and `delta` are supplied, A/B counters (wins/losses, avg_delta, trust) are updated.
-
-        Returns the up-to-date CaseGoalStateORM row.
-        """
+        _logger.info(("upsert_goal_state(cb_id=%s, goal_id=%s, case_id=%s, quality=%s, "
+                      "only_if_better=%s, improved=%s, delta=%s, ema_alpha=%.3f)"),
+                     casebook_id, goal_id, case_id, quality, only_if_better, improved, delta, ema_alpha)
         state = self.get_goal_state(casebook_id, goal_id)
         if state is None:
             state = CaseGoalStateORM(
@@ -272,49 +306,55 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 champion_quality=float(quality or 0.0),
             )
             self.session.add(state)
+            _logger.info("upsert_goal_state -> created new state")
         else:
             if case_id is not None:
                 if only_if_better and (quality is not None):
                     if float(quality) > float(state.champion_quality or 0.0):
+                        _logger.info("upsert_goal_state -> updating champion (better quality %.4f > %.4f)",
+                                      float(quality), float(state.champion_quality or 0.0))
                         state.champion_case_id = case_id
                         state.champion_quality = float(quality)
+                    else:
+                        _logger.info("upsert_goal_state -> skipping champion update (quality not better)")
                 else:
-                    # Unconditional champion update
+                    _logger.info("upsert_goal_state -> unconditional champion update to case_id=%s", case_id)
                     state.champion_case_id = case_id
                     if quality is not None:
                         state.champion_quality = float(quality)
 
-        # Optional A/B bookkeeping
         if improved is not None and delta is not None:
             try:
                 state.update_ab_stats(bool(improved), float(delta), alpha=float(ema_alpha))
+                _logger.info("upsert_goal_state -> update_ab_stats(improved=%s, delta=%.4f)", improved, float(delta))
             except Exception:
-                # If the ORM doesn't have update_ab_stats yet, fall back to minimal counters
-                state.run_ix = (state.run_ix or 0) + 1
+                prev_run_ix = int(state.run_ix or 0)
+                state.run_ix = prev_run_ix + 1
                 if improved:
                     state.wins = (state.wins or 0) + 1
                 else:
                     state.losses = (state.losses or 0) + 1
-                # simple EMA
                 prev = float(state.avg_delta or 0.0)
                 alpha = float(ema_alpha)
                 state.avg_delta = (1.0 - alpha) * prev + alpha * float(delta)
-                # clamp trust to [-1, 1]
                 v = state.avg_delta
                 state.trust = max(-1.0, min(1.0, v))
+                _logger.info("upsert_goal_state -> fallback A/B stats (run_ix %s->%s, trust=%.4f)",
+                              prev_run_ix, state.run_ix, state.trust)
 
         self.session.commit()
+        _logger.info("upsert_goal_state -> committed (champion_case_id=%s, quality=%.4f, trust=%s)",
+                     state.champion_case_id, float(state.champion_quality or 0.0), getattr(state, "trust", None))
         return state
 
 
-    def bump_run_ix(self, casebook_id: int, goal_id: str, *, amount: int = 1) -> int:
-        """
-        Increment and return the run counter for A/B scheduling.
-        Creates the state row if needed.
-        """
+    def bump_run_ix(self, casebook_id: int, goal_id: str) -> int:
+        _logger.info("bump_run_ix(cb_id=%s, goal_id=%s)", casebook_id, goal_id)
         state = self.ensure_goal_state(casebook_id, goal_id)
-        state.run_ix = int(state.run_ix or 0) + int(amount)
+        before = int(state.run_ix or 0)
+        state.run_ix = before + 1
         self.session.commit()
+        _logger.info("bump_run_ix -> %s -> %s", before, state.run_ix)
         return state.run_ix
 
 
@@ -327,14 +367,15 @@ class CaseBookStore(BaseSQLAlchemyStore):
         delta: float,
         ema_alpha: float = 0.2,
     ) -> CaseGoalStateORM:
-        """
-        Convenience wrapper to log an A/B outcome (CBR vs baseline) without changing the champion.
-        """
+        _logger.info("record_ab_result(cb_id=%s, goal_id=%s, improved=%s, delta=%.4f, alpha=%.3f)",
+                     casebook_id, goal_id, improved, delta, ema_alpha)
         state = self.ensure_goal_state(casebook_id, goal_id)
         try:
             state.update_ab_stats(bool(improved), float(delta), alpha=float(ema_alpha))
+            _logger.info("record_ab_result -> update_ab_stats applied")
         except Exception:
-            state.run_ix = (state.run_ix or 0) + 1
+            prev_run_ix = int(state.run_ix or 0)
+            state.run_ix = prev_run_ix + 1
             if improved:
                 state.wins = (state.wins or 0) + 1
             else:
@@ -344,7 +385,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
             state.avg_delta = (1.0 - alpha) * prev + alpha * float(delta)
             v = state.avg_delta
             state.trust = max(-1.0, min(1.0, v))
+            _logger.info("record_ab_result -> fallback stats (run_ix %s->%s, trust=%.4f)",
+                          prev_run_ix, state.run_ix, state.trust)
         self.session.commit()
+        _logger.info("record_ab_result -> committed (wins=%s, losses=%s, trust=%s)",
+                     getattr(state, "wins", None), getattr(state, "losses", None), getattr(state, "trust", None))
         return state
 
 
@@ -358,40 +403,16 @@ class CaseBookStore(BaseSQLAlchemyStore):
         include_champion: bool = True,
         min_quality: Optional[float] = None,
     ) -> List[CaseORM]:
-        """
-        Return recent cases for (casebook_id, goal_id), most-recent first.
-
-        Args:
-            casebook_id: scoped casebook id
-            goal_id:     goal identifier
-            limit:       max number of cases to return
-            only_accepted:
-                If True, prefer cases marked accepted.
-                Acceptance is defined as:
-                - champion case (if any), OR
-                - case.meta['accepted'] is True, OR
-                - (optional) case.meta['quality'] >= min_quality (if provided)
-                If not enough accepted cases exist to reach `limit`,
-                the result is filled with recent cases.
-            include_champion:
-                If True, the current champion (if any) is put first.
-            min_quality:
-                Optional float threshold to treat a case as accepted if its
-                meta["quality"] >= min_quality.
-
-        Returns:
-            List[CaseORM] ordered by:
-            - champion first (if include_champion and present),
-            - then by created_at DESC.
-        """
-        # 1) Base recent query
+        _logger.info(("get_recent_cases(cb_id=%s, goal_id=%s, limit=%s, only_accepted=%s, "
+                      "include_champion=%s, min_quality=%s)"),
+                     casebook_id, goal_id, limit, only_accepted, include_champion, min_quality)
         q = (self.session.query(CaseORM)
             .filter(CaseORM.casebook_id == casebook_id,
                     CaseORM.goal_id == goal_id)
             .order_by(getattr(CaseORM, "created_at", CaseORM.id).desc()))
-        recent_all = q.limit(max(limit * 3, limit)).all()  # overfetch to allow filtering
+        recent_all = q.limit(max(limit * 3, limit)).all()
+        _logger.info("get_recent_cases -> overfetched=%s", len(recent_all))
 
-        # 2) Champion (optional)
         champion_case = None
         champion_id = None
         try:
@@ -399,11 +420,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
             champion_id = getattr(state, "champion_case_id", None)
             if include_champion and champion_id:
                 champion_case = next((c for c in recent_all if c.id == champion_id), None)
-                # If champion not in the overfetch window, pull it explicitly
                 if champion_case is None:
                     champion_case = self.session.get(CaseORM, champion_id)
-        except Exception:
-            pass
+            _logger.info("get_recent_cases -> champion_id=%s, included=%s", champion_id, include_champion)
+        except Exception as e:
+            _logger.info("get_recent_cases -> champion lookup failed: %s", e)
 
         def is_accepted(case: CaseORM) -> bool:
             if champion_id and case.id == champion_id:
@@ -420,21 +441,17 @@ class CaseBookStore(BaseSQLAlchemyStore):
                     pass
             return False
 
-        # 3) Filter/sort
         accepted = [c for c in recent_all if is_accepted(c)] if only_accepted else []
         result: List[CaseORM] = []
 
-        # champion first
         if include_champion and champion_case:
             result.append(champion_case)
 
         if only_accepted:
-            # Add accepted (excluding champion to avoid dup)
             for c in accepted:
                 if champion_case and c.id == champion_case.id:
                     continue
                 result.append(c)
-            # Top up with recents if needed
             if len(result) < limit:
                 for c in recent_all:
                     if (champion_case and c.id == champion_case.id) or c in result:
@@ -443,7 +460,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
                     if len(result) >= limit:
                         break
         else:
-            # Not enforcing acceptance; just fill by recency after champion
             for c in recent_all:
                 if champion_case and c.id == champion_case.id:
                     continue
@@ -451,9 +467,9 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 if len(result) >= limit + (1 if champion_case else 0):
                     break
 
-        # 4) Cap to limit
-        # If champion included, allow it to consume one of the slots.
-        return result[:limit]
+        out = result[:limit]
+        _logger.info("get_recent_cases -> returning %s cases (champion_included=%s)", len(out), bool(champion_case))
+        return out
 
 
     def get_pool_for_goal(
@@ -467,27 +483,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
         only_accepted: bool = False,
         min_quality: Optional[float] = None,
     ) -> List[CaseORM]:
-        """
-        Return a pool of candidate cases for (casebook_id, goal_id), excluding the
-        provided IDs and (by default) the champion. Results are ordered by recency.
-        The caller can randomize/shuffle afterwards.
-
-        Args:
-            casebook_id: Scoped casebook id.
-            goal_id:     Goal identifier (string).
-            exclude_ids: Iterable of CaseORM ids to exclude.
-            limit:       Max number of cases to return (after Python-side filtering).
-            include_champion: If False (default), exclude the current champion case.
-            only_accepted: If True, filter to cases marked accepted (or champion).
-            min_quality: Optional quality threshold (checks case.meta["quality"]).
-
-        Returns:
-            List[CaseORM] (most-recent first), size ≤ limit.
-        """
-        # Sanitize excludes: remove None and cast to ints
+        _logger.info(("get_pool_for_goal(cb_id=%s, goal_id=%s, exclude=%s, limit=%s, "
+                      "include_champion=%s, only_accepted=%s, min_quality=%s)"),
+                     casebook_id, goal_id, list(exclude_ids or []), limit, include_champion, only_accepted, min_quality)
         excl = {int(x) for x in (exclude_ids or []) if x is not None}
 
-        # Base query for this scoped goal
         q = (
             self.session.query(CaseORM)
             .filter(CaseORM.casebook_id != casebook_id, CaseORM.goal_id == goal_id)
@@ -496,7 +496,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
         if excl:
             q = q.filter(~CaseORM.id.in_(excl))
 
-        # Exclude champion unless explicitly included
         if not include_champion:
             try:
                 state = self.get_goal_state(casebook_id, goal_id)
@@ -504,22 +503,19 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 if champ_id:
                     q = q.filter(CaseORM.id != champ_id)
             except Exception:
-                # goal state table not present or other issue — ignore
                 pass
 
-        # Order by recency (prefer created_at if present, else id)
         order_col = getattr(CaseORM, "created_at", None)
         if order_col is not None:
             q = q.order_by(order_col.desc())
         else:
             q = q.order_by(CaseORM.id.desc())
 
-        # Overfetch to allow Python-side acceptance/quality filtering
         candidates = q.limit(max(limit * 3, limit)).all()
+        _logger.info("get_pool_for_goal -> overfetched=%s", len(candidates))
 
         if only_accepted or (min_quality is not None):
             def is_accepted(case: CaseORM) -> bool:
-                # Champion counts as accepted even if excluded above (in case include_champion=True)
                 try:
                     state = self.get_goal_state(casebook_id, goal_id)
                     if state and state.champion_case_id and case.id == state.champion_case_id:
@@ -535,13 +531,15 @@ class CaseBookStore(BaseSQLAlchemyStore):
                         return float(meta.get("quality", float("-inf"))) >= float(min_quality)
                     except Exception:
                         return False
-                # If only_accepted=True and no flags matched, it's not accepted
                 return not only_accepted
 
+            before = len(candidates)
             candidates = [c for c in candidates if is_accepted(c)]
+            _logger.info("get_pool_for_goal -> acceptance filtered %s -> %s", before, len(candidates))
 
-        # Cap to limit; caller will shuffle or do diversity selection
-        return candidates[:limit]
+        out = candidates[:limit]
+        _logger.info("get_pool_for_goal -> returning %s candidates", len(out))
+        return out
 
 
 
@@ -557,7 +555,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
         if sid:
             return str(sid)
 
-        # try to get text from meta or direct field
         text = ""
         meta = s.get("meta") or {}
         if isinstance(meta, dict):
@@ -566,10 +563,13 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
         if text:
             base = f"{case_id}:{idx}:{text}"
-            return hashlib.sha1(base.encode("utf-8")).hexdigest()[:16]
+            h = hashlib.sha1(base.encode("utf-8")).hexdigest()[:16]
+            _logger.info("_make_scorable_id -> sha1[:16]=%s (text_len=%s)", h, len(text))
+            return h
 
-        # absolute fallback
-        return uuid.uuid4().hex
+        rid = uuid.uuid4().hex
+        _logger.info("_make_scorable_id -> uuid=%s", rid)
+        return rid
 
     def add_case(
         self,
@@ -584,24 +584,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
         meta: Optional[dict] = None,
         response_texts: Optional[list[str]] = None,
     ):
-        """
-        Add a case to a casebook with prompt + responses.
-
-        Args:
-            casebook_id: ID of the parent casebook
-            goal_id:     Related goal id
-            goal_text:   Related goal text
-            agent_name:  Which agent created the case
-            mars_summary: Optional reasoning summary
-            scores:     Optional dict of scores
-            metadata:   Optional dict of metadata
-            scorables:  Explicit scorable dicts (legacy path)
-            prompt_text: Text of the prompt (user input)
-            response_texts: List of assistant responses to attach as scorables
-
-        Returns:
-            CaseORM instance
-        """
+        _logger.info(("add_case(cb_id=%s, goal_id=%s, agent=%s, prompt_len=%s, "
+                      "scorables=%s, responses=%s)"),
+                     casebook_id, goal_id, agent_name,
+                     len(prompt_text or "") if prompt_text else 0,
+                     len(scorables or []), len(response_texts or []))
         case = CaseORM(
             casebook_id=casebook_id,
             goal_id=goal_id,
@@ -611,6 +598,9 @@ class CaseBookStore(BaseSQLAlchemyStore):
         )
         self.session.add(case)
         self.session.flush()  # need case.id for scorable ids
+        _logger.info("add_case -> new CaseORM id=%s", case.id)
+
+        added_scorables = 0
 
         # --- 1. Add scorables from explicit dicts ---
         if scorables:
@@ -626,6 +616,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
                     meta=meta,
                 )
                 self.session.add(cs)
+                added_scorables += 1
+            _logger.info("add_case -> added explicit scorables=%s", added_scorables)
 
         # --- 2. Add scorables for assistant responses ---
         if response_texts:
@@ -643,8 +635,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
                     meta={"text": resp},
                 )
                 self.session.add(cs)
+                added_scorables += 1
+            _logger.info("add_case -> added response scorables=%s (total=%s)", len(response_texts), added_scorables)
 
         self.session.commit()
+        _logger.info("add_case -> committed case_id=%s (scorables_total=%s)", case.id, added_scorables)
         return case
 
     def list_casebooks(
@@ -655,10 +650,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         pipeline_run_id: Optional[int] = None,
         limit: int = 200,
     ) -> List[CaseBookORM]:
-        """
-        Filterable list of casebooks, newest first.
-        Any filter left as None is ignored.
-        All right"""
+        _logger.info("list_casebooks(agent=%s, tag=%s, run_id=%s, limit=%s)",
+                      agent_name, tag, pipeline_run_id, limit)
         q = self.session.query(CaseBookORM)
 
         if agent_name is not None:
@@ -670,23 +663,28 @@ class CaseBookStore(BaseSQLAlchemyStore):
         if pipeline_run_id is not None:
             q = q.filter(CaseBookORM.pipeline_run_id == pipeline_run_id)
 
-        # Prefer newest first
         order_col = getattr(CaseBookORM, "created_at", None)
         if order_col is not None:
             q = q.order_by(order_col.desc())
         else:
             q = q.order_by(CaseBookORM.id.desc())
 
-        return q.limit(limit).all()
+        rows = q.limit(limit).all()
+        _logger.info("list_casebooks -> %s rows", len(rows))
+        return rows
 
     def get_casebook(self, casebook_id: int) -> Optional[CaseBookORM]:
-        """Load a casebook by its primary key."""
-        return self.session.get(CaseBookORM, casebook_id)
+        _logger.info("get_casebook(id=%s)", casebook_id)
+        row = self.session.get(CaseBookORM, casebook_id)
+        _logger.info("get_casebook -> %s", "found" if row else "None")
+        return row
 
-
-    def get_casebooks(self) -> Optional[CaseBookORM]:
-        """Load a casebook by its primary key."""
-        return self.session.get(CaseBookORM).all()
+    def get_casebooks(self) -> List[CaseBookORM]:
+        """Return all casebooks (fixed from previous incorrect implementation)."""
+        _logger.info("get_casebooks()")
+        rows = self.session.query(CaseBookORM).all()
+        _logger.info("get_casebooks -> %s rows", len(rows))
+        return rows
 
     def list_cases(
         self,
@@ -696,7 +694,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         goal_id: Optional[str] = None,
         limit: int = 200,
     ) -> List[CaseORM]:
-        """List recent cases with optional filters, newest first."""
+        _logger.info("list_cases(cb_id=%s, agent=%s, goal_id=%s, limit=%s)",
+                      casebook_id, agent_name, goal_id, limit)
         q = self.session.query(CaseORM)
         if casebook_id is not None:
             q = q.filter(CaseORM.casebook_id == casebook_id)
@@ -711,11 +710,15 @@ class CaseBookStore(BaseSQLAlchemyStore):
         else:
             q = q.order_by(CaseORM.id.desc())
 
-        return q.limit(limit).all()
+        rows = q.limit(limit).all()
+        _logger.info("list_cases -> %s rows", len(rows))
+        return rows
 
     def get_case_by_id(self, case_id: int) -> Optional[CaseORM]:
-        """Load a single case with its relationships."""
-        return self.session.get(CaseORM, case_id)
+        _logger.info("get_case_by_id(id=%s)", case_id)
+        row = self.session.get(CaseORM, case_id)
+        _logger.info("get_case_by_id -> %s", "found" if row else "None")
+        return row
 
 
     def ensure_case(
@@ -724,34 +727,26 @@ class CaseBookStore(BaseSQLAlchemyStore):
         goal_text: str,
         agent_name: str,
     ) -> CaseORM:
-        """
-        Ensure there is a parent 'goal' case row for this casebook.
-        Creates one if not present.
-
-        Args:
-            casebook_id: CaseBookORM.id
-            goal_text:   text of the goal
-            agent_name:  name of the agent creating the case
-
-        Returns:
-            CaseORM instance
-        """
+        _logger.info("ensure_case(cb_id=%s, goal_text=%s, agent=%s)",
+                     casebook_id, _trunc(goal_text), agent_name)
         q = (self.session.query(CaseORM)
              .filter_by(casebook_id=casebook_id,
                         target_type=TargetType.GOAL,
                         target_id=None))
         goal_case = q.one_or_none()
 
-
         if goal_case is None:
             goal = self.session.query(GoalORM).filter_by(goal_text=goal_text).first()
             goal_case = CaseORM(
                 casebook_id=casebook_id,
-                goal_id=goal.id,
+                goal_id=goal.id if goal else None,
                 agent_name=agent_name,
             )
             self.session.add(goal_case)
             self.session.flush()
+            _logger.info("ensure_case -> created goal case id=%s (goal_id=%s)", goal_case.id, goal_case.goal_id)
+        else:
+            _logger.info("ensure_case -> exists goal case id=%s", goal_case.id)
         return goal_case
 
     def ensure_goal_state_for_case(
@@ -760,9 +755,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         goal_text: str,
         goal_id: str,
     ) -> CaseGoalStateORM:
-        """
-        Ensure CaseGoalState row exists for the given casebook/goal.
-        """
+        _logger.info("ensure_goal_state_for_case(cb_id=%s, goal_text=%s, goal_id=%s)",
+                     casebook_id, _trunc(goal_text), goal_id)
         state = (self.session.query(CaseGoalStateORM)
                  .filter_by(casebook_id=casebook_id)
                  .one_or_none())
@@ -775,22 +769,26 @@ class CaseBookStore(BaseSQLAlchemyStore):
             )
             self.session.add(state)
             self.session.commit()
+            _logger.info("ensure_goal_state_for_case -> created")
+        else:
+            _logger.info("ensure_goal_state_for_case -> exists")
         return state
 
     def get_case_scorable_by_id(self, case_scorable_id: int) -> Optional[CaseScorableORM]:
-        """Load a single CaseScorable by its primary key."""
-        return self.session.get(CaseScorableORM, case_scorable_id)
+        _logger.info("get_case_scorable_by_id(id=%s)", case_scorable_id)
+        row = self.session.get(CaseScorableORM, case_scorable_id)
+        _logger.info("get_case_scorable_by_id -> %s", "found" if row else "None")
+        return row
     
 
     def list_scorables(self, case_id: int, role: str = None):
-        """
-        Return all scorables for a given case.
-        Optionally filter by role.
-        """
+        _logger.info("list_scorables(case_id=%s, role=%s)", case_id, role)
         q = self.session.query(CaseScorableORM).filter_by(case_id=case_id)
         if role:
             q = q.filter(CaseScorableORM.role == role)
-        return q.all()
+        rows = q.all()
+        _logger.info("list_scorables -> %s rows", len(rows))
+        return rows
 
 
     def add_scorable(
@@ -802,16 +800,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
         meta: Optional[dict] = None,
         role: Optional[str] = None,
     ) -> DynamicScorableORM:
-        """
-        Attach a scorable artifact to a case.
-
-        Args:
-            case_id: the owning CaseORM id
-            scorable_type: type/category of scorable ("vpm", "text", "code", etc.)
-            text: raw content of the scorable (JSON, markdown, code…)
-            meta: arbitrary metadata dict (stage, goal_eval, section, etc.)
-            role: optional semantic role ("reflection", "draft", etc.)
-        """
+        _logger.info(("add_scorable(case_id=%s, run_id=%s, type=%s, role=%s, "
+                      "text_len=%s, meta_keys=%s)"),
+                     case_id, pipeline_run_id, scorable_type, role,
+                     len(text or "") if text else 0,
+                     list((meta or {}).keys()))
         orm = DynamicScorableORM(
             case_id=case_id,
             pipeline_run_id=pipeline_run_id,
@@ -822,4 +815,5 @@ class CaseBookStore(BaseSQLAlchemyStore):
         )
         self.session.add(orm)
         self.session.commit()
+        _logger.info("add_scorable -> committed id=%s (case_id=%s)", orm.id, case_id)
         return orm

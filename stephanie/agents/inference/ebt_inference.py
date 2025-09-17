@@ -349,7 +349,11 @@ class EBTInferenceAgent(BaseAgent):
     
 
     def plot_refinement_trace(self, trace, title):
-        import matplotlib.pyplot as plt
+        import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
         
         plt.figure(figsize=(10, 4))
         plt.plot(trace, marker="o")

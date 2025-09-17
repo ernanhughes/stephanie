@@ -466,23 +466,20 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
 
             # emit iteration tile
             try:
-                if self.zero_model_service and hasattr(
-                    self.zero_model_service, "emit_iteration_tile"
-                ):
-                    self.zero_model_service.emit_iteration_tile(
-                        doc_id=str(doc_id),
-                        iteration=iter_idx + 1,
-                        metrics={
-                            "overall": cand_metrics.get("overall", 0.0),
-                            "knowledge_verification": cand_metrics.get(
-                                "knowledge_verification", 0.0
-                            ),
-                            "hrm_score": cand_metrics.get("hrm_score", 0.0)
-                            if cand_metrics.get("hrm_score") is not None
-                            else 0.0,
-                        },
-                        output_dir="reports/vpm/iters",
-                    )
+                self.zero_model_service.emit_iteration_tile(
+                    doc_id=str(doc_id),
+                    iteration=iter_idx + 1,
+                    metrics={
+                        "overall": cand_metrics.get("overall", 0.0),
+                        "knowledge_verification": cand_metrics.get(
+                            "knowledge_verification", 0.0
+                        ),
+                        "hrm_score": cand_metrics.get("hrm_score", 0.0)
+                        if cand_metrics.get("hrm_score") is not None
+                        else 0.0,
+                    },
+                    output_dir="reports/vpm/iters",
+                )
             except Exception as e:
                 self.logger.log(
                     "VPMIterTileWarn", {"doc_id": doc_id, "error": str(e)}
@@ -612,6 +609,49 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             },
         }
 
+        try:
+            # 1) ensure blog casebook
+            paper_id = str(paper_data.get("paper_id", doc_id))
+            post_slug = (paper_data.get("post_slug") or "main")
+
+            title = paper_data.get("title")
+            name = f"blog::{title}"
+            meta = {"paper_id": paper_id, "arxiv_id": paper_data.get("arxiv_id"), "title": paper_data.get("title", ""), "post_slug": post_slug}
+            casebook = self.memory.casebooks.ensure_casebook(name=name, tag="blog", meta=meta)
+
+            meta ={}
+            response_texts = [raw_llm, candidate]
+            case = self.memory.casebooks.add_case(
+                casebook_id=casebook.id, 
+                goal_id=casebook.goal_id,
+                prompt_text=prompt,
+                agent_name=self.name,
+                response_texts=response_texts,
+                meta=meta,
+            )
+
+            # 3) auto-promote champion if better than any existing champion by overall score
+            # try:
+            #     existing = blog.get_champion_text(casebook_name=cb.name, section="summary")
+            #     should_promote = False
+            #     if not existing:
+            #         should_promote = True
+            #     else:
+            #         # crude comparison on overall; if you want, fetch champion metrics from cases for precision
+            #         should_promote = float(best_metrics.get("overall", 0.0)) >= self.min_overall
+
+            #     if should_promote:
+            #         blog.mark_champion(
+            #             casebook_name=casebook_name,
+            #             case_id=str(add_res["case_id"]),
+            #             section="summary",
+            #         )
+            # except Exception as e:
+            #     self.logger.log("BlogChampionEvalWarn", {"error": str(e)})
+        except Exception as e:
+            self.logger.log("BlogCasebookWriteWarn", {"doc_id": doc_id, "error": str(e)})
+
+
         # persist as dynamic scorable
         try:
             safe_meta = sanitize_for_json(
@@ -624,6 +664,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                     "hallucination_issues": result.get(
                         "hallucination_issues", []
                     ),
+                    "origin_ids": lineage_ids,
                     "figure_results": result.get("figure_results", {}),
                 }
             )
@@ -638,6 +679,16 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                 source_scorable_type="dynamic",
             )
             result["scorable_id"] = scorable_id
+            scorable = self.memory.casebooks.add_scorable(
+                case_id=case.id,
+                pipeline_run_id=context.get("pipeline_run_id"),
+                role="text",
+                scorable_id=scorable_id,
+                text=enhanced_summary,
+                scorable_type=TargetType.DYNAMIC,
+                meta=meta,
+            )
+            result["case_scorable_id"] = scorable_id
         except Exception as e:
             self.logger.log(
                 "DynamicScorableSaveError",
@@ -647,6 +698,9 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                     "traceback": traceback.format_exc(),
                 },
             )
+
+
+
 
         domain = self._derive_domain(paper_data, context)
         strategy_delta = {
@@ -831,7 +885,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             if not (casebooks and hasattr(casebooks, "get_by_casebook")):
                 self.logger.log(
                     "TransferAnalyzeSkip", {"reason": "casebooks missing"}
-                ) All right I want to do one more thing
+                ) 
                 return None
 
             rows = (
@@ -893,7 +947,11 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         Produce a simple PNG of baseline performance drift after the learning split.
         """
         try:
-            import matplotlib.pyplot as plt  # optional, only if installed
+            import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+  # optional, only if installed
         except Exception:
             self.logger.log(
                 "TransferCurveSkip", {"reason": "matplotlib not available"}
@@ -905,9 +963,8 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             return None
 
         # Rebuild the time series from signals
-        casebooks = getattr(self.memory, "casebooks", None)
         rows = (
-            casebooks.get_by_casebook(
+            self.memory.casebooks.get_by_casebook(
                 casebook_name="verification_signals", role="signal"
             )
             or []
@@ -1736,7 +1793,11 @@ Verified summary:
         if not iters:
             return None
         try:
-            import matplotlib.pyplot as plt
+            import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
         except Exception:
             self.logger.log(
                 "TimelinePlotSkip", {"reason": "matplotlib not available"}

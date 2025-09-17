@@ -6,7 +6,11 @@ import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm

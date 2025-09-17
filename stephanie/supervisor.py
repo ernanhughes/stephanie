@@ -20,6 +20,7 @@ from stephanie.services.cbr_service import CBRService
 from stephanie.services.cycle_watcher_service import CycleWatcherService
 from stephanie.services.knowledge_base_service import KnowledgeBaseService
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
+from stephanie.services.llm_service import LLMService
 from stephanie.services.meta_confidence_service import MetaConfidenceService
 from stephanie.services.plan_trace_service import PlanTraceService
 from stephanie.services.reporting_service import (JsonlSink, LoggerSink,
@@ -92,6 +93,22 @@ class Supervisor:
             lambda: MetaConfidenceService(cfg, memory, logger),
             dependencies=["state"]
         )
+
+
+        # Symbolic rule applier
+        self.container.register(
+            "rules",
+            lambda: RulesService(cfg, memory, logger),
+            dependencies=[]
+        )
+
+        # LLM service
+        self.container.register(
+            "llm",
+            lambda: LLMService(cfg, memory, self.container, logger),
+            dependencies=["rules"]
+        )
+        
         
         # Cycle watcher
         self.container.register(
@@ -150,13 +167,6 @@ class Supervisor:
             dependencies=[]
         )
 
-        # Symbolic rule applier
-        self.container.register(
-            "rules",
-            lambda: RulesService(cfg, memory, logger),
-            dependencies=[]
-        )
-
         # Knowledge Graph service
         self.container.register(
             "knowledge_graph",
@@ -181,7 +191,7 @@ class Supervisor:
         self.container.register(
             "cbr",
             lambda: CBRService(cfg, memory, self.container, logger),
-            dependencies=[]
+            dependencies=["llm", "scoring"]
         )
 
         self.container.register(

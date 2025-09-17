@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+os.environ.setdefault("MPLBACKEND", "Agg")
 from datetime import datetime
 
 import hydra
@@ -18,6 +19,7 @@ from stephanie.supervisor import Supervisor
 from stephanie.utils import generate_run_id, get_log_file_path
 
 logger = logging.getLogger(__name__)
+
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def run(cfg: DictConfig):

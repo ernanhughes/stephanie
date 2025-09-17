@@ -1,5 +1,9 @@
 # stephanie/agents/master_pupil/trainer.py
+import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
 import numpy as np
 import torch
 

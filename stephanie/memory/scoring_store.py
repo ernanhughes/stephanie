@@ -295,7 +295,11 @@ class ScoringStore:
     
 
     def plot_scorer_comparison(self, dimension: str):
-        import matplotlib.pyplot as plt
+        import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
         report = self.generate_comparison_report(goal_id=123)
         data = report[report.dimension == dimension]
         

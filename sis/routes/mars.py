@@ -11,7 +11,7 @@ def mars_results(request: Request):
     results = memory.mars_results.get_recent(100)
     return templates.TemplateResponse(
         "/mars/list.html",
-        {"request": request, "results": [r.to_dict() if hasattr(r, "to_dict") else r for r in results]},
+        {"request": request, "results": [r.to_dict() for r in results]},
     )
 
 @router.get("/mars/{pipeline_run_id}", response_class=HTMLResponse)
@@ -35,7 +35,7 @@ def mars_result_detail(
     # Normalize to list[dict] and extract the stored per-dimension `result`
     mars_list = []
     for r in raw:
-        d = r.to_dict() if hasattr(r, "to_dict") else r
+        d = r.to_dict() 
         # many stores keep {"result": {...}}; fallback to d if already flat
         res = d.get("result") or d
         # require minimal expected fields

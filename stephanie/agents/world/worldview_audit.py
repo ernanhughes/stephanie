@@ -1,7 +1,11 @@
 # stephanie/agents/world/worldview_audit.py
 from __future__ import annotations
 
+import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
 import pandas as pd
 from sqlalchemy.orm import Session
 

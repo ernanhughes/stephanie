@@ -76,12 +76,12 @@ class ScorableClassifier:
         self.idempotency_store = None
         
         # Log initialization with configuration details
-        _logger.info("DomainClassifierInit", {
-            "config_path": config_path,
-            "metric": metric,
-            "bus_available": bool(bus),
-            "message": "Initializing domain classifier"
-        })
+        _logger.info("DomainClassifierInit"
+            f"config_path: {config_path}"
+            f"metric {metric}"
+            f"bus_available: {bool(bus)}"
+            "message: Initializing domain classifier"
+        )
         
         try:
             # Load domain configuration from YAML file
