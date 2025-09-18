@@ -35,6 +35,8 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- text hashing
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 
 
 CREATE TABLE IF NOT EXISTS goals (
@@ -1494,6 +1496,17 @@ CREATE TABLE chat_conversations (
     meta JSONB DEFAULT '{}'::jsonb
 );
 
+ALTER TABLE chat_conversations
+  ADD COLUMN tsv tsvector
+  GENERATED ALWAYS AS (
+    setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+    setweight(to_tsvector('english', coalesce(meta::text, '')), 'D')
+  ) STORED;
+
+CREATE INDEX chat_conversations_tsv_gin
+  ON chat_conversations USING GIN (tsv);
+
+
 -- ============================================
 -- Chat Messages Table
 -- ============================================
@@ -1508,7 +1521,18 @@ CREATE TABLE chat_messages (
     meta JSONB DEFAULT '{}'::jsonb
 );
 
--- Indexes for faster lookups
+ALTER TABLE chat_messages
+  ADD COLUMN tsv tsvector
+  GENERATED ALWAYS AS (
+    setweight(to_tsvector('english', coalesce(role, '')), 'D') ||
+    setweight(to_tsvector('english', coalesce(text, '')), 'B')
+  ) STORED;
+
+CREATE INDEX chat_messages_tsv_gin
+  ON chat_messages USING GIN (tsv);
+
+Do we have a circle i'm just wondering do we have a signifier I-- Helpful filters for speed:
+CREATE INDEX chat_messages_role_idx ON chat_messages (role);
 CREATE INDEX idx_chat_messages_conversation_id ON chat_messages(conversation_id);
 CREATE INDEX idx_chat_messages_parent_id ON chat_messages(parent_id);
 
@@ -1519,6 +1543,8 @@ CREATE TABLE chat_turns (
     user_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
     assistant_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE
 );
+
+
 
 
 CREATE TABLE IF NOT EXISTS scorable_entities (

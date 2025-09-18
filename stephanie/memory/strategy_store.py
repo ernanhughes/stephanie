@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 # Reuse the dataclass already defined in your agent:
 # NOTE: this import avoids circulars because the agent doesn't import this module.
-from stephanie.agents.summary.knowledge_infused_summarizer import StrategyProfile
+from stephanie.agents.thought.knowledge_infused_summarizer import StrategyProfile
 from stephanie.models.strategy import StrategyProfileORM
 from stephanie.models.strategy import StrategyProfile
 

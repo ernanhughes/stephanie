@@ -1,17 +1,19 @@
-# stephanie/agents/summary/paper_summarizer.py
+# stephanie/agents/thought/paper_blog.py
 from __future__ import annotations
 
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.utils.casebook_utils import generate_casebook_name
+
 
 SENTS_MIN_DEFAULT = 4
 SENTS_MAX_DEFAULT = 20
 
 
-class SimplePaperSummarizerAgent(BaseAgent):
+class SimplePaperBlogAgent(BaseAgent):
     """
     Inputs (context[self.input_key]): list of docs with at least:
       - id (int/str)
@@ -34,6 +36,7 @@ class SimplePaperSummarizerAgent(BaseAgent):
         self.model_key_retriever = cfg.get(
             "model_key_retriever", "retriever.mrq.v1"
         )
+        self.casebook_action = cfg.get("casebook_action", "blog")
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         documents = context.get(self.input_key, [])
@@ -49,6 +52,10 @@ class SimplePaperSummarizerAgent(BaseAgent):
         for doc in documents:
             doc_id = doc.get("id")
             title = doc.get("title", "") or ""
+
+            casebook_name = generate_casebook_name(self.casebook_action, title) 
+            casebook = self.memory.casebooks.ensure_cb(self.casebook_action, casebook_name, tag=self.casebook_action)
+
             arxiv_summary = (
                 doc.get("summary", "") or ""
             )  # treat as "author/arXiv summary"

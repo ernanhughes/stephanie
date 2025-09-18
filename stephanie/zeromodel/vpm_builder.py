@@ -1,12 +1,12 @@
-# stephanie/zero/vpm_builder.py
+# stephanie/zeromodel/vpm_builder.py
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import List
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageOps  # pillow
+from PIL import Image, ImageDraw, ImageOps  # pillow
 
 
 @dataclass

@@ -7,6 +7,11 @@ import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 
+import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 
 @dataclass
 class ScoringExample:
@@ -295,10 +300,6 @@ class ScoringStore:
     
 
     def plot_scorer_comparison(self, dimension: str):
-        import matplotlib
-if matplotlib.get_backend().lower() != "agg":
-    matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
         report = self.generate_comparison_report(goal_id=123)
         data = report[report.dimension == dimension]

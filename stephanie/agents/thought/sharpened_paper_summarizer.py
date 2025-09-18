@@ -1,4 +1,4 @@
-# stephanie/agents/summary/sharpened_paper_summarizer.py
+# stephanie/agents/thought/sharpened_paper_summarizer.py
 from __future__ import annotations
 
 import re
@@ -6,8 +6,8 @@ import time
 from typing import Any, Dict, List, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.summary.paper_summarizer import \
-    SimplePaperSummarizerAgent
+from stephanie.agents.thought.paper_blog import \
+    SimplePaperBlogAgent
 from stephanie.scoring.scorable_factory import TargetType
 
 MAX_ITERS_DEFAULT = 4
@@ -15,6 +15,8 @@ MIN_GAIN_DEFAULT = 0.02
 MIN_OVERALL_DEFAULT = 0.75
 TARGET_CONFIDENCE_DEFAULT = 0.85
 MIN_FIGURE_SCORE_DEFAULT = 0.70
+SENTS_MIN_DEFAULT = 4
+SENTS_MAX_DEFAULT = 20
 
 
 class SharpenedPaperSummarizerAgent(BaseAgent):
@@ -38,15 +40,15 @@ class SharpenedPaperSummarizerAgent(BaseAgent):
         self.min_figure_score = float(cfg.get("min_figure_score", MIN_FIGURE_SCORE_DEFAULT))
 
         # Sentence window (match Track A)
-        self.min_sents = int(cfg.get("min_sents", 4))
-        self.max_sents = int(cfg.get("max_sents", 5))
+        self.min_sents = int(cfg.get("min_sents", SENTS_MIN_DEFAULT))
+        self.max_sents = int(cfg.get("max_sents", SENTS_MAX_DEFAULT All right))
 
         # Training model keys
         self.model_key_ranker = cfg.get("model_key_ranker", "ranker.sicql.v1")
         self.model_key_retriever = cfg.get("model_key_retriever", "retriever.mrq.v1")
 
         # Metrics helper (reuse Track A deterministic metrics)
-        self.metrics = SimplePaperSummarizerAgent(cfg, memory, container, logger)
+        self.metrics = SimplePaperBlogAgent(cfg, memory, container, logger)
 
         # Optional scoring service
         self.scoring = container.get("scoring")

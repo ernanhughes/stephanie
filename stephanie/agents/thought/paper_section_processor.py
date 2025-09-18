@@ -1,16 +1,14 @@
-# stephanie/agents/paper_processing/paper_section_processor.py
+# stephanie/agents/thought/paper_section_processor.py
 from __future__ import annotations
 import json
 import time
 import uuid
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any
 import traceback
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.summary.paper_summarizer import SimplePaperSummarizerAgent
-from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
+from stephanie.models.casebook import CaseBookORM
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.utils.json_sanitize import sanitize_for_json
-from stephanie.models.embedding import EmbeddingService
 
 class PaperSectionProcessorAgent(BaseAgent):
     """
@@ -46,7 +44,7 @@ class PaperSectionProcessorAgent(BaseAgent):
     
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.summarizer = SimplePaperSummarizerAgent(cfg, memory, container, logger)
+        self.summarizer = SimplePaperBlogAgent(cfg, memory, container, logger)
         self.goal_template = cfg.get("goal_template", "academic_summary")
         self.min_section_length = cfg.get("min_section_length", 100)
         self.max_sections = cfg.get("max_sections", 10)

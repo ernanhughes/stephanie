@@ -1,4 +1,4 @@
-# stephanie/agents/summary/knowledge_infused_summarizer.py
+# stephanie/agents/thought/knowledge_infused_summarizer.py
 from __future__ import annotations
 
 import asyncio
@@ -14,13 +14,18 @@ import numpy as np
 import logging
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.summary.paper_summarizer import \
-    SimplePaperSummarizerAgent
-from stephanie.knowledge.anti_hallucination import AntiHallucination
-from stephanie.knowledge.figure_grounding import FigureGrounding
+from stephanie.agents.thought.paper_blog import \
+    SimplePaperBlogAgent
+from stephanie.agents.thought.anti_hallucination import AntiHallucination
+from stephanie.agents.thought.figure_grounding import FigureGrounding
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.utils.json_sanitize import sanitize_for_json
 from stephanie.models.strategy import StrategyProfile
+
+import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 # -------------------- Defaults --------------------
 MAX_ITERS_DEFAULT = 5
@@ -102,7 +107,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         self.strategy = self._load_strategy_profile()
 
         # dependencies
-        self.metrics_calculator = SimplePaperSummarizerAgent(
+        self.metrics_calculator = SimplePaperBlogAgent(
             cfg, memory, container, logger
         )
         self.anti_hallucination = AntiHallucination(logger)
@@ -948,10 +953,6 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         """
         try:
             import matplotlib
-if matplotlib.get_backend().lower() != "agg":
-    matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-  # optional, only if installed
         except Exception:
             self.logger.log(
                 "TransferCurveSkip", {"reason": "matplotlib not available"}
@@ -1791,17 +1792,6 @@ Verified summary:
         self, iters: List[Dict[str, Any]], out_path: str
     ) -> Optional[str]:
         if not iters:
-            return None
-        try:
-            import matplotlib
-if matplotlib.get_backend().lower() != "agg":
-    matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
-        except Exception:
-            self.logger.log(
-                "TimelinePlotSkip", {"reason": "matplotlib not available"}
-            )
             return None
 
         xs = [it["iteration"] for it in iters]

@@ -9,6 +9,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.casebook import CaseBookORM
 from stephanie.scoring.scorable_factory import TargetType
 from stephanie.utils.json_sanitize import sanitize_for_json
+from stephanie.utils.casebook_utils import generate_casebook_name
 
 # DSPy Signatures for each step in the processing pipeline
 class ClaimExtractionSignature(dspy.Signature):
@@ -51,7 +52,7 @@ class FinalValidationSignature(dspy.Signature):
     final_validation = dspy.OutputField(desc="Final validation report with quality scores",
                                        format=lambda x: json.dumps(x, indent=2))
 
-class DSPyPaperSectionProcessor(BaseAgent):
+class DSPyPaperSectionProcessorAgent(BaseAgent):
     """
     DSPy-based processor for transforming paper sections into high-quality blog posts
     Uses structured reasoning, iterative refinement, and verification against knowledge base
@@ -74,7 +75,8 @@ class DSPyPaperSectionProcessor(BaseAgent):
         self.casebook_name = cfg.get("casebook_name", "PaperSectionProcessing")
         self.goal_template = cfg.get("goal_template", "academic_summary")
         self.min_section_length = cfg.get("min_section_length", 100)
-        
+        self.casebook_action = cfg.get("casebook_action", "blog")
+
         # Initialize DSPy
         self._init_dspy()
         
@@ -86,13 +88,15 @@ class DSPyPaperSectionProcessor(BaseAgent):
     
     def _init_dspy(self):
         """Initialize DSPy with appropriate configuration"""
-        # Configure DSPy for best performance
-        dspy.settings.configure(
-            lm=self.container.get("lm"),  # Language model from container
-            rm=self.container.get("rm"),  # Retrieval model from container
-            max_tokens=2000,
-            temperature=0.7
+        # Configure DSPy for best 
+        model_info = self.cfg.get("model")
+
+        lm = dspy.LM(
+            model_info.get("llm", "ollama_chat/qwen3"),
+            model_info.get("api_base", "http://localhost:11434"),
+            model_info.get("api_key", ""),
         )
+        dspy.configure(lm=lm)
     
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Main entrypoint for processing paper sections"""
@@ -101,12 +105,15 @@ class DSPyPaperSectionProcessor(BaseAgent):
         # Get document data
         documents = context.get(self.input_key, [])
         processed_sections = []
-        casebook = self._get_casebook()
         
         for doc in documents:
             doc_id = doc.get("id")
-            structured_data = doc.get("structured_data", {})
             title = doc.get("title", "")
+            casebook_name = generate_casebook_name(self.casebook_action, title) 
+            casebook = self.memory.casebooks.ensure_cb(self.casebook_action, casebook_name, tag=self.casebook_action)
+
+            structured_data = self.memory.document_sections.get_by_document(doc_id)
+
             
             if not structured_data:
                 self.logger.warning(f"No structured data for document {doc_id}")
@@ -314,17 +321,6 @@ class DSPyPaperSectionProcessor(BaseAgent):
                 return False
         
         return True
-    
-    def _get_casebook(self) -> CaseBookORM:
-        """Get or create a casebook for this processing run"""
-        casebook = self.memory.casebooks.get_casebook_by_name(self.casebook_name)
-        if not casebook:
-            casebook = self.memory.casebooks.create_casebook(
-                name=self.casebook_name,
-                description="Casebook for DSPy paper section processing",
-                tag="paper_processing"
-            )
-        return casebook
     
     def _save_section_to_casebook(self, casebook: CaseBookORM, doc_id: str, section_name: str, 
                                  section_text: str, result: Dict[str, Any], context: Dict[str, Any]):

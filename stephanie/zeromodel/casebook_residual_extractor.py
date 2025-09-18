@@ -1,4 +1,4 @@
-# stephanie/zero/casebook_residual_extractor.py
+# stephanie/zeromodel/casebook_residual_extractor.py
 from __future__ import annotations
 
 import os
@@ -12,7 +12,7 @@ import torch
 from stephanie.db import Session
 from stephanie.models.casebook import CaseBookORM
 from stephanie.models.skill_filter import SkillFilterORM
-from stephanie.zero.vpm_builder import CaseBookVPMBuilder
+from stephanie.zeromodel.vpm_builder import CaseBookVPMBuilder
 
 
 def diff_state_dict(sd_after: OrderedDict, sd_before: OrderedDict) -> OrderedDict:

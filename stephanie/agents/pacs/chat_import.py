@@ -12,7 +12,7 @@ class ChatImportAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.import_path = cfg.get("import_path", "data/chats")
-        if cfg.get("purge_existing", True):
+        if cfg.get("purge_existing", False):
             self.memory.chats.purge_all(True)
 
     async def run(self, context: dict) -> dict:

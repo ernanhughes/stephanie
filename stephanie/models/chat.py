@@ -109,7 +109,8 @@ class ChatTurnORM(Base):
     conversation = relationship("ChatConversationORM", back_populates="turns")
     user_message = relationship("ChatMessageORM", foreign_keys=[user_message_id])
     assistant_message = relationship("ChatMessageORM", foreign_keys=[assistant_message_id])
-
+    order_index = Column(Integer, nullable=False, default=0)
+    
     def to_dict(self, include_messages: bool = True):
         data = {
             "id": self.id,
