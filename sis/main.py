@@ -10,6 +10,8 @@ from stephanie.memory.memory_tool import MemoryTool
 from sis.routes import db, pipelines, models, logs, plan_traces, documents, mars
 from sis.routes import casebooks as casebooks_routes
 from sis.routes import chats
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -26,6 +28,24 @@ def load_config(path="sis/config/config.yaml"):
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
+def short_dt(value, fmt="%Y-%m-%d %H:%M", tz="Europe/Dublin"):
+    if value is None:
+        return ""
+    # accept datetime or ISO string
+    if isinstance(value, str):
+        try:
+            # minimal ISO parse
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception:
+            return value[:16]  # last resort trim
+    try:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=ZoneInfo("UTC"))
+        value = value.astimezone(ZoneInfo(tz))
+        return value.strftime(fmt)
+    except Exception:
+        return str(value)
+
 cfg = load_config()
 logger = JSONLogger("logs/sis.jsonl")
 memory = MemoryTool(cfg=cfg, logger=logger)
@@ -36,10 +56,16 @@ app = FastAPI(title="Stephanie Insight System (SIS)")
 app.state.memory = memory
 app.state.templates = Jinja2Templates(directory="sis/templates")
 app.state.templates.env.globals["now"] = datetime.now
+app.state.templates.env.filters["short_dt"] = short_dt
 # after you set up templates
 app.state.templates.env.filters["datetimeformat"] = datetimeformat
 # set config
 app.state.config = cfg
+
+
+
+
+
 
 # Static assets
 app.mount("/static", StaticFiles(directory="sis/static"), name="static")

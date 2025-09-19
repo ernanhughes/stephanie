@@ -28,7 +28,7 @@
           <td>{{ run.name or "-" }}</td>
           <td>{{ run.tag or "-" }}</td>
           <td>{{ run.description or "-" }}</td>
-          <td>{{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") if run.created_at else "-" }}</td>
+          <td>{{ run.created_at }}</td>
           <td>
             {% if run.stages %}
               {% set start = run.stages[0].timestamp %}

@@ -1,3 +1,4 @@
+{# templates/chats/list.html #}
 {% extends "base.html" %}
 {% block content %}
 <div class="container my-4">
@@ -5,6 +6,7 @@
     <h2 class="mb-0">Chat Conversations</h2>
     <form class="d-flex gap-2" method="get" action="/chats">
       <input class="form-control form-control-sm" name="provider" placeholder="provider" value="{{ filters.provider or '' }}">
+      <input class="form-control form-control-sm" type="number" min="1" max="1000" name="limit" placeholder="limit" value="{{ filters.limit or 200 }}">
       <button class="btn btn-sm btn-outline-primary">Filter</button>
     </form>
   </div>
@@ -16,6 +18,7 @@
           <th>ID</th>
           <th>Provider</th>
           <th>Title</th>
+          <th>Turns ↓</th>
           <th>Created</th>
           <th>Updated</th>
           <th></th>
@@ -23,13 +26,18 @@
       </thead>
       <tbody>
       {% for chat in chats %}
+        {% set c = chat.conversation %}
         <tr>
-          <td>#{{ chat.id }}</td>
-          <td><span class="badge bg-info text-dark">{{ chat.provider }}</span></td>
-          <td><code>{{ chat.title }}</code></td>
-          <td class="text-muted">{{ chat.created_at }}</td>
-          <td class="text-muted">{{ chat.updated_at }}</td>
-          <td><a class="btn btn-sm btn-outline-secondary" href="/chats/{{ chat.id }}">Open</a></td>
+          <td>#{{ c.id }}</td>
+          <td><span class="badge bg-info text-dark">{{ c.provider }}</span></td>
+          <td><code>{{ c.title }}</code></td>
+          <td><span class="badge bg-secondary">{{ chat.turn_count }}</span></td>
+          <td class="text-muted">{{ c.created_at | short_dt }}</td>
+          <td class="text-muted">{{ c.updated_at | short_dt }}</td>
+          <td class="text-nowrap">
+            <a class="btn btn-sm btn-outline-secondary" href="/chats/{{ c.id }}">Open</a>
+            <a class="btn btn-sm btn-primary" href="/chats/{{ c.id }}/score">Score</a>
+          </td>
         </tr>
       {% endfor %}
       </tbody>

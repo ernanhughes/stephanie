@@ -110,12 +110,17 @@ class ChatTurnORM(Base):
     user_message = relationship("ChatMessageORM", foreign_keys=[user_message_id])
     assistant_message = relationship("ChatMessageORM", foreign_keys=[assistant_message_id])
     order_index = Column(Integer, nullable=False, default=0)
-    
+    star = Column(Integer, nullable=False, default=0)
+    ner = Column(JSON, nullable=True)      # [{"text":"PACS","label":"METHOD","start":12,"end":16}, ...]
+    domains = Column(JSON, nullable=True)  # [{"domain":"alignment","score":0.82}, ...]
+
     def to_dict(self, include_messages: bool = True):
         data = {
             "id": self.id,
             "conversation_id": self.conversation_id,
             "user_message_id": self.user_message_id,
+            "star": self.star,
+            "order_index": self.order_index,
             "assistant_message_id": self.assistant_message_id,
         }
         if include_messages:

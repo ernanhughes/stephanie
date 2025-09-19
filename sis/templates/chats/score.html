@@ -1,0 +1,135 @@
+{# templates/chats/score.html #}
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-baseline mb-3">
+    <h3 class="mb-0">
+      Score Conversation #{{ conversation.id }} —
+      <code>{{ conversation.title }}</code>
+    </h3>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="/chats/{{ conversation.id }}">Open</a>
+      <a class="btn btn-sm {% if only_unrated %}btn-primary{% else %}btn-outline-primary{% endif %}"
+         href="/chats/{{ conversation.id }}/score?only_unrated={{ not only_unrated }}">
+        {% if only_unrated %}Show All{% else %}Show Only Unrated{% endif %}
+      </a>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <span class="badge bg-info text-dark">Progress: {{ progress.rated }}/{{ progress.total }} rated</span>
+    {% if only_unrated and turns|length > 0 %}
+      <span class="ms-2 text-muted small">Showing unrated only</span>
+    {% endif %}
+  </div>
+
+  {% if turns|length == 0 %}
+    <div class="alert alert-secondary">No turns to score (nice!).</div>
+  {% else %}
+  <div class="list-group">
+    {% for t in turns %}
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <div class="small text-muted">
+            Turn #{{ t.id }}
+            {% if t.order_index is defined %} · idx {{ t.order_index }}{% endif %}
+          </div>
+          <div>
+            <span class="badge {% if (t.star or 0) > 0 %}bg-success{% elif (t.star or 0) < 0 %}bg-danger{% else %}bg-secondary{% endif %}">
+              ⭐ {{ t.star or 0 }}
+            </span>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="card border-0 bg-light">
+              <div class="card-header py-1"><strong>User</strong></div>
+              <div class="card-body p-2">
+                <pre class="mb-0" style="white-space: pre-wrap; max-height:16rem; overflow:auto;">{{ t.user_text }}</pre>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card border-0 bg-light">
+              <div class="card-header py-1"><strong>Assistant</strong></div>
+              <div class="card-body p-2">
+                <pre class="mb-0" style="white-space: pre-wrap; max-height:16rem; overflow:auto;">{{ t.assistant_text }}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- templates/chats/score.html (inside each turn card, under Assistant column) -->
+        {% if t.domains and t.domains|length > 0 %}
+          <div class="mt-2 small">
+            <span class="badge bg-warning text-dark">Domains</span>
+            <div class="mt-1 d-flex flex-wrap" style="gap:.35rem;">
+              {# show up to 12 #}
+              {% for d in t.domains[:12] %}
+                {# chip color by source #}
+                {% set src = (d.source or 'seed')|lower %}
+                {% set chip_class =
+                    'bg-light text-dark border' if src == 'seed' else
+                    'bg-primary text-white'     if src == 'goal' else
+                    'bg-success text-white'     if src == 'meta' else
+                    'bg-info text-dark'         if src == 'emergent' else
+                    'bg-secondary text-white'
+                %}
+                <span class="badge {{ chip_class }}">
+                  {{ d.domain }}
+                  <span class="text-muted">
+                    ({{ '%.2f'|format(d.score if d.score is not none else 0.0) }}
+                    {% if d.source %} · {{ d.source }}{% endif %})
+                  </span>
+                </span>
+              {% endfor %}
+              {% if t.domains|length > 12 %}
+                <span class="text-muted">… and {{ t.domains|length - 12 }} more</span>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+        {% if t.ner and t.ner|length > 0 %}
+          <div class="mt-2 small">
+            <span class="badge bg-secondary">NER</span>
+            <div class="mt-1">
+              {% for e in t.ner[:12] %}
+                <span class="badge bg-light text-dark border me-1 mb-1">
+                  {{ e.text }} <span class="text-muted">({{ e.type }}{% if e.role %}, {{ e.role }}{% endif %})</span>
+                </span>
+              {% endfor %}
+              {% if t.ner|length > 12 %}
+                <span class="text-muted">… and {{ t.ner|length - 12 }} more</span>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+
+        <!-- Star controls -->
+        <div class="d-flex flex-wrap align-items-center gap-1 mt-2">
+          {% for s in [-5,-4,-3,-2,-1,0,1,2,3,4,5] %}
+            <form method="post" action="/chats/{{ conversation.id }}/turns/{{ t.id }}/star" style="display:inline;">
+              <input type="hidden" name="star" value="{{ s }}">
+              <button
+                class="btn btn-sm {% if s == (t.star or 0) %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                {{ s }}
+              </button>
+            </form>
+          {% endfor %}
+          <!-- Quick next-unrated -->
+          {% if loop.last and only_unrated %}
+            <a class="btn btn-sm btn-outline-primary ms-2" href="/chats/{{ conversation.id }}/score?only_unrated=true">
+              Next Unrated
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Optional: arrow-key shortcuts (←/→ to change selection; 1..5 / shift+1..5 to rate)
+     You can add JS later; server side works now. -->
+{% endblock %}

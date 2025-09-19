@@ -5,6 +5,7 @@ from typing import Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_run import PipelineRunORM
+from sqlalchemy.orm import selectinload
 
 
 class PipelineRunStore(BaseSQLAlchemyStore):
@@ -50,8 +51,7 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         """
         def op(s):
             return (
-                self._scope()
-                .query(PipelineRunORM)
+                s.query(PipelineRunORM)
                 .filter(PipelineRunORM.id == run_id)
                 .order_by(PipelineRunORM.created_at.desc())
                 .first()
@@ -64,8 +64,7 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         """
         def op(s):
             return (
-                self._scope()
-                .query(PipelineRunORM)
+                s.query(PipelineRunORM)
                 .filter(PipelineRunORM.goal_id == goal_id)
                 .order_by(PipelineRunORM.created_at.desc())
                 .all()
@@ -78,8 +77,7 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         """
         def op(s):
             return (
-                self._scope()
-                .query(PipelineRunORM)
+                s.query(PipelineRunORM)
                 .order_by(PipelineRunORM.created_at.desc())
                 .limit(limit)
                 .all()
@@ -107,4 +105,21 @@ class PipelineRunStore(BaseSQLAlchemyStore):
                 q = q.filter(PipelineRunORM.created_at >= filters["since"])
 
             return q.order_by(PipelineRunORM.created_at.desc()).all()
+        return self._run(op)
+
+
+    def list_runs_with_stages(self, limit: int = 200):
+        def op(s):
+            runs = (
+                s.query(PipelineRunORM)
+                .options(
+                    selectinload(PipelineRunORM.stages)  # <- eager load
+                    # .selectinload(PipelineStageORM.logs)  # if you have nested rels
+                )
+                .order_by(PipelineRunORM.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            # serialize *inside* the session
+            return [r.to_dict() for r in runs]
         return self._run(op)

@@ -1,0 +1,49 @@
+domains:
+  # Reuse names from seeds.yaml when possible to keep evaluation consistent
+  knowledge:
+    description: "Moments of distilled, transferable insight (amplified creation)."
+    positive_cues:
+      - "here's the principle"
+      - "the key insight is"
+      - "this generalizes to"
+      - "we learned that"
+      - "reusable pattern"
+      - "proved/showed that"
+    negative_cues:
+      - "typo fix only"
+      - "formatting change"
+      - "restating without new info"
+    boost: 1.0
+
+  meta_reasoning:
+    positive_cues:
+      - "reflect/reflecting"
+      - "why this worked"
+      - "choose strategy"
+      - "self-critique"
+    boost: 0.6
+
+  evaluation:
+    positive_cues:
+      - "measured"
+      - "scored"
+      - "A/B"
+      - "improvement"
+    boost: 0.4
+
+  cbr:
+    positive_cues:
+      - "reuse this case"
+      - "adapt previous"
+      - "retain for later"
+    boost: 0.5
+
+exclusions:
+  # Soft filters for this run
+  - "medicine"
+  - "finance"
+
+synonyms:
+  # Map variants to your canonical domains
+  "kb": "knowledge"
+  "meta": "meta_reasoning"

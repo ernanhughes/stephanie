@@ -7,6 +7,9 @@ from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
 
+def _iso(dt):
+    return dt.isoformat() if isinstance(dt, datetime) else dt
+
 
 class PipelineRunORM(Base):
     __tablename__ = "pipeline_runs"
@@ -56,8 +59,8 @@ class PipelineRunORM(Base):
             f"description='{(self.description[:50] + '...') if self.description and len(self.description) > 50 else self.description}')>"
         )
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_stages: bool = False, include_goal: bool = False) -> dict:
+        data = {
             "id": self.id,
             "run_id": self.run_id,
             "goal_id": self.goal_id,
@@ -73,5 +76,13 @@ class PipelineRunORM(Base):
             "lookahead_context": self.lookahead_context,
             "symbolic_suggestion": self.symbolic_suggestion,
             "extra_data": self.extra_data,
-            "created_at": self.created_at,
+            "created_at": _iso(self.created_at),
         }
+        if include_goal and getattr(self, "goal", None):
+            data["goal"] = self.goal.to_dict() if hasattr(self.goal, "to_dict") else {"id": self.goal.id}
+        if include_stages:
+            data["stages"] = [
+                s.to_dict() if hasattr(s, "to_dict") else {"id": s.id}
+                for s in (self.stages or [])
+            ]
+        return data

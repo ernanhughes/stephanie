@@ -21,7 +21,7 @@ def list_pipelines(request: Request):
     logger.info("Fetching pipeline runs for listing")
 
     # Use MemoryTool accessor
-    runs = memory.pipeline_runs.get_all(limit=50)
+    runs = memory.pipeline_runs.list_runs_with_stages(limit=50)
 
     return templates.TemplateResponse(
         "pipelines.html",

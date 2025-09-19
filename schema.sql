@@ -1542,6 +1542,9 @@ CREATE TABLE chat_turns (
     conversation_id INT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
     user_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
     assistant_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE
+    ner JSONB,
+    domains JSONB,
+    stars INT,
 );
 
 

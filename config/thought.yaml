@@ -16,6 +16,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/chat_annotate
   - agents/paper_processor
   - agents/sot_v01_agent
   - agents/scorable_entity
@@ -93,6 +94,15 @@ pipeline:
        cls: stephanie.agents.pacs.chat_import.ChatImportAgent
        enabled: false
        iterations: 1
+
+     - name: chat_annotate
+       description: >
+         📌 Annotate raw chat logs with metadata (participants, timestamps, message types,
+         etc.) to prepare for ingestion.  This is a lightweight preprocessing step that
+         adds structure to unstructured chat data.
+       cls: stephanie.agents.chat_annotate.ChatAnnotateAgent
+       enabled: true
+       iterations: 1 
 
      - name: chat_to_casebook
        description: >
