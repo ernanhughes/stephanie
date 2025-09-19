@@ -1,6 +1,7 @@
 # stephanie/envs/research_env.py
 from typing import Any, Dict
 
+from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 
@@ -46,9 +47,8 @@ class ResearchEnv:
             }
         """
         # Simulate a hypothesis ORM object
-        from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 
-        class DummyAgent(ScoringMixin):
+        class DummyAgent(BaseAgent):
             pass
 
         dummy_agent = DummyAgent({})

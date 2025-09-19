@@ -7,14 +7,13 @@ from datetime import datetime
 from sqlalchemy import func
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.models import EvaluationORM, ScoreORM
 from stephanie.models.comparison_preference import ComparisonPreferenceORM
 
 
-class PipelineComparisonAgent(ScoringMixin, BaseAgent):
+class PipelineComparisonAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.print_results = cfg.get("print_results", True)

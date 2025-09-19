@@ -5,12 +5,13 @@ from dataclasses import asdict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.rules.symbolic_node import SymbolicNode
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 
 
-class StepCompilerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
+class StepCompilerAgent(MemoryAwareMixin, BaseAgent):
     """
     Breaks down a high-level goal into symbolic reasoning steps.
     Each step is a SymbolicNode with step_id, action, description, etc.
@@ -37,11 +38,10 @@ class StepCompilerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
 
         # Score the plan using MRQ
         try:
-            score_result = self.score_item(
-                {"text": response},
-                context,
-                metrics="step_reasoning",
-                scorer=self.scorer,
+            scorable = Scorable(text=response, type=TargetType.HYPOTHESIS)
+            score_result = self._score(
+                scorable=scorable,
+                context=context,
             )
             context["step_plan_score"] = score_result.aggregate()
             context.setdefault("dimension_scores", {})["step_plan"] = (

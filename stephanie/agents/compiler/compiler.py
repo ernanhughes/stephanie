@@ -8,11 +8,12 @@ from stephanie.agents.compiler.reasoning_trace import ReasoningTree
 from stephanie.agents.compiler.scorer import ReasoningNodeScorer
 from stephanie.agents.compiler.step_selector import StepSelector
 from stephanie.agents.compiler.symbol_mapper import SymbolMapper
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 
 
-class CompilerAgent(ScoringMixin, BaseAgent):
+class CompilerAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger, full_cfg=None):
         super().__init__(cfg, memory, container, logger)
         self.tree = ReasoningTree()
@@ -70,9 +71,9 @@ class CompilerAgent(ScoringMixin, BaseAgent):
                     },
                 )
 
-            merged = {"thought": node.thought, **context}
-
-            score = self.scorer.score(context, merged) # TODO convert to scorable
+            merged = {"text": node.thought, **context}
+            scorable = Scorable(text=node.response, type=TargetType.HYPOTHESIS)
+            score = self._score(scorable=scorable, context=merged)
             node.score = score.aggregate()
 
             if self.logger:

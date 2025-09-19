@@ -4,7 +4,6 @@ import re
 from collections import defaultdict
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.agents.proximity import ProximityAgent
 from stephanie.agents.rule_tuner import RuleTunerAgent
 from stephanie.agents.unified_mrq import UnifiedMRQAgent
@@ -16,7 +15,7 @@ from stephanie.utils.graph_tools import (build_mermaid_graph,
                                          save_mermaid_to_file)
 
 
-class LATSAgent(ScoringMixin, BaseAgent):
+class LATSAgent(BaseAgent):
     """
     Enhanced LATS agent with:
     - Tree search (MCTS + UCT)
@@ -260,7 +259,7 @@ class LATSAgent(ScoringMixin, BaseAgent):
             context.setdefault("hypotheses", []).append(hyp.to_dict())
             # Score using dimensional scorers
             scorable = ScorableFactory.from_dict(hyp, TargetType.HYPOTHESIS)
-            score_result = self.score_item(scorable, score_context, metrics="lats_node")
+            score_result = self._score(scorable, score_context)
 
             # Create child node with metadata
             child = self.create_node(new_state, new_trace, parent=node)
@@ -404,10 +403,9 @@ class LATSAgent(ScoringMixin, BaseAgent):
         Evaluate node using dimensional scorers
         """
         scorable = Scorable(text="\n".join(node["trace"]))
-        return self.score_item(
+        return self._score(
             scorable,
             {"goal": {"goal_text": node["state"]["goal"]}},
-            metrics="lats_reflection",
         )
 
     def _self_consistency(self, node):
@@ -480,10 +478,9 @@ class LATSAgent(ScoringMixin, BaseAgent):
             node["state"]["goal"] if isinstance(node["state"], dict) else node["state"]
         )
         scorable = Scorable(text=hyp["text"])
-        score_result = self.score_item(
+        score_result = self._score(
             scorable,
             {"goal": {"goal_text": goal_text}},  # Always a dict
-            metrics="lats_reflection",
         )
 
         return score_result.aggregate() / 100  # Normalize

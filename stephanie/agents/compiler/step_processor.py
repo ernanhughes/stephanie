@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
-from stephanie.scoring.scorer.mrq_scorer import MRQScorer
+from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import Scorable
 
 
-class StepProcessorAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
+class StepProcessorAgent(MemoryAwareMixin, BaseAgent):
     """
     Executes each reasoning step (SymbolicNode) from StepCompilerAgent,
     producing outputs and optionally scoring them.
@@ -15,8 +15,6 @@ class StepProcessorAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.scorer = MRQScorer(cfg, memory, container, logger)
-        self.scorer.load_models()
 
     async def run(self, context: dict) -> dict:
         goal = context["goal"]
@@ -34,8 +32,9 @@ class StepProcessorAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
             output = self.call_llm(prompt, context=step_context)
 
             # Score (optional)
-            score_result = self.score_item(
-                {"text": output}, context, metrics="step_quality", scorer=self.scorer
+            scorable = Scorable(text=output, type=TargetType.HYPOTHESIS)
+            score_result = self._score(
+                scorable=scorable, context=context
             )
             total_score = score_result.aggregate()
 

@@ -7,7 +7,6 @@ from dspy import (BootstrapFewShot, ChainOfThought, Example, InputField,
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
@@ -36,7 +35,7 @@ class PromptMerger(dspy.Module):
         return self.merger(goal=goal, prompts=prompt_text)
 
 
-class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
+class DSPyAssemblerAgent(MemoryAwareMixin, BaseAgent):
     """
     DSPyAssembler uses DSPy to merge and refine multiple prompt variants into one optimal prompt.
     """
@@ -114,8 +113,8 @@ class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
                 text=response,
                 target_type=TargetType.RESPONSE,
             )
-            score_bundle = self.score_item(
-                scorable, context, metrics="compiler", scorer=self.scorer
+            score_bundle = self._score(
+                scorable, context
             )
             final_score = score_bundle.aggregate()
         except Exception as e:
@@ -142,8 +141,8 @@ class DSPyAssemblerAgent(ScoringMixin, MemoryAwareMixin, BaseAgent):
                 text=response,
                 target_type=TargetType.RESPONSE,
             )
-            score_bundle = self.score_item(
-                scorable, context, metrics="compiler", scorer=self.scorer
+            score_bundle = self._score(
+                scorable, context
             )
             aggregate_score = score_bundle.aggregate()
             normalized_score = aggregate_score / 100.0  # Normalize to [0, 1]

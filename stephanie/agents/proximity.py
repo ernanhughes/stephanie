@@ -2,13 +2,12 @@
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
 
 
-class ProximityAgent(ScoringMixin, BaseAgent):
+class ProximityAgent(BaseAgent):
     """
     Agent wrapper for the ProximityScorer.
     Produces:
@@ -33,10 +32,9 @@ class ProximityAgent(ScoringMixin, BaseAgent):
         # --- score incoming hypotheses against goal
         for document in documents:
             scorable = ScorableFactory.from_dict(document, TargetType.HYPOTHESIS)
-            score = self.scorer.score(
+            score = self._score(
                 context=context,
                 scorable=scorable,
-                metrics=self.metrics,
             )
             self.logger.log("ProximityScoreComputed", score.to_dict())
             proximity_results.append(score.to_dict())

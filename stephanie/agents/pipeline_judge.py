@@ -1,15 +1,12 @@
 # stephanie/agents/pipeline_judge.py
 import csv
 import os
-import re
 from datetime import datetime
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.mixins.scoring_mixin import ScoringMixin
 from stephanie.analysis.rule_analytics import RuleAnalytics
 from stephanie.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 
 
@@ -54,10 +51,9 @@ class PipelineJudgeAgent(BaseAgent):
 
         for hypo in hypotheses:
             scorable = ScorableFactory.from_dict(hypo, TargetType.HYPOTHESIS)
-            score_result = self.score_item(
+            score_result = self._score(
                 scorable=scorable,
                 context=context,
-                metrics="pipeline_judge",
             )
             self.logger.log(
                 "HypothesisJudged",
