@@ -21,8 +21,8 @@ class TrainingEventStore(BaseSQLAlchemyStore):
     default_order_by = TrainingEventORM.created_at
 
 
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "training_events"
 
     def name(self) -> str:

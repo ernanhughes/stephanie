@@ -18,8 +18,8 @@ class SkillFilterStore(BaseSQLAlchemyStore):
     orm_model = SkillFilterORM
     default_order_by = SkillFilterORM.created_at
 
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "skill_filters"
 
     def name(self) -> str:

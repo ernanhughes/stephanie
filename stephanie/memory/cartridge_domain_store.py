@@ -1,8 +1,4 @@
-# stephanie/memory/cartridge_domain_store.py
 from __future__ import annotations
-
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
 
 from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.cartridge_domain import CartridgeDomainORM
@@ -10,14 +6,11 @@ from stephanie.models.cartridge_domain import CartridgeDomainORM
 
 class CartridgeDomainStore(BaseSQLAlchemyStore):
     orm_model = CartridgeDomainORM
-    default_order_by = CartridgeDomainORM.id.desc()
-    
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
-        self.name = "cartridge_domains"
+    default_order_by = "id"
 
-    def name(self) -> str:
-        return self.name
+    def __init__(self, session_maker, logger=None):
+        super().__init__(session_maker, logger)
+        self.name = "cartridge_domains"
 
     def insert(self, data: dict) -> CartridgeDomainORM:
         """
@@ -25,47 +18,49 @@ class CartridgeDomainStore(BaseSQLAlchemyStore):
 
         Expected dict keys: cartridge_id, domain, score
         """
-        # Try to find existing entry
-        existing = (
-            self.session.query(CartridgeDomainORM)
-            .filter_by(cartridge_id=data["cartridge_id"], domain=data["domain"])
-            .first()
-        )
+        def op():
+            with self._scope() as s:
+                existing = (
+                    s.query(CartridgeDomainORM)
+                    .filter_by(cartridge_id=data["cartridge_id"], domain=data["domain"])
+                    .first()
+                )
 
-        if existing:
-            # Update score if it has changed
-            if existing.score != data["score"]:
-                existing.score = data["score"]
-                self.session.commit()
-                if self.logger:
-                    self.logger.log("CartridgeDomainUpdated", data)
-            return existing
-        else:
-            # Create new entry
-            domain_obj = CartridgeDomainORM(**data)
-            self.session.add(domain_obj)
-            self.session.commit()
-            if self.logger:
-                self.logger.log("CartridgeDomainInserted", data)
-            return domain_obj
+                if existing:
+                    if existing.score != data["score"]:
+                        existing.score = data["score"]
+                        if self.logger:
+                            self.logger.log("CartridgeDomainUpdated", data)
+                    return existing
+                else:
+                    domain_obj = CartridgeDomainORM(**data)
+                    s.add(domain_obj)
+                    if self.logger:
+                        self.logger.log("CartridgeDomainInserted", data)
+                    return domain_obj
+
+        return self._run(op)
 
     def get_domains(self, cartridge_id: int) -> list[CartridgeDomainORM]:
-        return (
-            self.session.query(CartridgeDomainORM)
-            .filter_by(cartridge_id=cartridge_id)
-            .order_by(CartridgeDomainORM.score.desc())
-            .all()
-        )
+        def op():
+            with self._scope() as s:
+                return (
+                    s.query(CartridgeDomainORM)
+                    .filter_by(cartridge_id=cartridge_id)
+                    .order_by(CartridgeDomainORM.score.desc())
+                    .all()
+                )
+        return self._run(op)
 
-    def delete_domains(self, cartridge_id: int):
-        self.session.query(CartridgeDomainORM).filter_by(
-            cartridge_id=cartridge_id
-        ).delete()
-        self.session.commit()
-        if self.logger:
-            self.logger.log("CartridgeDomainsDeleted", {"cartridge_id": cartridge_id})
+    def delete_domains(self, cartridge_id: int) -> None:
+        def op():
+            with self._scope() as s:
+                s.query(CartridgeDomainORM).filter_by(cartridge_id=cartridge_id).delete()
+                if self.logger:
+                    self.logger.log("CartridgeDomainsDeleted", {"cartridge_id": cartridge_id})
+        return self._run(op)
 
-    def set_domains(self, cartridge_id: int, domains: list[tuple[str, float]]):
+    def set_domains(self, cartridge_id: int, domains: list[tuple[str, float]]) -> None:
         """
         Clear and re-add domains for the cartridge.
         :param domains: list of (domain, score) pairs

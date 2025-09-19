@@ -4,15 +4,17 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session, joinedload
 
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
 from stephanie.models.score_attribute import ScoreAttributeORM
 
 
-class ScoreStore:
-    def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+class ScoreStore(BaseSQLAlchemyStore):
+    orm_model = ScoreORM
+    default_order_by = ScoreORM.id.desc()
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "scores"
         self.table_name = "scores"
 

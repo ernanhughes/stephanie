@@ -1,6 +1,3 @@
-# stephanie/memory/cartridge_store.py
-from sqlalchemy.orm import Session
-
 from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.scorable_embedding import ScorableEmbeddingORM
 from stephanie.models.theorem import CartridgeORM
@@ -8,17 +5,15 @@ from stephanie.models.theorem import CartridgeORM
 
 class CartridgeStore(BaseSQLAlchemyStore):
     orm_model = CartridgeORM
-    default_order_by = CartridgeORM.id.desc()
-    
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    default_order_by = CartridgeORM.id  # use column for BaseSQLAlchemyStore
+
+    def __init__(self, session_maker, logger=None):
+        super().__init__(session_maker, logger)
         self.name = "cartridges"
 
-    def name(self) -> str:
-        return self.name
-    
     def _ensure_scorable_embedding(
         self,
+        s,
         embedding_id: int,
         scorable_id: str,
         scorable_type: str,
@@ -29,7 +24,7 @@ class CartridgeStore(BaseSQLAlchemyStore):
         Returns scorable_embeddings.id to store on CartridgeORM/TheoremORM as a soft pointer.
         """
         existing = (
-            self.session.query(ScorableEmbeddingORM)
+            s.query(ScorableEmbeddingORM)
             .filter_by(
                 scorable_id=scorable_id,
                 scorable_type=scorable_type,
@@ -47,83 +42,103 @@ class CartridgeStore(BaseSQLAlchemyStore):
             embedding_id=embedding_id,
             embedding_type=embedding_type,
         )
-        self.session.add(new_se)
-        self.session.flush()  # populate new_se.id without commit
+        s.add(new_se)
+        s.flush()  # populate new_se.id without commit
         return new_se.id
 
     def add_cartridge(self, data: dict) -> CartridgeORM:
-        existing = (
-            self.session.query(CartridgeORM)
-            .filter_by(source_type=data["source_type"], source_uri=data["source_uri"])
-            .first()
-        )
+        def op():
+            with self._scope() as s:
+                existing = (
+                    s.query(CartridgeORM)
+                    .filter_by(source_type=data["source_type"], source_uri=data["source_uri"])
+                    .first()
+                )
 
-        # Resolve external embedding pointer into scorable_embeddings.id
-        if data.get("embedding_id"):
-            resolved_id = self._ensure_scorable_embedding(
-                embedding_id=data["embedding_id"],
-                scorable_id=data.get("source_uri"),   # the owner key (e.g., doc uri)
-                scorable_type=data["source_type"],    # 'document', 'hypothesis', etc.
-                embedding_type=data.get("embedding_type", "unknown"),
-            )
-            data["embedding_id"] = resolved_id  # store soft pointer id
+                if data.get("embedding_id"):
+                    resolved_id = self._ensure_scorable_embedding(
+                        s,
+                        embedding_id=data["embedding_id"],
+                        scorable_id=data.get("source_uri"),
+                        scorable_type=data["source_type"],
+                        embedding_type=data.get("embedding_type", "unknown"),
+                    )
+                    data["embedding_id"] = resolved_id
 
-        if existing:
-            for field in [
-                "markdown_content", "title", "summary",
-                "sections", "triples", "domain_tags", "embedding_id"
-            ]:
-                if field in data:
-                    setattr(existing, field, data[field])
-            self.session.commit()
-            return existing
+                if existing:
+                    for field in [
+                        "markdown_content", "title", "summary",
+                        "sections", "triples", "domain_tags", "embedding_id"
+                    ]:
+                        if field in data:
+                            setattr(existing, field, data[field])
+                    return existing
 
-        cartridge = CartridgeORM(**data)
-        self.session.add(cartridge)
-        self.session.commit()
-        return cartridge
+                cartridge = CartridgeORM(**data)
+                s.add(cartridge)
+                return cartridge
+
+        return self._run(op)
 
     def bulk_add_cartridges(self, items: list[dict]) -> list[CartridgeORM]:
-        cartridges = []
-        for item in items:
-            if item.get("embedding_id"):
-                resolved_id = self._ensure_scorable_embedding(
-                    embedding_id=item["embedding_id"],
-                    scorable_id=item.get("source_uri"),
-                    scorable_type=item["source_type"],
-                    embedding_type=item.get("embedding_type", "unknown"),
-                )
-                item["embedding_id"] = resolved_id
-            cartridges.append(CartridgeORM(**item))
+        def op():
+            with self._scope() as s:
+                cartridges = []
+                for item in items:
+                    if item.get("embedding_id"):
+                        resolved_id = self._ensure_scorable_embedding(
+                            s,
+                            embedding_id=item["embedding_id"],
+                            scorable_id=item.get("source_uri"),
+                            scorable_type=item["source_type"],
+                            embedding_type=item.get("embedding_type", "unknown"),
+                        )
+                        item["embedding_id"] = resolved_id
+                    cartridges.append(CartridgeORM(**item))
 
-        self.session.add_all(cartridges)
-        self.session.commit()
-        return cartridges
+                s.add_all(cartridges)
+                return cartridges
+
+        return self._run(op)
 
     def get_by_id(self, cartridge_id: int) -> CartridgeORM | None:
-        return self.session.query(CartridgeORM).filter_by(id=cartridge_id).first()
+        def op():
+            with self._scope() as s:
+                return s.query(CartridgeORM).filter_by(id=cartridge_id).first()
+        return self._run(op)
 
     def get_by_source_uri(self, uri: str, source_type: str) -> CartridgeORM | None:
-        return (
-            self.session.query(CartridgeORM)
-            .filter_by(source_uri=uri, source_type=source_type)
-            .first()
-        )
+        def op():
+            with self._scope() as s:
+                return (
+                    s.query(CartridgeORM)
+                    .filter_by(source_uri=uri, source_type=source_type)
+                    .first()
+                )
+        return self._run(op)
 
     def get_all(self, limit=100) -> list[CartridgeORM]:
-        return self.session.query(CartridgeORM).limit(limit).all()
+        def op():
+            with self._scope() as s:
+                return s.query(CartridgeORM).limit(limit).all()
+        return self._run(op)
 
     def delete_by_id(self, cartridge_id: int) -> bool:
-        cartridge = self.get_by_id(cartridge_id)
-        if cartridge:
-            self.session.delete(cartridge)
-            self.session.commit()
-            return True
-        return False
+        def op():
+            with self._scope() as s:
+                cartridge = s.query(CartridgeORM).filter_by(id=cartridge_id).first()
+                if cartridge:
+                    s.delete(cartridge)
+                    return True
+                return False
+        return self._run(op)
 
     def get_run_id(self, pipeline_run_id: int) -> list[CartridgeORM]:
-        return (
-            self.session.query(CartridgeORM)
-            .filter_by(pipeline_run_id=pipeline_run_id)
-            .all()
-        )   
+        def op():
+            with self._scope() as s:
+                return (
+                    s.query(CartridgeORM)
+                    .filter_by(pipeline_run_id=pipeline_run_id)
+                    .all()
+                )
+        return self._run(op)

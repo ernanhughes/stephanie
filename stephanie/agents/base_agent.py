@@ -1,6 +1,8 @@
 # stephanie/agents/base_agent.py
 from __future__ import annotations
 
+from contextlib import contextmanager
+import time
 import random
 import re
 from abc import ABC, abstractmethod
@@ -487,3 +489,48 @@ class BaseAgent(ABC):
             "scores": report_scores,
             "goal_text": goal.get("goal_text", ""),
         }, bundle
+
+    def _emit(self, event: str, **fields):
+        payload = {"agent": self.name, "event": event, **_kv(**fields)}
+        # Prefer .report (if your BaseAgent forwards to bus/ELK); fall back to logger
+        try:
+            self.report(payload)
+        except Exception:
+            self.logger.info(event, payload)
+
+    @contextmanager
+    def report_step(self, event: str, **fields):
+        t0 = _now_ms()
+        self._emit(self, event + ".start", **fields)
+        try:
+            yield
+            self._emit(self, event + ".ok", duration_ms=_now_ms() - t0, **fields)
+        except Exception as e:
+            self._emit(self, event + ".err", duration_ms=_now_ms() - t0, error=str(e), **fields)
+            raise
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+def _safe_len(x) -> int:
+    try:
+        return len(x)
+    except Exception:
+        return 0
+
+def _short(s: str, n: int = 120) -> str:
+    s = (s or "")
+    return s if _safe_len(s) <= n else (s[:n] + "…")
+
+def _kv(**kwargs):
+    """Drop Nones; keep payload small; coerce to JSONable primitives."""
+    out = {}
+    for k, v in kwargs.items():
+        if v is None:
+            continue
+        if isinstance(v, (str, int, float, bool)):
+            out[k] = v
+        else:
+            # best-effort stringify small objects
+            out[k] = _short(str(v), 240)
+    return out

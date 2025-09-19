@@ -11,8 +11,8 @@ class SharpeningStore(BaseSQLAlchemyStore):
     orm_model = SharpeningPredictionORM
     default_order_by = SharpeningPredictionORM.created_at
     
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "sharpening"
 
     def name(self) -> str:

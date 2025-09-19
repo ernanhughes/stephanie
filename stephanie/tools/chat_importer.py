@@ -12,7 +12,7 @@ Key Features:
 - Integration with both chat storage and casebook systems
 - Comprehensive logging for import operations
 
-Usage:
+Usage: Our next part is the agent
     from stephanie.tools.chat_importer import import_conversations
     result = import_conversations(memory, "/path/to/chat/exports", context)
 """

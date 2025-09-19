@@ -1,10 +1,9 @@
-# stephanie/memory/belief_cartridge_store.py
 from __future__ import annotations
 
 import json
 import os
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
@@ -15,175 +14,141 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 
+
 class BeliefCartridgeStore(BaseSQLAlchemyStore):
     orm_model = BeliefCartridgeORM
-    default_order_by = BeliefCartridgeORM.created_at
-    
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session=session, logger=logger)
+    default_order_by = "created_at"   # ✅ let Base handle .desc()
+
+    def __init__(self, session_maker, logger=None):
+        super().__init__(session_maker, logger=logger)
         self.name = "belief_cartridges"
 
-    def name(self) -> str:
-        return self.name
-
     def add_or_update_cartridge(self, data: dict) -> BeliefCartridgeORM:
-        existing = self.session.query(BeliefCartridgeORM).filter_by(id=data["id"]).first()
+        def op():
+            with self._scope() as s:
+                existing = s.query(BeliefCartridgeORM).filter_by(id=data["id"]).first()
+                if existing:
+                    existing.updated_at = datetime.now()
+                    existing.markdown_content = data.get("markdown_content", existing.markdown_content)
+                    existing.idea_payload = data.get("idea_payload", existing.idea_payload)
+                    existing.rationale = data.get("rationale", existing.rationale)
+                    existing.source_url = data.get("source_url", existing.source_url)
+                    existing.is_active = data.get("is_active", existing.is_active)
+                    return existing
+                cartridge = BeliefCartridgeORM(**data)
+                s.add(cartridge)
+                return cartridge
+        return self._run(op)
 
-        if existing:
-            # Update only certain fields
-            existing.updated_at = datetime.now()
-            existing.markdown_content = data.get("markdown_content", existing.markdown_content)
-            existing.idea_payload = data.get("idea_payload", existing.idea_payload)
-            existing.rationale = data.get("rationale", existing.rationale)
-            existing.source_url = data.get("source_url", existing.source_url)
-            existing.is_active = data.get("is_active", existing.is_active)
-            self.session.commit()
-            return existing
-
-        # Create new
-        cartridge = BeliefCartridgeORM(**data)
-        self.session.add(cartridge)
-        self.session.commit()
-        return cartridge
-
-    def bulk_add(self, items: list[dict]) -> list[BeliefCartridgeORM]:
-        cartridges = [BeliefCartridgeORM(**item) for item in items]
-        self.session.add_all(cartridges)
-        self.session.commit()
-        return cartridges
+    def bulk_add(self, items: List[dict]) -> List[BeliefCartridgeORM]:
+        def op():
+            with self._scope() as s:
+                cartridges = [BeliefCartridgeORM(**item) for item in items]
+                s.add_all(cartridges)
+                return cartridges
+        return self._run(op)
 
     def get_by_id(self, belief_id: str) -> BeliefCartridgeORM | None:
-        return self.session.query(BeliefCartridgeORM).filter_by(id=belief_id).first()
+        def op():
+            with self._scope() as s:
+                return s.get(BeliefCartridgeORM, belief_id)
+        return self._run(op)
 
     def get_by_source(self, source_url: str) -> list[BeliefCartridgeORM]:
-        return self.session.query(BeliefCartridgeORM).filter_by(source_url=source_url).all()
+        def op():
+            with self._scope() as s:
+                return s.query(BeliefCartridgeORM).filter_by(source_url=source_url).all()
+        return self._run(op)
 
     def get_all(self, limit: int = 100) -> list[BeliefCartridgeORM]:
-        return self.session.query(BeliefCartridgeORM).order_by(BeliefCartridgeORM.created_at.desc()).limit(limit).all()
+        def op():
+            with self._scope() as s:
+                return (
+                    s.query(BeliefCartridgeORM)
+                    .order_by(BeliefCartridgeORM.created_at.desc())
+                    .limit(limit)
+                    .all()
+                )
+        return self._run(op)
 
     def delete_by_id(self, belief_id: str) -> bool:
-        belief = self.get_by_id(belief_id)
-        if belief:
-            self.session.delete(belief)
-            self.session.commit()
-            return True
-        return False
+        def op():
+            with self._scope() as s:
+                belief = s.get(BeliefCartridgeORM, belief_id)
+                if not belief:
+                    return False
+                s.delete(belief)
+                return True
+        return self._run(op)
 
     def deactivate_by_id(self, belief_id: str) -> bool:
-        belief = self.get_by_id(belief_id)
-        if belief:
-            belief.is_active = False
-            belief.updated_at = datetime.now()
-            self.session.commit()
-            return True
-        return False
-    
+        def op():
+            with self._scope() as s:
+                belief = s.get(BeliefCartridgeORM, belief_id)
+                if not belief:
+                    return False
+                belief.is_active = False
+                belief.updated_at = datetime.now()
+                return True
+        return self._run(op)
 
     def exists_by_source(self, source_id: int) -> bool:
-        count = self.session.query(BeliefCartridgeORM).filter(
-            BeliefCartridgeORM.source_id == str(source_id)
-        ).count()
-        return count > 0
-    
+        def op():
+            with self._scope() as s:
+                return (
+                    s.query(BeliefCartridgeORM)
+                    .filter(BeliefCartridgeORM.source_id == str(source_id))
+                    .count()
+                    > 0
+                )
+        return self._run(op)
+
+    # --- Export methods can also wrap scope (since they read from DB) ---
     def export_to_yaml(self, cartridge_id: str, export_dir: str = "exports/belief_cartridges"):
-        """Export belief cartridge to YAML file"""
-        try:
-            # Get cartridge from DB
-            cartridge = self.session.query(BeliefCartridgeORM).get(cartridge_id)
-            if not cartridge:
-                raise ValueError(f"Cartridge {cartridge_id} not found")
-            
-            # Convert to dictionary
-            data = self._to_serializable_dict(cartridge)
-            
-            # Save to YAML
-            os.makedirs(export_dir, exist_ok=True)
-            file_path = os.path.join(export_dir, f"{cartridge_id}.yaml")
-            
-            with open(file_path, "w", encoding="utf-8") as f:
-                yaml.dump(data, f, allow_unicode=True, sort_keys=False)
-            
-            self.logger.log("BeliefCartridgeExported", {
-                "cartridge_id": cartridge_id,
-                "format": "yaml",
-                "path": file_path
-            })
-            return file_path
-            
-        except Exception as e:
-            self.logger.log("ExportFailed", {
-                "cartridge_id": cartridge_id,
-                "format": "yaml",
-                "error": str(e)
-            })
-            raise
+        def op():
+            with self._scope() as s:
+                cartridge = s.get(BeliefCartridgeORM, cartridge_id)
+                if not cartridge:
+                    raise ValueError(f"Cartridge {cartridge_id} not found")
+                data = self._to_serializable_dict(cartridge)
+                os.makedirs(export_dir, exist_ok=True)
+                file_path = os.path.join(export_dir, f"{cartridge_id}.yaml")
+                with open(file_path, "w", encoding="utf-8") as f:
+                    yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+                return file_path
+        return self._run(op)
 
     def export_to_json(self, cartridge_id: str, export_dir: str = "exports/belief_cartridges"):
-        """Export belief cartridge to JSON file"""
-        try:
-            # Get cartridge from DB
-            cartridge = self.session.query(BeliefCartridgeORM).get(cartridge_id)
-            if not cartridge:
-                raise ValueError(f"Cartridge {cartridge_id} not found")
-            
-            # Convert to dictionary
-            data = self._to_serializable_dict(cartridge)
-            
-            # Save to JSON
-            os.makedirs(export_dir, exist_ok=True)
-            file_path = os.path.join(export_dir, f"{cartridge_id}.json")
-            
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, default=self._default_serializer)
-            
-            self.logger.log("BeliefCartridgeExported", {
-                "cartridge_id": cartridge_id,
-                "format": "json",
-                "path": file_path
-            })
-            return file_path
-            
-        except Exception as e:
-            self.logger.log("ExportFailed", {
-                "cartridge_id": cartridge_id,
-                "format": "json",
-                "error": str(e)
-            })
-            raise
+        def op():
+            with self._scope() as s:
+                cartridge = s.get(BeliefCartridgeORM, cartridge_id)
+                if not cartridge:
+                    raise ValueError(f"Cartridge {cartridge_id} not found")
+                data = self._to_serializable_dict(cartridge)
+                os.makedirs(export_dir, exist_ok=True)
+                file_path = os.path.join(export_dir, f"{cartridge_id}.json")
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, default=self._default_serializer)
+                return file_path
+        return self._run(op)
 
     def bulk_export(self, export_dir: str = "exports/belief_cartridges", format: str = "yaml"):
-        """Export all active belief cartridges to files"""
-        try:
-            # Get active cartridges
-            cartridges = self.session.query(BeliefCartridgeORM).filter_by(is_active=True).all()
-            
-            # Export each one
-            paths = []
-            for cartridge in cartridges:
-                if format == "yaml":
-                    path = self.export_to_yaml(cartridge.id, export_dir)
-                elif format == "json":
-                    path = self.export_to_json(cartridge.id, export_dir)
-                else:
-                    raise ValueError(f"Unsupported format: {format}")
-                paths.append(path)
-            
-            self.logger.log("BulkExportComplete", {
-                "cartridge_count": len(cartridges),
-                "format": format,
-                "export_dir": export_dir
-            })
-            return paths
-            
-        except Exception as e:
-            self.logger.log("BulkExportFailed", {
-                "error": str(e),
-                "format": format
-            })
-            raise
+        def op():
+            with self._scope() as s:
+                cartridges = s.query(BeliefCartridgeORM).filter_by(is_active=True).all()
+                paths = []
+                for cartridge in cartridges:
+                    if format == "yaml":
+                        paths.append(self.export_to_yaml(cartridge.id, export_dir))
+                    elif format == "json":
+                        paths.append(self.export_to_json(cartridge.id, export_dir))
+                    else:
+                        raise ValueError(f"Unsupported format: {format}")
+                return paths
+        return self._run(op)
 
+    # --- serialization helpers unchanged ---
     def _to_serializable_dict(self, cartridge: BeliefCartridgeORM) -> Dict[str, Any]:
-        """Convert ORM object to serializable dictionary"""
         data = {
             "id": cartridge.id,
             "created_at": cartridge.created_at,
@@ -200,21 +165,17 @@ class BeliefCartridgeStore(BaseSQLAlchemyStore):
             "version": cartridge.version,
             "memcube_id": cartridge.memcube_id,
             "is_active": cartridge.is_active,
-            "evaluations": [e.id for e in cartridge.evaluations]
+            "evaluations": [e.id for e in cartridge.evaluations],
         }
-        
-        # Add scoring metadata
         if cartridge.evaluations:
             scores = {}
             for eval in cartridge.evaluations:
                 for dim, score in eval.scores.items():
                     scores[dim] = round(float(score), 2)
             data["scores"] = scores
-        
         return data
 
     def _default_serializer(self, obj):
-        """Custom JSON serializer for non-serializable objects"""
         if isinstance(obj, ScoreBundle):
             return obj.to_dict()
         if isinstance(obj, datetime):
@@ -228,11 +189,10 @@ class BeliefCartridgeStore(BaseSQLAlchemyStore):
         raise TypeError(f"Type {type(obj)} not serializable")
 
     def _deserialize_json(self, value: Any) -> Any:
-        """Ensure JSON values are serializable"""
         if isinstance(value, (str, int, float, bool)) or value is None:
             return value
         if isinstance(value, dict):
             return {k: self._deserialize_json(v) for k, v in value.items()}
         if isinstance(value, list):
             return [self._deserialize_json(v) for v in value]
-        return str(value)  # Fallback for non-serializable types
+        return str(value)

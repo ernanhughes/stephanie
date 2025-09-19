@@ -23,7 +23,7 @@ class ScorableEntityStore(BaseSQLAlchemyStore):
     default_order_by = ScorableEntityORM.created_at
 
     def __init__(self, session: Session, memory, logger=None):
-        super().__init__(session, logger)
+        super().__init__(session_or_maker, logger)
         self.memory = memory
         self.name = "scorable_entities"
 

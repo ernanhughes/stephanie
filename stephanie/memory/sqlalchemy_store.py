@@ -30,18 +30,18 @@ class BaseSQLAlchemyStore:
     id_attr: str = "id"
     default_order_by: Optional[Any] = None  # column or column name
 
-    def __init__(self, session: sessionmaker, logger=None):
+    def __init__(self, session_or_maker: sessionmaker, logger=None):
         # Accept either a live Session (legacy) or a sessionmaker (preferred).
         self.logger = logger
         assert self.orm_model is not None, "Subclasses must set orm_model"
 
-        self.session: sessionmaker = session
+        self.session: sessionmaker = session_or_maker
 
     def _run(self, fn: Callable[[], Any], tries: int = 2):
         return retry(fn, tries=tries)
 
     def _scope(self):
-        return session_scope(self._session_maker)
+        return session_scope(self.session)
 
     # -------- Standard APIs (all short-lived) --------
 

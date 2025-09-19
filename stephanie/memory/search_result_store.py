@@ -12,8 +12,8 @@ class SearchResultStore(BaseSQLAlchemyStore):
     orm_model = SearchResultORM
     default_order_by = SearchResultORM.created_at
 
-    def __init__(self, session, logger):
-        super().__init__(session, logger)
+    def __init__(self, session_or_maker, logger):
+        super().__init__(session_or_maker, logger)
         self.name = "search_results"
 
     def name(self) -> str:

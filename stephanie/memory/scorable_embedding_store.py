@@ -20,7 +20,7 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
     default_order_by = ScorableEmbeddingORM.created_at
 
     def __init__(self, session: Session, logger=None, embedding=None):
-        super().__init__(session, logger)
+        super().__init__(session_or_maker, logger)
         self.name = "scorable_embeddings"
         self.embedding = embedding
 

@@ -11,9 +11,8 @@ class ScorableRankStore(BaseSQLAlchemyStore):
     orm_model = ScorableRankORM
     default_order_by = ScorableRankORM.created_at
 
-    def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "scorable_ranks"
 
     def name(self) -> str:

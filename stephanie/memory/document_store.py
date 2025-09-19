@@ -1,8 +1,9 @@
 # stephanie/memory/document_store.py
 from __future__ import annotations
 
+from typing import Optional, List
+
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
 
 from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.document import DocumentORM
@@ -10,73 +11,97 @@ from stephanie.models.document import DocumentORM
 
 class DocumentStore(BaseSQLAlchemyStore):
     orm_model = DocumentORM
-    default_order_by = DocumentORM.id.desc()
-    
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    default_order_by = "id"  # use column name string for BaseSQLAlchemyStore
+
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "documents"
 
     def name(self) -> str:
         return self.name
 
+    # ---------- Writes ----------
+
     def add_document(self, doc: dict) -> DocumentORM:
-        document = DocumentORM(
-            title=doc["title"],
-            source=doc["source"],
-            external_id=doc.get("external_id"),
-            url=doc.get("url"),
-            text=doc.get("text"), 
-            summary=doc.get("summary"),
-            goal_id=doc.get("goal_id"),
-        )
-        self.session.add(document)
-        self.session.commit()
-        return document
+        """Simple insert; returns the persisted ORM row."""
+        def op():
+            with self._scope() as s:
+                document = DocumentORM(
+                    title=doc["title"],
+                    source=doc["source"],
+                    external_id=doc.get("external_id"),
+                    url=doc.get("url"),
+                    text=doc.get("text"),
+                    summary=doc.get("summary"),
+                    goal_id=doc.get("goal_id"),
+                )
+                s.add(document)
+                s.flush()  # assign id
+                return document
+        return self._run(op)
 
     def bulk_add_documents(self, documents: list[dict]) -> list[DocumentORM]:
-        orm_docs = [
-            DocumentORM(
-                title=doc["title"],
-                source=doc["source"],
-                external_id=doc.get("external_id"),
-                url=doc.get("url"),
-                text=doc.get("text"),
-            )
-            for doc in documents
-        ]
-        self.session.add_all(orm_docs)
-        self.session.commit()
-        return orm_docs
+        def op():
+            with self._scope() as s:
+                orm_docs = [
+                    DocumentORM(
+                        title=doc["title"],
+                        source=doc["source"],
+                        external_id=doc.get("external_id"),
+                        url=doc.get("url"),
+                        text=doc.get("text"),
+                        summary=doc.get("summary"),
+                        goal_id=doc.get("goal_id"),
+                    )
+                    for doc in documents
+                ]
+                s.add_all(orm_docs)
+                s.flush()
+                return orm_docs
+        return self._run(op)
 
-    def get_by_id(self, document_id: int) -> DocumentORM | None:
-        return self.session.query(DocumentORM).filter_by(id=document_id).first()
+    # ---------- Reads ----------
 
-    def get_by_url(self, url: str) -> DocumentORM | None:
-        return self.session.query(DocumentORM).filter_by(url=url).first()
+    def get_by_id(self, document_id: int) -> Optional[DocumentORM]:
+        def op():
+            with self._scope() as s:
+                return s.get(DocumentORM, document_id)
+        return self._run(op)
 
+    def get_by_url(self, url: str) -> Optional[DocumentORM]:
+        def op():
+            with self._scope() as s:
+                return s.query(DocumentORM).filter_by(url=url).first()
+        return self._run(op)
 
-    def get_all(self, limit=100) -> list[DocumentORM]:
-        return (
-            self.session.query(DocumentORM)
-            .order_by(desc(DocumentORM.id))   # ✅ order by id descending
-            .limit(limit)
-            .all()
-        )
+    def get_all(self, limit: int = 100) -> List[DocumentORM]:
+        def op():
+            with self._scope() as s:
+                return (
+                    s.query(DocumentORM)
+                    .order_by(
+                        desc(getattr(DocumentORM, "created_at", DocumentORM.id))
+                    )
+                    .limit(limit)
+                    .all()
+                )
+        return self._run(op)
+
+    def get_by_ids(self, document_ids: list[int]) -> List[DocumentORM]:
+        def op():
+            with self._scope() as s:
+                return s.query(DocumentORM).filter(DocumentORM.id.in_(document_ids)).all()
+        return self._run(op)
+
+    # ---------- Deletes ----------
 
     def delete_by_id(self, document_id: int) -> bool:
-        doc = self.get_by_id(document_id)
-        if doc:
-            self.session.delete(doc)
-            self.session.commit()
-            return True
-        return False
-
-    def get_by_ids(self, document_ids: list[int]) -> list[DocumentORM]:
-        """
-        Fetches a list of documents matching the provided list of IDs.
-        """
-        return (
-            self.session.query(DocumentORM)
-            .filter(DocumentORM.id.in_(document_ids))
-            .all()
-        )
+        def op():
+            with self._scope() as s:
+                doc = s.get(DocumentORM, document_id)
+                if not doc:
+                    return False
+                s.delete(doc)
+                # commit happens via scope
+                return True
+        return self._run(op)

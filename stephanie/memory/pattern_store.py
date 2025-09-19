@@ -1,7 +1,7 @@
 # stephanie/memory/pattern_store.py
 from __future__ import annotations
 
-from datetime import datetime
+from typing import List
 
 from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.pattern_stat import PatternStatORM
@@ -11,24 +11,21 @@ class PatternStatStore(BaseSQLAlchemyStore):
     orm_model = PatternStatORM
     default_order_by = PatternStatORM.created_at.desc()
 
-    def __init__(self, session, logger=None):
-        super().__init__(session, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "pattern_stats"
 
     def name(self) -> str:
         return self.name
 
-    def insert(self, stats: list[PatternStatORM]):
-        """Insert multiple pattern stats at once"""
-        try:
-            self.session.bulk_save_objects(stats)
-            self.session.commit()
-
+    def insert(self, stats: List[PatternStatORM]) -> None:
+        """Insert multiple pattern stats in a single transaction"""
+        def op():
+            s = self._scope()
+            s.bulk_save_objects(stats)
             if self.logger:
-                self.logger.log("PatternStatsStored", {"stats": stats})
-
-        except Exception as e:
-            self.session.rollback()
-            if self.logger:
-                self.logger.log("PatternStatsInsertFailed", {"error": str(e)})
-            raise
+                self.logger.log(
+                    "PatternStatsStored",
+                    {"count": len(stats), "ids": [getattr(x, "id", None) for x in stats]},
+                )
+        return self._run(op)

@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
@@ -12,113 +11,92 @@ from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 
 class EvaluationAttributeStore(BaseSQLAlchemyStore):
     orm_model = EvaluationAttributeORM
-    default_order_by = EvaluationAttributeORM.created_at.desc()
+    default_order_by = "created_at"
 
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    def __init__(self, session_maker, logger=None):
+        super().__init__(session_maker, logger)
         self.name = "evaluation_attributes"
         self.table_name = "evaluation_attributes"
 
     def name(self) -> str:
         return self.name
 
+    # -------------------
+    # Insert
+    # -------------------
     def insert(self, attribute: EvaluationAttributeORM) -> int:
-        """Insert a single evaluation attribute with enhanced error handling"""
-        try:
-            self.session.add(attribute)
-            self.session.flush()  # Get ID before commit
-            self.session.commit()
-            
-            # Log structured metrics
-            if self.logger:
-                self.logger.log("AttributeStored", {
-                    "evaluation_id": attribute.evaluation_id,
-                    "dimension": attribute.dimension,
-                    "source": attribute.source,
-                    "q_value": attribute.q_value,
-                    "v_value": attribute.v_value,
-                    "uncertainty": attribute.uncertainty,
-                    "policy_logits": attribute.policy_logits,
-                    "entropy": attribute.entropy
-                })
-            
-            return attribute.id
-            
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            if self.logger:
-                self.logger.log("AttributeInsertFailed", {
-                    "error": str(e),
-                    "attribute": attribute.to_dict()
-                })
-            raise
+        """Insert a single evaluation attribute with safe transaction handling."""
+        def op():
+            with self._scope() as s:
+                s.add(attribute)
+                s.flush()
+                return attribute.id
+        attr_id = self._run(op)
+
+        if self.logger:
+            self.logger.log("AttributeStored", attribute.to_dict())
+        return attr_id
 
     def bulk_insert(self, attributes: list[EvaluationAttributeORM]) -> list[int]:
-        """Insert multiple attributes in a single transaction"""
-        try:
+        """Insert multiple attributes in a single transaction."""
+        def op():
             ids = []
-            for attr in attributes:
-                self.session.add(attr)
-                self.session.flush()
-                ids.append(attr.id)
-            
-            self.session.commit()
-            
-            if self.logger and ids:
-                self.logger.log("BulkAttributesStored", {
-                    "count": len(ids),
-                    "evaluation_ids": list(set(a.evaluation_id for a in attributes))
-                })
-            
+            with self._scope() as s:
+                for attr in attributes:
+                    s.add(attr)
+                    s.flush()
+                    ids.append(attr.id)
             return ids
-            
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            if self.logger:
-                self.logger.log("BulkInsertFailed", {
-                    "error": str(e),
-                    "attribute_count": len(attributes)
-                })
-            raise
+        ids = self._run(op)
 
+        if self.logger and ids:
+            self.logger.log("BulkAttributesStored", {
+                "count": len(ids),
+                "evaluation_ids": list({a.evaluation_id for a in attributes}),
+            })
+        return ids
+
+    # -------------------
+    # Retrieval
+    # -------------------
     def get_by_evaluation_id(self, evaluation_id: int) -> list[EvaluationAttributeORM]:
-        """Get all attributes for an evaluation"""
-        return (
-            self.session.query(EvaluationAttributeORM)
+        return self._run(
+            lambda: self._scope()
+            .query(EvaluationAttributeORM)
             .filter_by(evaluation_id=evaluation_id)
             .all()
         )
 
     def get_by_dimension(self, evaluation_id: int, dimension: str) -> list[EvaluationAttributeORM]:
-        """Get attributes for specific dimension in an evaluation"""
-        return (
-            self.session.query(EvaluationAttributeORM)
+        return self._run(
+            lambda: self._scope()
+            .query(EvaluationAttributeORM)
             .filter(
                 EvaluationAttributeORM.evaluation_id == evaluation_id,
-                EvaluationAttributeORM.dimension == dimension
+                EvaluationAttributeORM.dimension == dimension,
             )
             .all()
         )
 
     def get_by_source(self, evaluation_id: int, dimension: str, source: str) -> Optional[EvaluationAttributeORM]:
-        """Get attributes by source and dimension"""
-        return (
-            self.session.query(EvaluationAttributeORM)
+        return self._run(
+            lambda: self._scope()
+            .query(EvaluationAttributeORM)
             .filter(
                 EvaluationAttributeORM.evaluation_id == evaluation_id,
                 EvaluationAttributeORM.dimension == dimension,
-                EvaluationAttributeORM.source == source
+                EvaluationAttributeORM.source == source,
             )
             .first()
         )
 
     def get_by_source_and_dimension(self, source: str, dimension: str, limit: int = 100) -> list[EvaluationAttributeORM]:
-        """Get recent attributes by source and dimension"""
-        return (
-            self.session.query(EvaluationAttributeORM)
+        return self._run(
+            lambda: self._scope()
+            .query(EvaluationAttributeORM)
             .filter(
                 EvaluationAttributeORM.source == source,
-                EvaluationAttributeORM.dimension == dimension
+                EvaluationAttributeORM.dimension == dimension,
             )
             .order_by(EvaluationAttributeORM.created_at.desc())
             .limit(limit)
@@ -126,80 +104,73 @@ class EvaluationAttributeStore(BaseSQLAlchemyStore):
         )
 
     def get_high_uncertainty_samples(self, threshold: float = 0.3, limit: int = 100) -> list[EvaluationAttributeORM]:
-        """Get attributes with high epistemic uncertainty"""
-        return (
-            self.session.query(EvaluationAttributeORM)
+        return self._run(
+            lambda: self._scope()
+            .query(EvaluationAttributeORM)
             .filter(EvaluationAttributeORM.uncertainty >= threshold)
             .order_by(EvaluationAttributeORM.uncertainty.desc())
             .limit(limit)
             .all()
         )
 
+    # -------------------
+    # Delete / Update
+    # -------------------
     def delete_by_evaluation(self, evaluation_id: int) -> int:
-        """Delete attributes for an evaluation"""
-        try:
-            deleted = (
-                self.session.query(EvaluationAttributeORM)
-                .filter_by(evaluation_id=evaluation_id)
-                .delete()
-            )
-            self.session.commit()
-            return deleted
-            
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            if self.logger:
-                self.logger.log("AttributeDeleteFailed", {
-                    "error": str(e),
-                    "evaluation_id": evaluation_id
-                })
-            raise
+        def op():
+            with self._scope() as s:
+                return (
+                    s.query(EvaluationAttributeORM)
+                    .filter_by(evaluation_id=evaluation_id)
+                    .delete()
+                )
+        deleted = self._run(op)
+
+        if self.logger:
+            self.logger.log("AttributesDeleted", {"evaluation_id": evaluation_id, "count": deleted})
+        return deleted
 
     def update_attributes(self, attributes: list[dict[str, any]]) -> None:
-        """Update multiple attributes by ID"""
-        try:
-            for attr_data in attributes:
-                attr_id = attr_data.pop('id', None)
-                if attr_id:
-                    self.session.query(EvaluationAttributeORM).filter_by(id=attr_id).update(attr_data)
-            
-            self.session.commit()
-            
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            if self.logger:
-                self.logger.log("AttributeUpdateFailed", {
-                    "error": str(e),
-                    "attribute_count": len(attributes)
-                })
-            raise
+        def op():
+            with self._scope() as s:
+                for attr_data in attributes:
+                    attr_id = attr_data.pop("id", None)
+                    if attr_id:
+                        s.query(EvaluationAttributeORM).filter_by(id=attr_id).update(attr_data)
+        self._run(op)
 
+        if self.logger:
+            self.logger.log("AttributesUpdated", {"count": len(attributes)})
+
+    # -------------------
+    # Metrics
+    # -------------------
     def get_policy_logits(self, evaluation_id: int, dimension: str) -> Optional[list[float]]:
-        """Get policy logits for a specific evaluation and dimension"""
-        attr = self.session.query(EvaluationAttributeORM).filter(
-            EvaluationAttributeORM.evaluation_id == evaluation_id,
-            EvaluationAttributeORM.dimension == dimension
-        ).first()
-        
+        attr = self._run(
+            lambda: self._scope()
+            .query(EvaluationAttributeORM)
+            .filter(
+                EvaluationAttributeORM.evaluation_id == evaluation_id,
+                EvaluationAttributeORM.dimension == dimension,
+            )
+            .first()
+        )
         return attr.policy_logits if attr and attr.policy_logits else None
 
     def get_dimension_stats(self, dimension: str) -> dict[str, float]:
-        """Get statistical metrics for a dimension"""
-        from sqlalchemy import func
-        
-        results = (
-            self.session.query(
+        result = self._run(
+            lambda: self._scope()
+            .query(
                 func.avg(EvaluationAttributeORM.uncertainty).label("avg_uncertainty"),
                 func.avg(EvaluationAttributeORM.entropy).label("avg_entropy"),
-                func.count().label("total")
+                func.count().label("total"),
             )
             .filter(EvaluationAttributeORM.dimension == dimension)
             .first()
         )
-        
         return {
             "dimension": dimension,
-            "avg_uncertainty": float(results.avg_uncertainty) if results.avg_uncertainty else 0.0,
-            "avg_entropy": float(results.avg_entropy) if results.avg_entropy else 0.0,
-            "total_samples": results.total or 0
+            "avg_uncertainty": float(result.avg_uncertainty) if result.avg_uncertainty else 0.0,
+            "avg_entropy": float(result.avg_entropy) if result.avg_entropy else 0.0,
+            "total_samples": result.total or 0,
         }

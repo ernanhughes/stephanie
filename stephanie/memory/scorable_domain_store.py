@@ -20,8 +20,8 @@ class ScorableDomainStore(BaseSQLAlchemyStore):
     orm_model = ScorableDomainORM
     default_order_by = ScorableDomainORM.created_at
 
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "scorable_domains"
 
     def name(self) -> str:

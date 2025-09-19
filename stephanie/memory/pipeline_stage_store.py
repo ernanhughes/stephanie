@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
-
 from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_stage import PipelineStageORM
 
@@ -12,212 +10,148 @@ from stephanie.models.pipeline_stage import PipelineStageORM
 class PipelineStageStore(BaseSQLAlchemyStore):
     orm_model = PipelineStageORM
     default_order_by = PipelineStageORM.timestamp.desc()
-    
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "pipeline_stages"
 
     def name(self) -> str:
         return self.name
-    
+
     def insert(self, stage_dict: dict) -> int:
         """
-        Inserts a new pipeline stage into the database.
+        Insert a new pipeline stage into the database.
 
         :param stage_dict: Dictionary containing all required stage fields
         :return: The inserted stage's ID
         """
-        try:
-            # Convert dictionary to ORM object
-            db_stage = PipelineStageORM(
-                stage_name=stage_dict.get("stage_name"),
-                agent_class=stage_dict.get("agent_class"),
-                goal_id=stage_dict.get("goal_id"),
-                run_id=stage_dict.get("run_id"),
-                pipeline_run_id=stage_dict.get("pipeline_run_id"),
-                parent_stage_id=stage_dict.get("parent_stage_id"),
-                input_context_id=stage_dict.get("input_context_id"),
-                output_context_id=stage_dict.get("output_context_id"),
-                status=stage_dict.get("status"),
-                score=stage_dict.get("score"),
-                confidence=stage_dict.get("confidence"),
-                symbols_applied=stage_dict.get("symbols_applied"),
-                extra_data=stage_dict.get("extra_data"),
-                exportable=stage_dict.get("exportable"),
-                reusable=stage_dict.get("reusable"),
-                invalidated=stage_dict.get("invalidated"),
-            )
-
-            self.session.add(db_stage)
-            self.session.flush()  # Get ID before commit
-            stage_id = db_stage.id
-
-
+        def op():
+            s = self._scope()
+            db_stage = PipelineStageORM(**stage_dict)
+            s.add(db_stage)
+            s.flush()  # Assign ID
             if self.logger:
                 self.logger.log(
                     "PipelineStageInserted",
                     {
-                        "stage_id": stage_id,
+                        "stage_id": db_stage.id,
                         "stage_name": db_stage.stage_name,
                         "run_id": db_stage.run_id,
                         "status": db_stage.status,
-                        "timestamp": db_stage.timestamp.isoformat(),
+                        "timestamp": db_stage.timestamp.isoformat()
+                        if db_stage.timestamp else None,
                     },
                 )
-
-            self.session.commit()
-            return stage_id
-
-        except Exception as e:
-            self.session.rollback()
-            if self.logger:
-                self.logger.log("PipelineStageInsertFailed", {"error": str(e)})
-            raise
+            return db_stage.id
+        return self._run(op)
 
     def get_by_id(self, stage_id: int) -> Optional[PipelineStageORM]:
-        """
-        Fetches a pipeline stage by its database ID.
-
-        :param stage_id: The ID of the stage to fetch
-        :return: PipelineStageORM object or None
-        """
-        result = (
-            self.session.query(PipelineStageORM)
-            .filter(PipelineStageORM.id == stage_id)
-            .first()
-        )
-        return result
+        def op():
+            return (
+                self._scope()
+                .query(PipelineStageORM)
+                .filter(PipelineStageORM.id == stage_id)
+                .first()
+            )
+        return self._run(op)
 
     def get_by_run_id(self, run_id: str) -> List[PipelineStageORM]:
-        """
-        Fetches all stages for a given run_id.
-
-        :param run_id: Unique ID of the pipeline run
-        :return: List of PipelineStageORM objects
-        """
-        return (
-            self.session.query(PipelineStageORM)
-            .filter(PipelineStageORM.pipeline_run_id == run_id)
-            .order_by(PipelineStageORM.timestamp.asc())
-            .all()
-        )
+        def op():
+            return (
+                self._scope()
+                .query(PipelineStageORM)
+                .filter(PipelineStageORM.pipeline_run_id == run_id)
+                .order_by(PipelineStageORM.timestamp.asc())
+                .all()
+            )
+        return self._run(op)
 
     def get_by_goal_id(self, goal_id: int) -> List[PipelineStageORM]:
-        """
-        Fetches all stages associated with a given goal.
-
-        :param goal_id: ID of the goal
-        :return: List of PipelineStageORM objects
-        """
-        return (
-            self.session.query(PipelineStageORM)
-            .filter(PipelineStageORM.goal_id == goal_id)
-            .order_by(PipelineStageORM.timestamp.asc())
-            .all()
-        )
+        def op():
+            return (
+                self._scope()
+                .query(PipelineStageORM)
+                .filter(PipelineStageORM.goal_id == goal_id)
+                .order_by(PipelineStageORM.timestamp.asc())
+                .all()
+            )
+        return self._run(op)
 
     def get_by_parent_stage_id(self, parent_stage_id: int) -> List[PipelineStageORM]:
-        """
-        Fetches all child stages of a given stage.
-
-        :param parent_stage_id: ID of the parent stage
-        :return: List of PipelineStageORM objects
-        """
-        return (
-            self.session.query(PipelineStageORM)
-            .filter(PipelineStageORM.parent_stage_id == parent_stage_id)
-            .order_by(PipelineStageORM.timestamp.asc())
-            .all()
-        )
+        def op():
+            return (
+                self._scope()
+                .query(PipelineStageORM)
+                .filter(PipelineStageORM.parent_stage_id == parent_stage_id)
+                .order_by(PipelineStageORM.timestamp.asc())
+                .all()
+            )
+        return self._run(op)
 
     def get_all(self, limit: int = 100) -> List[PipelineStageORM]:
-        """
-        Returns the most recent pipeline stages up to a limit.
-
-        :param limit: Maximum number of stages to return
-        :return: List of PipelineStageORM objects
-        """
-        return (
-            self.session.query(PipelineStageORM)
-            .order_by(PipelineStageORM.timestamp.desc())
-            .limit(limit)
-            .all()
-        )
+        def op():
+            return (
+                self._scope()
+                .query(PipelineStageORM)
+                .order_by(PipelineStageORM.timestamp.desc())
+                .limit(limit)
+                .all()
+            )
+        return self._run(op)
 
     def find(self, filters: dict) -> List[PipelineStageORM]:
-        """
-        Generic search method for pipeline stages.
-
-        :param filters: Dictionary of filter conditions
-        :return: Matching PipelineStageORM instances
-        """
-        query = self.session.query(PipelineStageORM)
-
-        if "run_id" in filters:
-            query = query.filter(PipelineStageORM.run_id == filters["run_id"])
-        if "stage_name" in filters:
-            query = query.filter(PipelineStageORM.stage_name == filters["stage_name"])
-        if "status" in filters:
-            query = query.filter(PipelineStageORM.status == filters["status"])
-        if "goal_id" in filters:
-            query = query.filter(PipelineStageORM.goal_id == filters["goal_id"])
-        if "pipeline_run_id" in filters:
-            query = query.filter(PipelineStageORM.pipeline_run_id == filters["pipeline_run_id"])
-        if "since" in filters:
-            query = query.filter(PipelineStageORM.timestamp >= filters["since"])
-
-        return query.order_by(PipelineStageORM.timestamp.desc()).all()
-    
+        def op():
+            q = self._scope().query(PipelineStageORM)
+            if "run_id" in filters:
+                q = q.filter(PipelineStageORM.run_id == filters["run_id"])
+            if "stage_name" in filters:
+                q = q.filter(PipelineStageORM.stage_name == filters["stage_name"])
+            if "status" in filters:
+                q = q.filter(PipelineStageORM.status == filters["status"])
+            if "goal_id" in filters:
+                q = q.filter(PipelineStageORM.goal_id == filters["goal_id"])
+            if "pipeline_run_id" in filters:
+                q = q.filter(PipelineStageORM.pipeline_run_id == filters["pipeline_run_id"])
+            if "since" in filters:
+                q = q.filter(PipelineStageORM.timestamp >= filters["since"])
+            return q.order_by(PipelineStageORM.timestamp.desc()).all()
+        return self._run(op)
 
     def get_reasoning_tree(self, run_id: str) -> list[dict[str, any]]:
         """
-        Builds a recursive reasoning tree of all stages for a given run_id.
-
-        :param run_id: The run ID to build the tree for.
-        :return: A list of root nodes with full nested children.
+        Build a recursive reasoning tree of all stages for a given run_id.
         """
-        # Fetch all stages for this run
-        stages = (
-            self.session.query(PipelineStageORM)
-            .filter(PipelineStageORM.run_id == run_id)
-            .all()
-        )
-
-        if not stages:
-            return []
-
-        # Map stages by ID for quick lookup
-        stage_map = {stage.id: self._stage_to_dict(stage) for stage in stages}
-
-        # Build tree structure
-        tree = []
-        for stage in stages:
-            stage_dict = stage_map[stage.id]
-            parent_id = stage.parent_stage_id
-
-            if parent_id is None:
-                tree.append(stage_dict)
-            else:
-                if parent_id in stage_map:
-                    stage_map[parent_id].setdefault("children", []).append(stage_dict)
+        def op():
+            stages = (
+                self._scope()
+                .query(PipelineStageORM)
+                .filter(PipelineStageORM.run_id == run_id)
+                .all()
+            )
+            if not stages:
+                return []
+            stage_map = {s.id: self._stage_to_dict(s) for s in stages}
+            tree = []
+            for s in stages:
+                s_dict = stage_map[s.id]
+                if s.parent_stage_id is None:
+                    tree.append(s_dict)
+                elif s.parent_stage_id in stage_map:
+                    stage_map[s.parent_stage_id].setdefault("children", []).append(s_dict)
                 else:
-                    # Orphaned child — log or handle accordingly
-                    tree.append(stage_dict)
-
-        return tree
+                    tree.append(s_dict)  # orphan
+            return tree
+        return self._run(op)
 
     def _stage_to_dict(self, stage: PipelineStageORM) -> dict[str, any]:
-        """
-        Converts a PipelineStageORM object into a dictionary.
-        """
         return {
             "id": stage.id,
             "stage_name": stage.stage_name,
             "agent_class": stage.agent_class,
             "status": stage.status,
             "score": stage.score,
-            "timestamp": stage.timestamp.isoformat(),
+            "timestamp": stage.timestamp.isoformat() if stage.timestamp else None,
             "input_context_id": stage.input_context_id,
             "output_context_id": stage.output_context_id,
-            "children": []
+            "children": [],
         }

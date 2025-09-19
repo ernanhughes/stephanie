@@ -14,8 +14,8 @@ class RuleApplicationStore(BaseSQLAlchemyStore):
     orm_model = RuleApplicationORM
     default_order_by = RuleApplicationORM.applied_at
 
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "rule_applications"
         self.table_name = "rule_applications"
 

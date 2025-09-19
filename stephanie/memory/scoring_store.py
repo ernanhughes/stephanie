@@ -86,7 +86,7 @@ class ScoringExample:
 
 
 class ScoringStore:
-    def __init__(self, session: Session, logger=None):
+    def __init__(self, session_or_maker, logger=None):
         self.session = session
         self.logger = logger
         self.name = "scoring"

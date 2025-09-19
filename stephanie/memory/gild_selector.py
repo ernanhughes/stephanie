@@ -5,6 +5,7 @@ import json
 from typing import Dict, Optional
 
 import numpy as np
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 import torch
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -17,11 +18,14 @@ from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.scoring.scorable import Scorable
 
 
-class GILDSelector:
+class GILDSelector(BaseSQLAlchemyStore):
+    orm_class = BeliefCartridgeORM
+    default_order_by = BeliefCartridgeORM.created_at
 
-    def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+
+
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger=logger)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.cache = {}  # Cache for frequent selections
         self.uncertainty_threshold = 0.3  # From config

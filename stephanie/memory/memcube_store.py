@@ -10,13 +10,16 @@ from sqlalchemy.orm import Session
 
 from stephanie.memcubes.memcube import MemCube
 from stephanie.memcubes.memcube_factory import MemCubeFactory
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.models.memcube import MemCubeORM
 
 
-class MemcubeStore:
+class MemcubeStore(BaseSQLAlchemyStore):
+    orm_model = MemCubeORM  # Define if using ORM model
+    default_order_by = MemCubeORM.created_at.desc()  # Define default ordering if needed
 
-    def __init__(self, session: Session, logger=None):
-        self.session = session
-        self.logger = logger
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)    
         self.name = "memcube"
 
     def name(self) -> str:

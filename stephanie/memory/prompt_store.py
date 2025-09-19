@@ -19,8 +19,8 @@ class PromptStore(BaseSQLAlchemyStore):
     orm_model = PromptORM
     default_order_by = PromptORM.timestamp.desc()
     
-    def __init__(self, session: Session, logger=None):
-        super().__init__(session, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "prompts"
 
     def name(self) -> str:

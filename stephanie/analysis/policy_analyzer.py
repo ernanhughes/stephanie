@@ -14,7 +14,7 @@ from stephanie.models.score import ScoreORM
 _logger = logging.getLogger(__name__)
 
 class PolicyAnalyzer:
-    def __init__(self, session: Session, logger=None):
+    def __init__(self, session_or_maker, logger=None):
         self.session = session
         self.logger = logger
         self.uncertainty_threshold = 0.3  # From config
