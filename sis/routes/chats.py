@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Request, Query, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
 router = APIRouter()
 
@@ -95,3 +95,10 @@ def set_turn_star(request: Request, chat_id: int, turn_id: int, star: int = Form
     # Return to scoring page, preserving filter if present
     referer = request.headers.get("referer") or f"/chats/{chat_id}/score"
     return RedirectResponse(url=referer, status_code=303)
+
+@router.get("/chats/{chat_id}/annotation/progress", response_class=JSONResponse)
+def progress(request: Request, chat_id: int):
+    memory = request.app.state.memory
+    dom = memory.chats.annotation_progress(chat_id, kind="domains")
+    ner = memory.chats.annotation_progress(chat_id, kind="ner")
+    return {"chat_id": chat_id, "domains": dom, "ner": ner}

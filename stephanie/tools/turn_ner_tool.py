@@ -1,10 +1,13 @@
 # stephanie/tools/turn_ner_tool.py
 from __future__ import annotations
 
+from typing import Any, Callable, List, Optional, Dict
 import logging
-from typing import Any, Callable, Dict, List, Optional
 
 _logger = logging.getLogger(__name__)
+
+# Keep references to background tasks to avoid premature garbage collection
+_background_tasks = set()
 
 
 def build_ner_backend(
@@ -75,30 +78,28 @@ def annotate_conversation_ner(
         # Persist on the turn
         memory.chats.set_turn_ner(t["id"], split)
         updated += 1
-        progress_cb and progress_cb(1)
-
-        # Publish to bus ONLY if we actually found entities
         if publish_to_kg and ents:
+            progress_cb and progress_cb(1)
             try:
                 import asyncio
-
                 payload = {
                     "scorable_id": str(t["id"]),
                     "scorable_type": "conversation_turn",
                     "text": joined,
                     "entities": split,
-                    "domains": t.get("domains", []),  # if present in the dict
+                    "domains": t.get(
+                        "domains", []
+                    ),  # if present in the dict
                 }
-                # schedule fire-and-forget so we don’t block
-                asyncio.create_task(
-                    memory.bus.publish(
-                        "knowledge_graph.index_request", payload
-                    )
+                # schedule fire-and-forget so we don’t block; keep a reference to avoid GC
+                task = asyncio.create_task(
+                    memory.bus.publish("knowledge_graph.index_request", payload)
                 )
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
             except Exception as ex:
-                logger and logger.log(
-                    "KGIndexPublishError",
-                    {"turn_id": t["id"], "error": str(ex)},
+                _logger.error(
+                    f"KGIndexPublishError turn_id: {t['id']}, error: {str(ex)}"
                 )
 
     return {"seen": seen, "updated": updated}
