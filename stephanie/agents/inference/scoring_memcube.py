@@ -67,17 +67,17 @@ class ScoringMemcubeAgent(BaseAgent):
                 final_bundle = mrq_bundle
                 source = "mrq"
 
-            # Store ScoreBundle inside MemCube
-            ScoringManager.save_score_to_memory(
-                final_bundle,
-                memcube.scorable,
-                context,
-                self.cfg,
-                self.memory,
-                self.logger,
-                source=source,
-                model_name=f"memcube_{source}",
-                evaluator_name="memcube"
+                # Save to memory
+            self.memory.evaluations.save_bundle(
+                bundle=final_bundle,
+                scorable=scorable,
+                context=context,
+                cfg=self.cfg,
+                source=self.name,
+                embedding_type=self.memory.embedding.name,
+                model_name="ensemble",
+                evaluator=str(self.enabled_scorers),
+                container=self.container,
             )
 
             # Save MemCube to DB

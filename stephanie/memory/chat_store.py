@@ -5,7 +5,7 @@ from typing import Optional, List, Tuple
 
 from sqlalchemy import desc, func, text
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.chat import (
     ChatConversationORM,
     ChatMessageORM,
@@ -20,7 +20,7 @@ class ChatStore(BaseSQLAlchemyStore):
     # Use column name so BaseSQLAlchemyStore can apply .desc() reliably
     default_order_by = "created_at"
 
-    def __init__(self, session, logger=None):
+    def __init__(self, session_or_maker, logger=None):
         super().__init__(session_or_maker, logger)
         self.name = "chats"
 
@@ -30,8 +30,8 @@ class ChatStore(BaseSQLAlchemyStore):
     # ---------- Conversations ----------
 
     def add_conversation(self, data: dict) -> ChatConversationORM:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 conv = ChatConversationORM(**data)
                 s.add(conv)
                 s.flush()
@@ -39,8 +39,8 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_all(self, limit: int = 100) -> List[ChatConversationORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(ChatConversationORM)
                     .order_by(
@@ -52,8 +52,8 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def exists_conversation(self, file_hash: str) -> bool:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(ChatConversationORM)
                     .filter(
@@ -65,16 +65,16 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_conversation(self, conv_id: int) -> Optional[ChatConversationORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.get(ChatConversationORM, conv_id)
         return self._run(op)
 
     # ---------- Messages ----------
 
     def add_messages(self, conv_id: int, messages: List[dict]) -> List[ChatMessageORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 objs: List[ChatMessageORM] = []
                 for i, msg in enumerate(messages):
                     objs.append(
@@ -93,8 +93,8 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_messages(self, conv_id: int) -> List[ChatMessageORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(ChatMessageORM)
                     .filter_by(conversation_id=conv_id)
@@ -110,8 +110,8 @@ class ChatStore(BaseSQLAlchemyStore):
         Build Q/A turns from a flat list of messages.
         Assumes messages are in chronological order and include DB ids.
         """
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 turns: List[ChatTurnORM] = []
                 for i in range(len(messages) - 1):
                     u, a = messages[i], messages[i + 1]
@@ -128,14 +128,14 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_turn_by_id(self, turn_id: int) -> Optional[ChatTurnORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.get(ChatTurnORM, turn_id)
         return self._run(op)
 
     def get_turns_for_conversation(self, conv_id: int) -> List[ChatTurnORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(ChatTurnORM)
                     .filter_by(conversation_id=conv_id)
@@ -147,8 +147,8 @@ class ChatStore(BaseSQLAlchemyStore):
     # ---------- Admin / Stats ----------
 
     def purge_all(self, force: bool = False):
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 if force:
                     s.execute(text("TRUNCATE chat_turns RESTART IDENTITY CASCADE"))
                     s.execute(text("TRUNCATE chat_messages RESTART IDENTITY CASCADE"))
@@ -163,8 +163,8 @@ class ChatStore(BaseSQLAlchemyStore):
             self.logger.info("[ChatStore] Purged all conversations, messages, and turns")
 
     def get_top_conversations(self, limit: int = 10, by: str = "turns") -> List[Tuple[ChatConversationORM, int]]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 if by == "messages":
                     q = (
                         s.query(ChatConversationORM, func.count(ChatMessageORM.id).label("message_count"))
@@ -185,8 +185,8 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_message_by_id(self, message_id: int) -> Optional[ChatMessageORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.get(ChatMessageORM, message_id)
         return self._run(op)
 

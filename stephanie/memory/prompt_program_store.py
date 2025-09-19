@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import List, Optional
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.prompt import PromptProgramORM
 
 
@@ -22,8 +22,8 @@ class PromptProgramStore(BaseSQLAlchemyStore):
     # INSERT / ADD
     # --------------------
     def insert(self, prompt_dict: dict) -> PromptProgramORM:
-        def op():
-            s = self._scope()
+        def op(s):
+            
             prompt = PromptProgramORM(**prompt_dict)
             s.add(prompt)
             s.flush()
@@ -31,8 +31,8 @@ class PromptProgramStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def add_prompt(self, prompt: PromptProgramORM) -> PromptProgramORM:
-        def op():
-            s = self._scope()
+        def op(s):
+            
             s.add(prompt)
             s.flush()
             return prompt
@@ -42,22 +42,22 @@ class PromptProgramStore(BaseSQLAlchemyStore):
     # RETRIEVAL
     # --------------------
     def get_by_id(self, prompt_id: str) -> Optional[PromptProgramORM]:
-        return self._run(lambda: self._scope().query(PromptProgramORM).filter_by(id=prompt_id).first())
+        return self._run(lambda s: s.query(PromptProgramORM).filter_by(id=prompt_id).first())
 
     def get_all_prompts(self) -> List[PromptProgramORM]:
-        return self._run(lambda: self._scope().query(PromptProgramORM).order_by(PromptProgramORM.version.desc()).all())
+        return self._run(lambda s: s.query(PromptProgramORM).order_by(PromptProgramORM.version.desc()).all())
 
     def get_prompts_for_goal(self, goal_text: str) -> List[PromptProgramORM]:
-        return self._run(lambda: (
-            self._scope().query(PromptProgramORM)
+        return self._run(lambda s: (
+            s.query(PromptProgramORM)
             .filter(PromptProgramORM.goal == goal_text)
             .order_by(PromptProgramORM.version.desc())
             .all()
         ))
 
     def get_top_prompts(self, goal_text: str, min_value: float = 0.0, top_k: int = 5) -> List[PromptProgramORM]:
-        return self._run(lambda: (
-            self._scope().query(PromptProgramORM)
+        return self._run(lambda s: (
+            s.query(PromptProgramORM)
             .filter(
                 PromptProgramORM.goal == goal_text,
                 PromptProgramORM.score >= min_value,
@@ -68,7 +68,7 @@ class PromptProgramStore(BaseSQLAlchemyStore):
         ))
 
     def get_prompt_lineage(self, prompt_id: str) -> List[PromptProgramORM]:
-        def op():
+        def op(s):
             lineage: list[PromptProgramORM] = []
             current = self.get_by_id(prompt_id)
             while current:
@@ -81,8 +81,8 @@ class PromptProgramStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_latest_prompt(self, goal_text: str) -> Optional[PromptProgramORM]:
-        return self._run(lambda: (
-            self._scope().query(PromptProgramORM)
+        return self._run(lambda s: (
+            s.query(PromptProgramORM)
             .filter(PromptProgramORM.goal == goal_text)
             .order_by(PromptProgramORM.version.desc())
             .first()

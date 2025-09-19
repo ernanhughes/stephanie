@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.entity_cache import EntityCacheORM
 from stephanie.utils.json_sanitize import to_json_safe
 
@@ -23,20 +23,17 @@ class EntityCacheStore(BaseSQLAlchemyStore):
         return self.name
 
     def get_by_embedding(self, embedding_ref: int) -> Optional[EntityCacheORM]:
-        return self._run(
-            lambda: self._scope()
-            .query(EntityCacheORM)
-            .filter(EntityCacheORM.embedding_ref == embedding_ref)
-            .one_or_none()
-        )
+        def op(s):
+            return s.query(EntityCacheORM).filter(EntityCacheORM.embedding_ref == embedding_ref).one_or_none()
+        return self._run(op)
 
     def upsert(self, embedding_ref: int, results_json: Any) -> EntityCacheORM:
         """
         Insert or update cache row for this embedding_ref.
         results_json must be JSON-serializable (convert np types to Python).
         """
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 row = (
                     s.query(EntityCacheORM)
                     .filter(EntityCacheORM.embedding_ref == embedding_ref)

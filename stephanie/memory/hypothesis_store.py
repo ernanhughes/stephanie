@@ -1,4 +1,3 @@
-# stephanie/memory/hypothesis_store.py
 from __future__ import annotations
 
 from difflib import SequenceMatcher
@@ -6,7 +5,7 @@ from typing import Optional, List
 
 import numpy as np
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 from stephanie.models.hypothesis import HypothesisORM
 
@@ -28,8 +27,7 @@ class HypothesisStore(BaseSQLAlchemyStore):
     # -------------------
     def insert(self, hypothesis: HypothesisORM) -> int:
         """Insert a new hypothesis into the database."""
-        def op():
-            s = self._scope()
+        def op(s):
             s.add(hypothesis)
             s.flush()
             if self.logger:
@@ -46,8 +44,8 @@ class HypothesisStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def update_review(self, hyp_id: int, review: str) -> None:
-        def op():
-            hyp = self._scope().get(HypothesisORM, hyp_id)
+        def op(s):
+            hyp = s.get(HypothesisORM, hyp_id)
             if not hyp:
                 raise ValueError(f"No hypothesis found with ID {hyp_id}")
             hyp.review = review
@@ -59,8 +57,8 @@ class HypothesisStore(BaseSQLAlchemyStore):
         self._run(op)
 
     def update_reflection(self, hyp_id: int, reflection: str) -> None:
-        def op():
-            hyp = self._scope().get(HypothesisORM, hyp_id)
+        def op(s):
+            hyp = s.get(HypothesisORM, hyp_id)
             if not hyp:
                 raise ValueError(f"No hypothesis found with ID {hyp_id}")
             hyp.reflection = reflection
@@ -72,8 +70,8 @@ class HypothesisStore(BaseSQLAlchemyStore):
         self._run(op)
 
     def update_elo_rating(self, hyp_id: int, new_rating: float) -> None:
-        def op():
-            hyp = self._scope().get(HypothesisORM, hyp_id)
+        def op(s):
+            hyp = s.get(HypothesisORM, hyp_id)
             if not hyp:
                 raise ValueError(f"No hypothesis found with ID {hyp_id}")
             hyp.elo_rating = new_rating
@@ -86,8 +84,8 @@ class HypothesisStore(BaseSQLAlchemyStore):
 
     def soft_delete(self, hyp_id: int) -> None:
         """Soft-delete a hypothesis (set enabled = False)."""
-        def op():
-            hyp = self._scope().get(HypothesisORM, hyp_id)
+        def op(s):
+            hyp = s.get(HypothesisORM, hyp_id)
             if not hyp:
                 raise ValueError(f"No hypothesis found with ID {hyp_id}")
             hyp.enabled = False
@@ -99,8 +97,8 @@ class HypothesisStore(BaseSQLAlchemyStore):
     # Retrieval
     # -------------------
     def get_by_goal(self, goal_text: str, limit: int = 10, source=None) -> List[HypothesisORM]:
-        def op():
-            q = self._scope().query(HypothesisORM).join(GoalORM).filter(GoalORM.goal_text == goal_text)
+        def op(s):
+            q = s.query(HypothesisORM).join(GoalORM).filter(GoalORM.goal_text == goal_text)
             if source:
                 from stephanie.models import EvaluationORM
                 q = q.join(EvaluationORM).filter(EvaluationORM.source == source)
@@ -108,9 +106,9 @@ class HypothesisStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_latest(self, goal_text: str, limit: int = 10) -> List[HypothesisORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(HypothesisORM)
+                s.query(HypothesisORM)
                 .join(GoalORM)
                 .filter(GoalORM.goal_text == goal_text)
                 .order_by(HypothesisORM.created_at.desc())
@@ -120,9 +118,9 @@ class HypothesisStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_unreflected(self, goal_text: str, limit: int = 10) -> List[HypothesisORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(HypothesisORM)
+                s.query(HypothesisORM)
                 .join(GoalORM)
                 .filter(GoalORM.goal_text == goal_text, HypothesisORM.reflection.is_(None))
                 .limit(limit)
@@ -131,9 +129,9 @@ class HypothesisStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_unreviewed(self, goal_text: str, limit: int = 10) -> List[HypothesisORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(HypothesisORM)
+                s.query(HypothesisORM)
                 .join(GoalORM)
                 .filter(GoalORM.goal_text == goal_text, HypothesisORM.review.is_(None))
                 .limit(limit)
@@ -143,8 +141,7 @@ class HypothesisStore(BaseSQLAlchemyStore):
 
     def get_from_text(self, query: str, threshold: float = 0.95) -> Optional[HypothesisORM]:
         """Exact or fuzzy match for hypothesis text."""
-        def op():
-            s = self._scope()
+        def op(s):
             result = s.query(HypothesisORM).filter(HypothesisORM.text == query).first()
             if result:
                 return result
@@ -157,14 +154,12 @@ class HypothesisStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_id(self, hyp_id: int) -> Optional[HypothesisORM]:
-        def op():
-            return self._scope().get(HypothesisORM, hyp_id)
-        return self._run(op)
+        return self._run(lambda s: s.get(HypothesisORM, hyp_id))
 
     def get_all(self, limit: int = 100) -> List[HypothesisORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(HypothesisORM)
+                s.query(HypothesisORM)
                 .order_by(HypothesisORM.created_at.desc())
                 .limit(limit)
                 .all()
@@ -181,7 +176,6 @@ class HypothesisStore(BaseSQLAlchemyStore):
 
         try:
             query_embedding = self.embedding_store.get_or_create(query)
-            results = []
             with self.embedding_store.conn.cursor() as cur:
                 cur.execute(
                     "SELECT text FROM hypotheses ORDER BY embedding <-> %s LIMIT %s",

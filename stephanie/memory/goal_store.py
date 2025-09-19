@@ -6,7 +6,7 @@ from typing import Optional, List
 
 from sqlalchemy.exc import IntegrityError
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 
 
@@ -26,20 +26,20 @@ class GoalStore(BaseSQLAlchemyStore):
     # -------------------
     def get_from_text(self, goal_text: str) -> Optional[GoalORM]:
         """Return the first goal matching the exact text."""
-        def op():
-            return self._scope().query(GoalORM).filter(GoalORM.goal_text == goal_text).first()
+        def op(s):
+            return s.query(GoalORM).filter(GoalORM.goal_text == goal_text).first()
         return self._run(op)
 
     def get_all(self) -> List[GoalORM]:
         """Return all goals."""
-        def op():
-            return self._scope().query(GoalORM).all()
+        def op(s):
+            return s.query(GoalORM).all()
         return self._run(op)
 
     def get_by_id(self, goal_id: int) -> Optional[GoalORM]:
         """Return a single goal by ID."""
-        def op():
-            return self._scope().query(GoalORM).filter(GoalORM.id == goal_id).first()
+        def op(s):
+            return s.query(GoalORM).filter(GoalORM.id == goal_id).first()
         return self._run(op)
 
     # -------------------
@@ -49,7 +49,7 @@ class GoalStore(BaseSQLAlchemyStore):
         """
         Create a new goal. Rolls back and re-queries if duplicate.
         """
-        def op():
+        def op(s):
             try:
                 new_goal = GoalORM(
                     goal_text=goal_dict["goal_text"],
@@ -60,7 +60,6 @@ class GoalStore(BaseSQLAlchemyStore):
                     source=goal_dict.get("source", "user"),
                     created_at=goal_dict.get("created_at") or datetime.now(timezone.utc),
                 )
-                s = self._scope()
                 s.add(new_goal)
                 s.flush()
                 if self.logger:

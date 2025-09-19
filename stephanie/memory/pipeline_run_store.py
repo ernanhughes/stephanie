@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_run import PipelineRunORM
 
 
@@ -25,8 +25,7 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         :param run_dict: Dictionary containing fields like run_id, goal_id, pipeline, etc.
         :return: The inserted record's ID
         """
-        def op():
-            s = self._scope()
+        def op(s):
             db_run = PipelineRunORM(**run_dict)
             s.add(db_run)
             s.flush()  # assign ID
@@ -40,8 +39,6 @@ class PipelineRunStore(BaseSQLAlchemyStore):
                         "pipeline": db_run.pipeline,
                         "strategy": db_run.strategy,
                         "model": db_run.model_name,
-                        "timestamp": db_run.created_at.isoformat()
-                        if db_run.created_at else None,
                     },
                 )
             return db_run.id
@@ -51,7 +48,7 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         """
         Fetch a single pipeline run by its database ID.
         """
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineRunORM)
@@ -65,7 +62,7 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         """
         Fetch all pipeline runs associated with a given goal.
         """
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineRunORM)
@@ -79,7 +76,7 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         """
         Return the most recent pipeline runs up to a limit.
         """
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineRunORM)
@@ -93,8 +90,8 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         """
         Generic search method for pipeline runs.
         """
-        def op():
-            q = self._scope().query(PipelineRunORM)
+        def op(s):
+            q = s.query(PipelineRunORM)
 
             if "goal_id" in filters:
                 q = q.filter(PipelineRunORM.goal_id == filters["goal_id"])

@@ -6,6 +6,10 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
+import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
@@ -151,8 +155,7 @@ class EBTInferenceAgent(BaseAgent):
                     ) 
 
             score_bundle = ScoreBundle(results={r.dimension: r for r in score_results})
-
-            ScoringManager.save_score_to_memory(
+            self.memory.evaluations.save_bundle(
                 score_bundle,
                 scorable,
                 context,
@@ -349,11 +352,6 @@ class EBTInferenceAgent(BaseAgent):
     
 
     def plot_refinement_trace(self, trace, title):
-        import matplotlib
-if matplotlib.get_backend().lower() != "agg":
-    matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
         
         plt.figure(figsize=(10, 4))
         plt.plot(trace, marker="o")

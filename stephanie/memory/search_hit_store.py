@@ -1,9 +1,9 @@
 # stephanie/memory/search_hit_store.py
-# memory/search_hit_store.py
+from __future__ import annotations
 
-from sqlalchemy.orm import Session
+from typing import Optional
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.search_hit import SearchHitORM
 
 
@@ -11,37 +11,55 @@ class SearchHitStore(BaseSQLAlchemyStore):
     orm_model = SearchHitORM
     default_order_by = SearchHitORM.created_at
 
-
-    def __init__(self, db: Session, logger=None):
-        super().__init__(db, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "search_hits"
 
     def name(self) -> str:
         return self.name
 
     def add_hit(self, hit_data: dict) -> SearchHitORM:
-        hit = SearchHitORM(**hit_data)
-        self.db.add(hit)
-        self.db.commit()
-        self.db.refresh(hit)
-        return hit
+        """Insert a single search hit."""
+        def op(s):
+            hit = SearchHitORM(**hit_data)
+            s.add(hit)
+            s.flush()
+            s.refresh(hit)
+            return hit
+
+        return self._run(op, commit=True)
 
     def bulk_add_hits(self, hit_data_list: list[dict]) -> list[SearchHitORM]:
-        hits = [SearchHitORM(**data) for data in hit_data_list]
-        self.db.bulk_save_objects(hits)
-        self.db.commit()
-        return hits
+        """Insert multiple search hits at once."""
+        def op(s):
+            hits = [SearchHitORM(**data) for data in hit_data_list]
+            s.add_all(hits)
+            s.flush()
+            return hits
 
-    def get_by_id(self, hit_id: int) -> SearchHitORM:
-        return self.db.query(SearchHitORM).get(hit_id)
+        return self._run(op, commit=True)
+
+    def get_by_id(self, hit_id: int) -> Optional[SearchHitORM]:
+        """Fetch a search hit by its ID."""
+        def op(s):
+            return s.query(SearchHitORM).filter_by(id=hit_id).first()
+
+        return self._run(op)
 
     def get_all_for_goal(self, goal_id: int) -> list[SearchHitORM]:
-        return self.db.query(SearchHitORM).filter_by(goal_id=goal_id).all()
+        """Fetch all hits for a given goal ID."""
+        def op(s):
+            return s.query(SearchHitORM).filter_by(goal_id=goal_id).all()
+
+        return self._run(op)
 
     def delete_by_id(self, hit_id: int) -> bool:
-        hit = self.db.query(SearchHitORM).get(hit_id)
-        if hit:
-            self.db.delete(hit)
-            self.db.commit()
-            return True
-        return False
+        """Delete a search hit by ID."""
+        def op(s):
+            hit = s.query(SearchHitORM).filter_by(id=hit_id).first()
+            if hit:
+                s.delete(hit)
+                return True
+            return False
+
+        return self._run(op, commit=True)

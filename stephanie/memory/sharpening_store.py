@@ -1,9 +1,7 @@
 # stephanie/memory/sharpening_store.py
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
-
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.sharpening_prediction import SharpeningPredictionORM
 
 
@@ -18,13 +16,16 @@ class SharpeningStore(BaseSQLAlchemyStore):
     def name(self) -> str:
         return self.name
 
-    def insert_sharpening_prediction(self, prediction_dict: dict):
+    def insert_sharpening_prediction(self, prediction_dict: dict) -> int:
         """
-        Inserts a new sharpening comparison from A/B hypothesis testing
+        Insert a new sharpening prediction (from A/B hypothesis testing).
+        Returns the inserted row ID.
         """
-        prediction = SharpeningPredictionORM(**prediction_dict)
-        self.session.add(prediction)
-        self.session.commit()
-        self.session.refresh(prediction)
+        def op(s):
+            prediction = SharpeningPredictionORM(**prediction_dict)
+            s.add(prediction)
+            s.flush()
+            s.refresh(prediction)
+            return prediction.id
 
-        return prediction.id
+        return self._run(op, commit=True)

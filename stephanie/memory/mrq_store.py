@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from sqlalchemy import text
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models import (
     MRQMemoryEntryORM,
     MRQPreferencePairORM,
@@ -44,7 +44,7 @@ class MRQStore(BaseSQLAlchemyStore):
         metadata: dict = None,
     ) -> int:
         """Add a new entry to MRQ memory."""
-        def op():
+        def op(s):
             db_entry = MRQMemoryEntryORM(
                 goal=goal,
                 strategy=strategy,
@@ -58,7 +58,6 @@ class MRQStore(BaseSQLAlchemyStore):
                 metadata_=json.dumps(metadata or {}),
                 created_at=datetime.now(timezone.utc),
             )
-            s = self._scope()
             s.add(db_entry)
             s.flush()
 
@@ -90,7 +89,7 @@ class MRQStore(BaseSQLAlchemyStore):
         run_id: str = None,
     ) -> int:
         """Save preference pair to database."""
-        def op():
+        def op(s):
             entry = MRQPreferencePairORM(
                 goal=goal,
                 prompt=prompt,
@@ -103,7 +102,6 @@ class MRQStore(BaseSQLAlchemyStore):
                 source=source,
                 run_id=run_id,
             )
-            s = self._scope()
             s.add(entry)
             s.flush()
             return entry.id
@@ -114,9 +112,9 @@ class MRQStore(BaseSQLAlchemyStore):
     # -------------------
     def get_similar_prompt(self, prompt: str, top_k: int = 5) -> List[MRQMemoryEntryORM]:
         """Naive substring search for similar prompts."""
-        def op():
+        def op(s):
             return (
-                self._scope().query(MRQMemoryEntryORM)
+                s.query(MRQMemoryEntryORM)
                 .filter(MRQMemoryEntryORM.prompt.ilike(f"%{prompt}%"))
                 .limit(top_k)
                 .all()
@@ -124,9 +122,9 @@ class MRQStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_strategy(self, strategy: str, limit: int = 100) -> List[MRQMemoryEntryORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MRQMemoryEntryORM)
+                s.query(MRQMemoryEntryORM)
                 .filter_by(strategy=strategy)
                 .limit(limit)
                 .all()
@@ -134,9 +132,9 @@ class MRQStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_all(self, limit: int = 100) -> List[MRQMemoryEntryORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MRQMemoryEntryORM)
+                s.query(MRQMemoryEntryORM)
                 .order_by(MRQMemoryEntryORM.created_at.desc())
                 .limit(limit)
                 .all()
@@ -144,8 +142,8 @@ class MRQStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_training_preferece_pairs(self, goal: str, limit: int = 1000) -> List[dict]:
-        def op():
-            q = self._scope().query(MRQPreferencePairORM).filter(
+        def op(s):
+            q = s.query(MRQPreferencePairORM).filter(
                 MRQPreferencePairORM.goal == goal
             )
             results = q.limit(limit).all()
@@ -167,8 +165,8 @@ class MRQStore(BaseSQLAlchemyStore):
     # -------------------
     def train_from_reflection_deltas(self):
         """Build examples from reflection deltas for symbolic training."""
-        def op():
-            deltas = self._scope().query(ReflectionDeltaORM).all()
+        def op(s):
+            deltas = s.query(ReflectionDeltaORM).all()
             examples = []
             for d in deltas:
                 a, b = d.pipeline_a, d.pipeline_b
@@ -214,7 +212,7 @@ class MRQStore(BaseSQLAlchemyStore):
         self, goal: Optional[str] = None, limit: int = 10000
     ) -> dict:
         """Top/bottom scored prompt-response pairs per dimension."""
-        def op():
+        def op(s):
             query = text(
                 """
                 WITH scored_prompts AS (
@@ -277,7 +275,7 @@ class MRQStore(BaseSQLAlchemyStore):
             params = {"limit": limit}
             if goal:
                 params["goal"] = goal
-            rows = self._scope().execute(query, params).fetchall()
+            rows = s.execute(query, params).fetchall()
 
             grouped = defaultdict(dict)
             for row in rows:

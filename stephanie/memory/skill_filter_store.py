@@ -4,9 +4,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.skill_filter import SkillFilterORM
 
 
@@ -24,26 +23,36 @@ class SkillFilterStore(BaseSQLAlchemyStore):
 
     def name(self) -> str:
         return self.name
-    
+
     # --- Create ---
     def add_filter(self, data: Dict[str, Any]) -> SkillFilterORM:
-        """
-        Add a new SkillFilter record.
-        Required keys: id, casebook_id
-        """
-        sf = SkillFilterORM(**data)
-        self.session.add(sf)
-        self.session.commit()
-        self.logger(f"Added SkillFilter {sf.id}")
-        return sf
+        """Add a new SkillFilter record."""
+        def op(s):
+            sf = SkillFilterORM(**data)
+            s.add(sf)
+            s.flush()
+            s.refresh(sf)
+            return sf
+
+        result = self._run(op, commit=True)
+        if self.logger:
+            self.logger.log("SkillFilterAdded", {"id": result.id})
+        return result
 
     def bulk_add_filters(self, filters: List[Dict[str, Any]]) -> List[SkillFilterORM]:
         """Insert multiple SkillFilter records at once."""
-        objs = [SkillFilterORM(**f) for f in filters]
-        self.session.add_all(objs)
-        self.session.commit()
-        self.logger(f"Added {len(objs)} SkillFilters")
-        return objs
+        def op(s):
+            objs = [SkillFilterORM(**f) for f in filters]
+            s.add_all(objs)
+            s.flush()
+            for o in objs:
+                s.refresh(o)
+            return objs
+
+        result = self._run(op, commit=True)
+        if self.logger:
+            self.logger.log("SkillFilterBulkAdded", {"count": len(result)})
+        return result
 
     # --- Read ---
     def get_by_id(self, filter_id: str) -> Optional[SkillFilterORM]:
@@ -77,38 +86,55 @@ class SkillFilterStore(BaseSQLAlchemyStore):
 
     # --- Update ---
     def update_filter(self, filter_id: str, updates: Dict[str, Any]) -> Optional[SkillFilterORM]:
-        sf = self.get_by_id(filter_id)
-        if not sf:
-            return None
-        for k, v in updates.items():
-            if hasattr(sf, k):
-                setattr(sf, k, v)
-        self.session.commit()
-        self.logger(f"Updated SkillFilter {sf.id}")
-        return sf
+        def op(s):
+            sf = s.query(SkillFilterORM).filter_by(id=filter_id).first()
+            if not sf:
+                return None
+            for k, v in updates.items():
+                if hasattr(sf, k):
+                    setattr(sf, k, v)
+            s.flush()
+            s.refresh(sf)
+            return sf
+
+        result = self._run(op, commit=True)
+        if result and self.logger:
+            self.logger.log("SkillFilterUpdated", {"id": result.id, "updates": updates})
+        return result
 
     # --- Delete ---
     def delete_by_id(self, filter_id: str) -> bool:
-        sf = self.get_by_id(filter_id)
-        if not sf:
-            return False
-        self.session.delete(sf)
-        self.session.commit()
-        self.logger(f"Deleted SkillFilter {filter_id}")
-        return True
+        def op(s):
+            sf = s.query(SkillFilterORM).filter_by(id=filter_id).first()
+            if not sf:
+                return False
+            s.delete(sf)
+            return True
+
+        result = self._run(op, commit=True)
+        if result and self.logger:
+            self.logger.log("SkillFilterDeleted", {"id": filter_id})
+        return result
 
     def ensure_filter(self, fid: str, data: dict) -> SkillFilterORM:
-        sf = self.get_by_id(fid)
-        if sf: 
-            return sf
+        existing = self.get_by_id(fid)
+        if existing:
+            return existing
         return self.add_filter(data)
 
     def delete_by_casebook(self, casebook_id: str) -> int:
-        count = (
-            self.session.query(SkillFilterORM)
-            .filter_by(casebook_id=casebook_id)
-            .delete(synchronize_session=False)
-        )
-        self.session.commit()
-        self.logger(f"Deleted {count} SkillFilters from casebook {casebook_id}")
+        def op(s):
+            count = (
+                s.query(SkillFilterORM)
+                .filter_by(casebook_id=casebook_id)
+                .delete(synchronize_session=False)
+            )
+            return count
+
+        count = self._run(op, commit=True)
+        if self.logger:
+            self.logger.log("SkillFiltersDeletedByCasebook", {
+                "casebook_id": casebook_id,
+                "count": count
+            })
         return count

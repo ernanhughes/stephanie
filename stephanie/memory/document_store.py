@@ -5,7 +5,7 @@ from typing import Optional, List
 
 from sqlalchemy import desc
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.document import DocumentORM
 
 
@@ -24,8 +24,8 @@ class DocumentStore(BaseSQLAlchemyStore):
 
     def add_document(self, doc: dict) -> DocumentORM:
         """Simple insert; returns the persisted ORM row."""
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 document = DocumentORM(
                     title=doc["title"],
                     source=doc["source"],
@@ -41,8 +41,8 @@ class DocumentStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def bulk_add_documents(self, documents: list[dict]) -> list[DocumentORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 orm_docs = [
                     DocumentORM(
                         title=doc["title"],
@@ -63,20 +63,20 @@ class DocumentStore(BaseSQLAlchemyStore):
     # ---------- Reads ----------
 
     def get_by_id(self, document_id: int) -> Optional[DocumentORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.get(DocumentORM, document_id)
         return self._run(op)
 
     def get_by_url(self, url: str) -> Optional[DocumentORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.query(DocumentORM).filter_by(url=url).first()
         return self._run(op)
 
     def get_all(self, limit: int = 100) -> List[DocumentORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(DocumentORM)
                     .order_by(
@@ -88,16 +88,16 @@ class DocumentStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_ids(self, document_ids: list[int]) -> List[DocumentORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.query(DocumentORM).filter(DocumentORM.id.in_(document_ids)).all()
         return self._run(op)
 
     # ---------- Deletes ----------
 
     def delete_by_id(self, document_id: int) -> bool:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 doc = s.get(DocumentORM, document_id)
                 if not doc:
                     return False

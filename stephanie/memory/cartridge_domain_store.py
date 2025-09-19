@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.cartridge_domain import CartridgeDomainORM
 
 
@@ -18,8 +18,8 @@ class CartridgeDomainStore(BaseSQLAlchemyStore):
 
         Expected dict keys: cartridge_id, domain, score
         """
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 existing = (
                     s.query(CartridgeDomainORM)
                     .filter_by(cartridge_id=data["cartridge_id"], domain=data["domain"])
@@ -42,8 +42,8 @@ class CartridgeDomainStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_domains(self, cartridge_id: int) -> list[CartridgeDomainORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(CartridgeDomainORM)
                     .filter_by(cartridge_id=cartridge_id)
@@ -53,8 +53,8 @@ class CartridgeDomainStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def delete_domains(self, cartridge_id: int) -> None:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 s.query(CartridgeDomainORM).filter_by(cartridge_id=cartridge_id).delete()
                 if self.logger:
                     self.logger.log("CartridgeDomainsDeleted", {"cartridge_id": cartridge_id})

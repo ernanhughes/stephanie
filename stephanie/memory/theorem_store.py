@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy.orm import Session
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.theorem import TheoremORM
 
 
@@ -19,7 +18,7 @@ class TheoremStore(BaseSQLAlchemyStore):
 
     def name(self) -> str:
         return self.name
-    
+
     def add_theorem(self, data: dict) -> TheoremORM:
         """
         Adds a new theorem or updates an existing one if a matching statement already exists.
@@ -32,7 +31,9 @@ class TheoremStore(BaseSQLAlchemyStore):
 
         if existing:
             existing.proof = data.get("proof", existing.proof)
-            existing.embedding_id = data.get("embedding_id", existing.embedding_id)
+            existing.embedding_id = data.get(
+                "embedding_id", existing.embedding_id
+            )
             self.session.commit()
             return existing
 
@@ -58,7 +59,11 @@ class TheoremStore(BaseSQLAlchemyStore):
         return self.session.query(TheoremORM).filter_by(id=theorem_id).first()
 
     def get_by_statement(self, statement: str) -> Optional[TheoremORM]:
-        return self.session.query(TheoremORM).filter_by(statement=statement).first()
+        return (
+            self.session.query(TheoremORM)
+            .filter_by(statement=statement)
+            .first()
+        )
 
     def get_all(self, limit=100) -> list[TheoremORM]:
         return self.session.query(TheoremORM).limit(limit).all()
@@ -72,4 +77,8 @@ class TheoremStore(BaseSQLAlchemyStore):
         return False
 
     def get_by_run_id(self, run_id: int) -> list[TheoremORM]:
-        return self.session.query(TheoremORM).filter_by(pipeline_run_id=run_id).all()
+        return (
+            self.session.query(TheoremORM)
+            .filter_by(pipeline_run_id=run_id)
+            .all()
+        )

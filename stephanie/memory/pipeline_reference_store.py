@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_reference import PipelineReferenceORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import ScorableFactory
@@ -27,8 +27,7 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
         """
         Inserts a new pipeline reference into the database.
         """
-        def op():
-            s = self._scope()
+        def op(s):
             db_ref = PipelineReferenceORM(
                 pipeline_run_id=reference_dict.get("pipeline_run_id"),
                 scorable_type=reference_dict.get("scorable_type"),
@@ -52,12 +51,12 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_id(self, ref_id: int) -> Optional[PipelineReferenceORM]:
-        def op():
+        def op(s):
             return self._scope().get(PipelineReferenceORM, ref_id)
         return self._run(op)
 
     def get_by_pipeline_run(self, pipeline_run_id: int) -> List[PipelineReferenceORM]:
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineReferenceORM)
@@ -68,7 +67,7 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_target(self, target_type: str, target_id: str) -> List[PipelineReferenceORM]:
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineReferenceORM)
@@ -82,7 +81,7 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_all(self, limit: int = 100) -> List[PipelineReferenceORM]:
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineReferenceORM)
@@ -93,8 +92,8 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def find(self, filters: dict) -> List[PipelineReferenceORM]:
-        def op():
-            q = self._scope().query(PipelineReferenceORM)
+        def op(s):
+            q = s.query(PipelineReferenceORM)
             if "pipeline_run_id" in filters:
                 q = q.filter(PipelineReferenceORM.pipeline_run_id == filters["pipeline_run_id"])
             if "scorable_type" in filters:
@@ -111,7 +110,7 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
     def get_documents_by_run_id(
         self, pipeline_run_id: int, memory, limit: int = 100
     ) -> dict[tuple[str, str], Scorable]:
-        def op():
+        def op(s):
             refs = (
                 self._scope()
                 .query(PipelineReferenceORM)

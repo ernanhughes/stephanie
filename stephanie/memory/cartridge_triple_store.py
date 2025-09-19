@@ -1,6 +1,6 @@
 from sqlalchemy import case, func
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.cartridge_domain import CartridgeDomainORM
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.evaluation import EvaluationORM
@@ -21,8 +21,8 @@ class CartridgeTripleStore(BaseSQLAlchemyStore):
     # ------------------------------
 
     def insert(self, data: dict) -> CartridgeTripleORM:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 existing = (
                     s.query(CartridgeTripleORM)
                     .filter_by(
@@ -49,28 +49,28 @@ class CartridgeTripleStore(BaseSQLAlchemyStore):
         return result
 
     def get_by_id(self, triple_id: int) -> CartridgeTripleORM | None:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.query(CartridgeTripleORM).filter_by(id=triple_id).first()
         return self._run(op)
 
     def get_triples(self, cartridge_id: int) -> list[CartridgeTripleORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.query(CartridgeTripleORM).filter_by(cartridge_id=cartridge_id).all()
         return self._run(op)
 
     def delete_triples(self, cartridge_id: int):
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 s.query(CartridgeTripleORM).filter_by(cartridge_id=cartridge_id).delete()
         self._run(op)
         if self.logger:
             self.logger.log("TriplesDeleted", {"cartridge_id": cartridge_id})
 
     def has_triples(self, cartridge_id: int) -> bool:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(CartridgeTripleORM)
                     .filter_by(cartridge_id=cartridge_id)
@@ -80,8 +80,8 @@ class CartridgeTripleStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def set_triples(self, cartridge_id: int, triples: list[tuple[str, str, str, float]]):
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 # clear existing
                 s.query(CartridgeTripleORM).filter_by(cartridge_id=cartridge_id).delete()
                 # re-add
@@ -104,8 +104,8 @@ class CartridgeTripleStore(BaseSQLAlchemyStore):
     def retrieve_top_triplets_by_score(
         self, goal_id: int, score_weights: dict[str, float], top_k: int = 20
     ) -> list[CartridgeTripleORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 subq = (
                     s.query(
                         EvaluationORM.scorable_id.label("triplet_id"),
@@ -148,8 +148,8 @@ class CartridgeTripleStore(BaseSQLAlchemyStore):
     def retrieve_top_triplets_by_domain(
         self, goal_text: str, domain_classifier, top_k: int = 20, min_score: float = 0.6
     ) -> list[CartridgeTripleORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 goal_domains = domain_classifier.classify(goal_text, top_k=5, min_score=min_score)
                 domain_names = [d[0] for d in goal_domains]
 

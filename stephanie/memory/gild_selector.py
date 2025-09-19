@@ -5,7 +5,7 @@ import json
 from typing import Dict, Optional
 
 import numpy as np
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 import torch
 from sqlalchemy.orm import Session
 from sqlalchemy import text

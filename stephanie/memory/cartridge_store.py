@@ -1,4 +1,4 @@
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.scorable_embedding import ScorableEmbeddingORM
 from stephanie.models.theorem import CartridgeORM
 
@@ -47,8 +47,8 @@ class CartridgeStore(BaseSQLAlchemyStore):
         return new_se.id
 
     def add_cartridge(self, data: dict) -> CartridgeORM:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 existing = (
                     s.query(CartridgeORM)
                     .filter_by(source_type=data["source_type"], source_uri=data["source_uri"])
@@ -81,8 +81,8 @@ class CartridgeStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def bulk_add_cartridges(self, items: list[dict]) -> list[CartridgeORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 cartridges = []
                 for item in items:
                     if item.get("embedding_id"):
@@ -102,14 +102,14 @@ class CartridgeStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_id(self, cartridge_id: int) -> CartridgeORM | None:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.query(CartridgeORM).filter_by(id=cartridge_id).first()
         return self._run(op)
 
     def get_by_source_uri(self, uri: str, source_type: str) -> CartridgeORM | None:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(CartridgeORM)
                     .filter_by(source_uri=uri, source_type=source_type)
@@ -118,14 +118,14 @@ class CartridgeStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_all(self, limit=100) -> list[CartridgeORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return s.query(CartridgeORM).limit(limit).all()
         return self._run(op)
 
     def delete_by_id(self, cartridge_id: int) -> bool:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 cartridge = s.query(CartridgeORM).filter_by(id=cartridge_id).first()
                 if cartridge:
                     s.delete(cartridge)
@@ -134,8 +134,8 @@ class CartridgeStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_run_id(self, pipeline_run_id: int) -> list[CartridgeORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(CartridgeORM)
                     .filter_by(pipeline_run_id=pipeline_run_id)

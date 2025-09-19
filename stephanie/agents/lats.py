@@ -218,7 +218,7 @@ class LATSAgent(BaseAgent):
     def _score_hypothesis(self, hypothesis: dict, context: dict, metrics: str = "lats_node"):
         """Use dimensional scoring system"""
         scorable = ScorableFactory.from_dict(hypothesis, TargetType.HYPOTHESIS)
-        return super().score_hypothesis(scorable, context, metrics)
+        return self._score(scorable=scorable, context=context)
 
     def _simulate(self, node: LATSNode, context: dict):
         """Simulate until terminal state"""

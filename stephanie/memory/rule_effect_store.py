@@ -1,27 +1,24 @@
 # stephanie/memory/rule_effect_store.py
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from sqlalchemy.orm import Session
-
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.rule_application import RuleApplicationORM
 
 
 class RuleEffectStore(BaseSQLAlchemyStore):
     orm_model = RuleApplicationORM
-    default_order_by = RuleApplicationORM.applied_at
+    default_order_by = RuleApplicationORM.applied_at.desc()
 
-    def __init__(self, db: Session, logger=None):
-        super().__init__(db, logger)
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
         self.name = "rule_effects"
         self.table_name = "rule_applications"
 
     def name(self) -> str:
         return self.name
-    
+
     def insert(
         self,
         rule_id: int,
@@ -37,7 +34,8 @@ class RuleEffectStore(BaseSQLAlchemyStore):
         context_hash: Optional[str] = None,
     ) -> RuleApplicationORM:
         """Insert a new rule application record into the database."""
-        try:
+        def op(s):
+            
             application = RuleApplicationORM(
                 rule_id=rule_id,
                 goal_id=goal_id,
@@ -51,118 +49,82 @@ class RuleEffectStore(BaseSQLAlchemyStore):
                 stage_details=stage_details,
                 context_hash=context_hash,
             )
-            self.db.add(application)
-            self.db.commit()
-            self.db.refresh(application)
-
+            s.add(application)
+            s.flush()
             if self.logger:
                 self.logger.log("RuleApplicationLogged", application.to_dict())
-
             return application
-
-        except Exception as e:
-            self.db.rollback()
-            if self.logger:
-                self.logger.log("RuleApplicationError", {"error": str(e)})
-            raise
+        return self._run(op)
 
     def get_by_rule(self, rule_id: int) -> List[RuleApplicationORM]:
         """Retrieve all applications for a given rule."""
-        return self.db.query(RuleApplicationORM).filter_by(rule_id=rule_id).all()
+        def op(s):
+            return s.query(RuleApplicationORM).filter_by(rule_id=rule_id).all()
+        return self._run(op)
 
     def get_recent(self, limit: int = 50) -> List[RuleApplicationORM]:
         """Get the most recent rule applications."""
-        return (
-            self.db.query(RuleApplicationORM)
-            .order_by(RuleApplicationORM.applied_at.desc())
-            .limit(limit)
-            .all()
-        )
+        def op(s):
+            return (
+                s.query(RuleApplicationORM)
+                .order_by(RuleApplicationORM.applied_at.desc())
+                .limit(limit)
+                .all()
+            )
+        return self._run(op)
 
     def get_feedback_summary(self, rule_id: int) -> Dict[str, int]:
         """Return a count of feedback labels for a specific rule."""
-        results = (
-            self.db.query(RuleApplicationORM.result_label)
-            .filter(RuleApplicationORM.rule_id == rule_id)
-            .all()
-        )
-        summary = {}
-        for (label,) in results:
-            if label:
-                summary[label] = summary.get(label, 0) + 1
-        return summary
+        def op(s):
+            results = (
+                s.query(RuleApplicationORM.result_label)
+                .filter(RuleApplicationORM.rule_id == rule_id)
+                .all()
+            )
+            summary: Dict[str, int] = {}
+            for (label,) in results:
+                if label:
+                    summary[label] = summary.get(label, 0) + 1
+            return summary
+        return self._run(op)
 
-    def get_by_run_and_goal(
-        self, run_id: int, goal_id: int
-    ) -> List[RuleApplicationORM]:
-        """
-        Retrieve all rule applications for a specific pipeline run and goal.
-
-        Args:
-            run_id (int): The ID of the pipeline run.
-            goal_id (int): The ID of the goal.
-
-        Returns:
-            List[RuleApplicationORM]: Matching rule applications.
-        """
+    def get_by_run_and_goal(self, run_id: int, goal_id: int) -> List[RuleApplicationORM]:
+        """Retrieve all rule applications for a specific pipeline run and goal."""
         if not run_id or not goal_id:
             if self.logger:
                 self.logger.log(
                     "InvalidInputForRuleFetch",
-                    {
-                        "reason": "Missing run_id or goal_id",
-                        "run_id": run_id,
-                        "goal_id": goal_id,
-                    },
+                    {"reason": "Missing run_id or goal_id", "run_id": run_id, "goal_id": goal_id},
                 )
             return []
 
-        try:
-            applications = (
-                self.db.query(RuleApplicationORM)
+        def op(s):
+            apps = (
+                s.query(RuleApplicationORM)
                 .filter(
                     RuleApplicationORM.pipeline_run_id == int(run_id),
                     RuleApplicationORM.goal_id == int(goal_id),
                 )
                 .all()
             )
-
-            if self.logger and len(applications) > 0:
+            if self.logger and apps:
                 self.logger.log(
                     "RuleApplicationsFetched",
-                    {"run_id": run_id, "goal_id": goal_id, "count": len(applications)},
+                    {"run_id": run_id, "goal_id": goal_id, "count": len(apps)},
                 )
-
-            return applications
-
-        except Exception as e:
-            if self.logger:
-                self.logger.log(
-                    "RuleApplicationFetchError",
-                    {"error": str(e), "run_id": run_id, "goal_id": goal_id},
-                )
-            return []
+            return apps
+        return self._run(op)
 
     def get_recent_performance(self, rule_id: int, limit: int = 10) -> List[Dict]:
-        """
-        Retrieve recent performance entries for a given rule.
-
-        Args:
-            rule_id (int): The ID of the rule.
-            limit (int): How many recent entries to return.
-
-        Returns:
-            List[Dict]: Recent performance data with score, timestamp, and optional metadata.
-        """
-        try:
+        """Retrieve recent performance entries for a given rule."""
+        def op(s):
             entries = (
-                self.db.query(RuleApplicationORM)
+                s.query(RuleApplicationORM)
                 .filter(RuleApplicationORM.rule_id == rule_id)
                 .order_by(RuleApplicationORM.applied_at.desc())
                 .limit(limit)
                 .all()
             )
-
             return [
                 {
                     "score": e.post_score,
@@ -174,10 +136,4 @@ class RuleEffectStore(BaseSQLAlchemyStore):
                 }
                 for e in entries
             ]
-
-        except Exception as e:
-            if self.logger:
-                self.logger.log(
-                    "RecentPerformanceError", {"error": str(e), "rule_id": rule_id}
-                )
-            return []
+        return self._run(op)

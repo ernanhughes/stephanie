@@ -165,23 +165,24 @@ class MRQInferenceAgent(BaseAgent):
                     },
                 )
 
-            score_bundle = ScoreBundle(
+            bundle = ScoreBundle(
                 results={r.dimension: r for r in score_results}
             )
             model_name = (
                 f"{self.target_type}_{self.model_type}_{self.model_version}"
             )
 
-            ScoringManager.save_score_to_memory(
-                score_bundle,
-                scorable,
-                context,
-                self.cfg,
-                self.memory,
-                self.logger,
-                source="mrq",
+            # Save to memory
+            self.memory.evaluations.save_bundle(
+                bundle=bundle,
+                scorable=scorable,
+                context=context,
+                cfg=self.cfg,
+                source=self.name,
+                embedding_type=self.memory.embedding.name,
                 model_name=model_name,
-                evaluator_name=self.model_type,
+                evaluator=self.name,
+                container=self.container,
             )
 
             results.append(

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 import torch
 
 from stephanie.utils.lru_cache import SimpleLRUCache

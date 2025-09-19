@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.pattern_stat import PatternStatORM
 
 
@@ -20,8 +20,7 @@ class PatternStatStore(BaseSQLAlchemyStore):
 
     def insert(self, stats: List[PatternStatORM]) -> None:
         """Insert multiple pattern stats in a single transaction"""
-        def op():
-            s = self._scope()
+        def op(s):
             s.bulk_save_objects(stats)
             if self.logger:
                 self.logger.log(

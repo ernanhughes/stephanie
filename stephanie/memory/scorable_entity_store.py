@@ -1,17 +1,13 @@
 # stephanie/memory/scorable_entity_store.py
 from __future__ import annotations
 
-import logging
 from typing import List
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
 from stephanie.models.scorable_entity import ScorableEntityORM
-
-logger = logging.getLogger(__name__)
 
 
 class ScorableEntityStore(BaseSQLAlchemyStore):
@@ -20,9 +16,9 @@ class ScorableEntityStore(BaseSQLAlchemyStore):
     (documents, plan_traces, prompts, etc.)
     """
     orm_model = ScorableEntityORM
-    default_order_by = ScorableEntityORM.created_at
+    default_order_by = ScorableEntityORM.created_at.asc()
 
-    def __init__(self, session: Session, memory, logger=None):
+    def __init__(self, session_or_maker, memory, logger=None):
         super().__init__(session_or_maker, logger)
         self.memory = memory
         self.name = "scorable_entities"
@@ -47,58 +43,64 @@ class ScorableEntityStore(BaseSQLAlchemyStore):
             - similarity (float)
             - source_text (str)
         """
-        stmt = (
-            pg_insert(ScorableEntityORM)
-            .values(**data)
-            .on_conflict_do_update(
-                index_elements=["scorable_id", "scorable_type", "entity_text"],
-                set_={
-                    "entity_type": data.get("entity_type"),
-                    "start": data.get("start"),
-                    "end": data.get("end"),
-                    "similarity": data.get("similarity"),
-                    "source_text": data.get("source_text"),
-                },
+        def op(s):
+            stmt = (
+                pg_insert(ScorableEntityORM)
+                .values(**data)
+                .on_conflict_do_update(
+                    index_elements=["scorable_id", "scorable_type", "entity_text"],
+                    set_={
+                        "entity_type": data.get("entity_type"),
+                        "start": data.get("start"),
+                        "end": data.get("end"),
+                        "similarity": data.get("similarity"),
+                        "source_text": data.get("source_text"),
+                    },
+                )
+                .returning(ScorableEntityORM.id)
             )
-            .returning(ScorableEntityORM.id)
-        )
 
-        result = self.session.execute(stmt)
-        inserted_id = result.scalar()
-        self.session.commit()
+            
+            result = s.execute(stmt)
+            inserted_id = result.scalar()
 
-        if inserted_id:
-            self.logger.info(f"EntityUpserted: {data}")
+            if inserted_id and self.logger:
+                self.logger.log("EntityUpserted", data)
 
-        return (
-            self.session.query(ScorableEntityORM)
-            .filter_by(
-                scorable_id=data["scorable_id"],
-                scorable_type=data["scorable_type"],
-                entity_text=data["entity_text"],
+            return (
+                s.query(ScorableEntityORM)
+                .filter_by(
+                    scorable_id=data["scorable_id"],
+                    scorable_type=data["scorable_type"],
+                    entity_text=data["entity_text"],
+                )
+                .first()
             )
-            .first()
-        )
+        return self._run(op)
 
     def get_by_scorable(self, scorable_id: str, scorable_type: str) -> List[ScorableEntityORM]:
-        """
-        Get all entities linked to a scorable.
-        """
-        return (
-            self.session.query(ScorableEntityORM)
-            .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
-            .all()
-        )
+        """Get all entities linked to a scorable."""
+        def op(s):
+            return (
+                s.query(ScorableEntityORM)
+                .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
+                .all()
+            )
+        return self._run(op)
 
     def delete_by_scorable(self, scorable_id: str, scorable_type: str):
-        """
-        Delete all entities linked to a scorable.
-        """
-        self.session.query(ScorableEntityORM).filter_by(
-            scorable_id=scorable_id, scorable_type=scorable_type
-        ).delete()
-        self.session.commit()
-        self.logger.info(f"EntitiesDeleted: {scorable_type}:{scorable_id}")
+        """Delete all entities linked to a scorable."""
+        def op(s):
+            
+            s.query(ScorableEntityORM).filter_by(
+                scorable_id=scorable_id, scorable_type=scorable_type
+            ).delete()
+            if self.logger:
+                self.logger.log("EntitiesDeleted", {
+                    "scorable_id": scorable_id,
+                    "scorable_type": scorable_type
+                })
+        return self._run(op)
 
     def index(self, scorables: List) -> int:
         """

@@ -4,12 +4,11 @@ import logging
 from typing import List
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.scorable_domain import ScorableDomainORM
 
-logger = logging.getLogger(__name__)    
+logger = logging.getLogger(__name__)
 
 
 class ScorableDomainStore(BaseSQLAlchemyStore):
@@ -18,7 +17,7 @@ class ScorableDomainStore(BaseSQLAlchemyStore):
     (documents, plan_traces, prompts, etc.)
     """
     orm_model = ScorableDomainORM
-    default_order_by = ScorableDomainORM.created_at
+    default_order_by = ScorableDomainORM.created_at.asc()
 
     def __init__(self, session_or_maker, logger=None):
         super().__init__(session_or_maker, logger)
@@ -37,60 +36,59 @@ class ScorableDomainStore(BaseSQLAlchemyStore):
             - domain (str)
             - score (float)
         """
-        stmt = (
-            pg_insert(ScorableDomainORM)
-            .values(**data)
-            .on_conflict_do_update(
-                index_elements=["scorable_id", "scorable_type", "domain"],
-                set_={"score": data["score"]},
+        def op(s):
+            stmt = (
+                pg_insert(ScorableDomainORM)
+                .values(**data)
+                .on_conflict_do_update(
+                    index_elements=["scorable_id", "scorable_type", "domain"],
+                    set_={"score": data["score"]},
+                )
+                .returning(ScorableDomainORM.id)
             )
-            .returning(ScorableDomainORM.id)
-        )
-
-        result = self.session.execute(stmt)
-        inserted_id = result.scalar()
-        self.session.commit()
-
-        if inserted_id:
-            self.logger.log("DomainUpserted", data)
-
-        return (
-            self.session.query(ScorableDomainORM)
-            .filter_by(
-                scorable_id=data["scorable_id"],
-                scorable_type=data["scorable_type"],
-                domain=data["domain"],
+            
+            inserted_id = s.execute(stmt).scalar()
+            if self.logger and inserted_id:
+                self.logger.log("DomainUpserted", data)
+            return (
+                s.query(ScorableDomainORM)
+                .filter_by(
+                    scorable_id=data["scorable_id"],
+                    scorable_type=data["scorable_type"],
+                    domain=data["domain"],
+                )
+                .first()
             )
-            .first()
-        )
+        return self._run(op)
 
-    def get_domains(self, scorable_id: str, scorable_type: str) -> list[ScorableDomainORM]:
-        """
-        Get all domain classifications for a scorable.
-        """
-        return (
-            self.session.query(ScorableDomainORM)
-            .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
-            .order_by(ScorableDomainORM.score.desc())
-            .all()
-        )
+    def get_domains(self, scorable_id: str, scorable_type: str) -> List[ScorableDomainORM]:
+        """Get all domain classifications for a scorable."""
+        def op(s):
+            return (
+                s.query(ScorableDomainORM)
+                .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
+                .order_by(ScorableDomainORM.score.desc())
+                .all()
+            )
+        return self._run(op)
 
-    def delete_domains(self, scorable_id: str, scorable_type: str):
-        """
-        Delete all domain classifications for a scorable.
-        """
-        self.session.query(ScorableDomainORM).filter_by(
-            scorable_id=scorable_id, scorable_type=scorable_type
-        ).delete()
-        self.session.commit()
+    def delete_domains(self, scorable_id: str, scorable_type: str) -> None:
+        """Delete all domain classifications for a scorable."""
+        def op(s):
+            
+            s.query(ScorableDomainORM).filter_by(
+                scorable_id=scorable_id, scorable_type=scorable_type
+            ).delete()
+            if self.logger:
+                self.logger.log(
+                    "DomainsDeleted",
+                    {"scorable_id": scorable_id, "scorable_type": scorable_type},
+                )
+        self._run(op)
 
-        if self.logger:
-            self.logger.log("DomainsDeleted", {
-                "scorable_id": scorable_id,
-                "scorable_type": scorable_type
-            })
-
-    def set_domains(self, scorable_id: str, scorable_type: str, domains: list[tuple[str, float]]):
+    def set_domains(
+        self, scorable_id: str, scorable_type: str, domains: list[tuple[str, float]]
+    ) -> None:
         """
         Clear and re-add domains for the scorable.
 
@@ -108,22 +106,27 @@ class ScorableDomainStore(BaseSQLAlchemyStore):
             )
 
     def has_domains(self, scorable_id: str, scorable_type: str) -> bool:
-        """
-        Check if the given scorable has any domain classifications.
-        """
-        exists = (
-            self.session.query(ScorableDomainORM.id)
-            .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
-            .first()
-        )
-        return exists is not None
-
+        """Check if the given scorable has any domain classifications."""
+        def op(s):
+            return (
+                s.query(ScorableDomainORM.id)
+                .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
+                .first()
+                is not None
+            )
+        return self._run(op)
 
     def get_by_scorable(self, scorable_id: str, scorable_type: str) -> List[ScorableDomainORM]:
-        """
-        Check if the given scorable has any domain classifications.
-        """
-        result = self.session.query(ScorableDomainORM) \
-            .filter_by(scorable_id=scorable_id, scorable_type=scorable_type).all()
-        logger.debug(f"FetchedScorableDomain: scorable_id: {scorable_id}, scorable_type: {scorable_type}, result: {result}")
-        return result
+        """Get all domain classifications for a given scorable."""
+        def op(s):
+            result = (
+                s.query(ScorableDomainORM)
+                .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
+                .all()
+            )
+            logger.debug(
+                f"FetchedScorableDomain: scorable_id={scorable_id}, "
+                f"scorable_type={scorable_type}, result_count={len(result)}"
+            )
+            return result
+        return self._run(op)

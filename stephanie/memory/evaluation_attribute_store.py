@@ -5,7 +5,7 @@ from typing import Optional
 
 from sqlalchemy import func
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 
 
@@ -26,11 +26,11 @@ class EvaluationAttributeStore(BaseSQLAlchemyStore):
     # -------------------
     def insert(self, attribute: EvaluationAttributeORM) -> int:
         """Insert a single evaluation attribute with safe transaction handling."""
-        def op():
-            with self._scope() as s:
-                s.add(attribute)
-                s.flush()
-                return attribute.id
+        def op(s):
+            s.add(attribute)
+            s.flush()
+            return attribute.id
+
         attr_id = self._run(op)
 
         if self.logger:
@@ -39,14 +39,14 @@ class EvaluationAttributeStore(BaseSQLAlchemyStore):
 
     def bulk_insert(self, attributes: list[EvaluationAttributeORM]) -> list[int]:
         """Insert multiple attributes in a single transaction."""
-        def op():
+        def op(s):
             ids = []
-            with self._scope() as s:
-                for attr in attributes:
-                    s.add(attr)
-                    s.flush()
-                    ids.append(attr.id)
+            for attr in attributes:
+                s.add(attr)
+                s.flush()
+                ids.append(attr.id)
             return ids
+
         ids = self._run(op)
 
         if self.logger and ids:
@@ -61,69 +61,63 @@ class EvaluationAttributeStore(BaseSQLAlchemyStore):
     # -------------------
     def get_by_evaluation_id(self, evaluation_id: int) -> list[EvaluationAttributeORM]:
         return self._run(
-            lambda: self._scope()
-            .query(EvaluationAttributeORM)
-            .filter_by(evaluation_id=evaluation_id)
-            .all()
+            lambda s: s.query(EvaluationAttributeORM)
+                      .filter_by(evaluation_id=evaluation_id)
+                      .all()
         )
 
     def get_by_dimension(self, evaluation_id: int, dimension: str) -> list[EvaluationAttributeORM]:
         return self._run(
-            lambda: self._scope()
-            .query(EvaluationAttributeORM)
-            .filter(
-                EvaluationAttributeORM.evaluation_id == evaluation_id,
-                EvaluationAttributeORM.dimension == dimension,
-            )
-            .all()
+            lambda s: s.query(EvaluationAttributeORM)
+                      .filter(
+                          EvaluationAttributeORM.evaluation_id == evaluation_id,
+                          EvaluationAttributeORM.dimension == dimension,
+                      )
+                      .all()
         )
 
     def get_by_source(self, evaluation_id: int, dimension: str, source: str) -> Optional[EvaluationAttributeORM]:
         return self._run(
-            lambda: self._scope()
-            .query(EvaluationAttributeORM)
-            .filter(
-                EvaluationAttributeORM.evaluation_id == evaluation_id,
-                EvaluationAttributeORM.dimension == dimension,
-                EvaluationAttributeORM.source == source,
-            )
-            .first()
+            lambda s: s.query(EvaluationAttributeORM)
+                      .filter(
+                          EvaluationAttributeORM.evaluation_id == evaluation_id,
+                          EvaluationAttributeORM.dimension == dimension,
+                          EvaluationAttributeORM.source == source,
+                      )
+                      .first()
         )
 
     def get_by_source_and_dimension(self, source: str, dimension: str, limit: int = 100) -> list[EvaluationAttributeORM]:
         return self._run(
-            lambda: self._scope()
-            .query(EvaluationAttributeORM)
-            .filter(
-                EvaluationAttributeORM.source == source,
-                EvaluationAttributeORM.dimension == dimension,
-            )
-            .order_by(EvaluationAttributeORM.created_at.desc())
-            .limit(limit)
-            .all()
+            lambda s: s.query(EvaluationAttributeORM)
+                      .filter(
+                          EvaluationAttributeORM.source == source,
+                          EvaluationAttributeORM.dimension == dimension,
+                      )
+                      .order_by(EvaluationAttributeORM.created_at.desc())
+                      .limit(limit)
+                      .all()
         )
 
     def get_high_uncertainty_samples(self, threshold: float = 0.3, limit: int = 100) -> list[EvaluationAttributeORM]:
         return self._run(
-            lambda: self._scope()
-            .query(EvaluationAttributeORM)
-            .filter(EvaluationAttributeORM.uncertainty >= threshold)
-            .order_by(EvaluationAttributeORM.uncertainty.desc())
-            .limit(limit)
-            .all()
+            lambda s: s.query(EvaluationAttributeORM)
+                      .filter(EvaluationAttributeORM.uncertainty >= threshold)
+                      .order_by(EvaluationAttributeORM.uncertainty.desc())
+                      .limit(limit)
+                      .all()
         )
 
     # -------------------
     # Delete / Update
     # -------------------
     def delete_by_evaluation(self, evaluation_id: int) -> int:
-        def op():
-            with self._scope() as s:
-                return (
-                    s.query(EvaluationAttributeORM)
-                    .filter_by(evaluation_id=evaluation_id)
-                    .delete()
-                )
+        def op(s):
+            return (
+                s.query(EvaluationAttributeORM)
+                .filter_by(evaluation_id=evaluation_id)
+                .delete()
+            )
         deleted = self._run(op)
 
         if self.logger:
@@ -131,12 +125,12 @@ class EvaluationAttributeStore(BaseSQLAlchemyStore):
         return deleted
 
     def update_attributes(self, attributes: list[dict[str, any]]) -> None:
-        def op():
-            with self._scope() as s:
-                for attr_data in attributes:
-                    attr_id = attr_data.pop("id", None)
-                    if attr_id:
-                        s.query(EvaluationAttributeORM).filter_by(id=attr_id).update(attr_data)
+        def op(s):
+            for attr_data in attributes:
+                attr_id = attr_data.pop("id", None)
+                if attr_id:
+                    s.query(EvaluationAttributeORM).filter_by(id=attr_id).update(attr_data)
+
         self._run(op)
 
         if self.logger:
@@ -147,26 +141,24 @@ class EvaluationAttributeStore(BaseSQLAlchemyStore):
     # -------------------
     def get_policy_logits(self, evaluation_id: int, dimension: str) -> Optional[list[float]]:
         attr = self._run(
-            lambda: self._scope()
-            .query(EvaluationAttributeORM)
-            .filter(
-                EvaluationAttributeORM.evaluation_id == evaluation_id,
-                EvaluationAttributeORM.dimension == dimension,
-            )
-            .first()
+            lambda s: s.query(EvaluationAttributeORM)
+                      .filter(
+                          EvaluationAttributeORM.evaluation_id == evaluation_id,
+                          EvaluationAttributeORM.dimension == dimension,
+                      )
+                      .first()
         )
         return attr.policy_logits if attr and attr.policy_logits else None
 
     def get_dimension_stats(self, dimension: str) -> dict[str, float]:
         result = self._run(
-            lambda: self._scope()
-            .query(
-                func.avg(EvaluationAttributeORM.uncertainty).label("avg_uncertainty"),
-                func.avg(EvaluationAttributeORM.entropy).label("avg_entropy"),
-                func.count().label("total"),
-            )
-            .filter(EvaluationAttributeORM.dimension == dimension)
-            .first()
+            lambda s: s.query(
+                          func.avg(EvaluationAttributeORM.uncertainty).label("avg_uncertainty"),
+                          func.avg(EvaluationAttributeORM.entropy).label("avg_entropy"),
+                          func.count().label("total"),
+                      )
+                      .filter(EvaluationAttributeORM.dimension == dimension)
+                      .first()
         )
         return {
             "dimension": dimension,

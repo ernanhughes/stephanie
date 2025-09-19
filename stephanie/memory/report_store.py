@@ -3,15 +3,13 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy.orm import Session
-
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.report import ReportORM
 
 
 class ReportStore(BaseSQLAlchemyStore):
     orm_model = ReportORM
-    default_order_by = ReportORM.created_at
+    default_order_by = ReportORM.created_at.desc()
 
     def __init__(self, session_or_maker, logger=None):
         super().__init__(session_or_maker, logger)
@@ -20,8 +18,9 @@ class ReportStore(BaseSQLAlchemyStore):
     def name(self) -> str:
         return self.name
 
-    def insert(self, run_id, goal, summary, path=None, content=None) -> ReportORM:
-        try:
+    def insert(self, run_id: int, goal: str, summary: str, path: str = None, content: str = None) -> ReportORM:
+        def op(s):
+            
             report = ReportORM(
                 run_id=run_id,
                 goal=goal,
@@ -29,55 +28,51 @@ class ReportStore(BaseSQLAlchemyStore):
                 path=path,
                 content=content,
             )
-            self.session.add(report)
-            self.session.commit()
-            return report
-        except Exception as e:
-            self.session.rollback()
+            s.add(report)
+            s.flush()
             if self.logger:
-                self.logger.log("ReportInsertFailed", {"error": str(e)})
-            raise
+                self.logger.log("ReportInserted", {
+                    "report_id": report.id,
+                    "run_id": run_id,
+                    "goal": goal[:100],
+                })
+            return report
+        return self._run(op)
 
     def get_content(self, run_id: int) -> Optional[str]:
-        """Fetch the report content for a given pipeline run ID (latest if multiple)."""
-        try:
+        """Fetch the latest report content for a given pipeline run ID."""
+        def op(s):
+            
             report = (
-                self.session.query(ReportORM)
+                s.query(ReportORM)
                 .filter(ReportORM.run_id == run_id)
                 .order_by(ReportORM.created_at.desc())
                 .first()
             )
             return report.content if report else None
-        except Exception as e:
-            if self.logger:
-                self.logger.log("ReportFetchFailed", {"error": str(e), "run_id": run_id})
-            raise
+        return self._run(op)
 
     def get_path(self, run_id: int) -> Optional[str]:
-        """Fetch the report path for a given pipeline run ID (latest if multiple)."""
-        try:
+        """Fetch the latest report path for a given pipeline run ID."""
+        def op(s):
+            
             report = (
-                self.session.query(ReportORM)
+                s.query(ReportORM)
                 .filter(ReportORM.run_id == run_id)
                 .order_by(ReportORM.created_at.desc())
                 .first()
             )
             return report.path if report else None
-        except Exception as e:
-            if self.logger:
-                self.logger.log("ReportPathFetchFailed", {"error": str(e), "run_id": run_id})
-            raise
+        return self._run(op)
 
-    def get_all(self, run_id: str) -> List[ReportORM]:
+    def get_all(self, run_id: int) -> List[ReportORM]:
         """Fetch all reports for a given pipeline run ID."""
-        try:
+        def op(s):
+            
             return (
-                self.session.query(ReportORM)
+                s.query(ReportORM)
                 .filter(ReportORM.run_id == run_id)
                 .order_by(ReportORM.created_at.asc())
                 .all()
             )
-        except Exception as e:
-            if self.logger:
-                self.logger.log("ReportFetchAllFailed", {"error": str(e), "run_id": run_id})
-            raise
+        return self._run(op)

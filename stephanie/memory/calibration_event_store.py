@@ -9,7 +9,7 @@ import numpy as np
 from sqlalchemy import case, func
 from sqlalchemy.exc import SQLAlchemyError
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.calibration import CalibrationEventORM
 
 
@@ -56,46 +56,45 @@ class CalibrationEventStore(BaseSQLAlchemyStore):
         os.makedirs(self.model_dir, exist_ok=True)
 
     def add(self, event: Union[CalibrationEventORM, Mapping]) -> CalibrationEventORM:
-        def op():
-            with self._scope() as s:
-                if not isinstance(event, CalibrationEventORM):
-                    payload = dict(event)
-                    domain = _as_str(payload.get("domain"), "general")
-                    query = _as_str(payload.get("query"), "")
-                    raw_similarity = _as_float(payload.get("raw_similarity"), 0.0)
-                    scorable_id = _as_str(payload.get("scorable_id"), "unknown")
-                    scorable_type = _as_str(payload.get("scorable_type"), "unknown")
-                    entity_type_raw = payload.get("entity_type")
-                    entity_type = _as_str(entity_type_raw) if entity_type_raw is not None else None
-                    is_relevant = _as_bool(payload.get("is_relevant"), False)
-                    timestamp = payload.get("timestamp") or datetime.datetime.now()
-                    features = payload.get("features")
+        def op(s):
+            if not isinstance(event, CalibrationEventORM):
+                payload = dict(event)
+                domain = _as_str(payload.get("domain"), "general")
+                query = _as_str(payload.get("query"), "")
+                raw_similarity = _as_float(payload.get("raw_similarity"), 0.0)
+                scorable_id = _as_str(payload.get("scorable_id"), "unknown")
+                scorable_type = _as_str(payload.get("scorable_type"), "unknown")
+                entity_type_raw = payload.get("entity_type")
+                entity_type = _as_str(entity_type_raw) if entity_type_raw is not None else None
+                is_relevant = _as_bool(payload.get("is_relevant"), False)
+                timestamp = payload.get("timestamp") or datetime.datetime.now()
+                features = payload.get("features")
 
-                    event_obj = CalibrationEventORM(
-                        domain=domain,
-                        query=query,
-                        raw_similarity=raw_similarity,
-                        scorable_id=scorable_id,
-                        scorable_type=scorable_type,
-                        entity_type=entity_type,
-                        is_relevant=is_relevant,
-                        timestamp=timestamp,
-                        **({"features": features} if "features" in CalibrationEventORM.__table__.columns else {}),
-                    )
-                else:
-                    event_obj = event
+                event_obj = CalibrationEventORM(
+                    domain=domain,
+                    query=query,
+                    raw_similarity=raw_similarity,
+                    scorable_id=scorable_id,
+                    scorable_type=scorable_type,
+                    entity_type=entity_type,
+                    is_relevant=is_relevant,
+                    timestamp=timestamp,
+                    **({"features": features} if "features" in CalibrationEventORM.__table__.columns else {}),
+                )
+            else:
+                event_obj = event
 
-                if getattr(event_obj, "query", "") is None:
-                    event_obj.query = ""
+            if getattr(event_obj, "query", "") is None:
+                event_obj.query = ""
 
-                s.add(event_obj)
-                return event_obj
+            s.add(event_obj)
+            return event_obj
 
         return self._run(op)
 
     def get_by_domain(self, domain: str) -> List[CalibrationEventORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(CalibrationEventORM)
                     .filter(CalibrationEventORM.domain == domain)
@@ -105,8 +104,8 @@ class CalibrationEventStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def count_by_domain(self, domain: str) -> dict:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 pos_expr = func.coalesce(
                     func.sum(case((CalibrationEventORM.is_relevant.is_(True), 1), else_=0)), 0
                 )
@@ -123,8 +122,8 @@ class CalibrationEventStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_recent(self, domain: str, limit: int = 100) -> List[CalibrationEventORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 return (
                     s.query(CalibrationEventORM)
                     .filter(CalibrationEventORM.domain == domain)
@@ -135,8 +134,8 @@ class CalibrationEventStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_recent_domains(self, since: datetime.datetime) -> List[str]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 rows = (
                     s.query(CalibrationEventORM.domain)
                     .filter(CalibrationEventORM.timestamp >= since)
@@ -147,8 +146,8 @@ class CalibrationEventStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def fetch_events(self, domain: str, limit: int = 10000, require_features: bool = False) -> List[Dict]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 rows = (
                     s.query(CalibrationEventORM)
                     .filter(CalibrationEventORM.domain == domain)

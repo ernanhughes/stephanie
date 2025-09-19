@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.mars_conflict import MARSConflictORM
 
 
@@ -33,8 +33,7 @@ class MARSConflictStore(BaseSQLAlchemyStore):
         preferred_model: str | None = None,
     ) -> MARSConflictORM:
         """Insert a new MARS conflict row."""
-        def op():
-            s = self._scope()
+        def op(s):
             orm = MARSConflictORM(
                 pipeline_run_id=pipeline_run_id,
                 plan_trace_id=plan_trace_id,
@@ -64,27 +63,27 @@ class MARSConflictStore(BaseSQLAlchemyStore):
     # Retrieval
     # -------------------
     def get_by_trace(self, trace_id: int) -> List[MARSConflictORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MARSConflictORM)
+                s.query(MARSConflictORM)
                 .filter_by(plan_trace_id=trace_id)
                 .all()
             )
         return self._run(op)
 
     def get_by_run_id(self, run_id: int) -> List[MARSConflictORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MARSConflictORM)
+                s.query(MARSConflictORM)
                 .filter_by(pipeline_run_id=run_id)
                 .all()
             )
         return self._run(op)
 
     def get_recent(self, limit: int = 50) -> List[MARSConflictORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MARSConflictORM)
+                s.query(MARSConflictORM)
                 .order_by(MARSConflictORM.created_at.desc())
                 .limit(limit)
                 .all()

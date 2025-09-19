@@ -59,7 +59,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
                 "title": document.get("title"),
             })
 
-            ScoringManager.save_score_to_memory(
+            self.memory.evaluations.save_bundle(
                 result,
                 scorable,
                 context,
@@ -101,7 +101,7 @@ class LLMInferenceAgent(ScoringMixin, BaseAgent):
         result = self.scoring_engine.score_item(
             scorable, context, "document"
         )
-        ScoringManager.save_score_to_memory(
+        self.memory.evaluations.save_bundle(
             result,
             scorable,
             context,

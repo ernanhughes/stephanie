@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.training_event import TrainingEventORM
 
 

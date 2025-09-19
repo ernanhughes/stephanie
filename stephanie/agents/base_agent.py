@@ -464,16 +464,16 @@ class BaseAgent(ABC):
         bundle = ScoreBundle(results=dict(score_results))
 
         # Save to memory
-        ScoringManager.save_score_to_memory(
-            bundle,
-            scorable,
-            context,
-            self.cfg,
-            self.memory,
-            self.logger,
-            source="paper_score",
+        self.memory.evaluations.save_bundle(
+            bundle=bundle,
+            scorable=scorable,
+            context=context,
+            cfg=self.cfg,
+            source=self.name,
+            embedding_type=self.memory.embedding.name,
             model_name="ensemble",
-            evaluator_name=str(self.enabled_scorers),
+            evaluator=str(self.enabled_scorers),
+            container=self.container,
         )
 
         report_scores = {

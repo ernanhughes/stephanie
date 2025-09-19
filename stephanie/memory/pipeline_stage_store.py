@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_stage import PipelineStageORM
 
 
@@ -25,8 +25,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         :param stage_dict: Dictionary containing all required stage fields
         :return: The inserted stage's ID
         """
-        def op():
-            s = self._scope()
+        def op(s):
             db_stage = PipelineStageORM(**stage_dict)
             s.add(db_stage)
             s.flush()  # Assign ID
@@ -46,7 +45,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_id(self, stage_id: int) -> Optional[PipelineStageORM]:
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineStageORM)
@@ -56,7 +55,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_run_id(self, run_id: str) -> List[PipelineStageORM]:
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineStageORM)
@@ -67,7 +66,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_goal_id(self, goal_id: int) -> List[PipelineStageORM]:
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineStageORM)
@@ -78,7 +77,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_parent_stage_id(self, parent_stage_id: int) -> List[PipelineStageORM]:
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineStageORM)
@@ -89,7 +88,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_all(self, limit: int = 100) -> List[PipelineStageORM]:
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(PipelineStageORM)
@@ -100,8 +99,8 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def find(self, filters: dict) -> List[PipelineStageORM]:
-        def op():
-            q = self._scope().query(PipelineStageORM)
+        def op(s):
+            q = s.query(PipelineStageORM)
             if "run_id" in filters:
                 q = q.filter(PipelineStageORM.run_id == filters["run_id"])
             if "stage_name" in filters:
@@ -121,7 +120,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         """
         Build a recursive reasoning tree of all stages for a given run_id.
         """
-        def op():
+        def op(s):
             stages = (
                 self._scope()
                 .query(PipelineStageORM)

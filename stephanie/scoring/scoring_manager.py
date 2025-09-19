@@ -371,16 +371,14 @@ class ScoringManager(BaseAgent):
             reasoning_strategy=cfg.get("reasoning_strategy"),
             extra_data={"source": source},
         )
-        memory.session.add(eval_orm)
-        memory.session.flush()
-
+        eval_id = memory.evaluations.insert(eval_orm)
         # Store all scores and attributes
         score_orms = []
         attribute_orms = []
         
         for result in bundle.results.values():
             score_orm = ScoreORM(
-                evaluation_id=eval_orm.id,
+                evaluation_id=eval_id,
                 dimension=result.dimension,
                 score=result.score,
                 source=result.source,

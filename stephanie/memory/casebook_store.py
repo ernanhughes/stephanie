@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Sequence
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.case_goal_state import CaseGoalStateORM
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 from stephanie.models.dynamic_scorable import DynamicScorableORM
@@ -41,29 +41,32 @@ class CaseBookStore(BaseSQLAlchemyStore):
     # ------------------------
 
     def get_by_name(self, name: str) -> CaseBookORM | None:
-        return self._run(lambda: self._scope().query(CaseBookORM).filter_by(name=name).first())
+        def op(s):
+            return s.query(CaseBookORM).filter_by(name=name).first()
+        return self._run(op)
 
     def ensure_casebook(self, name: str, description: str = "", tag: str = "", meta: dict = None) -> CaseBookORM:
-        def op():
-            with self._scope() as s:
-                cb = s.query(CaseBookORM).filter_by(name=name).first()
-                if cb:
-                    return cb
-                cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
-                s.add(cb)
+        def op(s):
+            cb = s.query(CaseBookORM).filter_by(name=name).first()
+            if cb:
                 return cb
+            cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
+            s.add(cb)
+            return cb
         return self._run(op)
 
     def create_casebook(self, name, description="", tag="", meta=None):
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
                 s.add(cb)
                 return cb
         return self._run(op)
 
     def get_all_casebooks(self, limit: int = 100) -> List[CaseBookORM]:
-        return self._run(lambda: self._scope().query(CaseBookORM).limit(limit).all())
+        def op(s):
+            return s.query(CaseBookORM).limit(limit).all()
+        return self._run(op)
 
     def list_casebooks(
         self,
@@ -73,8 +76,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         pipeline_run_id: Optional[int] = None,
         limit: int = 200,
     ) -> List[CaseBookORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 q = s.query(CaseBookORM)
                 if agent_name is not None:
                     q = q.filter(CaseBookORM.agent_name == agent_name)
@@ -86,32 +89,49 @@ class CaseBookStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_casebook(self, casebook_id: int) -> Optional[CaseBookORM]:
-        return self._run(lambda: self._scope().get(CaseBookORM, casebook_id))
+        def op(s):
+            return s.get(CaseBookORM, casebook_id)
+        return self._run(op)
 
     def get_casebooks(self) -> List[CaseBookORM]:
-        return self._run(lambda: self._scope().query(CaseBookORM).all())
+        def op(s):
+            return s.query(CaseBookORM).all()
+        return self._run(op)
 
     def count_cases(self, casebook_id: int) -> int:
-        return self._run(lambda: self._scope().query(func.count(CaseORM.id)).filter_by(casebook_id=casebook_id).scalar() or 0)
+        def op(s):
+            return s.query(func.count(CaseORM.id)).filter_by(casebook_id=casebook_id).scalar() or 0
+
+        return self._run(op)
 
     def get_for_run_id(self, run_id: int):
-        return self._run(lambda: self._scope().query(CaseBookORM).filter_by(pipeline_run_id=run_id).first())
+        def op(s):
+            return s.query(CaseBookORM).filter_by(pipeline_run_id=run_id).first()
+        return self._run(op)
 
     # ------------------------
     # Cases
     # ------------------------
 
     def get_cases_for_goal(self, goal_id):
-        return self._run(lambda: self._scope().query(CaseORM).filter_by(goal_id=goal_id).all())
+        def op(s):
+            return s.query(CaseORM).filter_by(goal_id=goal_id).all()
+        return self._run(op)
 
     def get_cases_for_agent(self, agent_name):
-        return self._run(lambda: self._scope().query(CaseORM).filter_by(agent_name=agent_name).all())
+        def op(s):
+            return s.query(CaseORM).filter_by(agent_name=agent_name).all()
+        return self._run(op)
 
     def get_cases_for_casebook(self, casebook_id: int):
-        return self._run(lambda: self._scope().query(CaseORM).filter_by(casebook_id=casebook_id).all())
+        def op(s):
+            return s.query(CaseORM).filter_by(casebook_id=casebook_id).all()
+        return self._run(op)
 
     def get_case_by_id(self, case_id: int) -> Optional[CaseORM]:
-        return self._run(lambda: self._scope().get(CaseORM, case_id))
+        def op(s):
+            return s.get(CaseORM, case_id)
+        return self._run(op)
 
     def list_cases(
         self,
@@ -121,8 +141,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         goal_id: Optional[str] = None,
         limit: int = 200,
     ) -> List[CaseORM]:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 q = s.query(CaseORM)
                 if casebook_id is not None:
                     q = q.filter(CaseORM.casebook_id == casebook_id)
@@ -138,11 +158,13 @@ class CaseBookStore(BaseSQLAlchemyStore):
     # ------------------------
 
     def get_goal_state(self, casebook_id: int, goal_id: str):
-        return self._run(lambda: self._scope().query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none())
+        def op(s):
+            return s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
+        return self._run(op)
 
     def ensure_goal_state(self, casebook_id: int, goal_id: str, *, case_id: Optional[int] = None, quality: Optional[float] = None) -> CaseGoalStateORM:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
                 if state is None:
                     state = CaseGoalStateORM(
@@ -167,8 +189,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         delta: Optional[float] = None,
         ema_alpha: float = 0.2,
     ) -> CaseGoalStateORM:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
                 if state is None:
                     state = CaseGoalStateORM(casebook_id=casebook_id, goal_id=goal_id)
@@ -188,8 +210,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def record_ab_result(self, casebook_id: int, goal_id: str, *, improved: bool, delta: float, ema_alpha: float = 0.2) -> CaseGoalStateORM:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
                 if not state:
                     state = CaseGoalStateORM(casebook_id=casebook_id, goal_id=goal_id)
@@ -203,11 +225,13 @@ class CaseBookStore(BaseSQLAlchemyStore):
     # ------------------------
 
     def get_case_scorable_by_id(self, case_scorable_id: int) -> Optional[CaseScorableORM]:
-        return self._run(lambda: self._scope().get(CaseScorableORM, case_scorable_id))
+        def op(s):
+            return s.get(CaseScorableORM, case_scorable_id)
+        return self._run(op)
 
     def list_scorables(self, case_id: int, role: str = None):
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 q = s.query(CaseScorableORM).filter_by(case_id=case_id)
                 if role:
                     q = q.filter(CaseScorableORM.role == role)
@@ -223,8 +247,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         meta: Optional[dict] = None,
         role: Optional[str] = None,
     ) -> DynamicScorableORM:
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 orm = DynamicScorableORM(
                     case_id=case_id,
                     pipeline_run_id=pipeline_run_id,

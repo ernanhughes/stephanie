@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.method_plan import MethodPlanORM
 
 
@@ -23,10 +23,9 @@ class MethodPlanStore(BaseSQLAlchemyStore):
     # -------------------
     def add_method_plan(self, plan_data: dict) -> MethodPlanORM:
         """Insert a new method plan with validation on required fields."""
-        def op():
+        def op(s):
             required_fields = ["idea_text"]
             missing = [f for f in required_fields if plan_data.get(f) is None]
-
             if missing:
                 if self.logger:
                     self.logger.log(
@@ -38,7 +37,6 @@ class MethodPlanStore(BaseSQLAlchemyStore):
                 )
 
             plan = MethodPlanORM(**plan_data)
-            s = self._scope()
             s.add(plan)
             s.flush()
             return plan
@@ -48,27 +46,27 @@ class MethodPlanStore(BaseSQLAlchemyStore):
     # Retrieval
     # -------------------
     def get_by_idea_text(self, idea_text: str) -> List[MethodPlanORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MethodPlanORM)
+                s.query(MethodPlanORM)
                 .filter(MethodPlanORM.idea_text.ilike(f"%{idea_text}%"))
                 .all()
             )
         return self._run(op)
 
     def get_by_goal_id(self, goal_id: int) -> List[MethodPlanORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MethodPlanORM)
+                s.query(MethodPlanORM)
                 .filter(MethodPlanORM.goal_id == goal_id)
                 .all()
             )
         return self._run(op)
 
     def get_top_scoring(self, limit: int = 5) -> List[MethodPlanORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MethodPlanORM)
+                s.query(MethodPlanORM)
                 .order_by(
                     (
                         MethodPlanORM.score_novelty * 0.3
@@ -86,8 +84,7 @@ class MethodPlanStore(BaseSQLAlchemyStore):
     # Update/Delete
     # -------------------
     def update_method_plan(self, plan_id: int, updates: dict) -> Optional[MethodPlanORM]:
-        def op():
-            s = self._scope()
+        def op(s):
             plan = s.get(MethodPlanORM, plan_id)
             if not plan:
                 raise ValueError(f"No method plan found with id {plan_id}")
@@ -100,13 +97,13 @@ class MethodPlanStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def delete_by_goal_id(self, goal_id: int) -> None:
-        def op():
-            self._scope().query(MethodPlanORM).filter(
+        def op(s):
+            s.query(MethodPlanORM).filter(
                 MethodPlanORM.goal_id == goal_id
             ).delete()
         self._run(op)
 
     def clear_all(self) -> None:
-        def op():
-            self._scope().query(MethodPlanORM).delete()
+        def op(s):
+            s.query(MethodPlanORM).delete()
         self._run(op)

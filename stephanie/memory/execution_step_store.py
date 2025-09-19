@@ -6,7 +6,7 @@ from typing import List, Optional
 from sqlalchemy import asc
 
 from stephanie.data.plan_trace import ExecutionStep
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.plan_trace import ExecutionStepORM
 
 
@@ -47,8 +47,8 @@ class ExecutionStepStore(BaseSQLAlchemyStore):
 
     def insert(self, step: ExecutionStepORM) -> int:
         """Insert a fully populated ORM object and return its ID."""
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 s.add(step)
                 s.flush()
                 return step.id
@@ -73,7 +73,7 @@ class ExecutionStepStore(BaseSQLAlchemyStore):
 
     def get_by_step_id_str(self, step_id_str: str) -> Optional[ExecutionStepORM]:
         """Retrieve by application-level step_id string (not DB id)."""
-        def op():
+        def op(s):
             return (
                 self._scope()
                 .query(ExecutionStepORM)
@@ -85,8 +85,8 @@ class ExecutionStepStore(BaseSQLAlchemyStore):
     def get_steps_by_trace_id(
         self, plan_trace_id: int, ordered: bool = True
     ) -> List[ExecutionStepORM]:
-        def op():
-            q = self._scope().query(ExecutionStepORM).filter_by(plan_trace_id=plan_trace_id)
+        def op(s):
+            q = s.query(ExecutionStepORM).filter_by(plan_trace_id=plan_trace_id)
             if ordered:
                 q = q.order_by(asc(ExecutionStepORM.step_order))
             return q.all()
@@ -94,11 +94,10 @@ class ExecutionStepStore(BaseSQLAlchemyStore):
 
     def get_by_evaluation_id(self, evaluation_id: int) -> Optional[ExecutionStepORM]:
         return self._run(
-            lambda: self._scope()
-            .query(ExecutionStepORM)
+            lambda s: s.query(ExecutionStepORM)
             .filter_by(evaluation_id=evaluation_id)
             .first()
         )
 
     def get_all(self) -> List[ExecutionStepORM]:
-        return self._run(lambda: self._scope().query(ExecutionStepORM).all())
+        return self._run(lambda s: s.query(ExecutionStepORM).all())

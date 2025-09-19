@@ -6,7 +6,7 @@ from typing import List, Optional
 from sqlalchemy import desc
 
 from stephanie.data.plan_trace import PlanTrace
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 from stephanie.models.plan_trace import ExecutionStepORM, PlanTraceORM
 from stephanie.models.plan_trace_reuse_link import PlanTraceReuseLinkORM
@@ -29,8 +29,7 @@ class PlanTraceStore(BaseSQLAlchemyStore):
     # INSERT / UPDATE
     # --------------------
     def add(self, plan_trace: PlanTrace) -> int:
-        def op():
-            s = self._scope()
+        def op(s):
             orm_trace = PlanTraceORM(
                 trace_id=plan_trace.trace_id,
                 pipeline_run_id=plan_trace.pipeline_run_id,
@@ -66,8 +65,7 @@ class PlanTraceStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def update(self, plan_trace: PlanTrace) -> bool:
-        def op():
-            s = self._scope()
+        def op(s):
             orm_trace = s.query(PlanTraceORM).filter_by(trace_id=plan_trace.trace_id).first()
             if not orm_trace:
                 if self.logger:
@@ -104,33 +102,33 @@ class PlanTraceStore(BaseSQLAlchemyStore):
     # RETRIEVAL
     # --------------------
     def get_by_id(self, trace_id: int) -> Optional[PlanTraceORM]:
-        return self._run(lambda: self._scope().get(PlanTraceORM, trace_id))
+        return self._run(lambda s: self._scope().get(PlanTraceORM, trace_id))
 
     def get_by_trace_id(self, trace_id: str) -> Optional[PlanTraceORM]:
-        return self._run(lambda: self._scope().query(PlanTraceORM).filter_by(trace_id=trace_id).first())
+        return self._run(lambda s : s.query(PlanTraceORM).filter_by(trace_id=trace_id).first())
 
     def get_by_run_id(self, run_id: str) -> Optional[PlanTraceORM]:
-        return self._run(lambda: self._scope().query(PlanTraceORM).filter_by(pipeline_run_id=run_id).first())
+        return self._run(lambda s: s.query(PlanTraceORM).filter_by(pipeline_run_id=run_id).first())
 
     def get_by_goal_id(self, goal_id: int) -> List[PlanTraceORM]:
-        return self._run(lambda: self._scope().query(PlanTraceORM).filter_by(goal_id=goal_id).all())
+        return self._run(lambda s: s.query(PlanTraceORM).filter_by(goal_id=goal_id).all())
 
     def get_traces_with_labels(self) -> List[PlanTraceORM]:
-        return self._run(lambda: self._scope().query(PlanTraceORM).filter(PlanTraceORM.target_epistemic_quality.isnot(None)).all())
+        return self._run(lambda s: s.query(PlanTraceORM).filter(PlanTraceORM.target_epistemic_quality.isnot(None)).all())
 
     def get_recent(self, limit: int = 10) -> List[PlanTraceORM]:
-        return self._run(lambda: self._scope().query(PlanTraceORM).order_by(desc(PlanTraceORM.created_at)).limit(limit).all())
+        return self._run(lambda s: s.query(PlanTraceORM).order_by(desc(PlanTraceORM.created_at)).limit(limit).all())
 
     def get_all(self, limit: int = 100) -> List[PlanTraceORM]:
-        def op():
-            q = self._scope().query(PlanTraceORM).order_by(desc(PlanTraceORM.created_at))
+        def op(s):
+            q = s.query(PlanTraceORM).order_by(desc(PlanTraceORM.created_at))
             return q.limit(limit).all() if limit else q.all()
         return self._run(op)
 
     def get_goal_text(self, trace_id: str) -> Optional[str]:
-        def op():
+        def op(s):
             result = (
-                self._scope().query(GoalORM.goal_text)
+                s.query(GoalORM.goal_text)
                 .join(PlanTraceORM, GoalORM.id == PlanTraceORM.goal_id)
                 .filter(PlanTraceORM.trace_id == trace_id)
                 .first()
@@ -142,7 +140,7 @@ class PlanTraceStore(BaseSQLAlchemyStore):
     # ANALYTICS / FILTERS
     # --------------------
     def get_similar_traces(self, query_text: str, top_k: int = 10, embedding=None) -> List[PlanTraceORM]:
-        def op():
+        def op(s):
             if embedding is None:
                 return []
             query_emb = embedding.get_or_create(query_text)
@@ -158,9 +156,9 @@ class PlanTraceStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_goal_type(self, goal_type: str, limit: int = 50) -> List[PlanTraceORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(PlanTraceORM)
+                s.query(PlanTraceORM)
                 .join(GoalORM, GoalORM.id == PlanTraceORM.goal_id)
                 .filter(GoalORM.goal_type == goal_type)
                 .order_by(desc(PlanTraceORM.created_at))
@@ -173,43 +171,41 @@ class PlanTraceStore(BaseSQLAlchemyStore):
     # REUSE LINKS / REVISIONS
     # --------------------
     def add_reuse_link(self, parent_trace_id: str, child_trace_id: str):
-        def op():
+        def op(s):
             if parent_trace_id == child_trace_id:
                 if self.logger:
                     self.logger.log("PlanTraceReuseLinkSkipped", {"reason": "parent == child", "trace_id": parent_trace_id})
                 return None
             link = PlanTraceReuseLinkORM(parent_trace_id=parent_trace_id, child_trace_id=child_trace_id)
-            s = self._scope()
             s.add(link)
             s.flush()
             return link.id
         return self._run(op)
 
     def get_reuse_links_for_trace(self, trace_id: str):
-        return self._run(lambda: self._scope().query(PlanTraceReuseLinkORM).filter(
+        return self._run(lambda s: s.query(PlanTraceReuseLinkORM).filter(
             (PlanTraceReuseLinkORM.parent_trace_id == trace_id) |
             (PlanTraceReuseLinkORM.child_trace_id == trace_id)
         ).all())
 
     def add_revision(self, trace_id: str, revision_type: str, revision_text: str, source: str = "user"):
-        def op():
+        def op(s):
             rev = PlanTraceRevisionORM(
                 plan_trace_id=trace_id,
                 revision_type=revision_type,
                 revision_text=revision_text,
                 source=source,
             )
-            s = self._scope()
             s.add(rev)
             s.flush()
             return rev
         return self._run(op)
 
     def get_revisions(self, trace_id: str) -> list[PlanTraceRevisionORM]:
-        return self._run(lambda: self._scope().query(PlanTraceRevisionORM).filter_by(plan_trace_id=trace_id).order_by(PlanTraceRevisionORM.created_at).all())
+        return self._run(lambda s: s.query(PlanTraceRevisionORM).filter_by(plan_trace_id=trace_id).order_by(PlanTraceRevisionORM.created_at).all())
 
     # --------------------
     # EXECUTION STEPS
     # --------------------
     def get_step_by_id(self, step_id: int) -> Optional[ExecutionStepORM]:
-        return self._run(lambda: self._scope().get(ExecutionStepORM, step_id))
+        return self._run(lambda s: self._scope().get(ExecutionStepORM, step_id))

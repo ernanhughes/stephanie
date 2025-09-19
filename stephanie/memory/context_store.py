@@ -8,7 +8,7 @@ from typing import Optional
 
 import yaml
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.context_state import ContextStateORM
 
 
@@ -38,8 +38,8 @@ class ContextStore(BaseSQLAlchemyStore):
         Saves the current pipeline context to DB (and optionally to disk).
         Increments version and marks it as current for this stage/run.
         """
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 # Deactivate previous versions
                 prev_versions = (
                     s.query(ContextStateORM)
@@ -86,55 +86,52 @@ class ContextStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def has_completed(self, goal_id: int, stage_name: str) -> bool:
-        return self._run(
-            lambda: (
-                self._scope().query(ContextStateORM)
+        def op(s):
+            return (
+                s.query(ContextStateORM)
                 .filter_by(stage_name=stage_name, goal_id=goal_id)
                 .count()
-                > 0
             )
-        )
+        return self._run(op)
 
     def load(self, run_id: str, stage: Optional[str] = None) -> dict:
-        def op():
-            with self._scope() as s:
-                if stage:
-                    states = (
-                        s.query(ContextStateORM)
-                        .filter_by(stage_name=stage, run_id=run_id)
-                        .order_by(ContextStateORM.timestamp.asc())
-                        .all()
-                    )
-                else:
-                    states = s.query(ContextStateORM).filter_by(run_id=run_id).all()
+        def op(s):
+            if stage:
+                states = (
+                    s.query(ContextStateORM)
+                    .filter_by(stage_name=stage, run_id=run_id)
+                    .order_by(ContextStateORM.timestamp.asc())
+                    .all()
+                )
+            else:
+                states = s.query(ContextStateORM).filter_by(run_id=run_id).all()
 
-                result = {}
-                for state in states:
-                    result.update(json.loads(state.context))
-                return result
+            result = {}
+            for state in states:
+                result.update(json.loads(state.context))
+            return result
         return self._run(op, default={})
 
     def get_latest(self, run_id: str) -> Optional[ContextStateORM]:
-        return self._run(
-            lambda: (
-                self._scope().query(ContextStateORM)
+        def op(s):
+            return (
+                s.query(ContextStateORM)
                 .filter(ContextStateORM.run_id == run_id)
                 .order_by(ContextStateORM.timestamp.desc())
                 .first()
             )
-        )
+        return self._run(op)
 
     def get_previous(self, run_id: str) -> Optional[ContextStateORM]:
-        def op():
-            with self._scope() as s:
-                results = (
-                    s.query(ContextStateORM)
-                    .filter(ContextStateORM.run_id == run_id)
-                    .order_by(ContextStateORM.timestamp.desc())
-                    .limit(2)
-                    .all()
-                )
-                return results[1] if len(results) >= 2 else None
+        def op(s):
+            results = (
+                s.query(ContextStateORM)
+                .filter(ContextStateORM.run_id == run_id)
+                .order_by(ContextStateORM.timestamp.desc())
+                .limit(2)
+                .all()
+            )
+            return results[1] if len(results) >= 2 else None
         return self._run(op)
 
     def _dump_to_yaml(self, stage: str, context: dict):

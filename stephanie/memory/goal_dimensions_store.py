@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.goal_dimension import GoalDimensionORM
 
 
@@ -23,9 +23,8 @@ class GoalDimensionsStore(BaseSQLAlchemyStore):
     # -------------------
     def insert(self, row: dict) -> GoalDimensionORM:
         """Insert a single GoalDimension row."""
-        def op():
+        def op(s):
             obj = GoalDimensionORM(**row)
-            s = self._scope()
             s.add(obj)
             s.flush()
             return obj
@@ -36,7 +35,7 @@ class GoalDimensionsStore(BaseSQLAlchemyStore):
     # -------------------
     def find_by_goal_id(self, goal_id: int) -> List[dict]:
         """Return dimensions for a single goal, ordered by rank."""
-        def op():
+        def op(s):
             results = (
                 self._scope()
                 .query(GoalDimensionORM)
@@ -49,7 +48,7 @@ class GoalDimensionsStore(BaseSQLAlchemyStore):
 
     def find_by_goal_ids(self, goal_ids: List[int]) -> List[dict]:
         """Return dimensions for multiple goals, grouped/ordered by goal_id then rank."""
-        def op():
+        def op(s):
             results = (
                 self._scope()
                 .query(GoalDimensionORM)

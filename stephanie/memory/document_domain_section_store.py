@@ -1,7 +1,7 @@
 # stephanie/memory/document_domain_section_store.py
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.document_section_domain import DocumentSectionDomainORM
 
 
@@ -22,8 +22,8 @@ class DocumentSectionDomainStore(BaseSQLAlchemyStore):
 
         Expected keys: document_section_id, domain, score
         """
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 stmt = (
                     pg_insert(DocumentSectionDomainORM)
                     .values(**data)
@@ -60,8 +60,8 @@ class DocumentSectionDomainStore(BaseSQLAlchemyStore):
         )
 
     def delete_domains(self, document_section_id: int):
-        def op():
-            with self._scope() as s:
+        def op(s):
+            
                 s.query(DocumentSectionDomainORM).filter_by(
                     document_section_id=document_section_id
                 ).delete()
@@ -78,7 +78,7 @@ class DocumentSectionDomainStore(BaseSQLAlchemyStore):
 
         :param domains: list of (domain, score) tuples
         """
-        def op():
+        def op(s):
             self.delete_domains(document_section_id)
             for domain, score in domains:
                 self.insert(

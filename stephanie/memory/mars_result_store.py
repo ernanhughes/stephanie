@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.mars_result import MARSResultORM
 
 
@@ -28,8 +28,7 @@ class MARSResultStore(BaseSQLAlchemyStore):
         result: dict,
     ) -> MARSResultORM:
         """Insert a new MARS result row."""
-        def op():
-            s = self._scope()
+        def op(s):
             orm = MARSResultORM(
                 pipeline_run_id=pipeline_run_id,
                 plan_trace_id=plan_trace_id,
@@ -49,36 +48,36 @@ class MARSResultStore(BaseSQLAlchemyStore):
     # Retrieval
     # -------------------
     def get_by_trace(self, trace_id: int) -> List[MARSResultORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MARSResultORM)
+                s.query(MARSResultORM)
                 .filter_by(plan_trace_id=trace_id)
                 .all()
             )
         return self._run(op)
 
     def get_by_run_id(self, run_id: int) -> List[MARSResultORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MARSResultORM)
+                s.query(MARSResultORM)
                 .filter(MARSResultORM.pipeline_run_id == run_id)
                 .all()
             )
         return self._run(op)
 
     def get_by_plan_trace(self, trace_id: int) -> List[MARSResultORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MARSResultORM)
+                s.query(MARSResultORM)
                 .filter(MARSResultORM.plan_trace_id == trace_id)
                 .all()
             )
         return self._run(op)
 
     def get_recent(self, limit: int = 50) -> List[MARSResultORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(MARSResultORM)
+                s.query(MARSResultORM)
                 .order_by(MARSResultORM.created_at.desc())
                 .limit(limit)
                 .all()

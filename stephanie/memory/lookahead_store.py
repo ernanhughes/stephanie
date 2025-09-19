@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.lookahead import LookaheadORM
 
 
@@ -25,8 +25,7 @@ class LookaheadStore(BaseSQLAlchemyStore):
     # -------------------
     def insert(self, goal_id: int, result: LookaheadORM) -> int:
         """Insert a new lookahead result into the DB and return its ID."""
-        def op():
-            s = self._scope()
+        def op(s):
             db_lookahead = LookaheadORM(
                 goal_id=goal_id,
                 agent_name=result.agent_name,
@@ -64,9 +63,9 @@ class LookaheadStore(BaseSQLAlchemyStore):
     # -------------------
     def list_all(self, limit: int = 100) -> List[LookaheadORM]:
         """Get all stored lookaheads, newest first."""
-        def op():
+        def op(s):
             return (
-                self._scope().query(LookaheadORM)
+                s.query(LookaheadORM)
                 .order_by(LookaheadORM.created_at.desc())
                 .limit(limit)
                 .all()
@@ -74,9 +73,9 @@ class LookaheadStore(BaseSQLAlchemyStore):
         return [self._orm_to_dataclass(r) for r in self._run(op)]
 
     def get_by_goal_id(self, goal_id: int) -> List[LookaheadORM]:
-        def op():
+        def op(s):
             return (
-                self._scope().query(LookaheadORM)
+                s.query(LookaheadORM)
                 .filter_by(goal_id=goal_id)
                 .order_by(LookaheadORM.created_at.desc())
                 .all()
@@ -84,8 +83,8 @@ class LookaheadStore(BaseSQLAlchemyStore):
         return [self._orm_to_dataclass(r) for r in self._run(op)]
 
     def get_by_run_id(self, run_id: str) -> Optional[LookaheadORM]:
-        def op():
-            return self._scope().query(LookaheadORM).filter_by(run_id=run_id).first()
+        def op(s):
+            return s.query(LookaheadORM).filter_by(run_id=run_id).first()
         row = self._run(op)
         return self._orm_to_dataclass(row) if row else None
 
