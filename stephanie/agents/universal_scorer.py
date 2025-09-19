@@ -14,7 +14,6 @@ from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
-from stephanie.scoring.scoring_manager import ScoringManager
 
 _logger = logging.getLogger(__name__)
 
@@ -173,17 +172,16 @@ class UniversalScorerAgent(BaseAgent):
 
         # Save to memory
         for key, result in score_results.items():
-            ScoringManager.save_score_to_memory(
-                ScoreBundle(results={result.dimension: result}),
-                scorable,
-                context,
-                self.cfg,
-                self.memory,
-                self.logger,
+            eval_id = self.memory.evaluations.save_bundle(
+                bundle=bundle,
+                scorable=scorable,
+                context=context,
+                cfg=self.cfg,
                 source=result.source, 
                 model_name=result.source,
                 evaluator_name=self.name,
             )
+            self.logger.log("EvaluationSaved", {"id": eval_id})
 
         report_scores = {
             key: {"score": result.score,

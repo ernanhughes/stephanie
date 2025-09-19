@@ -428,7 +428,6 @@ class BaseAgent(ABC):
     def _score(self, context: dict, scorable) -> tuple:
         from stephanie.data.score_bundle import ScoreBundle
         from stephanie.scoring.scorable import Scorable
-        from stephanie.scoring.scoring_manager import ScoringManager
         """Score one paper with all scorers"""
         assert isinstance(scorable, Scorable), "Expected a Scorable instance"
         goal = context.get("goal", {"goal_text": ""})

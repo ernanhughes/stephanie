@@ -9,10 +9,8 @@ from joblib import load
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
-from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
@@ -150,27 +148,25 @@ class SVMInferenceAgent(BaseAgent):
                     },
                 )
 
-            score_bundle = ScoreBundle(
+            bundle = ScoreBundle(
                 results={r.dimension: r for r in score_results}
             )
-
-            ScoringManager.save_score_to_memory(
-                score_bundle,
-                scorable,
-                context,
-                self.cfg,
-                self.memory,
-                self.logger,
+            eval_id = self.memory.evaluations.save_bundle(
+                bundle=bundle,
+                scorable=scorable,
+                context=context,
+                cfg=self.cfg,
                 source=self.model_type,
                 model_name=self.get_model_name(),
                 evaluator_name=self.model_type
             )
+            self.logger.log("EvaluationSaved", {"id": eval_id})
 
             results.append(
                 {
                     "scorable": scorable.to_dict(),
                     "scores": dimension_scores,
-                    "score_bundle": score_bundle.to_dict(),
+                    "score_bundle": bundle.to_dict(),
                 }
             )
 

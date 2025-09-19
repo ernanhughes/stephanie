@@ -39,19 +39,19 @@ class PaperScoreEvaluator(ScoringManager):
 
         # Aggregate across chunks
         final_scores = self.aggregate_scores(dicts)
-        final_bundle = ScoreBundle.from_dict(final_scores)
+        bundle = ScoreBundle.from_dict(final_scores)
         scorable = ScorableFactory.from_dict(document, TargetType.DOCUMENT)
-        ScoringManager.save_score_to_memory(
-            final_bundle, 
-            scorable, 
-            context, 
-            self.cfg, 
-            self.memory, 
-            self.logger,
+        eval_id = self.memory.evaluations.save_bundle(
+            bundle=bundle,
+            scorable=scorable,
+            context=context,
+            cfg=self.cfg,
             source="paper_score_evaluator", 
             model_name="ensemble", 
-            evaluator_name=str(self.scorer.name())
+            evaluator_name=str(self.enabled_scorers)
         )
+        self.logger.log("EvaluationSaved", {"id": eval_id})
+
         return final_scores
 
     def chunk_text(self, text: str, max_tokens: int = 1000) -> list[str]:

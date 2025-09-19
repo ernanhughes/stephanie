@@ -1,16 +1,13 @@
 # stephanie/agents/inference/et_hrm_inference.py
 from __future__ import annotations
 
-import json
-import os
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable_factory import ScorableFactory
 from stephanie.scoring.scorer.ep_hrm_scorer import EpistemicPlanHRMScorer
-from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.utils.trace_utils import load_plan_traces_from_export_dir
 
 
@@ -61,8 +58,6 @@ class EpistemicTraceHRMInferenceAgent(BaseAgent):
                 scorable=scorable,
                 context=context,
                 cfg=self.cfg,
-                memory=self.memory,
-                logger=self.logger,
                 source=self.scorer.model_type,
                 model_name=self.scorer.get_model_name(),
                 evaluator_name=self.scorer.name,

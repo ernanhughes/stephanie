@@ -8,7 +8,6 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
-from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class LLMScorer(BaseScorer):
@@ -93,15 +92,14 @@ class LLMScorer(BaseScorer):
 
         # Aggregate scores across dimensions
         bundle = ScoreBundle(results={r.dimension: r for r in results})
-        ScoringManager.save_score_to_memory(
-            bundle,
-            scorable,
-            context,
-            self.cfg,
-            self.memory,
-            self.logger,
-            source="llm",
-            evaluator_name=self.model_type
+        self.memory.evaluations.save_bundle(
+            bundle=bundle,
+            scorable=scorable,
+            context=context,
+            cfg=self.cfg,
+            source=self.scorer.model_type,
+            model_name=self.scorer.get_model_name(),
+            evaluator_name=self.scorer.name,
         )
         return bundle
 

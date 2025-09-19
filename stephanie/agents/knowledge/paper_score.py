@@ -10,7 +10,6 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scoring_manager import ScoringManager
 
 _logger = logging.getLogger(__name__)
 
@@ -121,18 +120,17 @@ class PaperScoreAgent(BaseAgent):
 
         bundle = ScoreBundle(results=dict(score_results))
 
-        # Save to memory
-        ScoringManager.save_score_to_memory(
-            bundle,
-            scorable,
-            context,
-            self.cfg,
-            self.memory,
-            self.logger,
+        eval_id = self.memory.evaluations.save_bundle(
+            bundle=bundle,
+            scorable=scorable,
+            context=context,
+            cfg=self.cfg,
             source="paper_score",
             model_name="ensemble",
             evaluator_name=str(self.enabled_scorers)
         )
+        self.logger.log("EvaluationSaved", {"id": eval_id})
+
 
         report_scores = {
             dim: {"score": result.score, "rationale": result.rationale, "source": result.source}

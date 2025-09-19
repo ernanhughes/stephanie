@@ -8,7 +8,6 @@ from stephanie.components.coding_strategy import SelfAdaptiveCoder
 from stephanie.components.search_policy import TreeSearchPolicy
 from stephanie.components.solution_tree import SolutionTree
 from stephanie.memory.embedding_store import EmbeddingStore
-from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class AutoMindAgent(BaseAgent):
@@ -17,7 +16,6 @@ class AutoMindAgent(BaseAgent):
 
         self.embedding_store = EmbeddingStore(cfg.embedding)
         self.judge = JudgeAgent(cfg.judge) if cfg.judge else None
-        self.scorer = ScoringManager(cfg.scoring)
         self.tree = SolutionTree()
         self.policy = TreeSearchPolicy(cfg.policy)
         self.coder = SelfAdaptiveCoder(cfg.coder)

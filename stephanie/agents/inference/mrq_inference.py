@@ -18,7 +18,6 @@ from stephanie.scoring.model.q_head import QHead
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.model.v_head import VHead
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scoring_manager import ScoringManager
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator

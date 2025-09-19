@@ -17,7 +17,6 @@ from stephanie.scoring.scorer.hrm_scorer import HRMScorer
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
-from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class DocumentRewardScorerAgent(BaseAgent):
@@ -216,18 +215,16 @@ class DocumentRewardScorerAgent(BaseAgent):
         # Create ScoreBundle for this document
         bundle = ScoreBundle(results=score_results)
         
-        # Save to memory
-        ScoringManager.save_score_to_memory(
-            bundle,
-            scorable,
-            context,
-            self.cfg,
-            self.memory,
-            self.logger,
+        eval_id = self.memory.evaluations.save_bundle(
+            bundle=bundle,
+            scorable=scorable,
+            context=context,
+            cfg=self.cfg,
             source="document_reward",
             model_name="ensemble",
             evaluator_name=str(self.scorers.keys())
         )
+        self.logger.log("EvaluationSaved", {"id": eval_id})
         
         # Prepare results for reporting
         report_scores = {

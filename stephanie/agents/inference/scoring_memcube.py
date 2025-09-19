@@ -9,7 +9,6 @@ from stephanie.agents.inference.llm_inference import LLMInferenceAgent
 from stephanie.agents.inference.mrq_inference import MRQInferenceAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.scoring.scoring_manager import ScoringManager
 
 
 class ScoringMemcubeAgent(BaseAgent):
