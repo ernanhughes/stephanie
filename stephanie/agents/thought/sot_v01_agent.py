@@ -1,9 +1,11 @@
 # stephanie/agents/thought/sot_v01_agent.py
 from __future__ import annotations
-from stephanie.agents.base_agent import BaseAgent
 
-from stephanie.agents.thought.sot_v01_dataset_builder_pg import SoTV01DatasetBuilderPg
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.agents.thought.sot_v01_dataset_builder_pg import \
+    SoTV01DatasetBuilderPg
 from stephanie.agents.thought.sot_v01_trainer import SoTV01Trainer
+
 
 class SoTV01Agent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):

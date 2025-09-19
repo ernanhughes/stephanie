@@ -7,6 +7,7 @@ from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
 
+
 def _iso(dt):
     return dt.isoformat() if isinstance(dt, datetime) else dt
 

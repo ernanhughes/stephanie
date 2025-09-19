@@ -5,10 +5,10 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from stephanie.services.service_protocol import Service
-from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
-from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.constants import INCLUDE_MARS
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+from stephanie.services.service_protocol import Service
 
 
 # ---- Public view of a case (normalized) ----

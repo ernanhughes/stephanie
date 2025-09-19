@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from typing import Optional
 
+from sqlalchemy.orm import selectinload
+
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_run import PipelineRunORM
-from sqlalchemy.orm import selectinload
 
 
 class PipelineRunStore(BaseSQLAlchemyStore):

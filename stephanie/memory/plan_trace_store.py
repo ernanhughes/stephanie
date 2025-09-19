@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import traceback
 from typing import List, Optional
+
 from sqlalchemy import desc
 
 from stephanie.data.plan_trace import PlanTrace

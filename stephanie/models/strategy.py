@@ -1,13 +1,16 @@
 # stephanie/models/strategy.py
 from __future__ import annotations
-from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Integer, String, Float, UniqueConstraint
-from sqlalchemy import JSON as SA_JSON
-from stephanie.models.base import Base
-from dataclasses import dataclass, asdict
-from typing import Any, Dict, Optional
 import time
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from sqlalchemy import JSON as SA_JSON
+from sqlalchemy import (Column, DateTime, Float, Integer, String,
+                        UniqueConstraint)
+
+from stephanie.models.base import Base
 
 DEFAULT_PACS_WEIGHTS = {"skeptic": 0.34, "editor": 0.33, "risk": 0.33}
 

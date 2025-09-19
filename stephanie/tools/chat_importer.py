@@ -25,7 +25,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from bs4 import BeautifulSoup
 
@@ -604,7 +604,9 @@ def _vendor_collect_messages(conv: dict) -> list[dict]:
             # Try ISO
             try:
                 # Keep it lightweight: only split seconds when present
-                from dateutil import parser as _parser  # if you have python-dateutil; otherwise skip
+                from dateutil import \
+                    parser as \
+                    _parser  # if you have python-dateutil; otherwise skip
                 return _parser.isoparse(str(ts)).timestamp()
             except Exception:
                 return float("inf")

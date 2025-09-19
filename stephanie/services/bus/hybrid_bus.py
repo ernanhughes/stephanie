@@ -21,15 +21,12 @@ import logging
 from typing import Any, Callable, Dict, Optional
 
 from .bus_protocol import BusProtocol
-from .errors import (
-    BusConnectionError,
-    BusPublishError,
-    BusSubscribeError,
-    BusRequestError,
-)
+from .errors import (BusConnectionError, BusPublishError, BusRequestError,
+                     BusSubscribeError)
 from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
-from .nats_bus import NatsKnowledgeBus  # <-- OK now; nats_bus no longer imports hybrid_bus
+from .nats_bus import \
+    NatsKnowledgeBus  # <-- OK now; nats_bus no longer imports hybrid_bus
 
 
 class HybridKnowledgeBus(BusProtocol):

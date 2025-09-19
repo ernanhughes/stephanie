@@ -2,18 +2,15 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import text
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models import (
-    MRQMemoryEntryORM,
-    MRQPreferencePairORM,
-    ReflectionDeltaORM,
-)
+from stephanie.models import (MRQMemoryEntryORM, MRQPreferencePairORM,
+                              ReflectionDeltaORM)
 
 
 class MRQStore(BaseSQLAlchemyStore):

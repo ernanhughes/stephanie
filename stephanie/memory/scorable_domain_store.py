@@ -1,5 +1,6 @@
 # stephanie/memory/scorable_domain_store.py
 from __future__ import annotations
+
 import logging
 from typing import List
 

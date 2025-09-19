@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+
 from torch.utils.data import Dataset
+
 from stephanie.agents.thought.sot_v01_multitask import MOVE2ID
+
 
 class SoTV01Dataset(Dataset):
     def __init__(self, jsonl_path: str, tokenizer, max_length: int = 1024):

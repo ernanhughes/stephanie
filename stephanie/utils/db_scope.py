@@ -1,7 +1,10 @@
 # stephanie/utils/db_scope.py
 from contextlib import contextmanager
+
 from sqlalchemy.exc import OperationalError
+
 from stephanie.models.base import engine
+
 
 @contextmanager
 def session_scope(session_maker):

@@ -11,8 +11,8 @@ import yaml
 from sqlalchemy.orm import Session
 
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.memory.base_store import BaseSQLAlchemyStore
+from stephanie.models.belief_cartridge import BeliefCartridgeORM
 
 
 class BeliefCartridgeStore(BaseSQLAlchemyStore):

@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from typing import Iterable
+
 from stephanie.models.chat import ChatConversationORM
+
 
 # naive tokenizer is fine for now; replace with your real splitter if you like
 def _tok(s: str) -> list: 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import os
 import re
@@ -10,19 +11,17 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
+import matplotlib
 import numpy as np
-import logging
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.thought.paper_blog import \
-    SimplePaperBlogAgent
 from stephanie.agents.thought.anti_hallucination import AntiHallucination
 from stephanie.agents.thought.figure_grounding import FigureGrounding
+from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
+from stephanie.models.strategy import StrategyProfile
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.utils.json_sanitize import sanitize_for_json
-from stephanie.models.strategy import StrategyProfile
 
-import matplotlib
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt

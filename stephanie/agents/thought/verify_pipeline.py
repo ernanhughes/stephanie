@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import math
 import os
 import re
-import json
 import time
-import math
 import traceback
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -18,10 +18,10 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.summary.paper_summarizer import SimplePaperBlogAgent
 from stephanie.knowledge.anti_hallucination import AntiHallucination
 from stephanie.knowledge.figure_grounding import FigureGrounding
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
-from stephanie.utils.json_sanitize import sanitize_for_json
 from stephanie.models.strategy import StrategyProfile
+from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.utils.casebook_utils import generate_casebook_name
+from stephanie.utils.json_sanitize import sanitize_for_json
 
 
 # ==========================

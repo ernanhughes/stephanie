@@ -1,14 +1,17 @@
 # stephanie/agents/thought/paper_section_processor.py
 from __future__ import annotations
+
 import json
 import time
-import uuid
-from typing import Dict, Any
 import traceback
+import uuid
+from typing import Any, Dict
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
 from stephanie.models.casebook import CaseBookORM
 from stephanie.scoring.scorable_factory import TargetType
+
 
 class PaperSectionProcessorAgent(BaseAgent):
     """

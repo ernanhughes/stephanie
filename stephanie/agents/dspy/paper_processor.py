@@ -1,20 +1,19 @@
 # stephanie/agents/dspy/paper_processor.py
-import dspy
-from typing import Dict, Any, List, Optional, Callable
 import json
+import time
 import traceback
 import uuid
-import time
+from typing import Any, Callable, Dict, List, Optional
+
+import dspy
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.casebook import CaseBookORM
 from stephanie.utils.casebook_utils import generate_casebook_name
-from stephanie.utils.paper_utils import (
-    build_paper_goal_text,
-    build_paper_goal_meta,
-    system_guidance_from_goal,
-    section_goal_text,
-    section_quality,
-)
+from stephanie.utils.paper_utils import (build_paper_goal_meta,
+                                         build_paper_goal_text,
+                                         section_goal_text, section_quality,
+                                         system_guidance_from_goal)
 
 
 # DSPy Signatures for each step in the processing pipeline

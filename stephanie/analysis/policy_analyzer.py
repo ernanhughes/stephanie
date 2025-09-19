@@ -533,9 +533,8 @@ class PolicyAnalyzer:
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-            import seaborn as sns
-            
             sicql_data = self._get_sicql_data(dimension)
             if not sicql_data or not any(d["policy_logits"] for d in sicql_data):
                 return None

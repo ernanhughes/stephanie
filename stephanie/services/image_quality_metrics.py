@@ -1,6 +1,8 @@
 from __future__ import annotations
-from typing import Dict, Any, Optional, Tuple
+
 import math
+from typing import Any, Dict, Optional, Tuple
+
 import numpy as np
 
 try:

@@ -6,8 +6,7 @@ import time
 from typing import Any, Dict, List, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.thought.paper_blog import \
-    SimplePaperBlogAgent
+from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
 from stephanie.scoring.scorable_factory import TargetType
 
 MAX_ITERS_DEFAULT = 4

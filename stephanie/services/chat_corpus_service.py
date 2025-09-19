@@ -1,13 +1,15 @@
 # stephanie/services/chat_corpus_service.py
 from __future__ import annotations
+
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from stephanie.services.service_protocol import Service
 from stephanie.memory.chat_corpus_store import ChatCorpusStore
+from stephanie.services.service_protocol import Service
 
 EmbedFn = Callable[[List[str]], List[List[float]]]
 
 import logging
+
 _logger = logging.getLogger(__name__)
 
 class ChatCorpusService(Service):

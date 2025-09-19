@@ -1,7 +1,9 @@
 # stephanie/agents/thought/krm_v1_trainer.py
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 

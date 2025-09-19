@@ -153,7 +153,8 @@ class EvaluationStore(BaseSQLAlchemyStore):
         # Log deltas if goal exists
         goal = context.get("goal")
         if goal and "id" in goal and container is not None:
-            from stephanie.scoring.score_delta_calculator import ScoreDeltaCalculator
+            from stephanie.scoring.score_delta_calculator import \
+                ScoreDeltaCalculator
             ScoreDeltaCalculator(cfg, self, container, self.logger).log_score_delta(
                 scorable, weighted_score, goal["id"]
             )

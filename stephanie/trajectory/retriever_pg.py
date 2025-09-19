@@ -1,7 +1,10 @@
 from __future__ import annotations
-from typing import List, Dict, Any
+
+from typing import Any, Dict, List
+
 import numpy as np
 from sqlalchemy.orm import Session
+
 from stephanie.memory.chat_store import ChatStore
 from stephanie.trajectory.pgvector_ann import PgVectorANN
 

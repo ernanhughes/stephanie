@@ -1,8 +1,11 @@
 from __future__ import annotations
-from typing import Iterable, Callable
-from stephanie.memory.chat_store import ChatStore
-from sqlalchemy.orm import Session
+
 import re
+from typing import Callable, Iterable
+
+from sqlalchemy.orm import Session
+
+from stephanie.memory.chat_store import ChatStore
 
 # (text, cfg) -> vector; must persist to your embeddings table when given namespace/key
 EmbedOneFn = Callable[[str, dict], list]

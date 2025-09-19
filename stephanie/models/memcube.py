@@ -1,7 +1,7 @@
 # stephanie/models/memcube.py
-from typing import Dict, Any
+from typing import Any, Dict
 
-from sqlalchemy import Column, String, Text, Float, Integer, JSON, TIMESTAMP
+from sqlalchemy import JSON, TIMESTAMP, Column, Float, Integer, String, Text
 from sqlalchemy.sql import func
 
 from stephanie.models.base import Base

@@ -7,10 +7,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -20,13 +20,13 @@ from stephanie.agents.base_agent import BaseAgent
 # Import reasoning components
 from stephanie.agents.icl_reasoning import ICLReasoningAgent
 from stephanie.agents.knowledge.arxiv_search import ArxivSearchAgent
+from stephanie.agents.knowledge.knowledge_retriever import KnowledgeRetriever
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.services.plan_trace_service import PlanTraceService
 from stephanie.utils.serialization import to_serializable
-from stephanie.agents.knowledge.knowledge_retriever import KnowledgeRetriever
 
 
 class HNetValidationExperiment(BaseAgent):

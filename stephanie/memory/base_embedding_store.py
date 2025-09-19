@@ -10,9 +10,9 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from stephanie.memory.base_store import BaseSQLAlchemyStore
 import torch
 
+from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.utils.lru_cache import SimpleLRUCache
 
 _logger = logging.getLogger(__name__)

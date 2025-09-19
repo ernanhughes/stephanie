@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import matplotlib
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent

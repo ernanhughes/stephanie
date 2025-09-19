@@ -1,8 +1,12 @@
 # stephanie/services/style_card_service.py
 from __future__ import annotations
+
+import time
+import traceback
 from typing import Any, Dict, List, Optional
-import time, traceback
+
 from stephanie.services.voice_profile_service import VoiceProfileService
+
 
 def _norm_section(s: str) -> str:
     s = (s or "").strip().lower().replace("-", "_")

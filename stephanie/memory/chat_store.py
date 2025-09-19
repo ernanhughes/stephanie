@@ -1,17 +1,14 @@
 # stephanie/memory/chat_store.py
 from __future__ import annotations
 
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 from sqlalchemy import desc, func, text
-from sqlalchemy.orm import selectinload, aliased
+from sqlalchemy.orm import aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.chat import (
-    ChatConversationORM,
-    ChatMessageORM,
-    ChatTurnORM,
-)
+from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
+                                   ChatTurnORM)
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_factory import TargetType
 

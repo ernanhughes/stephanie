@@ -4,9 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
+import matplotlib
 import pandas as pd
 from sqlalchemy.sql import text
-import matplotlib
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.score import ScoreORM

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.theorem import TheoremORM
 

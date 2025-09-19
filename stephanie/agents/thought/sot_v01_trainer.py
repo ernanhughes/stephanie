@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
-from peft import get_peft_model, LoraConfig, TaskType
-from .sot_v01_dataset import SoTV01Dataset
+from peft import LoraConfig, TaskType, get_peft_model
+from transformers import (AutoModelForCausalLM, AutoTokenizer, Trainer,
+                          TrainingArguments)
+
 from .sot_v01_collator import SoTDataCollator
+from .sot_v01_dataset import SoTV01Dataset
 from .sot_v01_multitask import SoTMultiTaskWrapper
+
 
 class SoTV01Trainer:
     def __init__(self, model_name: str = "Qwen/Qwen2.5-0.5B", device: str = None):

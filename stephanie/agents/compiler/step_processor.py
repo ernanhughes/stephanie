@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
-from stephanie.scoring.scorable_factory import TargetType
 from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_factory import TargetType
 
 
 class StepProcessorAgent(MemoryAwareMixin, BaseAgent):

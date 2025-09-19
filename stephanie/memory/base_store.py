@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Type, Callable
+from typing import Any, Callable, Dict, List, Optional, Type
 
 from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker

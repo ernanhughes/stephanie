@@ -8,7 +8,6 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
 from stephanie.utils.casebook_utils import generate_casebook_name
 
-
 SENTS_MIN_DEFAULT = 4
 SENTS_MAX_DEFAULT = 20
 

@@ -1,10 +1,10 @@
 # stephanie/trajectory/replay_agent_pg.py
 from __future__ import annotations
 
-from stephanie.trajectory.pgvector_indexer import PgVectorTurnIndexer
-from stephanie.trajectory.pgvector_ann import PgVectorANN
-from stephanie.trajectory.retriever_pg import TrajectoryRetrieverPg
 from stephanie.trajectory.composer import compose_from_spans
+from stephanie.trajectory.pgvector_ann import PgVectorANN
+from stephanie.trajectory.pgvector_indexer import PgVectorTurnIndexer
+from stephanie.trajectory.retriever_pg import TrajectoryRetrieverPg
 
 
 class TrajectoryReplayAgentPg:

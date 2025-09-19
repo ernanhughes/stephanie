@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from difflib import SequenceMatcher
-from typing import Optional, List
+from typing import List, Optional
 
 import numpy as np
 

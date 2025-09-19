@@ -1,10 +1,10 @@
 # stephanie/scoring/score_analyzer.py
 # analysis/score_analyzer.py
 import matplotlib
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA

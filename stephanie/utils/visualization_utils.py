@@ -4,10 +4,10 @@ from __future__ import annotations
 import os
 
 import matplotlib
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 import pandas as pd
 
 

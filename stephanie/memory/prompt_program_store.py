@@ -1,5 +1,6 @@
 # stephanie/memory/prompt_program_store.py
 from __future__ import annotations
+
 from typing import List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore

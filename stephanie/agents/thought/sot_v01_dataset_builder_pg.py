@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+
 from sqlalchemy.orm import Session
+
 from stephanie.memory.chat_store import ChatStore
 from stephanie.trajectory.pgvector_ann import PgVectorANN  # from earlier
 

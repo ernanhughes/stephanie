@@ -1,76 +1,104 @@
 # stephanie/tools/turn_ner_tool.py
 from __future__ import annotations
-from typing import Dict, List, Any
 
 import logging
+from typing import Any, Callable, Dict, List, Optional
+
 _logger = logging.getLogger(__name__)
 
-def _normalize_ents(raw: List[dict], role: str) -> List[dict]:
-    """
-    Normalize to: {'text','type','start','end','score?','role'}.
-    Accepts dicts with keys produced by EntityDetector.detect_entities.
-    """
-    out: List[dict] = []
-    for e in raw or []:
-        if not isinstance(e, dict):
-            continue
-        txt = e.get("text") or ""
-        if not txt:
-            continue
-        out.append({
-            "text": txt,
-            "type": e.get("type") or e.get("label") or "ENT",
-            "start": int(e.get("start", -1)),
-            "end": int(e.get("end", -1)),
-            "score": float(e.get("score", 0.0)) if e.get("score") is not None else None,
-            "role": role,
-        })
-    return out
+
+def build_ner_backend(
+    kg: Any,
+):
+    detector = kg._entity_detector
+
+    def _kg_ner(text: str) -> List[dict]:
+        try:
+            ents = detector.detect_entities(text or "") or []
+            # normalize keys
+            out = []
+            for e in ents:
+                if isinstance(e, dict) and e.get("text"):
+                    out.append(
+                        {
+                            "text": e["text"],
+                            "type": e.get("type") or e.get("label") or "ENT",
+                            "start": int(e.get("start", -1)),
+                            "end": int(e.get("end", -1)),
+                            "score": float(e.get("score", 0.0)),
+                            "source_text": e.get("source_text", e["text"]),
+                        }
+                    )
+            return out
+        except Exception as ex:
+            _logger.error(f"KGNERBackendError error: {str(ex)}")
+            return []
+
+    return _kg_ner
+
 
 def annotate_conversation_ner(
     memory,
     conversation_id: int,
+    kg: Any,
     *,
-    kg: Any,                      # REQUIRED: pass KnowledgeGraphService from agent
-    publish_to_kg: bool = True,   # optional bus publish
+    publish_to_kg: bool = True,
+    only_missing: bool = True,
+    progress_cb: Optional[Callable[[int], None]] = None,
 ) -> Dict[str, int]:
-    """
-    Runs KG EntityDetector.detect_entities() on each turn (user+assistant),
-    writes results to chat_turns.ner via memory.chats.set_turn_ner(...).
-    Uses get_turn_texts_for_conversation() to avoid detached loads.
-    """
+    logger = getattr(memory, "logger", None)
+    ner = build_ner_backend(kg)
 
-    # Grab the detector from the KG service
-    detector = kg._entity_detector
-    turns = memory.chats.get_turn_texts_for_conversation(conversation_id)
+    turns = memory.chats.get_turn_texts_for_conversation(
+        conversation_id, only_missing=("ner" if only_missing else None)
+    )
+
     seen = updated = 0
-
     for t in turns:
         seen += 1
-        user_txt = (t["user_text"] or "").strip()
-        asst_txt = (t["assistant_text"] or "").strip()
+        user_txt = t["user_text"] or ""
+        asst_txt = t["assistant_text"] or ""
+        joined = f"USER: {user_txt}\nASSISTANT: {asst_txt}".strip()
+        if not joined:
+            progress_cb and progress_cb(1)
+            continue
 
-        # Run detector separately on each side so offsets are local to the side
-        u_ents = _normalize_ents(detector.detect_entities(user_txt), role="user") if user_txt else []
-        a_ents = _normalize_ents(detector.detect_entities(asst_txt), role="assistant") if asst_txt else []
-        ents = u_ents + a_ents
+        ents = ner(joined) or []
 
-        # Persist
-        memory.chats.set_turn_ner(t["id"], ents)
+        # Split by role boundary for display/use later
+        split = []
+        role_cut = len(f"USER: {user_txt}\n")
+        for e in ents:
+            role = "assistant" if (e.get("start", -1) >= role_cut) else "user"
+            split.append({**e, "role": role})
+
+        # Persist on the turn
+        memory.chats.set_turn_ner(t["id"], split)
         updated += 1
+        progress_cb and progress_cb(1)
 
-        # (Optional) publish to KG indexer via bus
-        if publish_to_kg:
+        # Publish to bus ONLY if we actually found entities
+        if publish_to_kg and ents:
             try:
-                domains_payload = []
-                memory.bus.publish("knowledge_graph.index_request", {
+                import asyncio
+
+                payload = {
                     "scorable_id": str(t["id"]),
                     "scorable_type": "conversation_turn",
-                    "text": f"USER: {user_txt}\nASSISTANT: {asst_txt}".strip(),
-                    "entities": ents,          # ✅ normalized NER
-                    "domains": domains_payload # [] is fine
-                })
+                    "text": joined,
+                    "entities": split,
+                    "domains": t.get("domains", []),  # if present in the dict
+                }
+                # schedule fire-and-forget so we don’t block
+                asyncio.create_task(
+                    memory.bus.publish(
+                        "knowledge_graph.index_request", payload
+                    )
+                )
             except Exception as ex:
-                _logger.error(f"KGIndexPublishError turn_id: {t['id']}, error: {str(ex)}")
+                logger and logger.log(
+                    "KGIndexPublishError",
+                    {"turn_id": t["id"], "error": str(ex)},
+                )
 
     return {"seen": seen, "updated": updated}

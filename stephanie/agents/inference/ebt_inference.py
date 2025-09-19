@@ -4,9 +4,10 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+import matplotlib
 import torch
 import torch.nn.functional as F
-import matplotlib
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt

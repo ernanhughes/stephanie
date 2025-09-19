@@ -1,11 +1,13 @@
 # stephanie/services/strategy_profile_service.py
 from __future__ import annotations
-from typing import Any, Dict, Optional
-import time
 
-from stephanie.services.service_protocol import Service
-from stephanie.models.strategy import StrategyProfile
+import time
+from typing import Any, Dict, Optional
+
 from stephanie.memory.strategy_store import IStrategyStore, JsonStrategyStore
+from stephanie.models.strategy import StrategyProfile
+from stephanie.services.service_protocol import Service
+
 
 class StrategyProfileService(Service):
     """

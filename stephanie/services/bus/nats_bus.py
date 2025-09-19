@@ -26,8 +26,10 @@ from nats.errors import NoServersError, TimeoutError
 from nats.js.api import ConsumerConfig, DeliverPolicy
 
 from .bus_protocol import BusProtocol
+from .errors import (BusConnectionError, BusPublishError, BusRequestError,
+                     BusSubscribeError)
 from .idempotency import InMemoryIdempotencyStore, NatsKVIdempotencyStore
-from .errors import BusConnectionError, BusPublishError, BusSubscribeError, BusRequestError
+
 
 class NatsKnowledgeBus(BusProtocol):
     """

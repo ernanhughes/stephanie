@@ -4,10 +4,10 @@ from __future__ import annotations
 from collections import defaultdict
 
 import matplotlib
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 import psycopg2
 from tabulate import tabulate
 

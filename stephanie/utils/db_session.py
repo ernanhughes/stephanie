@@ -1,7 +1,10 @@
 # stephanie/utils/db_session.py
 from __future__ import annotations
-from sqlalchemy.orm import Session
+
 from contextlib import contextmanager
+
+from sqlalchemy.orm import Session
+
 
 @contextmanager
 def db_session(SessionLocal: Session) -> Session:

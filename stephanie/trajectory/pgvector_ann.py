@@ -1,9 +1,10 @@
 # stephanie/trajectory/pgvector_ann.py
 from __future__ import annotations
 
-from typing import List, Tuple, Union
-import numpy as np
 import re
+from typing import List, Tuple, Union
+
+import numpy as np
 
 TURN_TAG = "TURN"
 

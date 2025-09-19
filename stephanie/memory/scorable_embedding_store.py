@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+
 from sqlalchemy.exc import IntegrityError
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore

@@ -7,10 +7,9 @@ from typing import Any, Dict, Optional
 
 import litellm
 
+from stephanie.constants import (API_BASE, API_KEY, NAME, PROMPT_PATH,
+                                 SAVE_PROMPT, STRATEGY)
 from stephanie.services.service_protocol import Service
-from stephanie.constants import (
-    NAME, API_BASE, API_KEY, SAVE_PROMPT, STRATEGY, PROMPT_PATH
-)
 
 
 def _remove_think_blocks(text: str) -> str:

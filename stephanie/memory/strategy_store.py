@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 # Reuse the dataclass already defined in your agent:
 # NOTE: this import avoids circulars because the agent doesn't import this module.
-from stephanie.models.strategy import StrategyProfileORM
-from stephanie.models.strategy import StrategyProfile
+from stephanie.models.strategy import StrategyProfile, StrategyProfileORM
+
 
 # ---------- Interface-ish ----------
 class IStrategyStore:

@@ -1,5 +1,6 @@
 # stephanie/services/voice_profile_service.py
 from __future__ import annotations
+
 import math
 import re
 import time
@@ -8,6 +9,7 @@ from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
 
 def _nz(x, lo: float = 0.0, hi: float = 1.0) -> float:
     """

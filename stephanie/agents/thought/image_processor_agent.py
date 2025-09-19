@@ -1,9 +1,10 @@
 # stephanie/agents/thought/image_processor_agent.py
 
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
-import time
+
 import os
+import time
+from typing import Any, Dict, List, Optional
 
 try:
     from PIL import Image, ImageEnhance, ImageFilter
@@ -11,8 +12,9 @@ except Exception:
     Image = None  # type: ignore
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.services.image_quality_metrics import ImageQualityMetrics
 from stephanie.services.image_profile_service import ImageProfileService
+from stephanie.services.image_quality_metrics import ImageQualityMetrics
+
 
 class ImageProcessorAgent(BaseAgent):
     """

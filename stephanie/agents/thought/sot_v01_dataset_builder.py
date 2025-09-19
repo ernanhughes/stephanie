@@ -1,9 +1,11 @@
 # stephanie/agents/thought/sot_v01_dataset_builder.py
 from __future__ import annotations
 
-from typing import List, Dict, Any
-from tqdm import tqdm
 import json
+from typing import Any, Dict, List
+
+from tqdm import tqdm
+
 
 class SoTV01DatasetBuilder:
     """

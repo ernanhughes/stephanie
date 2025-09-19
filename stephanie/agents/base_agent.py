@@ -1,12 +1,12 @@
 # stephanie/agents/base_agent.py
 from __future__ import annotations
 
-from contextlib import contextmanager
-import time
 import random
 import re
+import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict
 

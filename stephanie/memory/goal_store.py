@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import List, Optional
 
 from sqlalchemy.exc import IntegrityError
 

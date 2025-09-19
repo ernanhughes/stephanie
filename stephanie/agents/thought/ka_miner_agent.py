@@ -1,6 +1,8 @@
 from __future__ import annotations
-from typing import Dict
+
 import json
+from typing import Dict
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 
