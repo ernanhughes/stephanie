@@ -3,8 +3,7 @@ from typing import Any, Optional
 
 import psycopg2
 from pgvector.psycopg2 import register_vector
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from stephanie.logging import JSONLogger
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
@@ -72,8 +71,8 @@ class MemoryTool:
         self._stores = {}  # name -> Store instance
 
         # Create a new session
-        self.session_maker = sessionmaker(bind=engine)
-        self.session: Session = self.session_maker()
+        self.session = sessionmaker(bind=engine, expire_on_commit=False, autocommit=False, autoflush=False)
+        self.session = self.session()  # backward-compat: stores expect `memory.session`
 
         db_cfg = self.cfg.get("db", {})
         # Create connection
@@ -187,8 +186,6 @@ class MemoryTool:
             for store_class in cfg.get("extra_stores", []):
                 self.register_store(store_class(self.session, logger))
 
-
-
     def register_store(self, store):
         store_name = getattr(store, "name", store.__class__.__name__)
         if store_name in self._stores:
@@ -206,45 +203,10 @@ class MemoryTool:
             return self._stores[name]
         raise AttributeError(f"'MemoryTool' has no attribute '{name}'")
 
-    def commit(self):
-        """Commit any pending changes"""
-        try:
-            self.session.commit()
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            if self.logger:
-                self.logger.log("SessionRollback", {"error": str(e)})
-            raise
-
     @property
     def meta(self) -> dict:
         """Lightweight, process-local key/value store for small state."""
         return self._meta
-
-    def close(self):
-        """Close session at end of run"""
-        try:
-            self.session.close()
-        except SQLAlchemyError as e:
-            if self.logger:
-                self.logger.log("SessionCloseFailed", {"error": str(e)})
-            self.session = self.session_maker()  # Reopen session on failure
-
-    def begin_nested(self):
-        """Start nested transaction (for safe rollback during complex ops)"""
-        return self.session.begin_nested()
-
-    def refresh_session(self):
-        """Closes current session and creates a fresh one"""
-        try:
-            self.session.rollback()
-            self.session.close()
-        finally:
-            self.session = self.session_maker()
-            if self.logger:
-                self.logger.log(
-                    "SessionRefreshed", {"new_session_id": id(self.session)}
-                )
 
     def _setup_knowledge_bus(self) -> KnowledgeBus:
         bus = HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)

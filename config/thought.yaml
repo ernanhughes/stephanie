@@ -96,12 +96,19 @@ pipeline:
 
      - name: chat_to_casebook
        description: >
-         🗂️ Transform imported conversations into CaseBooks.  
+         🐦‍🔥 Transform imported conversations into CaseBooks.  
          Each conversation (or turn/message, depending on granularity) becomes a Case
          with linked Scorables, tied to a goal context.
        cls: stephanie.agents.pacs.chat_to_casebook.ChatToCaseBookAgent
        enabled: false
        iterations: 1
+
+     - name: knowledge_db_loader
+       description: "🔓 Load prior retained knowledge from the database for retrieval"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    
+   
 
      - name: paper_processor
        description: > 

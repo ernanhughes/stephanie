@@ -796,7 +796,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         case_id: int,
         pipeline_run_id: int,
         text: str,
-        scorable_type: Optional[str] = None,
+        scorable_type: str = TargetType.DYNAMIC,
         meta: Optional[dict] = None,
         role: Optional[str] = None,
     ) -> DynamicScorableORM:

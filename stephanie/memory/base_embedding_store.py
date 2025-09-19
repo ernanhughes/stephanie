@@ -10,15 +10,15 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+from stephanie.memory.sqlalchemy_store import BaseSQLAlchemyStore
 import torch
 
-from stephanie.memory import BaseStore
 from stephanie.utils.lru_cache import SimpleLRUCache
 
 _logger = logging.getLogger(__name__)
 
 
-class BaseEmbeddingStore(BaseStore):
+class BaseEmbeddingStore(BaseSQLAlchemyStore):
     """
     Hybrid semantic + (optional) NER retrieval over scorables.
 
