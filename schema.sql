@@ -1625,4 +1625,23 @@ CREATE TABLE IF NOT EXISTS calibration_models (
 CREATE INDEX IF NOT EXISTS idx_cal_models_domain
     ON calibration_models (domain);
 
+
+-- ModelArtifactORM → model_artifacts (PostgreSQL)
+
+CREATE TABLE IF NOT EXISTS model_artifacts (
+  id           INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name         VARCHAR NOT NULL,
+  version      INTEGER NOT NULL DEFAULT 1,
+  path         VARCHAR NOT NULL,
+  tag          VARCHAR NULL,
+  meta         JSONB   NOT NULL DEFAULT '{}'::jsonb,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_model_artifacts_name_version UNIQUE (name, version)
+);
+
+-- Indexes (match your __table_args__)
+CREATE INDEX IF NOT EXISTS ix_model_artifacts_name ON model_artifacts (name);
+CREATE INDEX IF NOT EXISTS ix_model_artifacts_tag  ON model_artifacts (tag);
+
 COMMIT; 

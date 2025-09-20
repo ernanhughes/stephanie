@@ -36,6 +36,7 @@ from stephanie.memory.mars_conflict_store import MARSConflictStore
 from stephanie.memory.mars_result_store import MARSResultStore
 from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
+from stephanie.memory.models_store import ModelsStore
 from stephanie.memory.mrq_store import MRQStore
 from stephanie.memory.pattern_store import PatternStatStore
 from stephanie.memory.pipeline_reference_store import PipelineReferenceStore
@@ -59,6 +60,7 @@ from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.memory.theorem_store import TheoremStore
 from stephanie.memory.training_event_store import TrainingEventStore
+from stephanie.memory.training_stats_store import TrainingStatsStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
@@ -179,6 +181,8 @@ class MemoryTool:
         self.register_store(CalibrationEventStore(self.session_maker, logger))
         self.register_store(EntityCacheStore(self.session_maker, logger))
         self.register_store(TrainingEventStore(self.session_maker, logger))
+        self.register_store(TrainingStatsStore(self.session_maker, logger))
+        self.register_store(ModelsStore(self.session_maker, logger))
 
 
         # Register extra stores if defined in config

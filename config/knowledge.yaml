@@ -134,7 +134,7 @@ pipeline:
          🗂️ Process academic papers and extract relevant information.
          This includes summarization, key findings extraction, and citation analysis.
        cls: stephanie.agents.dspy.paper_processor.DSPyPaperSectionProcessorAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: sot_v01_agent

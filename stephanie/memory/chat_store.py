@@ -112,30 +112,39 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     # ---------- Turns ----------
-
-    def add_turns(
-        self, conversation_id: int, messages: List[dict]
-    ) -> List[ChatTurnORM]:
+    def add_turns(self, conversation_id: int, messages: List[dict]) -> List[ChatTurnORM]:
         """
         Build Q/A turns from a flat list of messages.
-        Assumes messages are in chronological order and include DB ids.
+        Assumes messages are chronological and include DB ids & order_index.
         """
-
         def op(s):
+            # find current max for this conversation so appends are monotonic
+            cur_max = (
+                s.query(func.coalesce(func.max(ChatTurnORM.order_index), -1))
+                .filter(ChatTurnORM.conversation_id == conversation_id)
+                .scalar()
+            )
+            next_ix = int(cur_max) + 1
+
             turns: List[ChatTurnORM] = []
             for i in range(len(messages) - 1):
                 u, a = messages[i], messages[i + 1]
                 if u.get("role") == "user" and a.get("role") == "assistant":
+                    # prefer assistant message order if present, else use running index
+                    a_ix = a.get("order_index")
+                    oi = int(a_ix) if isinstance(a_ix, int) else next_ix
                     turn = ChatTurnORM(
                         conversation_id=conversation_id,
                         user_message_id=u["id"],
                         assistant_message_id=a["id"],
+                        order_index=oi,
                     )
                     s.add(turn)
                     turns.append(turn)
+                    next_ix = max(next_ix + 1, oi + 1)
+
             s.flush()
             return turns
-
         return self._run(op)
 
     def get_turn_by_id(self, turn_id: int) -> Optional[ChatTurnORM]:
@@ -704,13 +713,16 @@ class ChatStore(BaseSQLAlchemyStore):
     ) -> List[Dict[str, Any]]:
         """
         Returns lightweight dict rows for turns with pre-fetched assistant/user texts:
-        { id, conversation_id, order_index, star, user_text, assistant_text, ner, domains }
-
-        All SQL happens inside the session; no lazy loads in the caller.
+        {
+        id, conversation_id, order_index, star, user_text, assistant_text,
+        ner, domains, goal_text
+        }
+        goal_text == conversation title
         """
         def op(s):
             U = aliased(ChatMessageORM)
             A = aliased(ChatMessageORM)
+            C = aliased(ChatConversationORM)
 
             q = (
                 s.query(
@@ -722,9 +734,11 @@ class ChatStore(BaseSQLAlchemyStore):
                     ChatTurnORM.domains.label("domains"),
                     U.text.label("user_text"),
                     A.text.label("assistant_text"),
+                    C.title.label("goal_text"),   # ← conversation title as goal text
                 )
                 .join(U, ChatTurnORM.user_message_id == U.id)
                 .join(A, ChatTurnORM.assistant_message_id == A.id)
+                .join(C, ChatTurnORM.conversation_id == C.id)  # ← join conversation
             )
 
             if min_star is not None:
@@ -741,12 +755,10 @@ class ChatStore(BaseSQLAlchemyStore):
                         pass
 
             if require_nonempty_ner:
-                # Prefer JSON length on Postgres
                 try:
                     q = q.filter(ChatTurnORM.ner.isnot(None))
                     q = q.filter(func.jsonb_array_length(ChatTurnORM.ner) > 0)
                 except Exception:
-                    # Fallback: at least not NULL; client can recheck if needed
                     q = q.filter(ChatTurnORM.ner.isnot(None))
 
             q = q.order_by(ChatTurnORM.id.desc() if order_desc else ChatTurnORM.id.asc())
@@ -764,6 +776,7 @@ class ChatStore(BaseSQLAlchemyStore):
                     "assistant_text": r.assistant_text or "",
                     "ner": r.ner or [],
                     "domains": r.domains or [],
+                    "goal_text": r.goal_text or "",   # ← expose goal text
                 })
             return out
 

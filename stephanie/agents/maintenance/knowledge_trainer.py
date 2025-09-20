@@ -55,6 +55,7 @@ class KnowledgeTrainerAgent(BaseAgent):
             "shuffle_pairs": self.shuffle_pairs,
         }) 
         # 1) Build pairs
+        # important output A need to be preferred over B
         pairs = self.pair_builder.build_pairs(
             min_star_pos=self.min_star_pos,
             max_star_neg=self.max_star_neg,
@@ -69,30 +70,36 @@ class KnowledgeTrainerAgent(BaseAgent):
             return context
 
         # 2) Train + persist
-        stats = self.trainer.train_from_pairs(pairs)
+        stats = self.trainer.train(pairs)
+        stats.update({
+            "trained_pairs": len(pairs),
+            "beta": self.trainer.beta,
+            "margin": self.trainer.margin,
+            "epochs": self.trainer.epochs,
+            "batch_size": self.trainer.batch_size,
+        })
+
         if "error" in stats:
             self.logger.log("KnowledgeTrainingError", stats)
             context["training_stats"] = {"knowledge": stats}
             return context
-
         # 3) (Optional) register artifact in memory registry
-        try:
-            if hasattr(self.memory, "models") and hasattr(self.memory.models, "register"):
-                self.memory.models.register(
-                    name="mrq_knowledge_reward_head",
-                    path=stats["model_path"],
-                    meta={
-                        "best_val_pair_acc": stats.get("best_val_pair_acc"),
-                        "d_embedding": stats.get("d_embedding"),
-                        "hidden_dim": stats.get("hidden_dim"),
-                        "beta": stats.get("beta"),
-                        "margin": stats.get("margin"),
-                        "trained_pairs": stats.get("train_pairs"),
-                        "timestamp": stats.get("trained_at"),
-                    },
-                )
-        except Exception as e:
-            self.logger.log("KnowledgeModelRegisterWarn", {"error": str(e)})
+        self.memory.models.register(
+            name="knowledge",
+            path=stats["model_path"],
+            meta={
+                "avg_loss": stats.get("avg_loss"),
+                "best_val_pair_acc": stats.get("best_val_pair_acc"),
+                "dim": stats.get("dim"),
+                "hdim": stats.get("hdim"),
+                "beta": stats.get("beta"),
+                "margin": stats.get("margin"),
+                "trained_pairs": stats.get("trained_pairs"),
+                "timestamp": stats.get("timestamp"),
+                "aux_features": stats.get("aux_features"),
+                "embedding_type": stats.get("embedding_type"),
+                "version": stats.get("version"),
+            },        )
 
         # 4) Return stats
         elapsed = time.time() - t0

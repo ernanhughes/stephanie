@@ -66,7 +66,7 @@ class DocumentSectionStore(BaseSQLAlchemyStore):
                 .all()
             )
 
-        return self._run(op, default=[])
+        return self._run(op)
 
     def delete_by_document(self, document_id: int) -> None:
         def op(s):

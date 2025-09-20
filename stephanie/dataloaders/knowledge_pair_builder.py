@@ -6,6 +6,7 @@ import logging
 import random
 import hashlib
 import numpy as np
+import json
 import re
 
 _logger = logging.getLogger(__name__)
@@ -15,15 +16,46 @@ def _simple_sentences(text: str) -> List[str]:
     return [p for p in parts if p]
 
 def _entity_texts_from_ner(ner) -> List[str]:
-    # ner is list[dict] like {"text": "...", "label": "...", "start": int, "end": int}
+    """
+    ner supports: list[dict], JSON string, or None.
+    Returns unique, lower-cased entity surface forms.
+    """
     if not ner:
         return []
+    if isinstance(ner, str):
+        try:
+            ner = json.loads(ner)
+        except Exception:
+            return []
     out = []
     for e in ner if isinstance(ner, list) else []:
-        t = (e.get("text") or "").strip().lower()
-        if len(t) >= 2:
-            out.append(t)
+        try:
+            t = (e.get("text") or "").strip().lower()
+            if len(t) >= 2:
+                out.append(t)
+        except Exception:
+            continue
     return list({t for t in out})
+
+def _primary_domain_from_row(row: Dict[str, Any]) -> Optional[str]:
+    """
+    domains supports: list[dict], JSON string, or None.
+    Returns the first non-empty domain name (lower-cased).
+    """
+    doms = row.get("domains") or []
+    if isinstance(doms, str):
+        try:
+            doms = json.loads(doms)
+        except Exception:
+            doms = []
+    for d in doms if isinstance(doms, list) else []:
+        try:
+            name = str(d.get("domain") or "").strip().lower()
+            if name:
+                return name
+        except Exception:
+            continue
+    return None
 
 class KnowledgePairBuilder:
     """
@@ -47,6 +79,7 @@ class KnowledgePairBuilder:
     ) -> List[Dict[str, Any]]:
         _logger.info(f"Building knowledge pairs: pos≥{min_star_pos}, neg≤{max_star_neg}, limit={limit}")
 
+
         # Pull projected rows with assistant_text + ner/domains (no lazy loads)
         pos_turns = self.memory.chats.list_turns_with_texts(
             min_star=min_star_pos, require_assistant_text=True, require_nonempty_ner=True, limit=1_000_000
@@ -63,26 +96,21 @@ class KnowledgePairBuilder:
             _logger.warning("No positive or negative turns found.")
             return []
 
-        # bucket negatives by (conversation_id, primary_domain) — adjust if you add goal/casebook
-        def _primary_domain(row) -> Optional[str]:
-            doms = row.get("domains") or []
-            for d in doms:
-                name = str(d.get("domain") or "").strip().lower()
-                if name:
-                    return name
-            return None
-
+        # Bucket negatives by (conversation_id, primary_domain)
         neg_buckets: Dict[Tuple[Any, Any], List[Dict[str, Any]]] = {}
         for neg in neg_turns:
-            key = (neg["conversation_id"], _primary_domain(neg))
+            key = (neg["conversation_id"], _primary_domain_from_row(neg))
             neg_buckets.setdefault(key, []).append(neg)
 
+        _logger.info(f"Pos={len(pos_turns)} Neg={len(neg_turns)} Buckets={len(neg_buckets)}")
+
         pairs: List[Dict[str, Any]] = []
+        seen: set[str] = set()  # dedupe by (pos_id, neg_id)
         for pi, pos in enumerate(pos_turns):
             if len(pairs) >= limit:
                 break
 
-            key = (pos["conversation_id"], _primary_domain(pos))
+            key = (pos["conversation_id"], _primary_domain_from_row(pos))
             candidates = neg_buckets.get(key, [])
             if not candidates:
                 continue
@@ -91,7 +119,7 @@ class KnowledgePairBuilder:
             if not pos_ents:
                 continue
 
-            filtered = []
+            filtered: List[Dict[str, Any]] = []
             for neg in candidates:
                 neg_ents = set(_entity_texts_from_ner(neg.get("ner")))
                 if len(pos_ents & neg_ents) >= self.min_entity_overlap:
@@ -115,17 +143,60 @@ class KnowledgePairBuilder:
                 if neg_emb is None:
                     continue
 
+                pair_hash = hashlib.sha1(f"{pos['id']}:{neg['id']}".encode("utf-8")).hexdigest()[:16]
+                if pair_hash in seen:
+                    continue
+                seen.add(pair_hash)
+
+                # inside build_pairs(), replace the `pair = { ... }` you have now with:
+
+                # A is the preferred sample (pos), B is the non-preferred (neg)
+                user_prompt = (pos.get("goal_text") or "").strip()  # good "goal" signal for the trainer
+
+                def _len_norm(t: str, cap: int = 2000) -> float:
+                    t = t or ""
+                    n = min(len(t), cap)
+                    return n / cap
+
                 pair = {
-                    "pos_text": pos["assistant_text"],
-                    "neg_text": neg["assistant_text"],
-                    "pos_emb": pos_emb,
-                    "neg_emb": neg_emb,
-                    "domain": _primary_domain(pos),
-                    "goal_id": None,  # fill when you add it to schema
+                    # goal / query embedding anchor
+                    "prompt": user_prompt,                     # trainer will embed this as G
+
+                    # assistant outputs
+                    "output_a": pos["assistant_text"],         # preferred
+                    "output_b": neg["assistant_text"],         # non-preferred
+
+                    # optional numeric labels if you have them (not used by loss, but handy for audits)
+                    "value_a": float(max(0, pos.get("star", 1))),   # e.g., star as a soft label
+                    "value_b": float(min(0, neg.get("star", -1))),
+
+                    # aux features (names must match KnowledgeTrainer.aux_features)
+                    "meta_a": {
+                        "human_stars": float(pos.get("star", 1)),
+                        "pseudo_stars": 0.0,
+                        "artifact_quality": 0.0,
+                        "turn_pos_ratio": 1.0,
+                        "has_retrieval": 0.0,
+                        "retrieval_fidelity": 0.0,
+                        "text_len_norm": _len_norm(pos["assistant_text"]),
+                    },
+                    "meta_b": {
+                        "human_stars": float(neg.get("star", -1)),
+                        "pseudo_stars": 0.0,
+                        "artifact_quality": 0.0,
+                        "turn_pos_ratio": 0.0,
+                        "has_retrieval": 0.0,
+                        "retrieval_fidelity": 0.0,
+                        "text_len_norm": _len_norm(neg["assistant_text"]),
+                    },
+
+                    # optional tracing
+                    "domain": _primary_domain_from_row(pos),
+                    "goal_id": None,
                     "pos_id": pos["id"],
                     "neg_id": neg["id"],
+                    "pair_hash": hashlib.sha1(f"{pos['id']}:{neg['id']}".encode("utf-8")).hexdigest()[:16],
                 }
-                pair["pair_hash"] = hashlib.sha1(f"{pair['pos_id']}:{pair['neg_id']}".encode("utf-8")).hexdigest()[:16]
                 pairs.append(pair)
 
             if (pi + 1) % 1000 == 0:
@@ -146,44 +217,24 @@ class KnowledgePairBuilder:
         self._emb_cache[tid] = emb
         return emb
 
+
     def _embed_turn(self, row: Dict[str, Any]) -> Optional[np.ndarray]:
         """
-        Embed the assistant response, focusing on sentences containing NER entities.
+        v1: Embed the full assistant response text.
+        Keeps simple guards for empty text / NaNs and L2-normalizes.
         """
         text = (row.get("assistant_text") or "").strip()
         if not text:
             return None
 
-        ents = _entity_texts_from_ner(row.get("ner"))
-
-        # choose embedder: memory.embedding.get_or_create
-        def _embed(s: str):
-            # FIX: return the vector
-            return self.memory.embedding.get_or_create(s)
-
-        if not ents:
-            vec = _embed(text)
-        else:
-            # Extract sentences containing entities
-            try:
-                from nltk.tokenize import sent_tokenize
-                sentences = sent_tokenize(text)
-            except Exception:
-                sentences = _simple_sentences(text)
-
-            lower_ents = set(ents)
-            relevant = [s for s in sentences if any(e in s.lower() for e in lower_ents)]
-            if not relevant:
-                relevant = [text]
-
-            embs = [np.asarray(_embed(s), dtype=np.float32) for s in relevant]
-            embs = [e for e in embs if e is not None and np.isfinite(e).all()]
-            if not embs:
-                return None
-            vec = np.mean(embs, axis=0)
+        # Must return a vector (list/np array)
+        vec = self.memory.embedding.get_or_create(text)
+        if vec is None:
+            return None
 
         vec = np.asarray(vec, dtype=np.float32)
         n = float(np.linalg.norm(vec))
-        if n == 0.0 or not np.isfinite(n):
+        if not np.isfinite(n) or n == 0.0:
             return None
+
         return vec / n

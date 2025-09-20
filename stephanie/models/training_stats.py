@@ -13,6 +13,7 @@ class TrainingStatsORM(Base):
     __tablename__ = "training_stats"
     
     id = Column(Integer, primary_key=True)
+    pipeline_run_id = Column(String, nullable=True, index=True)
     
     # Model identification
     model_type = Column(String, nullable=False)
@@ -71,6 +72,7 @@ class TrainingStatsORM(Base):
             invalid_samples=kwargs.get("invalid_samples", 0),
             q_loss=stats.get("q_loss"),
             v_loss=stats.get("v_loss"),
+            pipeline_run_id=stats.get("pipeline_run_id"),
             pi_loss=stats.get("pi_loss"),
             avg_q_loss=stats.get("avg_q_loss"),
             avg_v_loss=stats.get("avg_v_loss"),
