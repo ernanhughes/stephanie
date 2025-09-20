@@ -36,6 +36,8 @@ def list_chats(
     )
 
 
+# sis/routes/chats.py
+
 @router.get("/chats/{chat_id}", response_class=HTMLResponse)
 def chat_detail(request: Request, chat_id: int):
     """
@@ -44,14 +46,23 @@ def chat_detail(request: Request, chat_id: int):
     memory = request.app.state.memory
     templates = request.app.state.templates
 
-    conv = memory.chats.get_conversation(chat_id)
+    convo = memory.chats.get_conversation_dict(
+        chat_id,
+        include_messages=True,
+        include_turns=True,
+        include_turn_message_texts=True,
+    )
+    if not convo:
+        # optional: return 404 or a friendly page
+        return templates.TemplateResponse(
+            "/chats/detail.html",
+            {"request": request, "conversation": None},
+            status_code=404,
+        )
 
     return templates.TemplateResponse(
         "/chats/detail.html",
-        {
-            "request": request,
-            "conversation": conv.to_dict(include_messages=True, include_turns=True),
-        },
+        {"request": request, "conversation": convo},
     )
 
 
@@ -66,7 +77,12 @@ def chat_score_view(
     memory = request.app.state.memory
     templates = request.app.state.templates
 
-    conv = memory.chats.get_conversation(chat_id).to_dict()
+    conversation = memory.chats.get_conversation_dict(
+        chat_id,
+        include_messages=False,   # scoring page doesn’t need full message list
+        include_turns=False,
+    )
+
     offset = (page - 1) * page_size
     turns, rated, total = memory.chats.scoring_batch(
         chat_id, only_unrated=only_unrated, limit=page_size, offset=offset
@@ -78,8 +94,8 @@ def chat_score_view(
         "/chats/score.html",
         {
             "request": request,
-            "conversation": conv,   # dict
-            "turns": turns,         # list[dict]
+            "conversation": conversation,
+            "turns": turns,
             "only_unrated": only_unrated,
             "progress": {"rated": rated, "total": total},
             "page": page, "page_size": page_size,

@@ -1,10 +1,9 @@
 # stephanie/memory/chat_store.py
 from __future__ import annotations
+from typing import Any, Dict, List, Optional, Tuple
 
-from typing import List, Optional, Tuple
-
+from sqlalchemy.orm import aliased, selectinload, Query
 from sqlalchemy import desc, func, text
-from sqlalchemy.orm import aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
@@ -408,11 +407,16 @@ class ChatStore(BaseSQLAlchemyStore):
         limit: int | None = None,
         offset: int = 0,
         order_by_id: bool = True,
+        only_missing: str | None = None,   # <-- NEW
     ) -> list[dict]:
         """
-        Returns a list of dicts with pre-fetched user/assistant texts.
-        Safe for use outside the session (no lazy loads).
+        Returns list of dicts with pre-fetched user/assistant texts (no lazy loads).
         Shape: [{"id": int, "order_index": int|None, "user_text": str, "assistant_text": str}]
+
+        only_missing:
+          - "ner"      → only turns where ner is NULL
+          - "domains"  → only turns where domains is NULL
+          - None/other → no filter
         """
         def op(s):
             U = aliased(ChatMessageORM)
@@ -429,6 +433,13 @@ class ChatStore(BaseSQLAlchemyStore):
                 .join(A, ChatTurnORM.assistant_message_id == A.id)
                 .filter(ChatTurnORM.conversation_id == conv_id)
             )
+
+            # NEW: filter for missing annotations
+            if only_missing == "ner":
+                q = q.filter(ChatTurnORM.ner.is_(None))
+            elif only_missing == "domains":
+                q = q.filter(ChatTurnORM.domains.is_(None))
+
             if order_by_id:
                 q = q.order_by(ChatTurnORM.id.asc())
             if offset:
@@ -437,7 +448,6 @@ class ChatStore(BaseSQLAlchemyStore):
                 q = q.limit(limit)
 
             rows = q.all()
-            # materialize to plain dicts (session will close after _run)
             return [
                 {
                     "id": r.id,
@@ -447,4 +457,314 @@ class ChatStore(BaseSQLAlchemyStore):
                 }
                 for r in rows
             ]
+        return self._run(op)
+
+    def get_turn_domains(self, turn_id: int) -> list[dict]:
+        def op(s):
+            t = s.get(ChatTurnORM, turn_id)
+            return t.domains or [] if t else []
+        return self._run(op)
+
+    def get_turn_ner(self, turn_id: int) -> list[dict]:
+        def op(s):
+            t = s.get(ChatTurnORM, turn_id)
+            return t.ner or [] if t else []
+        return self._run(op)
+
+    def get_conversation_dict(
+        self,
+        conv_id: int,
+        *,
+        include_messages: bool = True,
+        include_turns: bool = True,
+        include_turn_message_texts: bool = True,
+    ) -> dict | None:
+        """
+        Return a fully materialized dict for a conversation.
+        All needed relationships are eagerly loaded *inside* the session
+        so no lazy loads happen after return.
+        """
+        def op(s):
+            q = s.query(ChatConversationORM)
+
+            # Eager-load messages (simple)
+            if include_messages:
+                q = q.options(selectinload(ChatConversationORM.messages))
+
+            # Eager-load turns (+ nested messages for user/assistant)
+            if include_turns:
+                q = q.options(
+                    selectinload(ChatConversationORM.turns)
+                    .selectinload(ChatTurnORM.user_message),
+                    selectinload(ChatConversationORM.turns)
+                    .selectinload(ChatTurnORM.assistant_message),
+                ) 
+
+            conv = q.filter(ChatConversationORM.id == conv_id).one_or_none()
+            if not conv:
+                return None
+
+            # Build dict *before* session closes
+            d = conv.to_dict(
+                include_messages=include_messages,
+                include_turns=include_turns,
+            )
+
+            # Optional: flatten user/assistant texts onto turn dicts for templates
+            if include_turns and include_turn_message_texts and d.get("turns"):
+                for t in d["turns"]:
+                    um = t.get("user_message") or {}
+                    am = t.get("assistant_message") or {}
+                    t["user_text"] = um.get("text") or "—"
+                    t["assistant_text"] = am.get("text") or "—"
+
+            return d
+
+        return self._run(op)
+
+
+    def list_turns(
+        self,
+        *,
+        min_star: Optional[int] = None,
+        max_star: Optional[int] = None,
+        goal_id: Optional[str] = None,
+        casebook_id: Optional[int] = None,
+        domain: Optional[str] = None,
+        has_entities: bool = True,
+        min_text_len: int = 1,
+        limit: int = 10_000,
+        order_desc: bool = True,
+    ) -> List[ChatTurnORM]:
+        """
+        Fetch chat turns with common filters. All SQL and dialect-specific handling
+        happens inside the session via self._run(...). If the DB cannot enforce
+        'entities non-empty' (no JSONB), we Python-filter after fetching.
+        """
+        def op(s):
+            q: Query = (
+                s.query(ChatTurnORM)
+                .filter(ChatTurnORM.text.isnot(None), ChatTurnORM.text != "")
+            )
+
+            if min_text_len and min_text_len > 1:
+                try:
+                    q = q.filter(func.length(ChatTurnORM.text) >= int(min_text_len))
+                except Exception:
+                    # some dialects don’t support length(); skip quietly
+                    pass
+
+            db_filtered = False
+            if has_entities:
+                q = q.filter(ChatTurnORM.entities.isnot(None))
+                # Try DB-side JSON length check; returns (q, db_filtered)
+                try:
+                    q, db_filtered = self._apply_has_entities(q)
+                except Exception:
+                    # if store lacks helper for some reason, fall back to best effort
+                    try:
+                        q = q.filter(func.jsonb_array_length(ChatTurnORM.entities) > 0)
+                        db_filtered = True
+                    except Exception:
+                        db_filtered = False
+
+            if min_star is not None:
+                q = q.filter(ChatTurnORM.star >= int(min_star))
+            if max_star is not None:
+                q = q.filter(ChatTurnORM.star <= int(max_star))
+            if goal_id is not None:
+                q = q.filter(ChatTurnORM.goal_id == goal_id)
+            if casebook_id is not None:
+                q = q.filter(ChatTurnORM.casebook_id == casebook_id)
+            if domain is not None:
+                q = q.filter(ChatTurnORM.domain == domain)
+
+            q = q.order_by(ChatTurnORM.id.desc() if order_desc else ChatTurnORM.id.asc())
+            rows = q.limit(int(limit)).all()
+
+            # Python-side enforcement if DB couldn't filter entities non-empty
+            if has_entities and not db_filtered:
+                def _non_empty_entities(val) -> bool:
+                    if val is None:
+                        return False
+                    if isinstance(val, str):
+                        # allow both JSON string and literal '[]'
+                        val = val.strip()
+                        if val == "" or val == "[]":
+                            return False
+                        try:
+                            import json
+                            arr = json.loads(val)
+                            return isinstance(arr, list) and len(arr) > 0
+                        except Exception:
+                            # if not JSON, treat as truthy string
+                            return True
+                    # ORM may materialize as list already
+                    try:
+                        return isinstance(val, list) and len(val) > 0
+                    except Exception:
+                        return False
+
+                rows = [r for r in rows if _non_empty_entities(getattr(r, "entities", None))]
+
+            return rows
+
+        return self._run(op)
+
+
+    def count_turns(
+        self,
+        *,
+        min_star: Optional[int] = None,
+        max_star: Optional[int] = None,
+        goal_id: Optional[str] = None,
+        casebook_id: Optional[int] = None,
+        domain: Optional[str] = None,
+        has_entities: bool = True,
+        min_text_len: int = 1,
+    ) -> int:
+        """
+        Count turns matching filters (mirrors list_turns). Executes entirely within
+        the session via self._run(...). If the DB can't enforce 'entities non-empty',
+        we do a lightweight Python-side count.
+        """
+        def op(s):
+            q: Query = (
+                s.query(ChatTurnORM.id, ChatTurnORM.entities)
+                .filter(ChatTurnORM.text.isnot(None), ChatTurnORM.text != "")
+            )
+
+            if min_text_len and min_text_len > 1:
+                try:
+                    q = q.filter(func.length(ChatTurnORM.text) >= int(min_text_len))
+                except Exception:
+                    pass
+
+            db_filtered = False
+            if has_entities:
+                q = q.filter(ChatTurnORM.entities.isnot(None))
+                try:
+                    # Try to push JSONB length to DB
+                    q = q.filter(func.jsonb_array_length(ChatTurnORM.entities) > 0)
+                    db_filtered = True
+                except Exception:
+                    db_filtered = False  # we'll count client-side below
+
+            if min_star is not None:
+                q = q.filter(ChatTurnORM.star >= int(min_star))
+            if max_star is not None:
+                q = q.filter(ChatTurnORM.star <= int(max_star))
+            if goal_id is not None:
+                q = q.filter(ChatTurnORM.goal_id == goal_id)
+            if casebook_id is not None:
+                q = q.filter(ChatTurnORM.casebook_id == casebook_id)
+            if domain is not None:
+                q = q.filter(ChatTurnORM.domain == domain)
+
+            if db_filtered or not has_entities:
+                # DB already enforced non-empty entities, or we don't require it
+                return q.count()
+
+            # Python-side count for non-JSONB dialects
+            rows = q.all()
+
+            def _non_empty_entities(val) -> bool:
+                if val is None:
+                    return False
+                if isinstance(val, str):
+                    val = val.strip()
+                    if val == "" or val == "[]":
+                        return False
+                    try:
+                        import json
+                        arr = json.loads(val)
+                        return isinstance(arr, list) and len(arr) > 0
+                    except Exception:
+                        return True
+                try:
+                    return isinstance(val, list) and len(val) > 0
+                except Exception:
+                    return False
+
+            return sum(1 for (_id, ents) in rows if _non_empty_entities(ents))
+
+        return self._run(op)
+
+
+    def list_turns_with_texts(
+        self,
+        *,
+        min_star: Optional[int] = None,
+        max_star: Optional[int] = None,
+        require_assistant_text: bool = True,
+        require_nonempty_ner: bool = True,
+        min_assistant_len: int = 1,
+        limit: int = 10000,
+        order_desc: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Returns lightweight dict rows for turns with pre-fetched assistant/user texts:
+        { id, conversation_id, order_index, star, user_text, assistant_text, ner, domains }
+
+        All SQL happens inside the session; no lazy loads in the caller.
+        """
+        def op(s):
+            U = aliased(ChatMessageORM)
+            A = aliased(ChatMessageORM)
+
+            q = (
+                s.query(
+                    ChatTurnORM.id.label("id"),
+                    ChatTurnORM.conversation_id.label("conversation_id"),
+                    ChatTurnORM.order_index.label("order_index"),
+                    ChatTurnORM.star.label("star"),
+                    ChatTurnORM.ner.label("ner"),
+                    ChatTurnORM.domains.label("domains"),
+                    U.text.label("user_text"),
+                    A.text.label("assistant_text"),
+                )
+                .join(U, ChatTurnORM.user_message_id == U.id)
+                .join(A, ChatTurnORM.assistant_message_id == A.id)
+            )
+
+            if min_star is not None:
+                q = q.filter(ChatTurnORM.star >= int(min_star))
+            if max_star is not None:
+                q = q.filter(ChatTurnORM.star <= int(max_star))
+
+            if require_assistant_text:
+                q = q.filter(A.text.isnot(None), A.text != "")
+                if min_assistant_len and min_assistant_len > 1:
+                    try:
+                        q = q.filter(func.length(A.text) >= int(min_assistant_len))
+                    except Exception:
+                        pass
+
+            if require_nonempty_ner:
+                # Prefer JSON length on Postgres
+                try:
+                    q = q.filter(ChatTurnORM.ner.isnot(None))
+                    q = q.filter(func.jsonb_array_length(ChatTurnORM.ner) > 0)
+                except Exception:
+                    # Fallback: at least not NULL; client can recheck if needed
+                    q = q.filter(ChatTurnORM.ner.isnot(None))
+
+            q = q.order_by(ChatTurnORM.id.desc() if order_desc else ChatTurnORM.id.asc())
+            q = q.limit(int(limit))
+            rows = q.all()
+
+            out = []
+            for r in rows:
+                out.append({
+                    "id": r.id,
+                    "conversation_id": r.conversation_id,
+                    "order_index": int(r.order_index or 0),
+                    "star": int(r.star or 0),
+                    "user_text": r.user_text or "",
+                    "assistant_text": r.assistant_text or "",
+                    "ner": r.ner or [],
+                    "domains": r.domains or [],
+                })
+            return out
+
         return self._run(op)

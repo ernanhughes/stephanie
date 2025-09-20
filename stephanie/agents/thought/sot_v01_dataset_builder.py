@@ -57,7 +57,7 @@ class SoTV01DatasetBuilder:
                         for rt in retrieved_turns
                     ],
                     "response": your_response,
-                    "predicted_move": predicted_move,
+                    "predicted_move": predicted_move, 
                     "conversation_id": conv.id,
                     "turn_id": turn.id
                 }

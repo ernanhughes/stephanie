@@ -1,0 +1,204 @@
+# config/config.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: default
+  - scoring/service/default
+  - logging/json_logger
+  - mars/default
+
+  - scorer/reward/default
+  - scorer/ebt/default
+  - scorer/hrm/default
+  - scorer/mrq/default
+  - scorer/sicql/default
+  - scorer/svm/default
+  - scorer/contrastive_ranker/default
+  - scorer/epistemic_hrm/default
+
+  - agents/knowledge_trainer
+  - agents/chat_annotate
+  - agents/paper_processor
+  - agents/sot_v01_agent
+  - agents/scorable_entity
+  - agents/chat_to_casebook
+  - agents/pacs_trainer
+  - agents/universal_scorer
+  - agents/chat_import
+  - agents/casebook_preparation
+  - agents/pacs_training
+  - agents/skill_extraction
+  - agents/skill_validation
+  - agents/skill_filter
+  - agents/seed_casebook
+  - agents/arxiv_search
+  - agents/modular_memento
+  - agents/memento
+  - agents/generation
+  - agents/cbr_dspy
+  - agents/cartridge
+  - agents/document_loader
+  - agents/document_profiler
+  - agents/hrm_trainer
+  - agents/document_reward_scorer
+  - agents/icl_reasoning
+  - agents/knowledge_loader
+  - agents/planner_reuse
+  - agents/planner_revise
+  - agents/knowledge_db_loader
+  - agents/pipeline_judge
+  - agents/paper_score
+  - agents/agent_scorer
+  - agents/plan_trace_scorer
+  - logging/json_logger
+
+embeddings:
+  backend: hnet
+
+goal:
+  goal_text: >
+    Lets design a process where we can effectively use our chat history to improve our future results.
+  goal_type: "strategic"
+  goal_category: "meta_reasoning"
+  focus_area: "case_based_learning"
+  strategy: "retrieve_reuse_revise_retain"
+  difficulty: "high"
+  expected_formats:
+    - "case_trace"
+    - "scorable_rankings"
+    - "revised_plan"
+    - "retained_cartridge"
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http O://localhost:8080"
+
+pipeline:
+  name: pacs_trainer_pipeline
+  tag: pacs
+  description: >
+    Implementation of the PACS framework, where raw multi-agent chats are imported,
+    transformed into CaseBooks, scored, and used to train models on longitudinal signals.
+
+  stages:
+     - name: chat_import
+       description: >
+         🗂️ Import raw chat logs (JSON/HTML) from OpenAI, Qwen, Gemini, and DeepSeek.
+         Parse, deduplicate, and normalize conversations into structured ORM objects.
+       cls: stephanie.agents.pacs.chat_import.ChatImportAgent
+       enabled: false
+       iterations: 1
+
+     - name: chat_annotate
+       description: >
+         📌 Annotate raw chat logs with metadata (participants, timestamps, message types,
+         etc.) to prepare for ingestion.  This is a lightweight preprocessing step that
+         adds structure to unstructured chat data.
+       cls: stephanie.agents.chat_annotate.ChatAnnotateAgent
+       enabled: false
+       iterations: 1 
+
+     - name: knowledge_trainer
+       description: >
+          🤖 Train Stephanie using the Knowledge Scorer.  
+          A contrastive learning approach that uses positive and negative pairs of
+          (chat, knowledge) to learn to rank relevant knowledge higher.
+       cls: stephanie.agents.maintenance.knowledge_trainer.KnowledgeTrainerAgent
+       enabled: true
+       iterations: 1
+
+     - name: chat_to_casebook
+       description: >
+         🐦‍🔥 Transform imported conversations into CaseBooks.  
+         Each conversation (or turn/message, depending on granularity) becomes a Case
+         with linked Scorables, tied to a goal context.
+       cls: stephanie.agents.pacs.chat_to_casebook.ChatToCaseBookAgent
+       enabled: false
+       iterations: 1
+
+     - name: knowledge_db_loader
+       description: "🔓 Load prior retained knowledge from the database for retrieval"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    
+
+     - name: paper_processor
+       description: > 
+         🗂️ Process academic papers and extract relevant information.
+         This includes summarization, key findings extraction, and citation analysis.
+       cls: stephanie.agents.dspy.paper_processor.DSPyPaperSectionProcessorAgent
+       enabled: true
+       iterations: 1
+
+     - name: sot_v01_agent
+       description: >
+          🤖 Train Stephanie using the SoT v0.1 algorithm.  
+          A supervised learning approach that uses multi-task learning to predict next moves
+          in a conversation, trained on historical chat data.
+       cls: stephanie.agents.thought.sot_v01_agent.SoTV01Agent
+       enabled: false
+       iterations: 1
+
+     - name: universal_scorer
+       description: >
+         📊 Score the generated Scorables across multiple dimensions (novelty, clarity,
+         relevance, implementability, alignment, etc.) using ensemble scorers (SICQL, HRM, EBT).
+         Produces rich feedback that turns chats into labeled training data.
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false
+       iterations: 1 
+
+     - name: casebook_preparation
+       description: >
+         🗂️ Aggregate scored Scorables into prepared CaseBooks.  
+         Compute progress stats, select high-quality examples, and build RLVR-style datasets
+         ready for PACS training.
+       cls: stephanie.agents.pacs.casebook_preparation.CaseBookPreparationAgent
+       enabled: false
+       iterations: 1
+
+     - name: pacs_trainer
+       description: >
+         🤖 Train Stephanie using the PACS algorithm.  
+         Replace unstable RL with a supervised loop that couples actor and critic signals ,
+         using CaseBook trajectories as the source of rewards.
+       cls: stephanie.agents.pacs.pacs_trainer.PACSTrainerAgent
+       enabled: false
+       iterations: 1
+
+     - name: skill_extraction
+       description: "🗂️ Purpose: Validate that weight-space and VPM-space deltas align"
+       cls: stephanie.agents.pacs.skill_extraction.SkillExtractionAgent
+       enabled: false
+       iterations: 1
+
+     - name: skill_validation
+       description: "🗂️ Purpose: Validate that weight-space and VPM-space deltas align"
+       cls: stephanie.agents.pacs.skill_validation.SkillValidationAgent
+       enabled: false
+       iterations: 1
+
+     - name: skill_filter
+       description: "🗂️ Prepare: load and prepare Skill Filters for training"
+       cls: stephanie.agents.pacs.filter_bank.FilterBankAgent
+       enabled: false
+       iterations: 1
+
+     - name: knowledge_db_loader
+       description: "Load prior retained knowledge from the database for retrieval"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: false
+       iterations: 1    
+
+     - name: scorable_entity
+       description: "🗂️ Extract and prepare Scorable entities from the CaseBook"
+       cls: stephanie.agents.scorable_entity.ScorableEntityAgent
+       enabled: false
+       iterations: 1

@@ -58,7 +58,7 @@ class ChatAnnotateAgent(BaseAgent):
         })
 
         # Initialize KG once if using kg backend
-        kg = self.container.get("knowledge_graph") if self.ner_backend == "kg" else None
+        kg = self.container.get("knowledge_graph") 
         if kg:
             kg.initialize()
 

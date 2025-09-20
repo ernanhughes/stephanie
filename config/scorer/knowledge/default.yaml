@@ -1,0 +1,24 @@
+# configs/scorer/knowledge/default.yaml
+model_type: knowledge
+target_type: chat I and
+model_path: models
+model_version: v1
+early_stopping: true
+patience: 3
+min_delta: 1e-4
+batch_size: 4
+epochs: 30
+lr: 1e-4
+min_samples: 20
+use_tuner: true
+beta: 2.0
+margin: 0.2
+
+aux_features:
+  - human_stars
+  - pseudo_stars
+  - artifact_quality
+  - turn_pos_ratio
+  - has_retrieval
+  - retrieval_fidelity
+  - text_len_norm
