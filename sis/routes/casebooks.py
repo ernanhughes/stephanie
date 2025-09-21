@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 router = APIRouter()
 
@@ -293,3 +293,33 @@ def case_detail(request: Request, case_id: int):
             "mars_cards": [c for c in mars_cards if c.get("dimension")],
         },
     )
+
+
+@router.get("/casebooks/{case_id}/uncertain", response_class=HTMLResponse)
+def list_uncertain(request: Request, case_id: int):
+    memory = request.app.state.memory
+    rows = memory.casebooks.list_scorables_by_role(case_id, role="uncertain_candidate", limit=500)
+    # If you don't want a template yet, just return a quick HTML:
+    items = "".join(
+        f"""
+        <div style="border:1px solid #ddd; padding:10px; margin:8px;">
+          <div><b>Agent:</b> {r.meta.get('agent_name')}</div>
+          <div><b>Section:</b> {r.meta.get('section_name')}</div>
+          <div><b>Scores:</b> K={r.meta.get('knowledge_score'):.2f} AI={r.meta.get('ai_judge_score'):.2f} Q={r.meta.get('artifact_quality'):.2f} Blend={r.meta.get('blended_score'):.2f}</div>
+          <pre style="white-space:pre-wrap;">{(r.text or '').strip()[:4000]}</pre>
+          <form method="post" action="/casebooks/{case_id}/label/{r.id}">
+            <label>Human star (-5..5):</label>
+            <input name="human_star" type="number" min="-5" max="5" step="1" required>
+            <button>Save</button>
+          </form>
+        </div>
+        """
+        for r in rows
+    )
+    return HTMLResponse(f"<h2>Borderline candidates for labeling (case {case_id})</h2>{items or '<p>None</p>'}")
+
+@router.post("/casebooks/{case_id}/label/{scorable_id}")
+def label_candidate(request: Request, case_id: int, scorable_id: int, human_star: int = Form(...)):
+    memory = request.app.state.memory
+    memory.casebooks.update_scorable_meta(scorable_id, {"human_star": int(human_star)})
+    return RedirectResponse(url=f"/casebooks/{case_id}/uncertain", status_code=303)

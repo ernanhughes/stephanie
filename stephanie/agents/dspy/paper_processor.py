@@ -15,6 +15,8 @@ from stephanie.utils.paper_utils import (build_paper_goal_meta,
                                          section_goal_text, section_quality,
                                          system_guidance_from_goal)
 
+import logging
+_logger = logging.getLogger(__name__)
 
 # DSPy Signatures for each step in the processing pipeline
 class ClaimExtractionSignature(dspy.Signature):
@@ -146,13 +148,39 @@ class FinalValidationSignature(dspy.Signature):
         format=lambda x: json.dumps(x, indent=2),
     )
 
+# -------------------------------------------------------------------------
+# LM wrapper (optional prompt logging)
+# -------------------------------------------------------------------------
+class LoggingLM(dspy.LM):
+    def __init__(self, *args, debug_prompts: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._debug_prompts = debug_prompts
+
+    def __call__(self, *args, **kwargs):
+        if self._debug_prompts:
+            prompt = kwargs.get("prompt")
+            messages = kwargs.get("messages")
+            if prompt:
+                _logger.info(
+                    "=== DSPy PROMPT ===\n%s\n====================", prompt
+                )
+            if messages:
+                _logger.info(
+                    "=== DSPy MESSAGES ===\n%s\n====================", messages
+                )
+        result = super().__call__(*args, **kwargs)
+        if self._debug_prompts:
+            _logger.info(
+                "=== DSPy RESPONSE ===\n%s\n====================", result
+            )
+        return result
+
 
 class DSPyPaperSectionProcessorAgent(BaseAgent):
     """
     DSPy-based processor for transforming paper sections into high-quality blog posts
     Uses structured reasoning, iterative refinement, and verification against knowledge base
     """
-
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
 
@@ -180,7 +208,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         # Initialize DSPy
         self._init_dspy()
 
-        self.logger.info(
+        self.logger.log(
             "DSPyPaperSectionProcessor initialized",
             {
                 "max_refinements": self.max_refinements,
@@ -193,92 +221,69 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         """Initialize DSPy with appropriate configuration"""
         # Configure DSPy for best
 
-        lm = dspy.LM(
-            "ollama_chat/qwen3",
-            api_base="http://localhost:11434",
-            api_key="",
+        model_cfg = self.cfg.get("model", {}) or {}
+        lm = LoggingLM(
+            model_cfg.get("name", "ollama_chat/qwen3"),
+            api_base=model_cfg.get("api_base", "http://localhost:11434"),
+            api_key=model_cfg.get("api_key", ""),
+            debug_prompts=bool(self.cfg.get("debug_prompts", True)),
         )
         dspy.configure(lm=lm)
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Main entrypoint for processing paper sections"""
-        self.report(
-            {
-                "event": "start",
-                "step": "DSPyPaperSectionProcessor",
-                "details": "Processing paper sections",
-            }
-        )
+        t_run = self._t0()
+        self.report({"event": "start", "agent": self.name, "step": "paper_processor.run", "details": "Processing paper sections"})
 
-        # Get document data
-        documents = context.get(self.input_key, [])
+        documents = context.get(self.input_key, [])  # <- same as before
         processed_sections = []
+        self.report({"event": "input", "agent": self.name, "docs_count": len(documents)})
 
-        for doc in documents:
+        for di, doc in enumerate(documents, start=1):
+            dt0 = self._t0()
             doc_id = doc.get("id")
             title = doc.get("title", "")
+            self.report({"event": "doc.begin", "agent": self.name, "index": di, "doc_id": doc_id, "title": title})
+
             casebook_name = generate_casebook_name(self.casebook_action, title)
             casebook = self.memory.casebooks.ensure_casebook(
                 name=casebook_name,
                 description=f"Agent generated blog for paper {title}",
                 tag=self.casebook_action,
             )
-            # Create (or reuse) a paper-level goal
+            self.report({"event": "doc.casebook", "agent": self.name, "doc_id": doc_id, "casebook_id": casebook.id, "casebook_name": casebook_name})
+
             paper_goal = self.memory.goals.get_or_create(
                 {
                     "goal_text": build_paper_goal_text(title),
                     "description": "Generate section-wise blog drafts with verification & refinement.",
-                    "meta": build_paper_goal_meta(
-                        title, doc_id, domains=self.cfg.get("domains", [])
-                    ),
+                    "meta": build_paper_goal_meta(title, doc_id, domains=self.cfg.get("domains", [])),
                 }
             ).to_dict()
+            self.report({"event": "doc.goal", "agent": self.name, "doc_id": doc_id, "goal_id": paper_goal["id"]})
 
-            # Optional: place on context so each step can see it
-
-            structured_data = self.memory.document_sections.get_by_document(
-                doc_id
-            )
-
+            structured_data = self.memory.document_sections.get_by_document(doc_id)
             if not structured_data:
-                self.logger.warning(
-                    f"No structured data for document {doc_id}"
-                )
+                self.report({"event": "doc.skip", "agent": self.name, "reason": "no_structured_sections", "doc_id": doc_id, "elapsed_ms": self._ms_since(dt0)})
+                _logger.warning(f"No structured data for document {doc_id}")
                 continue
 
-            self.logger.info(
-                f"Processing document {doc_id} with {len(structured_data)} sections"
-            )
+            self.report({"event": "doc.sections", "agent": self.name, "doc_id": doc_id, "sections_count": len(structured_data)})
 
-            # Process sections in order of importance
-            for section in structured_data:
+            for si, section in enumerate(structured_data, start=1):
                 section_name = section.section_name
-                section_text = section.section_text
-
+                section_text = section.section_text or ""
                 if len(section_text) < self.min_section_length:
+                    self.report({"event": "section.skip", "agent": self.name, "doc_id": doc_id, "section_name": section_name, "reason": "short_text", "len": len(section_text)})
                     continue
 
-                try:
-                    # Process section through DSPy pipeline
-                    section_context = {
-                        "section_text": section_text,
-                        "section_name": section_name,
-                        "goal_template": self.goal_template,
-                        "paper_id": doc_id,
-                        "section_id": section.id,
-                        "paper_title": title,                # <-- use paper_title consistently
-                        "document_text": doc.get("text", ""),
-                        "document_summary": doc.get("summary", ""),
-                        "pipeline_run_id": context.get("pipeline_run_id"),
-                        "casebook_id": casebook.id,
-                        "source": self.name,
-                        "goal_id": paper_goal["id"],
-                        "goal_text": paper_goal["goal_text"],
-                        "section_order_index": getattr(section, "order_index", None),
-                    }
+                st0 = self._t0()
+                self.report({"event": "section.begin", "agent": self.name, "doc_id": doc_id, "section_index": si, "section_name": section_name, "text_len": len(section_text)})
 
+                try:
+                    # (optional) handle abstract → intro pipeline
                     if "abstract" == section_name.lower().strip():
                         prior_summary = doc.get("summary", "")
+                        it0 = self._t0()
                         intro_result = await self._process_introduction(
                             title=title,
                             abstract=section_text,
@@ -286,6 +291,15 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                             audience="technical blog readers",
                             goals=self._intro_goal(title),
                         )
+                        self.report({
+                            "event": "section.intro_done",
+                            "agent": self.name,
+                            "doc_id": doc_id,
+                            "section_name": section_name,
+                            "passed": bool(intro_result.get("passed")),
+                            "iterations": intro_result.get("refinement_iterations"),
+                            "elapsed_ms": self._ms_since(it0),
+                        })
                         self._save_introduction_to_casebook(
                             casebook=casebook,
                             doc_id=doc_id,
@@ -296,47 +310,68 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                             intro_result=intro_result,
                             context=context,
                         )
+                        self.report({"event": "section.intro_saved", "agent": self.name, "doc_id": doc_id, "section_name": section_name})
 
-                    # Run DSPy pipeline
-                    result = await self._process_section(section_context)
+                    # main section pipeline
+                    ctx = {
+                        "section_text": section_text,
+                        "section_name": section_name,
+                        "goal_template": self.goal_template,
+                        "paper_id": doc_id,
+                        "section_id": section.id,
+                        "paper_title": title,
+                        "document_text": doc.get("text", ""),
+                        "document_summary": doc.get("summary", ""),
+                        "pipeline_run_id": context.get("pipeline_run_id"),
+                        "casebook_id": casebook.id,
+                        "source": self.name,
+                        "goal_id": paper_goal["id"],
+                        "goal_text": paper_goal["goal_text"],
+                        "section_order_index": getattr(section, "order_index", None),
+                    }
+                    res = await self._process_section(ctx)
+                    self.report({
+                        "event": "section.done",
+                        "agent": self.name,
+                        "doc_id": doc_id,
+                        "section_name": section_name,
+                        "passed": bool(res.get("passed")),
+                        "iterations": res.get("refinement_iterations"),
+                        "elapsed_ms": self._ms_since(st0),
+                    })
 
-                    # Save to case book
                     self._save_section_to_casebook(
-                        casebook,
-                        paper_goal["id"],
-                        doc_id,
-                        section_name,
-                        section_text,
-                        result,
-                        context,
+                        casebook, paper_goal["id"], doc_id, section_name, section_text, res, ctx
                     )
+                    self.report({"event": "section.saved", "agent": self.name, "doc_id": doc_id, "section_name": section_name})
 
-                    processed_sections.append(
-                        {
-                            "doc_id": doc_id,
-                            "section_name": section_name,
-                            "summary": result.get("final_draft", ""),
-                            "metrics": result.get("validation_report", {}),
-                            "valid": result.get("passed", False),
-                        }
-                    )
+                    processed_sections.append({
+                        "doc_id": doc_id,
+                        "section_name": section_name,
+                        "summary": res.get("final_draft", "") or res.get("refined_draft", {}),
+                        "metrics": res.get("final_validation", {}) or res.get("validation_report", {}),
+                        "valid": bool(res.get("passed")),
+                    })
+
                 except Exception as e:
-                    self.logger.error(
-                        f"Error processing section {section_name} for doc {doc_id}: {str(e)}"
-                    )
-                    import traceback
-
+                    _logger.error(f"Error processing section {section_name} for doc {doc_id}: {str(e)}")
                     traceback.print_exc()
+                    self.report({"event": "section.error", "agent": self.name, "doc_id": doc_id, "section_name": section_name, "error": str(e)})
 
-        self.report(
-            {
-                "event": "end",
-                "step": "DSPyPaperSectionProcessor",
-                "details": f"Processed {len(processed_sections)} sections across {len(documents)} documents",
-            }
-        )
+            self.report({"event": "doc.end", "agent": self.name, "doc_id": doc_id, "elapsed_ms": self._ms_since(dt0)})
 
+        self.report({"event": "end", "agent": self.name, "processed_sections": len(processed_sections), "docs": len(documents), "elapsed_ms": self._ms_since(t_run)})
         return context
+
+
+    # --- reporting helpers -------------------------------------------------
+    def _t0(self): 
+        import time
+        return time.time()
+
+    def _ms_since(self, t0):
+        import time
+        return round((time.time() - t0) * 1000, 1)
 
 
     def _json_or_empty(self, s: Any, default: Any):
@@ -406,7 +441,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                 else:
                     data = raw_value
 
-                self.logger.info("DSPySafeInferSuccess", {
+                self.logger.log("DSPySafeInferSuccess", {
                     "module": getattr(module, "__class__", type(module)).__name__,
                     "attempt": attempt,
                     "latency_ms": round((t1 - t0) * 1000, 1),
@@ -421,13 +456,6 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                     "meta": {"attempts": attempt, "duration_ms": round((time.time()-start)*1000,1)}
                 }
             except Exception as e:
-                last_err = f"{type(e).__name__}: {e}"
-                self.logger.error("DSPySafeInferError", {
-                    "module": getattr(module, "__class__", type(module)).__name__,
-                    "attempt": attempt,
-                    "error": last_err,
-                    "trace": traceback.format_exc()[:2000],
-                })
                 time.sleep(backoff_sec)
 
         return {
@@ -567,18 +595,20 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         }
 
     async def _process_section(self, section_details: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a single section through DSPy pipeline (section-aware)."""
         section_text = section_details.get("section_text", "") or ""
         section_name = section_details.get("section_name", "section") or "section"
         paper_id = section_details.get("paper_id", "unknown")
         paper_title = section_details.get("paper_title", "Unknown Paper")
 
-        # Section-aware goal & quality
+        t0 = self._t0()
+        self.report({"event": "stage.begin", "agent": self.name, "stage": "process_section", "section_name": section_name, "paper_id": paper_id})
+
         goal_text = section_details.get("goal_text") or section_goal_text(section_name, paper_title)
         quality = section_details.get("quality_standards") or section_quality(section_name)
         sysg = system_guidance_from_goal(goal_text, quality)
 
         # 1) claims
+        c0 = self._t0()
         claims_res = self.safe_infer(
             self.claim_extractor,
             output_field="claims",
@@ -586,34 +616,34 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             section_text=f"{sysg}\n[SECTION NAME] {section_name}\n[SECTION TEXT]\n{section_text}"
         )
         claims = self._loads_or_empty(claims_res["data"], default=[])
+        self.report({"event": "stage", "agent": self.name, "stage": "claims", "section_name": section_name, "n_claims": len(claims), "elapsed_ms": self._ms_since(c0)})
 
         # 2) fuse
+        f0 = self._t0()
         conversation_history = self._get_relevant_conversations(paper_id, claims)
         fusion_res = self.safe_infer(
             self.context_fuser,
             output_field="fused_context",
             expect_json=True,
             claims=json.dumps({"section_name": section_name, "claims": claims}, ensure_ascii=False),
-            conversation_history=json.dumps(
-                {"system_guidance": sysg, "section_name": section_name, "snippets": conversation_history},
-                ensure_ascii=False
-            ),
+            conversation_history=json.dumps({"system_guidance": sysg, "section_name": section_name, "snippets": conversation_history}, ensure_ascii=False),
         )
         fused_context = self._loads_or_empty(fusion_res["data"], default={})
+        self.report({"event": "stage", "agent": self.name, "stage": "fuse", "section_name": section_name, "snippets": len(conversation_history), "elapsed_ms": self._ms_since(f0)})
 
         # 3) draft
+        d0 = self._t0()
         draft_res = self.safe_infer(
             self.draft_generator,
             output_field="blog_section",
             expect_json=True,
-            fused_context=json.dumps(
-                {"system_guidance": sysg, "section_name": section_name, "context": fused_context},
-                ensure_ascii=False
-            ),
+            fused_context=json.dumps({"system_guidance": sysg, "section_name": section_name, "context": fused_context}, ensure_ascii=False),
         )
         draft = self._loads_or_empty(draft_res["data"], default={"title": section_name, "body": ""})
+        self.report({"event": "stage", "agent": self.name, "stage": "draft", "section_name": section_name, "elapsed_ms": self._ms_since(d0)})
 
         # 4) verify
+        v0 = self._t0()
         knowledge_base = self._get_knowledge_base(paper_id)
         verify_res = self.safe_infer(
             self.verification_module,
@@ -623,11 +653,13 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             knowledge_base=json.dumps(knowledge_base, ensure_ascii=False)
         )
         verification_report = self._loads_or_empty(verify_res["data"], default={"scores": {}})
+        self.report({"event": "stage", "agent": self.name, "stage": "verify", "section_name": section_name, "elapsed_ms": self._ms_since(v0)})
 
         # 5) refine loop
         refined_draft = draft
         iterations = 0
         for iterations in range(self.max_refinements):
+            r0 = self._t0()
             refine_res = self.safe_infer(
                 self.refinement_module,
                 output_field="refined_draft",
@@ -646,10 +678,24 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             )
             verification_report = self._loads_or_empty(verify_res["data"], default=verification_report)
 
+            # surface any known scores if present
+            scores = (verification_report or {}).get("scores", {})
+            self.report({
+                "event": "stage.iteration",
+                "agent": self.name,
+                "stage": "refine",
+                "section_name": section_name,
+                "iteration": iterations + 1,
+                "scores": scores,
+                "elapsed_ms": self._ms_since(r0),
+            })
+
             if self._is_quality_threshold_met(verification_report):
+                self.report({"event": "stage.early_stop", "agent": self.name, "stage": "refine", "section_name": section_name, "iteration": iterations + 1})
                 break
 
         # 6) final validation
+        fv0 = self._t0()
         final_res = self.safe_infer(
             self.final_validator,
             output_field="final_validation",
@@ -658,13 +704,25 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             quality_standards=json.dumps(quality, ensure_ascii=False),
         )
         validation_report = self._loads_or_empty(final_res["data"], default={"scores": {}, "passed": False})
+        passed = bool(validation_report.get("passed")) or self._is_quality_threshold_met(validation_report)
+
+        self.report({
+            "event": "stage.final",
+            "agent": self.name,
+            "stage": "final_validation",
+            "section_name": section_name,
+            "passed": passed,
+            "scores": (validation_report or {}).get("scores", {}),
+            "elapsed_ms": self._ms_since(fv0),
+            "total_ms": self._ms_since(t0),
+        })
 
         return {
             "initial_draft": draft,
             "refined_draft": refined_draft,
             "verification_report": verification_report,
             "final_validation": validation_report,
-            "passed": bool(validation_report.get("passed")) or self._is_quality_threshold_met(validation_report),
+            "passed": passed,
             "refinement_iterations": iterations + 1,
             "section_name": section_name,
         }
@@ -776,62 +834,24 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             },
         )
 
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            pipeline_run_id=pipeline_run_id,
-            role="introduction_abstract",
-            text=abstract or "",
-            meta={"paper_id": doc_id, "title": title},
-        )
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            pipeline_run_id=pipeline_run_id,
-            role="introduction_prior_summary",
-            text=prior_summary or "",
-            meta={"paper_id": doc_id, "title": title},
-        )
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            pipeline_run_id=pipeline_run_id,
-            role="introduction_draft",
-            text=json.dumps(intro_result.get("intro_draft", {})),
-            meta={"paper_id": doc_id, "title": title},
-        )
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            pipeline_run_id=pipeline_run_id,
-            role="introduction_refined",
-            text=json.dumps(intro_result.get("refined_intro", {})),
-            meta={"paper_id": doc_id, "title": title},
-        )
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            pipeline_run_id=pipeline_run_id,
-            role="introduction_verification",
-            text=json.dumps(intro_result.get("verification_report", {})),
-            meta={"paper_id": doc_id, "title": title},
-        )
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            pipeline_run_id=pipeline_run_id,
-            role="introduction_final_validation",
-            text=json.dumps(intro_result.get("final_validation", {})),
-            meta={"paper_id": doc_id, "title": title},
-        )
-        self.memory.casebooks.add_scorable(
-            case_id=case.id,
-            pipeline_run_id=pipeline_run_id,
-            role="introduction_metrics",
-            text=json.dumps(
-                {
-                    "passed": intro_result.get("passed", False),
-                    "refinement_iterations": intro_result.get(
-                        "refinement_iterations", 0
-                    ),
-                }
-            ),
-            meta={"paper_id": doc_id, "title": title},
-        )
+        count = 0
+        for role, payload in [
+            ("introduction_abstract", abstract or ""),
+            ("introduction_prior_summary", prior_summary or ""),
+            ("introduction_draft", json.dumps(intro_result.get("intro_draft", {}))),
+            ("introduction_refined", json.dumps(intro_result.get("refined_intro", {}))),
+            ("introduction_verification", json.dumps(intro_result.get("verification_report", {}))),
+            ("introduction_final_validation", json.dumps(intro_result.get("final_validation", {}))),
+            ("introduction_metrics", json.dumps({"passed": intro_result.get("passed", False),
+                                                "refinement_iterations": intro_result.get("refinement_iterations", 0)})),
+        ]:
+            self.memory.casebooks.add_scorable(
+                case_id=case.id, pipeline_run_id=pipeline_run_id, role=role, text=payload,
+                meta={"paper_id": doc_id, "title": title},
+            )
+            count += 1
+
+        self.report({"event": "persist.intro", "agent": self.name, "doc_id": doc_id, "case_id": case.id, "scorables": count})
 
     def _save_section_to_casebook(
         self,
@@ -852,7 +872,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         order_index = context.get("section_order_index")  # int or None
         paper_id = context.get("paper_id")
         pipeline_run_id = context.get("pipeline_run_id")
-
+        saved = 0
         # 1) Create the case (section-aware prompt + meta)
         case_prompt = {
             "paper_id": paper_id or doc_id,
@@ -860,8 +880,9 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             "section_name": section_name,
             "section_order_index": order_index,
         }
+        saved += 1
 
-        case_meta = {
+        case_meta = {   
             "type": "draft_trajectory",
             "paper_id": paper_id or doc_id,
             "paper_title": paper_title,
@@ -870,6 +891,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             "timestamp": time.time(),
             "source": "dspy.paper_processor",
         }
+        saved += 1
 
         case = self.memory.casebooks.add_case(
             casebook_id=casebook.id,
@@ -878,6 +900,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             agent_name=self.name,
             meta=case_meta,
         )
+        saved += 1
 
         # Common scorable meta to keep things uniform
         def _smeta(extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
@@ -899,6 +922,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             role="section_text",
             meta=_smeta(),
         )
+        saved += 1
 
         # 3) Initial draft
         self.memory.casebooks.add_scorable(
@@ -908,6 +932,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             role="initial_draft",
             meta=_smeta(),
         )
+        saved += 1
 
         # 4) Refined draft
         refined_draft = result.get("refined_draft", {})
@@ -918,6 +943,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             role="refined_draft",
             meta=_smeta({"refinement_iterations": result.get("refinement_iterations", 0)}),
         )
+        saved += 1
 
         # 5) Verification report
         verification_report = result.get("verification_report", {})
@@ -928,6 +954,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             role="verification_report",
             meta=_smeta(),
         )
+        saved += 1
 
         # 6) Final validation
         final_validation = result.get("final_validation", {})
@@ -938,6 +965,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             role="final_validation",
             meta=_smeta(),
         )
+        saved += 1
 
         # 7) Metrics (passed, iterations, etc.)
         metrics = {
@@ -953,6 +981,16 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             role="metrics",
             meta=_smeta(),
         )
+        saved += 1
+
+        self.report({
+            "event": "persist.section",
+            "agent": self.name,
+            "doc_id": doc_id,
+            "section_name": section_name,
+            "case_id": case.id,
+            "saved_scorables": saved
+        })
 
     def _loads_or_empty(self, obj, default):
         """

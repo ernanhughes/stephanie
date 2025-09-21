@@ -125,6 +125,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         self.audit_enabled = bool(cfg.get("enable_audit_report", True))
         self.report_dir = str(cfg.get("audit_report_dir", "reports/track_c"))
         os.makedirs(self.report_dir, exist_ok=True)
+        self.max_time_sec = int(cfg.get("max_time_sec", 120))  # 2 minutes default
 
         self.logger.log(
             "KnowledgeInfusedVerifierInit",
@@ -379,7 +380,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         track_b: Any,
     ) -> Dict[str, Any]:
         start_time = time.time()
-
+        time_limit_at = start_time + float(self.max_time_sec)
         abstract = self._fetch_abstract(doc_id)
         arxiv_summary = paper_data.get("summary", "")
         goal_title = paper_data.get("title", "")
@@ -513,6 +514,11 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                 audit["iterations"].append(iter_payload)
                 if panel_detail and not audit.get("kbase_hints"):
                     audit["kbase_hints"] = panel_detail.get("kb_hints", [])
+
+            if time.time() > time_limit_at:
+                self.report({"event": "early_stop", "reason": "time_limit", "iteration": iter_idx + 1})
+                break
+
 
             # accept if improves enough
             if (

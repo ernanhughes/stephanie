@@ -101,7 +101,7 @@ pipeline:
          etc.) to prepare for ingestion.  This is a lightweight preprocessing step that
          adds structure to unstructured chat data.
        cls: stephanie.agents.knowledge.chat_annotate.ChatAnnotateAgent
-       enabled: true
+       enabled: false
        iterations: 1 
 
      - name: chat_to_casebook
