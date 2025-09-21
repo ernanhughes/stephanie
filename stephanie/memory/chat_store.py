@@ -981,6 +981,8 @@ class ChatStore(BaseSQLAlchemyStore):
         *,
         min_star: Optional[int] = None,
         max_star: Optional[int] = None,
+        min_ai_score: Optional[float] = None,  
+        max_ai_score: Optional[float] = None,  
         require_assistant_text: bool = True,
         require_nonempty_ner: bool = True,
         min_assistant_len: int = 1,
@@ -993,6 +995,8 @@ class ChatStore(BaseSQLAlchemyStore):
         Args:
             min_star: Minimum star rating
             max_star: Maximum star rating
+            min_ai_score: Minimum AI knowledge score (0-100)
+            max_ai_score: Maximum AI knowledge score (0-100)
             require_assistant_text: Only include turns with assistant text
             require_nonempty_ner: Only include turns with NER annotations
             min_assistant_len: Minimum assistant text length
@@ -1015,8 +1019,10 @@ class ChatStore(BaseSQLAlchemyStore):
                     ChatTurnORM.star.label("star"),
                     ChatTurnORM.ner.label("ner"),
                     ChatTurnORM.domains.label("domains"),
-                    ChatTurnORM.ai_knowledge_score.label("ai_score"),        # NEW
-                    ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),# NEW
+                    ChatTurnORM.ai_knowledge_score.label("ai_score"),        
+                    ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),
+                    ChatTurnORM.ai_knowledge_score.label("ai_score"),        
+                    ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),
                     U.text.label("user_text"),
                     A.text.label("assistant_text"),
                     C.title.label("goal_text"),   # ← conversation title as goal text

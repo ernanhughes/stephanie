@@ -9,6 +9,7 @@ import numpy as np
 import json
 import re
 from datetime import datetime
+from stephanie.utils.coerce_utils import to_float
 
 _logger = logging.getLogger(__name__)
 
@@ -138,6 +139,7 @@ class KnowledgePairBuilder:
         )
 
 
+
         # Pull projected rows with assistant_text + ner/domains
         pos_turns = self._get_positive_turns(min_star_pos, ai_score_threshold)
         neg_turns = self._get_negative_turns(max_star_neg, ai_score_threshold)
@@ -169,6 +171,12 @@ class KnowledgePairBuilder:
             if len(pairs) >= limit:
                 break
 
+            user_prompt = (pos.get("goal_text") or "").strip()
+            if not user_prompt or not pos.get("assistant_text", "").strip() or not neg.get("assistant_text", "").strip():
+                continue  # Skip malformed pairs
+
+
+
             # Find matching negatives
             key = (pos["conversation_id"], _primary_domain_from_row(pos))
             candidates = neg_buckets.get(key, [])
@@ -193,6 +201,10 @@ class KnowledgePairBuilder:
             pos_emb = self._embed_turn_cached(pos)
             if pos_emb is None:
                 continue
+
+            # Log entity overlap drop rate
+            if len(candidates) > 0 and len(filtered) == 0:
+                _logger.debug(f"Entity overlap filtered {len(candidates)} candidates for pos_id={pos['id']}")
 
             # Build pairs
             for neg in chosen:
@@ -424,13 +436,13 @@ class KnowledgePairBuilder:
         """Build metadata dictionary for a turn"""
         # Base features
         meta = {
-            "human_stars": float(turn.get("star", 0)) if label_source == "human" else 0.0,
-            "ai_score": float(turn.get("ai_score", 50.0)),
-            "ai_score_conf": float(turn.get("ai_score_conf", 0.7)),
-            "artifact_quality": float(turn.get("artifact_quality", 0.0)),
-            "turn_pos_ratio": float(turn.get("order_index", 0)) / max(1, turn.get("conv_length", 1)),
+            "human_stars": to_float(turn.get("star", 0)) if label_source == "human" else 0.0,
+            "ai_score": to_float(turn.get("ai_score", 50.0)),
+            "ai_score_conf": to_float(turn.get("ai_score_conf", 0.7)),
+            "artifact_quality": to_float(turn.get("artifact_quality", 0.0)),
+            "turn_pos_ratio": to_float(turn.get("order_index", 0)) / max(1, to_float(turn.get("conv_length", 1))),
             "has_retrieval": 1.0 if turn.get("has_retrieval") else 0.0,
-            "retrieval_fidelity": float(turn.get("retrieval_fidelity", 0.0)),
+            "retrieval_fidelity": to_float(turn.get("retrieval_fidelity", 0.0)),
             "text_len_norm": _len_norm(turn.get("assistant_text", "")),
         }
         

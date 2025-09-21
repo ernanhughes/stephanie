@@ -352,22 +352,22 @@ class KnowledgeTrainer(BaseTrainer):
         return tot_loss / max(1, n_batches)
 
     def _load_calibrator(self):
-        """Load calibrator if available, otherwise initialize with conservative defaults"""
+        """Load calibrator or initialize with CORRECT default ranges"""
         calibrator_path = self.cfg.get("calibrator_path")
         if calibrator_path:
             try:
                 self.calibrator = ScoreCalibrator.load(calibrator_path)
                 self.logger.log("CalibratorLoaded", {"path": calibrator_path})
+                return
             except Exception as e:
                 self.logger.log("CalibratorLoadFailed", {"error": str(e)})
-
-        # If no calibrator loaded, use conservative defaults
-        if not self.calibrator.is_fitted:
-            self.logger.log("CalibratorUsingDefaults", {})
-            # map: AI 0,40,50,75,100  → Human -5,0,1,3,5  (conservative)
-            human_scores = [-5, 0, 1, 3, 5]
-            ai_scores = [0, 40, 50, 75, 100]
-            self.calibrator.fit(human_scores, ai_scores)
+        
+        # Initialize with CORRECT ranges
+        self.logger.log("CalibratorUsingDefaults", {})
+        # Map: AI 0,40,50,75,100 → Human -5,0,1,3,5 (conservative)
+        human_scores = [-5, 0, 1, 3, 5]
+        ai_scores = [0, 40, 50, 75, 100]
+        self.calibrator.fit(human_scores, ai_scores)
 
     def train(self, pairs, dimension: str = "knowledge"):
         """Train the knowledge model on contrastive pairs"""

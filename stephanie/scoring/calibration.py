@@ -231,54 +231,63 @@ class ScoreCalibrator:
         if not self.is_fitted:
             raise ValueError("Calibrator must be fitted before evaluation")
 
+        # Convert to proper ranges
         human_n = np.array(
             [(s + 5) / 10.0 for s in human_scores], dtype=float
-        )  # 0..1
+        )  # -5..+5 → 0..1
         ai_raw = np.array(ai_scores, dtype=float)  # 0..100
+
+        # Get calibrated scores
         calibrated = np.array(
             [self.calibrate(s) for s in ai_raw], dtype=float
         )  # 0..1
 
+        # Metrics
         mse = float(np.mean((calibrated - human_n) ** 2))
-        tot_var = float(np.sum((human_n - float(np.mean(human_n))) ** 2))
+        total_var = float(np.sum((human_n - np.mean(human_n)) ** 2))
         r2 = float(
-            1.0 - (np.sum((calibrated - human_n) ** 2) / (tot_var + 1e-12))
+            1.0 - (np.sum((calibrated - human_n) ** 2) / (total_var + 1e-12))
         )
 
+        # Classification accuracy (at neutral threshold)
         human_bin = (human_n > 0.5).astype(int)
         calib_bin = (calibrated > 0.5).astype(int)
-        acc = float(np.mean(human_bin == calib_bin))
+        accuracy = float(np.mean(human_bin == calib_bin))
 
         return {
             "mse": mse,
             "r2": r2,
-            "accuracy": acc,
-            "sample_count": int(len(human_scores)),
-            "threshold_0.5_accuracy": acc,
+            "accuracy": accuracy,
+            "sample_count": len(human_scores),
+            "threshold_0.5_accuracy": accuracy,
         }
 
     def save(self, path: str) -> None:
+        """Save by sampling the calibration curve instead of accessing private attrs"""
         if not self.is_fitted:
             raise ValueError("Cannot save unfitted calibrator")
 
-        # sample 0..100 and store the calibrated outputs
+        # Sample 0-100 and store calibrated outputs
         xs = list(np.linspace(0, 100, 101))
         ys = [float(self.calibrate(x)) for x in xs]
 
         save_data = {
-            "sample_x": xs,  # 0..100 domain
-            "sample_y": ys,  # calibrated [0,1]
+            "sample_x": xs,  # AI scores (0-100)
+            "sample_y": ys,  # Calibrated human-equivalent scores (0-1)
             "calibration_quality": self.calibration_quality,
             "format_version": "1.1",
             "saved_at": str(datetime.now()),
         }
+
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w") as f:
             json.dump(save_data, f, indent=2)
-        logger.info(f"ScoreCalibrator saved to {path}")
+
+        logger.info(f"ScoreCalibrator saved to {path} (n={len(xs)} samples)")
 
     @classmethod
     def load(cls, path: str) -> "ScoreCalibrator":
+        """Load by refitting on saved samples"""
         if not os.path.exists(path):
             raise FileNotFoundError(f"Calibrator file not found: {path}")
 
@@ -286,14 +295,19 @@ class ScoreCalibrator:
             data = json.load(f)
 
         cal = cls()
-        # Refit isotonic from stored (x,y). Convert to 0..1 domain for the regressor.
-        xs = np.array(data["sample_x"], dtype=float) / 100.0
-        ys = np.array(data["sample_y"], dtype=float)
+
+        # Convert to proper ranges for fitting
+        # AI: 0-100 → 0-1, Human: already 0-1 from calibrate()
+        xs = np.array(data["isotonic_x"], dtype=float) / 100.0
+        ys = np.array(data["isotonic_y"], dtype=float)
+
+        # Refit the calibrator
         cal.calibrator.fit(xs, ys)
         cal.is_fitted = True
         cal.calibration_quality = data.get(
             "calibration_quality", cal.calibration_quality
         )
+
         logger.info(f"ScoreCalibrator loaded from {path} (n={len(xs)})")
         return cal
 
