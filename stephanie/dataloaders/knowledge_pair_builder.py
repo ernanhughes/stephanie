@@ -1,6 +1,6 @@
 # stephanie/dataloaders/knowledge_pair_builder.py
 from __future__ import annotations
-
+from tqdm import tqdm
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 import random
@@ -106,7 +106,7 @@ class KnowledgePairBuilder:
 
         pairs: List[Dict[str, Any]] = []
         seen: set[str] = set()  # dedupe by (pos_id, neg_id)
-        for pi, pos in enumerate(pos_turns):
+        for pi, pos in enumerate(tqdm(pos_turns, desc="Building knowledge pairs")): 
             if len(pairs) >= limit:
                 break
 
@@ -161,6 +161,7 @@ class KnowledgePairBuilder:
                 pair = {
                     # goal / query embedding anchor
                     "prompt": user_prompt,                     # trainer will embed this as G
+                    "goal_text": user_prompt, 
 
                     # assistant outputs
                     "output_a": pos["assistant_text"],         # preferred

@@ -84,10 +84,12 @@ class KnowledgeModel:
         self.aux_proj = AuxProjector(hdim, aux_dim=len(self.aux_feature_names)).to(device)
         self.predictor = KnowledgePredictor(hdim).to(device)
 
-    # ----- runtime API (MRQ-compatible) -----
     def _embed(self, text: str) -> torch.Tensor:
         v = self.embedding_store.get_or_create(text)
-        return torch.tensor(v, device=self.device, dtype=torch.float32).unsqueeze(0)  # [1,D]
+        t = torch.tensor(v, device=self.device, dtype=torch.float32).unsqueeze(0)  # [1,D]
+        # L2 normalize
+        t = t / (t.norm(dim=-1, keepdim=True) + 1e-12)
+        return t
 
     def _aux_tensor(self, meta: Optional[dict]) -> Optional[torch.Tensor]:
         if not self.aux_feature_names:

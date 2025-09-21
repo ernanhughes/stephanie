@@ -38,6 +38,8 @@ class KnowledgeTrainerAgent(BaseAgent):
         self.limit_pairs  = int(kcfg.get("limit_pairs", 50_000))
         self.max_negs_per_pos = int(kcfg.get("max_negs_per_pos", 3))
         self.shuffle_pairs = bool(kcfg.get("shuffle_pairs", True))
+        self.show_progress = cfg.get("progress", {}).get("enabled", True)
+        self.progress_refresh = int(cfg.get("progress", {}).get("refresh", 10))  # refresh every N batches
 
     async def run(self, context: dict) -> dict:
         """
