@@ -1270,14 +1270,14 @@ CREATE INDEX IF NOT EXISTS idx_plan_traces_created_at ON public.plan_traces (cre
 -- Stores metadata for individual steps within a plan trace.
 CREATE TABLE IF NOT EXISTS execution_steps (
     id SERIAL PRIMARY KEY,
-    plan_trace_id INTEGER NOT NULL REFERENCES public.plan_traces(id) ON DELETE CASCADE, -- Parent trace
+    plan_trace_id INTEGER NOT NULL REFERENCES plan_traces(id) ON DELETE CASCADE, -- Parent trace
     pipeline_run_id INTEGER REFERENCES pipeline_runs(id),
     step_order INTEGER NOT NULL, -- Order of the step within the trace
     step_id TEXT NOT NULL, -- Unique identifier for the step
     description TEXT NOT NULL, -- Description of the step
     output_text TEXT NOT NULL, -- Output text of the step
     output_embedding_id INTEGER, -- ID referencing the embeddings table (if exists)
-    evaluation_id INTEGER UNIQUE REFERENCES public.evaluations(id) ON DELETE SET NULL, -- Link to standard scoring
+    evaluation_id INTEGER UNIQUE REFERENCES evaluations(id) ON DELETE SET NULL, -- Link to standard scoring
     meta JSONB, -- Flexible step-specific metadata
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
 );
@@ -1542,12 +1542,12 @@ CREATE TABLE chat_turns (
     conversation_id INT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
     user_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
     assistant_message_id INT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE
+    ai_knowledge_score INT,
+    ai_knowledge_rationale TEXT,
     ner JSONB,
     domains JSONB,
     stars INT,
 );
-
-
 
 
 CREATE TABLE IF NOT EXISTS scorable_entities (
@@ -1643,5 +1643,68 @@ CREATE TABLE IF NOT EXISTS model_artifacts (
 -- Indexes (match your __table_args__)
 CREATE INDEX IF NOT EXISTS ix_model_artifacts_name ON model_artifacts (name);
 CREATE INDEX IF NOT EXISTS ix_model_artifacts_tag  ON model_artifacts (tag);
+
+
+CREATE TABLE IF NOT EXISTS turn_knowledge_analysis (
+    id                    SERIAL PRIMARY KEY,
+
+    -- Identity / linkage
+    turn_id               INTEGER NOT NULL REFERENCES chat_turns(id) ON DELETE CASCADE,
+    conversation_id       INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    pipeline_run_id       INTEGER REFERENCES pipeline_runs(id),
+    order_index           INTEGER,
+
+    -- Content hashes (use TEXT per your preference)
+    goal_text_hash        TEXT NOT NULL,
+    assistant_text_hash   TEXT NOT NULL,
+
+    -- Main outputs
+    knowledge_score       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    verdict               TEXT NOT NULL DEFAULT 'not_knowledge',
+    confidence            DOUBLE PRECISION NOT NULL DEFAULT 0,
+
+    -- Details
+    dimensions            JSONB,
+    flags                 JSONB,
+    rationale             TEXT,
+    abstain               BOOLEAN NOT NULL DEFAULT FALSE,
+    is_inflection         BOOLEAN NOT NULL DEFAULT FALSE,
+
+    -- Audit
+    judge_model           TEXT,
+    judge_prompt_version  TEXT,
+
+    -- Optional linkage to a generic evaluations table
+    evaluation_id         INTEGER UNIQUE REFERENCES evaluations(id) ON DELETE SET NULL,
+
+    -- Extra room for step/task-specific data
+    meta                  JSONB,
+
+    -- Timestamps (UTC)
+    created_at            TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
+);
+
+-- Helpful indexes
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tka_turn_id
+    ON turn_knowledge_analysis (turn_id);
+
+CREATE INDEX IF NOT EXISTS ix_tka_conversation_id
+    ON turn_knowledge_analysis (conversation_id);
+
+CREATE INDEX IF NOT EXISTS ix_tka_order_index
+    ON turn_knowledge_analysis (order_index);
+
+CREATE INDEX IF NOT EXISTS ix_tka_verdict
+    ON turn_knowledge_analysis (verdict);
+
+CREATE INDEX IF NOT EXISTS ix_tka_abstain
+    ON turn_knowledge_analysis (abstain);
+
+CREATE INDEX IF NOT EXISTS ix_tka_is_inflection
+    ON turn_knowledge_analysis (is_inflection);
+
+CREATE INDEX IF NOT EXISTS ix_tka_score_desc
+    ON turn_knowledge_analysis (knowledge_score DESC);
+
 
 COMMIT; 

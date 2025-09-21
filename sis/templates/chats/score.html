@@ -60,7 +60,6 @@
           </div>
         </div>
 
-        <!-- templates/chats/score.html (inside each turn card, under Assistant column) -->
         {% if t.domains and t.domains|length > 0 %}
           <div class="mt-2 small">
             <span class="badge bg-warning text-dark">Domains</span>
@@ -105,6 +104,29 @@
             </div>
           </div>
         {% endif %}
+
+                <!-- AI score + response (only present for scored turns) -->
+        {% if t.ai_knowledge_score is not none %}
+          <div class="mt-2">
+            <span class="badge bg-dark">AI</span>
+            {% if t.ai_score is not none %}
+              <span class="badge
+                {% if t.ai_knowledge_score >= 75 %}bg-success
+                {% elif t.ai_knowledge_score >= 50 %}bg-info text-dark
+                {% elif t.ai_knowledge_score >= 25 %}bg-warning text-dark
+                {% else %}bg-danger{% endif %}">
+                {{ t.ai_knowledge_score }}
+              </span>
+            {% endif %}
+            {% if t.ai_knowledge_rationale %}
+              {% set rationale = (t.ai_knowledge_rationale or '') | trim %}
+              <div class="small text-muted mt-1" style="max-width: 60rem; white-space: pre-wrap;">
+                {{ rationale }}
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
 
         <!-- Star controls -->
         <div class="d-flex flex-wrap align-items-center gap-1 mt-2">

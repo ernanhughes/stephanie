@@ -111,6 +111,9 @@ class ChatTurnORM(Base):
     assistant_message = relationship("ChatMessageORM", foreign_keys=[assistant_message_id])
     order_index = Column(Integer, nullable=False, default=0)
     star = Column(Integer, nullable=False, default=0)
+    ai_knowledge_score = Column(Integer, nullable=True)     # 0..100
+    ai_knowledge_rationale = Column(Text, nullable=True)
+    
     ner = Column(JSON, nullable=True)      # [{"text":"PACS","label":"METHOD","start":12,"end":16}, ...]
     domains = Column(JSON, nullable=True)  # [{"domain":"alignment","score":0.82}, ...]
 
@@ -119,9 +122,19 @@ class ChatTurnORM(Base):
             "id": self.id,
             "conversation_id": self.conversation_id,
             "user_message_id": self.user_message_id,
-            "star": self.star,
-            "order_index": self.order_index,
             "assistant_message_id": self.assistant_message_id,
+            "order_index": self.order_index,
+            "star": self.star,
+
+            "ai_knowledge_score": self.ai_knowledge_score,
+            "ai_knowledge_score_norm": (
+                None if self.ai_knowledge_score is None
+                else max(0.0, min(1.0, float(self.ai_knowledge_score)/100.0))
+            ),
+            "ai_knowledge_rationale": self.ai_knowledge_rationale or "",
+            
+            "ner": self.ner or [],
+            "domains": self.domains or [],
         }
         if include_messages:
             data["user_message"] = self.user_message.to_dict() if self.user_message else None

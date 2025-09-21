@@ -92,7 +92,7 @@ pipeline:
        description: >
          🗂️ Import raw chat logs (JSON/HTML) from OpenAI, Qwen, Gemini, and DeepSeek.
          Parse, deduplicate, and normalize conversations into structured ORM objects.
-       cls: stephanie.agents.pacs.chat_import.ChatImportAgent
+       cls: stephanie.agents.knowledge.chat_import.ChatImportAgent
        enabled: false
        iterations: 1
 

@@ -12,7 +12,7 @@ Key Features:
 - Integration with both chat storage and casebook systems
 - Comprehensive logging for import operations
 
-Usage: Our next part is the agent
+Usage:
     from stephanie.tools.chat_importer import import_conversations
     result = import_conversations(memory, "/path/to/chat/exports", context)
 """
@@ -31,6 +31,7 @@ from bs4 import BeautifulSoup
 
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 
+# Initialize module logger
 logger = logging.getLogger(__name__)
 
 
@@ -236,9 +237,16 @@ def parse_html(html_content: str) -> List[Dict[str, str]]:
     return turns
 
 
-
-
 def _parse_vendor_conv(conv: dict) -> dict | None:
+    """
+    Parse vendor-specific conversation format.
+    
+    Args:
+        conv: Conversation dictionary in vendor format
+        
+    Returns:
+        Normalized conversation dictionary or None if invalid
+    """
     title = conv.get("title") or "Conversation"
     conv_id = conv.get("id") or conv.get("conversation_id")
     msgs = _vendor_collect_messages(conv)
@@ -283,6 +291,15 @@ def _parse_vendor_conv(conv: dict) -> dict | None:
 
 
 def _parse_chatgpt_conv(conv: dict) -> dict | None:
+    """
+    Parse ChatGPT-specific conversation format.
+    
+    Args:
+        conv: Conversation dictionary in ChatGPT format
+        
+    Returns:
+        Normalized conversation dictionary or None if invalid
+    """
     title = conv.get("title") or "Conversation"
     created_at = conv.get("create_time")
     turns = []
@@ -310,10 +327,18 @@ def _parse_chatgpt_conv(conv: dict) -> dict | None:
 
 def parse_json(json_obj):
     """
-    Always returns List[bundles]. Handles:
+    Parse JSON object containing chat conversations.
+    
+    Supports multiple formats:
     - Top-level array of vendor conversations
     - Single vendor conversation with chat.history/messages
     - ChatGPT exports with 'messages' or 'mapping'
+    
+    Args:
+        json_obj: JSON object to parse
+        
+    Returns:
+        List of conversation bundles
     """
     bundles = []
 
@@ -542,6 +567,8 @@ def _extract_turns_from_mapping(mapping: dict) -> list[dict]:
 
 def _vendor_assistant_text(msg: dict) -> str:
     """
+    Extract assistant text from vendor-specific message format.
+    
     For vendor schema where assistant may have content_list with phases.
     Prefer 'answer' phase; ignore 'think'/'reasoning' phases.
     Fallbacks to msg['content'] if no content_list.
@@ -569,6 +596,8 @@ def _vendor_assistant_text(msg: dict) -> str:
 
 def _vendor_collect_messages(conv: dict) -> list[dict]:
     """
+    Collect messages from vendor-specific conversation format.
+    
     Supports both:
       conv['chat']['history']['messages'] : dict id->msg
       conv['chat']['messages']            : list[msg]
@@ -604,9 +633,7 @@ def _vendor_collect_messages(conv: dict) -> list[dict]:
             # Try ISO
             try:
                 # Keep it lightweight: only split seconds when present
-                from dateutil import \
-                    parser as \
-                    _parser  # if you have python-dateutil; otherwise skip
+                from dateutil import parser as _parser
                 return _parser.isoparse(str(ts)).timestamp()
             except Exception:
                 return float("inf")
@@ -617,11 +644,10 @@ def _vendor_collect_messages(conv: dict) -> list[dict]:
 
 def _vendor_user_text(msg: dict) -> str:
     """
-    Extract user text for vendor schema.
+    Extract user text from vendor-specific message format.
     """
     content = msg.get("content")
     if isinstance(content, str) and content.strip():
         return content.strip()
     # Some vendors might bucket parts differently; add minimal fallback here if needed.
     return ""
-

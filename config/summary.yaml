@@ -16,6 +16,7 @@ defaults:
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
 
+  - agents/chat_analyze
   - agents/knowledge_infused_summarizer
   - agents/sharpened_paper_summarizer
   - agents/paper_summarizer
@@ -88,10 +89,15 @@ pipeline:
   description: >
     A pipeline to demonstrate that learning from learning is the best way to use AI.
   stages:
+     - name: chat_analyze
+       description: "Analyze chat history for relevant information"
+       cls: stephanie.agents.knowledge.chat_analyze.ChatAnalyzeAgent
+       enabled: true
+
      - name: knowledge_db_loader
        description: "Load prior retained knowledge from the database for retrieval"
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
-       enabled: true
+       enabled: false
        iterations: 1    
 
      - name: document_profiler
@@ -115,7 +121,7 @@ pipeline:
      - name: knowledge_infused_summarizer
        description: "Summarize the paper with knowledge infusion to reduce hallucinations"
        cls: stephanie.agents.summary.knowledge_infused_summarizer.KnowledgeInfusedVerifierAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: knowledge_fusion
@@ -147,10 +153,10 @@ pipeline:
 
      - name: dpo_pair_generator
        description: >
-         Generate pairs of preferred and non-preferred responses for DPO training.
+         Generate pai I rs of preferred and non-preferred responses for DPO training.
        cls: stephanie.agents.knowledge.dpo_pair_generator.DPOPairGeneratorAgent
        enabled: false
-       iterations: 1 OK
+       iterations: 1
   
      - name: conversation_filter
        description: >

@@ -1,4 +1,21 @@
-# stephanie/memory/chat_store.py
+"""
+Chat Store Module
+
+This module provides the data access layer for chat conversations, messages, and turns
+in the Stephanie system. It handles all database operations related to chat data storage,
+retrieval, and management using SQLAlchemy ORM.
+
+Key Features:
+- Complete CRUD operations for conversations, messages, and turns
+- Support for star ratings and annotations (NER, domains) on conversation turns
+- Efficient querying with filtering, sorting, and pagination
+- Integration with the scoring system through Scorable objects
+- Support for batch operations and statistics collection
+
+The store uses a session-based pattern with automatic transaction management
+through the BaseSQLAlchemyStore parent class.
+"""
+
 from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -13,8 +30,16 @@ from stephanie.scoring.scorable_factory import TargetType
 
 
 class ChatStore(BaseSQLAlchemyStore):
+    """
+    Data access layer for chat conversations, messages, and turns.
+    
+    This class provides methods to store, retrieve, and manage chat data
+    with support for annotations, ratings, and efficient querying.
+    """
+    # ORM model for the base store operations
     orm_model = ChatConversationORM
-    # Use column name so BaseSQLAlchemyStore can apply .desc() reliably
+    
+    # Default ordering for queries
     default_order_by = "created_at"
 
     def __init__(self, session_or_maker, logger=None):
@@ -22,11 +47,21 @@ class ChatStore(BaseSQLAlchemyStore):
         self.name = "chats"
 
     def name(self) -> str:
+        """Return the name identifier for this store."""
         return self.name
 
     # ---------- Conversations ----------
 
     def add_conversation(self, data: dict) -> ChatConversationORM:
+        """
+        Create and persist a new conversation.
+        
+        Args:
+            data: Dictionary containing conversation attributes
+            
+        Returns:
+            The newly created ChatConversationORM object
+        """
         def op(s):
             conv = ChatConversationORM(**data)
             s.add(conv)
@@ -36,6 +71,15 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_all(self, limit: int = 100) -> List[ChatConversationORM]:
+        """
+        Retrieve all conversations with a limit.
+        
+        Args:
+            limit: Maximum number of conversations to return
+            
+        Returns:
+            List of conversation objects ordered by creation date (descending)
+        """
         def op(s):
             return (
                 s.query(ChatConversationORM)
@@ -55,6 +99,15 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def exists_conversation(self, file_hash: str) -> bool:
+        """
+        Check if a conversation with the given file hash already exists.
+        
+        Args:
+            file_hash: SHA256 hash of the source file
+            
+        Returns:
+            True if a conversation with this hash exists, False otherwise
+        """
         def op(s):
             return (
                 s.query(ChatConversationORM)
@@ -71,6 +124,15 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_conversation(self, conv_id: int) -> Optional[ChatConversationORM]:
+        """
+        Retrieve a specific conversation by ID.
+        
+        Args:
+            conv_id: The conversation ID to retrieve
+            
+        Returns:
+            The conversation object or None if not found
+        """
         def op(s):
             return s.get(ChatConversationORM, conv_id)
 
@@ -81,6 +143,16 @@ class ChatStore(BaseSQLAlchemyStore):
     def add_messages(
         self, conv_id: int, messages: List[dict]
     ) -> List[ChatMessageORM]:
+        """
+        Add multiple messages to a conversation.
+        
+        Args:
+            conv_id: ID of the conversation to add messages to
+            messages: List of message dictionaries with role, text, and metadata
+            
+        Returns:
+            List of created message objects
+        """
         def op(s):
             objs: List[ChatMessageORM] = []
             for i, msg in enumerate(messages):
@@ -101,6 +173,15 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_messages(self, conv_id: int) -> List[ChatMessageORM]:
+        """
+        Retrieve all messages for a conversation in order.
+        
+        Args:
+            conv_id: ID of the conversation
+            
+        Returns:
+            List of message objects ordered by their index
+        """
         def op(s):
             return (
                 s.query(ChatMessageORM)
@@ -116,6 +197,13 @@ class ChatStore(BaseSQLAlchemyStore):
         """
         Build Q/A turns from a flat list of messages.
         Assumes messages are chronological and include DB ids & order_index.
+        
+        Args:
+            conversation_id: ID of the conversation
+            messages: List of message dictionaries with role and ID
+            
+        Returns:
+            List of created turn objects
         """
         def op(s):
             # find current max for this conversation so appends are monotonic
@@ -148,12 +236,30 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_turn_by_id(self, turn_id: int) -> Optional[ChatTurnORM]:
+        """
+        Retrieve a specific turn by ID.
+        
+        Args:
+            turn_id: The turn ID to retrieve
+            
+        Returns:
+            The turn object or None if not found
+        """
         def op(s):
             return s.get(ChatTurnORM, turn_id)
 
         return self._run(op)
 
     def get_turns_for_conversation(self, conv_id: int) -> List[ChatTurnORM]:
+        """
+        Retrieve all turns for a conversation.
+        
+        Args:
+            conv_id: ID of the conversation
+            
+        Returns:
+            List of turn objects ordered by ID
+        """
         def op(s):
             return (
                 s.query(ChatTurnORM)
@@ -167,6 +273,15 @@ class ChatStore(BaseSQLAlchemyStore):
     # ---------- Admin / Stats ----------
 
     def purge_all(self, force: bool = False):
+        """
+        Delete all chat data from the database.
+        
+        Args:
+            force: If True, uses TRUNCATE for faster deletion (requires privileges)
+            
+        Returns:
+            True if operation was successful
+        """
         def op(s):
             if force:
                 s.execute(text("TRUNCATE chat_turns RESTART IDENTITY CASCADE"))
@@ -193,6 +308,16 @@ class ChatStore(BaseSQLAlchemyStore):
     def get_top_conversations(
         self, limit: int = 10, by: str = "turns"
     ) -> List[Tuple[ChatConversationORM, int]]:
+        """
+        Retrieve conversations with the most turns or messages.
+        
+        Args:
+            limit: Maximum number of conversations to return
+            by: Metric to sort by - "turns" or "messages"
+            
+        Returns:
+            List of tuples (conversation, count) ordered by count descending
+        """
         def op(s):
             if by == "messages":
                 q = (
@@ -221,6 +346,15 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_message_by_id(self, message_id: int) -> Optional[ChatMessageORM]:
+        """
+        Retrieve a specific message by ID.
+        
+        Args:
+            message_id: The message ID to retrieve
+            
+        Returns:
+            The message object or None if not found
+        """
         def op(s):
             return s.get(ChatMessageORM, message_id)
 
@@ -233,8 +367,15 @@ class ChatStore(BaseSQLAlchemyStore):
     ) -> Scorable:
         """
         Convert a ChatConversationORM into a Scorable object.
-        NOTE: if conv.messages is lazy-loaded, ensure it's loaded before the session closes,
+        
+        Note: If conv.messages is lazy-loaded, ensure it's loaded before the session closes,
         or fetch messages separately and pass them in.
+        
+        Args:
+            conv: The conversation object to convert
+            
+        Returns:
+            A Scorable object representing the conversation
         """
         text_val = "\n".join(
             [
@@ -251,6 +392,15 @@ class ChatStore(BaseSQLAlchemyStore):
         )
 
     def scorable_from_message(self, msg: ChatMessageORM) -> Scorable:
+        """
+        Convert a ChatMessageORM into a Scorable object.
+        
+        Args:
+            msg: The message object to convert
+            
+        Returns:
+            A Scorable object representing the message
+        """
         text_val = msg.text or ""
         return Scorable(
             id=str(msg.id),
@@ -260,6 +410,15 @@ class ChatStore(BaseSQLAlchemyStore):
         )
 
     def scorable_from_turn(self, turn: ChatTurnORM) -> Scorable:
+        """
+        Convert a ChatTurnORM into a Scorable object.
+        
+        Args:
+            turn: The turn object to convert
+            
+        Returns:
+            A Scorable object representing the turn
+        """
         user_text = (
             turn.user_message.text
             if getattr(turn, "user_message", None)
@@ -282,8 +441,17 @@ class ChatStore(BaseSQLAlchemyStore):
 
     def set_turn_star(self, turn_id: int, star: int) -> ChatTurnORM:
         """
-        Clamp to [-5, 5], set the star rating, persist, and return the updated turn.
-        Uses the _run(op) session pattern.
+        Set the star rating for a turn (clamped to [-5, 5]).
+        
+        Args:
+            turn_id: ID of the turn to update
+            star: Star rating value between -5 and 5
+            
+        Returns:
+            The updated turn object
+            
+        Raises:
+            ValueError: If the turn is not found
         """
         star = max(-5, min(5, int(star)))
 
@@ -302,10 +470,14 @@ class ChatStore(BaseSQLAlchemyStore):
 
     def rated_progress(self, conv_id: int) -> Tuple[int, int]:
         """
-        Returns (rated_turns, total_turns) for a conversation.
-        'Rated' means star != 0.
+        Get rating progress for a conversation.
+        
+        Args:
+            conv_id: ID of the conversation
+            
+        Returns:
+            Tuple of (rated_turns, total_turns) where rated means star != 0
         """
-
         def op(s):
             q = s.query(ChatTurnORM).filter_by(conversation_id=conv_id)
             total = q.count()
@@ -318,10 +490,15 @@ class ChatStore(BaseSQLAlchemyStore):
         self, *, limit: int = 200, provider: Optional[str] = None
     ) -> List[Tuple[ChatConversationORM, int]]:
         """
-        Returns a list of (conversation, turn_count) sorted by turn_count desc.
-        If provider is given, filter by provider.
+        List conversations sorted by turn count (descending).
+        
+        Args:
+            limit: Maximum number of conversations to return
+            provider: Optional provider filter
+            
+        Returns:
+            List of tuples (conversation, turn_count) sorted by turn count
         """
-
         def op(s):
             q = (
                 s.query(
@@ -342,6 +519,15 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_turns_eager(self, conv_id: int) -> List[ChatTurnORM]:
+        """
+        Retrieve turns for a conversation with messages eagerly loaded.
+        
+        Args:
+            conv_id: ID of the conversation
+            
+        Returns:
+            List of turn objects with user and assistant messages loaded
+        """
         def op(s):
             return (
                 s.query(ChatTurnORM)
@@ -356,6 +542,16 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def set_turn_ner(self, turn_id: int, ner: list[dict]) -> None:
+        """
+        Set NER (Named Entity Recognition) annotations for a turn.
+        
+        Args:
+            turn_id: ID of the turn to update
+            ner: List of NER annotation dictionaries
+            
+        Raises:
+            ValueError: If the turn is not found
+        """
         def op(s):
             t = s.get(ChatTurnORM, turn_id)
             if not t:
@@ -365,6 +561,16 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def set_turn_domains(self, turn_id: int, domains: list[dict]) -> None:
+        """
+        Set domain annotations for a turn.
+        
+        Args:
+            turn_id: ID of the turn to update
+            domains: List of domain annotation dictionaries
+            
+        Raises:
+            ValueError: If the turn is not found
+        """
         def op(s):
             t = s.get(ChatTurnORM, turn_id)
             if not t:
@@ -376,6 +582,18 @@ class ChatStore(BaseSQLAlchemyStore):
     def scoring_batch(
         self, conv_id: int, *, only_unrated: bool = False, limit: int = 50, offset: int = 0
     ) -> tuple[list[dict], int, int]:
+        """
+        Get a batch of turns for scoring with progress information.
+        
+        Args:
+            conv_id: ID of the conversation
+            only_unrated: If True, only return unrated turns (star == 0)
+            limit: Maximum number of turns to return
+            offset: Offset for pagination
+            
+        Returns:
+            Tuple of (turns_list, rated_count, total_count)
+        """
         def op(s):
             base_q = s.query(ChatTurnORM).filter_by(conversation_id=conv_id)
             total = base_q.count()
@@ -405,6 +623,13 @@ class ChatStore(BaseSQLAlchemyStore):
                     "assistant_text": t.assistant_message.text if t.assistant_message else "—",
                     "ner": t.ner or [],                 # NEW
                     "domains": t.domains or [],         # NEW
+                    "ai_knowledge_score": t.ai_knowledge_score,   # NEW
+                    "ai_knowledge_score_norm": (
+                        None if t.ai_knowledge_score is None
+                        else max(0.0, min(1.0, float(t.ai_knowledge_score)/100.0))
+                    ),
+                    "ai_knowledge_rationale": t.ai_knowledge_rationale or "",
+
                 })
             return out, rated, total
         return self._run(op)
@@ -419,13 +644,17 @@ class ChatStore(BaseSQLAlchemyStore):
         only_missing: str | None = None,   # <-- NEW
     ) -> list[dict]:
         """
-        Returns list of dicts with pre-fetched user/assistant texts (no lazy loads).
-        Shape: [{"id": int, "order_index": int|None, "user_text": str, "assistant_text": str}]
-
-        only_missing:
-          - "ner"      → only turns where ner is NULL
-          - "domains"  → only turns where domains is NULL
-          - None/other → no filter
+        Get turn texts with optional filtering for missing annotations.
+        
+        Args:
+            conv_id: ID of the conversation
+            limit: Maximum number of turns to return
+            offset: Offset for pagination
+            order_by_id: If True, order by turn ID
+            only_missing: Filter for missing annotations - "ner" or "domains"
+            
+        Returns:
+            List of dictionaries with turn texts and metadata
         """
         def op(s):
             U = aliased(ChatMessageORM)
@@ -469,12 +698,30 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_turn_domains(self, turn_id: int) -> list[dict]:
+        """
+        Get domain annotations for a turn.
+        
+        Args:
+            turn_id: ID of the turn
+            
+        Returns:
+            List of domain annotations or empty list if not found
+        """
         def op(s):
             t = s.get(ChatTurnORM, turn_id)
             return t.domains or [] if t else []
         return self._run(op)
 
     def get_turn_ner(self, turn_id: int) -> list[dict]:
+        """
+        Get NER annotations for a turn.
+        
+        Args:
+            turn_id: ID of the turn
+            
+        Returns:
+            List of NER annotations or empty list if not found
+        """
         def op(s):
             t = s.get(ChatTurnORM, turn_id)
             return t.ner or [] if t else []
@@ -489,9 +736,16 @@ class ChatStore(BaseSQLAlchemyStore):
         include_turn_message_texts: bool = True,
     ) -> dict | None:
         """
-        Return a fully materialized dict for a conversation.
-        All needed relationships are eagerly loaded *inside* the session
-        so no lazy loads happen after return.
+        Get a fully materialized dictionary representation of a conversation.
+        
+        Args:
+            conv_id: ID of the conversation
+            include_messages: Whether to include messages in the result
+            include_turns: Whether to include turns in the result
+            include_turn_message_texts: Whether to flatten message texts onto turns
+            
+        Returns:
+            Dictionary representation of the conversation or None if not found
         """
         def op(s):
             q = s.query(ChatConversationORM)
@@ -546,9 +800,21 @@ class ChatStore(BaseSQLAlchemyStore):
         order_desc: bool = True,
     ) -> List[ChatTurnORM]:
         """
-        Fetch chat turns with common filters. All SQL and dialect-specific handling
-        happens inside the session via self._run(...). If the DB cannot enforce
-        'entities non-empty' (no JSONB), we Python-filter after fetching.
+        Fetch chat turns with filtering options.
+        
+        Args:
+            min_star: Minimum star rating
+            max_star: Maximum star rating
+            goal_id: Filter by goal ID
+            casebook_id: Filter by casebook ID
+            domain: Filter by domain
+            has_entities: Only include turns with entities
+            min_text_len: Minimum text length
+            limit: Maximum number of turns to return
+            order_desc: Order by ID descending if True
+            
+        Returns:
+            List of turn objects matching the criteria
         """
         def op(s):
             q: Query = (
@@ -633,9 +899,19 @@ class ChatStore(BaseSQLAlchemyStore):
         min_text_len: int = 1,
     ) -> int:
         """
-        Count turns matching filters (mirrors list_turns). Executes entirely within
-        the session via self._run(...). If the DB can't enforce 'entities non-empty',
-        we do a lightweight Python-side count.
+        Count turns matching filtering criteria.
+        
+        Args:
+            min_star: Minimum star rating
+            max_star: Maximum star rating
+            goal_id: Filter by goal ID
+            casebook_id: Filter by casebook ID
+            domain: Filter by domain
+            has_entities: Only include turns with entities
+            min_text_len: Minimum text length
+            
+        Returns:
+            Count of turns matching the criteria
         """
         def op(s):
             q: Query = (
@@ -712,12 +988,19 @@ class ChatStore(BaseSQLAlchemyStore):
         order_desc: bool = True,
     ) -> List[Dict[str, Any]]:
         """
-        Returns lightweight dict rows for turns with pre-fetched assistant/user texts:
-        {
-        id, conversation_id, order_index, star, user_text, assistant_text,
-        ner, domains, goal_text
-        }
-        goal_text == conversation title
+        Get turns with pre-fetched text content and metadata.
+        
+        Args:
+            min_star: Minimum star rating
+            max_star: Maximum star rating
+            require_assistant_text: Only include turns with assistant text
+            require_nonempty_ner: Only include turns with NER annotations
+            min_assistant_len: Minimum assistant text length
+            limit: Maximum number of turns to return
+            order_desc: Order by ID descending if True
+            
+        Returns:
+            List of dictionaries with turn data including texts and metadata
         """
         def op(s):
             U = aliased(ChatMessageORM)
@@ -732,6 +1015,8 @@ class ChatStore(BaseSQLAlchemyStore):
                     ChatTurnORM.star.label("star"),
                     ChatTurnORM.ner.label("ner"),
                     ChatTurnORM.domains.label("domains"),
+                    ChatTurnORM.ai_knowledge_score.label("ai_score"),        # NEW
+                    ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),# NEW
                     U.text.label("user_text"),
                     A.text.label("assistant_text"),
                     C.title.label("goal_text"),   # ← conversation title as goal text
@@ -777,7 +1062,50 @@ class ChatStore(BaseSQLAlchemyStore):
                     "ner": r.ner or [],
                     "domains": r.domains or [],
                     "goal_text": r.goal_text or "",   # ← expose goal text
+                    "ai_score": r.ai_score,                 
+                    "ai_rationale": r.ai_rationale or "",   
                 })
             return out
 
         return self._run(op)
+    
+
+    def set_turn_ai_eval(
+        self,
+        turn_id: int,
+        score: int,
+        rationale: str
+    ) -> ChatTurnORM:
+        """
+        Upsert the AI knowledge evaluation on a turn.
+        - score: 0..100 (or None to clear)
+        - rationale: free text (or None to clear)
+        """
+        def op(s):
+            t = s.get(ChatTurnORM, turn_id)
+            if not t:
+                raise ValueError(f"Turn {turn_id} not found")
+            if score is not None:
+                if not (0 <= int(score) <= 100):
+                    raise ValueError("ai_knowledge_score must be in 0..100")
+                t.ai_knowledge_score = int(score)
+            else:
+                t.ai_knowledge_score = None
+            t.ai_knowledge_rationale = (rationale or None)
+            s.add(t)
+            s.flush()
+            return t
+        return self._run(op)
+
+    def get_turn_ai_eval(self, turn_id: int) -> dict:
+        """Return {'score': int|None, 'rationale': str|None} for a turn."""
+        def op(s):
+            t = s.get(ChatTurnORM, turn_id)
+            if not t:
+                raise ValueError(f"Turn {turn_id} not found")
+            return {
+                "score": t.ai_knowledge_score,
+                "rationale": t.ai_knowledge_rationale,
+            }
+        return self._run(op)
+

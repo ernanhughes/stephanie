@@ -448,6 +448,7 @@ class ScorableClassifier:
             
             "total_domains": len(centroids),
             "total_seeds": total_seeds,
+            "duration_sec": time.time() - start, 
             "message": "Completed centroid calculation for all domains"
         })
         

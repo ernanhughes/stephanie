@@ -38,7 +38,7 @@
             ]
         },
         {
-            "name": "Compare",
+            "name": "summary",
             "type": "debugpy",
             "request": "launch",
             "console": "integratedTerminal",
@@ -46,7 +46,7 @@
             "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
             "args": [
                 "--config-name",
-                "compare",
+                "summary",
             ]
         },
         {
