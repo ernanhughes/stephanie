@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Request, Query, Form
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 router = APIRouter()
@@ -41,9 +41,15 @@ def _get_attr(x: Any, key: str, default=None):
 @router.get("/casebooks", response_class=HTMLResponse)
 def list_casebooks(
     request: Request,
-    agent: Optional[str] = Query(default=None, description="Filter by agent_name"),
-    tag: Optional[str] = Query(default=None, description="Filter by casebook tag"),
-    pipeline_run_id: Optional[int] = Query(default=None, description="Filter by pipeline_run_id"),
+    agent: Optional[str] = Query(
+        default=None, description="Filter by agent_name"
+    ),
+    tag: Optional[str] = Query(
+        default=None, description="Filter by casebook tag"
+    ),
+    pipeline_run_id: Optional[int] = Query(
+        default=None, description="Filter by pipeline_run_id"
+    ),
     limit: int = Query(default=200, ge=1, le=1000),
 ):
     memory = request.app.state.memory
@@ -82,15 +88,27 @@ def list_casebooks(
 def _count_by_goal(cases) -> list[Dict[str, Any]]:
     counts: Dict[str, int] = {}
     for c in cases:
-        gid = getattr(c, "goal_id", None) if not isinstance(c, dict) else c.get("goal_id")
+        gid = (
+            getattr(c, "goal_id", None)
+            if not isinstance(c, dict)
+            else c.get("goal_id")
+        )
         counts[gid] = counts.get(gid, 0) + 1
-    return [{"goal_id": gid, "count": n} for gid, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0] or ""))]
+    return [
+        {"goal_id": gid, "count": n}
+        for gid, n in sorted(
+            counts.items(), key=lambda kv: (-kv[1], kv[0] or "")
+        )
+    ]
+
 
 @router.get("/casebooks/{run_id}", response_class=HTMLResponse)
 def casebook_for_run(
     request: Request,
     run_id: int,
-    goal: Optional[str] = Query(default=None, description="Filter cases by goal_id"),
+    goal: Optional[str] = Query(
+        default=None, description="Filter cases by goal_id"
+    ),
     limit: int = Query(default=500, ge=1, le=2000),
 ):
     """
@@ -122,11 +140,14 @@ def casebook_for_run(
         },
     )
 
+
 @router.get("/casebooks/id/{casebook_id}", response_class=HTMLResponse)
 def casebook_detail_by_id(
     request: Request,
     casebook_id: int,
-    goal: Optional[str] = Query(default=None, description="Filter cases by goal_id"),
+    goal: Optional[str] = Query(
+        default=None, description="Filter cases by goal_id"
+    ),
     limit: int = Query(default=500, ge=1, le=2000),
 ):
     memory = request.app.state.memory
@@ -158,7 +179,9 @@ def casebook_detail_by_id(
 def casebook_detail(
     request: Request,
     run_id: int,
-    goal: Optional[str] = Query(default=None, description="Filter cases by goal_id"),
+    goal: Optional[str] = Query(
+        default=None, description="Filter cases by goal_id"
+    ),
 ):
     """
     Show one casebook and its recent cases (optionally filtered by goal).
@@ -175,7 +198,9 @@ def casebook_detail(
 
     # Load cases
     try:
-        cases = memory.casebooks.get_cases_for_casebook(casebook_id=casebook.id)  # type: ignore
+        cases = memory.casebooks.get_cases_for_casebook(
+            casebook_id=casebook.id
+        )  # type: ignore
     except Exception:
         cases = getattr(casebook, "cases", []) or []
 
@@ -191,7 +216,12 @@ def casebook_detail(
             "request": request,
             "casebook": _to_dict(casebook),
             "cases": [_to_dict(c) for c in cases],
-            "goals": [{"goal_id": gid, "count": n} for gid, n in sorted(goals.items(), key=lambda kv: (-kv[1], kv[0] or ""))],
+            "goals": [
+                {"goal_id": gid, "count": n}
+                for gid, n in sorted(
+                    goals.items(), key=lambda kv: (-kv[1], kv[0] or "")
+                )
+            ],
             "goal_filter": goal,
         },
     )
@@ -200,6 +230,7 @@ def casebook_detail(
 # -----------------
 # Cases
 # -----------------
+
 
 @router.get("/cases", response_class=HTMLResponse)
 def list_cases(
@@ -227,7 +258,12 @@ def list_cases(
         {
             "request": request,
             "cases": [c.to_dict(include_scorables=False) for c in cases],
-            "filters": {"casebook_id": casebook_id, "agent": agent, "goal": goal, "limit": limit},
+            "filters": {
+                "casebook_id": casebook_id,
+                "agent": agent,
+                "goal": goal,
+                "limit": limit,
+            },
         },
     )
 
@@ -252,13 +288,14 @@ def case_detail(request: Request, case_id: int):
 
     # Scorables (role/rank/text/mars_confidence if present in meta)
     scorables = []
-    for s in (getattr(case, "scorables", []) or []):
+    for s in getattr(case, "scorables", []) or []:
         sd = s.to_dict()
         meta = sd.get("meta") or {}
         # meta should already be a dict (SA_JSON), but be defensive:
         if isinstance(meta, str):
             try:
                 import json
+
                 meta = json.loads(meta)
             except Exception:
                 meta = {"raw": sd.get("meta")}
@@ -272,17 +309,21 @@ def case_detail(request: Request, case_id: int):
     msum = case_d.get("mars_summary") or {}
     if isinstance(msum, dict):
         for k, v in msum.items():
-            if isinstance(v, dict) and ("agreement_score" in v or "dimension" in v):
-                mars_cards.append({
-                    "dimension": v.get("dimension", k),
-                    "agreement_score": v.get("agreement_score"),
-                    "std_dev": v.get("std_dev"),
-                    "preferred_model": v.get("preferred_model"),
-                    "primary_conflict": v.get("primary_conflict"),
-                    "delta": v.get("delta"),
-                    "explanation": v.get("explanation"),
-                    "high_disagreement": v.get("high_disagreement"),
-                })
+            if isinstance(v, dict) and (
+                "agreement_score" in v or "dimension" in v
+            ):
+                mars_cards.append(
+                    {
+                        "dimension": v.get("dimension", k),
+                        "agreement_score": v.get("agreement_score"),
+                        "std_dev": v.get("std_dev"),
+                        "preferred_model": v.get("preferred_model"),
+                        "primary_conflict": v.get("primary_conflict"),
+                        "delta": v.get("delta"),
+                        "explanation": v.get("explanation"),
+                        "high_disagreement": v.get("high_disagreement"),
+                    }
+                )
 
     return templates.TemplateResponse(
         "/cases/detail.html",
@@ -298,15 +339,17 @@ def case_detail(request: Request, case_id: int):
 @router.get("/casebooks/{case_id}/uncertain", response_class=HTMLResponse)
 def list_uncertain(request: Request, case_id: int):
     memory = request.app.state.memory
-    rows = memory.casebooks.list_scorables_by_role(case_id, role="uncertain_candidate", limit=500)
+    rows = memory.casebooks.list_scorables_by_role(
+        case_id, role="uncertain_candidate", limit=500
+    )
     # If you don't want a template yet, just return a quick HTML:
     items = "".join(
         f"""
         <div style="border:1px solid #ddd; padding:10px; margin:8px;">
-          <div><b>Agent:</b> {r.meta.get('agent_name')}</div>
-          <div><b>Section:</b> {r.meta.get('section_name')}</div>
-          <div><b>Scores:</b> K={r.meta.get('knowledge_score'):.2f} AI={r.meta.get('ai_judge_score'):.2f} Q={r.meta.get('artifact_quality'):.2f} Blend={r.meta.get('blended_score'):.2f}</div>
-          <pre style="white-space:pre-wrap;">{(r.text or '').strip()[:4000]}</pre>
+          <div><b>Agent:</b> {r.meta.get("agent_name")}</div>
+          <div><b>Section:</b> {r.meta.get("section_name")}</div>
+          <div><b>Scores:</b> K={r.meta.get("knowledge_score"):.2f} AI={r.meta.get("ai_judge_score"):.2f} Q={r.meta.get("artifact_quality"):.2f} Blend={r.meta.get("blended_score"):.2f}</div>
+          <pre style="white-space:pre-wrap;">{(r.text or "").strip()[:4000]}</pre>
           <form method="post" action="/casebooks/{case_id}/label/{r.id}">
             <label>Human star (-5..5):</label>
             <input name="human_star" type="number" min="-5" max="5" step="1" required>
@@ -316,10 +359,22 @@ def list_uncertain(request: Request, case_id: int):
         """
         for r in rows
     )
-    return HTMLResponse(f"<h2>Borderline candidates for labeling (case {case_id})</h2>{items or '<p>None</p>'}")
+    return HTMLResponse(
+        f"<h2>Borderline candidates for labeling (case {case_id})</h2>{items or '<p>None</p>'}"
+    )
+
 
 @router.post("/casebooks/{case_id}/label/{scorable_id}")
-def label_candidate(request: Request, case_id: int, scorable_id: int, human_star: int = Form(...)):
+def label_candidate(
+    request: Request,
+    case_id: int,
+    scorable_id: int,
+    human_star: int = Form(...),
+):
     memory = request.app.state.memory
-    memory.casebooks.update_scorable_meta(scorable_id, {"human_star": int(human_star)})
-    return RedirectResponse(url=f"/casebooks/{case_id}/uncertain", status_code=303)
+    memory.casebooks.update_scorable_meta(
+        scorable_id, {"human_star": int(human_star)}
+    )
+    return RedirectResponse(
+        url=f"/casebooks/{case_id}/uncertain", status_code=303
+    )

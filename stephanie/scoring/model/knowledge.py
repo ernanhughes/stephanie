@@ -70,12 +70,6 @@ class KnowledgePredictor(nn.Module):
 
 
 class KnowledgeModel:
-    """
-    End-to-end model wrapper:
-      - Uses your existing embedding_store (same interface as MRQModel).
-      - Goal-conditioned scoring: score(goal_text, candidate_text, meta)
-      - Aux feature injection for stability/controllability.
-    """
     def __init__(self, dim: int, hdim: int, embedding_store, aux_feature_names: Optional[List[str]] = None, device: str = "cpu"):
         self.device = device
         self.embedding_store = embedding_store
@@ -83,6 +77,45 @@ class KnowledgeModel:
         self.encoder = CrossFeatureEncoder(dim, hdim).to(device)
         self.aux_proj = AuxProjector(hdim, aux_dim=len(self.aux_feature_names)).to(device)
         self.predictor = KnowledgePredictor(hdim).to(device)
+        self.predictor_h = KnowledgePredictor(hdim)  # human gold head
+        self.predictor_a = KnowledgePredictor(hdim)  # ai weak head
+
+    def score_h(self, z: torch.Tensor) -> torch.Tensor:
+        """Score with human head (gold standard)"""
+        return self.predictor_h(z).squeeze(-1)
+
+    def score_a(self, z: torch.Tensor) -> torch.Tensor:
+        """Score with AI head (weak signal)"""
+        return self.predictor_a(z).squeeze(-1)
+
+    def predict(self, goal_text: str, candidate_text: str, meta: Optional[dict] = None) -> float:
+        """Blended prediction (human-first)"""
+        g = self._embed(goal_text)
+        x = self._embed(candidate_text)
+        z = self.encoder(g, x)
+        aux = self._aux_tensor(meta)
+        z = self.aux_proj(z, aux)
+        
+        # Get both scores
+        s_h = self.score_h(z).item()
+        s_a = self.score_a(z).item()
+
+        # Blend based on availability of human signal
+        return self._blend_scores(s_h, s_a, meta)
+
+    def _blend_scores(self, s_h: float, s_a: float, meta: Optional[dict] = None) -> float:
+        """Gated blending: human-first, AI fallback"""
+        meta = meta or {}
+        has_similar_human = meta.get("has_similar_human", False)
+        ai_conf = meta.get("ai_conf", 0.7)  # from RegressionTuner
+        
+        # Human head is gold standard when available
+        if has_similar_human:
+            return torch.sigmoid(torch.tensor(s_h)).item()
+        
+        # Blend when human signal is weak
+        alpha = 0.6 + 0.2 * float(has_similar_human)  # 0.6-0.8 toward human
+        return alpha * torch.sigmoid(torch.tensor(s_h)).item() + (1 - alpha) * torch.sigmoid(torch.tensor(s_a)).item()    
 
     def _embed(self, text: str) -> torch.Tensor:
         v = self.embedding_store.get_or_create(text)
@@ -102,15 +135,6 @@ class KnowledgeModel:
             except Exception:
                 vals.append(0.0)
         return torch.tensor(vals, device=self.device, dtype=torch.float32).unsqueeze(0)  # [1,A]
-
-    def predict(self, goal_text: str, candidate_text: str, meta: Optional[dict] = None) -> float:
-        g = self._embed(goal_text)    # [1,D]
-        x = self._embed(candidate_text)
-        z = self.encoder(g, x)        # [1,H]
-        aux = self._aux_tensor(meta)  # [1,A] or None
-        z = self.aux_proj(z, aux)     # [1,H]
-        score = self.predictor(z).item()
-        return score
 
     def train(self):
         self.encoder.train(); self.aux_proj.train(); self.predictor.train()

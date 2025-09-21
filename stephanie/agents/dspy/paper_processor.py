@@ -1,4 +1,19 @@
-# stephanie/agents/dspy/paper_processor.py
+"""
+DSPy Paper Section Processor
+
+This module implements a sophisticated pipeline for processing academic paper sections
+into high-quality blog posts using DSPy (Demonstrate-Search-Predict) framework. It employs
+structured reasoning, iterative refinement, and verification against knowledge bases to
+ensure factual accuracy and readability.
+
+Key Features:
+- Multi-stage processing pipeline with verification and refinement loops
+- Integration with conversation history and knowledge bases
+- Quality validation with configurable thresholds
+- Comprehensive logging and casebook storage for reproducibility
+- Support for both introduction and general section processing
+"""
+
 import json
 import time
 import traceback
@@ -152,25 +167,28 @@ class FinalValidationSignature(dspy.Signature):
 # LM wrapper (optional prompt logging)
 # -------------------------------------------------------------------------
 class LoggingLM(dspy.LM):
+    """Wrapper for DSPy LM that adds debug logging for prompts and responses."""
+    
     def __init__(self, *args, debug_prompts: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self._debug_prompts = debug_prompts
 
     def __call__(self, *args, **kwargs):
+        """Log prompts and responses if debug mode is enabled."""
         if self._debug_prompts:
             prompt = kwargs.get("prompt")
             messages = kwargs.get("messages")
             if prompt:
-                _logger.info(
+                _logger.debug(
                     "=== DSPy PROMPT ===\n%s\n====================", prompt
                 )
             if messages:
-                _logger.info(
+                _logger.debug(
                     "=== DSPy MESSAGES ===\n%s\n====================", messages
                 )
         result = super().__call__(*args, **kwargs)
         if self._debug_prompts:
-            _logger.info(
+            _logger.debug(
                 "=== DSPy RESPONSE ===\n%s\n====================", result
             )
         return result
@@ -178,13 +196,26 @@ class LoggingLM(dspy.LM):
 
 class DSPyPaperSectionProcessorAgent(BaseAgent):
     """
-    DSPy-based processor for transforming paper sections into high-quality blog posts
-    Uses structured reasoning, iterative refinement, and verification against knowledge base
+    DSPy-based processor for transforming paper sections into high-quality blog posts.
+    
+    Uses structured reasoning, iterative refinement, and verification against knowledge
+    bases to ensure factual accuracy and readability. Supports both introduction and
+    general section processing with configurable quality thresholds.
     """
+    
     def __init__(self, cfg, memory, container, logger):
+        """
+        Initialize the DSPy paper processor with configuration and dependencies.
+        
+        Args:
+            cfg: Configuration dictionary
+            memory: Memory interface for data access
+            container: Dependency container for shared resources
+            logger: Logger instance for tracking operations
+        """
         super().__init__(cfg, memory, container, logger)
 
-        # DSPy modules
+        # DSPy modules for each processing stage
         self.intro_synth = dspy.ChainOfThought(IntroSynthesisSignature)
         self.intro_verify = dspy.ChainOfThought(IntroVerificationSignature)
         self.intro_refine = dspy.ChainOfThought(IntroRefinementSignature)
@@ -197,7 +228,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         self.refinement_module = dspy.ChainOfThought(RefinementSignature)
         self.final_validator = dspy.ChainOfThought(FinalValidationSignature)
 
-        # Configuration
+        # Configuration parameters
         self.max_refinements = cfg.get("max_refinements", 3)
         self.min_quality_threshold = cfg.get("min_quality_threshold", 0.85)
         self.casebook_name = cfg.get("casebook_name", "PaperSectionProcessing")
@@ -205,7 +236,9 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         self.min_section_length = cfg.get("min_section_length", 100)
         self.casebook_action = cfg.get("casebook_action", "blog")
 
-        # Initialize DSPy
+        self.chat_corpus = container.get_service("chat_corpus")
+
+        # Initialize DSPy framework
         self._init_dspy()
 
         self.logger.log(
@@ -218,32 +251,41 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         )
 
     def _init_dspy(self):
-        """Initialize DSPy with appropriate configuration"""
-        # Configure DSPy for best
-
+        """Initialize DSPy with appropriate configuration and language model."""
         model_cfg = self.cfg.get("model", {}) or {}
         lm = LoggingLM(
             model_cfg.get("name", "ollama_chat/qwen3"),
             api_base=model_cfg.get("api_base", "http://localhost:11434"),
             api_key=model_cfg.get("api_key", ""),
-            debug_prompts=bool(self.cfg.get("debug_prompts", True)),
+            debug_prompts=bool(self.cfg.get("debug_prompts", False)),
         )
         dspy.configure(lm=lm)
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the paper processing pipeline on input documents.
+        
+        Args:
+            context: Execution context containing documents to process
+            
+        Returns:
+            Updated context with processing results
+        """
         t_run = self._t0()
         self.report({"event": "start", "agent": self.name, "step": "paper_processor.run", "details": "Processing paper sections"})
 
-        documents = context.get(self.input_key, [])  # <- same as before
+        documents = context.get(self.input_key, [])
         processed_sections = []
         self.report({"event": "input", "agent": self.name, "docs_count": len(documents)})
 
+        # Process each document
         for di, doc in enumerate(documents, start=1):
             dt0 = self._t0()
             doc_id = doc.get("id")
             title = doc.get("title", "")
             self.report({"event": "doc.begin", "agent": self.name, "index": di, "doc_id": doc_id, "title": title})
 
+            # Create or get casebook for this document
             casebook_name = generate_casebook_name(self.casebook_action, title)
             casebook = self.memory.casebooks.ensure_casebook(
                 name=casebook_name,
@@ -252,6 +294,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             )
             self.report({"event": "doc.casebook", "agent": self.name, "doc_id": doc_id, "casebook_id": casebook.id, "casebook_name": casebook_name})
 
+            # Create goal for this paper
             paper_goal = self.memory.goals.get_or_create(
                 {
                     "goal_text": build_paper_goal_text(title),
@@ -261,6 +304,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             ).to_dict()
             self.report({"event": "doc.goal", "agent": self.name, "doc_id": doc_id, "goal_id": paper_goal["id"]})
 
+            # Get structured sections of the document
             structured_data = self.memory.document_sections.get_by_document(doc_id)
             if not structured_data:
                 self.report({"event": "doc.skip", "agent": self.name, "reason": "no_structured_sections", "doc_id": doc_id, "elapsed_ms": self._ms_since(dt0)})
@@ -269,6 +313,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
 
             self.report({"event": "doc.sections", "agent": self.name, "doc_id": doc_id, "sections_count": len(structured_data)})
 
+            # Process each section
             for si, section in enumerate(structured_data, start=1):
                 section_name = section.section_name
                 section_text = section.section_text or ""
@@ -280,7 +325,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                 self.report({"event": "section.begin", "agent": self.name, "doc_id": doc_id, "section_index": si, "section_name": section_name, "text_len": len(section_text)})
 
                 try:
-                    # (optional) handle abstract → intro pipeline
+                    # Special handling for abstract sections (introduction pipeline)
                     if "abstract" == section_name.lower().strip():
                         prior_summary = doc.get("summary", "")
                         it0 = self._t0()
@@ -312,7 +357,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                         )
                         self.report({"event": "section.intro_saved", "agent": self.name, "doc_id": doc_id, "section_name": section_name})
 
-                    # main section pipeline
+                    # Main section processing pipeline
                     ctx = {
                         "section_text": section_text,
                         "section_name": section_name,
@@ -363,16 +408,16 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         self.report({"event": "end", "agent": self.name, "processed_sections": len(processed_sections), "docs": len(documents), "elapsed_ms": self._ms_since(t_run)})
         return context
 
-
     # --- reporting helpers -------------------------------------------------
     def _t0(self): 
+        """Get current time for timing measurements."""
         import time
         return time.time()
 
     def _ms_since(self, t0):
+        """Calculate milliseconds elapsed since given time."""
         import time
         return round((time.time() - t0) * 1000, 1)
-
 
     def _json_or_empty(self, s: Any, default: Any):
         """Best-effort JSON parse; returns default on failure."""
@@ -467,6 +512,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         }
 
     def _intro_goal(self, title: str) -> str:
+        """Generate goal description for introduction writing."""
         return (
             f"You are an expert technical blog writer. Craft the introduction for the paper '{title}'. "
             "Fuse the abstract and existing summary into a compelling intro with: "
@@ -595,6 +641,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         }
 
     async def _process_section(self, section_details: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a paper section through the full DSPy pipeline."""
         section_text = section_details.get("section_text", "") or ""
         section_name = section_details.get("section_name", "section") or "section"
         paper_id = section_details.get("paper_id", "unknown")
@@ -730,7 +777,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
     def _get_relevant_conversations(
         self, paper_id: str, claims: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Retrieve relevant conversations based on paper claims"""
+        """Retrieve relevant conversations based on paper claims."""
         # In a real implementation, this would query the conversation history
         # using the claims as search terms
         relevant_conversations = []
@@ -760,7 +807,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         return unique_conversations[:10]
 
     def _search_conversations(self, query: str) -> List[Dict[str, Any]]:
-        """Search conversation history for relevant snippets"""
+        """Search conversation history for relevant snippets."""
         # In a real implementation, this would use the retrieval model
         # to find relevant conversations based on the query
         return [
@@ -772,7 +819,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         ]
 
     def _get_knowledge_base(self, paper_id: str) -> Dict[str, Any]:
-        """Retrieve knowledge base for the paper"""
+        """Retrieve knowledge base for the paper."""
         # In a real implementation, this would retrieve structured knowledge
         # from the knowledge graph or other sources
         return {
@@ -787,7 +834,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
     def _is_quality_threshold_met(
         self, validation_report: Dict[str, Any]
     ) -> bool:
-        """Check if quality thresholds are met"""
+        """Check if quality thresholds are met."""
         # Extract quality scores from validation report
         scores = validation_report.get("scores", {})
 
@@ -818,6 +865,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         intro_result: Dict[str, Any],
         context: Dict[str, Any],
     ):
+        """Save introduction processing results to casebook."""
         pipeline_run_id = context.get("pipeline_run_id")
         case = self.memory.casebooks.add_case(
             casebook_id=casebook.id,
@@ -1018,24 +1066,28 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                 return default
 
     def _dumps_safe(self, obj) -> str:
+        """Safely convert object to JSON string with fallback."""
         try:
             return json.dumps(obj, ensure_ascii=False)
         except Exception:
             return json.dumps({"_warning": "failed_to_dump", "repr": repr(obj)})
 
     def _ensure_dict(self, x, default=None):
+        """Ensure value is a dictionary, parsing if necessary."""
         if isinstance(x, dict):
             return x
         parsed = self._loads_or_empty(x, None)
         return parsed if isinstance(parsed, dict) else (default or {})
 
     def _ensure_list(self, x, default=None):
+        """Ensure value is a list, parsing if necessary."""
         if isinstance(x, list):
             return x
         parsed = self._loads_or_empty(x, None)
         return parsed if isinstance(parsed, list) else (default or [])
 
     def _ensure_str(self, x, default=""):
+        """Ensure value is a string."""
         if isinstance(x, str):
             return x
         if x is None:

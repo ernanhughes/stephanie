@@ -1,4 +1,4 @@
-# stephanie/agents/maintenance/knowledge_trainer_agent.py
+# stephanie/agents/maintenance/knowledge_trainer.py
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -7,6 +7,7 @@ import time
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.dataloaders.knowledge_pair_builder import KnowledgePairBuilder
 from stephanie.scoring.training.knowledge_trainer import KnowledgeTrainer
+from stephanie.scoring.calibration import ScoreCalibrator
 
 
 class KnowledgeTrainerAgent(BaseAgent):
@@ -56,6 +57,16 @@ class KnowledgeTrainerAgent(BaseAgent):
             "max_negs_per_pos": self.max_negs_per_pos,
             "shuffle_pairs": self.shuffle_pairs,
         }) 
+
+        calibrator_path = self.cfg.get("calibrator_path", "config/models/calibrators/knowledge.json")
+        try:
+            calibrator = ScoreCalibrator.load(calibrator_path)
+            self.pair_builder.set_calibrator(calibrator)
+            self.logger.log("CalibratorLoaded", {"path": calibrator_path})
+        except Exception as e:
+            self.logger.log("CalibratorLoadFailed", {"error": str(e)})
+            calibrator = None
+
         # 1) Build pairs
         # important output A need to be preferred over B
         pairs = self.pair_builder.build_pairs(
@@ -73,12 +84,24 @@ class KnowledgeTrainerAgent(BaseAgent):
 
         # 2) Train + persist
         stats = self.trainer.train(pairs)
+        if calibrator and hasattr(self.trainer, 'human_scores') and hasattr(self.trainer, 'ai_scores'):
+            quality = calibrator.evaluate(self.trainer.human_scores, self.trainer.ai_scores)
+            stats.update({
+                "calibration_mse": quality["mse"],
+                "calibration_r2": quality["r2"],
+                "calibration_accuracy": quality["accuracy"],
+            })
         stats.update({
             "trained_pairs": len(pairs),
             "beta": self.trainer.beta,
             "margin": self.trainer.margin,
             "epochs": self.trainer.epochs,
             "batch_size": self.trainer.batch_size,
+            "human_pair_acc": stats.get("best_val_pair_acc_h", float("nan")),
+            "ai_pair_acc": stats.get("best_val_pair_acc_a", float("nan")),
+            "alignment_mse": stats.get("alignment_mse", float("nan")),
+            "disagreement_rate": stats.get("disagreement_rate", float("nan")),
+            "blend_ratio": stats.get("blend_ratio", 0.6),
         })
 
         if "error" in stats:

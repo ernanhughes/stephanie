@@ -17,6 +17,7 @@ from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.reporting import ReportFormatter
 from stephanie.services.cbr_service import CBRService
+from stephanie.services.chat_corpus_service import ChatCorpusService
 from stephanie.services.cycle_watcher_service import CycleWatcherService
 from stephanie.services.knowledge_base_service import KnowledgeBaseService
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
@@ -197,6 +198,11 @@ class Supervisor:
         self.container.register(
             "strategy",
             lambda: StrategyProfileService(cfg=cfg, memory=memory, logger=logger, namespace="track_c")
+        )
+
+        self.container.register(
+            "chat_corpus",
+            lambda: ChatCorpusService(cfg=cfg, memory=memory, logger=logger, container=self.container),
         )
 
     def _create_reward_model(self, cfg, memory, logger):
