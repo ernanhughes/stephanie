@@ -819,7 +819,7 @@ class ChatStore(BaseSQLAlchemyStore):
         def op(s):
             q: Query = (
                 s.query(ChatTurnORM)
-                .filter(ChatTurnORM.text.isnot(None), ChatTurnORM.text != "")
+                .filter(ChatTurnORM.assistant_message.text.isnot(None), ChatTurnORM.text != "")
             )
 
             if min_text_len and min_text_len > 1:

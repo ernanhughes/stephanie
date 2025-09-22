@@ -6,15 +6,7 @@ defaults:
   - scoring/service/default
   - mars/default
 
-  - scorer/reward/default
-  - scorer/ebt/default
-  - scorer/hrm/default
-  - scorer/epistemic_hrm/default
-  - scorer/mrq/default
-  - scorer/sicql/default
-  - scorer/svm/default
-  - scorer/contrastive_ranker/default
-  - scorer/epistemic_hrm/default
+  - scorer: all  
 
   - agents/chat_analyze
   - agents/knowledge_infused_summarizer

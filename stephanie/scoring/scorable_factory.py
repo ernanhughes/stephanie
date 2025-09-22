@@ -18,15 +18,15 @@ from stephanie.scoring.scorable import Scorable
 # Enum defining all the supported types of scoreable targets
 class TargetType:
     AGENT_OUTPUT = "agent_output"
-    DOCUMENT = "document"
-    DYNAMIC = "dynamic"
-    DOCUMENT_SECTION = "document_section"
+    CASE = "case"
+    CASE_SCORABLE = "case_scorable"
     CONVERSATION = "conversation"       # full conversation
     CONVERSATION_TURN = "conversation_turn"  # user→assistant pair
     CONVERSATION_MESSAGE = "conversation_message"  # single message
+    DOCUMENT = "document"
+    DOCUMENT_SECTION = "document_section"
+    DYNAMIC = "dynamic"
     GOAL = "goal"
-    CASE = "case"
-    CASE_SCORABLE = "case_scorable"
     HYPOTHESIS = "hypothesis"
     CARTRIDGE = "cartridge"
     TRIPLE = "triple"

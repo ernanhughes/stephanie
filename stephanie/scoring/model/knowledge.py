@@ -83,15 +83,75 @@ class KnowledgeModel:
     def score_a(self, z: torch.Tensor) -> torch.Tensor:
         return self.predictor_a(z).squeeze(-1)
 
-    def predict(self, goal_text: str, candidate_text: str, meta: Optional[dict] = None) -> float:
-        g = self._embed(goal_text)
-        x = self._embed(candidate_text)
-        z = self.encoder(g, x)
-        aux = self._aux_tensor(meta)
-        z = self.aux_proj(z, aux)
-        s_h = self.score_h(z).item()
-        s_a = self.score_a(z).item()
-        return self._blend_scores(s_h, s_a, meta)
+    @torch.no_grad()
+    def predict(
+        self,
+        goal_text: str,
+        candidate_text: str,
+        meta: Optional[dict] = None,
+        *,
+        return_components: bool = False,
+    ) -> float | tuple[float, dict]:
+        """
+        Returns a blended probability in [0,1].
+        If return_components=True, also returns a dict with attribution details.
+        """
+        meta = meta or {}
+
+        # --- encode ---
+        g = self._embed(goal_text)                 # [1,D]
+        x = self._embed(candidate_text)            # [1,D]
+        z = self.encoder(g, x)                     # [1,H]
+        aux = self._aux_tensor(meta)               # [1,A] or None
+        z = self.aux_proj(z, aux)                  # [1,H]
+
+        # --- logits -> probs ---
+        s_h = self.score_h(z)                      # [1]
+        s_a = self.score_a(z)                      # [1]
+        s_h_val = float(s_h.item())
+        s_a_val = float(s_a.item())
+        h_prob = float(torch.sigmoid(torch.tensor(s_h_val)).item())
+        a_prob = float(torch.sigmoid(torch.tensor(s_a_val)).item())
+
+        # --- blending rule (human-first) ---
+        has_similar_human = bool(meta.get("has_similar_human", False))
+        alpha = 1.0 if has_similar_human else 0.6
+        p = alpha * h_prob + (1.0 - alpha) * a_prob
+
+        if not return_components:
+            return p
+
+        # components & fractions
+        human_component = alpha * h_prob
+        ai_component    = (1.0 - alpha) * a_prob
+        denom = human_component + ai_component
+        if denom > 0.0:
+            human_fraction = human_component / denom
+            ai_fraction    = ai_component / denom
+        else:
+            human_fraction = ai_fraction = 0.5  # guard
+
+        details = {
+            # final
+            "probability": float(p),
+
+            # raw head signals
+            "human_logit": round(s_h_val, 6),
+            "ai_logit": round(s_a_val, 6),
+            "human_prob": round(h_prob, 6),
+            "ai_prob": round(a_prob, 6),
+
+            # blending
+            "alpha_human_weight": float(alpha),
+            "has_similar_human": has_similar_human,
+
+            # contributions
+            "human_component": round(human_component, 6),
+            "ai_component": round(ai_component, 6),
+            "human_fraction": round(human_fraction, 6),
+            "ai_fraction": round(ai_fraction, 6),
+        }
+        return p, details
 
     def _blend_scores(self, s_h: float, s_a: float, meta: Optional[dict] = None) -> float:
         meta = meta or {}

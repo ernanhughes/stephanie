@@ -65,8 +65,8 @@ class HNSWIndex:
         }
 
         self._load_index_or_init()
-        #sve on exit
-        atexit.register(self.flush)
+        # save on exit of application
+        # atexit.register(self.flush)
 
     @property
     def ntotal(self) -> int:

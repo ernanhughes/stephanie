@@ -15,7 +15,9 @@ defaults:
   - scorer/svm/default
   - scorer/contrastive_ranker/default
   - scorer/epistemic_hrm/default
+  - scorer/knowledge/default
 
+  - agents/scorable_loader
   - agents/knowledge_trainer
   - agents/chat_annotate
   - agents/paper_processor
@@ -111,7 +113,22 @@ pipeline:
           A contrastive learning approach that uses positive and negative pairs of
           (chat, knowledge) to learn to rank relevant knowledge higher.
        cls: stephanie.agents.maintenance.knowledge_trainer.KnowledgeTrainerAgent
+       enabled: false
+       iterations: 1
+
+     - name: scorable_loader
+       description: "🔓 Load scorables from the database for processing I I Yeah"
+       cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
        enabled: true
+       iterations: 1    
+
+     - name: universal_scorer
+       description: >
+         📊 Score the generated Scorables across multiple dimensions (novelty, clarity,
+         relevance, implementability, alignment, etc.) using ensemble scorers (SICQL, HRM, EBT).
+         Produces rich feedback that turns chats into labeled training data.
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false
        iterations: 1
 
      - name: chat_to_casebook
@@ -122,12 +139,6 @@ pipeline:
        cls: stephanie.agents.pacs.chat_to_casebook.ChatToCaseBookAgent
        enabled: false
        iterations: 1
-
-     - name: knowledge_db_loader
-       description: "🔓 Load prior retained knowledge from the database for retrieval"
-       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
-       enabled: true
-       iterations: 1    
 
      - name: paper_processor
        description: > 

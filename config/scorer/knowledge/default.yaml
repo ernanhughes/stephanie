@@ -1,6 +1,6 @@
 # configs/scorer/knowledge/default.yaml
 model_type: knowledge
-target_type: chat
+target_type: document
 model_path: models
 model_version: v1
 early_stopping: true

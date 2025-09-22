@@ -68,7 +68,7 @@ class KnowledgeScorer(BaseScorer):
         enc_path   = loc.encoder_file()
         head_h     = loc.model_file()      # human head
         head_a     = loc.q_head_file()     # AI head
-        auxproj    = getattr(loc, "auxproj_file", lambda: os.path.join(loc.model_dir(), "auxproj.pt"))()
+        auxproj    = loc.auxproj_file()
 
         # Load model weights
         self.model = KnowledgeModel.load(
@@ -110,11 +110,10 @@ class KnowledgeScorer(BaseScorer):
         }
 
     def score(self, context: dict, scorable: Scorable, dimensions=["knowledge"]) -> ScoreBundle:
-        goal_text = (context.get(GOAL, {}) or {}).get("goal_text") or ""
+        goal_text = context.get(GOAL, {}).get("goal_text") or ""
         candidate = getattr(scorable, "text", "") or ""
 
         if not goal_text or not candidate:
-            # Return neutral when inputs are missing
             neutral = 0.5
             res = ScoreResult(
                 dimension="knowledge",
@@ -128,46 +127,59 @@ class KnowledgeScorer(BaseScorer):
 
         meta = self._aux_from_context(context, scorable)
 
-        # 1) Primary score: model returns a probability [0,1]
-        p = float(self.model.predict(goal_text, candidate, meta=meta))
+        # One model call gives you the blended prob + attribution
+        p, comps = self.model.predict(
+            goal_text,
+            candidate,
+            meta=meta,
+            return_components=True,
+        )
 
-        # 2) Optional post-calibration (ONLY if the tuner was trained on probabilities)
+        # Optional post-calibration (only if your tuner is prob-calibrated)
         if self.tuner is not None and hasattr(self.tuner, "transform_prob"):
-            p = float(self.tuner.transform_prob(p))
+            p = float(self.tuner.transform_prob(float(p)))
 
         # Clamp
         lo, hi = self.meta.get("min_value", 0.0), self.meta.get("max_value", 1.0)
-        p = max(lo, min(hi, p))
+        p = max(lo, min(hi, float(p)))
 
-        # 3) Diagnostics + attribution
-        g = self.model._embed(goal_text)                  # [1,D]
-        x = self.model._embed(candidate)                  # [1,D]
-        z = self.model.encoder(g, x)                      # [1,H]
-        aux = self.model._aux_tensor(meta)                # [1,A] or None
-        z = self.model.aux_proj(z, aux)                   # [1,H]
-        s_h = float(self.model.score_h(z).item())
-        s_a = float(self.model.score_a(z).item())
-        h_prob = float(torch.sigmoid(torch.tensor(s_h)).item())
-        a_prob = float(torch.sigmoid(torch.tensor(s_a)).item())
-
-        # Reconstruct the same alpha the model used
-        has_similar_human = bool(meta.get("has_similar_human", False))
-        alpha = 1.0 if has_similar_human else 0.6
-
-        # Component contributions and fractions
-        human_component = alpha * h_prob
-        ai_component    = (1.0 - alpha) * a_prob
-        denom = human_component + ai_component
-        if denom > 0.0:
-            human_fraction = human_component / denom
-            ai_fraction    = ai_component / denom
-        else:
-            human_fraction = ai_fraction = 0.5  # degenerate case guard
-
-        head_gap = abs(h_prob - a_prob)
-
+        # High-disagreement routing (use model-provided head probs)
+        head_gap = abs(comps["human_prob"] - comps["ai_prob"])
         if head_gap > 0.25:
-            self._log_disagreement(scorable, s_h, s_a, head_gap)
+            try:
+                self.memory.casebooks.add_scorable(
+                    case_id=getattr(scorable, "case_id", None),
+                    pipeline_run_id=0,
+                    role="uncertain_candidate",
+                    text=getattr(scorable, "text", ""),
+                    meta={
+                        "agent_name": "knowledge_scorer",
+                        "section_name": getattr(scorable, "section_name", None),
+                        "paper_id": getattr(scorable, "paper_id", None),
+                        "human_logit": comps["human_logit"],
+                        "ai_logit": comps["ai_logit"],
+                        "sigmoid_gap": head_gap,
+                    },
+                )
+            except Exception:
+                pass
+
+        # Build result (pass through the model’s diagnostics)
+        attrs = {
+            "probability": round(p, 4),
+            "human_prob": round(comps["human_prob"], 4),
+            "ai_prob": round(comps["ai_prob"], 4),
+            "human_logit": round(comps["human_logit"], 4),
+            "ai_logit": round(comps["ai_logit"], 4),
+            "head_gap": round(head_gap, 4),
+            "alpha_human_weight": round(comps["alpha_human_weight"], 4),
+            "has_similar_human": bool(comps["has_similar_human"]),
+            "human_component": round(comps["human_component"], 4),
+            "ai_component": round(comps["ai_component"], 4),
+            "human_fraction": round(comps["human_fraction"], 4),
+            "ai_fraction": round(comps["ai_fraction"], 4),
+            "aux_used": list(self.aux_features),
+        }
 
         res = ScoreResult(
             dimension="knowledge",
@@ -175,31 +187,7 @@ class KnowledgeScorer(BaseScorer):
             source="knowledge",
             rationale=f"blended_prob={round(p, 4)}",
             weight=1.0,
-            attributes={
-                # final score
-                "probability": round(p, 4),
-
-                # raw head probabilities + logit diagnostics
-                "human_prob": round(h_prob, 4),
-                "ai_prob": round(a_prob, 4),
-                "human_logit": round(s_h, 4),
-                "ai_logit": round(s_a, 4),
-                "head_gap": round(head_gap, 4),
-
-                # blending details
-                "alpha_human_weight": round(alpha, 4),
-                "has_similar_human": has_similar_human,
-
-                # additive contributions (before clamp)
-                "human_component": round(human_component, 4),
-                "ai_component": round(ai_component, 4),
-
-                # share of the final (normalized) score explained by each head
-                "human_fraction": round(human_fraction, 4),
-                "ai_fraction": round(ai_fraction, 4),
-
-                "aux_used": list(self.aux_features),
-            },
+            attributes=attrs,
         )
         return ScoreBundle(results={"knowledge": res})
 
