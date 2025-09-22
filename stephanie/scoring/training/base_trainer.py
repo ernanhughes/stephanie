@@ -44,6 +44,9 @@ class BaseTrainer:
         def pi_head_file(self) -> str:
             return os.path.join(self.base_path, f"{self.dimension}_pi.pt")
 
+        def auxproj_file(self) -> str:
+            return os.path.join(self.base_path, f"{self.dimension}_auxproj.pt")
+
         def meta_file(self) -> str:
             return os.path.join(self.base_path, f"{self.dimension}.meta.json")
 

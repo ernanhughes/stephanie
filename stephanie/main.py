@@ -18,6 +18,7 @@ from stephanie.logging import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.supervisor import Supervisor
 from stephanie.utils import generate_run_id, get_log_file_path
+from stephanie.utils.file_utils import save_json, save_to_timestamped_file
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def run(cfg: DictConfig):
     async def main():
-        save_config_to_timestamped_file(cfg=cfg)
+        save_to_timestamped_file(data=OmegaConf.to_yaml(cfg), file_prefix="used_config", file_extension="yaml", output_dir="logs")
 
         # Setup logger and memory
         run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
@@ -105,14 +106,6 @@ def save_json_result(log_path: str, result: dict):
     logger.info(f"✅ JSON result saved to: {report_path}")
 
 
-def save_config_to_timestamped_file(cfg, output_dir="logs"):
-    os.makedirs(output_dir, exist_ok=True)
-    timestamped_name = f"config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
-    filepath = os.path.join(output_dir, timestamped_name)
-    with open(filepath, "w", encoding="utf-8") as f:   # 👈 Force UTF-8
-        f.write(OmegaConf.to_yaml(cfg))
-    logger.info(f"🔧 Saved config to {filepath}")
-    return filepath
 
 
 if __name__ == "__main__":

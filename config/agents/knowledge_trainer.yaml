@@ -4,6 +4,17 @@ knowledge_trainer:
   save_prompt: true
   save_context: false
   skip_if_completed: false
+
+  use_pair_cache: true
+  force_pair_refresh: false  # Set to true when you want to rebuild pairs
+  min_star_pos: 2
+  max_star_neg: -1
+  limit_pairs: 500  ## prod 50_000
+  max_negs_per_pos: 3
+  min_entity_overlap: 
+  
+  
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434

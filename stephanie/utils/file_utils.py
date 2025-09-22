@@ -3,6 +3,21 @@ from __future__ import annotations
 
 import hashlib
 import re
+import os
+from datetime import datetime
+from omegaconf import OmegaConf
+
+import logging
+_logger = logging.getLogger(__name__)
+
+def save_to_timestamped_file(data, file_prefix:str = "config", file_extension: str = "yaml", output_dir="logs"):
+    os.makedirs(output_dir, exist_ok=True)
+    timestamped_name = f"{file_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
+    filepath = os.path.join(output_dir, timestamped_name)
+    with open(filepath, "w", encoding="utf-8") as f:  
+        f.write(data)
+    _logger.info(f"🔧 Saved config to {filepath}")
+    return filepath
 
 
 def camel_to_snake(name):

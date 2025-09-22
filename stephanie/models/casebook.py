@@ -8,13 +8,12 @@ from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
+from stephanie.utils.date_utils import iso_date, utcnow
 
 # If you’re on Postgres and prefer JSONB:
 # from sqlalchemy.dialects.postgresql import JSONB as SA_JSON
 
 
-def _iso(dt: datetime | None) -> str | None:
-    return dt.isoformat() if isinstance(dt, datetime) else None
 
 
 def _json_safe(val):
@@ -27,7 +26,7 @@ def _json_safe(val):
     if isinstance(val, (str, int, float, bool)):
         return val
     if isinstance(val, datetime):
-        return _iso(val)
+        return iso_date(val)
     if isinstance(val, dict):
         return {k: _json_safe(v) for k, v in val.items()}
     if isinstance(val, (list, tuple)):
@@ -44,24 +43,20 @@ def _json_safe(val):
 
 class CaseBookORM(Base):
     __tablename__ = "casebooks"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=False, unique=True, index=True)
     description = Column(Text, default="")
-
-    # Optional scoping fields (if you use them)
     pipeline_run_id = Column(Integer, nullable=True, index=True)
-    agent_name   = Column(String, nullable=True, index=True)
-    tag          = Column(String, nullable=False, default="default")
+    agent_name = Column(String, nullable=True, index=True)
+    tag = Column(String, nullable=False, default="default", index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    meta = Column(SA_JSON, nullable=True, default=dict)
 
-    created_at = Column(DateTime, default=datetime.now, nullable=False)
-
-    meta = Column(SA_JSON, nullable=True)
-    # --- relationships ---
     cases = relationship(
         "CaseORM",
         back_populates="casebook",
         cascade="all, delete-orphan",
+        order_by="desc(CaseORM.created_at)",
         passive_deletes=True,
     )
 
@@ -88,7 +83,7 @@ class CaseBookORM(Base):
             "pipeline_run_id": self.pipeline_run_id,
             "agent_name": self.agent_name,
             "tag": self.tag,
-            "created_at": _iso(self.created_at),
+            "created_at": iso_date(self.created_at),
         }
 
         if include_counts:
@@ -119,15 +114,33 @@ class CaseORM(Base):
     goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True)
 
     prompt_text = Column(Text, nullable=True)
-
     agent_name = Column(Text, nullable=True)
-
     created_at = Column(DateTime, default=datetime.now)
     meta = Column(SA_JSON, nullable=True)
 
     # Relationships
-    scorables = relationship("CaseScorableORM", back_populates="case")
+    scorables = relationship(
+        "CaseScorableORM",
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="CaseScorableORM.rank.asc().nulls_last(), CaseScorableORM.id.asc()",
+        passive_deletes=True,
+    )
     casebook = relationship("CaseBookORM", back_populates="cases")
+
+    def to_dict(self, *, include_scorables: bool = True) -> dict:
+        data = {
+            "id": self.id,
+            "casebook_id": self.casebook_id,
+            "goal_id": self.goal_id,
+            "prompt_text": self.prompt_text or "",
+            "agent_name": self.agent_name,
+            "created_at": iso_date(self.created_at),
+            "meta": _json_safe(self.meta),
+        }
+        if include_scorables:
+            data["scorables"] = [s.to_dict() for s in (self.scorables or [])]
+        return data
 
 class CaseScorableORM(Base):
     __tablename__ = "case_scorables"
@@ -152,7 +165,7 @@ class CaseScorableORM(Base):
             "role": self.role,
             "rank": self.rank,
             "meta": _json_safe(self.meta),
-            "created_at": _iso(self.created_at),
+            "created_at": iso_date(self.created_at),
         }
 
     def __repr__(self) -> str:

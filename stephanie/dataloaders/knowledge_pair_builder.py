@@ -112,11 +112,12 @@ class KnowledgePairBuilder:
         self,
         min_star_pos: int = 2,
         max_star_neg: int = -1,
-        limit: int = 50_000,
+        limit: int = 500,
         max_negs_per_pos: int = 3,
         shuffle: bool = True,
         ai_score_threshold: float = 70.0,
         ai_confidence_threshold: float = 0.6,
+        force_refresh: bool = False,   # ← add this (unused for now)
     ) -> List[Dict[str, Any]]:
         """
         Build contrastive pairs for DPO training.
@@ -172,10 +173,8 @@ class KnowledgePairBuilder:
                 break
 
             user_prompt = (pos.get("goal_text") or "").strip()
-            if not user_prompt or not pos.get("assistant_text", "").strip() or not neg.get("assistant_text", "").strip():
-                continue  # Skip malformed pairs
-
-
+            if not user_prompt or not pos.get("assistant_text", "").strip():
+                continue
 
             # Find matching negatives
             key = (pos["conversation_id"], _primary_domain_from_row(pos))
@@ -210,12 +209,13 @@ class KnowledgePairBuilder:
             for neg in chosen:
                 if len(pairs) >= limit:
                     break
+                if not neg.get("assistant_text", "").strip():
+                    continue
                     
                 neg_emb = self._embed_turn_cached(neg)
                 if neg_emb is None:
                     continue
 
-                # Skip duplicate pairs
                 pair_hash = hashlib.sha1(f"{pos['id']}:{neg['id']}".encode("utf-8")).hexdigest()[:16]
                 if pair_hash in seen:
                     continue

@@ -19,12 +19,6 @@ from stephanie.scoring.scorable_factory import TargetType
 _logger = logging.getLogger(__name__)
 
 
-def _trunc(s: str | None, n: int = 200) -> str | None:
-    if not isinstance(s, str):
-        return s
-    return s if len(s) <= n else s[:n] + "…"
-
-
 class CaseBookStore(BaseSQLAlchemyStore):
     orm_model = CaseBookORM
     default_order_by = CaseBookORM.id.desc()
@@ -190,27 +184,30 @@ class CaseBookStore(BaseSQLAlchemyStore):
             return q.limit(limit).all()
         return self._run(op)
 
-    # ---------- NEW/RESTORED: ensure_case & goal-state linkage ----------
-
     def ensure_case(self, casebook_id: int, goal_text: str, agent_name: str) -> CaseORM:
         def op(s):
-            q = (
-                s.query(CaseORM)
-                 .filter_by(casebook_id=casebook_id, target_type=TargetType.GOAL, target_id=None)
-            )
-            goal_case = q.one_or_none()
-            if goal_case is None:
-                goal = s.query(GoalORM).filter_by(goal_text=goal_text).first()
-                goal_case = CaseORM(
-                    casebook_id=casebook_id,
-                    goal_id=goal.id if goal else None,
-                    agent_name=agent_name,
-                )
-                s.add(goal_case)
+            goal = s.query(GoalORM).filter_by(goal_text=goal_text).one_or_none()
+            goal_id = goal.id if goal else None
+            if goal is None:
+                g = GoalORM(goal_text=goal_text, description=f"Auto-created for casebook {casebook_id}")
+                s.add(g) 
                 s.flush()
-            return goal_case
+                goal_id = g.id
+
+            existing = (s.query(CaseORM)
+                        .filter_by(casebook_id=casebook_id, goal_id=goal_id, agent_name=agent_name)
+                        .order_by(CaseORM.created_at.desc())
+                        .first())
+            if existing:
+                return existing
+
+            case = CaseORM(casebook_id=casebook_id, goal_id=goal_id, agent_name=agent_name)
+            s.add(case)
+            s.flush()
+            return case
         return self._run(op)
 
+    # Keep a single copy of these helpers
     def ensure_goal_state_for_case(self, casebook_id: int, goal_text: str, goal_id: str) -> CaseGoalStateORM:
         def op(s):
             state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id).one_or_none()
@@ -379,8 +376,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
             s.flush()
             return orm
         return self._run(op)
-
-    # ---------- NEW/RESTORED: add_case bulk helper ----------
 
     def add_case(
         self,
@@ -620,19 +615,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
             return result[:limit]
         return self._run(op)
 
-    def update_scorable_meta(self, case_scorable_id: int, patch: dict) -> Optional[CaseScorableORM]:
-        """Shallow-merge fields into CaseScorableORM.meta and return the row."""
-        def op(s):
-            row = s.get(CaseScorableORM, case_scorable_id)
-            if not row:
-                return None
-            meta = dict(row.meta or {})
-            meta.update(patch or {})
-            row.meta = meta
-            s.add(row)
-            return row
-        return self._run(op)
-
     def list_scorables_by_role(self, case_id: int, role: str, limit: int = 500):
         """Convenience for SIS to fetch items by role."""
         def op(s):
@@ -712,17 +694,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
             row.meta = meta
             s.add(row)
             return row
-        return self._run(op)
-
-    def list_scorables_by_role(self, case_id: int, role: str, limit: int = 500):
-        """Convenience for SIS to fetch items by role."""
-        def op(s):
-            return (s.query(CaseScorableORM)
-                      .filter(CaseScorableORM.case_id == case_id,
-                              CaseScorableORM.role == role)
-                      .order_by(CaseScorableORM.id.desc())
-                      .limit(limit)
-                      .all())
         return self._run(op)
 
     # ------------------------

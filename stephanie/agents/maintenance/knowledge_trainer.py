@@ -34,9 +34,12 @@ class KnowledgeTrainerAgent(BaseAgent):
 
         # Defaults; overridable via cfg["knowledge"]
         kcfg = cfg.get("knowledge", {}) or {}
+        self.use_pair_cache = kcfg.get("use_pair_cache", True)
+        self.force_pair_refresh = kcfg.get("force_pair_refresh", False)
+    
         self.min_star_pos = int(kcfg.get("min_star_pos", 2))
         self.max_star_neg = int(kcfg.get("max_star_neg", -1))
-        self.limit_pairs  = int(kcfg.get("limit_pairs", 50_000))
+        self.limit_pairs  = int(kcfg.get("limit_pairs", 500))
         self.max_negs_per_pos = int(kcfg.get("max_negs_per_pos", 3))
         self.shuffle_pairs = bool(kcfg.get("shuffle_pairs", True))
         self.show_progress = cfg.get("progress", {}).get("enabled", True)
@@ -75,6 +78,7 @@ class KnowledgeTrainerAgent(BaseAgent):
             limit=self.limit_pairs,
             max_negs_per_pos=self.max_negs_per_pos,
             shuffle=self.shuffle_pairs,
+            # force_refresh=self.force_pair_refresh
         )
 
         if not pairs:

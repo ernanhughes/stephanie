@@ -272,7 +272,7 @@ class KnowledgeTrainer(BaseTrainer):
 
     @torch.no_grad()
     def _disagreement_rate(self, dl) -> float:
-        """Calculate rate at which heads disagree on pair ordering"""
+        """Rate at which human and AI heads disagree on pair ordering (elementwise across the batch)."""
         if dl is None:
             return float("nan")
 
@@ -287,19 +287,19 @@ class KnowledgeTrainer(BaseTrainer):
             z_a = self.model.aux_proj(z_a, AUXA)
             z_b = self.model.aux_proj(z_b, AUXB)
 
-            # Get scores from both heads
+            # Scores from both heads (shape: [batch] or [batch,1])
             s_h_a = self.model.score_h(z_a)
             s_h_b = self.model.score_h(z_b)
             s_a_a = self.model.score_a(z_a)
             s_a_b = self.model.score_a(z_b)
 
-            # Check if heads disagree on ordering
-            h_order = (s_h_a > s_h_b).item()
-            a_order = (s_a_a > s_a_b).item()
+            # Elementwise order comparisons -> boolean vectors
+            h_order = (s_h_a > s_h_b).view(-1)
+            a_order = (s_a_a > s_a_b).view(-1)
 
-            if h_order != a_order:
-                disagreements += 1
-            total += 1
+            # Count disagreements elementwise
+            disagreements += (h_order != a_order).sum().item()
+            total += h_order.numel()
 
         return disagreements / total if total > 0 else float("nan")
 
@@ -477,8 +477,17 @@ class KnowledgeTrainer(BaseTrainer):
         locator = self.get_locator(dimension)
         self.model.save(
             encoder_path=locator.encoder_file(),
-            predictor_h_path=locator.model_file(),  # human head
-            predictor_a_path=locator.q_head_file(),  # AI head
+            head_h_path=locator.model_file(),     # human head
+            head_a_path=locator.q_head_file(),    # AI head
+            auxproj_path=locator.auxproj_file(),  # ← add this
+            manifest_path=locator.meta_file(),# ← and this (optional but recommended)
+            extra={
+                "trained_pairs": len(pairs),
+                "timestamp": datetime.now().isoformat(),
+                "embedding_type": self.embedding_type,
+                "version": self.version,
+                "aux_features": self.aux_features,
+            },
         )
 
         # Calibrate tuner on validation set
