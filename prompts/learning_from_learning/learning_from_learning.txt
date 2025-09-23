@@ -1,0 +1,20 @@
+You are drafting a crisp, technically faithful section summary for a research paper.
+
+Title:
+{{ title }}
+
+Focus Section: {{ focus_section }}
+
+Section Text (abridged):
+{{ focus_text }}
+
+Hints from prior high-signal conversation (optional):
+{{ hints }}
+
+Write 8–14 sentences that:
+- reflect the section’s actual claims, methods, and evidence
+- avoid hype and vague language
+- prefer specifics (numbers, datasets, ablations) when present
+- are self-contained and readable
+
+Output only the final summary text.

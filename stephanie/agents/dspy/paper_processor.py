@@ -274,7 +274,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         t_run = self._t0()
         self.report({"event": "start", "agent": self.name, "step": "paper_processor.run", "details": "Processing paper sections"})
 
-        documents = context.get(self.input_key, [])
+        documents = context.get(self.input_key, []) 
         processed_sections = []
         self.report({"event": "input", "agent": self.name, "docs_count": len(documents)})
 

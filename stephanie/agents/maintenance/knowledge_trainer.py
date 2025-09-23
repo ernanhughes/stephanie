@@ -21,7 +21,9 @@ class KnowledgeTrainerAgent(BaseAgent):
         # Builder mines (pos,neg) pairs for "knowledge" from chat turns
         self.pair_builder = KnowledgePairBuilder(
             memory=memory,
-            min_entity_overlap=int(cfg.get("knowledge", {}).get("min_entity_overlap", 1)),
+            min_entity_overlap=int(
+                cfg.get("knowledge", {}).get("min_entity_overlap", 1)
+            ),
             seed=int(cfg.get("seed", 1337)),
         )
 
@@ -36,14 +38,16 @@ class KnowledgeTrainerAgent(BaseAgent):
         kcfg = cfg.get("knowledge", {}) or {}
         self.use_pair_cache = kcfg.get("use_pair_cache", True)
         self.force_pair_refresh = kcfg.get("force_pair_refresh", False)
-    
+
         self.min_star_pos = int(kcfg.get("min_star_pos", 2))
         self.max_star_neg = int(kcfg.get("max_star_neg", -1))
-        self.limit_pairs  = int(kcfg.get("limit_pairs", 500))
+        self.limit_pairs = int(kcfg.get("limit_pairs", 500))
         self.max_negs_per_pos = int(kcfg.get("max_negs_per_pos", 3))
         self.shuffle_pairs = bool(kcfg.get("shuffle_pairs", True))
         self.show_progress = cfg.get("progress", {}).get("enabled", True)
-        self.progress_refresh = int(cfg.get("progress", {}).get("refresh", 10))  # refresh every N batches
+        self.progress_refresh = int(
+            cfg.get("progress", {}).get("refresh", 10)
+        )  # refresh every N batches
 
     async def run(self, context: dict) -> dict:
         """
@@ -53,15 +57,20 @@ class KnowledgeTrainerAgent(BaseAgent):
         """
         t0 = time.time()
         results: Dict[str, Any] = {}
-        self.logger.log("KnowledgeTrainerAgentStarted", {
-            "min_star_pos": self.min_star_pos,
-            "max_star_neg": self.max_star_neg,
-            "limit_pairs": self.limit_pairs,
-            "max_negs_per_pos": self.max_negs_per_pos,
-            "shuffle_pairs": self.shuffle_pairs,
-        }) 
+        self.logger.log(
+            "KnowledgeTrainerAgentStarted",
+            {
+                "min_star_pos": self.min_star_pos,
+                "max_star_neg": self.max_star_neg,
+                "limit_pairs": self.limit_pairs,
+                "max_negs_per_pos": self.max_negs_per_pos,
+                "shuffle_pairs": self.shuffle_pairs,
+            },
+        )
 
-        calibrator_path = self.cfg.get("calibrator_path", "config/models/calibrators/knowledge.json")
+        calibrator_path = self.cfg.get(
+            "calibrator_path", "config/models/calibrators/knowledge.json"
+        )
         try:
             calibrator = ScoreCalibrator.load(calibrator_path)
             self.pair_builder.set_calibrator(calibrator)
@@ -88,25 +97,39 @@ class KnowledgeTrainerAgent(BaseAgent):
 
         # 2) Train + persist
         stats = self.trainer.train(pairs)
-        if calibrator and hasattr(self.trainer, 'human_scores') and hasattr(self.trainer, 'ai_scores'):
-            quality = calibrator.evaluate(self.trainer.human_scores, self.trainer.ai_scores)
-            stats.update({
-                "calibration_mse": quality["mse"],
-                "calibration_r2": quality["r2"],
-                "calibration_accuracy": quality["accuracy"],
-            })
-        stats.update({
-            "trained_pairs": len(pairs),
-            "beta": self.trainer.beta,
-            "margin": self.trainer.margin,
-            "epochs": self.trainer.epochs,
-            "batch_size": self.trainer.batch_size,
-            "human_pair_acc": stats.get("best_val_pair_acc_h", float("nan")),
-            "ai_pair_acc": stats.get("best_val_pair_acc_a", float("nan")),
-            "alignment_mse": stats.get("alignment_mse", float("nan")),
-            "disagreement_rate": stats.get("disagreement_rate", float("nan")),
-            "blend_ratio": stats.get("blend_ratio", 0.6),
-        })
+        if (
+            calibrator
+            and hasattr(self.trainer, "human_scores")
+            and hasattr(self.trainer, "ai_scores")
+        ):
+            quality = calibrator.evaluate(
+                self.trainer.human_scores, self.trainer.ai_scores
+            )
+            stats.update(
+                {
+                    "calibration_mse": quality["mse"],
+                    "calibration_r2": quality["r2"],
+                    "calibration_accuracy": quality["accuracy"],
+                }
+            )
+        stats.update(
+            {
+                "trained_pairs": len(pairs),
+                "beta": self.trainer.beta,
+                "margin": self.trainer.margin,
+                "epochs": self.trainer.epochs,
+                "batch_size": self.trainer.batch_size,
+                "human_pair_acc": stats.get(
+                    "best_val_pair_acc_h", float("nan")
+                ),
+                "ai_pair_acc": stats.get("best_val_pair_acc_a", float("nan")),
+                "alignment_mse": stats.get("alignment_mse", float("nan")),
+                "disagreement_rate": stats.get(
+                    "disagreement_rate", float("nan")
+                ),
+                "blend_ratio": stats.get("blend_ratio", 0.6),
+            }
+        )
 
         if "error" in stats:
             self.logger.log("KnowledgeTrainingError", stats)
@@ -128,7 +151,8 @@ class KnowledgeTrainerAgent(BaseAgent):
                 "aux_features": stats.get("aux_features"),
                 "embedding_type": stats.get("embedding_type"),
                 "version": stats.get("version"),
-            },        )
+            },
+        )
 
         # 4) Return stats
         elapsed = time.time() - t0

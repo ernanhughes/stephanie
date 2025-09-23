@@ -10,10 +10,10 @@ import torch
 
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.data.knowledge_unit import KnowledgeUnit
-from stephanie.knowledge.casebook_store import Scorable
 from stephanie.memory.chat_store import ChatStore
 from stephanie.models.ner_retriever import EntityDetector
 from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import Scorable
 
 _logger = logging.getLogger(__name__)
 
@@ -287,15 +287,8 @@ class ChatKnowledgeBuilder:
         return anchors[:10]
 
     def _build_contextual_knowledge(self, conversation_id: int) -> KnowledgeUnit:
-        if not self.chat_store:
-            return KnowledgeUnit(text="", stats={"error": "chat_store_unavailable"})
-
         try:
-            conv = self.chat_store.get_conversation(conversation_id)
-            if not conv:
-                return KnowledgeUnit(text="", stats={"error": "conversation_not_found"})
-
-            turns = self.chat_store.get_turns_for_conversation(conversation_id)[-5:]
+            turns = self.memory.chats.list_turns_for_conversation_with_texts(conversation_id)
             snippets = []
             for turn in turns:
                 u = (turn.user_message.text or "").strip()

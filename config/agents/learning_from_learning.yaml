@@ -1,0 +1,15 @@
+learning_from_learning:
+  name: learning_from_learning
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: learning_from_learning
+  prompt_mode: file
+  prompt_file: learning_from_learning.txt

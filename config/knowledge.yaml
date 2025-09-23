@@ -7,16 +7,9 @@ defaults:
   - logging/json_logger
   - mars/default
 
-  - scorer/reward/default
-  - scorer/ebt/default
-  - scorer/hrm/default
-  - scorer/mrq/default
-  - scorer/sicql/default
-  - scorer/svm/default
-  - scorer/contrastive_ranker/default
-  - scorer/epistemic_hrm/default
-  - scorer/knowledge/default
+  - scorer: all  
 
+  - agents/learning_from_learning
   - agents/scorable_loader
   - agents/knowledge_trainer
   - agents/chat_annotate
@@ -117,10 +110,31 @@ pipeline:
        iterations: 1
 
      - name: scorable_loader
-       description: "🔓 Load scorables from the database for processing I I Yeah"
+       description: "🔓 Load scorables from the database for processing"
        cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
        enabled: true
        iterations: 1    
+
+     - name: knowledge_db_loader
+       description: "Load prior retained knowledge from the database for retrieval"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    
+
+     - name: document_profiler
+       description: "Profile and index documents for relevance to the goal"
+       cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
+       enabled: true
+       iterations: 1
+
+     - name: learning_from_learning
+       description: >
+          🤖 Train Stephanie using the Learning from Learning approach.  
+          A meta-learning technique that uses past learning experiences to improve
+          future learning efficiency and effectiveness.
+       cls: stephanie.agents.learning_from_learning.LearningFromLearningAgent
+       enabled: false
+       iterations: 1
 
      - name: universal_scorer
        description: >

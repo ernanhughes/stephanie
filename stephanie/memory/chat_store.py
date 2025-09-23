@@ -20,7 +20,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import aliased, selectinload, Query
-from sqlalchemy import desc, func, text
+from sqlalchemy import desc, func, text, and_
+from sqlalchemy.dialects.postgresql import JSONB  # only used if dialect is PG
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
@@ -786,13 +787,14 @@ class ChatStore(BaseSQLAlchemyStore):
         return self._run(op)
 
 
+
     def list_turns(
         self,
         *,
         min_star: Optional[int] = None,
         max_star: Optional[int] = None,
-        goal_id: Optional[str] = None,
-        casebook_id: Optional[int] = None,
+        goal_id: Optional[str] = None,        # not on ChatTurnORM; kept for API compat (no-op)
+        casebook_id: Optional[int] = None,    # not on ChatTurnORM; kept for API compat (no-op)
         domain: Optional[str] = None,
         has_entities: bool = True,
         min_text_len: int = 1,
@@ -800,87 +802,129 @@ class ChatStore(BaseSQLAlchemyStore):
         order_desc: bool = True,
     ) -> List[ChatTurnORM]:
         """
-        Fetch chat turns with filtering options.
-        
-        Args:
-            min_star: Minimum star rating
-            max_star: Maximum star rating
-            goal_id: Filter by goal ID
-            casebook_id: Filter by casebook ID
-            domain: Filter by domain
-            has_entities: Only include turns with entities
-            min_text_len: Minimum text length
-            limit: Maximum number of turns to return
-            order_desc: Order by ID descending if True
-            
-        Returns:
-            List of turn objects matching the criteria
+        Fetch chat turns with filtering options. Text length applies to the *assistant* message.
+        Notes:
+        - `goal_id` and `casebook_id` are ignored here (not present on ChatTurnORM).
+        - `domain` matches if ChatTurnORM.domains includes {"domain": <domain>}.
         """
+        warned_missing = {"goal": False, "casebook": False}
+
         def op(s):
+            # Base: join assistant message so we can filter by its text
             q: Query = (
                 s.query(ChatTurnORM)
-                .filter(ChatTurnORM.assistant_message.text.isnot(None), ChatTurnORM.text != "")
+                .join(ChatMessageORM, ChatTurnORM.assistant_message)  # relationship join
             )
 
+            # Assistant text not null/empty
+            q = q.filter(
+                ChatMessageORM.text.isnot(None),
+                ChatMessageORM.text != ""
+            )
+
+            # Min text length (assistant)
             if min_text_len and min_text_len > 1:
                 try:
-                    q = q.filter(func.length(ChatTurnORM.text) >= int(min_text_len))
+                    q = q.filter(func.length(ChatMessageORM.text) >= int(min_text_len))
                 except Exception:
-                    # some dialects don’t support length(); skip quietly
+                    # Some dialects may lack length(); skip quietly
                     pass
 
-            db_filtered = False
+            # Entities filter
+            db_filtered_entities = False
             if has_entities:
-                q = q.filter(ChatTurnORM.entities.isnot(None))
-                # Try DB-side JSON length check; returns (q, db_filtered)
+                q = q.filter(ChatTurnORM.ner.isnot(None)) 
                 try:
-                    q, db_filtered = self._apply_has_entities(q)
+                    # If PG + JSONB available, enforce array length > 0 in DB
+                    if s.bind.dialect.name == "postgresql": 
+                        q = q.filter(func.jsonb_array_length(ChatTurnORM.ner.cast(JSONB)) > 0)
+                        db_filtered_entities = True
+                    else:
+                        # Some SQLite builds expose json_array_length()
+                        q = q.filter(func.json_array_length(ChatTurnORM.ner) > 0)
+                        db_filtered_entities = True
                 except Exception:
-                    # if store lacks helper for some reason, fall back to best effort
-                    try:
-                        q = q.filter(func.jsonb_array_length(ChatTurnORM.entities) > 0)
-                        db_filtered = True
-                    except Exception:
-                        db_filtered = False
+                    db_filtered_entities = False  # fallback after fetch
 
+            # Star range
             if min_star is not None:
                 q = q.filter(ChatTurnORM.star >= int(min_star))
             if max_star is not None:
                 q = q.filter(ChatTurnORM.star <= int(max_star))
-            if goal_id is not None:
-                q = q.filter(ChatTurnORM.goal_id == goal_id)
-            if casebook_id is not None:
-                q = q.filter(ChatTurnORM.casebook_id == casebook_id)
-            if domain is not None:
-                q = q.filter(ChatTurnORM.domain == domain)
 
+            # Domain filter
+            db_filtered_domain = False
+            if domain:
+                try:
+                    if s.bind.dialect.name == "postgresql":
+                        # domains: JSON array of objects; match any with {"domain": <domain>}
+                        q = q.filter(
+                            ChatTurnORM.domains.cast(JSONB).contains([{"domain": str(domain)}])
+                        )
+                        db_filtered_domain = True
+                    else:
+                        # Some SQLite builds provide json_each/json_extract, but portability is spotty.
+                        # We’ll do a Python-side filter after fetch.
+                        db_filtered_domain = False
+                except Exception:
+                    db_filtered_domain = False
+
+            # Unsupported filters on this model (log once)
+            if goal_id is not None and not warned_missing["goal"]:
+                try:
+                    self.logger and self.logger.warning("list_turns: goal_id filter ignored (not on ChatTurnORM)")
+                finally:
+                    warned_missing["goal"] = True
+            if casebook_id is not None and not warned_missing["casebook"]:
+                try:
+                    self.logger and self.logger.warning("list_turns: casebook_id filter ignored (not on ChatTurnORM)")
+                finally:
+                    warned_missing["casebook"] = True
+
+            # Ordering & fetch
             q = q.order_by(ChatTurnORM.id.desc() if order_desc else ChatTurnORM.id.asc())
             rows = q.limit(int(limit)).all()
 
-            # Python-side enforcement if DB couldn't filter entities non-empty
-            if has_entities and not db_filtered:
+            # Python-side fallbacks
+
+            # has_entities fallback
+            if has_entities and not db_filtered_entities:
                 def _non_empty_entities(val) -> bool:
                     if val is None:
                         return False
                     if isinstance(val, str):
-                        # allow both JSON string and literal '[]'
-                        val = val.strip()
-                        if val == "" or val == "[]":
+                        v = val.strip()
+                        if not v or v == "[]":
                             return False
                         try:
                             import json
-                            arr = json.loads(val)
+                            arr = json.loads(v)
                             return isinstance(arr, list) and len(arr) > 0
                         except Exception:
-                            # if not JSON, treat as truthy string
+                            # If it’s a non-empty string but not JSON, treat as present
                             return True
-                    # ORM may materialize as list already
+                    return isinstance(val, list) and len(val) > 0
+                rows = [r for r in rows if _non_empty_entities(getattr(r, "ner", None))]
+
+            # domain fallback: keep row if any {'domain': <domain>} in domains
+            if domain and not db_filtered_domain:
+                dnorm = str(domain).strip().lower()
+                def _has_domain(dom):
                     try:
-                        return isinstance(val, list) and len(val) > 0
+                        if dom is None:
+                            return False
+                        if isinstance(dom, str):
+                            import json
+                            dom = json.loads(dom)
+                        if isinstance(dom, list):
+                            for item in dom:
+                                name = (item or {}).get("domain")
+                                if isinstance(name, str) and name.strip().lower() == dnorm:
+                                    return True
                     except Exception:
                         return False
-
-                rows = [r for r in rows if _non_empty_entities(getattr(r, "entities", None))]
+                    return False
+                rows = [r for r in rows if _has_domain(getattr(r, "domains", None))]
 
             return rows
 
@@ -1115,3 +1159,137 @@ class ChatStore(BaseSQLAlchemyStore):
             }
         return self._run(op)
 
+
+    def list_turns_for_conversation_with_texts(
+        self,
+        conversation_id: int,
+        *,
+        min_star: Optional[int] = None,
+        max_star: Optional[int] = None,
+        min_ai_score: Optional[float] = None,   # 0..100
+        max_ai_score: Optional[float] = None,   # 0..100
+        require_assistant_text: bool = True,
+        require_nonempty_ner: bool = True,
+        min_assistant_len: int = 1,
+        limit: int = 10_000,
+        order_desc: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        List turns (with texts & metadata) for a single conversation.
+
+        Args:
+            conversation_id: Conversation ID to scope results.
+            min_star/max_star:   Human star filters.
+            min_ai_score/max_ai_score: AI knowledge score filters (0..100).
+            require_assistant_text: Require assistant text to be non-empty.
+            require_nonempty_ner: Require non-empty NER list.
+            min_assistant_len: Minimum assistant text length.
+            limit: Max rows to return.
+            order_desc: Sort by ChatTurnORM.id desc/asc.
+
+        Returns:
+            List[dict] with keys:
+                id, conversation_id, order_index, star, user_text, assistant_text,
+                ner, domains, goal_text, ai_score, ai_rationale
+        """
+        def op(s):
+            U = aliased(ChatMessageORM)
+            A = aliased(ChatMessageORM)
+            C = aliased(ChatConversationORM)
+
+            q: Query = (
+                s.query(
+                    ChatTurnORM.id.label("id"),
+                    ChatTurnORM.conversation_id.label("conversation_id"),
+                    ChatTurnORM.order_index.label("order_index"),
+                    ChatTurnORM.star.label("star"),
+                    ChatTurnORM.ner.label("ner"),
+                    ChatTurnORM.domains.label("domains"),
+                    ChatTurnORM.ai_knowledge_score.label("ai_score"),
+                    ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),
+                    U.text.label("user_text"),
+                    A.text.label("assistant_text"),
+                    C.title.label("goal_text"),  # conversation title as goal
+                )
+                .join(U, ChatTurnORM.user_message_id == U.id)
+                .join(A, ChatTurnORM.assistant_message_id == A.id)
+                .join(C, ChatTurnORM.conversation_id == C.id)
+                .filter(ChatTurnORM.conversation_id == int(conversation_id))
+            )
+
+            # Human star filters
+            if min_star is not None:
+                q = q.filter(ChatTurnORM.star >= int(min_star))
+            if max_star is not None:
+                q = q.filter(ChatTurnORM.star <= int(max_star))
+
+            # AI score filters (0..100)
+            if min_ai_score is not None:
+                q = q.filter(ChatTurnORM.ai_knowledge_score >= float(min_ai_score))
+            if max_ai_score is not None:
+                q = q.filter(ChatTurnORM.ai_knowledge_score <= float(max_ai_score))
+
+            # Assistant text constraints
+            if require_assistant_text:
+                q = q.filter(A.text.isnot(None), A.text != "")
+                if min_assistant_len and min_assistant_len > 1:
+                    try:
+                        q = q.filter(func.length(A.text) >= int(min_assistant_len))
+                    except Exception:
+                        # some dialects lack length(); ignore length filter
+                        pass
+
+            # NER non-empty (DB-side when possible)
+            db_filtered = False
+            if require_nonempty_ner:
+                q = q.filter(ChatTurnORM.ner.isnot(None))
+                try:
+                    q = q.filter(func.jsonb_array_length(ChatTurnORM.ner) > 0)
+                    db_filtered = True
+                except Exception:
+                    # fallback to Python-side below
+                    db_filtered = False
+
+            # Order & limit
+            q = q.order_by(ChatTurnORM.id.desc() if order_desc else ChatTurnORM.id.asc())
+            rows = q.limit(int(limit)).all()
+
+            # Python-side NER non-empty enforcement if DB couldn't
+            def _non_empty_ner(val) -> bool:
+                if val is None:
+                    return False
+                if isinstance(val, list):
+                    return len(val) > 0
+                if isinstance(val, str):
+                    s = val.strip()
+                    if s == "" or s == "[]":
+                        return False
+                    try:
+                        import json as _json
+                        arr = _json.loads(s)
+                        return isinstance(arr, list) and len(arr) > 0
+                    except Exception:
+                        # if it's some other string format, treat as present
+                        return True
+                return False
+
+            out: List[Dict[str, Any]] = []
+            for r in rows:
+                if require_nonempty_ner and not db_filtered and not _non_empty_ner(r.ner):
+                    continue
+                out.append({
+                    "id": r.id,
+                    "conversation_id": r.conversation_id,
+                    "order_index": int(r.order_index or 0),
+                    "star": int(r.star or 0),
+                    "user_text": r.user_text or "",
+                    "assistant_text": r.assistant_text or "",
+                    "ner": r.ner or [],
+                    "domains": r.domains or [],
+                    "goal_text": r.goal_text or "",
+                    "ai_score": r.ai_score,
+                    "ai_rationale": r.ai_rationale or "",
+                })
+            return out
+
+        return self._run(op)
