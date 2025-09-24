@@ -8,7 +8,7 @@ from stephanie.constants import PLAN_TRACE_ID
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 
@@ -37,7 +37,7 @@ class PlannerReuseAgent(BaseAgent):
 
         # get ids of matching traces
         related_scorables = self.memory.embedding.search_related_scorables(
-            goal_text, TargetType.PLAN_TRACE, self.top_k
+            goal_text, ScorableType.PLAN_TRACE, self.top_k
         )
         for scorable in related_scorables:
             pt = self.memory.plan_traces.get_by_trace_id(scorable.get("id"))

@@ -10,7 +10,7 @@ from typing import Any, Dict
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
 from stephanie.models.casebook import CaseBookORM
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 class PaperSectionProcessorAgent(BaseAgent):
@@ -291,7 +291,7 @@ class PaperSectionProcessorAgent(BaseAgent):
         section_scorable = self.memory.casebooks.add_scorable(
             case_id=case.id,
             scorable_id=str(uuid.uuid4()),
-            scorable_type=TargetType.DOCUMENT_SECTION,
+            scorable_type=ScorableType.DOCUMENT_SECTION,
             text=section_text,
             role="input_section",
             meta={
@@ -311,7 +311,7 @@ class PaperSectionProcessorAgent(BaseAgent):
         summary_scorable = self.memory.casebooks.add_scorable(
             case_id=case.id,
             scorable_id=str(uuid.uuid4()),
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
             text=summary_text,
             role="summary",
             meta={
@@ -326,7 +326,7 @@ class PaperSectionProcessorAgent(BaseAgent):
         metrics_scorable = self.memory.casebooks.add_scorable(
             case_id=case.id,
             scorable_id=str(uuid.uuid4()),
-            scorable_type=TargetType.METRICS,
+            scorable_type=ScorableType.METRICS,
             text=metrics_text,
             role="metrics",
             meta={

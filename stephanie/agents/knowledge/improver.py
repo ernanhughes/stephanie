@@ -17,7 +17,7 @@ from stephanie.agents.paper_improver.goals import GoalScorer
 from stephanie.knowledge.casebook_store import CaseBookStore
 from stephanie.knowledge.knowledge_bus import KnowledgeBus
 from stephanie.scoring.calibration_manager import CalibrationManager
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.json_sanitize import safe_json
 
 from ..paper_improver.faithfulness import FaithfulnessBot
@@ -207,7 +207,7 @@ class Improver:
             role="vpm",
             text=safe_json(vpm_row),
             meta={"goal": goal_eval},
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
         )
         self.casebooks.add_scorable(
             casebook_name=casebook_name,
@@ -215,7 +215,7 @@ class Improver:
             role="text",
             text=(run_dir / "draft.md").read_text(),
             meta={"stage": "final"},
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
         )
 
         # 6) Optional faithfulness
@@ -288,7 +288,7 @@ class Improver:
             role="dpo_pair",
             text=safe_json(dpo_pair),
             meta=dpo_pair["metadata"],
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
         )
 
 

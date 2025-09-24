@@ -108,22 +108,21 @@ class CBRService(Service):
                     self.logger.log("CBRCasebookSearchWarn", {"error": str(e)})
 
         # 2) Fallback to embedding search across all “case” scorables
-        if not cases and hasattr(self.memory, "embedding"):
-            try:
-                hits = self.memory.embedding.search_related_scorables(
-                    goal_text,
-                    top_k=self.pool_k,
-                    include_ner=False,
-                    target_type="case",
-                )
-                for h in hits or []:
-                    cv = self._from_embedding_hit(h)
-                    # keep scoping if a casebook_name was requested
-                    if not casebook_name or cv.casebook_name == casebook_name:
-                        cases.append(cv)
-            except Exception as e:
-                if self.logger:
-                    self.logger.log("CBREmbeddingSearchWarn", {"error": str(e)})
+        try:
+            hits = self.memory.embedding.search_related_scorables(
+                goal_text,
+                top_k=self.pool_k,
+                include_ner=False,
+                target_type="case",
+            )
+            for h in hits or []:
+                cv = self._from_embedding_hit(h)
+                # keep scoping if a casebook_name was requested
+                if not casebook_name or cv.casebook_name == casebook_name:
+                    cases.append(cv)
+        except Exception as e:
+            if self.logger:
+                self.logger.log("CBREmbeddingSearchWarn", {"error": str(e)})
 
         # length filter + sort by score desc (None -> worst)
         filtered = [c for c in cases if max(len(c.goal_text), len(c.summary)) >= self.min_text_len]

@@ -3,7 +3,7 @@ from textwrap import wrap
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scoring_manager import ScoringManager
 
 
@@ -29,7 +29,7 @@ class PaperScoreEvaluator(ScoringManager):
             scorable = Scorable(
                 id=document.get("id"),
                 text=chunk,
-                target_type=TargetType.CHUNK,
+                target_type=ScorableType.CHUNK,
             )
             result = super().evaluate(chunk_context, scorable)
 
@@ -40,7 +40,7 @@ class PaperScoreEvaluator(ScoringManager):
         # Aggregate across chunks
         final_scores = self.aggregate_scores(dicts)
         bundle = ScoreBundle.from_dict(final_scores)
-        scorable = ScorableFactory.from_dict(document, TargetType.DOCUMENT)
+        scorable = ScorableFactory.from_dict(document, ScorableType.DOCUMENT)
         eval_id = self.memory.evaluations.save_bundle(
             bundle=bundle,
             scorable=scorable,

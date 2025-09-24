@@ -10,7 +10,7 @@ from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable import ScorableFactory
 from stephanie.scoring.scorer.contrastive_ranker_scorer import \
     ContrastiveRankerScorer
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer

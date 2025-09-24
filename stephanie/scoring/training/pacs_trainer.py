@@ -18,7 +18,7 @@ from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.models.model_version import ModelVersionORM
 from stephanie.models.training_stats import TrainingStatsORM
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
@@ -779,14 +779,14 @@ class PACSTrainer(BaseTrainer):
             # Generic verifier that uses SICQL scores
             def generic_verifier(prompt: str, response: str, meta: Optional[Dict] = None) -> int:
                 # In practice, this would use your SICQL system
-                from stephanie.scoring.scorable_factory import ScorableFactory
+                from stephanie.scoring.scorable import ScorableFactory
                 from stephanie.scoring.transforms.regression_tuner import \
                     RegressionTuner
 
                 # Create scorable
                 scorable = ScorableFactory.from_text(
                     response, 
-                    TargetType.DOCUMENT,
+                    ScorableType.DOCUMENT,
                     context=prompt
                 )
                 

@@ -8,7 +8,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.contrastive_ranker_scorer import \
     ContrastiveRankerScorer
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
@@ -208,7 +208,7 @@ class ScorerAgent(BaseAgent):
         """Score a single document with all configured scorers"""
         doc_id = doc["id"]
         goal = context.get("goal", {"goal_text": ""})
-        scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+        scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
 
         # Collect ScoreResults for this document
         score_results = {}

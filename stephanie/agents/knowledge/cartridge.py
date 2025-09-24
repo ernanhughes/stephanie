@@ -9,7 +9,7 @@ from stephanie.builders.theorem_extractor import TheoremExtractor
 from stephanie.builders.triplet_extractor import TripletExtractor
 from stephanie.models.theorem import CartridgeORM
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
@@ -154,7 +154,7 @@ class CartridgeAgent(BaseAgent):
                 scorable = Scorable(
                     id=cartridge.id,
                     text=scorable_text,
-                    target_type=TargetType.CARTRIDGE,
+                    target_type=ScorableType.CARTRIDGE,
                 )
                 if scorable_text:
                     # Guarantee row exists in document_embeddings
@@ -200,7 +200,7 @@ class CartridgeAgent(BaseAgent):
                         )
                         if self.score_triplets:
                             scorable = ScorableFactory.from_text(
-                                f"({subj}, {pred}, {obj})", TargetType.TRIPLE
+                                f"({subj}, {pred}, {obj})", ScorableType.TRIPLE
                             )
                             score = self.scorer.score(
                                 context=context,
@@ -234,7 +234,7 @@ class CartridgeAgent(BaseAgent):
                     scorable = Scorable(
                         id=theorem.id,
                         text=theorem.statement,
-                        target_type=TargetType.THEOREM,
+                        target_type=ScorableType.THEOREM,
                     )
                     doc_embedding_id = (
                         self.memory.scorable_embeddings.get_or_create(scorable)
@@ -249,7 +249,7 @@ class CartridgeAgent(BaseAgent):
 
                     # Score theorem
                     scorable = ScorableFactory.from_text(
-                        theorem.statement, TargetType.THEOREM
+                        theorem.statement, ScorableType.THEOREM
                     )
                     theorem_score = self.scorer.score(
                         context={**context, "theorem": theorem.to_dict()},
@@ -265,7 +265,7 @@ class CartridgeAgent(BaseAgent):
                 # 4. Score Cartridge
                 if self.score_cartridges:
                     scorable = ScorableFactory.from_text(
-                        cartridge.markdown_content, TargetType.CARTRIDGE
+                        cartridge.markdown_content, ScorableType.CARTRIDGE
                     )
                     score = self.scorer.score(
                         context=context,

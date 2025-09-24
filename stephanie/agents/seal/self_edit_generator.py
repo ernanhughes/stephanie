@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 
 
@@ -69,7 +69,7 @@ class SelfEditGeneratorAgent(BaseAgent):
             scorable = Scorable(
                 text=scorable.text,
                 id=hypothesis.id,
-                target_type=TargetType.HYPOTHESIS,
+                target_type=ScorableType.HYPOTHESIS,
             )
             score = self.score_item(
                 scorable, context, metrics="compiler", scorer=self.scorer

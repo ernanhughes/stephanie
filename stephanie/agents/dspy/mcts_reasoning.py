@@ -14,7 +14,7 @@ from dspy import InputField, OutputField, Predict, Signature
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.llm_response_parser import parse_scored_block
 
 _logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ class MCTSReasoningAgent(BaseAgent):
         self.ucb_weight = float(cfg.get("ucb_weight", 1.41))
 
         self.scorer_name = cfg.get("scorer_name", "sicql")
-        self.scorable_type = cfg.get("scorable_type", TargetType.HYPOTHESIS)
+        self.scorable_type = cfg.get("scorable_type", ScorableType.HYPOTHESIS)
         self.dimensions = cfg.get(
             "dimensions",
             [

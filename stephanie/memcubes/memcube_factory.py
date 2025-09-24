@@ -5,7 +5,7 @@ from sqlalchemy.sql import text
 
 from stephanie.memcubes.memcube import MemCube
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable import ScorableFactory
 
 
 class MemCubeFactory:

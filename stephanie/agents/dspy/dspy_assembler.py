@@ -9,7 +9,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 
 
@@ -111,7 +111,7 @@ class DSPyAssemblerAgent(MemoryAwareMixin, BaseAgent):
             
             scorable = Scorable(
                 text=response,
-                target_type=TargetType.RESPONSE,
+                target_type=ScorableType.RESPONSE,
             )
             score_bundle = self._score(
                 scorable, context
@@ -139,7 +139,7 @@ class DSPyAssemblerAgent(MemoryAwareMixin, BaseAgent):
             response = self.call_llm(merged_prompt, context)
             scorable = Scorable(
                 text=response,
-                target_type=TargetType.RESPONSE,
+                target_type=ScorableType.RESPONSE,
             )
             score_bundle = self._score(
                 scorable, context

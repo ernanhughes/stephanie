@@ -29,7 +29,7 @@ from stephanie.constants import GOAL, GOAL_TEXT, PIPELINE_RUN_ID
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 # Namespace keys (all internal writes go under this)
@@ -392,14 +392,14 @@ class MementoAgent(MCTSReasoningAgent):
             scores_payload: dict (id -> serialized bundle)
         """
         goal = context[GOAL]
-        query_scorable = Scorable(id=goal["id"], text=goal["goal_text"], target_type=TargetType.GOAL)
+        query_scorable = Scorable(id=goal["id"], text=goal["goal_text"], target_type=ScorableType.GOAL)
 
         ranked: List[dict] = []
         bundles: Dict[str, object] = {}
 
         if best_hypotheses:
             # Convert to Scorables and rank
-            scorables = [Scorable(id=h.get("id"), text=h.get("text", ""), target_type=TargetType.HYPOTHESIS)
+            scorables = [Scorable(id=h.get("id"), text=h.get("text", ""), target_type=ScorableType.HYPOTHESIS)
                          for h in best_hypotheses]
 
             ranked_raw = self.ranker.rank(query=query_scorable, candidates=scorables, context=context) or []

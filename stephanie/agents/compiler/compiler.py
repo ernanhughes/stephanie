@@ -10,7 +10,7 @@ from stephanie.agents.compiler.step_selector import StepSelector
 from stephanie.agents.compiler.symbol_mapper import SymbolMapper
 from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 class CompilerAgent(BaseAgent):
@@ -72,7 +72,7 @@ class CompilerAgent(BaseAgent):
                 )
 
             merged = {"text": node.thought, **context}
-            scorable = Scorable(text=node.response, type=TargetType.HYPOTHESIS)
+            scorable = Scorable(text=node.response, type=ScorableType.HYPOTHESIS)
             score = self._score(scorable=scorable, context=merged)
             node.score = score.aggregate()
 

@@ -12,7 +12,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
 from stephanie.scoring.ebt.buffer import EBTTrainingBuffer
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
 from stephanie.scoring.scorer.llm_scorer import LLMScorer
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
@@ -53,7 +53,7 @@ class ScoringPolicyAgent(BaseAgent):
         llm_scorer = LLMScorer(self.cfg, memory=self.memory, logger=self.logger)
 
         for doc in docs:
-            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+            scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
             mrq_scores = mrq_scorer.score(
                 context,
                 scorable=scorable,

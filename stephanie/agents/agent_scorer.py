@@ -24,7 +24,7 @@ from stephanie.constants import SCORABLE_DETAILS
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 _logger = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ class AgentScorerAgent(BaseAgent):
             scorable = Scorable(
                 id=scorable_id,
                 text=scorable_details.get("output_text"),
-                target_type=TargetType.AGENT_OUTPUT,
+                target_type=ScorableType.AGENT_OUTPUT,
                 meta={
                     "agent_name": scorable_details.get("agent_name"),
                     "stage_name": scorable_details.get("stage_name"),
@@ -115,7 +115,7 @@ class AgentScorerAgent(BaseAgent):
             ranking = []
             if self.include_ranking:
                 candidates = self.memory.embedding.search_related_scorables(
-                    scorable.text, TargetType.AGENT_OUTPUT, include_ner=False
+                    scorable.text, ScorableType.AGENT_OUTPUT, include_ner=False
                 )
                 ranking = self.ranker.rank(
                     query=scorable, candidates=candidates, context=context

@@ -4,7 +4,7 @@ from __future__ import annotations
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 class ReasoningNodeScorer(BaseAgent):
@@ -12,7 +12,7 @@ class ReasoningNodeScorer(BaseAgent):
         super().__init__(cfg, memory=memory, logger=logger)
 
     def score(self, node: ReasoningNode, context: dict) -> dict:
-        scorable = Scorable(text=node.response, type=TargetType.HYPOTHESIS)
+        scorable = Scorable(text=node.response, type=ScorableType.HYPOTHESIS)
         return self._score(scorable=scorable, context=context)
 
     async def run(self, context):

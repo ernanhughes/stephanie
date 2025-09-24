@@ -145,7 +145,7 @@ class KnowledgeGraphService(Service):
     @property
     def name(self) -> str:
         return "knowledge-graph"
-
+    
     def initialize(self, **kwargs) -> None:
         if self._initialized or not self.enabled:
             return
@@ -213,6 +213,14 @@ class KnowledgeGraphService(Service):
                 {"error": str(e), "traceback": traceback.format_exc()},
             )
             raise RuntimeError(f"KnowledgeGraph failed to initialize: {e}")
+
+
+    # in KnowledgeGraphService
+    def detect_entities(self, text: str) -> List[Dict[str, Any]]:
+        if not self._entity_detector:
+            raise RuntimeError("KG not initialized")
+        return self._entity_detector.detect_entities(text or "")
+
 
     async def _setup_event_listeners(self):
         """Subscribe to indexing events via the bus."""
@@ -375,7 +383,12 @@ class KnowledgeGraphService(Service):
                         })
             # 6) Add relationships
             for rel in relationships:
-                self._add_relationship(**rel)
+                self._add_relationship(
+                    source_id=rel["source"],
+                    target_id=rel["target"],
+                    rel_type=rel["type"],
+                    confidence=rel["confidence"],
+                ) 
 
             # 7) Publish completion
             self.publish(
@@ -815,11 +828,9 @@ class KnowledgeGraphService(Service):
         try:
             if not text:
                 return []
-            ents = (
-                self._entity_detector.detect(text)
-                if hasattr(self._entity_detector, "detect")
-                else []
-            )
+                # and fix _extract_entities_safe
+            ents = self._entity_detector.detect_entities(text)
+
             if ents:
                 return [
                     e for e in ents if isinstance(e, dict) and e.get("text")

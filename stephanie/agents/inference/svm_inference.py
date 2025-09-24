@@ -10,7 +10,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
@@ -78,7 +78,7 @@ class SVMInferenceAgent(BaseAgent):
             scorable = Scorable(
                 id=doc_id,
                 text=doc.get("text", ""),
-                target_type=TargetType.DOCUMENT,
+                target_type=ScorableType.DOCUMENT,
             )
 
             ctx_emb = self.memory.embedding.get_or_create(goal_text)

@@ -14,7 +14,7 @@ from stephanie.models.case_goal_state import CaseGoalStateORM
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 _logger = logging.getLogger(__name__)
 
@@ -359,7 +359,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         case_id: int,
         pipeline_run_id: int,
         text: str,
-        scorable_type: str = TargetType.DYNAMIC,
+        scorable_type: str = ScorableType.DYNAMIC,
         meta: Optional[dict] = None,
         role: Optional[str] = None,
     ) -> DynamicScorableORM:

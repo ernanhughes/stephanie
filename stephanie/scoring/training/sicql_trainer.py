@@ -18,7 +18,7 @@ from stephanie.scoring.model.policy_head import PolicyHead
 from stephanie.scoring.model.q_head import QHead
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.model.v_head import VHead
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
@@ -691,7 +691,7 @@ class SICQLTrainer(BaseTrainer):
         samples = []
         goal = context.get("goal", {})
         for doc in documents:
-            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+            scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
             score = self.memory.scores.get_score(goal.id, scorable.id)
             if score:
                 samples.append(

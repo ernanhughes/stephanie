@@ -7,7 +7,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.rule_analytics import RuleAnalytics
 from stephanie.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 
 
 class PipelineJudgeAgent(BaseAgent):
@@ -38,7 +38,7 @@ class PipelineJudgeAgent(BaseAgent):
         )
 
         for doc in documents:
-            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+            scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
             score_result = self.score_item(
                 scorable=scorable,
                 context=context,
@@ -50,7 +50,7 @@ class PipelineJudgeAgent(BaseAgent):
             )
 
         for hypo in hypotheses:
-            scorable = ScorableFactory.from_dict(hypo, TargetType.HYPOTHESIS)
+            scorable = ScorableFactory.from_dict(hypo, ScorableType.HYPOTHESIS)
             score_result = self._score(
                 scorable=scorable,
                 context=context,

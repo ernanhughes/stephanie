@@ -5,7 +5,7 @@ import uuid
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 
 
 class LATSNode:
@@ -215,7 +215,7 @@ class LATSAgent(BaseAgent):
 
     def _score_hypothesis(self, hypothesis: dict, context: dict, metrics: str = "lats_node"):
         """Use dimensional scoring system"""
-        scorable = ScorableFactory.from_dict(hypothesis, TargetType.HYPOTHESIS)
+        scorable = ScorableFactory.from_dict(hypothesis, ScorableType.HYPOTHESIS)
         return self._score(scorable=scorable, context=context)
 
     def _simulate(self, node: LATSNode, context: dict):

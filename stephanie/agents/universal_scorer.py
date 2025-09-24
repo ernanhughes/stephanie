@@ -12,7 +12,7 @@ from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 _logger = logging.getLogger(__name__)
@@ -42,11 +42,11 @@ class UniversalScorerAgent(BaseAgent):
         self.target_types = cfg.get(
             "target_types",
             [
-                TargetType.DOCUMENT,
-                TargetType.CARTRIDGE,
-                TargetType.THEOREM,
-                TargetType.TRIPLE,
-                TargetType.CASE_SCORABLE,
+                ScorableType.DOCUMENT,
+                ScorableType.CARTRIDGE,
+                ScorableType.THEOREM,
+                ScorableType.TRIPLE,
+                ScorableType.CASE_SCORABLE,
             ],
         )
         self.dimensions = self.cfg.get(

@@ -13,3 +13,14 @@ learning_from_learning:
   output_key: learning_from_learning
   prompt_mode: file
   prompt_file: learning_from_learning.txt
+
+  analyze:
+    name: chat_analyze
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    input_key: scorables
+    output_key: chat_analyze
+    prompt_mode: file
+    prompt_file: chat_analyze.txt

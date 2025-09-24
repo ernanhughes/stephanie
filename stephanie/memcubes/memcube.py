@@ -84,7 +84,7 @@ class MemCube:
 
     @classmethod
     def from_dict(cls, data: dict) -> "MemCube":
-        from stephanie.scoring.scorable_factory import ScorableFactory
+        from stephanie.scoring.scorable import ScorableFactory
         scorable = ScorableFactory.from_dict(data["scorable"])
         return cls(
             scorable=scorable,

@@ -5,7 +5,7 @@ import re
 from typing import Dict, List, Optional
 
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
 # Import the existing document section parser
 from stephanie.utils.document_section_parser import DocumentSectionParser
@@ -160,7 +160,7 @@ class IdeaParser:
         """
         Use SVM scorer or other models to score idea along multiple dimensions.
         """
-        scorable = Scorable(text=idea.get("description", ""), target_type=TargetType.IDEA)
+        scorable = Scorable(text=idea.get("description", ""), target_type=ScorableType.IDEA)
         self.scorer.logger=self.logger
         self.scorer.memory=self.memory
         

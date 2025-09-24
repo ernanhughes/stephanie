@@ -5,7 +5,7 @@ import numpy as np
 
 from stephanie.cbr.adaptor import DefaultAdaptor
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.services.reporting_service import ReportingService
 
 
@@ -362,7 +362,7 @@ class CBRMiddleware:
                 "id": None,  # will be filled by _ensure_ids
                 "text": revised_text,
                 "target_type": base.get("target_type")
-                or TargetType.HYPOTHESIS,
+                or ScorableType.HYPOTHESIS,
                 "metadata": {
                     "provenance": {
                         "type": "revised",

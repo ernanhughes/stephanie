@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 MAX_ITERS_DEFAULT = 4
 MIN_GAIN_DEFAULT = 0.02
@@ -114,7 +114,7 @@ class SharpenedPaperSummarizerAgent(BaseAgent):
                 abstract = self._fetch_abstract(doc.get("id") or doc_id)
                 refined_obj = self.memory.dynamic_scorables.add(
                     pipeline_run_id=context.get("pipeline_run_id"),
-                    scorable_type=TargetType.DYNAMIC,
+                    scorable_type=ScorableType.DYNAMIC,
                     source=self.name, 
                     text=refined_text,
                     source_scorable_id=int(baseline_obj.id),

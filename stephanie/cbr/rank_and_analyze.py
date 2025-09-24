@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple
 from stephanie.constants import GOAL
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.score_utils import score_scorable
 
 
@@ -41,13 +41,13 @@ class DefaultRankAndAnalyze:
             query = Scorable(
                 id=goal["id"],
                 text=goal["goal_text"],
-                target_type=TargetType.GOAL,
+                target_type=ScorableType.GOAL,
             )
             scorables = [
                 Scorable(
                     id=h.get("id"),
                     text=h.get("text", ""),
-                    target_type=h.get("target_type", TargetType.HYPOTHESIS),
+                    target_type=h.get("target_type", ScorableType.HYPOTHESIS),
                 )
                 for h in scorables
             ]

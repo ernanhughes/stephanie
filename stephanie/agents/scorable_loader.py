@@ -3,7 +3,7 @@ from __future__ import annotations
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
-from stephanie.scoring.scorable_factory import TargetType, ScorableFactory
+from stephanie.scoring.scorable import ScorableType, ScorableFactory
 # stephanie/scoring/types.py
 from dataclasses import dataclass, field, asdict
 from enum import Enum
@@ -19,7 +19,7 @@ class ScorableLoaderAgent(BaseAgent):
         self.top_k = cfg.get("top_k", 10)
         self.include_full_text = cfg.get("include_full_text", True)
         self.target_type = cfg.get(
-            "target_type", TargetType.CONVERSATION_TURN
+            "target_type", ScorableType.CONVERSATION_TURN
         )  # or "section"
         self.include_ner = cfg.get("include_ner", False)
         self.save_pipeline_refs = cfg.get("save_pipeline_refs", False)
@@ -31,7 +31,7 @@ class ScorableLoaderAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         scorables = []
-        if self.target_type == TargetType.CONVERSATION_TURN:
+        if self.target_type == ScorableType.CONVERSATION_TURN:
             truns = self.memory.chats.list_turns_with_texts(min_star=1)
             for turn in truns:
                 item = TextItem.from_chat_turn(turn)
@@ -90,7 +90,7 @@ class TextItem:
     may point to a section title (SECTION) or a global context (CONTEXT).
     """
     # identity / provenance
-    scorable_type: TargetType = TargetType.CONVERSATION_TURN
+    scorable_type: ScorableType = ScorableType.CONVERSATION_TURN
     scorable_id: Optional[int] = None                # primary id (e.g., chat turn id)
     conversation_id: Optional[int] = None
     external_id: Optional[str] = None            # optional foreign id
@@ -130,7 +130,7 @@ class TextItem:
         goal_text_title = (row.get("goal_text") or "").strip()
 
         return cls(
-            scorable_type=TargetType.CONVERSATION_TURN,
+            scorable_type=ScorableType.CONVERSATION_TURN,
             scorable_id=int(row.get("id")) if row.get("id") is not None else None,
             conversation_id=row.get("conversation_id"),
             order_index=int(row.get("order_index") or 0),

@@ -10,7 +10,7 @@ from stephanie.agents.unified_mrq import UnifiedMRQAgent
 from stephanie.analysis.symbolic_impact_analyzer import SymbolicImpactAnalyzer
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.graph_tools import (build_mermaid_graph,
                                          save_mermaid_to_file)
 
@@ -258,7 +258,7 @@ class LATSAgent(BaseAgent):
             score_context = {**context, "mode": "reason"}
             context.setdefault("hypotheses", []).append(hyp.to_dict())
             # Score using dimensional scorers
-            scorable = ScorableFactory.from_dict(hyp, TargetType.HYPOTHESIS)
+            scorable = ScorableFactory.from_dict(hyp, ScorableType.HYPOTHESIS)
             score_result = self._score(scorable, score_context)
 
             # Create child node with metadata

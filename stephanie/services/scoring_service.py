@@ -32,7 +32,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 # Core types
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable import ScorableFactory
 from stephanie.services.service_protocol import Service
 
 

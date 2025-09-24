@@ -1,6 +1,6 @@
 # stephanie/agents/review.py
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 
 
 class ReviewAgent(BaseAgent):
@@ -13,7 +13,7 @@ class ReviewAgent(BaseAgent):
 
         for hyp in hypotheses:
             # Score and update review
-            scorable = ScorableFactory.from_dict(hyp, TargetType.HYPOTHESIS)
+            scorable = ScorableFactory.from_dict(hyp, ScorableType.HYPOTHESIS)
             score = self._score(scorable=scorable, context=context)
             self.logger.log(
                 "ReviewScoreComputed",

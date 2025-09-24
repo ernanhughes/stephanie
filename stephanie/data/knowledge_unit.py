@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 @dataclass
@@ -55,7 +55,7 @@ class KnowledgeUnit:
         return Scorable(
             id=scorable_id,
             text=self.text,
-            target_type=getattr(TargetType, target_type.upper(), TargetType.KNOWLEDGE_UNIT),
+            target_type=getattr(ScorableType, target_type.upper(), ScorableType.KNOWLEDGE_UNIT),
             meta={
                 "source": self.provenance.get("source", "unknown"),
                 "domains": list(self.domains.keys()),

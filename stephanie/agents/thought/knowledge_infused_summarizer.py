@@ -19,7 +19,7 @@ from stephanie.agents.thought.anti_hallucination import AntiHallucination
 from stephanie.agents.thought.figure_grounding import FigureGrounding
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
 from stephanie.models.strategy import StrategyProfile
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.json_sanitize import sanitize_for_json
 
 if matplotlib.get_backend().lower() != "agg":
@@ -681,7 +681,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
 
             scorable_id = self.memory.dynamic_scorables.add(
                 pipeline_run_id=context.get("pipeline_run_id"),
-                scorable_type=TargetType.DYNAMIC,
+                scorable_type=ScorableType.DYNAMIC,
                 source=self.name,
                 text=best_summary,
                 meta=safe_meta,  # ← sanitized!
@@ -695,7 +695,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                 role="text",
                 scorable_id=scorable_id,
                 text=enhanced_summary,
-                scorable_type=TargetType.DYNAMIC,
+                scorable_type=ScorableType.DYNAMIC,
                 meta=meta,
             )
             result["case_scorable_id"] = scorable_id

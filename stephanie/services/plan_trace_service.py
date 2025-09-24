@@ -13,7 +13,7 @@ from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.constants import PLAN_TRACE_ID, SCORABLE_DETAILS
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable import ScorableFactory
 from stephanie.services.service_protocol import Service
 from stephanie.utils.serialization import default_serializer
 

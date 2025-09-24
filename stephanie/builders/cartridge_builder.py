@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from stephanie.models.theorem import CartridgeORM
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable import ScorableFactory
 
 
 class CartridgeBuilder:

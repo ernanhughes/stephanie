@@ -9,7 +9,7 @@ from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.plan_trace import PlanTraceORM
 from stephanie.models.prompt import PromptORM
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable import ScorableFactory
 
 
 class ScorableEmbeddingBackfillAgent(BaseAgent):

@@ -2,7 +2,7 @@
 import os
 import logging
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
-from stephanie.scoring.scorable_factory import TargetType, ScorableFactory
+from stephanie.scoring.scorable import ScorableType, ScorableFactory
 from stephanie.scoring.scorable import Scorable
 from stephanie.memory import init_memory   # adjust if your project imports differ
 
@@ -44,7 +44,7 @@ def rebuild_index(memory, index_path=INDEX_PATH):
             if sec.section_text and len(sec.section_text) > 20:
                 scorables.append(Scorable(id=f"{doc.id}:{sec.section_name}", 
                                           text=sec.section_text, 
-                                          target_type=TargetType.DOCUMENT))
+                                          target_type=ScorableType.DOCUMENT))
 
     for msg in memory.chats.get_top_conversations(limit=50):
         scorable = ScorableFactory.from_orm(msg[0])

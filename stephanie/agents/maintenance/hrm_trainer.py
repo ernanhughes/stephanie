@@ -2,7 +2,7 @@
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.training.hrm_trainer import HRMTrainer
 
@@ -52,7 +52,7 @@ class HRMTrainerAgent(BaseAgent):
 
         for doc in tqdm(documents, desc="HRM Training: Processing documents", unit="doc"):
             try:
-                scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+                scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
                 score_bundle = self.scorer.score(
                     context=context,
                     scorable=scorable,

@@ -8,7 +8,7 @@ from stephanie.constants import GOAL, PIPELINE_RUN_ID
 # Models (names from your codebase)
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.slug import simple_slugify
 
 # Optional: if you want a separate goal-state table
@@ -80,7 +80,7 @@ class SeedCaseBookAgent(BaseAgent):
                 "retrieval": {"agent": self.name, "documents_key": self.documents_key},
             }
             scorable = Scorable(id=str(doc_id), text=d.get("text", title), 
-                                target_type=TargetType.DOCUMENT,
+                                target_type=ScorableType.DOCUMENT,
                                 meta=meta)
 
             self.memory.casebooks.add_case(
@@ -97,7 +97,7 @@ class SeedCaseBookAgent(BaseAgent):
                 self.memory.pipeline_references.insert(
                     {
                         "pipeline_run_id": pipeline_run_id,
-                        "scorable_type": TargetType.DOCUMENT,
+                        "scorable_type": ScorableType.DOCUMENT,
                         "scorable_id": doc_id,
                         "relation_type": "seeded_case",
                         "source": self.name,

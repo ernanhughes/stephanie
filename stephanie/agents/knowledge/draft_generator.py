@@ -16,7 +16,7 @@ from stephanie.agents.paper_improver.vpm_controller import (Signal,
                                                             VPMRow,
                                                             default_controller)
 from stephanie.models.casebook import CaseBookORM
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.json_sanitize import safe_json
 
 
@@ -131,7 +131,7 @@ class DraftGeneratorAgent(BaseAgent):
 
         draft_scorable = self.memory.dynamic_scorables.add(
             pipeline_run_id=context.get("pipeline_run_id"),
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
             source=self.name,
             text=draft_text,
             meta={
@@ -260,7 +260,7 @@ class DraftGeneratorAgent(BaseAgent):
         # --- 1) Create dynamic scorables first ---
         draft_scorable = self.memory.dynamic_scorables.add(
             pipeline_run_id=pipeline_run_id,
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
             source=self.name,
             text=draft_text,
             meta={

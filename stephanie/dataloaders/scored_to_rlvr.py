@@ -9,7 +9,7 @@ from stephanie.dataloaders.casebook_to_rlvr import RLVRItem
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 class ScoredRLVRDataset:

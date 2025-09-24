@@ -1,7 +1,7 @@
 # stephanie/agents/maintenance/mrq_trainer_agent.py
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.training.mrq_trainer import MRQTrainer
 from stephanie.scoring.training.preference_pair_builder import \
     PreferencePairBuilder
@@ -19,7 +19,7 @@ class MRQTrainerAgent(BaseAgent):
         documents = context.get("documents", [])
         samples = []
         for doc in documents:
-            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+            scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
             score = self.memory.scores.get_score(goal_id=goal["id"], scorable_id=scorable.id)
             if score:
                 samples.append({

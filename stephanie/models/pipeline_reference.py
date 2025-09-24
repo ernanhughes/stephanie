@@ -38,7 +38,7 @@ class PipelineReferenceORM(Base):
         Resolve this reference to a Scorable via ScorableFactory.
         Uses memory managers to load the ORM object.
         """
-        from stephanie.scoring.scorable_factory import ScorableFactory
+        from stephanie.scoring.scorable import ScorableFactory
 
         return ScorableFactory.from_id(
             memory=memory, scorable_type=self.scorable_type, scorable_id=self.scorable_id

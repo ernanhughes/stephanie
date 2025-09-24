@@ -112,7 +112,7 @@ pipeline:
      - name: scorable_loader
        description: "🔓 Load scorables from the database for processing"
        cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
-       enabled: true
+       enabled: false
        iterations: 1    
 
      - name: knowledge_db_loader
@@ -124,7 +124,7 @@ pipeline:
      - name: document_profiler
        description: "Profile and index documents for relevance to the goal"
        cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: learning_from_learning
@@ -133,7 +133,7 @@ pipeline:
           A meta-learning technique that uses past learning experiences to improve
           future learning efficiency and effectiveness.
        cls: stephanie.agents.learning_from_learning.LearningFromLearningAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: universal_scorer

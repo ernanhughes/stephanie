@@ -21,7 +21,7 @@ from stephanie.agents.paper_improver.goals import GoalScorer
 from stephanie.knowledge.casebook_store import CaseBookStore
 from stephanie.knowledge.knowledge_bus import KnowledgeBus
 from stephanie.scoring.calibration_manager import CalibrationManager
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.json_sanitize import safe_json
 
 
@@ -159,7 +159,7 @@ class TextImproverAgent(BaseAgent):
                 role="vpm",
                 text=safe_json(vpm_row),
                 meta={"goal": goal_eval},
-                scorable_type=TargetType.DYNAMIC
+                scorable_type=ScorableType.DYNAMIC
             )
             self.casebooks.add_scorable(
                 casebook_name=casebook_name,
@@ -167,7 +167,7 @@ class TextImproverAgent(BaseAgent):
                 role="text",
                 text=final_text,
                 meta={"stage": "final"},
-                scorable_type=TargetType.DYNAMIC
+                scorable_type=ScorableType.DYNAMIC
             )
             # Persist final draft explicitly too
             atomic_write(run_dir / "final_draft.md", final_text)

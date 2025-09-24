@@ -17,7 +17,7 @@ from stephanie.scoring.model.policy_head import PolicyHead
 from stephanie.scoring.model.q_head import QHead
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.model.v_head import VHead
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
@@ -63,7 +63,7 @@ class MRQInferenceAgent(BaseAgent):
         for doc in docs:
             doc_id = doc.get("id")
             self.logger.log("MRQScoringStarted", {"document_id": doc_id})
-            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+            scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
             dimension_scores = {}
             score_results = []
 

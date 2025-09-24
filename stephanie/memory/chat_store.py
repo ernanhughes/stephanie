@@ -27,7 +27,7 @@ from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
                                    ChatTurnORM)
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 class ChatStore(BaseSQLAlchemyStore):
@@ -388,7 +388,7 @@ class ChatStore(BaseSQLAlchemyStore):
         return Scorable(
             id=str(conv.id),
             text=text_val,
-            target_type=TargetType.CONVERSATION,
+            target_type=ScorableType.CONVERSATION,
             meta=conv.to_dict(include_messages=False),
         )
 
@@ -406,7 +406,7 @@ class ChatStore(BaseSQLAlchemyStore):
         return Scorable(
             id=str(msg.id),
             text=f"[{msg.role}] {text_val.strip()}",
-            target_type=TargetType.CONVERSATION_MESSAGE,
+            target_type=ScorableType.CONVERSATION_MESSAGE,
             meta={"conversation_id": msg.conversation_id},
         )
 
@@ -436,7 +436,7 @@ class ChatStore(BaseSQLAlchemyStore):
         return Scorable(
             id=str(turn.id),
             text=text_val,
-            target_type=TargetType.CONVERSATION_TURN,
+            target_type=ScorableType.CONVERSATION_TURN,
             meta={"conversation_id": turn.conversation_id},
         )
 

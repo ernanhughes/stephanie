@@ -3,7 +3,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.rubric_classifier import RubricClassifierMixin
 from stephanie.constants import GOAL
 from stephanie.evaluator.llm_judge_evaluator import LLMJudgeEvaluator
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.contrastive_ranker_scorer import \
     ContrastiveRankerScorer
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
@@ -68,10 +68,10 @@ class ChainOfThoughtGeneratorAgent(BaseAgent, RubricClassifierMixin):
                 )
             else:
                 scorable_a = ScorableFactory.from_dict(
-                    {"id": "a", "text": best}, TargetType.HYPOTHESIS
+                    {"id": "a", "text": best}, ScorableType.HYPOTHESIS
                 )
                 scorable_b = ScorableFactory.from_dict(
-                    {"id": "b", "text": candidate}, TargetType.HYPOTHESIS
+                    {"id": "b", "text": candidate}, ScorableType.HYPOTHESIS
                 )
 
                 score_a = (

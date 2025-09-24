@@ -8,7 +8,7 @@ from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
 from stephanie.agents.inference.llm_inference import LLMInferenceAgent
 from stephanie.agents.inference.mrq_inference import MRQInferenceAgent
 from stephanie.memcubes.memcube_factory import MemCubeFactory
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 
 
 class ScoringMemcubeAgent(BaseAgent):
@@ -29,7 +29,7 @@ class ScoringMemcubeAgent(BaseAgent):
         results = []
 
         for doc in docs:
-            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+            scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
             memcube = MemCubeFactory.from_scorable(scorable, version="auto")
 
             # Initial MRQ score (returns ScoreBundle)
@@ -48,7 +48,7 @@ class ScoringMemcubeAgent(BaseAgent):
                 refined_scorable = ScorableFactory.from_dict({
                     "id": memcube.scorable.id,
                     "text": refinement_result["refined_text"],
-                    "target_type": TargetType.REFINEMENT
+                    "target_type": ScorableType.REFINEMENT
                 })
 
                 refined_memcube = MemCubeFactory.from_scorable(refined_scorable, version="auto")

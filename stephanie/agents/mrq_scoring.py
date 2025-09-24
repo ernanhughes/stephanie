@@ -2,7 +2,7 @@
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.evaluator import MRQSelfEvaluator
 from stephanie.models import EvaluationORM
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 
 
 class MRQScoringAgent(BaseAgent):
@@ -18,7 +18,7 @@ class MRQScoringAgent(BaseAgent):
         count_scored = 0
 
         for hypothesis in hypotheses:
-            scorable = ScorableFactory.from_orm(hypothesis, TargetType.HYPOTHESIS)
+            scorable = ScorableFactory.from_orm(hypothesis, ScorableType.HYPOTHESIS)
             if not hypothesis.prompt or not scorable.text:
                 continue
 

@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 class ResearchEnv:
@@ -52,7 +52,7 @@ class ResearchEnv:
             pass
 
         dummy_agent = DummyAgent({})
-        scorable = Scorable(text=hypothesis, target_type=TargetType.HYPOTHESIS)
+        scorable = Scorable(text=hypothesis, target_type=ScorableType.HYPOTHESIS)
         score_result = dummy_agent.score_item(
             scorable, {"goal": {"goal_text": self.current_goal}}, metrics="reason"
         )

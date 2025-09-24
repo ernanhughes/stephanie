@@ -2,7 +2,7 @@
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.evaluator.base import BaseEvaluator
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable import ScorableFactory
 
 
 class MRQSelfEvaluator(BaseEvaluator):

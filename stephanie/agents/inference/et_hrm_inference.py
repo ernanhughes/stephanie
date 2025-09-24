@@ -6,7 +6,7 @@ from typing import Any, Dict
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.scorable_factory import ScorableFactory
+from stephanie.scoring.scorable import ScorableFactory
 from stephanie.scoring.scorer.ep_hrm_scorer import EpistemicPlanHRMScorer
 from stephanie.utils.trace_utils import load_plan_traces_from_export_dir
 

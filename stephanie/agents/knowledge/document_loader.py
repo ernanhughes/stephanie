@@ -55,7 +55,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 from stephanie.tools.pdf_tools import PDFConverter
 
@@ -278,13 +278,13 @@ class DocumentLoaderAgent(BaseAgent):
         scorable = Scorable(
             id=doc_id,
             text=embed_text,
-            target_type=TargetType.DOCUMENT,
+            target_type=ScorableType.DOCUMENT,
         )
         self.memory.scorable_embeddings.get_or_create(scorable)
         self.memory.pipeline_references.insert(
             {
                 "pipeline_run_id": context.get("pipeline_run_id"),
-                "scorable_type": TargetType.DOCUMENT,
+                "scorable_type": ScorableType.DOCUMENT,
                 "scorable_id": doc_id,
                 "relation_type": "inserted",
                 "source": self.name,

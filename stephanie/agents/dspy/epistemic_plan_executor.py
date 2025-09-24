@@ -13,7 +13,7 @@ import dspy
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.hrm_scorer import HRMScorer  # Optional
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 
@@ -230,7 +230,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
 
                     try:
                         scorable_dict = {"text": step_output_text, "id": str(step_id)} # Ensure ID is string
-                        scorable = ScorableFactory.from_dict(scorable_dict, TargetType.DOCUMENT)
+                        scorable = ScorableFactory.from_dict(scorable_dict, ScorableType.DOCUMENT)
 
                         # --- Score the Step Output ---
                         sicql_scores: ScoreBundle = self.sicql_scorer.score(
@@ -288,7 +288,7 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                 # --- Score the Final Output ---
                 try:
                     final_scorable_dict = {"text": final_output_text, "id": f"{trace_id}_final"}
-                    final_scorable = ScorableFactory.from_dict(final_scorable_dict, TargetType.DOCUMENT)
+                    final_scorable = ScorableFactory.from_dict(final_scorable_dict, ScorableType.DOCUMENT)
                     final_scores: ScoreBundle = self.sicql_scorer.score(
                         context={"goal": goal_dict}, scorable=final_scorable, dimensions=self.dimensions
                     )

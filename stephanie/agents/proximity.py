@@ -3,7 +3,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
 
 
@@ -31,7 +31,7 @@ class ProximityAgent(BaseAgent):
 
         # --- score incoming hypotheses against goal
         for document in documents:
-            scorable = ScorableFactory.from_dict(document, TargetType.HYPOTHESIS)
+            scorable = ScorableFactory.from_dict(document, ScorableType.HYPOTHESIS)
             score = self._score(
                 context=context,
                 scorable=scorable,

@@ -5,7 +5,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
 
 SENTS_MIN_DEFAULT = 4
@@ -170,7 +170,7 @@ class SimplePaperBlogAgent(BaseAgent):
 
         summary_scorable = self.memory.dynamic_scorables.add(
             pipeline_run_id=context.get("pipeline_run_id"),
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
             source=self.name,
             text=full_text,
             source_scorable_id=paper.get("paper_id"),

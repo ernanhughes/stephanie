@@ -19,7 +19,7 @@ from stephanie.agents.summary.paper_summarizer import SimplePaperBlogAgent
 from stephanie.knowledge.anti_hallucination import AntiHallucination
 from stephanie.knowledge.figure_grounding import FigureGrounding
 from stephanie.models.strategy import StrategyProfile
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.json_sanitize import sanitize_for_json
 
@@ -612,7 +612,7 @@ class Persistence:
             })
             scorable = self.memory.dynamic_scorables.add(
                 pipeline_run_id=context.get("pipeline_run_id"),
-                scorable_type=TargetType.DYNAMIC,
+                scorable_type=ScorableType.DYNAMIC,
                 source=context.get("agent_name") or "KnowledgeInfusedVerifier",
                 text=best_summary,
                 meta=safe_meta,
@@ -629,7 +629,7 @@ class Persistence:
                     role="text",
                     scorable_id=out["scorable_id"],
                     text=best_summary,
-                    scorable_type=TargetType.DYNAMIC,
+                    scorable_type=ScorableType.DYNAMIC,
                     meta={},
                 )
             except Exception:

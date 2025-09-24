@@ -17,7 +17,7 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.memcubes.memcube_factory import MemCubeFactory
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.math_utils import (advantage_weighted_regression,
                                         expectile_loss)
@@ -96,7 +96,7 @@ class EBTInferenceAgent(BaseAgent):
         for doc in context.get(self.input_key, []):
             doc_id = doc.get("id")
             self.logger.log("EBTScoringStarted", {"document_id": doc_id})
-            scorable = ScorableFactory.from_dict(doc, TargetType.DOCUMENT)
+            scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
             memcube = MemCubeFactory.from_scorable(scorable, version="auto")
             memcube.extra_data["pipeline"] = "ebt_inference"
 
@@ -272,7 +272,7 @@ class EBTInferenceAgent(BaseAgent):
         
         # Create new MemCube version
         from stephanie.memcubes.memcube_factory import MemCubeFactory
-        scorable = Scorable(id=hash(refined_text), text=refined_text, target_type=TargetType.DOCUMENT)
+        scorable = Scorable(id=hash(refined_text), text=refined_text, target_type=ScorableType.DOCUMENT)
         memcube = MemCubeFactory.from_scorable(scorable, version="auto")
         memcube.extra_data["refinement_trace"] = energy_trace
         memcube.sensitivity = "internal"  # Upgrade sensitivity on refinement

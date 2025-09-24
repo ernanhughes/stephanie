@@ -1,4 +1,5 @@
 # stephanie/analysis/domain2vec_integrator.py
+from __future__ import annotations
 import logging
 from typing import Dict, List, Tuple
 
@@ -7,7 +8,6 @@ import torch
 from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.analysis.scorable_classifier import ScorableClassifier
-from stephanie.models.embedding import EmbeddingORM
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
 
 _logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class Domain2VecNERIntegrator:
                     if isinstance(embedding, torch.Tensor):
                         embedding = embedding.cpu().numpy()
                     seed_embeddings.append(embedding)
-                except Exception as e:
+                except Exception:
                     continue
             
             # Average to get domain embedding

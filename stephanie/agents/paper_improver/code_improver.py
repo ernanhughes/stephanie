@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.knowledge.casebook_store import CaseBookStore
 from stephanie.knowledge.knowledge_bus import KnowledgeBus
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.json_sanitize import safe_json
 
 from .bandit_router import ExemplarBandit
@@ -193,7 +193,7 @@ class CodeImprover:
             role="vpm",
             text=safe_json(initial_results),
             meta={"stage": "initial"},
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
         )
 
         self.casebooks.add_scorable(
@@ -202,7 +202,7 @@ class CodeImprover:
             role="code",
             text=(pkg_dir / "impl.py").read_text(),
             meta={"stage": "final"},
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
         )
         self.casebooks.add_scorable(
             casebook_name,
@@ -210,7 +210,7 @@ class CodeImprover:
             role="text",
             text=(run_dir / "draft.md").read_text(),
             meta={"stage": "final"},
-            scorable_type=TargetType.DYNAMIC,
+            scorable_type=ScorableType.DYNAMIC,
         )
         # DPO pair
         self.casebooks.add_scorable(

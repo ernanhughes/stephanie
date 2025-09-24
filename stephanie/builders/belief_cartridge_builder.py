@@ -16,7 +16,7 @@ from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.metrics import compute_uncertainty
 
 
@@ -42,7 +42,7 @@ class BeliefCartridgeBuilder(BaseAgent):
         # Create scorable object
         scorable = Scorable(
             text=document.get("text"),
-            target_type=TargetType.DOCUMENT,
+            target_type=ScorableType.DOCUMENT,
             id=document.get("id")
         )
         
@@ -233,7 +233,7 @@ class BeliefCartridgeBuilder(BaseAgent):
             rationale=f"{scorer_type} scorer",
             energy=score,  # For compatibility
             source=scorer_type,
-            target_type=TargetType.DOCUMENT,
+            target_type=ScorableType.DOCUMENT,
             prompt_hash=prompt_hash
         )
 

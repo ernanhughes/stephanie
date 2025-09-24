@@ -7,7 +7,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 from stephanie.rules.symbolic_node import SymbolicNode
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 
 
@@ -38,7 +38,7 @@ class StepCompilerAgent(MemoryAwareMixin, BaseAgent):
 
         # Score the plan using MRQ
         try:
-            scorable = Scorable(text=response, type=TargetType.HYPOTHESIS)
+            scorable = Scorable(text=response, type=ScorableType.HYPOTHESIS)
             score_result = self._score(
                 scorable=scorable,
                 context=context,

@@ -5,7 +5,7 @@ from stephanie.models.cartridge_domain import CartridgeDomainORM
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 class CartridgeTripleStore(BaseSQLAlchemyStore):
@@ -122,7 +122,7 @@ class CartridgeTripleStore(BaseSQLAlchemyStore):
                     .join(ScoreORM, ScoreORM.evaluation_id == EvaluationORM.id)
                     .filter(
                         EvaluationORM.goal_id == goal_id,
-                        EvaluationORM.scorable_type == TargetType.TRIPLE,
+                        EvaluationORM.scorable_type == ScorableType.TRIPLE,
                     )
                     .group_by(EvaluationORM.scorable_id)
                     .subquery()

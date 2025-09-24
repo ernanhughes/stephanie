@@ -12,7 +12,7 @@ from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.data.knowledge_unit import KnowledgeUnit
 from stephanie.memory.chat_store import ChatStore
 from stephanie.models.ner_retriever import EntityDetector
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorable import Scorable
 
 _logger = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ class ChatKnowledgeBuilder:
 
             chat_scorable = self.memory.dynamic_scorables.add(
                 pipeline_run_id=context.get("pipeline_run_id"),
-                scorable_type=TargetType.DYNAMIC,
+                scorable_type=ScorableType.DYNAMIC,
                 source="chat_knowledge_builder",
                 text=chat_text,
                 meta={"hash": chat_hash, "kind": "chat"}
@@ -111,7 +111,7 @@ class ChatKnowledgeBuilder:
 
             paper_scorable = self.memory.dynamic_scorables.add(
                 pipeline_run_id=context.get("pipeline_run_id"),
-                scorable_type=TargetType.DYNAMIC,
+                scorable_type=ScorableType.DYNAMIC,
                 source="chat_knowledge_builder",
                 text=paper_text,
                 meta={"hash": paper_hash, "kind": "paper"}

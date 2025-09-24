@@ -22,7 +22,7 @@ from dspy import InputField, OutputField, Signature
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_factory import TargetType
+from stephanie.scoring.scorable import ScorableType
 
 
 class CBRSignature(Signature):
@@ -212,7 +212,7 @@ class CBRDSPyAgent(BaseAgent):
         for i, hyp_text in enumerate(parsed_hypotheses):
             sc = Scorable(
                 text=hyp_text.strip(),
-                target_type=TargetType.HYPOTHESIS,
+                target_type=ScorableType.HYPOTHESIS,
             )
             result = self.save_hypothesis({"text": sc.text}, context=context)
             hypotheses.append(result.to_dict())

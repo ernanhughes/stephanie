@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional, Tuple
 
+import logging
+_logger = logging.getLogger(__name__)
 
 def classify_text_domains(
     text: str,
@@ -79,3 +81,18 @@ def annotate_conversation_domains(
         progress_cb and progress_cb(1)
 
     return {"seen": seen, "updated": updated}
+
+
+def classify_and_store_domains(self, text: str, scorable_id: int, scorable_type: str) -> None:
+    """Classify the paper and assign domains."""
+    results = self.domain_classifier.classify(text, self.top_k_domains, self.min_classification_score)
+    for domain, score in results:
+        self.memory.scorable_domains.insert(
+            {
+                "scorable_id": scorable_id,
+                "scorable_type": scorable_type,
+                "domain": domain,
+                "score": score,
+            }
+        )
+        _logger.info(f"DomainAssigned: domain={domain}, score={score}")

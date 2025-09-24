@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.scoring.scorable_factory import ScorableFactory, TargetType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 from stephanie.utils.token_counter import TokenCounter
 
@@ -38,7 +38,7 @@ class FinalAssemblerAgent(BaseAgent):
         final_score = None
         try:
             output = self.call_llm(final_prompt, context={"goal": goal})
-            scorable = ScorableFactory.from_text(output, TargetType.RESPONSE)
+            scorable = ScorableFactory.from_text(output, ScorableType.RESPONSE)
             score_obj = self.scorer.score(
                 context={"goal": goal}, scorable=scorable, dimensions=self.dimensions
             )
