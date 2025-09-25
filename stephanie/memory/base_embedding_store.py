@@ -310,7 +310,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
             # Primary NER retrieval
             primary = self.ner_retriever.retrieve_entities(
                 query=q,
-                k=top_k,
+                top_k=top_k,
                 min_similarity=self.cfg.get("ner_min_similarity", 0.6),
             ) or []
 
@@ -325,7 +325,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                 best_by_id: Dict[str, Dict] = {}
                 for p in parts[:5]:
                     try:
-                        pr = self.ner_retriever.retrieve_entities(query=p, k=max(3, top_k // 2), min_similarity=self.cfg.get("ner_min_similarity", 0.55)) or []
+                        pr = self.ner_retriever.retrieve_entities(query=p, top_k=max(3, top_k // 2), min_similarity=self.cfg.get("ner_min_similarity", 0.55)) or []
                         for rr in pr:
                             key = str(rr.get("scorable_id") or rr.get("entity_text") or rr.get("node_id") or id(rr))
                             if key not in best_by_id or float(rr.get("similarity", 0.0)) > float(best_by_id[key].get("similarity", 0.0)):

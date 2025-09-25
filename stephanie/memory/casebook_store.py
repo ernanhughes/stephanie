@@ -11,13 +11,12 @@ from sqlalchemy.orm import Query
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.case_goal_state import CaseGoalStateORM
-from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM, CaseAttributeORM
 from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable import ScorableType
 
 _logger = logging.getLogger(__name__)
-
 
 class CaseBookStore(BaseSQLAlchemyStore):
     orm_model = CaseBookORM
@@ -95,6 +94,27 @@ class CaseBookStore(BaseSQLAlchemyStore):
             return s.query(CaseBookORM).all()
         return self._run(op)
 
+    def get_casebooks_by_tag(
+        self,
+        tag: str,
+        *,
+        limit: int = 200,
+        agent_name: Optional[str] = None,
+        pipeline_run_id: Optional[int] = None,
+    ):
+        """Return CaseBookORM rows filtered by the simple `tag` column."""
+        def op(s):
+            q = s.query(CaseBookORM).filter(CaseBookORM.tag == tag)
+            if agent_name is not None:
+                q = q.filter(CaseBookORM.agent_name == agent_name)
+            if pipeline_run_id is not None:
+                q = q.filter(CaseBookORM.pipeline_run_id == pipeline_run_id)
+
+            order_col = getattr(CaseBookORM, "created_at", None)
+            q = q.order_by(order_col.desc() if order_col is not None else CaseBookORM.id.desc())
+            return q.limit(limit).all()
+        return self._run(op)
+
     def count_cases(self, casebook_id: int) -> int:
         def op(s):
             return s.query(func.count(CaseORM.id)).filter_by(casebook_id=casebook_id).scalar() or 0
@@ -104,8 +124,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
         def op(s):
             return s.query(CaseBookORM).filter_by(pipeline_run_id=run_id).first()
         return self._run(op)
-
-    # ---------- NEW/RESTORED: scope helpers ----------
 
     def get_scope(self, pipeline_run_id: int | None, agent_name: str | None, tag: str = "default") -> Optional[CaseBookORM]:
         def op(s):
@@ -695,6 +713,103 @@ class CaseBookStore(BaseSQLAlchemyStore):
             s.add(row)
             return row
         return self._run(op)
+
+
+    def set_case_attr(self, case_id: int, key: str, *, 
+                    value_text: str | None = None,
+                    value_num: float | None = None,
+                    value_bool: bool | None = None,
+                    value_json: dict | list | None = None):
+        def op(s):
+            row = (s.query(CaseAttributeORM)
+                    .filter(CaseAttributeORM.case_id == case_id, CaseAttributeORM.key == key)
+                    .one_or_none())
+            if row is None:
+                row = CaseAttributeORM(case_id=case_id, key=key)
+                s.add(row)
+            row.value_text = value_text
+            row.value_num  = value_num
+            row.value_bool = value_bool
+            row.value_json = value_json
+            s.flush()
+            return row
+        return self._run(op)
+
+    def get_best_by_attrs(
+        self,
+        casebook_id: int,
+        group_keys: list[str],     # e.g. ["paper_id","section_name","case_kind"]
+        score_weights: dict[str,float] = {"knowledge_score":0.7, "verification_score":0.3},
+        role: str | None = None,   # filter the scorable role if you want
+        limit_per_group: int = 1,
+        group_filter: dict[str, str] | None = None,  # optional WHERE on attributes
+    ):
+        """
+        Generic 'best per group' using arbitrary attribute keys.
+        Returns rows with: case_id, group_attrs(json), scores, composite_score.
+        """
+        def op(s):
+            # Build a pivot of attributes per case via subquery
+            # (Using text for brevity; you can write it with SA core if you prefer.)
+            keys_sql = ",".join([f"MAX(CASE WHEN a.key='{k}' THEN a.value_text END) AS {k}" for k in group_keys])
+            where_filter = ""
+            if group_filter:
+                conds = []
+                for k,v in group_filter.items():
+                    conds.append(f"MAX(CASE WHEN a.key='{k}' THEN a.value_text END) = :gf_{k}")
+                if conds:
+                    where_filter = "HAVING " + " AND ".join(conds)
+
+            sql = f"""
+            WITH attrs AS (
+            SELECT c.id AS case_id, c.casebook_id,
+                    {keys_sql}
+            FROM cases c
+            JOIN case_attributes a ON a.case_id = c.id
+            WHERE c.casebook_id = :cbid
+            GROUP BY c.id, c.casebook_id
+            {where_filter}
+            ),
+            scored AS (
+            SELECT
+                attrs.*,
+                ds.id AS ds_id,
+                COALESCE((ds.meta->>'knowledge_score')::float, 0) AS knowledge_score,
+                COALESCE((ds.meta->>'verification_score')::float, 0) AS verification_score,
+                ds.created_at
+            FROM attrs
+            JOIN dynamic_scorables ds ON ds.case_id = attrs.case_id
+            { "WHERE ds.role = :role" if role else "" }
+            ),
+            ranked AS (
+            SELECT *,
+                ({score_weights.get("knowledge_score",0)} * knowledge_score
+            + {score_weights.get("verification_score",0)} * verification_score) AS composite_score,
+                ROW_NUMBER() OVER (
+                PARTITION BY {", ".join(group_keys)}
+                ORDER BY ({score_weights.get("knowledge_score",0)} * knowledge_score
+                        + {score_weights.get("verification_score",0)} * verification_score) DESC,
+                        created_at DESC
+                ) AS rn
+            FROM scored
+            )
+            SELECT *
+            FROM ranked
+            WHERE rn <= :n
+            ORDER BY {", ".join(group_keys)}, composite_score DESC, created_at DESC
+            """
+
+            params = {"cbid": casebook_id, "n": limit_per_group}
+            if role:
+                params["role"] = role
+            if group_filter:
+                for k,v in group_filter.items():
+                    params[f"gf_{k}"] = v
+
+            return list(s.execute(sql, params))
+        return self._run(op)
+
+
 
     # ------------------------
     # Helpers

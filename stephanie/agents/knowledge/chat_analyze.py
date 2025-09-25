@@ -11,11 +11,14 @@ class ChatAnalyzeAgent(BaseAgent):
         self.limit = cfg.get("limit", 10000)
 
     async def run(self, context: dict) -> dict:
-        batch = self.memory.chats.list_turns_with_texts(
-            min_assistant_len=50,  # skip trivial replies 
-            limit=self.limit,
-            order_desc=False
-        )
+        if context.get("chats"):
+            batch = context["chats"]
+        else:
+            batch = self.memory.chats.list_turns_with_texts(
+                min_assistant_len=50,  # skip trivial replies
+                limit=self.limit,
+                order_desc=False
+           )
         out = []
         for row in batch:
             turn_id = row.get("id")

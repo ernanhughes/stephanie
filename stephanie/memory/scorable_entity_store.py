@@ -157,7 +157,7 @@ class ScorableEntityStore(BaseSQLAlchemyStore):
         def op(s):
             return (
                 s.query(ScorableEntityORM)
-                .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
+                .filter_by(scorable_id=str(scorable_id), scorable_type=scorable_type)
                 .all()
             )
         return self._run(op)

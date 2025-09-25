@@ -638,7 +638,7 @@ class NERRetrieverEmbedder:
     def retrieve_entities(
         self,
         query: str,
-        k: int = 5,
+        top_k: int = 5,
         min_similarity: float = 0.6,
         min_calibrated_similarity: float = 0.45,  # Critical: separate calibrated threshold
         domain: str = None,
@@ -654,7 +654,7 @@ class NERRetrieverEmbedder:
         - Domain-aware thresholding
         """
 
-        key = self._cache_key(query, k, domain)
+        key = self._cache_key(query, top_k, domain)
 
         # 1) Check KV cache first
         kv_hit = self._kv_get(key)
@@ -674,7 +674,7 @@ class NERRetrieverEmbedder:
         query_emb = self.embed_type_query(query)
 
         # Search index
-        results = self.index.search(query_emb, k * 2)
+        results = self.index.search(query_emb, top_k * 2)
 
         # Apply domain-specific calibration
         if domain is None:
@@ -770,7 +770,7 @@ class NERRetrieverEmbedder:
         )
 
         # Limit to requested number
-        filtered_results = filtered_results[:k]
+        filtered_results = filtered_results[:top_k]
 
         self._kv_put(key, filtered_results)
 

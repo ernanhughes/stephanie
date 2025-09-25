@@ -1,9 +1,7 @@
 # stephanie/agents/icl_reasoning.py
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
-from sklearn.metrics.pairwise import \
-    cosine_similarity  # optional, can drop if pref np.dot
 from sqlalchemy.orm import joinedload
 
 from stephanie.agents.base_agent import BaseAgent
@@ -20,7 +18,7 @@ class ICLReasoningAgent(BaseAgent):
     formats them as structured facts, and generates reasoning with an LLM.
     """
 
-    def __init__(self, cfg, memory=None, logger=None):
+    def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.top_k_triplets = cfg.get("top_k_triplets", 5)
         self.min_value_threshold = cfg.get("min_triplet_score", 0.6)

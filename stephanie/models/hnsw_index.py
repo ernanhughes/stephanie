@@ -1,8 +1,7 @@
 # stephanie/models/hnsw_index.py
 from __future__ import annotations
 
-import atexit
-import hashlib
+I import hashlib
 import json
 import logging
 import os
@@ -259,7 +258,11 @@ class HNSWIndex:
         else:
             query = query.astype(np.float32)
 
-        labels, dists = self.index.knn_query(query, k=k)
+        k_req = int(k)
+        ntotal = self.ntotal
+        k_eff = max(1, min(int(k), ntotal if ntotal > 0 else k_req))
+
+        labels, dists = self.index.knn_query(query, k=k_eff)
         out = []
         for lbl, dist in zip(labels[0], dists[0]):
             if 0 <= lbl < len(self.metadata):

@@ -1,0 +1,54 @@
+# Prompt: baseline_summary (v1)
+
+You are a careful technical editor. Produce a concise, faithful baseline summary of the specified section of an academic paper. Prioritize accuracy over flourish. Do not invent details that are not present.
+
+## Inputs
+- Paper title: {{title}}
+- Abstract (for context only — do not overfit): 
+{{abstract}}
+
+- Focus section: {{focus_section}}
+- Focus section text (authoritative): 
+{{focus_text}}
+
+- Optional hints from related chats (use only if they align with the section text; ignore otherwise):
+{{hints}}
+
+## Your goals
+1) Explain what this section claims, introduces, or demonstrates.
+2) Capture key methods, datasets, and metrics that are explicitly present.
+3) Note limitations, assumptions, or ablations that the section mentions.
+4) Keep it crisp and information-dense—useful as a baseline before later verification/improvement.
+
+## Required style & constraints
+- Be factual and grounded strictly in the focus section text. If a detail isn’t in the section, don’t include it (even if it appears in hints/abstract).
+- Prefer bullet points to keep information scannable. 
+- Include concrete numbers (e.g., metrics, sample sizes) only when explicitly stated in the section.
+- If a requested item is not present in the section, write “Not specified.”
+- Target length: 140–220 words (flex if the section is unusually short or dense).
+- Avoid marketing language, first-person “we,” and speculation.
+
+## Output format
+Write in this structure (no headings other than these):
+
+**One-sentence overview**
+- A single sentence capturing the section’s core purpose.
+
+**Key points**
+- [Method/Approach]: …
+- [Data/Setup]: …
+- [Results/Metrics]: …
+- [Comparisons/Baselines]: …
+- [Ablations/Analyses]: …
+- [Limitations/Assumptions]: …
+
+**Takeaway**
+- One sentence that the reader should remember.
+
+(Only include bullet lines that are supported by the section; omit empty lines. Use “Not specified” where a sub-item is expected but missing.)
+
+## Grounding reminder
+- Abstract and hints are secondary context. If they conflict with the focus section, prefer the focus section.
+- If any metric names appear (e.g., accuracy, F1), include the metric and the value exactly as written.
+
+Now produce the baseline summary.

@@ -1,0 +1,6 @@
+System: Answer the question grounded ONLY in the section. Quote exact supporting spans.
+Return JSON: {"answer": "...", "citations": [{"text": "..."}], "rationale": "..."}.
+
+User:
+<TASK>{task_json}</TASK>
+<SECTION>{section_text}</SECTION>

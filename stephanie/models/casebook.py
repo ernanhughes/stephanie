@@ -6,14 +6,10 @@ from datetime import datetime
 from sqlalchemy import JSON as SA_JSON
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
-
+from sqlalchemy import Boolean, Float
+from sqlalchemy.dialects.postgresql import JSONB
 from stephanie.models.base import Base
-from stephanie.utils.date_utils import iso_date, utcnow
-
-# If you’re on Postgres and prefer JSONB:
-# from sqlalchemy.dialects.postgresql import JSONB as SA_JSON
-
-
+from stephanie.utils.date_utils import utcnow, iso_date
 
 
 def _json_safe(val):
@@ -170,3 +166,30 @@ class CaseScorableORM(Base):
 
     def __repr__(self) -> str:
         return f"<CaseScorableORM id={self.id} case_id={self.case_id} scorable_id={self.scorable_id!r} role={self.role!r}>"
+
+
+
+class CaseAttributeORM(Base):
+    __tablename__ = "case_attributes"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    case_id     = Column(Integer, ForeignKey("cases.id", ondelete="CASCADE"), nullable=False, index=True)
+    key         = Column(Text, nullable=False, index=True)
+    value_text  = Column(Text, nullable=True, index=True)
+    value_num   = Column(Float, nullable=True, index=True)
+    value_bool  = Column(Boolean, nullable=True, index=True)
+    value_json  = Column(JSONB, nullable=True)
+    created_at  = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    case = relationship("CaseORM", backref="attributes")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "case_id": self.case_id,
+            "key": self.key,
+            "value_text": self.value_text,
+            "value_num": self.value_num,
+            "value_bool": self.value_bool,
+            "value_json": _json_safe(self.value_json),
+            "created_at": iso_date(self.created_at),
+        }

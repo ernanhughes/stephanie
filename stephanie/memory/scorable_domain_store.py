@@ -67,7 +67,7 @@ class ScorableDomainStore(BaseSQLAlchemyStore):
         def op(s):
             return (
                 s.query(ScorableDomainORM)
-                .filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
+                .filter_by(scorable_id=str(scorable_id), scorable_type=scorable_type)
                 .order_by(ScorableDomainORM.score.desc())
                 .all()
             )

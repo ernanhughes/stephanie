@@ -1293,3 +1293,52 @@ class ChatStore(BaseSQLAlchemyStore):
             return out
 
         return self._run(op)
+
+    def list_turns_by_ids_with_texts(self, ids: List[int]) -> List[Dict]:
+        """
+        Snapshot turns by ids. Returns SAME fields as list_turns_for_conversation_with_texts.
+        """
+        if not ids:
+            return []
+        def op(s):
+            U = aliased(ChatMessageORM)
+            A = aliased(ChatMessageORM)
+            C = aliased(ChatConversationORM)
+
+            rows = (
+                s.query(
+                    ChatTurnORM.id.label("id"),
+                    ChatTurnORM.conversation_id.label("conversation_id"),
+                    ChatTurnORM.order_index.label("order_index"),
+                    ChatTurnORM.star.label("star"),
+                    ChatTurnORM.ner.label("ner"),
+                    ChatTurnORM.domains.label("domains"),
+                    ChatTurnORM.ai_knowledge_score.label("ai_score"),
+                    ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),
+                    U.text.label("user_text"),
+                    A.text.label("assistant_text"),
+                    C.title.label("goal_text"),
+                )
+                .join(U, ChatTurnORM.user_message_id == U.id)
+                .join(A, ChatTurnORM.assistant_message_id == A.id)
+                .join(C, ChatTurnORM.conversation_id == C.id)
+                .filter(ChatTurnORM.id.in_([int(x) for x in ids]))
+                .all()
+            )
+            out = []
+            for r in rows:
+                out.append({
+                    "id": r.id,
+                    "conversation_id": r.conversation_id,
+                    "order_index": int(r.order_index or 0),
+                    "star": int(r.star or 0),
+                    "user_text": r.user_text or "",
+                    "assistant_text": r.assistant_text or "",
+                    "ner": r.ner or [],
+                    "domains": r.domains or [],
+                    "goal_text": r.goal_text or "",
+                    "ai_score": r.ai_score,
+                    "ai_rationale": r.ai_rationale or "",
+                })
+            return out
+        return self._run(op)

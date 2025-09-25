@@ -1385,6 +1385,38 @@ CREATE TABLE cases (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- 1) Generic typed attributes table
+CREATE TABLE IF NOT EXISTS case_attributes (
+  id          BIGSERIAL PRIMARY KEY,
+  case_id     INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  key         TEXT NOT NULL,
+  value_text  TEXT NULL,
+  value_num   DOUBLE PRECISION NULL,
+  value_bool  BOOLEAN NULL,
+  value_json  JSONB NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  -- Enforce: exactly one of the value_* columns is non-null (optional but nice)
+  CONSTRAINT chk_case_attr_one_value CHECK (
+    (value_text IS NOT NULL)::int +
+    (value_num  IS NOT NULL)::int +
+    (value_bool IS NOT NULL)::int +
+    (value_json IS NOT NULL)::int = 1
+  ),
+
+  -- One value per key per case (override if you truly need multi-values per key)
+  CONSTRAINT uq_case_attr UNIQUE (case_id, key)
+);
+
+-- 2) Useful indexes
+CREATE INDEX IF NOT EXISTS idx_case_attr_case_id       ON case_attributes(case_id);
+CREATE INDEX IF NOT EXISTS idx_case_attr_key           ON case_attributes(key);
+CREATE INDEX IF NOT EXISTS idx_case_attr_key_text      ON case_attributes(key, value_text);
+CREATE INDEX IF NOT EXISTS idx_case_attr_key_num       ON case_attributes(key, value_num);
+CREATE INDEX IF NOT EXISTS idx_case_attr_key_bool      ON case_attributes(key, value_bool);
+CREATE INDEX IF NOT EXISTS idx_case_attr_key_json_gin  ON case_attributes USING GIN (value_json jsonb_path_ops);
+
+
 -- mapping: many-to-many between cases and scorables
 CREATE TABLE case_scorables (
     id SERIAL PRIMARY KEY,
