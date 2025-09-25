@@ -17,7 +17,6 @@ class DocumentSectionORM(Base):
     section_text = Column(Text, nullable=True)
     source = Column(Text, nullable=True)  # e.g., original text or system
 
-    embedding = Column(JSON, nullable=True)  # vector embedding if used
     summary = Column(Text, nullable=True)  # LLM-generated summary
     extra_data = Column(JSON, nullable=True)  # MR.Q scores, confidences, etc.
 

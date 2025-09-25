@@ -56,6 +56,7 @@ from stephanie.memory.scorable_rank_store import ScorableRankStore
 from stephanie.memory.score_store import ScoreStore
 from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
+from stephanie.memory.selfplay_store import SelfPlayStore
 from stephanie.memory.sharpening_store import SharpeningStore
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.memory.theorem_store import TheoremStore
@@ -183,6 +184,7 @@ class MemoryTool:
         self.register_store(TrainingEventStore(self.session_maker, logger))
         self.register_store(TrainingStatsStore(self.session_maker, logger))
         self.register_store(ModelsStore(self.session_maker, logger))
+        self.register_store(SelfPlayStore(self.session_maker, logger))
 
 
         # Register extra stores if defined in config

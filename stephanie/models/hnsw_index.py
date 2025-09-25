@@ -1,7 +1,7 @@
 # stephanie/models/hnsw_index.py
 from __future__ import annotations
 
-I import hashlib
+import hashlib
 import json
 import logging
 import os

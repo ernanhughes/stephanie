@@ -7,7 +7,6 @@ from typing import Dict, List, Mapping, Union
 
 import numpy as np
 from sqlalchemy import case, func
-from sqlalchemy.exc import SQLAlchemyError
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.calibration import CalibrationEventORM

@@ -9,7 +9,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
-from stephanie.models.casebook import CaseBookORM
+from stephanie.models.casebook import CaseBookORM, CaseORM
+from stephanie.models.document_section import DocumentSectionORM
+from stephanie.scoring.scorable import ScorableType
 from stephanie.tools.chat_corpus_tool import build_chat_corpus_tool
 from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.paper_utils import (
@@ -130,13 +132,13 @@ class LearningFromLearningAgent(BaseAgent):
             section_focus = context.get("section_name")
             doc_id = paper.get("id")
             title = paper.get("title", "")
-            casebook_name = generate_casebook_name(self.casebook_action, title)
             structured_sections = (
-                self.memory.document_sections.get_by_document(doc_id) or []
+                self.memory.document_sections.get_by_document(doc_id)
             )
 
-            # 2) Create CaseBook + Goal for this paper
+            # 1) Create CaseBook + Goal for this paper
 
+            casebook_name = generate_casebook_name(self.casebook_action, title)
             casebook = self.memory.casebooks.ensure_casebook(
                 name=casebook_name,
                 description=f"LfL agent runs for paper {title}",
@@ -153,11 +155,35 @@ class LearningFromLearningAgent(BaseAgent):
                 }
             ).to_dict()
 
-            sections_todo = []
+            # 2) Resolve sections with attributes
+            sections_todo = self._resolve_sections_with_attributes(paper, context)
+            results: List[Dict[str, Any]] = []
             abstract = self._get_abstract(structured_sections)
             for i, section in enumerate(structured_sections):
                 section_text = section.section_text or ""
-                buffers = self.memory.selfplay.ensure_buffers(
+                case = self._create_section_case(casebook, paper, section, context)
+
+                verify = await self._verify_and_improve(section, case, context)
+                # Get a ranked corpus of related chat messages for this section
+                corpus = self._get_corpus(section_text)
+
+                # Persist results with attributes
+                self._save_section_to_casebook(case, section, verify, context)
+
+                results.append({
+                    "section_name": section["section_name"],
+                    "summary": verify["summary"],
+                    "metrics": verify["metrics"],
+                    "iterations": verify["iterations"],
+                    "elapsed_ms": self._ms_since(st0),
+                    "domain": section.get("domain"),
+                })
+                
+                # Track strategy evolution
+                self._track_strategy_evolution(case, verify["iterations"])
+    
+
+                buffers = self.memory.selfplay.ensure_buffer( 
                     section_id=section["id"]
                 )
                 proposals = []
@@ -183,7 +209,7 @@ class LearningFromLearningAgent(BaseAgent):
                 for task in proposals:
                     successes = []
                     logs = []
-                    for _ in range(sp_cfg["n_mc"]):
+                    for _ in range(self.sp_cfg["n_mc"]):
                         s, detail = await solve_once(task)
                         successes.append(s)
                         logs.append(detail)
@@ -206,24 +232,10 @@ class LearningFromLearningAgent(BaseAgent):
                 )[: self.cfg.get("self_play_keep", 4)]
                 buffers.extend(keep)  # update buffer
 
-                # Get a ranked corpus of related chat messages for this section
-                corpus = self._get_corpus(section_text)
-                # we need to sore these
-                await self.annotate.run(context={"scorables": corpus})
-                await self.analyze.run(context={"chats": corpus})
 
                 txt = section_text.strip()
                 if len(txt) < self.min_section_length:
                     continue
-                sections_todo.append(
-                    {
-                        "section_name": section.section_name,
-                        "section_text": txt,
-                        "section_id": section.id,
-                        "corpus": corpus,
-                        "order_index": i + 1,
-                    }
-                )
 
             results: List[Dict[str, Any]] = []
 
@@ -358,8 +370,172 @@ class LearningFromLearningAgent(BaseAgent):
 
         return {**context, **out}
 
-    # ---------------- section/prep borrowed from DSPy agent ----------------
+    # ---------------- section/prep  ----------------
+    def _resolve_sections_with_attributes(self, paper: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Resolve sections using attribute-based grouping"""
+        doc_id = paper.get("id") or paper.get("doc_id")
+        
+        # Check if we have structured sections
+        structured_sections = self.memory.document_sections.get_by_document(doc_id)
+        
+        if structured_sections:
+            sections = []
+            for sec in structured_sections:
+                # Convert to attribute-based section
+                sections.append({
+                    "section_name": sec.section_name,
+                    "section_text": sec.section_text,
+                    "section_id": sec.id,
+                    "order_index": getattr(sec, "order_index", None),
+                    "attributes": {
+                        "paper_id": doc_id,
+                        "section_name": sec.section_name,
+                        "section_index": getattr(sec, "order_index", 0),
+                        "case_kind": "summary"
+                    }
+                })
+            return sections
+        
+        # Fallback to abstract section
+        return [{
+            "section_name": "Abstract",
+            "section_text": f"{paper.get('title','').strip()}\n\n{paper.get('abstract','').strip()}",
+            "attributes": {
+                "paper_id": doc_id,
+                "section_name": "Abstract",
+                "section_index": 0,
+                "case_kind": "summary"
+            }
+        }]
 
+
+    def _create_section_case(self, casebook: CaseBookORM, paper: Dict[str, Any], 
+                            section: DocumentSectionORM, context: Dict[str, Any]) -> CaseORM:
+        """Create a case with attributes for this section"""
+        # Create the case
+        case = self.memory.casebooks.add_case(
+            casebook_id=casebook.id,
+            goal_id=context.get("goal_id"),
+            prompt_text=f"Section: {section['section_name']}",
+            agent_name=self.name,
+            meta={"type": "section_case"}
+        )
+
+        self.memory.casebooks.set_case_attr(case.id, "section_name", value_text=str(section.section_name))
+        self.memory.casebooks.set_case_attr(case.id, "section_id", value_text=str(section.id)) 
+        self.memory.casebooks.set_case_attr(case.id, "scorable_id", value_text=str(section.id)) 
+        self.memory.casebooks.set_case_attr(case.id, "scorable_type", value_text=ScorableType.DOCUMENT_SECTION)
+        
+        return case
+
+    def _track_strategy_evolution(self, case: CaseORM, iterations: List[Dict[str, Any]]):
+        """Track strategy evolution using attributes"""
+        if len(iterations) < 2:
+            return
+
+        gains = [iterations[i]["score"] - iterations[i-1]["score"] for i in range(1, len(iterations))]
+        avg_gain = sum(gains)/len(gains) if gains else 0.0
+        
+        # Save evolution metrics as attributes
+        self.memory.casebooks.set_case_attr(
+            case.id, 
+            "strategy_evolution", 
+            value_json={
+                "initial_strategy": {
+                    "verification_threshold": self.strategy.verification_threshold,
+                    "skeptic_weight": self.strategy.skeptic_weight,
+                    "editor_weight": self.strategy.editor_weight,
+                    "risk_weight": self.strategy.risk_weight
+                },
+                "avg_gain": avg_gain,
+                "iterations": len(iterations)
+            }
+        )
+
+    def _perform_cross_domain_learning(self, context: Dict[str, Any]):
+        """Find the best patterns across all casebooks and content types"""
+        # Get best cases across all casebooks
+        best_cases = self.memory.casebooks.get_best_by_attrs(
+            casebook_id=None,  # All casebooks
+            group_keys=["case_kind", "domain"],
+            score_weights={"knowledge_score": 0.8, "verification_score": 0.2},
+            role="refined_draft",
+            limit_per_group=3
+        )
+        
+        # Analyze patterns across domains
+        domain_patterns = {}
+        for case in best_cases:
+            domain = case["attributes"].get("domain", "general")
+            pattern = self._extract_verification_pattern(case["text"])
+            
+            if domain not in domain_patterns:
+                domain_patterns[domain] = []
+            domain_patterns[domain].append(pattern)
+        
+        # Update strategy based on cross-domain patterns
+        self._update_strategy_from_patterns(domain_patterns)
+        
+        # Log the cross-domain learning
+        self.logger.log("CrossDomainLearning", {
+            "domains": list(domain_patterns.keys()),
+            "pattern_count": sum(len(p) for p in domain_patterns.values())
+        })
+
+    def _extract_verification_pattern(self, text: str) -> Dict[str, Any]:
+        """Extract verification pattern from text"""
+        # Simple pattern extraction (in production, use your NER/domain classifiers)
+        patterns = {
+            "checks": [],
+            "common_phrases": [],
+            "structure": []
+        }
+        
+        # Check for common verification phrases
+        verification_phrases = [
+            "check if", "verify that", "validate", "ensure", "confirm", 
+            "cross-reference", "compare against", "test case"
+        ]
+        
+        for phrase in verification_phrases:
+            if phrase in text.lower():
+                patterns["checks"].append(phrase)
+        
+        # Analyze structure
+        lines = text.split('\n')
+        if len(lines) > 3:
+            patterns["structure"].append("multi_paragraph")
+        if "```" in text:
+            patterns["structure"].append("code_example")
+        if any(line.strip().startswith("-") for line in lines):
+            patterns["structure"].append("bullet_points")
+        
+        return patterns
+
+    def _update_strategy_from_patterns(self, domain_patterns: Dict[str, List[Dict[str, Any]]]):
+        """Update strategy based on cross-domain patterns"""
+        # Simple implementation - in production, use more sophisticated pattern matching
+        for domain, patterns in domain_patterns.items():
+            # Count common verification phrases
+            phrase_counts = {}
+            for pattern in patterns:
+                for check in pattern["checks"]:
+                    phrase_counts[check] = phrase_counts.get(check, 0) + 1
+            
+            # If "check if" is common in this domain, increase skeptic weight
+            if phrase_counts.get("check if", 0) > len(patterns) * 0.7:
+                self.strategy.skeptic_weight = min(0.60, self.strategy.skeptic_weight + 0.02)
+                self.strategy.editor_weight = max(0.20, self.strategy.editor_weight - 0.01)
+                self.strategy.risk_weight = max(0.20, self.strategy.risk_weight - 0.01)
+                self.strategy.version += 1
+                
+                self.logger.log("DomainStrategyUpdate", {
+                    "domain": domain,
+                    "skeptic_weight": self.strategy.skeptic_weight,
+                    "editor_weight": self.strategy.editor_weight,
+                    "risk_weight": self.strategy.risk_weight,
+                    "trigger": "high_check_if_usage"
+                })
     def _get_abstract(self, paper_section) -> str:
         for section in paper_section:
             if section.section_name.lower() == "abstract":
@@ -559,7 +735,7 @@ class LearningFromLearningAgent(BaseAgent):
             "k_base": k_base,
         }
 
-    def _get_corpus(self, section_text: str) -> List[Dict[str, Any]]:
+    async def _get_corpus(self, section_text: str) -> List[Dict[str, Any]]:
         corpus_search = self.chat_corpus(
             section_text,
             k=self.cfg.get("chat_corpus_k", 60),
@@ -570,6 +746,10 @@ class LearningFromLearningAgent(BaseAgent):
             },
             include_text=True,  # you likely want the text downstream
         )
+        # make sure to score/analyze the one we included, note typically this will be already done
+        await self.annotate.run(context={"scorables": corpus_search.get("items", [])})
+        await self.analyze.run(context={"chats": corpus_search.get("items", [])})
+
         return corpus_search.get("items", [])
 
     def _score_summary(
@@ -1240,7 +1420,7 @@ class LearningFromLearningAgent(BaseAgent):
             "iterations": iters,
         }
 
-    def _persist_arena(self, casebook, paper, section, arena):
+    def _persist_arena(self, casebook, paper, section, arena): 
         # Save every candidate (initial pool), each round’s beam, and final winner
         def _meta(base=None, **kw):
             m = {

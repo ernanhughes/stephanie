@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query
@@ -733,6 +733,28 @@ class CaseBookStore(BaseSQLAlchemyStore):
             row.value_json = value_json
             s.flush()
             return row
+        return self._run(op)
+
+    def get_case_attrs(self, case_id: int) -> Dict[str, Any]:
+        """Get all attributes for a case as a dictionary"""
+        def op(s):
+            attrs = s.query(CaseAttributeORM).filter(
+                CaseAttributeORM.case_id == case_id
+            ).all()
+            
+            result = {}
+            for attr in attrs:
+                if attr.value_text is not None:
+                    result[attr.key] = attr.value_text
+                elif attr.value_num is not None:
+                    result[attr.key] = attr.value_num
+                elif attr.value_bool is not None:
+                    result[attr.key] = attr.value_bool
+                elif attr.value_json is not None:
+                    result[attr.key] = attr.value_json
+            
+            return result
+        
         return self._run(op)
 
     def get_best_by_attrs(
