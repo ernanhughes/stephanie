@@ -36,8 +36,8 @@ class LearningFromLearningAgent(BaseAgent):
             cfg, memory, container, logger,
             strategy=self.strategy,
             scoring=self.scoring,
-            prompt_loader=getattr(self, "prompt_loader", None),
-            call_llm=getattr(self, "call_llm", None),
+            prompt_loader=self.prompt_loader,
+            call_llm=self.call_llm,
         )
         self.arena = ArenaService(cfg, memory, container, logger)
         self.arena.score_candidate = self.scoring.score_candidate

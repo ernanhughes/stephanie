@@ -145,8 +145,7 @@ class StrategyManager:
 
         if group == "B" and proposed != self.state:
             # adopt proposed knobs for the NEXT unit
-            self.state = proposed
-            self.bump_version()
+            self.state = replace(proposed, version=self.state.version + 1)
 
         self._record_ab(context, old, proposed, group, avg_gain)
 

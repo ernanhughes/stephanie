@@ -1,10 +1,33 @@
 # stephanie/agents/learning/corpus_service.py
-from typing import List, Dict, Any, Optional, Set
-from .attribution import AttributionTracker  # NEW
+from __future__ import annotations
+from typing import List, Dict, Any, Set, Optional
+from stephanie.agents.learning.attribution import AttributionTracker
+from stephanie.agents.knowledge.chat_analyze import ChatAnalyzeAgent
+from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
+from stephanie.tools.chat_corpus_tool import build_chat_corpus_tool
+
 import logging
+
 _logger = logging.getLogger(__name__)
 
+
 class CorpusService:
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+        self.chat_corpus = build_chat_corpus_tool(
+            memory=memory, container=container, cfg=cfg.get("chat_corpus", {})
+        )
+        # Sub-agents / utilities
+        self.annotate = ScorableAnnotateAgent(
+            cfg.get("annotate", {}), memory, container, logger
+        )
+        self.analyze = ChatAnalyzeAgent(
+            cfg.get("analyze", {}), memory, container, logger
+        )
+
     @staticmethod
     def _corpus_key(it: Dict[str, Any]) -> str:
         return f"corpus:{str(it.get('id'))}"
@@ -33,7 +56,6 @@ class CorpusService:
                 mk = set(mask_keys)
                 items = [it for it in items if self._corpus_key(it) not in mk]
 
-            # NEW: attribution breadcrumbs
             if attribution_tracker:
                 for it in items:
                     k = self._corpus_key(it)

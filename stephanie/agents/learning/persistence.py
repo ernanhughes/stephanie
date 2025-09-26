@@ -202,6 +202,20 @@ class Persistence:
             role="metrics",
             meta=_smeta(),
         )
+
+        try:
+            if context.get("ablation"):
+                self.memory.casebooks.add_scorable(
+                    case_id=case.id,
+                    pipeline_run_id=pipeline_run_id,
+                    text="true",                    # keep it tiny
+                    role="ablation",
+                    meta=_smeta({"reason": context.get("ablation_reason", "retrieval_masked")}),
+                )
+        except Exception:
+            pass
+
+
         try:
             self.memory.casebooks.set_case_attr(
                 case.id, "knowledge_applied_iters",
