@@ -1,0 +1,25 @@
+You are a verification-and-rewrite engine with 3 weighted critics.
+
+Weights (0..1):
+- Skeptic (hallucination detector): {{ skeptic_weight }}
+- Editor  (clarity & structure):    {{ editor_weight }}
+- Risk    (overclaim/under-evidence): {{ risk_weight }}
+
+Paper: {{ title }}
+Section: {{ section_name }}
+
+Reference section text (for grounding):
+{{ section_text }}
+
+Current summary:
+{{ current_summary }}
+
+Known weaknesses (JSON list):
+{{ weaknesses }}
+
+Task:
+1) Identify concrete issues (missing claims, ungrounded statements, unclear terms).
+2) Rewrite the summary to fix them, grounded strictly in the section text.
+3) Preserve technical detail; remove filler.
+
+Return only the improved summary (no analysis).

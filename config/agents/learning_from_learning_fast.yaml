@@ -1,0 +1,69 @@
+learning_from_learning_fast:
+  name: learning_from_learning_fast
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  use_arena: False              # skip tournament
+  max_iterations: 1             # only 1 verify/improve pass
+  chat_corpus_k: 6              # tiny retrieval set
+  min_section_length: 60        # allow short sections (so you can test)
+  sections_limit: 1             # only process the first section
+  single_random_doc: True       # test on a single random doc
+
+  applied_knowledge: 
+    attr_sim_threshold: 0.75     # cosine threshold for claim↔source match
+    max_claims: 8                # per improvement step
+    use_embeddings: True          # fallback to token overlap if False
+  retrieval_ablate_prob: 0.2      # set 0.2 for quick RN smoke tests
+
+
+  # persistence knobs (smaller logs)
+  persist_pool_cap: 5
+  persist_beam_cap: 3
+
+  # arena (if you must keep it on)
+  beam_width: 2
+  self_play_rounds: 1
+  self_play_plateau_eps: 1.0    # trigger plateau stop immediately
+  min_marginal_reward_per_ktok: 999
+
+  # scoring/model costs
+  knowledge_scorer: 
+    enabled: False  
+  
+  min_verified_len: 120                  # less strict so we early-stop
+
+  truncate_focus_text: 1500             # shorter section slice
+  hints_cap: 3                          # fewer corpus hints
+
+  # fast I/O
+  persist_enabled: True                 # set False to skip all DB writes
+
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  input_keys: [goal, scorables]
+  input_key: documents
+  output_key: learning_from_learning
+  prompt_mode: file
+  prompt_file: learning_from_learning.txt
+
+  progress:
+    enable_sis: true            # send SIS cards if service available
+    write_case_attrs: true      # write progress_* attributes on case
+
+  analyze:
+    name: chat_analyze
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    input_key: scorables
+    output_key: chat_analyze
+    prompt_mode: file
+    prompt_file: chat_analyze.txt

@@ -1,0 +1,40 @@
+SYSTEM
+You are drafting a single paper section that will later compete in an arena and be verified.
+Optimize for:
+- Knowledge (accuracy & substance) = 0.6
+- Clarity (readability & flow)     = 0.25
+- Grounding (faithful to source)   = 0.15
+
+RULES
+- Use ONLY the content in the provided source excerpt. Do NOT invent facts or cite external material.
+- Prefer precise language; keep average sentence length near 20–24 words.
+- Keep structure skimmable: a tight lead, 3–5 concise points, and a short closing insight.
+- Avoid hedging (“might”, “could”) unless the source is truly uncertain.
+- Do not include markdown headings beyond a single bolded lead line.
+- No bullet lists longer than 5 items. No tables. No code.
+- If the source uses specific claim language (e.g., “we propose”), reflect it faithfully.
+- If a detail is not in the excerpt, omit it.
+
+CONTEXT
+Paper title: {{ paper_title }}
+Target section: {{ focus }}
+
+SOURCE EXCERPT (authoritative; may be truncated)
+{{ section_text }}
+
+TASK
+Write a clear, self-contained draft for the "{{ focus }}" section that:
+1) captures the core claims and evidence present in the source,
+2) preserves key terminology and definitions,
+3) orders ideas logically (problem → method → findings/implications, as applicable),
+4) removes redundancy and filler,
+5) avoids unsupported speculation.
+
+LENGTH
+≈ 180–300 words (tight is better than long).
+
+OUTPUT
+Return ONLY the final section text (no preface, no notes, no headings other than the bolded lead line).
+Start with a single bolded lead sentence that frames the section in one line, then the body.
+
+END

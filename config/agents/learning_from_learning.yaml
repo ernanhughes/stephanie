@@ -17,6 +17,12 @@ learning_from_learning:
   min_verified_len: 250
   verification_threshold: 0.85
 
+  applied_knowledge: 
+    attr_sim_threshold: 0.75     # cosine threshold for claim↔source match
+    max_claims: 8                # per improvement step
+    use_embeddings: True          # fallback to token overlap if False
+  retrieval_ablate_prob: 0.2      # set 0.2 for quick RN smoke tests
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434

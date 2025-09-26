@@ -69,6 +69,8 @@ class Persistence:
         self.memory.casebooks.set_case_attr(case.id, "case_kind", value_text="summary")
         self.memory.casebooks.set_case_attr(case.id, "scorable_id", value_text=str(section.get("section_id") or ""))
         self.memory.casebooks.set_case_attr(case.id, "scorable_type", value_text=str(ScorableType.DOCUMENT_SECTION))
+
+
         return case
 
     def save_section(self, casebook, paper, section, verify, baseline, goal_id, context) -> CaseORM:
@@ -183,23 +185,36 @@ class Persistence:
             role="final_validation",
             meta=_smeta(),
         )
+        final_scores = (result.get("final_validation", {}) or {}).get("scores", {}) or {}
+        metrics_payload = {
+            "passed": result.get("passed", False),
+            "refinement_iterations": result.get("refinement_iterations", 0),
+            "final_scores": final_scores,
+            "knowledge_applied_iters": final_scores.get("knowledge_applied_iters", 0),
+            "knowledge_applied_lift": final_scores.get("knowledge_applied_lift", 0.0),
+            "ablation": context.get("ablation"),
+        }
+
         self.memory.casebooks.add_scorable(
             case_id=case.id,
             pipeline_run_id=pipeline_run_id,
-            text=dumps_safe(
-                {
-                    "passed": result.get("passed", False),
-                    "refinement_iterations": result.get(
-                        "refinement_iterations", 0
-                    ),
-                    "final_scores": (
-                        result.get("final_validation", {}) or {}
-                    ).get("scores", {}),
-                }
-            ),
+            text=dumps_safe(metrics_payload),
             role="metrics",
             meta=_smeta(),
         )
+        try:
+            self.memory.casebooks.set_case_attr(
+                case.id, "knowledge_applied_iters",
+                value_num=float(metrics_payload.get("knowledge_applied_iters", 0))
+            )
+            self.memory.casebooks.set_case_attr(
+                case.id, "knowledge_applied_lift",
+                value_num=float(metrics_payload.get("knowledge_applied_lift", 0.0))
+            )
+        except Exception:
+            pass
+
+
         return case
     
     def persist_pairs(self, case_id: int, baseline: str, verify: Dict[str, Any], context: Dict[str, Any]):

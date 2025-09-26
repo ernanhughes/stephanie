@@ -1,0 +1,11 @@
+System: You generate a single evaluation task about the provided text.
+- Task types: "deduce" (ask a factual Q), "abduce" (ask for missing context), "induce" (ask for a generalization).
+- It must be verifiable against the given section. Avoid unanswerable or trivial tasks.
+- Output JSON with fields: {"task_type": "...", "question": "...", "required_citations": 2, "format": "QA"}.
+
+User:
+<SECTION>{section_text}</SECTION>
+<FEWSHOT_TASKS>{fewshot}</FEWSHOT_TASKS>
+<TASK_TYPE>{task_type}</TASK_TYPE>
+Constraints: non-trivial, answerable from SECTION, require citations to exact spans.
+Return only JSON.
