@@ -5,7 +5,10 @@ import re
 
 class Scoring:
     def __init__(self, cfg, memory, container, logger):
-        self.cfg, self.memory, self.container, self.logger = cfg, memory, container, logger
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
         try:
             from stephanie.scoring.scorer.knowledge_scorer import KnowledgeScorer
             self.knowledge = KnowledgeScorer(cfg.get("knowledge_scorer", {}), memory, container, logger)
@@ -32,6 +35,7 @@ class Scoring:
 
     def score_summary(self, text: str, paper: Dict[str, Any], section: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         clarity, grounding = self.rubric_dims(text, section.get("section_text", ""))
+        comps = {}
         if self.knowledge:
             goal_text = f"{paper.get('title','')}\n\n{paper.get('abstract','')}"
             meta = {"text_len_norm": min(1.0, len(text)/2000.0)}
@@ -52,6 +56,7 @@ class Scoring:
             "clarity": clarity,
             "grounding": grounding,
             "weaknesses": self.weaknesses(text, section.get("section_text","")),
+            **(comps or {}),
         }
 
     def score_candidate(self, text: str, section_text: str) -> Dict[str, float]:

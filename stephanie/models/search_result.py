@@ -16,6 +16,7 @@ class SearchResultORM(Base):
     source = Column(String, nullable=False)
     result_type = Column(String)
     title = Column(Text)
+    pid = Column(Text)
     summary = Column(Text)
     url = Column(Text)
     author = Column(String)
@@ -47,6 +48,7 @@ class SearchResultORM(Base):
             "result_type": self.result_type,
             "title": self.title,
             "summary": self.summary,
+            "pid": self.pid,
             "url": self.url,
             "author": self.author,
             "published_at": self.published_at.isoformat()

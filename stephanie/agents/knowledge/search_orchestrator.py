@@ -28,7 +28,7 @@ class SearchOrchestratorAgent(BaseAgent):
             source = self.route_query(goal, search_query)
             try:
                 if source == "arxiv":
-                    hits = await search_arxiv([search_query])
+                    hits = search_arxiv([search_query])
                 elif source == "huggingface":
                     hits = await search_huggingface_datasets([search_query])
                 elif source == "wikipedia":
@@ -56,6 +56,7 @@ class SearchOrchestratorAgent(BaseAgent):
                         "title": hit.get("title", hit.get("name", "")),
                         "summary": hit.get("snippet", hit.get("description", "")),
                         "url": hit.get("url", ""),
+                        "pid": hit.get("pid", hit.get("arxiv_id",  "")),
                         "goal_id": goal_id,
                         "parent_goal": goal.get("goal_text"),
                         "strategy": goal.get("strategy"),
@@ -102,6 +103,8 @@ class SearchOrchestratorAgent(BaseAgent):
 
         if goal_type == "automind":
             return "automind"
+        if goal_type == "search_arxiv" or goal_type == "arxiv_search":
+            return "arxiv"
         if goal_type == "similar_papers":
             return "similar_papers"
         if goal_type == "data_search" or "dataset" in query_lower:

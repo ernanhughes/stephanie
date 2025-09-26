@@ -38,6 +38,7 @@ class SearchResultStore(BaseSQLAlchemyStore):
         extra_data: Optional[Dict] = None,
     ) -> SearchResultORM:
         """Insert a single search result."""
+
         def op(s):
             result = SearchResultORM(
                 query=query,
@@ -60,20 +61,22 @@ class SearchResultStore(BaseSQLAlchemyStore):
             s.refresh(result)
             return result
 
-        return self._run(op, commit=True)
+        return self._run(op)
 
     def bulk_add_results(self, results: List[Dict]) -> List[SearchResultORM]:
         """Insert multiple search results at once."""
+
         def op(s):
             orm_objects = [SearchResultORM(**result) for result in results]
             s.add_all(orm_objects)
             s.flush()
             return orm_objects
 
-        return self._run(op, commit=True)
+        return self._run(op)
 
     def get_by_goal_id(self, goal_id: int) -> List[SearchResultORM]:
         """Retrieve all search results for a given goal."""
+
         def op(s):
             return s.query(SearchResultORM).filter_by(goal_id=goal_id).all()
 
@@ -83,6 +86,7 @@ class SearchResultStore(BaseSQLAlchemyStore):
         self, strategy: str, focus_area: str
     ) -> List[SearchResultORM]:
         """Retrieve results filtered by strategy and focus area."""
+
         def op(s):
             return (
                 s.query(SearchResultORM)
@@ -99,6 +103,7 @@ class SearchResultStore(BaseSQLAlchemyStore):
         self, source: str, result_type: str
     ) -> List[SearchResultORM]:
         """Retrieve results filtered by source and type."""
+
         def op(s):
             return (
                 s.query(SearchResultORM)
@@ -113,6 +118,7 @@ class SearchResultStore(BaseSQLAlchemyStore):
 
     def delete_by_goal_id(self, goal_id: int) -> None:
         """Delete all results linked to a goal."""
+
         def op(s):
             s.query(SearchResultORM).filter_by(goal_id=goal_id).delete()
 
@@ -120,6 +126,7 @@ class SearchResultStore(BaseSQLAlchemyStore):
 
     def clear_all(self) -> None:
         """Delete all results (useful for testing)."""
+
         def op(s):
             s.query(SearchResultORM).delete()
 

@@ -189,7 +189,7 @@ class DocumentLoaderAgent(BaseAgent):
 
                 # Summarize document content if enabled
                 if self.summarize_documents:
-                    pid = result.get("pid") or result.get("arxiv_id")
+                    pid = result.get("pid") or result.get("arxiv_id") or result.get("title")
                     meta_data = fetch_arxiv_metadata(pid)
                     if meta_data:
                         # Use arXiv metadata if available
@@ -210,7 +210,7 @@ class DocumentLoaderAgent(BaseAgent):
                 doc = {
                     "goal_id": goal_id,
                     "title": title,
-                    "external_id": result.get("title"),
+                    "external_id": result.get("pid") or result.get("title"),
                     "summary": summary,
                     "source": self.name,
                     "text": text,

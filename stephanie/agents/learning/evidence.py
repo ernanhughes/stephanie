@@ -1,6 +1,7 @@
 # stephanie/agents/learning/evidence.py
 from __future__ import annotations
 from typing import Dict, Any, Optional, Tuple
+import asyncio
 import json
 import time
 
@@ -12,32 +13,25 @@ class Evidence:
         self.casebook_tag = cfg.get("casebook_action", "blog")
         self._last: Dict[str, Any] = {}   # NEW: last snapshot for delta reporting
 
-    # -------------- small reporting bus (NEW) --------------
     def _emit(self, event: str, **fields):
         payload = {"event": event, **fields}
-        # try container.report
+        """
+        Fire-and-forget reporting event using container.get('reporting').emit(...)
+        Safe to call from sync code (no await).
+        """
         try:
-            rep = getattr(self.container, "report", None)
-            if callable(rep):
-                rep(payload)
-                return
+            reporter = self.container.get("reporting")
+            coro = reporter.emit(ctx={}, stage="learning",  **payload)
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(coro)
+            except RuntimeError:
+                # if no running loop (rare), just ignore to keep non-blocking
+                pass
         except Exception:
+            # never fail persistence due to reporting
             pass
-        # try a dedicated reporter service
-        try:
-            get_service = getattr(self.container, "get_service", None)
-            if callable(get_service):
-                reporter = get_service("report")
-                if reporter and callable(getattr(reporter, "report", None)):
-                    reporter.report(payload)
-                    return
-        except Exception:
-            pass
-        # fallback to logger
-        try:
-            self.logger.log(event, payload)
-        except Exception:
-            pass
+
 
     # -------------- util --------------
     @staticmethod

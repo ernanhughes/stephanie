@@ -522,6 +522,7 @@ CREATE TABLE IF NOT EXISTS search_results (
     result_type TEXT,
     title TEXT,
     summary TEXT,
+    pid TEXT,
     url TEXT,
     author TEXT,
     published_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,

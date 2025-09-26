@@ -29,6 +29,11 @@ class SurveyAgent(BaseAgent):
             self.logger.log("SurveyAgentSkipped", {"reason": "similar_papers_goal"})
             context["search_queries"] = [goal.get("goal_text", "")]
             return context
+        if goal_type == "arxiv_search":
+            # Skip survey agent if goal is to search arxiv directly
+            self.logger.log("SurveyAgentSkipped", {"reason": "arxiv_search_goal"})
+            context["search_queries"] = [goal.get("goal_text", "")]
+            return context
 
         if not goal:
             self.logger.log("NoGoalProvided", {"reason": "survey_agent_skipped"})

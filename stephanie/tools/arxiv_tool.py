@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+import re
+from urllib.parse import urlparse
 
 import arxiv
 import requests
@@ -19,9 +21,29 @@ def search_arxiv(queries: list[str], max_results: int = 5) -> list[dict]:
                     "summary": r.summary,
                     "authors": [a.name for a in r.authors],
                     "url": r.pdf_url,
+                    "pid": extract_arxiv_id(r),
                 }
             )
     return results
+
+def extract_arxiv_id(result, include_version=True):
+    url = getattr(result, "entry_id", None) or next(
+        (l.href for l in getattr(result, "links", []) if getattr(l, "rel", "") == "alternate"),
+        None
+    )
+    if not url:
+        raise ValueError("arXiv result has no entry_id or alternate link")
+
+    tail = urlparse(url).path.rsplit("/", 1)[-1]  # '2405.03794v1' or 'hep-th/9901001v2'
+    m = re.match(
+        r'(?P<id>(?:[a-z\-]+(?:\.[A-Z]{2})?/\d{7}|\d{4}\.\d{4,5}))(?P<ver>v\d+)?$',
+        tail, flags=re.IGNORECASE
+    )
+    if not m:
+        raise ValueError(f"Unrecognized arXiv id format: {tail}")
+
+    return m.group('id') + (m.group('ver') or '' if include_version else '')
+
 
 
 def fetch_arxiv_metadata(arxiv_id: str) -> dict:

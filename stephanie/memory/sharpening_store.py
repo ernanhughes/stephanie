@@ -8,7 +8,7 @@ from stephanie.models.sharpening_prediction import SharpeningPredictionORM
 class SharpeningStore(BaseSQLAlchemyStore):
     orm_model = SharpeningPredictionORM
     default_order_by = SharpeningPredictionORM.created_at
-    
+
     def __init__(self, session_or_maker, logger=None):
         super().__init__(session_or_maker, logger)
         self.name = "sharpening"
@@ -21,6 +21,7 @@ class SharpeningStore(BaseSQLAlchemyStore):
         Insert a new sharpening prediction (from A/B hypothesis testing).
         Returns the inserted row ID.
         """
+
         def op(s):
             prediction = SharpeningPredictionORM(**prediction_dict)
             s.add(prediction)
@@ -28,4 +29,4 @@ class SharpeningStore(BaseSQLAlchemyStore):
             s.refresh(prediction)
             return prediction.id
 
-        return self._run(op, commit=True)
+        return self._run(op)

@@ -110,7 +110,7 @@ class ContextStore(BaseSQLAlchemyStore):
             for state in states:
                 result.update(json.loads(state.context))
             return result
-        return self._run(op, default={})
+        return self._run(op)
 
     def get_latest(self, run_id: str) -> Optional[ContextStateORM]:
         def op(s):

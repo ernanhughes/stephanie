@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Dict, Any, List
 import time
+import asyncio  # ← NEW
 import json
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
@@ -22,6 +23,25 @@ class Persistence:
         self.logger = logger
         self.casebook_action = cfg.get("casebook_action","blog")
         self.min_section_length = int(cfg.get("min_section_length", 100))
+
+
+    def _emit_report(self, *, context: Dict[str, Any], **payload):
+        """
+        Fire-and-forget reporting event using container.get('reporting').emit(...)
+        Safe to call from sync code (no await).
+        """
+        try:
+            reporter = self.container.get("reporting")
+            coro = reporter.emit(ctx=context, stage="learning", **payload)
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(coro)
+            except RuntimeError:
+                # if no running loop (rare), just ignore to keep non-blocking
+                pass
+        except Exception:
+            # never fail persistence due to reporting
+            pass
 
     def prepare_casebook_goal_sections(self, paper: Dict[str, Any], context: Dict[str, Any]):
         title = paper.get("title",""); doc_id = paper.get("id") or paper.get("doc_id")
@@ -427,37 +447,58 @@ class Persistence:
             except Exception:
                 pass
 
-            # -------- Optional SIS card (non-blocking) --------
-            try:
-                sis = getattr(self.container, "get_service", lambda *_: None)("sis")
-                if sis:
-                    cards = [
-                        {"type": "metric", "title": "Winner Overall", "value": round(float(w_score.get("overall", 0.0)), 3)},
-                        {"type": "bar", "title": "K/C/G", "series": [
-                            {"name": "K", "value": round(float(w_score.get("k", 0.0)), 3)},
-                            {"name": "C", "value": round(float(w_score.get("c", 0.0)), 3)},
-                            {"name": "G", "value": round(float(w_score.get("g", 0.0)), 3)},
-                        ]},
-                        {"type": "list", "title": "Winner", "items": [
-                            f"Origin: {w.get('origin')}",
-                            f"Variant: {w.get('variant')}",
-                            f"Rounds: {len(arena.get('iterations') or [])}",
-                        ]},
-                    ]
-                    sis.publish_cards({
-                        "scope": "arena",
-                        "key": f"paper:{paper.get('id') or paper.get('doc_id')}|sec:{section.get('section_name')}",
-                        "title": "Arena Winner",
-                        "cards": cards,
-                        "meta": {
-                            "case_id": case.id,
-                            "paper_id": str(paper.get("id") or paper.get("doc_id")),
-                            "section_name": section.get("section_name"),
-                        },
-                    })
-            except Exception:
-                pass
+            winner_payload = {
+                "stage": "arena",                 # aligns with your CBR example
+                "event": "winner",                # specific event name
+                "summary": "Arena winner selected",
+                "paper_id": str(paper.get("id") or paper.get("doc_id")),
+                "section_name": section.get("section_name"),
+                "winner": {
+                    "origin": w.get("origin"),
+                    "variant": w.get("variant"),
+                },
+                "metrics": {
+                    "overall": float(w_score.get("overall", 0.0)),
+                    "k": float(w_score.get("k", 0.0)),
+                    "c": float(w_score.get("c", 0.0)),
+                    "g": float(w_score.get("g", 0.0)),
+                },
+                "beam_width": int(self.cfg.get("beam_width", 5)),
+                "rounds": int(len(arena.get("iterations") or [])),
+                "meta": {
+                    "case_id": case.id,
+                    "pipeline_run_id": pipeline_run_id,
+                },
+            }
+            self._emit_report(ctx=context, **winner_payload)
 
+            # Optional: a second, dashboard-friendly summary event
+            summary_payload = {
+                "stage": "arena",
+                "event": "summary",
+                "title": "Arena Winner",
+                "cards": [
+                    {"type": "metric", "title": "Winner Overall", "value": round(float(w_score.get("overall", 0.0)), 3)},
+                    {"type": "bar", "title": "K/C/G", "series": [
+                        {"name": "K", "value": round(float(w_score.get("k", 0.0)), 3)},
+                        {"name": "C", "value": round(float(w_score.get("c", 0.0)), 3)},
+                        {"name": "G", "value": round(float(w_score.get("g", 0.0)), 3)},
+                    ]},
+                    {"type": "list", "title": "Winner", "items": [
+                        f"Origin: {w.get('origin')}",
+                        f"Variant: {w.get('variant')}",
+                        f"Rounds: {len(arena.get('iterations') or [])}",
+                    ]},
+                ],
+                "meta": {
+                    "case_id": case.id,
+                    "paper_id": str(paper.get("id") or paper.get("doc_id")),
+                    "section_name": section.get("section_name"),
+                },
+            }
+            self._emit_report(ctx=context, **summary_payload)
+
+            
         except Exception as e:
             # Never let persistence explode the agent; log and continue
             try:
