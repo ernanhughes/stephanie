@@ -53,6 +53,11 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         def op(s):
             return (
                 s.query(PipelineRunORM)
+                .options(
+                    selectinload(PipelineRunORM.prompts),
+                    selectinload(PipelineRunORM.stages),
+                    selectinload(PipelineRunORM.evaluations),
+                )
                 .filter(PipelineRunORM.id == run_id)
                 .order_by(PipelineRunORM.created_at.desc())
                 .first()

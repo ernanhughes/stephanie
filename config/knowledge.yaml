@@ -76,11 +76,10 @@ web_search:
   instance_url: "http O://localhost:8080"
 
 pipeline:
-  name: pacs_trainer_pipeline
-  tag: pacs
+  name: knowledge_pipeline
+  tag: knowledge
   description: >
-    Implementation of the PACS framework, where raw multi-agent chats are imported,
-    transformed into CaseBooks, scored, and used to train models on longitudinal signals.
+    Learning from learning, detecting, measuring, and applying knowledge in AI solutions.
 
   stages:
      - name: chat_import
@@ -132,7 +131,7 @@ pipeline:
           🤖 Train Stephanie using the Learning from Learning approach.  
           A meta-learning technique that uses past learning experiences to improve
           future learning efficiency and effectiveness.
-       cls: stephanie.agents.learning_from_learning.LearningFromLearningAgent
+       cls: stephanie.agents.learning.agent.LearningFromLearningAgent
        enabled: true
        iterations: 1
 

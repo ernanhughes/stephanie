@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import desc
+from sqlalchemy import desc, func   
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.document import DocumentORM
@@ -104,4 +104,27 @@ class DocumentStore(BaseSQLAlchemyStore):
                 s.delete(doc)
                 # commit happens via scope
                 return True
+        return self._run(op)
+
+    def get_random(self) -> Optional[DocumentORM]:
+        """Return a random Document row (None if table is empty)."""
+        def op(s):
+            return (
+                s.query(DocumentORM)
+                 .order_by(func.random())
+                 .limit(1)
+                 .one_or_none()
+            )
+        return self._run(op)
+
+    def get_random_id(self) -> Optional[int]:
+        """Return a random Document.id (None if table is empty)."""
+        def op(s):
+            row = (
+                s.query(DocumentORM.id)
+                 .order_by(func.random())
+                 .limit(1)
+                 .one_or_none()
+            )
+            return row[0] if row else None
         return self._run(op)

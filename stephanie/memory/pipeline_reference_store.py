@@ -52,14 +52,13 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
 
     def get_by_id(self, ref_id: int) -> Optional[PipelineReferenceORM]:
         def op(s):
-            return self._scope().get(PipelineReferenceORM, ref_id)
+            return s.query(PipelineReferenceORM).get(ref_id)
         return self._run(op)
 
     def get_by_pipeline_run(self, pipeline_run_id: int) -> List[PipelineReferenceORM]:
         def op(s):
             return (
-                self._scope()
-                .query(PipelineReferenceORM)
+                s.query(PipelineReferenceORM)
                 .filter(PipelineReferenceORM.pipeline_run_id == pipeline_run_id)
                 .order_by(PipelineReferenceORM.created_at.asc())
                 .all()
@@ -69,8 +68,7 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
     def get_by_target(self, target_type: str, target_id: str) -> List[PipelineReferenceORM]:
         def op(s):
             return (
-                self._scope()
-                .query(PipelineReferenceORM)
+                s.query(PipelineReferenceORM)
                 .filter(
                     PipelineReferenceORM.scorable_type == target_type,
                     PipelineReferenceORM.scorable_id == target_id,
@@ -83,8 +81,7 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
     def get_all(self, limit: int = 100) -> List[PipelineReferenceORM]:
         def op(s):
             return (
-                self._scope()
-                .query(PipelineReferenceORM)
+                s.query(PipelineReferenceORM)
                 .order_by(PipelineReferenceORM.created_at.desc())
                 .limit(limit)
                 .all()
@@ -112,8 +109,7 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
     ) -> dict[tuple[str, str], Scorable]:
         def op(s):
             refs = (
-                self._scope()
-                .query(PipelineReferenceORM)
+                s.query(PipelineReferenceORM)
                 .filter(PipelineReferenceORM.pipeline_run_id == pipeline_run_id)
                 .order_by(PipelineReferenceORM.created_at.asc())
                 .limit(limit)

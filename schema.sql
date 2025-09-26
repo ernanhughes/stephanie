@@ -1398,11 +1398,12 @@ CREATE TABLE IF NOT EXISTS case_attributes (
 
   -- Enforce: exactly one of the value_* columns is non-null (optional but nice)
   CONSTRAINT chk_case_attr_one_value CHECK (
-    (value_text IS NOT NULL)::int +
-    (value_num  IS NOT NULL)::int +
-    (value_bool IS NOT NULL)::int +
-    (value_json IS NOT NULL)::int = 1
-  ),
+    (CASE WHEN value_text IS NOT NULL THEN 1 ELSE 0 END) +
+    (CASE WHEN value_num  IS NOT NULL THEN 1 ELSE 0 END) +
+    (CASE WHEN value_bool IS NOT NULL THEN 1 ELSE 0 END) +
+    (CASE WHEN value_json IS NOT NULL THEN 1 ELSE 0 END)
+     = 1
+),
 
   -- One value per key per case (override if you truly need multi-values per key)
   CONSTRAINT uq_case_attr UNIQUE (case_id, key)

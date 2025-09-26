@@ -494,8 +494,9 @@ class BaseAgent(ABC):
         # Prefer .report (if your BaseAgent forwards to bus/ELK); fall back to logger
         try:
             self.report(payload)
-        except Exception:
-            self.logger.info(event, payload)
+        except Exception as e:
+            print(f"❌ Exception in report(): {type(e).__name__}: {e}")
+            self.logger.log(event, payload)
 
     @contextmanager
     def report_step(self, event: str, **fields):

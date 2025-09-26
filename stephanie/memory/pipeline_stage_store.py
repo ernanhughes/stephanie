@@ -47,8 +47,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
     def get_by_id(self, stage_id: int) -> Optional[PipelineStageORM]:
         def op(s):
             return (
-                self._scope()
-                .query(PipelineStageORM)
+                s.query(PipelineStageORM)
                 .filter(PipelineStageORM.id == stage_id)
                 .first()
             )
@@ -57,8 +56,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
     def get_by_run_id(self, run_id: str) -> List[PipelineStageORM]:
         def op(s):
             return (
-                self._scope()
-                .query(PipelineStageORM)
+                s.query(PipelineStageORM)
                 .filter(PipelineStageORM.pipeline_run_id == run_id)
                 .order_by(PipelineStageORM.timestamp.asc())
                 .all()
@@ -68,8 +66,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
     def get_by_goal_id(self, goal_id: int) -> List[PipelineStageORM]:
         def op(s):
             return (
-                self._scope()
-                .query(PipelineStageORM)
+                s.query(PipelineStageORM)
                 .filter(PipelineStageORM.goal_id == goal_id)
                 .order_by(PipelineStageORM.timestamp.asc())
                 .all()
@@ -79,8 +76,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
     def get_by_parent_stage_id(self, parent_stage_id: int) -> List[PipelineStageORM]:
         def op(s):
             return (
-                self._scope()
-                .query(PipelineStageORM)
+                s.query(PipelineStageORM)
                 .filter(PipelineStageORM.parent_stage_id == parent_stage_id)
                 .order_by(PipelineStageORM.timestamp.asc())
                 .all()
@@ -90,8 +86,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
     def get_all(self, limit: int = 100) -> List[PipelineStageORM]:
         def op(s):
             return (
-                self._scope()
-                .query(PipelineStageORM)
+                s.query(PipelineStageORM)
                 .order_by(PipelineStageORM.timestamp.desc())
                 .limit(limit)
                 .all()
@@ -122,8 +117,7 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         """
         def op(s):
             stages = (
-                self._scope()
-                .query(PipelineStageORM)
+                s.query(PipelineStageORM)
                 .filter(PipelineStageORM.run_id == run_id)
                 .all()
             )

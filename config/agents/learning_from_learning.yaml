@@ -4,15 +4,33 @@ learning_from_learning:
   save_prompt: true
   save_context: false
   skip_if_completed: false
+
+  use_arena: true
+  beam_width: 5
+  self_play_rounds: 2
+  self_play_plateau_eps: 0.005
+  min_marginal_reward_per_ktok: 0.05
+  router_cutoff: 12
+  router_k: 5
+  chat_corpus_k: 60
+  max_corpus_candidates: 8
+  min_verified_len: 250
+  verification_threshold: 0.85
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
-  input_keys: ["goal", "hypotheses"]
+
+  input_keys: ["goal", "scorables"]
   input_key: documents
   output_key: learning_from_learning
   prompt_mode: file
   prompt_file: learning_from_learning.txt
+
+  progress:
+    enable_sis: true            # send SIS cards if service available
+    write_case_attrs: true      # write progress_* attributes on case
 
   analyze:
     name: chat_analyze

@@ -194,7 +194,9 @@ class NERRetrieverEmbedder:
 
         self.model = (
             AutoModel.from_pretrained(
-                model_name, output_hidden_states=True, trust_remote_code=True
+                model_name, output_hidden_states=True, 
+                trust_remote_code=True,
+                ignore_mismatched_sizes=True  # Explicitly ignore size mismatches
             )
             .to(device)
             .eval()

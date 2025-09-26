@@ -32,6 +32,13 @@ SYSTEM_INIT = {
 # AGENT OPERATIONS
 # =================
 AGENT_EVENTS = {
+    "LfL_Paper_Start": "📚📄▶️",  # Learning from Learning paper 
+    "LfL_Section_Started": "📚▶️",  # Learning from Learning section started
+    "LfL_Section_Staged": "📚✅",  # Learning from Learning section staged
+    "ScorableAnnotateStart": "📝▶️",  # Scorable annotation started
+    "ScorableAnnotateDone": "📝✅",  # Scorable annotation done
+    "NERSearchResults": "🏷️🔍",  # NER search results
+    "SemanticMissing": "✅🧬",  # Semantic missing fallback ner
     "ReportEntry": "📄",
     "AgentInit": "🤖",
     "AgentInitialized": "🤖",  # Agent initialization

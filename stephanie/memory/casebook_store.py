@@ -1,22 +1,29 @@
 # stephanie/memory/casebook_store.py
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 import hashlib
 import logging
 import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import and_, desc, func
-from sqlalchemy.orm import Query
-
+from sqlalchemy.orm import Query, aliased, selectinload
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.case_goal_state import CaseGoalStateORM
-from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM, CaseAttributeORM
+from stephanie.models.casebook import (
+    CaseBookORM,
+    CaseORM,
+    CaseScorableORM,
+    CaseAttributeORM,
+)
 from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable import ScorableType
 
 _logger = logging.getLogger(__name__)
+
 
 class CaseBookStore(BaseSQLAlchemyStore):
     orm_model = CaseBookORM
@@ -36,30 +43,50 @@ class CaseBookStore(BaseSQLAlchemyStore):
     def get_by_name(self, name: str) -> CaseBookORM | None:
         def op(s):
             return s.query(CaseBookORM).filter_by(name=name).first()
+
         return self._run(op)
 
-    def ensure_casebook(self, name: str, description: str = "", tag: str = "", meta: dict = None) -> CaseBookORM:
+    def ensure_casebook(
+        self,
+        name: str,
+        description: str = "",
+        tag: str = "",
+        meta: dict = None,
+    ) -> CaseBookORM:
         def op(s):
             cb = s.query(CaseBookORM).filter_by(name=name).first()
             if cb:
                 return cb
-            cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
+            cb = CaseBookORM(
+                name=name, description=description, tag=tag, meta=meta
+            )
             s.add(cb)
             s.flush()
             return cb
+
         return self._run(op)
 
-    def create_casebook(self, name, description: str = "", tag: str = "", meta: dict | None = None):
+    def create_casebook(
+        self,
+        name,
+        description: str = "",
+        tag: str = "",
+        meta: dict | None = None,
+    ):
         def op(s):
-            cb = CaseBookORM(name=name, description=description, tag=tag, meta=meta)
+            cb = CaseBookORM(
+                name=name, description=description, tag=tag, meta=meta
+            )
             s.add(cb)
             s.flush()
             return cb
+
         return self._run(op)
 
     def get_all_casebooks(self, limit: int = 100) -> List[CaseBookORM]:
         def op(s):
             return s.query(CaseBookORM).limit(limit).all()
+
         return self._run(op)
 
     def list_casebooks(
@@ -80,18 +107,25 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 q = q.filter(CaseBookORM.pipeline_run_id == pipeline_run_id)
 
             order_col = getattr(CaseBookORM, "created_at", None)
-            q = q.order_by(order_col.desc() if order_col is not None else CaseBookORM.id.desc())
+            q = q.order_by(
+                order_col.desc()
+                if order_col is not None
+                else CaseBookORM.id.desc()
+            )
             return q.limit(limit).all()
+
         return self._run(op)
 
     def get_casebook(self, casebook_id: int) -> Optional[CaseBookORM]:
         def op(s):
             return s.get(CaseBookORM, casebook_id)
+
         return self._run(op)
 
     def get_casebooks(self) -> List[CaseBookORM]:
         def op(s):
             return s.query(CaseBookORM).all()
+
         return self._run(op)
 
     def get_casebooks_by_tag(
@@ -103,6 +137,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         pipeline_run_id: Optional[int] = None,
     ):
         """Return CaseBookORM rows filtered by the simple `tag` column."""
+
         def op(s):
             q = s.query(CaseBookORM).filter(CaseBookORM.tag == tag)
             if agent_name is not None:
@@ -111,35 +146,70 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 q = q.filter(CaseBookORM.pipeline_run_id == pipeline_run_id)
 
             order_col = getattr(CaseBookORM, "created_at", None)
-            q = q.order_by(order_col.desc() if order_col is not None else CaseBookORM.id.desc())
+            q = q.order_by(
+                order_col.desc()
+                if order_col is not None
+                else CaseBookORM.id.desc()
+            )
             return q.limit(limit).all()
+
         return self._run(op)
 
     def count_cases(self, casebook_id: int) -> int:
         def op(s):
-            return s.query(func.count(CaseORM.id)).filter_by(casebook_id=casebook_id).scalar() or 0
+            return (
+                s.query(func.count(CaseORM.id))
+                .filter_by(casebook_id=casebook_id)
+                .scalar()
+                or 0
+            )
+
         return self._run(op)
 
     def get_for_run_id(self, run_id: int):
         def op(s):
-            return s.query(CaseBookORM).filter_by(pipeline_run_id=run_id).first()
+            return (
+                s.query(CaseBookORM).filter_by(pipeline_run_id=run_id)
+                .options(selectinload(CaseBookORM.cases))
+                .first()
+            )
+
         return self._run(op)
 
-    def get_scope(self, pipeline_run_id: int | None, agent_name: str | None, tag: str = "default") -> Optional[CaseBookORM]:
+    def get_scope(
+        self,
+        pipeline_run_id: int | None,
+        agent_name: str | None,
+        tag: str = "default",
+    ) -> Optional[CaseBookORM]:
         def op(s):
             return (
                 s.query(CaseBookORM)
-                 .filter_by(pipeline_run_id=pipeline_run_id, agent_name=agent_name, tag=tag)
-                 .first()
+                .filter_by(
+                    pipeline_run_id=pipeline_run_id,
+                    agent_name=agent_name,
+                    tag=tag,
+                )
+                .first()
             )
+
         return self._run(op)
 
-    def ensure_casebook_scope(self, pipeline_run_id: int | None, agent_name: str | None, tag: str = "default") -> CaseBookORM:
+    def ensure_casebook_scope(
+        self,
+        pipeline_run_id: int | None,
+        agent_name: str | None,
+        tag: str = "default",
+    ) -> CaseBookORM:
         def op(s):
             row = (
                 s.query(CaseBookORM)
-                 .filter_by(pipeline_run_id=pipeline_run_id, agent_name=agent_name, tag=tag)
-                 .first()
+                .filter_by(
+                    pipeline_run_id=pipeline_run_id,
+                    agent_name=agent_name,
+                    tag=tag,
+                )
+                .first()
             )
             if row:
                 return row
@@ -154,6 +224,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
             s.add(cb)
             s.flush()
             return cb
+
         return self._run(op)
 
     # ------------------------
@@ -163,21 +234,31 @@ class CaseBookStore(BaseSQLAlchemyStore):
     def get_cases_for_goal(self, goal_id):
         def op(s):
             return s.query(CaseORM).filter_by(goal_id=goal_id).all()
+
         return self._run(op)
 
     def get_cases_for_agent(self, agent_name):
         def op(s):
             return s.query(CaseORM).filter_by(agent_name=agent_name).all()
+
         return self._run(op)
 
     def get_cases_for_casebook(self, casebook_id: int):
         def op(s):
             return s.query(CaseORM).filter_by(casebook_id=casebook_id).all()
+
         return self._run(op)
 
     def get_case_by_id(self, case_id: int) -> Optional[CaseORM]:
         def op(s):
-            return s.get(CaseORM, case_id)
+            return (
+                s.query(CaseORM)
+                .filter(CaseORM.id == case_id)
+                .options(
+                    selectinload(CaseORM.scorables),
+                ).first()
+            )
+
         return self._run(op)
 
     def list_cases(
@@ -198,47 +279,77 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 q = q.filter(CaseORM.goal_id == goal_id)
 
             order_col = getattr(CaseORM, "created_at", None)
-            q = q.order_by(order_col.desc() if order_col is not None else CaseORM.id.desc())
+            q = q.order_by(
+                order_col.desc()
+                if order_col is not None
+                else CaseORM.id.desc()
+            )
             return q.limit(limit).all()
+
         return self._run(op)
 
-    def ensure_case(self, casebook_id: int, goal_text: str, agent_name: str) -> CaseORM:
+    def ensure_case(
+        self, casebook_id: int, goal_text: str, agent_name: str
+    ) -> CaseORM:
         def op(s):
-            goal = s.query(GoalORM).filter_by(goal_text=goal_text).one_or_none()
+            goal = (
+                s.query(GoalORM).filter_by(goal_text=goal_text).one_or_none()
+            )
             goal_id = goal.id if goal else None
             if goal is None:
-                g = GoalORM(goal_text=goal_text, description=f"Auto-created for casebook {casebook_id}")
-                s.add(g) 
+                g = GoalORM(
+                    goal_text=goal_text,
+                    description=f"Auto-created for casebook {casebook_id}",
+                )
+                s.add(g)
                 s.flush()
                 goal_id = g.id
 
-            existing = (s.query(CaseORM)
-                        .filter_by(casebook_id=casebook_id, goal_id=goal_id, agent_name=agent_name)
-                        .order_by(CaseORM.created_at.desc())
-                        .first())
+            existing = (
+                s.query(CaseORM)
+                .filter_by(
+                    casebook_id=casebook_id,
+                    goal_id=goal_id,
+                    agent_name=agent_name,
+                )
+                .order_by(CaseORM.created_at.desc())
+                .first()
+            )
             if existing:
                 return existing
 
-            case = CaseORM(casebook_id=casebook_id, goal_id=goal_id, agent_name=agent_name)
+            case = CaseORM(
+                casebook_id=casebook_id, goal_id=goal_id, agent_name=agent_name
+            )
             s.add(case)
             s.flush()
             return case
+
         return self._run(op)
 
     # Keep a single copy of these helpers
-    def ensure_goal_state_for_case(self, casebook_id: int, goal_text: str, goal_id: str) -> CaseGoalStateORM:
+    def ensure_goal_state_for_case(
+        self, casebook_id: int, goal_text: str, goal_id: str
+    ) -> CaseGoalStateORM:
         def op(s):
-            state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id).one_or_none()
+            state = (
+                s.query(CaseGoalStateORM)
+                .filter_by(casebook_id=casebook_id)
+                .one_or_none()
+            )
             if state is None:
                 if not goal_id:
                     g = s.query(GoalORM).filter_by(goal_text=goal_text).first()
                     goal_id_local = g.id if g else None
                 else:
                     goal_id_local = goal_id
-                state = CaseGoalStateORM(casebook_id=casebook_id, goal_id=goal_id_local)
+                state = CaseGoalStateORM(
+                    casebook_id=casebook_id, goal_id=goal_id_local
+                )
                 s.add(state)
                 s.flush()
             return state
+
         return self._run(op)
 
     # ------------------------
@@ -247,7 +358,12 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
     def get_goal_state(self, casebook_id: int, goal_id: str):
         def op(s):
-            return s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
+            return (
+                s.query(CaseGoalStateORM)
+                .filter_by(casebook_id=casebook_id, goal_id=goal_id)
+                .one_or_none()
+            )
+
         return self._run(op)
 
     def ensure_goal_state(
@@ -259,7 +375,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
         quality: Optional[float] = None,
     ) -> CaseGoalStateORM:
         def op(s):
-            state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
+            state = (
+                s.query(CaseGoalStateORM)
+                .filter_by(casebook_id=casebook_id, goal_id=goal_id)
+                .one_or_none()
+            )
             if state is None:
                 state = CaseGoalStateORM(
                     casebook_id=casebook_id,
@@ -270,6 +390,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 s.add(state)
                 s.flush()
             return state
+
         return self._run(op)
 
     def upsert_goal_state(
@@ -285,9 +406,15 @@ class CaseBookStore(BaseSQLAlchemyStore):
         ema_alpha: float = 0.2,
     ) -> CaseGoalStateORM:
         def op(s):
-            state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
+            state = (
+                s.query(CaseGoalStateORM)
+                .filter_by(casebook_id=casebook_id, goal_id=goal_id)
+                .one_or_none()
+            )
             if state is None:
-                state = CaseGoalStateORM(casebook_id=casebook_id, goal_id=goal_id)
+                state = CaseGoalStateORM(
+                    casebook_id=casebook_id, goal_id=goal_id
+                )
                 s.add(state)
             if case_id is not None:
                 if only_if_better and (quality is not None):
@@ -301,7 +428,9 @@ class CaseBookStore(BaseSQLAlchemyStore):
             if improved is not None and delta is not None:
                 # Prefer ORM helper if present
                 try:
-                    state.update_ab_stats(bool(improved), float(delta), alpha=float(ema_alpha))
+                    state.update_ab_stats(
+                        bool(improved), float(delta), alpha=float(ema_alpha)
+                    )
                 except Exception:
                     prev_run_ix = int(getattr(state, "run_ix", 0) or 0)
                     state.run_ix = prev_run_ix + 1
@@ -311,34 +440,60 @@ class CaseBookStore(BaseSQLAlchemyStore):
                         state.losses = (state.losses or 0) + 1
                     prev = float(state.avg_delta or 0.0)
                     alpha = float(ema_alpha)
-                    state.avg_delta = (1.0 - alpha) * prev + alpha * float(delta)
+                    state.avg_delta = (1.0 - alpha) * prev + alpha * float(
+                        delta
+                    )
                     v = state.avg_delta
                     state.trust = max(-1.0, min(1.0, v))
             s.flush()
             return state
+
         return self._run(op)
 
     def bump_run_ix(self, casebook_id: int, goal_id: str) -> int:
         def op(s):
-            state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
+            state = (
+                s.query(CaseGoalStateORM)
+                .filter_by(casebook_id=casebook_id, goal_id=goal_id)
+                .one_or_none()
+            )
             if state is None:
-                state = CaseGoalStateORM(casebook_id=casebook_id, goal_id=goal_id)
+                state = CaseGoalStateORM(
+                    casebook_id=casebook_id, goal_id=goal_id
+                )
                 s.add(state)
                 s.flush()
             before = int(getattr(state, "run_ix", 0) or 0)
             state.run_ix = before + 1
             s.flush()
             return state.run_ix
+
         return self._run(op)
 
-    def record_ab_result(self, casebook_id: int, goal_id: str, *, improved: bool, delta: float, ema_alpha: float = 0.2) -> CaseGoalStateORM:
+    def record_ab_result(
+        self,
+        casebook_id: int,
+        goal_id: str,
+        *,
+        improved: bool,
+        delta: float,
+        ema_alpha: float = 0.2,
+    ) -> CaseGoalStateORM:
         def op(s):
-            state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
+            state = (
+                s.query(CaseGoalStateORM)
+                .filter_by(casebook_id=casebook_id, goal_id=goal_id)
+                .one_or_none()
+            )
             if not state:
-                state = CaseGoalStateORM(casebook_id=casebook_id, goal_id=goal_id)
+                state = CaseGoalStateORM(
+                    casebook_id=casebook_id, goal_id=goal_id
+                )
                 s.add(state)
             try:
-                state.update_ab_stats(bool(improved), float(delta), alpha=float(ema_alpha))
+                state.update_ab_stats(
+                    bool(improved), float(delta), alpha=float(ema_alpha)
+                )
             except Exception:
                 prev_run_ix = int(getattr(state, "run_ix", 0) or 0)
                 state.run_ix = prev_run_ix + 1
@@ -353,15 +508,19 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 state.trust = max(-1.0, min(1.0, v))
             s.flush()
             return state
+
         return self._run(op)
 
     # ------------------------
     # Scorables
     # ------------------------
 
-    def get_case_scorable_by_id(self, case_scorable_id: int) -> Optional[CaseScorableORM]:
+    def get_case_scorable_by_id(
+        self, case_scorable_id: int
+    ) -> Optional[CaseScorableORM]:
         def op(s):
             return s.get(CaseScorableORM, case_scorable_id)
+
         return self._run(op)
 
     def list_scorables(self, case_id: int, role: str = None):
@@ -370,6 +529,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
             if role:
                 q = q.filter(CaseScorableORM.role == role)
             return q.all()
+
         return self._run(op)
 
     def add_scorable(
@@ -393,6 +553,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
             s.add(orm)
             s.flush()
             return orm
+
         return self._run(op)
 
     def add_case(
@@ -427,7 +588,9 @@ class CaseBookStore(BaseSQLAlchemyStore):
                     cs = CaseScorableORM(
                         case_id=case.id,
                         scorable_id=safe_sid,
-                        scorable_type=item.get("type") or item.get("target_type") or "document",
+                        scorable_type=item.get("type")
+                        or item.get("target_type")
+                        or "document",
                         role=(item.get("role") or "output"),
                         rank=item.get("rank"),
                         meta=item.get("meta") or {},
@@ -455,13 +618,16 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
             s.flush()
             return case
+
         return self._run(op)
 
     # ------------------------
     # Retrieval helpers w/ meta filtering
     # ------------------------
 
-    def _apply_json_meta_filter(self, q: Query, column, meta_filter: Optional[Dict]) -> Tuple[Query, bool]:
+    def _apply_json_meta_filter(
+        self, q: Query, column, meta_filter: Optional[Dict]
+    ) -> Tuple[Query, bool]:
         """
         Try to filter JSON(meta) at the DB level.
         Returns (query, db_filtered). If db_filtered is False, caller should Python-filter rows.
@@ -484,7 +650,10 @@ class CaseBookStore(BaseSQLAlchemyStore):
         if dialect == "sqlite":
             # emulate via json_extract
             try:
-                conds = [func.json_extract(column, f'$.{k}') == v for k, v in meta_filter.items()]
+                conds = [
+                    func.json_extract(column, f"$.{k}") == v
+                    for k, v in meta_filter.items()
+                ]
                 if conds:
                     q = q.filter(and_(*conds))
                     return q, True
@@ -508,6 +677,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         Return scorable rows for a given (casebook_name, case_id), newest first.
         Prefer DynamicScorableORM; fallback to CaseScorableORM if none.
         """
+
         def op(s):
             cb = s.query(CaseBookORM).filter_by(name=casebook_name).first()
             if not cb:
@@ -516,22 +686,33 @@ class CaseBookStore(BaseSQLAlchemyStore):
             # DynamicScorable path (direct text)
             q1 = (
                 s.query(DynamicScorableORM)
-                 .join(CaseORM, DynamicScorableORM.case_id == CaseORM.id)
-                 .filter(CaseORM.casebook_id == cb.id, DynamicScorableORM.case_id == case_id)
+                .join(CaseORM, DynamicScorableORM.case_id == CaseORM.id)
+                .filter(
+                    CaseORM.casebook_id == cb.id,
+                    DynamicScorableORM.case_id == case_id,
+                )
             )
             if role:
                 q1 = q1.filter(DynamicScorableORM.role == role)
             if scorable_type:
-                q1 = q1.filter(DynamicScorableORM.scorable_type == scorable_type)
+                q1 = q1.filter(
+                    DynamicScorableORM.scorable_type == scorable_type
+                )
             order_col = getattr(DynamicScorableORM, "created_at", None)
-            q1 = q1.order_by(desc(order_col) if order_col is not None else DynamicScorableORM.id.desc())
+            q1 = q1.order_by(
+                desc(order_col)
+                if order_col is not None
+                else DynamicScorableORM.id.desc()
+            )
             dyn_rows = q1.limit(limit).all()
 
             # Optional Python-side meta filter (DynamicScorable.meta)
             if meta_filter:
                 dyn_rows = [
-                    r for r in dyn_rows
-                    if isinstance(r.meta, dict) and all(r.meta.get(k) == v for k, v in meta_filter.items())
+                    r
+                    for r in dyn_rows
+                    if isinstance(r.meta, dict)
+                    and all(r.meta.get(k) == v for k, v in meta_filter.items())
                 ]
 
             if dyn_rows:
@@ -540,19 +721,29 @@ class CaseBookStore(BaseSQLAlchemyStore):
             # Legacy CaseScorable fallback (meta["text"])
             q2 = (
                 s.query(CaseScorableORM)
-                 .join(CaseORM, CaseScorableORM.case_id == CaseORM.id)
-                 .filter(CaseORM.casebook_id == cb.id, CaseScorableORM.case_id == case_id)
+                .join(CaseORM, CaseScorableORM.case_id == CaseORM.id)
+                .filter(
+                    CaseORM.casebook_id == cb.id,
+                    CaseScorableORM.case_id == case_id,
+                )
             )
             if role:
                 q2 = q2.filter(CaseScorableORM.role == role)
             if scorable_type:
                 q2 = q2.filter(CaseScorableORM.scorable_type == scorable_type)
 
-            q2, db_filtered = self._apply_json_meta_filter(q2, CaseScorableORM.meta, meta_filter)
+            q2, db_filtered = self._apply_json_meta_filter(
+                q2, CaseScorableORM.meta, meta_filter
+            )
             order_col2 = getattr(CaseScorableORM, "created_at", None)
-            q2 = q2.order_by(desc(order_col2) if order_col2 is not None else CaseScorableORM.id.desc())
+            q2 = q2.order_by(
+                desc(order_col2)
+                if order_col2 is not None
+                else CaseScorableORM.id.desc()
+            )
             rows = q2.limit(limit).all()
             return rows
+
         return self._run(op)
 
     # ------------------------
@@ -570,21 +761,30 @@ class CaseBookStore(BaseSQLAlchemyStore):
         min_quality: Optional[float] = None,
     ) -> List[CaseORM]:
         def op(s):
-            q = (
-                s.query(CaseORM)
-                 .filter(CaseORM.casebook_id == casebook_id, CaseORM.goal_id == goal_id)
+            q = s.query(CaseORM).filter(
+                CaseORM.casebook_id == casebook_id, CaseORM.goal_id == goal_id
             )
             order_col = getattr(CaseORM, "created_at", None)
-            q = q.order_by(order_col.desc() if order_col is not None else CaseORM.id.desc())
+            q = q.order_by(
+                order_col.desc()
+                if order_col is not None
+                else CaseORM.id.desc()
+            )
             recent_all = q.limit(max(limit * 3, limit)).all()
 
             champion_case = None
             champion_id = None
             try:
-                state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
+                state = (
+                    s.query(CaseGoalStateORM)
+                    .filter_by(casebook_id=casebook_id, goal_id=goal_id)
+                    .one_or_none()
+                )
                 champion_id = getattr(state, "champion_case_id", None)
                 if include_champion and champion_id:
-                    champion_case = next((c for c in recent_all if c.id == champion_id), None)
+                    champion_case = next(
+                        (c for c in recent_all if c.id == champion_id), None
+                    )
                     if champion_case is None:
                         champion_case = s.get(CaseORM, champion_id)
             except Exception:
@@ -605,43 +805,63 @@ class CaseBookStore(BaseSQLAlchemyStore):
                         pass
                 return False
 
-            accepted = [c for c in recent_all if is_accepted(c)] if only_accepted else []
+            accepted = (
+                [c for c in recent_all if is_accepted(c)]
+                if only_accepted
+                else []
+            )
             result: List[CaseORM] = []
             if include_champion and champion_case:
                 result.append(champion_case)
 
             if only_accepted:
                 for c in accepted:
-                    if champion_case and c.id == getattr(champion_case, "id", None):
+                    if champion_case and c.id == getattr(
+                        champion_case, "id", None
+                    ):
                         continue
                     result.append(c)
                 if len(result) < limit:
                     for c in recent_all:
-                        if (champion_case and c.id == getattr(champion_case, "id", None)) or c in result:
+                        if (
+                            champion_case
+                            and c.id == getattr(champion_case, "id", None)
+                        ) or c in result:
                             continue
                         result.append(c)
                         if len(result) >= limit:
                             break
             else:
                 for c in recent_all:
-                    if champion_case and c.id == getattr(champion_case, "id", None):
+                    if champion_case and c.id == getattr(
+                        champion_case, "id", None
+                    ):
                         continue
                     result.append(c)
                     if len(result) >= limit + (1 if champion_case else 0):
                         break
 
             return result[:limit]
+
         return self._run(op)
 
-    def list_scorables_by_role(self, case_id: int, role: str, limit: int = 500):
+    def list_scorables_by_role(
+        self, case_id: int, role: str, limit: int = 500
+    ):
         """Convenience for SIS to fetch items by role."""
+
         def op(s):
-            return (s.query(CaseScorableORM)
-                      .filter(CaseScorableORM.case_id == case_id,
-                              CaseScorableORM.role == role)
-                      .order_by(CaseScorableORM.id.desc())
-                      .limit(limit)
-                      .all())
+            return (
+                s.query(CaseScorableORM)
+                .filter(
+                    CaseScorableORM.case_id == case_id,
+                    CaseScorableORM.role == role,
+                )
+                .order_by(CaseScorableORM.id.desc())
+                .limit(limit)
+                .all()
+            )
+
         return self._run(op)
 
     def get_pool_for_goal(
@@ -658,16 +878,19 @@ class CaseBookStore(BaseSQLAlchemyStore):
         def op(s):
             excl = {int(x) for x in (exclude_ids or []) if x is not None}
 
-            q = (
-                s.query(CaseORM)
-                 .filter(CaseORM.casebook_id != casebook_id, CaseORM.goal_id == goal_id)
+            q = s.query(CaseORM).filter(
+                CaseORM.casebook_id != casebook_id, CaseORM.goal_id == goal_id
             )
             if excl:
                 q = q.filter(~CaseORM.id.in_(excl))
 
             if not include_champion:
                 try:
-                    state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
+                    state = (
+                        s.query(CaseGoalStateORM)
+                        .filter_by(casebook_id=casebook_id, goal_id=goal_id)
+                        .one_or_none()
+                    )
                     champ_id = getattr(state, "champion_case_id", None)
                     if champ_id:
                         q = q.filter(CaseORM.id != champ_id)
@@ -675,14 +898,29 @@ class CaseBookStore(BaseSQLAlchemyStore):
                     pass
 
             order_col = getattr(CaseORM, "created_at", None)
-            q = q.order_by(order_col.desc() if order_col is not None else CaseORM.id.desc())
+            q = q.order_by(
+                order_col.desc()
+                if order_col is not None
+                else CaseORM.id.desc()
+            )
             candidates = q.limit(max(limit * 3, limit)).all()
 
             if only_accepted or (min_quality is not None):
+
                 def is_accepted(case: CaseORM) -> bool:
                     try:
-                        state = s.query(CaseGoalStateORM).filter_by(casebook_id=casebook_id, goal_id=goal_id).one_or_none()
-                        if state and state.champion_case_id and case.id == state.champion_case_id:
+                        state = (
+                            s.query(CaseGoalStateORM)
+                            .filter_by(
+                                casebook_id=casebook_id, goal_id=goal_id
+                            )
+                            .one_or_none()
+                        )
+                        if (
+                            state
+                            and state.champion_case_id
+                            and case.id == state.champion_case_id
+                        ):
                             return True
                     except Exception:
                         pass
@@ -691,7 +929,9 @@ class CaseBookStore(BaseSQLAlchemyStore):
                         return True
                     if min_quality is not None:
                         try:
-                            return float(meta.get("quality", float("-inf"))) >= float(min_quality)
+                            return float(
+                                meta.get("quality", float("-inf"))
+                            ) >= float(min_quality)
                         except Exception:
                             return False
                     return not only_accepted
@@ -699,10 +939,14 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 candidates = [c for c in candidates if is_accepted(c)]
 
             return candidates[:limit]
+
         return self._run(op)
 
-    def update_scorable_meta(self, case_scorable_id: int, patch: dict) -> Optional[CaseScorableORM]:
+    def update_scorable_meta(
+        self, case_scorable_id: int, patch: dict
+    ) -> Optional[CaseScorableORM]:
         """Shallow-merge fields into CaseScorableORM.meta and return the row."""
+
         def op(s):
             row = s.get(CaseScorableORM, case_scorable_id)
             if not row:
@@ -712,36 +956,100 @@ class CaseBookStore(BaseSQLAlchemyStore):
             row.meta = meta
             s.add(row)
             return row
+
         return self._run(op)
 
+    def set_case_attr(
+        self,
+        case_id: int,
+        key: str,
+        *,
+        value_text: str | None = None,
+        value_num: float | None = None,
+        value_bool: bool | None = None,
+        value_json: dict | list | None = None,
+    ):
+        """
+        Upsert single-typed attribute for (case_id, key).
+        - Requires EXACTLY one of value_*.
+        - Clears other value_* columns before setting the chosen one.
+        - Never writes JSONB 'null' (JSON null) — uses SQL NULL instead.
+        """
 
-    def set_case_attr(self, case_id: int, key: str, *, 
-                    value_text: str | None = None,
-                    value_num: float | None = None,
-                    value_bool: bool | None = None,
-                    value_json: dict | list | None = None):
+        def _nn_count(*vals):
+            return sum(v is not None for v in vals)
+
+        provided = _nn_count(value_text, value_num, value_bool, value_json)
+        if provided != 1:
+            raise ValueError(
+                f"set_case_attr({case_id!r}, {key!r}) requires exactly one "
+                f"of value_text/value_num/value_bool/value_json (got {provided})."
+            )
+
+        # Guard: if someone passes a JSON-serialized 'null', coerce to None
+        if (
+            isinstance(value_json, str)
+            and value_json.strip().lower() == "null"
+        ):
+            value_json = None
+            provided = _nn_count(value_text, value_num, value_bool, value_json)
+            if provided != 1:
+                raise ValueError(
+                    "JSON 'null' is not allowed; pass None for value_json."
+                )
+
+        # If caller accidentally passed a non-primitive (e.g., enum) to value_text, coerce
+        if value_text is not None and not isinstance(
+            value_text, (str, int, float, bool)
+        ):
+            value_text = str(value_text)
+
         def op(s):
-            row = (s.query(CaseAttributeORM)
-                    .filter(CaseAttributeORM.case_id == case_id, CaseAttributeORM.key == key)
-                    .one_or_none())
+            row = (
+                s.query(CaseAttributeORM)
+                .filter(
+                    CaseAttributeORM.case_id == case_id,
+                    CaseAttributeORM.key == key,
+                )
+                .one_or_none()
+            )
             if row is None:
+                # Create WITHOUT any value_* payload in the constructor
                 row = CaseAttributeORM(case_id=case_id, key=key)
                 s.add(row)
-            row.value_text = value_text
-            row.value_num  = value_num
-            row.value_bool = value_bool
-            row.value_json = value_json
+
+            # Clear all first (critical for updates and constraint)
+            row.value_text = None
+            row.value_num = None
+            row.value_bool = None
+            row.value_json = None
+
+            # Set exactly one
+            if value_text is not None:
+                row.value_text = str(value_text)
+            elif value_num is not None:
+                row.value_num = float(value_num)
+            elif value_bool is not None:
+                row.value_bool = bool(value_bool)
+            else:
+                # Only set JSON when not None, never write JSON 'null'
+                row.value_json = value_json  # dict/list
+
             s.flush()
             return row
+
         return self._run(op)
 
     def get_case_attrs(self, case_id: int) -> Dict[str, Any]:
         """Get all attributes for a case as a dictionary"""
+
         def op(s):
-            attrs = s.query(CaseAttributeORM).filter(
-                CaseAttributeORM.case_id == case_id
-            ).all()
-            
+            attrs = (
+                s.query(CaseAttributeORM)
+                .filter(CaseAttributeORM.case_id == case_id)
+                .all()
+            )
+
             result = {}
             for attr in attrs:
                 if attr.value_text is not None:
@@ -752,33 +1060,45 @@ class CaseBookStore(BaseSQLAlchemyStore):
                     result[attr.key] = attr.value_bool
                 elif attr.value_json is not None:
                     result[attr.key] = attr.value_json
-            
+
             return result
-        
+
         return self._run(op)
 
     def get_best_by_attrs(
         self,
         casebook_id: int,
-        group_keys: list[str],     # e.g. ["paper_id","section_name","case_kind"]
-        score_weights: dict[str,float] = {"knowledge_score":0.7, "verification_score":0.3},
-        role: str | None = None,   # filter the scorable role if you want
+        group_keys: list[str],  # e.g. ["paper_id","section_name","case_kind"]
+        score_weights: dict[str, float] = {
+            "knowledge_score": 0.7,
+            "verification_score": 0.3,
+        },
+        role: str | None = None,  # filter the scorable role if you want
         limit_per_group: int = 1,
-        group_filter: dict[str, str] | None = None,  # optional WHERE on attributes
+        group_filter: dict[str, str]
+        | None = None,  # optional WHERE on attributes
     ):
         """
         Generic 'best per group' using arbitrary attribute keys.
         Returns rows with: case_id, group_attrs(json), scores, composite_score.
         """
+
         def op(s):
             # Build a pivot of attributes per case via subquery
             # (Using text for brevity; you can write it with SA core if you prefer.)
-            keys_sql = ",".join([f"MAX(CASE WHEN a.key='{k}' THEN a.value_text END) AS {k}" for k in group_keys])
+            keys_sql = ",".join(
+                [
+                    f"MAX(CASE WHEN a.key='{k}' THEN a.value_text END) AS {k}"
+                    for k in group_keys
+                ]
+            )
             where_filter = ""
             if group_filter:
                 conds = []
-                for k,v in group_filter.items():
-                    conds.append(f"MAX(CASE WHEN a.key='{k}' THEN a.value_text END) = :gf_{k}")
+                for k, v in group_filter.items():
+                    conds.append(
+                        f"MAX(CASE WHEN a.key='{k}' THEN a.value_text END) = :gf_{k}"
+                    )
                 if conds:
                     where_filter = "HAVING " + " AND ".join(conds)
 
@@ -801,16 +1121,16 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 ds.created_at
             FROM attrs
             JOIN dynamic_scorables ds ON ds.case_id = attrs.case_id
-            { "WHERE ds.role = :role" if role else "" }
+            {"WHERE ds.role = :role" if role else ""}
             ),
             ranked AS (
             SELECT *,
-                ({score_weights.get("knowledge_score",0)} * knowledge_score
-            + {score_weights.get("verification_score",0)} * verification_score) AS composite_score,
+                ({score_weights.get("knowledge_score", 0)} * knowledge_score
+            + {score_weights.get("verification_score", 0)} * verification_score) AS composite_score,
                 ROW_NUMBER() OVER (
                 PARTITION BY {", ".join(group_keys)}
-                ORDER BY ({score_weights.get("knowledge_score",0)} * knowledge_score
-                        + {score_weights.get("verification_score",0)} * verification_score) DESC,
+                ORDER BY ({score_weights.get("knowledge_score", 0)} * knowledge_score
+                        + {score_weights.get("verification_score", 0)} * verification_score) DESC,
                         created_at DESC
                 ) AS rn
             FROM scored
@@ -825,13 +1145,158 @@ class CaseBookStore(BaseSQLAlchemyStore):
             if role:
                 params["role"] = role
             if group_filter:
-                for k,v in group_filter.items():
+                for k, v in group_filter.items():
                     params[f"gf_{k}"] = v
 
             return list(s.execute(sql, params))
+
         return self._run(op)
 
+    def find_best_for_section(
+        self,
+        *,
+        paper_id: str,
+        section_name: str,
+        limit: int = 4,
+        casebook_id: int | None = None,
+        draft_roles: List[str] | None = None,
+    ) -> List[_SimpleScorable]:
+        """
+        Return the top-N past drafts for a given (paper_id, section_name), ordered by
+        verification score (from the 'metrics' scorable's final_scores.overall) and recency.
 
+        - Matches via case_attributes (paper_id & section_name) using two aliased joins.
+        - Optionally filters by casebook_id.
+        - Prefers draft roles in order: refined_draft, arena_winner, initial_draft (override with draft_roles).
+        """
+        if draft_roles is None:
+            draft_roles = ["refined_draft", "arena_winner", "initial_draft"]
+
+        def op(s):
+            A_paper = aliased(CaseAttributeORM)
+            A_sec = aliased(CaseAttributeORM)
+
+            # Base cases that have BOTH attributes on the same case row
+            q = (
+                s.query(CaseORM)
+                .join(
+                    A_paper,
+                    and_(
+                        A_paper.case_id == CaseORM.id,
+                        A_paper.key == "paper_id",
+                        A_paper.value_text == str(paper_id),
+                    ),
+                )
+                .join(
+                    A_sec,
+                    and_(
+                        A_sec.case_id == CaseORM.id,
+                        A_sec.key == "section_name",
+                        A_sec.value_text == section_name,
+                    ),
+                )
+            )
+            if casebook_id is not None:
+                q = q.filter(CaseORM.casebook_id == casebook_id)
+
+            cases = q.distinct(CaseORM.id).all()
+            if not cases:
+                return []
+
+            results: List[_SimpleScorable] = []
+
+            for c in cases:
+                # pick the newest available draft by priority role
+                draft_row = None
+                draft_meta = {}
+                draft_text = None
+                draft_created = None
+
+                for role in draft_roles:
+                    dr = (
+                        s.query(DynamicScorableORM)
+                        .filter(
+                            DynamicScorableORM.case_id == c.id,
+                            DynamicScorableORM.role == role,
+                        )
+                        .order_by(DynamicScorableORM.created_at.desc())
+                        .first()
+                    )
+                    if dr:
+                        draft_row = dr
+                        draft_text = dr.text
+                        draft_meta = dr.meta or {}
+                        draft_created = dr.created_at
+                        break
+
+                if not draft_row:
+                    continue
+
+                # latest metrics (if any)
+                mx = (
+                    s.query(DynamicScorableORM)
+                    .filter(
+                        DynamicScorableORM.case_id == c.id,
+                        DynamicScorableORM.role == "metrics",
+                    )
+                    .order_by(DynamicScorableORM.created_at.desc())
+                    .first()
+                )
+
+                score = 0.0
+                if mx and mx.text:
+                    try:
+                        payload = (
+                            mx.text
+                            if isinstance(mx.text, dict)
+                            else json.loads(mx.text)
+                        )
+                        fs = payload.get("final_scores") or {}
+                        ov = fs.get("overall")
+                        if ov is not None:
+                            score = float(ov)
+                    except Exception:
+                        pass
+
+                # fallback to draft meta if metrics missing
+                if score == 0.0:
+                    try:
+                        if "verification_score" in draft_meta:
+                            score = float(draft_meta["verification_score"])
+                        elif "overall" in draft_meta:
+                            score = float(draft_meta["overall"])
+                    except Exception:
+                        pass
+
+                out_meta = dict(draft_meta or {})
+                out_meta.setdefault("verification_score", score)
+
+                results.append(
+                    _SimpleScorable(
+                        id=draft_row.id,
+                        text=draft_text,
+                        meta=out_meta,
+                        created_at=draft_created,
+                        score=score,
+                    )
+                )
+
+            # Sort by score desc, then recency
+            results.sort(
+                key=lambda r: (r.score, r.created_at or 0), reverse=True
+            )
+            return results[: max(0, int(limit))]
+
+        return self._run(op)
+
+    def del_case_attr(self, case_id: int, key: str):
+        def op(s):
+            s.execute(
+                "DELETE FROM case_attributes WHERE case_id = :cid AND key = :k",
+                {"cid": case_id, "k": key},
+            )
+
+        return self._run(op)
 
     # ------------------------
     # Helpers
@@ -853,3 +1318,12 @@ class CaseBookStore(BaseSQLAlchemyStore):
         return uuid.uuid4().hex
 
 
+@dataclass
+class _SimpleScorable:
+    """Lightweight wrapper to mirror the bits your agent needs (id/text/meta)."""
+
+    id: int
+    text: str | None
+    meta: dict
+    created_at: Optional[object] = None
+    score: float = 0.0

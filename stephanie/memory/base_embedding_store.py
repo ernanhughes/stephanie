@@ -157,7 +157,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
         self._cache.set(text_hash, (embedding_id, embedding))
         self.logger and self.logger.log(
             "TextEmbeddingCreated",
-            {"len": len(text or ""), "embed_shape": len(embedding), "text": f"{text[:30]}..."},
+            {"len": len(text or ""), "text": f"{text[:80]}..."},
         )
         return embedding
 
@@ -568,6 +568,8 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
             for r in ner:
                 r["combined_score"] = float(r.get("calibrated_similarity", r.get("norm_similarity", r.get("similarity", 0.0)))) * 1.2  # slight boost in ner-only
                 r.setdefault("retrieval_type", "ner_fallback")
+            # The semantic search component found ZERO relevant results for this query, but the NER/entity-based search DID find results
+            # so we're falling back to those. 
             self.logger.log("SemanticMissing", {"query": (query or "")[:120], "ner_results": len(ner)})
             return sorted(ner, key=lambda x: x["combined_score"], reverse=True)
 

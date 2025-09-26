@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Request, Query, Form
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from stephanie.utils.json_sanitize import sanitize, dumps_safe
 
 router = APIRouter()
 
@@ -133,7 +134,7 @@ def casebook_for_run(
         "/casebooks/detail.html",
         {
             "request": request,
-            "casebook": cb.to_dict(include_cases=False, include_counts=True),
+            "casebook": cb.to_dict(include_cases=True, include_counts=True),
             "cases": [c.to_dict(include_scorables=False) for c in cases],
             "goals": _count_by_goal(cases),
             "goal_filter": goal,
@@ -267,16 +268,8 @@ def list_cases(
         },
     )
 
-
 @router.get("/cases/{case_id}", response_class=HTMLResponse)
 def case_detail(request: Request, case_id: int):
-    """
-    Detailed case view:
-      - header/meta
-      - MARS summary cards (if present)
-      - scorables table
-      - raw JSON payloads (mars_summary, scores, meta) collapsible
-    """
     memory = request.app.state.memory
     templates = request.app.state.templates
 
@@ -284,46 +277,54 @@ def case_detail(request: Request, case_id: int):
     if not case:
         return PlainTextResponse("Case not found", status_code=404)
 
-    case_d = case.to_dict(include_scorables=False)
+    case_d = case.to_dict(include_scorables=True) or {}
+    # ensure expected keys exist so template never produces Undefined
+    case_d.setdefault("mars_summary", {}) 
+    case_d.setdefault("scores", {})
+    case_d.setdefault("meta", {})
 
-    # Scorables (role/rank/text/mars_confidence if present in meta)
     scorables = []
-    for s in getattr(case, "scorables", []) or []:
-        sd = s.to_dict()
+    c_scorables = memory.casebooks.list_scorables(case_id=case_id)
+    d_scorables = memory.dynamic_scorables.get_by_case(case_id=case_id)
+    for s in d_scorables:
+        sd = s.to_dict() or {}
         meta = sd.get("meta") or {}
-        # meta should already be a dict (SA_JSON), but be defensive:
         if isinstance(meta, str):
             try:
-                import json
-
-                meta = json.loads(meta)
+                import json as _json
+                meta = _json.loads(meta)
             except Exception:
                 meta = {"raw": sd.get("meta")}
+        # ensure keys used in template exist
+        meta.setdefault("text", None)
+        meta.setdefault("mars_confidence", None)
         sd["meta"] = meta
-        sd["text"] = meta.get("text")
+        sd["text"] = sd.get("text") or meta.get("text")
         sd["mars_confidence"] = meta.get("mars_confidence")
         scorables.append(sd)
 
-    # Try to lay out MARS summary as list of dimensions
+    # build mars_cards safely
     mars_cards = []
     msum = case_d.get("mars_summary") or {}
     if isinstance(msum, dict):
         for k, v in msum.items():
-            if isinstance(v, dict) and (
-                "agreement_score" in v or "dimension" in v
-            ):
-                mars_cards.append(
-                    {
-                        "dimension": v.get("dimension", k),
-                        "agreement_score": v.get("agreement_score"),
-                        "std_dev": v.get("std_dev"),
-                        "preferred_model": v.get("preferred_model"),
-                        "primary_conflict": v.get("primary_conflict"),
-                        "delta": v.get("delta"),
-                        "explanation": v.get("explanation"),
-                        "high_disagreement": v.get("high_disagreement"),
-                    }
-                )
+            v = v or {}
+            if isinstance(v, dict) and ("agreement_score" in v or "dimension" in v):
+                mars_cards.append({
+                    "dimension": v.get("dimension", k),
+                    "agreement_score": v.get("agreement_score"),
+                    "std_dev": v.get("std_dev"),
+                    "preferred_model": v.get("preferred_model"),
+                    "primary_conflict": v.get("primary_conflict"),
+                    "delta": v.get("delta"),
+                    "explanation": v.get("explanation"),
+                    "high_disagreement": v.get("high_disagreement"),
+                })
+
+    # FINAL: convert any numpy/Decimal/datetime to JSON-safe natives
+    case_d      = sanitize(case_d)
+    scorables   = sanitize(scorables)
+    mars_cards  = sanitize(mars_cards)
 
     return templates.TemplateResponse(
         "/cases/detail.html",
@@ -332,6 +333,10 @@ def case_detail(request: Request, case_id: int):
             "case": case_d,
             "scorables": scorables,
             "mars_cards": [c for c in mars_cards if c.get("dimension")],
+            # (optional) prebuilt JSON strings if your template embeds as JS
+            "case_json":     dumps_safe(case_d),
+            "scorables_json":dumps_safe(scorables),
+            "mars_cards_json":dumps_safe(mars_cards),
         },
     )
 
