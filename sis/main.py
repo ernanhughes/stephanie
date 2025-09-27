@@ -9,8 +9,7 @@ from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from sis.routes import db, pipelines, models, logs, plan_traces, documents, mars
 from sis.routes import casebooks as casebooks_routes
-from sis.routes import chats, arena
-from datetime import datetime
+from sis.routes import chats, arena, tap
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -80,5 +79,7 @@ app.include_router(documents.router)
 app.include_router(mars.router)
 app.include_router(casebooks_routes.router)
 app.include_router(chats.router)
-app.include_router(arena.router)
+# app.include_router(arena.router)
+app.include_router(tap.router)
+
 

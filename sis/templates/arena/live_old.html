@@ -2,7 +2,7 @@
 {% block content %}
 <div class="container my-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="mb-0">Arena (via tap)</h2>
+    <h2 class="mb-0">Arena Live</h2>
     <div class="d-flex align-items-center gap-2">
       <span id="status-dot" class="badge bg-secondary">idle</span>
       <input id="run-id" class="form-control form-control-sm" placeholder="run_id (optional)" style="width:16rem">
@@ -34,7 +34,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </div><!-- /col -->
 
     <div class="col-lg-4">
       <div class="card shadow-sm mb-3">
@@ -53,9 +53,7 @@
         <div class="card-body">
           <div class="table-responsive" style="max-height:220px;overflow:auto">
             <table class="table table-sm">
-              <thead>
-                <tr><th>Origin</th><th>Variant</th><th class="text-end">Overall</th><th class="text-end">k</th><th>Verified</th></tr>
-              </thead>
+              <thead><tr><th>Origin</th><th>Variant</th><th class="text-end">Overall</th><th class="text-end">k</th><th>Verified</th></tr></thead>
               <tbody id="topk-body"><tr><td colspan="5" class="text-muted">Waiting…</td></tr></tbody>
             </table>
           </div>
@@ -70,23 +68,17 @@
   </div>
 </div>
 
+<!-- Chart.js (you can vendor this locally if you prefer) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
   let es = null;
+  let status = "idle";
+  let bestData = [];
+  let margData = [];
   let roundIdx = 0;
 
-  function setStatus(s) {
-    $("status-dot").textContent = s;
-    $("status-dot").className = "badge " + (
-      s === "open" ? "bg-success" :
-      s === "connecting" ? "bg-warning" :
-      s === "error" ? "bg-danger" : "bg-secondary"
-    );
-  }
-
-  // Charts
   const bestChart = new Chart($("chart-best").getContext("2d"), {
     type: "line",
     data: { labels: [], datasets: [{ label: "best overall", data: [], borderWidth: 2 }]},
@@ -98,16 +90,21 @@
     options: { responsive: true, scales: { y: { beginAtZero: false }}, plugins: { legend: { display: false } } }
   });
 
+  function setStatus(s) {
+    status = s;
+    $("status-dot").textContent = s;
+    $("status-dot").className = "badge " + (s === "open" ? "bg-success" : s === "connecting" ? "bg-warning" : s === "error" ? "bg-danger" : "bg-secondary");
+  }
+
   function addTimeline(ev) {
     const d = document.createElement("div");
     d.className = "small";
     const extra = [];
     if (ev.round != null) extra.push("r" + ev.round);
-    if (ev.best_overall != null) extra.push("best " + Number(ev.best_overall).toFixed(3));
-    if (ev.marginal_per_ktok != null) extra.push("marg/kTok " + Number(ev.marginal_per_ktok).toFixed(3));
+    if (ev.best_overall != null) extra.push("best "+ Number(ev.best_overall).toFixed(3));
+    if (ev.marginal_per_ktok != null) extra.push("marg/kTok "+ Number(ev.marginal_per_ktok).toFixed(3));
     if (ev.reason) extra.push("reason " + ev.reason);
-    const summary = ev.summary || ev.arena_summary;
-    if (summary?.winner_overall != null) extra.push("winner " + Number(summary.winner_overall).toFixed(3));
+    if (ev.summary?.winner_overall != null) extra.push("winner " + Number(ev.summary.winner_overall).toFixed(3));
     d.textContent = `[${new Date().toLocaleTimeString()}] ${ev.event}` + (extra.length ? " · " + extra.join(" · ") : "");
     $("timeline").appendChild(d);
     $("timeline").scrollTop = $("timeline").scrollHeight;
@@ -138,8 +135,8 @@
     $("sum-reason").textContent = sum.reason ?? "—";
   }
 
-  // REQUIRED: handle() — now defined here
   function handle(ev) {
+    console.log("event", ev);
     addTimeline(ev);
 
     if (ev.event === "initial_scored" && ev.topk) {
@@ -163,57 +160,61 @@
     }
   }
 
-  // unwrap tap payload → event body
-  function normalize(obj) {
-    // tap sends { subject, data: <anything> }
-    let x = obj?.data ?? obj;
-
-    // event-service envelope: data.payload.payload or data.payload
-    if (x && typeof x === "object" && x.payload && typeof x.payload === "object") {
-      x = (x.payload.payload && typeof x.payload.payload === "object")
-        ? x.payload.payload
-        : x.payload;
-    }
-
-    return x || {};
+  async function prefill(runId) {
+    // optional: pull some history from DB if configured
+    try {
+      const url = new URL(window.location.origin + "/arena/api/recent");
+      if (runId) url.searchParams.set("run_id", runId);
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const arr = await res.json();
+      arr.forEach(handle);
+    } catch {}
   }
 
+
+
+
   function connect() {
-    const rid = $("run-id").value.trim();
-    if (es) es.close();
+    const runId = $("run-id").value.trim();
+    if (es) { es.close(); es = null; }
     setStatus("connecting");
 
-    const u = new URL("/tap/stream", window.location.origin);
-    u.searchParams.set("subject", "stephanie.events.arena.run.>");
-    if (rid) u.searchParams.set("run_id", rid);
+    // Prefill (optional)
+    prefill(runId);
 
-    const src = new EventSource(u);
+    const url = new URL(window.location.origin + "/arena/stream");
+    if (runId) url.searchParams.set("run_id", runId);
+    // Add debug flag to get the initial hello event in case nothing else arrives quickly
+    url.searchParams.set("debug", "1");
+
+    const src = new EventSource(url);
     es = src;
 
-    src.onopen = () => setStatus("open");
-    src.onerror = (e) => { setStatus("error"); console.error("[SSE] error", e); };
-
+    src.onopen = () => { setStatus("open"); console.log("[SSE] open", url.toString()); };
+    src.onerror = (e) => { setStatus("error"); console.log("[SSE] error", e); };
     src.onmessage = (e) => {
-      let raw;
       try {
-        raw = JSON.parse(e.data);
-      } catch (err) {
-        console.error("[SSE] JSON parse error", err, e.data);
-        return;
-      }
-      try {
-        const ev = normalize(raw);
-        if (!ev || !ev.event) {
-          // ignore non-arena messages that may pass through tap
-          return;
+        let obj = JSON.parse(e.data);
+
+        // Unwrap common envelopes defensively
+        // Case A: { subject, data: { event: ... } }
+        if (obj && obj.data && typeof obj.data === "object") {
+          obj = obj.data;
         }
-        console.log("[SSE] data", raw, "→", ev);
-        handle(ev);
+        // Case B: { payload: { event: ... } }
+        if (obj && obj.payload && typeof obj.payload === "object" && obj.payload.event) {
+          obj = obj.payload;
+        }
+
+        console.log("[SSE] data (normalized)", obj);
+        handle(obj);
       } catch (err) {
-        console.error("[SSE] handler error", err, raw);
+        console.log("[SSE] bad json", e.data, err);
       }
     };
   }
+
 
   $("btn-connect").addEventListener("click", connect);
   $("btn-clear").addEventListener("click", () => {
@@ -228,11 +229,11 @@
     roundIdx = 0;
   });
 
-  // auto-connect if ?run_id= present
-  const p = new URLSearchParams(location.search);
-  const rid = p.get("run_id");
+  // Auto-connect on load so you don’t forget to click.
+  const urlParams = new URLSearchParams(window.location.search);
+  const rid = urlParams.get("run_id");
   if (rid) $("run-id").value = rid;
   connect();
-})();
+})(); O
 </script>
 {% endblock %}

@@ -1,282 +1,266 @@
 # sis/routes/arena.py
 from __future__ import annotations
-from operator import sub
 from typing import Any, Dict, List, Optional
 import asyncio
 import json
-import sqlite3
 import time
+import sys
 import contextlib
 
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 try:
     from nats.aio.client import Client as NATS
 except Exception:
     NATS = None  # optional
 
-# add near top of sis/routes/arena.py (if you haven’t already)
-import asyncio
+# ---------- tiny logging helper ----------
+def log(*args):
+    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    print(f"[arena {ts}]", *args, file=sys.stdout, flush=True)
+
+# ---------- cancel type for AnyIO/asyncio ----------
 try:
     from anyio import get_cancelled_exc_class
-    _Cancelled = get_cancelled_exc_class()  # AnyIO's cancel exception (BaseException)
+    _Cancelled = get_cancelled_exc_class()
 except Exception:
     _Cancelled = asyncio.CancelledError
 
 def _bus_stream(request: Request) -> str:
-    return getattr(request.app.state, "bus_stream", "stephanie")  # default matches your bus
-
+    # used to build a third subject: "<bus>.events.arena.run.>"
+    return getattr(request.app.state, "bus_stream", "stephanie")
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
-# ---------- DB (optional persistence) ----------
-def _db(request: Request) -> Optional[sqlite3.Connection]:
-    dbpath = getattr(request.app.state, "arena_db_path", None)
-    if not dbpath:
-        return None
-    conn = sqlite3.connect(dbpath, check_same_thread=False)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS arena_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_id TEXT,
-            event TEXT,
-            payload TEXT,
-            t REAL
-        )
-    """)
-    return conn
-
-def db_insert_event(conn: sqlite3.Connection, run_id: str, event: str, payload: Dict[str, Any], t: float):
-    conn.execute("INSERT INTO arena_events (run_id,event,payload,t) VALUES (?,?,?,?)",
-                 (run_id, event, json.dumps(payload, ensure_ascii=False), t))
-    conn.commit()
-
-def db_recent(conn: sqlite3.Connection, run_id: Optional[str], limit: int = 200) -> List[Dict[str, Any]]:
-    q = "SELECT run_id, event, payload, t FROM arena_events "
-    args: List[Any] = []
-    if run_id:
-        q += "WHERE run_id = ? "
-        args.append(run_id)
-    q += "ORDER BY id DESC LIMIT ?"
-    args.append(limit)
-    rows = conn.execute(q, args).fetchall()
-    out: List[Dict[str, Any]] = []
-    for r in reversed(rows):
-        payload = {}
-        try:
-            payload = json.loads(r[2])
-        except Exception:
-            payload = {"raw": r[2]}
-        payload.setdefault("event", r[1])
-        payload.setdefault("run_id", r[0])
-        payload.setdefault("t", r[3])
-        out.append(payload)
-    return out
-
-# ---------- NATS helpers (live bridge) ----------
-class _NatsHub:
+# ---------- NATS helper (core-only) ----------
+class _NatsCore:
     def __init__(self):
         self.nc: Optional[NATS] = None
-        self.js = None
 
     async def ensure(self, servers: List[str]) -> Optional[NATS]:
+        log("NATS.ensure called; servers=", servers)
         if NATS is None:
+            log("NATS lib not available (pip install nats-py)")
             return None
         if self.nc and not self.nc.is_closed:
+            log("NATS.ensure: reusing existing connection")
             return self.nc
         self.nc = NATS()
+        log("NATS.ensure: connecting…")
         await self.nc.connect(
-            servers=servers,
-            name="sis-arena-bridge",
+            name="sis-arena",
             allow_reconnect=True,
             reconnect_time_wait=2.0,
             max_reconnect_attempts=-1,
             ping_interval=10,
             max_outstanding_pings=5,
         )
-        self.js = self.nc.jetstream()
+        log("NATS.ensure: connected")
         return self.nc
 
-_nats = _NatsHub()
+_nats = _NatsCore()
 
 def _nats_servers(request: Request) -> List[str]:
-    servers = getattr(request.app.state, "nats_servers", None)
-    return servers or ["nats://localhost:4222"]
+    servers = getattr(request.app.state, "nats_servers", None) or ["nats://localhost:4222"]
+    log("nats servers from app.state:", servers)
+    return servers
 
-# ---------- Pages ----------
+# ---------- Page ----------
 @router.get("", response_class=HTMLResponse)
 def arena_page(request: Request):
     """
-    /arena  → Live Arena viewer (run_id filter optional via ?run_id=abc)
+    /arena → keep your existing viewer template if you want.
+    This route file focuses on the NATS-only /stream below.
     """
     templates = request.app.state.templates
-    return templates.TemplateResponse(
-        "/arena/live.html",
-        {"request": request}
-    )
+    return templates.TemplateResponse("/arena/live.html", {"request": request})
 
-# ---------- API ----------
-@router.get("/api/recent")
-def api_recent(request: Request,
-               run_id: Optional[str] = Query(None),
-               limit: int = Query(200, ge=1, le=2000)):
-    """
-    Optional: Prefill UI with recent events (from SQLite) before SSE opens.
-    """
-    conn = _db(request)
-    if not conn:
-        return JSONResponse([])
-    try:
-        return JSONResponse(db_recent(conn, run_id, limit))
-    finally:
-        conn.close()
-
+# ---------- SSE (NATS-only) ----------
 @router.get("/stream")
 async def stream(
     request: Request,
-    run_id: Optional[str] = Query(None),
-    debug: int = Query(0),
+    run_id: Optional[str] = Query(None, description="optional run_id filter; if present we drop non-matching messages *when run_id exists on the message*"),
+    debug: int = 2
 ):
     """
-    SSE: relays NATS 'events.arena.run.>' (optional run_id filter).
-    Fallbacks:
-      - DB polling if NATS unavailable or subscribe fails
-      - heartbeat only if neither NATS nor DB is available
+    Subscribe to NATS subjects and forward messages as SSE.
+    - NATS ONLY (no DB/heartbeat fallbacks)
+    - Robust payload unwrap (payload.payload…)
+    - Infers `event` from subject if missing
+    - Verbose logging
     """
 
-    def _sse(gen):
-        return StreamingResponse(
-            gen,
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-            },
-        )
+    async def gen():
+        # 1) Connect to NATS
+        try:
+            nc = await _nats.ensure(_nats_servers(request))
+        except Exception as e:
+            err = {"event": "_error", "where": "connect", "msg": f"{type(e).__name__}: {e!s}"}
+            log("CONNECT ERROR:", err)
+            yield f"data: {json.dumps(err)}\n\n"
+            return
 
-    # ---- Try NATS first
-    nc = None
-    try:
-        nc = await _nats.ensure(_nats_servers(request))
-    except Exception as e:
-        if debug:
-            print("[/arena/stream] NATS connect failed:", repr(e))
-        nc = None
-
-    if nc:
-        queue: asyncio.Queue = asyncio.Queue()
+        # 2) Build subjects and subscribe
+        subs = []
+        q: asyncio.Queue = asyncio.Queue()
 
         async def cb(msg):
+            # Raw decode
             try:
-                raw = json.loads(msg.data.decode())
+                raw_s = msg.data.decode()
+            except Exception as de:
+                log("CB decode error:", repr(de))
+                return
+
+            # Try parse JSON
+            obj = None
+            try:
+                obj = json.loads(raw_s)
+                if debug:
+                    log("CB parsed JSON for subject:", msg.subject)
             except Exception:
-                return
+                if debug:
+                    log("CB non-JSON payload; forwarding raw string for subject:", msg.subject)
+                obj = raw_s  # keep as raw string
 
-            # Unwrap NATS bus envelope if present
-            body = raw.get("payload") if isinstance(raw, dict) and "payload" in raw else raw
-            print(body)
-            if not isinstance(body, dict):
-                return
+            # Unwrap envelope(s) until the deepest dict/list
+            body = obj
+            # common pattern: { ... "payload": {...} }
+            # keep unwrapping while there is a "payload" (or "data") which is dict/list
+            if isinstance(body, dict):
+                changed = True
+                while changed:
+                    changed = False
+                    if "payload" in body and isinstance(body["payload"], (dict, list)):
+                        body = body["payload"]
+                        changed = True
+                    elif "data" in body and isinstance(body["data"], (dict, list)):
+                        body = body["data"]
+                        changed = True
 
-            # Normalized run_id for optional filter
-            rid = body.get("run_id") or body.get("arena_run_id") or body.get("runId")
-            if run_id and rid != run_id:
-                return
+            # At this point, "body" can be dict (ideal), list (we'll wrap each item), or string (raw).
+            # Normalize into a list of items to forward (often a single dict).
+            items: List[Any] = []
+            if isinstance(body, list):
+                items = body
+            else:
+                items = [body]
 
-            await queue.put(body)
-            print("[/arena/stream] enqueued", body.get("event"), "rid:", rid)
+            # Apply optional run_id filter, but ONLY when the item has a run_id.
+            for item in items:
+                deliver = True
+                rid = None
+                if isinstance(item, dict):
+                    rid = (
+                        item.get("run_id")
+                        or item.get("arena_run_id")
+                        or item.get("runId")
+                        or (item.get("meta") or {}).get("run_id")
+                    )
+                    # infer/attach event from subject if missing and subject looks like "...round_start"
+                    if "event" not in item and isinstance(msg.subject, str):
+                        try:
+                            ev_hint = msg.subject.split(".")[-1]
+                            # normalize round_begin → round_start to be consistent with your UI
+                            if ev_hint == "round_begin":
+                                ev_hint = "round_start"
+                            item["event"] = ev_hint
+                        except Exception:
+                            pass
 
-        subs = []
+                if run_id and rid is not None and str(rid) != str(run_id):
+                    deliver = False
+                    if debug:
+                        log(f"FILTER: drop message (rid={rid}) != filter({run_id}); subject={msg.subject}")
+
+                if deliver:
+                    out = {"subject": msg.subject, "data": item}
+                    if debug:
+                        log("ENQUEUE:", json.dumps(out)[:500] + ("..." if len(json.dumps(out)) > 500 else ""))
+                    await q.put(out)
+
         subjects = [
             "events.arena.run.>",
             "stephanie.events.arena.run.>",
-            f"{_bus_stream(request)}.events.arena.run.>",  # prefixed (e.g., stephanie.events...)
+            f"{_bus_stream(request)}.events.arena.run.>",  # e.g. stephanie.events...
         ]
+        # Use a set to avoid accidental duplication if bus_stream already equals "stephanie"
+        _seen = set()
+        subjects = [s for s in subjects if not (s in _seen or _seen.add(s))]
+
         for subj in subjects:
             try:
-                s = await _nats.nc.subscribe(subj, cb=cb)
+                s = await nc.subscribe(subj, cb=cb)
                 subs.append(s)
-                print("[/arena/stream] core subscribe:", subj)
+                log("SUBSCRIBED:", subj)
             except Exception as e:
-                print("[/arena/stream] core subscribe failed", subj, repr(e))
+                log("SUBSCRIBE ERROR:", subj, repr(e))
 
-        if subs:
-            async def nats_gen():
-                yield ":\n\n"
-                if debug:
-                    yield 'data: {"event":"_debug","msg":"NATS connected"}\n\n'
-                try:
-                    while True:
-                        try:
-                            data = await asyncio.wait_for(queue.get(), timeout=5.0)
-                            yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-                        except (asyncio.TimeoutError, TimeoutError):
-                            try:
-                                if await request.is_disconnected():
-                                    break
-                            except Exception:
-                                pass
-                            yield ":\n\n"  # heartbeat during idle
-                            continue
-                except _Cancelled:
-                    # client disconnected — normal
-                    pass
-                finally:
-                    for s in subs:
-                        with contextlib.suppress(Exception):
-                            await s.unsubscribe()
-            return _sse(nats_gen())
-        # If we got here, NATS is up but subscribe failed — fall through to DB
+        if not subs:
+            err = {"event": "_error", "where": "subscribe", "msg": "no subscriptions established"}
+            log("FATAL:", err)
+            yield f"data: {json.dumps(err)}\n\n"
+            return
 
-    # ---- DB polling fallback
-    conn = _db(request)
-    if conn:
-        async def db_gen():
-            yield ":\n\n"
-            if debug:
-                yield 'data: {"event":"_debug","msg":"DB polling"}\n\n'
-            last_len = 0
-            try:
-                while True:
-                    try:
-                        if await request.is_disconnected():
-                            break
-                    except Exception:
-                        pass
-                    items = db_recent(conn, run_id, limit=500)
-                    if len(items) > last_len:
-                        for it in items[last_len:]:
-                            yield f"data: {json.dumps(it, ensure_ascii=False)}\n\n"
-                        last_len = len(items)
-                    else:
-                        yield ":\n\n"  # heartbeat
-                    await asyncio.sleep(1.0)
-            except _Cancelled:
-                pass
-            finally:
-                conn.close()
-        return _sse(db_gen())
-
-    # ---- Last resort: heartbeat so curl/UI shows *something*
-    async def hb_gen():
+        # 3) Open SSE
         yield ":\n\n"
-        if debug:
-            yield 'data: {"event":"_debug","msg":"heartbeat only (no NATS/DB)"}\n\n'
-        i = 0
+        open_evt = {"event": "_open", "url": str(request.url), "t": time.time()}
+        log("SSE OPEN:", open_evt)
+        yield f"data: {json.dumps(open_evt)}\n\n"
+
+        # 4) Initial hello (so onmessage fires ASAP)
+        hello = {"event": "_hello", "t": time.time()}
+        yield f"data: {json.dumps(hello)}\n\n"
+
+        # 5) Pump queue → SSE
         try:
             while True:
                 try:
-                    if await request.is_disconnected():
-                        break
-                except Exception:
-                    pass
-                i += 1
-                yield f'data: {json.dumps({"event":"_hb","i":i,"t":time.time()})}\n\n'
+                    item = await asyncio.wait_for(q.get(), timeout=5.0)
+                    # forward exactly what we captured
+                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                    if debug:
+                        log("SSE SEND OK subject=", item.get("subject"))
+                except asyncio.TimeoutError:
+                    # keep alive heartbeat (comment)
+                    yield ":\n\n"
+                    if debug:
+                        log("SSE heartbeat sent")
+
+                # stop if client disconnected
                 try:
-                    await asyncio.sleep(1.0)
-                except _Cancelled:
-                    break
+                    if await request.is_disconnected():
+                        log("Client disconnected, stopping SSE loop")
+                        break
+                except Exception as e:
+                    log("is_disconnected() check error:", repr(e))
         except _Cancelled:
-            pass
-    return _sse(hb_gen())
+            log("Generator cancelled (normal shutdown)")
+        except Exception as e:
+            err = {"event": "_error", "where": "loop", "msg": f"{type(e).__name__}: {e!s}"}
+            log("LOOP ERROR:", err)
+            # best effort to notify client
+            try:
+                yield f"data: {json.dumps(err)}\n\n"
+            except Exception:
+                pass
+        finally:
+            # cleanup
+            for s in subs:
+                with contextlib.suppress(Exception):
+                    await s.unsubscribe()
+            log("Unsubscribed all; SSE closing")
+
+    # Build response
+    resp = StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+    log("Returning StreamingResponse for /arena/stream (NATS-only)")
+    return resp
