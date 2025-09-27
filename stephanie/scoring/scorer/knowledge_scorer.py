@@ -1,15 +1,17 @@
 # stephanie/scoring/scorable_knowledge.py (your file name)
-from stephanie.scoring.scorable import Scorable
 import os
+
 import torch
+
+from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.model.knowledge import KnowledgeModel
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
-from stephanie.constants import GOAL
-from stephanie.scoring.model.knowledge import KnowledgeModel
 
 
 class KnowledgeScorer(BaseScorer):

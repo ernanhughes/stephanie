@@ -1,5 +1,6 @@
 # stephanie/analysis/domain2vec_integrator.py
 from __future__ import annotations
+
 import logging
 from typing import Dict, List, Tuple
 

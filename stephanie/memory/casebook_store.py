@@ -1,23 +1,20 @@
 # stephanie/memory/casebook_store.py
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
 import hashlib
+import json
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query, aliased, selectinload
+
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.case_goal_state import CaseGoalStateORM
-from stephanie.models.casebook import (
-    CaseBookORM,
-    CaseORM,
-    CaseScorableORM,
-    CaseAttributeORM,
-)
+from stephanie.models.casebook import (CaseAttributeORM, CaseBookORM, CaseORM,
+                                       CaseScorableORM)
 from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable import ScorableType

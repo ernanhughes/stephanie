@@ -1,10 +1,12 @@
 # stephanie/agents/learning/summarizer.py
 from __future__ import annotations
-from typing import Dict, Any, List
+
 import json
 import time
+from typing import Any, Dict, List
 
 from stephanie.utils.json_sanitize import dumps_safe
+
 
 class Summarizer:
     def __init__(self, cfg, memory, container, logger, strategy, scoring=None, prompt_loader=None, call_llm=None):

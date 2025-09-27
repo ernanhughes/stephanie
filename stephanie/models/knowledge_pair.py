@@ -1,7 +1,10 @@
 # stephanie/models/knowledge_pair.py
-from sqlalchemy import Column, Integer, Float, String, DateTime, JSON, Boolean
 from datetime import datetime
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String
+
 from stephanie.models.base import Base
+
 
 class KnowledgePairORM(Base):
     __tablename__ = "knowledge_pairs"

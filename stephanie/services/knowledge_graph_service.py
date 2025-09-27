@@ -2,22 +2,23 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
 import time
 import traceback
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-import hashlib
 
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.services.service_protocol import Service
+
 
 def _normalize_text(t: str) -> str:
     # Minimal normalization; extend with NFC, ZWSP stripping as needed

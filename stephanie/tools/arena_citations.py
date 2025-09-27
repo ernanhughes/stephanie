@@ -1,11 +1,11 @@
 # stephanie/tools/arena_citations.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass
 import logging
 import math
 import re
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 _logger = logging.getLogger(__name__)
 

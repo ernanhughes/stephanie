@@ -15,8 +15,7 @@ from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.score import ScoreORM
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.metrics import compute_uncertainty
 
 

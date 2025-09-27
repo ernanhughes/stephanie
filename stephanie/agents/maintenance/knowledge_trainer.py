@@ -1,13 +1,13 @@
 # stephanie/agents/maintenance/knowledge_trainer.py
 from __future__ import annotations
 
-from typing import Any, Dict
 import time
+from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.dataloaders.knowledge_pair_builder import KnowledgePairBuilder
-from stephanie.scoring.training.knowledge_trainer import KnowledgeTrainer
 from stephanie.scoring.calibration import ScoreCalibrator
+from stephanie.scoring.training.knowledge_trainer import KnowledgeTrainer
 
 
 class KnowledgeTrainerAgent(BaseAgent):

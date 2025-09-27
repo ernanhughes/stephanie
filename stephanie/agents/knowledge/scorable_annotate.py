@@ -17,10 +17,11 @@ Key Features:
 
 from __future__ import annotations
 
-from tqdm import tqdm
-from typing import Dict, Any, List, Optional
 import logging
+from typing import Any, Dict, List, Optional
+
 import numpy as np
+from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier

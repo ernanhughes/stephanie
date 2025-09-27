@@ -1,7 +1,7 @@
 # stephanie/agents/learning/proof.py
-from dataclasses import dataclass
-from typing import List, Dict, Any
 import json
+from dataclasses import dataclass
+from typing import Any, Dict, List
 
 
 @dataclass

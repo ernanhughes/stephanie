@@ -1,8 +1,8 @@
 # stephanie/tools/arxiv_tool.py
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 import re
+import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
 
 import arxiv

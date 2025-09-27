@@ -36,7 +36,6 @@ from time import time
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
-
 # stephanie/scoring/model/ner_retriever.py
 import torch
 import torch.nn as nn
@@ -1101,9 +1100,8 @@ class NERRetrieverEmbedder:
         """Determine domain from query using classifier with fallbacks"""
         if not hasattr(self, "_domain_classifier"):
             try:
-                from stephanie.analysis.scorable_classifier import (
-                    ScorableClassifier,
-                )
+                from stephanie.analysis.scorable_classifier import \
+                    ScorableClassifier
 
                 self._domain_classifier = ScorableClassifier(
                     memory=self.memory,

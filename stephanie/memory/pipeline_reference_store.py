@@ -6,8 +6,7 @@ from typing import List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.pipeline_reference import PipelineReferenceORM
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableFactory
+from stephanie.scoring.scorable import Scorable, ScorableFactory
 
 logger = logging.getLogger(__name__)
 

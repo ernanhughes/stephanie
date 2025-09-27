@@ -17,17 +17,17 @@ through the BaseSQLAlchemyStore parent class.
 """
 
 from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy.orm import aliased, selectinload, Query
-from sqlalchemy import desc, func, text, and_
+from sqlalchemy import and_, desc, func, text
 from sqlalchemy.dialects.postgresql import JSONB  # only used if dialect is PG
+from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
                                    ChatTurnORM)
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 
 
 class ChatStore(BaseSQLAlchemyStore):

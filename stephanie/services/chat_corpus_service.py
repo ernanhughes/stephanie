@@ -1,15 +1,15 @@
 # stephanie/services/chat_corpus_service.py
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
-import logging
 import itertools
+import logging
 import time
-
-from stephanie.services.service_protocol import Service
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 # 🔑 Embedding search target enum (adjust import if your path differs)
-from stephanie.scoring.scorable import ScorableType  # expects CONVERSATION_TURN
+from stephanie.scoring.scorable import \
+    ScorableType  # expects CONVERSATION_TURN
+from stephanie.services.service_protocol import Service
 
 EmbedFn = Callable[[List[str]], List[List[float]]]
 _logger = logging.getLogger(__name__)

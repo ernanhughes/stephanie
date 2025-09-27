@@ -1,12 +1,16 @@
 from __future__ import annotations
-import dataclasses, logging, math
+
+import dataclasses
+import logging
+import math
 from typing import Any, Dict, List, Optional
 
 # ── deps you already have ─────────────────────────────────────────────────────
-from stephanie.agents.care_executor_agent import CAREExecutorAgent, CARETrace, LLMAdapter
+from stephanie.agents.care_executor_agent import (CAREExecutorAgent, CARETrace,
+                                                  LLMAdapter)
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_knowledge import KnowledgeScorer
-from stephanie.data.score_bundle import ScoreBundle
 
 logger = logging.getLogger(__name__)
 

@@ -4,8 +4,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional
 
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
 # Import the existing document section parser
 from stephanie.utils.document_section_parser import DocumentSectionParser

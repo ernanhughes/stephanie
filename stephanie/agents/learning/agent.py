@@ -1,24 +1,27 @@
 # stephanie/agents/learning/agent.py
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Set
-import time
-import logging
+
 import json
+import logging
 import random
+import time
+from typing import Any, Dict, List, Optional, Set
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.learning.attribution import AttributionTracker
-from stephanie.agents.learning.strategy_manager import StrategyManager
 from stephanie.agents.learning.corpus_retriever import CorpusRetriever
-from stephanie.agents.learning.summarizer import Summarizer
-from stephanie.agents.learning.arena import ArenaService
-from stephanie.agents.learning.persistence import Persistence
 from stephanie.agents.learning.evidence import Evidence
+from stephanie.agents.learning.knowledge_arena import KnowledgeArena
+from stephanie.agents.learning.persistence import Persistence
 from stephanie.agents.learning.progress import ProgressAdapter
 from stephanie.agents.learning.scoring import Scoring
+from stephanie.agents.learning.strategy_manager import StrategyManager
+from stephanie.agents.learning.summarizer import Summarizer
+from stephanie.services.arena_reporting_adapter import ArenaReporter
 from stephanie.utils.progress import AgentProgress
 
 _logger = logging.getLogger(__name__)
+
 
 class LearningFromLearningAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
@@ -33,13 +36,16 @@ class LearningFromLearningAgent(BaseAgent):
         self.corpus = CorpusRetriever(cfg, memory, container, logger)
         self.scoring = Scoring(cfg, memory, container, logger)
         self.summarizer = Summarizer(
-            cfg, memory, container, logger,
+            cfg,
+            memory,
+            container,
+            logger,
             strategy=self.strategy,
             scoring=self.scoring,
             prompt_loader=self.prompt_loader,
             call_llm=self.call_llm,
         )
-        self.arena = ArenaService(cfg, memory, container, logger)
+        self.arena = KnowledgeArena(cfg, memory, container, logger)
         self.arena.score_candidate = self.scoring.score_candidate
         self.arena.improve = lambda text, meta: self.summarizer.improve_once(
             paper=meta.get("paper"),
@@ -57,6 +63,19 @@ class LearningFromLearningAgent(BaseAgent):
         self.use_arena = bool(cfg.get("use_arena", True))
         self.single_random_doc = bool(cfg.get("single_random_doc", False))
 
+        self.reporter = container.get("reporting")
+        self.event_service = self.container.get("event_service")
+
+    async def _emit(self, evt: Dict[str, Any]):
+        try:
+            # push minimal payload; reporter can enrich with ctx
+            # if your ReportingService requires async, enqueue to a background loop or use a thread-safe queue.
+            await self.reporter.emit(
+                context={}, stage="learning", event=evt
+            )  # or a small wrapper that does loop.create_task(...)
+        except Exception:
+            pass
+
     # ---------- Canonical keys for masking ----------
     @staticmethod
     def _corpus_key(it: Dict[str, Any]) -> str:
@@ -65,7 +84,7 @@ class LearningFromLearningAgent(BaseAgent):
     @staticmethod
     def _cand_key(c: Dict[str, Any]) -> str:
         # origin+variant uniquely identify arena candidates we persist
-        return f"arena:{c.get('origin','')}#{c.get('variant','')}"
+        return f"arena:{c.get('origin', '')}#{c.get('variant', '')}"
 
     # ---------- Build candidates (supports mask) ----------
     def _build_candidates(
@@ -79,7 +98,9 @@ class LearningFromLearningAgent(BaseAgent):
         out: List[Dict[str, Any]] = []
 
         # corpus-backed candidates
-        for it in (corpus_items or [])[: int(self.cfg.get("max_corpus_candidates", 8))]:
+        for it in (corpus_items or [])[
+            : int(self.cfg.get("max_corpus_candidates", 8))
+        ]:
             t = (it.get("assistant_text") or "").strip()
             if len(t) < 60:
                 continue
@@ -87,23 +108,27 @@ class LearningFromLearningAgent(BaseAgent):
             cand_k = f"arena:chat_corpus#c{it.get('id')}"
             if corpus_k in mask_keys or cand_k in mask_keys:
                 continue
-            out.append({
-                "origin": "chat_corpus",
-                "variant": f"c{it.get('id')}",
-                "text": t,
-                "meta": {"source": "corpus"},
-            })
+            out.append(
+                {
+                    "origin": "chat_corpus",
+                    "variant": f"c{it.get('id')}",
+                    "text": t,
+                    "meta": {"source": "corpus"},
+                }
+            )
 
         # seed candidate from section text
         seed = (section.get("section_text") or "").strip()[:800]
         seed_key = "arena:lfl_seed#seed"
         if len(seed) >= 60 and seed_key not in mask_keys:
-            out.append({
-                "origin": "lfl_seed",
-                "variant": "seed",
-                "text": seed,
-                "meta": {"source": "section_text"},
-            })
+            out.append(
+                {
+                    "origin": "lfl_seed",
+                    "variant": "seed",
+                    "text": seed,
+                    "meta": {"source": "section_text"},
+                }
+            )
 
         # de-duplicate by normalized text
         seen = set()
@@ -115,12 +140,23 @@ class LearningFromLearningAgent(BaseAgent):
             seen.add(key)
             uniq.append(c)
 
-        return uniq or ([{
-            "origin": "lfl_seed", "variant": "seed", "text": seed or "", "meta": {}
-        }] if seed_key not in mask_keys else [])
+        return uniq or (
+            [
+                {
+                    "origin": "lfl_seed",
+                    "variant": "seed",
+                    "text": seed or "",
+                    "meta": {},
+                }
+            ]
+            if seed_key not in mask_keys
+            else []
+        )
 
     # ---------- Translate supports → mask keys ----------
-    def _build_mask_keys_from_supports(self, supports: List[Dict[str, Any]]) -> Set[str]:
+    def _build_mask_keys_from_supports(
+        self, supports: List[Dict[str, Any]]
+    ) -> Set[str]:
         """
         supports examples:
         - {"kind":"corpus","id":"123"}
@@ -131,9 +167,11 @@ class LearningFromLearningAgent(BaseAgent):
             k = s.get("kind")
             if k == "corpus" and s.get("id") is not None:
                 out.add(f"corpus:{str(s['id'])}")
-                out.add(f"arena:chat_corpus#c{str(s['id'])}")  # mirror arena candidate
+                out.add(
+                    f"arena:chat_corpus#c{str(s['id'])}"
+                )  # mirror arena candidate
             elif k == "arena":
-                out.add(f"arena:{s.get('origin','')}#{s.get('variant','')}")
+                out.add(f"arena:{s.get('origin', '')}#{s.get('variant', '')}")
         return out
 
     # ---------- Collect "starred" supports (stub: adapt to your memory schema) ----------
@@ -152,18 +190,31 @@ class LearningFromLearningAgent(BaseAgent):
         try:
             for s in self.memory.casebooks.list_scorables(case_id) or []:
                 # Example: users starred a retrieved item
-                if s.role == "knowledge_vote" and (s.meta or {}).get("stars", 0) >= 5:
+                if (
+                    s.role == "knowledge_vote"
+                    and (s.meta or {}).get("stars", 0) >= 5
+                ):
                     corpus_id = (s.meta or {}).get("corpus_id")
                     if corpus_id is not None:
                         out.append({"kind": "corpus", "id": str(corpus_id)})
                 # Example: auto-citations from arena
                 if s.role == "arena_citations":
-                    j = json.loads(s.text) if isinstance(s.text, str) else (s.text or {})
+                    j = (
+                        json.loads(s.text)
+                        if isinstance(s.text, str)
+                        else (s.text or {})
+                    )
                     for c in (j.get("citations") or [])[:2]:
                         origin = c.get("support_origin")
                         variant = c.get("support_variant")
                         if origin and variant:
-                            out.append({"kind": "arena", "origin": origin, "variant": variant})
+                            out.append(
+                                {
+                                    "kind": "arena",
+                                    "origin": origin,
+                                    "variant": variant,
+                                }
+                            )
         except Exception:
             pass
         return out
@@ -183,17 +234,25 @@ class LearningFromLearningAgent(BaseAgent):
             attribution_tracker=self.attribution,
         )
         # 2) candidates with mask
-        cands = self._build_candidates(section, corpus_items, mask_keys=mask_keys)
+        cands = self._build_candidates(
+            section, corpus_items, mask_keys=mask_keys
+        )
         for c in cands:
-            c.setdefault("meta", {}).update({"paper": paper, "section": section, "context": ctx_case})
+            c.setdefault("meta", {}).update(
+                {"paper": paper, "section": section, "context": ctx_case}
+            )
         # 3) (arena|baseline)
         if self.use_arena:
             arena_res = self.arena.run(section["section_text"], cands)
             baseline = arena_res["winner"]["text"]
         else:
-            baseline = self.summarizer.baseline(paper, section, corpus_items, ctx_case)
+            baseline = self.summarizer.baseline(
+                paper, section, corpus_items, ctx_case
+            )
         # 4) verify using current strategy
-        verify = self.summarizer.verify_and_improve(baseline, paper, section, ctx_case)
+        verify = self.summarizer.verify_and_improve(
+            baseline, paper, section, ctx_case
+        )
         return {"baseline": baseline, "verify": verify}
 
     # ---------- Main ----------
@@ -204,11 +263,19 @@ class LearningFromLearningAgent(BaseAgent):
             doc = self.memory.documents.get_random()
             if not doc:
                 return {**context, "error": "no_documents"}
-            documents = [getattr(doc, "to_dict", lambda: {"id": doc.id, "title": getattr(doc, "title", "")})()]
+            documents = [
+                getattr(
+                    doc,
+                    "to_dict",
+                    lambda: {"id": doc.id, "title": getattr(doc, "title", "")},
+                )()
+            ]
 
         out: Dict[str, Any] = {}
         for paper in documents:
-            casebook, goal, sections = self.persist.prepare_casebook_goal_sections(paper, context)
+            casebook, goal, sections = (
+                self.persist.prepare_casebook_goal_sections(paper, context)
+            )
             self.progress.start_paper(paper, sections)
 
             results: List[Dict[str, Any]] = []
@@ -216,7 +283,9 @@ class LearningFromLearningAgent(BaseAgent):
                 if not self.persist.section_is_large_enough(section):
                     continue
 
-                case = self.persist.create_section_case(casebook, paper, section, goal, context)
+                case = self.persist.create_section_case(
+                    casebook, paper, section, goal, context
+                )
                 ctx_case = {
                     **context,
                     "case_id": case.id,
@@ -232,16 +301,28 @@ class LearningFromLearningAgent(BaseAgent):
                     section["section_text"],
                     attribution_tracker=self.attribution,
                 )
-                self.progress.stage(section, "corpus:done", items=len(corpus_items or []))
+                self.progress.stage(
+                    section, "corpus:done", items=len(corpus_items or [])
+                )
 
                 # (Optional) random retrieval ablation for RN metric
-                ablate = random.random() < float(self.cfg.get("retrieval_ablate_prob", 0.0))
+                ablate = random.random() < float(
+                    self.cfg.get("retrieval_ablate_prob", 0.0)
+                )
                 if ablate:
                     self.progress.stage(section, "corpus:ablated")
                     try:
                         self.memory.casebooks.add_scorable(
-                            case_id=case.id, role="ablation",
-                            text=json.dumps({"ablation": {"retrieval": "masked", "k": len(corpus_items)}}),
+                            case_id=case.id,
+                            role="ablation",
+                            text=json.dumps(
+                                {
+                                    "ablation": {
+                                        "retrieval": "masked",
+                                        "k": len(corpus_items),
+                                    }
+                                }
+                            ),
                             pipeline_run_id=context.get("pipeline_run_id"),
                             meta={"type": "retrieval_mask"},
                         )
@@ -253,41 +334,140 @@ class LearningFromLearningAgent(BaseAgent):
 
                 # Attach retrieval pool for downstream attribution (optional)
                 ctx_case["retrieval_items"] = [
-                    {"id": it.get("id"), "text": (it.get("assistant_text") or it.get("text") or "")}
+                    {
+                        "id": it.get("id"),
+                        "text": (
+                            it.get("assistant_text") or it.get("text") or ""
+                        ),
+                    }
                     for it in (corpus_items or [])
                 ]
 
                 # ----- Draft (arena | baseline) -----
                 if self.use_arena:
-                    cands = self._build_candidates(section, corpus_items_for_baseline)
+                    cands = self._build_candidates(
+                        section, corpus_items_for_baseline
+                    )
                     for c in cands:
-                        c.setdefault("meta", {}).update({"paper": paper, "section": section, "context": ctx_case})
-                    arena_res = self.arena.run(section["section_text"], cands)
+                        c.setdefault("meta", {}).update(
+                            {
+                                "paper": paper,
+                                "section": section,
+                                "context": ctx_case,
+                            }
+                        )
+
+                    arena_meta = {
+                        "paper_id": str(
+                            paper.get("id") or paper.get("doc_id")
+                        ),
+                        "section_name": section.get("section_name"),
+                        "case_id": case.id,
+                        "agent": "LearningFromLearningAgent",
+                    }
+                    arena_adapter = ArenaReporter(
+                        self.reporter,
+                        self.event_service,
+                        run_id=context.get("pipeline_run_id"),
+                        meta=arena_meta,
+                    )
+                    await arena_adapter.start(context)
+
+                    async def emit_evt(evt: dict, arena_adapter=arena_adapter):
+                        typ = evt.get("event")
+                        if typ == "initial_scored":
+                            await arena_adapter.initial_scored(context, scored_topk=evt.get("topk") or [])
+                        elif typ == "round_end":
+                            await arena_adapter.round_end(
+                                context,
+                                round_ix=int(evt.get("round", 0)),
+                                best_overall=float(evt.get("best_overall", 0.0)),
+                                marginal_per_ktok=float(evt.get("marginal_per_ktok", 0.0)),
+                            )
+                        elif typ == "arena_stop":
+                            await arena_adapter.stop(
+                                context,
+                                winner_overall=float(evt.get("winner_overall", 0.0)),
+                                rounds_run=int(evt.get("rounds_run", 0)),
+                                reason=evt.get("reason") or "",
+                            )
+                        elif typ == "arena_done":
+                            await arena_adapter.done(context, ended_at=evt.get("ended_at"))
+
+                    arena_res = await self.arena.run(
+                        section["section_text"],
+                        cands,
+                        emit=emit_evt,  # ← live events for dashboards
+                        run_meta={
+                            "paper_id": str(
+                                paper.get("id") or paper.get("doc_id")
+                            ),
+                            "section_name": section.get("section_name"),
+                            "case_id": case.id,
+                            "agent": "LearningFromLearningAgent",
+                        },
+                    )
                     ctx_case["arena_initial_pool"] = [
-                        {"origin": c.get("origin"), "variant": c.get("variant"), "text": c.get("text", "")}
+                        {
+                            "origin": c.get("origin"),
+                            "variant": c.get("variant"),
+                            "text": c.get("text", ""),
+                        }
                         for c in (arena_res.get("initial_pool") or [])
                     ]
                     baseline = arena_res["winner"]["text"]
-                    self.persist.persist_arena(case, paper, section, arena_res, ctx_case)
-                    self.progress.stage(section, "arena:done",
-                        winner_overall=round(float(arena_res["winner"]["score"].get("overall", 0.0)), 3))
+                    self.persist.persist_arena(
+                        case, paper, section, arena_res, ctx_case
+                    )
+                    self.progress.stage(
+                        section,
+                        "arena:done",
+                        winner_overall=round(
+                            float(
+                                arena_res["winner"]["score"].get(
+                                    "overall", 0.0
+                                )
+                            ),
+                            3,
+                        ),
+                    )
                 else:
-                    baseline = self.summarizer.baseline(paper, section, corpus_items_for_baseline, ctx_case)
+                    baseline = self.summarizer.baseline(
+                        paper, section, corpus_items_for_baseline, ctx_case
+                    )
                     self.progress.stage(section, "baseline:done")
 
                 # ----- Verify & improve -----
                 self.progress.stage(section, "verify:start")
-                verify = self.summarizer.verify_and_improve(baseline, paper, section, ctx_case)
-                self.progress.stage(section, "verify:done", overall=round(float(verify["metrics"].get("overall", 0.0)), 3))
+                verify = self.summarizer.verify_and_improve(
+                    baseline, paper, section, ctx_case
+                )
+                self.progress.stage(
+                    section,
+                    "verify:done",
+                    overall=round(
+                        float(verify["metrics"].get("overall", 0.0)), 3
+                    ),
+                )
 
                 # ----- Persist -----
                 self.progress.stage(section, "persist:start")
-                saved_case = self.persist.save_section(casebook, paper, section, verify, baseline, goal["id"], ctx_case)
+                saved_case = self.persist.save_section(
+                    casebook,
+                    paper,
+                    section,
+                    verify,
+                    baseline,
+                    goal["id"],
+                    ctx_case,
+                )
                 self.progress.stage(section, "persist:done")
 
                 # Strategy tracking & knowledge pairs
                 self.strategy.track_section(saved_case, verify["iterations"])
-                self.persist.persist_pairs(saved_case.id, baseline, verify, ctx_case)
+                self.persist.persist_pairs(
+                    saved_case.id, baseline, verify, ctx_case
+                )
 
                 # Progress metrics
                 section_metrics = {
@@ -302,28 +482,37 @@ class LearningFromLearningAgent(BaseAgent):
                 # ----- Ablation “proof” (deterministic) -----
                 if bool(self.cfg.get("run_proof", False)):
                     star_supports = self._collect_star_supports(case.id)
-                    mask_keys = self._build_mask_keys_from_supports(star_supports)
+                    mask_keys = self._build_mask_keys_from_supports(
+                        star_supports
+                    )
 
                     with_metrics = verify["metrics"]
-                    masked = await self._run_with_mask(paper, section, ctx_case, mask_keys)
+                    masked = await self._run_with_mask(
+                        paper, section, ctx_case, mask_keys
+                    )
                     without_metrics = masked["verify"]["metrics"]
 
                     delta = {
-                        "overall": with_metrics["overall"] - without_metrics["overall"],
-                        "grounding": with_metrics["grounding"] - without_metrics["grounding"],
-                        "knowledge": with_metrics["knowledge_score"] - without_metrics["knowledge_score"],
+                        "overall": with_metrics["overall"]
+                        - without_metrics["overall"],
+                        "grounding": with_metrics["grounding"]
+                        - without_metrics["grounding"],
+                        "knowledge": with_metrics["knowledge_score"]
+                        - without_metrics["knowledge_score"],
                     }
 
                     try:
                         self.memory.casebooks.add_scorable(
                             case_id=case.id,
                             role="ablation_result",
-                            text=json.dumps({
-                                "mask": sorted(list(mask_keys)),
-                                "with": with_metrics,
-                                "without": without_metrics,
-                                "delta": delta,
-                            }),
+                            text=json.dumps(
+                                {
+                                    "mask": sorted(list(mask_keys)),
+                                    "with": with_metrics,
+                                    "without": without_metrics,
+                                    "delta": delta,
+                                }
+                            ),
                             pipeline_run_id=ctx_case.get("pipeline_run_id"),
                             meta={"type": "proof"},
                         )
@@ -331,12 +520,14 @@ class LearningFromLearningAgent(BaseAgent):
                         pass
 
                 # Collect result for this section
-                results.append({
-                    "section_name": section["section_name"],
-                    "summary": verify["summary"],
-                    "metrics": verify["metrics"],
-                    "iterations": verify["iterations"],
-                })
+                results.append(
+                    {
+                        "section_name": section["section_name"],
+                        "summary": verify["summary"],
+                        "metrics": verify["metrics"],
+                        "iterations": verify["iterations"],
+                    }
+                )
 
             # ----- Evidence / report -----
             longitudinal = self.evidence.collect_longitudinal()

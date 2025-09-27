@@ -1,9 +1,9 @@
 # stephanie/tools/turn_ner_tool.py
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional, Dict
-import logging
 import asyncio
+import logging
+from typing import Any, Callable, Dict, List, Optional
 
 _logger = logging.getLogger(__name__)
 

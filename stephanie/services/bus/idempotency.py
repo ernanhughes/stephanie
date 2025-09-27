@@ -123,6 +123,9 @@ class JsonlIdempotencyStore(IdempotencyStore):
         
         # Load existing keys
         try:
+            if not os.path.exists(self._path):
+                with open(self._path, "w", encoding="utf-8") as f:
+                    pass  # Create empty file if it doesn't exist
             with open(self._path, "r", encoding="utf-8") as f:
                 for line in f:
                     self._seen_set.add(line.strip())

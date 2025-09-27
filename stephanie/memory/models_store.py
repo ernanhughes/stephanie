@@ -1,9 +1,13 @@
 from __future__ import annotations
-from typing import Optional, List
+
 from datetime import datetime
+from typing import List, Optional
+
 from sqlalchemy import func
+
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.model_artifact import ModelArtifactORM
+
 
 class ModelsStore(BaseSQLAlchemyStore):
     orm_model = ModelArtifactORM

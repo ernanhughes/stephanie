@@ -1,6 +1,7 @@
-from stephanie.agents.base_agent import BaseAgent
-import re
 import logging
+import re
+
+from stephanie.agents.base_agent import BaseAgent
 
 _logger = logging.getLogger(__name__)
 

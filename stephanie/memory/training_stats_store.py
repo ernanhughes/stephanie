@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Optional, List, Dict, Any
 
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy import func
 from sqlalchemy.orm import Query
 

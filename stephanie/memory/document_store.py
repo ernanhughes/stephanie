@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from sqlalchemy import desc, func   
+from sqlalchemy import desc, func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.document import DocumentORM

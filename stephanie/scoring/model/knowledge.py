@@ -1,10 +1,13 @@
 # stephanie/scoring/model/knowledge.py
 from __future__ import annotations
+
 import json
 import os
+from typing import List, Optional
+
 import torch
 import torch.nn as nn
-from typing import Optional, List
+
 
 class CrossFeatureEncoder(nn.Module):
     def __init__(self, dim: int, hdim: int):

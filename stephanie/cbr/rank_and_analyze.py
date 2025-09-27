@@ -3,8 +3,7 @@ from typing import Dict, List, Tuple
 
 from stephanie.constants import GOAL
 from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.score_utils import score_scorable
 
 

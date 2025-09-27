@@ -21,8 +21,7 @@ from dspy import InputField, OutputField, Signature
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, GOAL_TEXT
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 
 
 class CBRSignature(Signature):

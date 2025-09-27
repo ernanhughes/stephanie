@@ -9,8 +9,7 @@ from stephanie.agents.compiler.scorer import ReasoningNodeScorer
 from stephanie.agents.compiler.step_selector import StepSelector
 from stephanie.agents.compiler.symbol_mapper import SymbolMapper
 from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 
 
 class CompilerAgent(BaseAgent):

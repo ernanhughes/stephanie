@@ -13,8 +13,7 @@ import dspy
 from dspy import InputField, OutputField, Predict, Signature
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.llm_response_parser import parse_scored_block
 
 _logger = logging.getLogger(__name__)

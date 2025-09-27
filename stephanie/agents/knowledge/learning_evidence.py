@@ -1,9 +1,14 @@
 # stephanie/agents/meta/learning_evidence_agent.py
 from __future__ import annotations
-import os, json, glob
-from typing import Dict, Any, List
+
+import glob
+import json
+import os
+from typing import Any, Dict, List
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.learning_evidence import LearningEvidenceORM
+
 
 class LearningEvidenceAgent(BaseAgent):
     """

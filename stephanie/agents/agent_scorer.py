@@ -23,8 +23,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import SCORABLE_DETAILS
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 _logger = logging.getLogger(__name__)

@@ -28,8 +28,7 @@ from stephanie.agents.dspy.mcts_reasoning import MCTSReasoningAgent
 from stephanie.constants import GOAL, GOAL_TEXT, PIPELINE_RUN_ID
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
 # Namespace keys (all internal writes go under this)

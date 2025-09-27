@@ -15,6 +15,7 @@ Key Features:
 """
 
 import json
+import logging
 import time
 import traceback
 import uuid
@@ -30,7 +31,6 @@ from stephanie.utils.paper_utils import (build_paper_goal_meta,
                                          section_goal_text, section_quality,
                                          system_guidance_from_goal)
 
-import logging
 _logger = logging.getLogger(__name__)
 
 # DSPy Signatures for each step in the processing pipeline

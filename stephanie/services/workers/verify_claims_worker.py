@@ -1,10 +1,10 @@
 # stephanie/services/workers/verify_claims_worker.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 import logging
-import time
 import re
+import time
+from typing import Any, Dict, List, Optional
 
 from stephanie.scoring.scorable import ScorableType
 

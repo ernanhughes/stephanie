@@ -493,6 +493,11 @@ SPECIAL = {
     "EarlyStopping": "✅⏱️",  # Early stopping triggered
 }
 
+DOMAINS ={
+    "DomainWithoutSeeds": "🏷️🚫",  # Domain without seed terms
+    
+}
+
 # Combine all categories into a single dictionary
 EVENT_ICONS = {
     **SYSTEM_INIT,
@@ -500,6 +505,7 @@ EVENT_ICONS = {
     **KNOWLEDGE_OPS,
     **PIPELINE_FLOW,
     **SCORING,
+    **DOMAINS,
     **MARS,
     **REPORTING,
     **REASONING,

@@ -12,8 +12,7 @@ from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.data.knowledge_unit import KnowledgeUnit
 from stephanie.memory.chat_store import ChatStore
 from stephanie.models.ner_retriever import EntityDetector
-from stephanie.scoring.scorable import ScorableFactory, ScorableType
-from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 
 _logger = logging.getLogger(__name__)
 

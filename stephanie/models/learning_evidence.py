@@ -1,7 +1,10 @@
 # stephanie/models/learning_evidence.py
-from sqlalchemy import Column, Integer, Float, String, DateTime, JSON
 from datetime import datetime
+
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
+
 from stephanie.models.base import Base
+
 
 class LearningEvidenceORM(Base):
     __tablename__ = "learning_evidence"

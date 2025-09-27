@@ -1,7 +1,12 @@
 from __future__ import annotations
+
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, JSON, UniqueConstraint, Index
+
+from sqlalchemy import (JSON, Column, DateTime, Index, Integer, String,
+                        UniqueConstraint)
+
 from stephanie.models.base import Base
+
 
 class ModelArtifactORM(Base):
     __tablename__ = "model_artifacts"

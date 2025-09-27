@@ -1,7 +1,9 @@
 # stephanie/agents/learning/scoring.py
 from __future__ import annotations
-from typing import Dict, Any, Tuple, List
+
 import re
+from typing import Any, Dict, List, Tuple
+
 
 class Scoring:
     def __init__(self, cfg, memory, container, logger):
@@ -10,7 +12,8 @@ class Scoring:
         self.container = container
         self.logger = logger
         try:
-            from stephanie.scoring.scorer.knowledge_scorer import KnowledgeScorer
+            from stephanie.scoring.scorer.knowledge_scorer import \
+                KnowledgeScorer
             self.knowledge = KnowledgeScorer(cfg.get("knowledge_scorer", {}), memory, container, logger)
         except Exception:
             self.knowledge = None

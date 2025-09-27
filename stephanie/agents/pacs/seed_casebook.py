@@ -7,8 +7,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
 # Models (names from your codebase)
 from stephanie.models.casebook import CaseBookORM, CaseORM
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.slug import simple_slugify
 
 # Optional: if you want a separate goal-state table

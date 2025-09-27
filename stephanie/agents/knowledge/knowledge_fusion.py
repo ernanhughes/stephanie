@@ -47,8 +47,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.scoring.calibration_manager import CalibrationManager
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableFactory
+from stephanie.scoring.scorable import Scorable, ScorableFactory
 
 _logger = logging.getLogger(__name__)
 

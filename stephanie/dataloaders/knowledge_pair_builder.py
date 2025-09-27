@@ -1,14 +1,17 @@
 # stephanie/dataloaders/knowledge_pair_builder.py
 from __future__ import annotations
-from tqdm import tqdm
-from typing import List, Dict, Any, Optional, Tuple
+
+import hashlib
+import json
 import logging
 import random
-import hashlib
-import numpy as np
-import json
 import re
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+from tqdm import tqdm
+
 from stephanie.utils.coerce_utils import to_float
 
 _logger = logging.getLogger(__name__)

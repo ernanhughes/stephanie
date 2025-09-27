@@ -1,7 +1,9 @@
 # stephanie/agents/policies/origin_policy.py
 from __future__ import annotations
+
+import logging
+import random
 from typing import Any, Dict, List, Tuple
-import logging, random
 
 _logger = logging.getLogger(__name__)
 

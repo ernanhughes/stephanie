@@ -1,8 +1,9 @@
 # stephanie/models/selfplay_item.py
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, Text, BigInteger, Index, DateTime
+from sqlalchemy import BigInteger, Column, DateTime, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
+
 from stephanie.models.base import Base
 from stephanie.utils.date_utils import utcnow
 

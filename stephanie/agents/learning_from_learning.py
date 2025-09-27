@@ -1,34 +1,30 @@
 # stephanie/agents/learning_from_learning.py
 from __future__ import annotations
+
+import json
+import logging
 import os
 import random
 import time
-import json
-import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
-from stephanie.utils.json_sanitize import dumps_safe  # and/or sanitize
+
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.agents.knowledge.chat_analyze import ChatAnalyzeAgent
+from stephanie.agents.knowledge.chat_knowledge_builder import \
+    ChatKnowledgeBuilder
+from stephanie.agents.knowledge.conversation_filter import \
+    ConversationFilterAgent
 from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorer.knowledge_scorer import KnowledgeScorer
 from stephanie.tools.chat_corpus_tool import build_chat_corpus_tool
 from stephanie.utils.casebook_utils import generate_casebook_name
+from stephanie.utils.json_sanitize import dumps_safe  # and/or sanitize
+from stephanie.utils.paper_utils import (build_paper_goal_meta,
+                                         build_paper_goal_text)
 from stephanie.utils.progress import AgentProgress
-from stephanie.utils.paper_utils import (
-    build_paper_goal_meta,
-    build_paper_goal_text,
-)
-
-from stephanie.agents.knowledge.chat_analyze import ChatAnalyzeAgent
-from stephanie.agents.knowledge.conversation_filter import (
-    ConversationFilterAgent,
-)
-from stephanie.agents.knowledge.chat_knowledge_builder import (
-    ChatKnowledgeBuilder,
-)
-
-from stephanie.scoring.scorer.knowledge_scorer import KnowledgeScorer
 
 _logger = logging.getLogger(__name__)
 

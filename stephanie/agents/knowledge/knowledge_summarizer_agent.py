@@ -2,8 +2,10 @@
 import re
 import uuid
 from datetime import datetime
-from stephanie.models.plan_trace import ExecutionStep, PlanTrace
+
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.models.plan_trace import ExecutionStep, PlanTrace
+
 
 class KnowledgeSummarizerAgent(BaseAgent):
     """

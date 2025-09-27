@@ -4,12 +4,13 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import JSON as SA_JSON
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import relationship
-from sqlalchemy import Boolean, Float
+from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text)
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
+
 from stephanie.models.base import Base
-from stephanie.utils.date_utils import utcnow, iso_date
+from stephanie.utils.date_utils import iso_date, utcnow
 
 
 def _json_safe(val):

@@ -1,6 +1,7 @@
 # stephanie/dataloaders/knowledge_pair_miner.py
-from itertools import islice
 import random
+from itertools import islice
+
 
 def build_contrastive_pairs(cases, max_pairs_per_bucket=20000):
     """

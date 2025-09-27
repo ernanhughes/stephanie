@@ -115,6 +115,7 @@ if __name__ == "__main__":
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("transformers").setLevel(logging.WARNING)
     logging.getLogger("zeromodel").setLevel(logging.WARNING)
+    logging.getLogger("zeromodel.config").setLevel(logging.WARNING)
     logging.getLogger("hnswlib").setLevel(logging.WARNING)
 
     run()

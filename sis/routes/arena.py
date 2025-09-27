@@ -1,0 +1,187 @@
+# sis/routes/arena.py
+from __future__ import annotations
+from typing import Any, Dict, List, Optional
+import asyncio
+import json
+import sqlite3
+import time
+import contextlib
+
+from fastapi import APIRouter, Request, Query
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, PlainTextResponse
+
+try:
+    from nats.aio.client import Client as NATS
+except Exception:
+    NATS = None  # optional
+
+router = APIRouter(prefix="/arena", tags=["arena"])
+
+# ---------- DB (optional persistence) ----------
+def _db(request: Request) -> Optional[sqlite3.Connection]:
+    dbpath = getattr(request.app.state, "arena_db_path", None)
+    if not dbpath:
+        return None
+    conn = sqlite3.connect(dbpath, check_same_thread=False)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS arena_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT,
+            event TEXT,
+            payload TEXT,
+            t REAL
+        )
+    """)
+    return conn
+
+def db_insert_event(conn: sqlite3.Connection, run_id: str, event: str, payload: Dict[str, Any], t: float):
+    conn.execute("INSERT INTO arena_events (run_id,event,payload,t) VALUES (?,?,?,?)",
+                 (run_id, event, json.dumps(payload, ensure_ascii=False), t))
+    conn.commit()
+
+def db_recent(conn: sqlite3.Connection, run_id: Optional[str], limit: int = 200) -> List[Dict[str, Any]]:
+    q = "SELECT run_id, event, payload, t FROM arena_events "
+    args: List[Any] = []
+    if run_id:
+        q += "WHERE run_id = ? "
+        args.append(run_id)
+    q += "ORDER BY id DESC LIMIT ?"
+    args.append(limit)
+    rows = conn.execute(q, args).fetchall()
+    out: List[Dict[str, Any]] = []
+    for r in reversed(rows):
+        payload = {}
+        try:
+            payload = json.loads(r[2])
+        except Exception:
+            payload = {"raw": r[2]}
+        payload.setdefault("event", r[1])
+        payload.setdefault("run_id", r[0])
+        payload.setdefault("t", r[3])
+        out.append(payload)
+    return out
+
+# ---------- NATS helpers (live bridge) ----------
+class _NatsHub:
+    def __init__(self):
+        self.nc: Optional[NATS] = None
+        self.js = None
+
+    async def ensure(self, servers: List[str]) -> Optional[NATS]:
+        if NATS is None:
+            return None
+        if self.nc and not self.nc.is_closed:
+            return self.nc
+        self.nc = NATS()
+        await self.nc.connect(
+            servers=servers,
+            name="sis-arena-bridge",
+            allow_reconnect=True,
+            reconnect_time_wait=2.0,
+            max_reconnect_attempts=-1,
+            ping_interval=10,
+            max_outstanding_pings=5,
+        )
+        self.js = self.nc.jetstream()
+        return self.nc
+
+_nats = _NatsHub()
+
+def _nats_servers(request: Request) -> List[str]:
+    servers = getattr(request.app.state, "nats_servers", None)
+    return servers or ["nats://localhost:4222"]
+
+# ---------- Pages ----------
+@router.get("", response_class=HTMLResponse)
+def arena_page(request: Request):
+    """
+    /arena  → Live Arena viewer (run_id filter optional via ?run_id=abc)
+    """
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "/arena/live.html",
+        {"request": request}
+    )
+
+# ---------- API ----------
+@router.get("/api/recent")
+def api_recent(request: Request,
+               run_id: Optional[str] = Query(None),
+               limit: int = Query(200, ge=1, le=2000)):
+    """
+    Optional: Prefill UI with recent events (from SQLite) before SSE opens.
+    """
+    conn = _db(request)
+    if not conn:
+        return JSONResponse([])
+    try:
+        return JSONResponse(db_recent(conn, run_id, limit))
+    finally:
+        conn.close()
+
+@router.get("/stream")
+async def stream(request: Request, run_id: Optional[str] = Query(None)):
+    """
+    SSE that relays NATS 'events.arena.run.>' messages (optionally filtered by run_id).
+    If no NATS available, falls back to DB *polling* every 1s (if DB is configured).
+    """
+    # Prefer NATS → live fan-out
+    nc = None
+    try:
+        nc = await _nats.ensure(_nats_servers(request))
+    except Exception:
+        nc = None
+
+    if nc:
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def cb(msg):
+            try:
+                data = json.loads(msg.data.decode())
+            except Exception:
+                return
+            if run_id and data.get("run_id") != run_id:
+                return
+            await queue.put(data)
+
+        sub = await _nats.js.subscribe("events.arena.run.>", cb=cb)
+
+        async def event_gen():
+            try:
+                # send a comment to open the stream
+                yield ":\n\n"
+                while True:
+                    data = await queue.get()
+                    payload = json.dumps(data, ensure_ascii=False)
+                    yield f"data: {payload}\n\n"
+            except asyncio.CancelledError:
+                pass
+            finally:
+                with contextlib.suppress(Exception):
+                    await sub.drain()
+
+        return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+    # Fallback: DB polling as SSE (works without NATS)
+    conn = _db(request)
+    if not conn:
+        return PlainTextResponse("No NATS and no DB configured", status_code=503)
+
+    async def poll_gen():
+        try:
+            yield ":\n\n"
+            last_len = 0
+            while True:
+                items = db_recent(conn, run_id, limit=500)
+                if len(items) > last_len:
+                    # stream only the new tail
+                    for it in items[last_len:]:
+                        yield f"data: {json.dumps(it, ensure_ascii=False)}\n\n"
+                    last_len = len(items)
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            conn.close()
+
+    return StreamingResponse(poll_gen(), media_type="text/event-stream")

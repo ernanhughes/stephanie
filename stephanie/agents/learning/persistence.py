@@ -1,15 +1,18 @@
 # stephanie/agents/learning/persistence.py
 from __future__ import annotations
-from typing import Dict, Any, List
-import time
+
 import asyncio  # ← NEW
 import json
+import logging
+import time
+from typing import Any, Dict, List
+
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.utils.paper_utils import build_paper_goal_text, build_paper_goal_meta
-import logging
+from stephanie.utils.paper_utils import (build_paper_goal_meta,
+                                         build_paper_goal_text)
 
 _logger = logging.getLogger(__name__)
 

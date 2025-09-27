@@ -12,19 +12,19 @@ object for MemCube/CartridgeORM persistence.
 """
 from __future__ import annotations
 
-import math
 import json
+import math
 import time
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple
 
+from stephanie.models.casebook import CaseBookORM
 # ORM imports – adjust paths to your repo
 from stephanie.models.chat import ChatTurnORM
-from stephanie.models.casebook import CaseBookORM
-
 # import your embedding fn
 from stephanie.utils.embeddings import get_embedding
 

@@ -1,9 +1,9 @@
 # stephanie/tools/chat_corpus_tool.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
 import logging
 import re
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.scoring.scorable import ScorableType
 

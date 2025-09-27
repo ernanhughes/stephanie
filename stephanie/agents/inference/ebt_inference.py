@@ -16,8 +16,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.memcubes.memcube_factory import MemCubeFactory
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableFactory, ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.math_utils import (advantage_weighted_regression,
                                         expectile_loss)

@@ -1,4 +1,5 @@
 # stephanie/memory/memory_tool.py
+import asyncio
 from typing import Any, Optional
 
 import psycopg2
@@ -74,8 +75,15 @@ class MemoryTool:
         self._stores = {}  # name -> Store instance
 
         # Create a new session
-        self.session_maker = sessionmaker(bind=engine, expire_on_commit=False, autocommit=False, autoflush=False)
-        self.session = self.session_maker  # backward-compat: stores expect `memory.session`
+        self.session_maker = sessionmaker(
+            bind=engine,
+            expire_on_commit=False,
+            autocommit=False,
+            autoflush=False,
+        )
+        self.session = (
+            self.session_maker
+        )  # backward-compat: stores expect `memory.session`
 
         db_cfg = self.cfg.get("db", {})
         # Create connection
@@ -91,7 +99,9 @@ class MemoryTool:
 
         # Setup knowledge bus needed before embeddings bvecause of ner
         self.bus = self._setup_knowledge_bus()
-
+        self._bus_started = False   # track state
+        loop = asyncio.get_event_loop()
+        self._starter = loop.create_task(self.bus.connect())
 
         embedding_cfg = self.cfg.get("embeddings", {})
         # Register stores
@@ -99,7 +109,9 @@ class MemoryTool:
         self.register_store(mxbai)
         hnet = HNetEmbeddingStore(embedding_cfg, memory=self, logger=logger)
         self.register_store(hnet)
-        hf = HuggingFaceEmbeddingStore(embedding_cfg, memory=self, logger=logger)
+        hf = HuggingFaceEmbeddingStore(
+            embedding_cfg, memory=self, logger=logger
+        )
         self.register_store(hf)
 
         # Choose embedding backend based on config
@@ -131,11 +143,13 @@ class MemoryTool:
             },
         )
 
-        self._meta: dict = {} 
+        self._meta: dict = {}
 
         # Register stores
-        self.register_store(GoalStore(self.session_maker, logger)) 
-        self.register_store(HypothesisStore(self.session_maker, logger, self.embedding))
+        self.register_store(GoalStore(self.session_maker, logger))
+        self.register_store(
+            HypothesisStore(self.session_maker, logger, self.embedding)
+        )
         self.register_store(PromptStore(self.session_maker, logger))
         self.register_store(EvaluationStore(self.session_maker, logger))
         self.register_store(PipelineRunStore(self.session_maker, logger))
@@ -156,7 +170,9 @@ class MemoryTool:
         self.register_store(DocumentStore(self.session_maker, logger))
         self.register_store(ScorableDomainStore(self.session_maker, logger))
         self.register_store(DocumentSectionStore(self.session_maker, logger))
-        self.register_store(DocumentSectionDomainStore(self.session_maker, logger))
+        self.register_store(
+            DocumentSectionDomainStore(self.session_maker, logger)
+        )
         self.register_store(CartridgeDomainStore(self.session_maker, logger))
         self.register_store(CartridgeStore(self.session_maker, logger))
         self.register_store(CartridgeTripleStore(self.session_maker, logger))
@@ -165,11 +181,15 @@ class MemoryTool:
         self.register_store(GoalDimensionsStore(self.session_maker, logger))
         self.register_store(PipelineStageStore(self.session_maker, logger))
         self.register_store(ScoringStore(self.session_maker, logger))
-        self.register_store(EvaluationAttributeStore(self.session_maker, logger))
+        self.register_store(
+            EvaluationAttributeStore(self.session_maker, logger)
+        )
         self.register_store(ExecutionStepStore(self.session_maker, logger))
         self.register_store(PlanTraceStore(self.session_maker, logger))
         self.register_store(PipelineReferenceStore(self.session_maker, logger))
-        self.register_store(ScorableEmbeddingStore(self.session_maker, logger, self.embedding))
+        self.register_store(
+            ScorableEmbeddingStore(self.session_maker, logger, self.embedding)
+        )
         self.register_store(ReportStore(self.session_maker, logger))
         self.register_store(TheoremStore(self.session_maker, logger))
         self.register_store(ScorableRankStore(self.session_maker, logger))
@@ -186,7 +206,6 @@ class MemoryTool:
         self.register_store(ModelsStore(self.session_maker, logger))
         self.register_store(SelfPlayStore(self.session_maker, logger))
 
-
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):
@@ -195,7 +214,9 @@ class MemoryTool:
     def register_store(self, store):
         store_name = getattr(store, "name", store.__class__.__name__)
         if store_name in self._stores:
-            raise ValueError(f"A store named '{store_name}' is already registered.")
+            raise ValueError(
+                f"A store named '{store_name}' is already registered."
+            )
         self._stores[store_name] = store
 
         if self.logger:
@@ -215,7 +236,17 @@ class MemoryTool:
         return self._meta
 
     def _setup_knowledge_bus(self) -> KnowledgeBus:
-        bus = HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)
+        # Always pass nested {"bus": {...}} to make Hybrid bus happier
+        bus_cfg = {"bus": self.cfg.get("bus", {"backend": "nats"})}
+        bus = HybridKnowledgeBus(bus_cfg, self.logger)
         self.logger.log("KnowledgeBusInitialized", {"type": bus.get_backend()})
         return bus
-    
+
+    async def ensure_bus_connected(self) -> None:
+        """Idempotent: connect bus if not already connected."""
+        if self._bus_started:
+            return
+        ok = await self.bus.connect()
+        self._bus_started = bool(ok)
+        if not ok:
+            self.logger.log("KnowledgeBusConnectFailed", {})

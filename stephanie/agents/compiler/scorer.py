@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.compiler.reasoning_trace import ReasoningNode
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 
 
 class ReasoningNodeScorer(BaseAgent):

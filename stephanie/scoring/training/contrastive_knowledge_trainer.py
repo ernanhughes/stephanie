@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset
 
+
 class KnowledgePairDataset(Dataset):
     """
     Builds pairs of (turn_a, turn_b) where turn_a is more 'knowledgeable' than turn_b.

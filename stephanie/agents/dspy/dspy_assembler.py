@@ -8,8 +8,7 @@ from dspy import (BootstrapFewShot, ChainOfThought, Example, InputField,
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.memory_aware_mixin import MemoryAwareMixin
 from stephanie.constants import GOAL
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer
 
 

@@ -19,6 +19,7 @@ from stephanie.reporting import ReportFormatter
 from stephanie.services.cbr_service import CBRService
 from stephanie.services.chat_corpus_service import ChatCorpusService
 from stephanie.services.cycle_watcher_service import CycleWatcherService
+from stephanie.services.event_service import EventService
 from stephanie.services.knowledge_base_service import KnowledgeBaseService
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.services.llm_service import LLMService
@@ -201,8 +202,8 @@ class Supervisor:
         )
 
         self.container.register(
-            "chat_corpus",
-            lambda: ChatCorpusService(cfg=cfg, memory=memory, logger=logger, container=self.container),
+            "event_service",
+            lambda: EventService(cfg=cfg, memory=memory, logger=logger),
         )
 
     def _create_reward_model(self, cfg, memory, logger):
@@ -269,6 +270,8 @@ class Supervisor:
 
     async def run_pipeline_config(self, input_data: dict) -> dict:
         self.logger.log("PipelineStart", input_data)
+        await self.memory.ensure_bus_connected()
+
         
         goal_dict = self.get_goal(input_data)
         run_id = str(uuid4())

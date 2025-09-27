@@ -1,18 +1,20 @@
 # stephanie/scoring/training/knowledge_trainer.py
 from __future__ import annotations
 
-from datetime import datetime
+import logging
 import math
+from datetime import datetime
+
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset, random_split
+
+from stephanie.scoring.calibration import ScoreCalibrator
+from stephanie.scoring.model.knowledge import KnowledgeModel
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
-from stephanie.scoring.model.knowledge import KnowledgeModel
-from stephanie.scoring.calibration import ScoreCalibrator
-import numpy as np
-import logging
 
 logger = logging.getLogger(__name__)
 

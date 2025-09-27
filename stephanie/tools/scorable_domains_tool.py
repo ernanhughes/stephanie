@@ -1,9 +1,9 @@
 # stephanie/tools/turn_domains_tool.py
 from __future__ import annotations
 
+import logging
 from typing import Callable, Dict, List, Optional, Tuple
 
-import logging
 _logger = logging.getLogger(__name__)
 
 def classify_text_domains(

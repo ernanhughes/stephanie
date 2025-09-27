@@ -6,13 +6,14 @@ This module provides a class for calibrating AI-generated scores (0-100) to matc
 human-equivalent scores (0-1), addressing the common problem of AI over-optimism.
 """
 
-import os
 import json
 import logging
+import os
+from datetime import datetime
+from typing import Dict, List, Tuple, Union
+
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
-from datetime import datetime
-from typing import List, Dict, Tuple, Union
 
 logger = logging.getLogger(__name__)
 

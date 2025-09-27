@@ -1,9 +1,11 @@
 # stephanie/memory/knowledge_pair_store.py
-from typing import List, Dict, Any, Optional
 import hashlib
 import json
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 from stephanie.models.knowledge_pair import KnowledgePairORM
+
 
 class KnowledgePairStore:
     """Manages persistent storage and retrieval of knowledge pairs"""

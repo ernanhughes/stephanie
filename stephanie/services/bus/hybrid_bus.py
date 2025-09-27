@@ -28,6 +28,7 @@ from .inprocess_bus import InProcessKnowledgeBus
 from .nats_bus import \
     NatsKnowledgeBus  # <-- OK now; nats_bus no longer imports hybrid_bus
 
+_logger = logging.getLogger(__name__)
 
 class HybridKnowledgeBus(BusProtocol):
     """
@@ -70,10 +71,16 @@ class HybridKnowledgeBus(BusProtocol):
         Returns:
             bool: True if connection to any backend was successful
         """
-        bus_config = self.cfg.get("bus", {})
+        # Accept both {"bus": {...}} and {...}
+        bus_config = self.cfg.get("bus", None)
+        if bus_config is None and isinstance(self.cfg, dict) and "backend" in self.cfg:
+            bus_config = self.cfg  # flat shape accepted
+        if bus_config is None:
+            bus_config = {}        # final fallback
+
         preferred_backend = bus_config.get("backend")
 
-        # 1) NATS first (unless explicitly disabled)
+        # NATS first...
         if preferred_backend in (None, "nats"):
             try:
                 nats_bus = NatsKnowledgeBus(
@@ -85,26 +92,26 @@ class HybridKnowledgeBus(BusProtocol):
                     self._bus = nats_bus
                     self._backend = "nats"
                     self._idem_store = nats_bus.idempotency_store
-                    self.logger.info("Connected to NATS JetStream bus")
+                    _logger.info("Connected to NATS JetStream bus")
                     return True
             except Exception as e:
-                self.logger.warning(f"NATS connection failed: {e}")
+                _logger.warning(f"NATS connection failed: {e}")
 
-        # 2) (Optional) Redis would go here
+        # (optionally) Redis here...
 
-        # 3. Fall back to in-process (for development)
+        # In-process fallback
         try:
             inproc = InProcessKnowledgeBus(logger=self.logger)
             if await inproc.connect():
                 self._bus = inproc
                 self._backend = "inprocess"
                 self._idem_store = inproc.idempotency_store
-                self.logger.info("Connected to in-process event bus (dev mode)")
+                _logger.info("Connected to in-process event bus (dev mode)")
                 return True
         except Exception as e:
-            self.logger.error(f"In-process bus failed: {e}")
+            _logger.error(f"In-process bus failed: {e}")
 
-        self.logger.error("No bus backend available")
+        _logger.error("No bus backend available")
         return False
 
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
@@ -114,7 +121,7 @@ class HybridKnowledgeBus(BusProtocol):
         try:
             await self._bus.publish(subject, payload)
         except Exception as e:
-            self.logger.error(f"Failed to publish to {subject}: {e}")
+            _logger.error(f"Failed to publish to {subject}: {e}")
             raise BusPublishError(f"Failed to publish to {subject}") from e
 
     async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], None]) -> None:
@@ -124,7 +131,7 @@ class HybridKnowledgeBus(BusProtocol):
         try:
             await self._bus.subscribe(subject, handler)
         except Exception as e:
-            self.logger.error(f"Failed to subscribe to {subject}: {e}")
+            _logger.error(f"Failed to subscribe to {subject}: {e}")
             raise BusSubscribeError(f"Failed to subscribe to {subject}") from e
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
@@ -134,7 +141,7 @@ class HybridKnowledgeBus(BusProtocol):
         try:
             return await self._bus.request(subject, payload, timeout)
         except Exception as e:
-            self.logger.error(f"Request failed for {subject}: {e}")
+            _logger.error(f"Request failed for {subject}: {e}")
             raise BusRequestError(f"Request failed for {subject}") from e
 
     async def close(self) -> None:
@@ -142,9 +149,9 @@ class HybridKnowledgeBus(BusProtocol):
         if self._bus:
             try:
                 await self._bus.close()
-                self.logger.info("Bus connection closed")
+                _logger.info("Bus connection closed")
             except Exception as e:
-                self.logger.error(f"Error during bus shutdown: {e}")
+                _logger.error(f"Error during bus shutdown: {e}")
 
     def get_backend(self) -> str:
         return self._backend or "none"

@@ -1,15 +1,15 @@
 # stephanie/agents/scorable_loader.py
 from __future__ import annotations
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import GOAL, PIPELINE_RUN_ID
-from stephanie.scoring.scorable import ScorableType, ScorableFactory
+
 # stephanie/scoring/types.py
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
-from datetime import datetime
 
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.constants import GOAL, PIPELINE_RUN_ID
+from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.services.scoring_service import ScoringService
 
 
