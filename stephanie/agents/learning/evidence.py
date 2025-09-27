@@ -21,7 +21,7 @@ class Evidence:
         """
         try:
             reporter = self.container.get("reporting")
-            coro = reporter.emit(ctx={}, stage="learning",  **payload)
+            coro = reporter.emit(context={}, stage="learning",  **payload)
             try:
                 loop = asyncio.get_running_loop()
                 loop.create_task(coro)

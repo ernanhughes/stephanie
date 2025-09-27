@@ -129,7 +129,7 @@ class ReportingService(Service):
     async def emit(
         self,
         *,
-        ctx: Dict[str,Any],
+        context: Dict[str,Any],
         stage: str,
         status: Optional[str] = None,
         summary: Optional[str] = None,
@@ -146,20 +146,20 @@ class ReportingService(Service):
         if not self.enabled:
             return
 
-        g = ctx.get("goal") or {}
+        g = context.get("goal") or {}
         event = {
             "ts": time.time(),
-            "run_id": ctx.get("run_id") or g.get("run_id") or ctx.get("pipeline_run_id") or str(uuid.uuid4()),
-            "plan_trace_id": ctx.get("plan_trace_id"),
+            "run_id": context.get("run_id") or g.get("run_id") or context.get("pipeline_run_id") or str(uuid.uuid4()),
+            "plan_trace_id": context.get("plan_trace_id"),
             "goal_id": g.get("id"),
-            "agent": ctx.get("agent_name") or ctx.get("AGENT_NAME") or "UnknownAgent",
+            "agent": context.get("agent_name") or context.get("AGENT_NAME") or "UnknownAgent",
             "stage": stage,
             **_safe(payload),
         }
 
         # Append to context report
         try:
-            self._append_ctx_report(ctx, event, status=status, summary=summary, finalize=finalize)
+            self._append_ctx_report(context, event, status=status, summary=summary, finalize=finalize)
         except Exception:
             pass
 

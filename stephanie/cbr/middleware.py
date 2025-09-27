@@ -79,7 +79,7 @@ class CBRMiddleware:
         output_key: str,
     ) -> Dict[str, Any]:
         await self.reporter.emit(
-            ctx=context,
+            context=context,
             stage="start",
             note="CBR entry",
             tag=self.tag,
@@ -133,7 +133,7 @@ class CBRMiddleware:
                 self._variant_output_redirect(context, variant, output_key),
             ):
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage=stage_name,
                     status="running",
                     summary=f"Variant {variant} begin",
@@ -144,7 +144,7 @@ class CBRMiddleware:
                 result = await base_agent_run(context)
                 produced = result.get(output_key, []) or []
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage=stage_name,
                     event="agent_output",
                     produced=len(produced),
@@ -154,7 +154,7 @@ class CBRMiddleware:
                 # Ensure IDs
                 produced = self._ensure_ids(produced)
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage="agent_output",
                     variant=variant,
                     produced=len(produced),
@@ -182,7 +182,7 @@ class CBRMiddleware:
                     )
 
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage=stage_name,
                     event="rank_done",
                     n_ranked=len(ranked),
@@ -207,7 +207,7 @@ class CBRMiddleware:
                                 mars.get(rid, {}) or {}
                             ).get("agreement_score")
                         await self.reporter.emit(
-                            ctx=context,
+                            context=context,
                             stage="rerank_after_adapt",
                             variant=variant,
                             n_ranked=len(ranked),
@@ -220,7 +220,7 @@ class CBRMiddleware:
                     else None
                 )
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage=stage_name,
                     event="retain",
                     retained=bool(retained_case_id),
@@ -229,19 +229,19 @@ class CBRMiddleware:
                 if train_enabled:
                     self.micro.learn(context, ranked, mars)
                     await self.reporter.emit(
-                        ctx=context, stage="micro_learn", variant=variant
+                        context=context, stage="micro_learn", variant=variant
                     )
 
                 # 6) quality
                 q = self.assessor.quality(mars, scores)
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage=stage_name,
                     event="quality",
                     quality=float(q),
                 )
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage=stage_name,
                     status="done",
                     summary=f"quality={q:.3f}, retained={bool(retained_case_id)}",
@@ -295,7 +295,7 @@ class CBRMiddleware:
                 self.ns.variant_output_key(winner), []
             )
             await self.reporter.emit(
-                ctx=context,
+                context=context,
                 stage="CBR",
                 event="ab_decision",
                 q_base=float(q_base),
@@ -312,7 +312,7 @@ class CBRMiddleware:
             self.ns.variant_output_key("cbr"), []
         )
         await self.reporter.emit(
-            ctx=context,
+            context=context,
             stage="CBR",
             status="done",
             summary="CBR middleware finished",

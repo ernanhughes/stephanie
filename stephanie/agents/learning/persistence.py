@@ -32,7 +32,7 @@ class Persistence:
         """
         try:
             reporter = self.container.get("reporting")
-            coro = reporter.emit(ctx=context, stage="learning", **payload)
+            coro = reporter.emit(context=context, **payload)
             try:
                 loop = asyncio.get_running_loop()
                 loop.create_task(coro)
@@ -470,7 +470,7 @@ class Persistence:
                     "pipeline_run_id": pipeline_run_id,
                 },
             }
-            self._emit_report(ctx=context, **winner_payload)
+            self._emit_report(context=context, **winner_payload)
 
             # Optional: a second, dashboard-friendly summary event
             summary_payload = {
@@ -496,7 +496,7 @@ class Persistence:
                     "section_name": section.get("section_name"),
                 },
             }
-            self._emit_report(ctx=context, **summary_payload)
+            self._emit_report(context=context, **summary_payload)
 
             
         except Exception as e:

@@ -9,7 +9,7 @@ import random
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.learning.attribution import AttributionTracker
 from stephanie.agents.learning.strategy_manager import StrategyManager
-from stephanie.agents.learning.corpus_service import CorpusService
+from stephanie.agents.learning.corpus_retriever import CorpusRetriever
 from stephanie.agents.learning.summarizer import Summarizer
 from stephanie.agents.learning.arena import ArenaService
 from stephanie.agents.learning.persistence import Persistence
@@ -30,7 +30,7 @@ class LearningFromLearningAgent(BaseAgent):
 
         # Services
         self.strategy = StrategyManager(cfg, memory, container, logger)
-        self.corpus = CorpusService(cfg, memory, container, logger)
+        self.corpus = CorpusRetriever(cfg, memory, container, logger)
         self.scoring = Scoring(cfg, memory, container, logger)
         self.summarizer = Summarizer(
             cfg, memory, container, logger,

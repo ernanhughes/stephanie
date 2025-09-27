@@ -4,6 +4,8 @@ from typing import Dict, Any, List
 import json
 import time
 
+from stephanie.utils.json_sanitize import dumps_safe
+
 class Summarizer:
     def __init__(self, cfg, memory, container, logger, strategy, scoring=None, prompt_loader=None, call_llm=None):
         self.cfg, self.memory, self.container, self.logger = cfg, memory, container, logger
@@ -69,7 +71,7 @@ class Summarizer:
                 payload = {"claims": matches, "threshold": th, "timestamp": time.time()}
                 self.memory.casebooks.add_scorable(
                     case_id=case_id, role="improve_attribution",
-                    text=json.dumps(payload, ensure_ascii=False),
+                    text=dumps_safe(payload),
                     pipeline_run_id=context.get("pipeline_run_id"),
                     meta={"iteration": context.get("iteration")}
                 )

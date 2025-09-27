@@ -22,7 +22,7 @@ class CaseBookPreparationAgent(BaseAgent):
 
         try:
             await self.reporter.emit(
-                ctx=context,
+                context=context,
                 stage=pipeline_stage,
                 event="start",
                 summary="Preparing CaseBooks for training",
@@ -45,7 +45,7 @@ class CaseBookPreparationAgent(BaseAgent):
                 self.logger.log("CaseBookNotFound", {"stage": pipeline_stage, "error": msg})
                 if self.reporter:
                     await self.reporter.emit(
-                        ctx=context,
+                        context=context,
                         stage=pipeline_stage,
                         event="error",
                         error=msg,
@@ -74,7 +74,7 @@ class CaseBookPreparationAgent(BaseAgent):
             )
             if self.reporter:
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage=pipeline_stage,
                     event="done",
                     num_items=len(dataset),
@@ -90,7 +90,7 @@ class CaseBookPreparationAgent(BaseAgent):
             )
             if self.reporter:
                 await self.reporter.emit(
-                    ctx=context,
+                    context=context,
                     stage=pipeline_stage,
                     event="error",
                     error=str(e),

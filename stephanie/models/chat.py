@@ -18,6 +18,7 @@ class ChatConversationORM(Base):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now)
     meta = Column(JSON, default={})
+    tags = Column(JSON, default=list) 
 
     messages = relationship(
         "ChatMessageORM",
