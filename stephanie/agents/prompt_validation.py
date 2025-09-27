@@ -1,4 +1,6 @@
 # stephanie/agents/prompt_validation.py
+from __future__ import annotations
+
 from collections import defaultdict
 
 from stephanie.agents.base_agent import BaseAgent

@@ -345,11 +345,10 @@ class PaperSectionProcessorAgent(BaseAgent):
         })
         
         # Log to KnowledgeBus for tracking
-        if hasattr(self.memory, "bus") and self.memory.bus:
-            self.memory.bus.publish("section.processed", {
-                "case_id": case.id,
-                "doc_id": doc_id,
-                "section_name": section_name,
-                "summary_length": len(summary_text),
-                "metrics": section_summary.get("metrics", {})
-            })
+        self.memory.bus.publish("section.processed", {
+            "case_id": case.id,
+            "doc_id": doc_id,
+            "section_name": section_name,
+            "summary_length": len(summary_text),
+            "metrics": section_summary.get("metrics", {})
+        })

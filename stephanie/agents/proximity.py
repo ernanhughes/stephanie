@@ -1,4 +1,6 @@
 # stephanie/agents/proximity.py
+from __future__ import annotations
+
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent

@@ -1,4 +1,5 @@
 # stephanie/agents/meta_review.py
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import (DATABASE_MATCHES, EVOLVED, HYPOTHESES,

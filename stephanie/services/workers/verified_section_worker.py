@@ -4,11 +4,11 @@ VerifiedSectionWorker
 ---------------------
 Processes verification jobs from the queue and runs the VerifiedSectionGenerator.
 """
+from __future__ import annotations
 
 import json
 import logging
 import traceback
-from typing import Any, Dict
 
 from stephanie.agents.knowledge.verified_section_generator import \
     VerifiedSectionGeneratorAgent

@@ -1,5 +1,6 @@
 # sis/routes/arena.py
 from __future__ import annotations
+from operator import sub
 from typing import Any, Dict, List, Optional
 import asyncio
 import json
@@ -14,6 +15,18 @@ try:
     from nats.aio.client import Client as NATS
 except Exception:
     NATS = None  # optional
+
+# add near top of sis/routes/arena.py (if you haven’t already)
+import asyncio
+try:
+    from anyio import get_cancelled_exc_class
+    _Cancelled = get_cancelled_exc_class()  # AnyIO's cancel exception (BaseException)
+except Exception:
+    _Cancelled = asyncio.CancelledError
+
+def _bus_stream(request: Request) -> str:
+    return getattr(request.app.state, "bus_stream", "stephanie")  # default matches your bus
+
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
@@ -120,16 +133,35 @@ def api_recent(request: Request,
         conn.close()
 
 @router.get("/stream")
-async def stream(request: Request, run_id: Optional[str] = Query(None)):
+async def stream(
+    request: Request,
+    run_id: Optional[str] = Query(None),
+    debug: int = Query(0),
+):
     """
-    SSE that relays NATS 'events.arena.run.>' messages (optionally filtered by run_id).
-    If no NATS available, falls back to DB *polling* every 1s (if DB is configured).
+    SSE: relays NATS 'events.arena.run.>' (optional run_id filter).
+    Fallbacks:
+      - DB polling if NATS unavailable or subscribe fails
+      - heartbeat only if neither NATS nor DB is available
     """
-    # Prefer NATS → live fan-out
+
+    def _sse(gen):
+        return StreamingResponse(
+            gen,
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
+
+    # ---- Try NATS first
     nc = None
     try:
         nc = await _nats.ensure(_nats_servers(request))
-    except Exception:
+    except Exception as e:
+        if debug:
+            print("[/arena/stream] NATS connect failed:", repr(e))
         nc = None
 
     if nc:
@@ -137,51 +169,114 @@ async def stream(request: Request, run_id: Optional[str] = Query(None)):
 
         async def cb(msg):
             try:
-                data = json.loads(msg.data.decode())
+                raw = json.loads(msg.data.decode())
             except Exception:
                 return
-            if run_id and data.get("run_id") != run_id:
+
+            # Unwrap NATS bus envelope if present
+            body = raw.get("payload") if isinstance(raw, dict) and "payload" in raw else raw
+            print(body)
+            if not isinstance(body, dict):
                 return
-            await queue.put(data)
 
-        sub = await _nats.js.subscribe("events.arena.run.>", cb=cb)
+            # Normalized run_id for optional filter
+            rid = body.get("run_id") or body.get("arena_run_id") or body.get("runId")
+            if run_id and rid != run_id:
+                return
 
-        async def event_gen():
+            await queue.put(body)
+            print("[/arena/stream] enqueued", body.get("event"), "rid:", rid)
+
+        subs = []
+        subjects = [
+            "events.arena.run.>",
+            "stephanie.events.arena.run.>",
+            f"{_bus_stream(request)}.events.arena.run.>",  # prefixed (e.g., stephanie.events...)
+        ]
+        for subj in subjects:
             try:
-                # send a comment to open the stream
+                s = await _nats.nc.subscribe(subj, cb=cb)
+                subs.append(s)
+                print("[/arena/stream] core subscribe:", subj)
+            except Exception as e:
+                print("[/arena/stream] core subscribe failed", subj, repr(e))
+
+        if subs:
+            async def nats_gen():
                 yield ":\n\n"
+                if debug:
+                    yield 'data: {"event":"_debug","msg":"NATS connected"}\n\n'
+                try:
+                    while True:
+                        try:
+                            data = await asyncio.wait_for(queue.get(), timeout=5.0)
+                            yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                        except (asyncio.TimeoutError, TimeoutError):
+                            try:
+                                if await request.is_disconnected():
+                                    break
+                            except Exception:
+                                pass
+                            yield ":\n\n"  # heartbeat during idle
+                            continue
+                except _Cancelled:
+                    # client disconnected — normal
+                    pass
+                finally:
+                    for s in subs:
+                        with contextlib.suppress(Exception):
+                            await s.unsubscribe()
+            return _sse(nats_gen())
+        # If we got here, NATS is up but subscribe failed — fall through to DB
+
+    # ---- DB polling fallback
+    conn = _db(request)
+    if conn:
+        async def db_gen():
+            yield ":\n\n"
+            if debug:
+                yield 'data: {"event":"_debug","msg":"DB polling"}\n\n'
+            last_len = 0
+            try:
                 while True:
-                    data = await queue.get()
-                    payload = json.dumps(data, ensure_ascii=False)
-                    yield f"data: {payload}\n\n"
-            except asyncio.CancelledError:
+                    try:
+                        if await request.is_disconnected():
+                            break
+                    except Exception:
+                        pass
+                    items = db_recent(conn, run_id, limit=500)
+                    if len(items) > last_len:
+                        for it in items[last_len:]:
+                            yield f"data: {json.dumps(it, ensure_ascii=False)}\n\n"
+                        last_len = len(items)
+                    else:
+                        yield ":\n\n"  # heartbeat
+                    await asyncio.sleep(1.0)
+            except _Cancelled:
                 pass
             finally:
-                with contextlib.suppress(Exception):
-                    await sub.drain()
+                conn.close()
+        return _sse(db_gen())
 
-        return StreamingResponse(event_gen(), media_type="text/event-stream")
-
-    # Fallback: DB polling as SSE (works without NATS)
-    conn = _db(request)
-    if not conn:
-        return PlainTextResponse("No NATS and no DB configured", status_code=503)
-
-    async def poll_gen():
+    # ---- Last resort: heartbeat so curl/UI shows *something*
+    async def hb_gen():
+        yield ":\n\n"
+        if debug:
+            yield 'data: {"event":"_debug","msg":"heartbeat only (no NATS/DB)"}\n\n'
+        i = 0
         try:
-            yield ":\n\n"
-            last_len = 0
             while True:
-                items = db_recent(conn, run_id, limit=500)
-                if len(items) > last_len:
-                    # stream only the new tail
-                    for it in items[last_len:]:
-                        yield f"data: {json.dumps(it, ensure_ascii=False)}\n\n"
-                    last_len = len(items)
-                await asyncio.sleep(1.0)
-        except asyncio.CancelledError:
+                try:
+                    if await request.is_disconnected():
+                        break
+                except Exception:
+                    pass
+                i += 1
+                yield f'data: {json.dumps({"event":"_hb","i":i,"t":time.time()})}\n\n'
+                try:
+                    await asyncio.sleep(1.0)
+                except _Cancelled:
+                    break
+        except _Cancelled:
             pass
-        finally:
-            conn.close()
-
-    return StreamingResponse(poll_gen(), media_type="text/event-stream")
+    return _sse(hb_gen())

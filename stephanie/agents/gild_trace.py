@@ -1,5 +1,5 @@
-# Assume this code is in a file like:
-# stephanie/agents/gild/gild_trainer_with_trace.py (or similar path)
+# stephanie/agents/gild_trace.py
+from __future__ import annotations
 
 import time
 import traceback

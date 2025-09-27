@@ -1,4 +1,5 @@
 # stephanie/agents/compiler_optimizer.py
+from __future__ import annotations
 import statistics
 from collections import defaultdict
 

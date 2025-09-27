@@ -1,4 +1,6 @@
 # stephanie/agents/cot_generator.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.rubric_classifier import RubricClassifierMixin
 from stephanie.constants import GOAL

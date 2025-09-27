@@ -1,4 +1,6 @@
 # stephanie/agents/idea_sharpening.py
+from __future__ import annotations
+
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, HYPOTHESES, PIPELINE

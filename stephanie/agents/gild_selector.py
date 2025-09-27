@@ -1,5 +1,6 @@
 
-# stephanie/agents/selection/gild_selector.py
+# stephanie/agents/gild_selector.py
+from __future__ import annotations
 
 import logging
 from collections import defaultdict

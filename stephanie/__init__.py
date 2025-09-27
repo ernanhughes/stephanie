@@ -1,4 +1,6 @@
 # stephanie/__init__.py
+from __future__ import annotations
+
 """
 Stephanie — a Self-Tuning Epistemic Platform for Heuristics, Analysis, Navigation,
 and Intelligent Evolution.

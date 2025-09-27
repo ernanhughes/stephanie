@@ -1,4 +1,6 @@
 # stephanie/agents/knowledge/plan_trace_scorer.py
+from __future__ import annotations
+
 import time
 from statistics import mean
 from typing import Any, Dict, List, Optional

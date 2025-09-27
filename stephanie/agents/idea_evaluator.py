@@ -1,4 +1,6 @@
 # stephanie/agents/idea_evaluator.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 from stephanie.evaluator.llm_judge_evaluator import LLMJudgeEvaluator

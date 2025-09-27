@@ -1,4 +1,5 @@
 # stephanie/agents/policy_synthesis.py
+from __future__ import annotations
 
 import os
 from collections import defaultdict

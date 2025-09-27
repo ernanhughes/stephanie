@@ -1,3 +1,6 @@
+# stephanie/trajectory/composer.py
+from __future__ import annotations
+
 def _render_span(span_turns):
     lines = []
     for t in span_turns:

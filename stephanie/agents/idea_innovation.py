@@ -1,8 +1,8 @@
 # stephanie/agents/idea_innovation.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.memory import IdeaStore
-from stephanie.models.idea import IdeaORM
 
 
 class IdeaInnovationAgent(BaseAgent):

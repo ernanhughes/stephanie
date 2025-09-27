@@ -1,4 +1,5 @@
 # stephanie/agents/pipeline_preference_trainer.py
+from __future__ import annotations
 
 import joblib
 import numpy as np

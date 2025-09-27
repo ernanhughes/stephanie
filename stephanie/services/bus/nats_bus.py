@@ -262,7 +262,7 @@ class NatsKnowledgeBus(BusProtocol):
 
         data = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         full_subject = f"{self.stream}.{subject}"
-
+        _logger.info("BUS → %s : %s", full_subject, data[:200])
         async with self._sem:
             last_exc = None
             for attempt in range(self.max_retries + 1):
@@ -271,12 +271,13 @@ class NatsKnowledgeBus(BusProtocol):
                     await asyncio.wait_for(coro, timeout=self.timeout)
                     self._last_publish_time = time.time()
                     self._publish_failures = 0
-                    _logger.debug(
+                    _logger.info(
                         "Published %s (id=%s) in %.3fs",
                         subject, envelope["event_id"], time.time() - start
                     )
                     return
                 except (asyncio.TimeoutError, TimeoutError) as e:
+                    _logger.exception("Error publishing to %s: %s", subject, e)
                     last_exc = e
                     if attempt < self.max_retries:
                         await asyncio.sleep(self._backoff(attempt))
@@ -285,6 +286,7 @@ class NatsKnowledgeBus(BusProtocol):
                     self._write_dlq("publish_timeout", subject, envelope)
                     raise BusPublishError(f"Publish timeout for {subject}") from e
                 except Exception as e:
+                    _logger.exception("Error publishing to %s: %s", subject, e)
                     last_exc = e
                     if attempt < self.max_retries:
                         await asyncio.sleep(self._backoff(attempt))
@@ -497,19 +499,34 @@ class NatsKnowledgeBus(BusProtocol):
             return
 
         async def _loop():
-            while True:
-                try:
-                    if not self._connected or not self._nc:
-                        await asyncio.sleep(3.0)
-                        continue
-                    await asyncio.wait_for(self._nc.flush(), timeout=1.0)
-                    await asyncio.sleep(10.0 if self.debug else 20.0)
-                except asyncio.CancelledError:
-                    break
-                except Exception:
-                    # force reconnect next op
-                    self._connected = False
-                    await asyncio.sleep(2.0)
+            try:
+                while True:
+                    try:
+                        # not connected – give connect() a chance on next op
+                        if not self._connected or not self._nc or self._nc.is_closed:
+                            await asyncio.sleep(3.0)
+                            continue
+
+                        # Use NATS' own timeout; do NOT wrap with wait_for
+                        await self._nc.flush(timeout=1.0)
+                        await asyncio.sleep(10.0 if self.debug else 20.0)
+
+                    except (NatsTimeoutError, asyncio.TimeoutError):
+                        # soft mark as unhealthy; next op will reconnect
+                        self._connected = False
+                        await asyncio.sleep(2.0)
+
+                    except asyncio.CancelledError:
+                        # graceful task shutdown
+                        break
+
+                    except Exception:
+                        # any other error → mark unhealthy and back off a bit
+                        self._connected = False
+                        await asyncio.sleep(2.0)
+            finally:
+                # optional: any cleanup here
+                pass
 
         self._keepalive_task = asyncio.create_task(_loop())
         _logger.debug("Keepalive started")
@@ -519,19 +536,30 @@ class NatsKnowledgeBus(BusProtocol):
             return
 
         async def _health():
-            while True:
-                try:
-                    await asyncio.sleep(self.health_check_interval)
-                    if not self._connected:
-                        await self.connect()
-                        continue
-                    # Ping only; do NOT auto-publish heartbeats here (avoid recursion)
-                    await asyncio.wait_for(self._nc.flush(), timeout=1.0)
-                except asyncio.CancelledError:
-                    break
-                except Exception:
-                    # mark unhealthy; next op will reconnect
-                    self._connected = False
+            try:
+                while True:
+                    try:
+                        await asyncio.sleep(self.health_check_interval)
+
+                        if not self._connected or not self._nc or self._nc.is_closed:
+                            # Let normal ops trigger reconnect; don't spam here
+                            continue
+
+                        # Ping only; do NOT wrap with wait_for
+                        await self._nc.flush(timeout=1.0)
+
+                    except (NatsTimeoutError, asyncio.TimeoutError):
+                        # mark unhealthy; next bus op will reconnect
+                        self._connected = False
+
+                    except asyncio.CancelledError:
+                        break
+
+                    except Exception:
+                        # conservative: mark unhealthy but don't crash task
+                        self._connected = False
+            finally:
+                pass
 
         self._health_task = asyncio.create_task(_health())
         _logger.debug("Health monitor started")
@@ -544,6 +572,23 @@ class NatsKnowledgeBus(BusProtocol):
                     await t
         self._keepalive_task = None
         self._health_task = None
+
+    async def _safe_flush(self, timeout: float = 1.0) -> bool:
+        """
+        Try to flush with NATS' own timeout; never raises CancelledError to callers.
+        Returns True if OK, False if it timed out or errored.
+        """
+        if not self._nc or self._nc.is_closed:
+            return False
+        try:
+            await self._nc.flush(timeout=timeout)
+            return True
+        except (NatsTimeoutError, asyncio.TimeoutError):
+            return False
+        except asyncio.CancelledError:
+            return False
+        except Exception:
+            return False
 
 
     @staticmethod

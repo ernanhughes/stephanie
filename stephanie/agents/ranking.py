@@ -1,4 +1,6 @@
 # stephanie/agents/ranking.py
+from __future__ import annotations
+
 import itertools
 import random
 import re

@@ -1,6 +1,9 @@
 # stephanie/agents/learning/knowledge_arena.py
 from __future__ import annotations
 
+
+from stephanie.utils.emit_utils import prepare_emit
+
 import asyncio
 import logging
 import math
@@ -216,15 +219,20 @@ class KnowledgeArena:
         self,
         section_text: str,
         initial_candidates: List[Candidate],
+        context: Optional[Dict[str, Any]],
         *,
         emit: EmitFn | Any = None,  # callable OR events object with .started/.round_start/.round_end/.done
         run_meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        run_id = (run_meta or {}).get("arena_run_id") or uuid.uuid4().hex[:12]
+        run_id = context.get("pipeline_run_id")
         started_at = time.time()
         cfg_snap = self._cfg_snapshot()
 
-        await self._emit(emit, {"event": "arena_start", "run_id": run_id, "t": started_at, **(run_meta or {}), **cfg_snap}, method="started")
+        await self._emit(
+            emit,
+            prepare_emit("arena_start", {"run_id": run_id, "t": started_at, **(run_meta or {}), **cfg_snap}),
+            method="started",
+        )
 
         # ---- empty guard ----
         if not initial_candidates:
@@ -270,7 +278,11 @@ class KnowledgeArena:
             }
             for sc in scored[: min(5, len(scored))]
         ]
-        await self._emit(emit, {"event": "initial_scored", "run_id": run_id, "topk": topk_preview}, method="round_start")
+        await self._emit(
+            emit,
+            prepare_emit("initial_scored", {"run_id": run_id, "topk": topk_preview}),
+            method="round_start",
+        )
 
         beam = scored[: self._beam_w]
         iters: List[List[Dict[str, Any]]] = []
@@ -284,7 +296,11 @@ class KnowledgeArena:
 
         for r in range(self._max_rounds):
             rounds_run = r + 1
-            await self._emit(emit, {"event": "round_begin", "run_id": run_id, "round": rounds_run, "prev_best": float(prev_best)}, method="round_start")
+            await self._emit(
+                emit,
+                prepare_emit("round_begin", {"run_id": run_id, "round": rounds_run, "prev_best": float(prev_best)}),
+                method="round_start",
+            )
 
             # ---- improve & score (parallel, bounded) ----
             improve_jobs = []
@@ -340,14 +356,16 @@ class KnowledgeArena:
 
             await self._emit(
                 emit,
-                {
-                    "event": "round_end",
-                    "run_id": run_id,
-                    "round": rounds_run,
-                    "best_overall": float(curr_best),
-                    "marginal_per_ktok": float(marg),
-                    "diversity_replaced": bool(replaced),
-                },
+                prepare_emit(
+                    "round_end",
+                    {
+                        "run_id": run_id,
+                        "round": rounds_run,
+                        "best_overall": float(curr_best),
+                        "marginal_per_ktok": float(marg),
+                        "diversity_replaced": bool(replaced),
+                    },
+                ),
                 method="round_end",
             )
 
@@ -365,13 +383,15 @@ class KnowledgeArena:
 
         await self._emit(
             emit,
-            {
-                "event": "arena_stop",
-                "run_id": run_id,
-                "reason": stop_reason,
-                "winner_overall": _to_float(winner.get("score", {}).get("overall")),
-                "rounds_run": int(rounds_run),
-            },
+            prepare_emit(
+                "arena_stop",
+                {
+                    "run_id": run_id,
+                    "reason": stop_reason,
+                    "winner_overall": _to_float(winner.get("score", {}).get("overall")),
+                    "rounds_run": int(rounds_run),
+                },
+            ),
             method="round_end",
         )
 
@@ -395,5 +415,12 @@ class KnowledgeArena:
             },
         }
 
-        await self._emit(emit, {"event": "arena_done", "run_id": run_id, "ended_at": out["ended_at"], "summary": out["summary"]}, method="done")
+        await self._emit(
+            emit,
+            prepare_emit(
+                "arena_done",
+                {"run_id": run_id, "ended_at": out["ended_at"], "summary": out["summary"]},
+            ),
+            method="done",
+        )
         return out

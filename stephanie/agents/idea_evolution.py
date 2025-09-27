@@ -1,4 +1,6 @@
 # stephanie/agents/idea_evolution.py
+from __future__ import annotations
+
 import itertools
 
 from sklearn.metrics.pairwise import cosine_similarity

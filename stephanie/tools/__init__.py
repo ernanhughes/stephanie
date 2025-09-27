@@ -1,5 +1,6 @@
 # stephanie/tools/__init__.py
 """Tools for inspecting or visualizing pipeline outputs"""
+from __future__ import annotations
 
 from .arxiv_tool import search_arxiv
 from .embedding_tool import get_embedding

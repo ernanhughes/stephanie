@@ -1,3 +1,6 @@
+# stephanie/agents/extract_info.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 
 

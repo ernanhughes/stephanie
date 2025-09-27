@@ -1,6 +1,8 @@
 # stephanie/agents/dots_planner.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import GOAL, STRATEGY
+from stephanie.constants import GOAL
 from stephanie.utils.goal_classifier import classify_goal_strategy  # See below
 
 

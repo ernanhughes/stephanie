@@ -366,38 +366,38 @@ class LearningFromLearningAgent(BaseAgent):
                         "agent": "LearningFromLearningAgent",
                     }
                     arena_adapter = ArenaReporter(
-                        self.reporter,
-                        self.event_service,
+                        reporting_service=self.reporter,     
+                        event_service=self.event_service,            
                         run_id=context.get("pipeline_run_id"),
-                        meta=arena_meta,
+                        meta=arena_meta
                     )
                     await arena_adapter.start(context)
 
-                    async def emit_evt(evt: dict, arena_adapter=arena_adapter):
-                        typ = evt.get("event")
-                        if typ == "initial_scored":
-                            await arena_adapter.initial_scored(context, scored_topk=evt.get("topk") or [])
-                        elif typ == "round_end":
-                            await arena_adapter.round_end(
-                                context,
-                                round_ix=int(evt.get("round", 0)),
-                                best_overall=float(evt.get("best_overall", 0.0)),
-                                marginal_per_ktok=float(evt.get("marginal_per_ktok", 0.0)),
-                            )
-                        elif typ == "arena_stop":
-                            await arena_adapter.stop(
-                                context,
-                                winner_overall=float(evt.get("winner_overall", 0.0)),
-                                rounds_run=int(evt.get("rounds_run", 0)),
-                                reason=evt.get("reason") or "",
-                            )
-                        elif typ == "arena_done":
-                            await arena_adapter.done(context, ended_at=evt.get("ended_at"))
+                    # async def emit_evt(evt: dict, arena_adapter=arena_adapter):
+                    #     typ = evt.get("event")
+                    #     if typ == "initial_scored":
+                    #         await arena_adapter.initial_scored(context, scored_topk=evt.get("topk") or [])
+                    #     elif typ == "round_end":
+                    #         await arena_adapter.round_end(
+                    #             context,
+                    #             round_ix=int(evt.get("round", 0)),
+                    #             best_overall=float(evt.get("best_overall", 0.0)),
+                    #             marginal_per_ktok=float(evt.get("marginal_per_ktok", 0.0)),
+                    #         )
+                    #     elif typ == "arena_stop":
+                    #         await arena_adapter.stop(
+                    #             context,
+                    #             winner_overall=float(evt.get("winner_overall", 0.0)),
+                    #             rounds_run=int(evt.get("rounds_run", 0)),
+                    #             reason=evt.get("reason") or "",
+                    #         )
+                    #     elif typ == "arena_done":
+                    #         await arena_adapter.done(context, ended_at=evt.get("ended_at"))
 
                     arena_res = await self.arena.run(
                         section["section_text"],
                         cands,
-                        emit=emit_evt,  # ← live events for dashboards
+                        emit=arena_adapter,                      # <-- now the reporter is the emit
                         run_meta={
                             "paper_id": str(
                                 paper.get("id") or paper.get("doc_id")
@@ -406,6 +406,7 @@ class LearningFromLearningAgent(BaseAgent):
                             "case_id": case.id,
                             "agent": "LearningFromLearningAgent",
                         },
+                        context=context
                     )
                     ctx_case["arena_initial_pool"] = [
                         {

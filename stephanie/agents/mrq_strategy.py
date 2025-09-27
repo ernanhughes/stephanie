@@ -1,4 +1,6 @@
 # stephanie/agents/mrq_strategy.py
+from __future__ import annotations
+
 from omegaconf import OmegaConf
 
 from stephanie.agents.base_agent import BaseAgent

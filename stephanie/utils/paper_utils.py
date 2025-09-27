@@ -1,4 +1,5 @@
-# --- Goal helpers -------------------------------------------------------------
+# stephanie/utils/paper_utils.py
+from __future__ import annotations
 
 SECTION_GOALS = {
     "abstract": "Produce a faithful, concise overview; no speculation; emphasize contributions and results.",

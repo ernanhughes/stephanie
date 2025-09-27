@@ -1,4 +1,6 @@
 # stephanie/utils/db_retry.py
+from __future__ import annotations
+
 from sqlalchemy.exc import OperationalError
 
 from stephanie.models.base import engine

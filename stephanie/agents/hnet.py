@@ -1,4 +1,6 @@
-# stephanie/validation/hnet_validation.py
+# stephanie/agents/hnet.py
+from __future__ import annotations
+
 import json
 import os
 import time

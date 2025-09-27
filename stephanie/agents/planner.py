@@ -1,4 +1,6 @@
 # stephanie/agents/planner.py
+from __future__ import annotations
+
 from stephanie.agents import DOTSPlannerAgent, LookaheadAgent
 
 

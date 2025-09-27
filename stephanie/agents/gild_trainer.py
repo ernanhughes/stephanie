@@ -1,4 +1,6 @@
-# stephanie/agents/learning/gild_trainer.py
+# stephanie/agents/gild_trainer.py
+from __future__ import annotations
+
 import json
 import os
 import time

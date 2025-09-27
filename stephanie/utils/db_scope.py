@@ -1,4 +1,6 @@
 # stephanie/utils/db_scope.py
+from __future__ import annotations
+
 from contextlib import contextmanager
 
 from sqlalchemy.exc import OperationalError
