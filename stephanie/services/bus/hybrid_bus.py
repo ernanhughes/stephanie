@@ -79,6 +79,7 @@ class HybridKnowledgeBus(BusProtocol):
             bus_config = {}        # final fallback
 
         preferred_backend = bus_config.get("backend")
+        strict = bool(bus_config.get("strict", False))
 
         # NATS first...
         if preferred_backend in (None, "nats"):
@@ -95,7 +96,9 @@ class HybridKnowledgeBus(BusProtocol):
                     _logger.info("Connected to NATS JetStream bus")
                     return True
             except Exception as e:
-                _logger.warning(f"NATS connection failed: {e}")
+                _logger.warning("NATS connection failed: %r", e)
+                if strict:
+                    raise
 
         # (optionally) Redis here...
 

@@ -1,0 +1,88 @@
+{# sis/templates/arena/runs.html #}
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Arena Runs</h2>
+    <a class="btn btn-sm btn-outline-primary" href="/tap">Live viewer</a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>Latest runs</span>
+      <div>
+        <input id="search" class="form-control form-control-sm" placeholder="Filter by run_id…" style="width:16rem; display:inline-block">
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr>
+              <th style="width:18rem">run_id</th>
+              <th class="text-end">events</th>
+              <th>first</th>
+              <th>last</th>
+              <th>last event</th>
+              <th style="width:10rem"></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"><tr><td colspan="6" class="text-muted p-3">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let rows = [];
+
+  function fmt(ts) {
+    return ts ? new Date(ts * 1000).toLocaleString() : "—";
+  }
+
+  function render(list) {
+    const tb = $("tbody");
+    if (!list.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="text-muted p-3">No runs found</td></tr>';
+      return;
+    }
+    tb.innerHTML = "";
+    for (const r of list) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><code>${r.run_id}</code></td>
+        <td class="text-end">${r.count}</td>
+        <td>${fmt(r.first_ts)}</td>
+        <td>${fmt(r.last_ts)}</td>
+        <td>${r.last_event ?? "—"}</td>
+        <td class="text-end">
+          <a class="btn btn-sm btn-primary"
+            href="/tap/live?run_id=${encodeURIComponent(r.run_id)}">Live</a>
+          <a class="btn btn-sm btn-outline-secondary ms-1"
+            href="/tap?run_id=${encodeURIComponent(r.run_id)}">Details</a>
+        </td>
+      `;
+      tb.appendChild(tr);
+    }
+  }
+
+  function filter() {
+    const q = $("search").value.trim().toLowerCase();
+    if (!q) return render(rows);
+    render(rows.filter(r => String(r.run_id).toLowerCase().includes(q)));
+  }
+
+  $("search").addEventListener("input", filter);
+
+  fetch("/tap/api/runs?limit=50")
+    .then(r => r.json())
+    .then(data => { rows = data || []; render(rows); })
+    .catch(() => {
+      $("tbody").innerHTML = '<tr><td colspan="6" class="text-danger p-3">Failed to load.</td></tr>';
+    });
+})();
+</script>
+{% endblock %}

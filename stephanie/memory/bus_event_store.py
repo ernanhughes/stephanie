@@ -117,7 +117,6 @@ class BusEventStore(BaseSQLAlchemyStore):
         subject_like: Optional[str] = None,
         event: Optional[str] = None,
     ) -> List[BusEventORM]:
-        """Most recent events, optionally filtered."""
         def op(s):
             q = s.query(BusEventORM)
             if run_id:
@@ -141,17 +140,6 @@ class BusEventStore(BaseSQLAlchemyStore):
             )
         return self._run(op)
 
-    def by_case(self, case_id: str, limit: int = 500) -> List[BusEventORM]:
-        def op(s):
-            return (
-                s.query(BusEventORM)
-                .filter(BusEventORM.case_id == str(case_id))
-                .order_by(BusEventORM.ts.asc(), BusEventORM.id.asc())
-                .limit(limit)
-                .all()
-            )
-        return self._run(op)
-
     def range_by_subjects(
         self,
         subjects: Iterable[str],
@@ -159,7 +147,6 @@ class BusEventStore(BaseSQLAlchemyStore):
         ts_to: Optional[float] = None,
         limit: int = 1000,
     ) -> List[BusEventORM]:
-        """Filter by a small set of subjects and optional time window."""
         subs = list(subjects)
         def op(s):
             q = s.query(BusEventORM).filter(BusEventORM.subject.in_(subs))
@@ -172,13 +159,23 @@ class BusEventStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def delete_older_than(self, ts_cutoff: float) -> int:
-        """Retention: delete rows older than `ts_cutoff` (epoch seconds)."""
         def op(s):
             q = s.query(BusEventORM).filter(BusEventORM.ts < float(ts_cutoff))
             n = q.delete(synchronize_session=False)
             if self.logger:
                 self.logger.log("BusEventRetention", {"deleted": n, "cutoff": ts_cutoff})
             return n
+        return self._run(op)
+
+    def by_case(self, case_id: str, limit: int = 500) -> List[BusEventORM]:
+        def op(s):
+            return (
+                s.query(BusEventORM)
+                .filter(BusEventORM.case_id == str(case_id))
+                .order_by(BusEventORM.ts.asc(), BusEventORM.id.asc())
+                .limit(limit)
+                .all()
+            )
         return self._run(op)
 
     def since_id(self, last_id: int, limit: int = 500) -> List[BusEventORM]:
@@ -203,7 +200,115 @@ class BusEventStore(BaseSQLAlchemyStore):
             return s.get(BusEventORM, event_id)
         return self._run(op)
 
-    # -------------------------------------------------------------------------
+
+    def recent_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Return latest run_ids with counts, first/last ts, and the last event name.
+        """
+        def op(s):
+            agg = (
+                s.query(
+                    BusEventORM.run_id.label("run_id"),
+                    func.count(BusEventORM.id).label("count"),
+                    func.min(BusEventORM.ts).label("first_ts"),
+                    func.max(BusEventORM.ts).label("last_ts"),
+                )
+                .filter(BusEventORM.run_id.isnot(None))
+                .group_by(BusEventORM.run_id)
+                .order_by(func.max(BusEventORM.ts).desc())
+                .limit(limit)
+                .subquery()
+            )
+
+            # SQLAlchemy 1.x: .as_scalar(); 2.x: .scalar_subquery()
+            scalar = getattr(agg.c, "run_id")._annotations.get("parententity", None)
+            last_event_subq = (
+                s.query(BusEventORM.event)
+                .filter(BusEventORM.run_id == agg.c.run_id)
+                .order_by(BusEventORM.ts.desc(), BusEventORM.id.desc())
+                .limit(1)
+                .correlate(agg)
+            )
+            last_event_scalar = (
+                last_event_subq.as_scalar()
+                if hasattr(last_event_subq, "as_scalar")
+                else last_event_subq.scalar_subquery()
+            )
+
+            rows = s.query(
+                agg.c.run_id, agg.c.count, agg.c.first_ts, agg.c.last_ts, last_event_scalar.label("last_event")
+            ).all()
+
+            return [
+                {
+                    "run_id": r.run_id,
+                    "count": int(r.count or 0),
+                    "first_ts": float(r.first_ts or 0),
+                    "last_ts": float(r.last_ts or 0),
+                    "last_event": r.last_event or None,
+                }
+                for r in rows
+            ]
+        return self._run(op)
+
+    def payloads_by_run(self, run_id: str, limit: int = 2000) -> List[Dict[str, Any]]:
+        """
+        Return the stored innermost payload bodies (payload_json) ordered asc.
+        Perfect for the 'live' graph view to replay from DB.
+        """
+        def op(s):
+            rows = (
+                s.query(BusEventORM.payload_json)
+                .filter(BusEventORM.run_id == str(run_id))
+                .order_by(BusEventORM.ts.asc(), BusEventORM.id.asc())
+                .limit(limit)
+                .all()
+            )
+            return [row[0] or {} for row in rows]
+        return self._run(op)
+
+    def last_event_for_run(self, run_id: str) -> Optional[str]:
+        def op(s):
+            row = (
+                s.query(BusEventORM.event)
+                .filter(BusEventORM.run_id == str(run_id))
+                .order_by(BusEventORM.ts.desc(), BusEventORM.id.desc())
+                .limit(1)
+                .first()
+            )
+            return row[0] if row else None
+        return self._run(op)
+
+    def runs_summary(self, limit: int = 50) -> list[dict]:
+        """Latest N runs by last event time."""
+        def op(s):
+            rows = (
+                s.query(
+                    BusEventORM.run_id.label("run_id"),
+                    func.count(BusEventORM.id).label("count"),
+                    func.min(BusEventORM.ts).label("first_ts"),
+                    func.max(BusEventORM.ts).label("last_ts"),
+                    func.max(BusEventORM.event).label("last_event"),
+                )
+                .filter(BusEventORM.run_id.isnot(None))
+                .group_by(BusEventORM.run_id)
+                .order_by(func.max(BusEventORM.ts).desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    "run_id": r.run_id,
+                    "count": int(r.count or 0),
+                    "first_ts": float(r.first_ts or 0.0),
+                    "last_ts": float(r.last_ts or 0.0),
+                    "last_event": r.last_event,
+                }
+                for r in rows
+            ]
+        return self._run(op)
+
+    # ------------------------------------------------------
     # Helpers
     # -------------------------------------------------------------------------
     @staticmethod

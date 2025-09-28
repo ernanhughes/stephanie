@@ -51,6 +51,12 @@ defaults:
 embeddings:
   backend: hnet
 
+bus:
+  backend: nats
+  servers: ["nats://localhost:4222"]
+  stream: stephanie
+  strict: true
+
 goal:
   goal_text: >
     Lets design a process where we can effectively use our chat history to improve our future results.

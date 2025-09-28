@@ -1,3 +1,4 @@
+{# sis/templates/arena/live.html #}
 {% extends "base.html" %}
 {% block content %}
 <div class="container my-4" id="app">
@@ -10,7 +11,8 @@
     <div class="d-flex align-items-center gap-2">
       <span id="status-dot" class="badge bg-secondary">idle</span>
       <select id="mode" class="form-select form-select-sm" style="width:auto">
-        <option value="live" selected>Live</option>
+        <option value="history" selected>History (DB)</option> 
+        <option value="live">Live</option>
         <option value="replay">Replay JSON</option>
       </select>
       <input id="run-id" class="form-control form-control-sm" placeholder="run_id (optional)" style="width:16rem">
@@ -152,6 +154,13 @@
     el.classList.remove("d-none");
   }
 
+  function tryParseJSON(x) {
+    if (typeof x !== "string") return x;
+    const t = x.trim();
+    if (!t) return x;
+    try { return JSON.parse(t); } catch { return x; }
+  }
+
   function addTimeline(ev) {
     const d = document.createElement("div");
     d.className = "small";
@@ -196,18 +205,21 @@
 
   // -------- tap → arena normalize ----------
   function normalizeFromTap(msg) {
-    // tap emits: { subject, data: <envelope or raw> }
-    let x = msg?.data ?? msg;
+    // tap emits: { subject, data: <envelope or raw> } — may be stringified
+    let x = tryParseJSON(msg?.data ?? msg);
 
-    // Event-service envelope → payload
-    if (x && typeof x === "object" && x.payload && typeof x.payload === "object") {
-      x = x.payload;
+    // Event-service envelope → payload (also may be stringified)
+    if (x && typeof x === "object" && x.payload != null) {
+      x = tryParseJSON(x.payload);
     }
 
-    // Some producers may nest an extra payload (rare)
-    if (x && typeof x === "object" && x.payload && typeof x.payload === "object" && x.payload.event) {
-      x = x.payload;
+    // Some producers nest payload again
+    if (x && typeof x === "object" && x.payload != null && x.payload.event) {
+      x = tryParseJSON(x.payload);
     }
+
+    // If we STILL got a string, try once more
+    x = tryParseJSON(x);
 
     return x || {};
   }
@@ -288,16 +300,43 @@
     };
   }
 
-  // -------- replay ----------
+  async function connectHistory() {
+    const runId = document.getElementById("run-id").value.trim();
+    if (!runId) { alert("Enter a run_id first"); return; }
+
+    // ... (clear UI as you already do)
+
+    try {
+      const res = await fetch(`/tap/api/events?run_id=${encodeURIComponent(runId)}`);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const raw = await res.json();                // array of strings or objects
+      const events = raw.map(tryParseJSON);        // <- normalize to objects
+
+      setChip("chip-run", `run_id: ${runId}`);
+
+      let i = 0;
+      const tick = () => {
+        if (i >= events.length) { setStatus("open"); return; }
+        const body = events[i++];
+        handleTapMessage({ data: { payload: body } }, /*runFilter*/ null);
+        setTimeout(tick, 20);
+      };
+      tick();
+    } catch (err) {
+      setStatus("error");
+      showError("Failed to load history: " + (err?.message || String(err)));
+    }
+  }
+
   function connectReplayFromEvents(events) {
     if (!Array.isArray(events)) return;
     clearAll();
+    const parsed = events.map(tryParseJSON);       // <- normalize to objects
     let i = 0;
     const tick = () => {
-      if (i >= events.length) return;
-      // Accept files that already contain normalized arena bodies
-      const body = events[i++];
-      handleTapMessage({data: {payload: body}}, /*runFilter*/ null);
+      if (i >= parsed.length) return;
+      const body = parsed[i++];
+      handleTapMessage({ data: { payload: body } }, /*runFilter*/ null);
       setTimeout(tick, 80);
     };
     tick();
@@ -344,12 +383,13 @@
   }
 
   // -------- UI wiring ----------
-  $("btn-connect").addEventListener("click", () => {
-    if ($("mode").value === "replay") {
+  document.getElementById("btn-connect").addEventListener("click", () => {
+    const mode = document.getElementById("mode").value;
+    if (mode === "live") return connectLive();
+    if (mode === "history") return connectHistory();
+    if (mode === "replay") {
       showError("Replay mode: choose a JSON file with the ‘Load JSON’ button.");
-      return;
     }
-    connectLive();
   });
 
   $("btn-clear").addEventListener("click", clearAll);
@@ -366,13 +406,15 @@
     }
   });
 
-  $("mode").addEventListener("change", () => {
-    const live = $("mode").value === "live";
-    $("run-id").disabled = !live;
-    $("btn-connect").disabled = !live;
+  document.getElementById("mode").addEventListener("change", () => {
+    const mode = document.getElementById("mode").value;
+    const live = mode === "live";
+    const needsRun = mode !== "replay";
+    document.getElementById("run-id").disabled = !needsRun;
+    document.getElementById("btn-connect").disabled = false;
   });
 
-  $("file-replay").addEventListener("change", async (e) => {
+ $("file-replay").addEventListener("change", async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     try {
@@ -391,8 +433,15 @@
   // deep-link support and auto-connect
   const urlParams = new URLSearchParams(window.location.search);
   const rid = urlParams.get("run_id");
-  if (rid) { $("run-id").value = rid; }
-  connectLive();
+  if (rid) {
+    document.getElementById("run-id").value = rid;
+    document.getElementById("mode").value = "history";
+    connectHistory();
+  } else {
+    // Fallback: live (as before)
+    connectLive();
+  }
 })();
+
 </script>
 {% endblock %}

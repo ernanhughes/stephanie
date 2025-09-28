@@ -1,3 +1,4 @@
+{# sis/templates/arena/db.html #}
 {% extends "base.html" %}
 {% block content %}
 <div class="container my-4">
@@ -137,14 +138,43 @@
     setChip("chip-run", run ? `run_id: ${run}` : null);
   }
 
+  function tryParseJSON(x) {
+    if (typeof x !== "string") return x;
+    // quick sniff: looks like JSON?
+    const t = x.trim();
+    if (!t || (t[0] !== "{" && t[0] !== "[" && t[0] !== '"')) return x;
+    try { return JSON.parse(x); } catch { return x; }
+  }
+  function unwrapPayload(obj) {
+    // some producers put { payload: {...} } or even payload.payload
+    if (obj && typeof obj === "object" && obj.payload && typeof obj.payload === "object") {
+      const inner = obj.payload;
+      if (inner && typeof inner === "object" && inner.payload && typeof inner.payload === "object") {
+        return inner.payload;
+      }
+      return inner;
+    }
+    return obj;
+  }
+  function pretty(obj) {
+    try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
+  }
+
   async function loadDetail(id) {
     selectedId = id;
     const res = await fetch(`/tap/api/event/${id}`);
     if (!res.ok) return;
     const obj = await res.json();
 
+    // badges (unchanged)
     const b = $("badges");
     b.innerHTML = "";
+    const badge = (txt, cls="bg-secondary") => {
+      const span = document.createElement("span");
+      span.className = "badge " + cls + " me-2";
+      span.textContent = txt;
+      return span;
+    };
     if (obj.subject) b.appendChild(badge(obj.subject, "bg-dark"));
     if (obj.event) b.appendChild(badge(obj.event, "bg-primary"));
     if (obj.run_id) b.appendChild(badge(`run:${obj.run_id}`, "bg-success"));
@@ -153,12 +183,32 @@
     if (obj.section_name) b.appendChild(badge(obj.section_name, "bg-secondary"));
 
     $("detail-meta").textContent = `id ${obj.id} • ${new Date(obj.ts*1000).toLocaleString()}`;
-    $("payload").textContent = JSON.stringify(obj.payload ?? {}, null, 2);
 
-    // optional chip for section
-    setChip("chip-section", obj.section_name || null);
+    // 🔥 smarter payload handling
+    let payload = obj.payload;
+    payload = tryParseJSON(payload);     // if it’s a JSON string, parse it
+    payload = unwrapPayload(payload);    // if it has nested {payload:{...}}, unwrap it
+    payload = tryParseJSON(payload);     // sometimes nested payload is also a string
 
-    // update active row styling
+    // Optional: small quick-view line if common arena fields exist
+    if (payload && typeof payload === "object") {
+      const quick = [];
+      if (payload.round != null) quick.push(`round: ${payload.round}`);
+      if (payload.best_overall != null) quick.push(`best: ${Number(payload.best_overall).toFixed(3)}`);
+      if (payload.marginal_per_ktok != null) quick.push(`marg/kTok: ${Number(payload.marginal_per_ktok).toFixed(3)}`);
+      if (payload.reason) quick.push(`reason: ${payload.reason}`);
+      if (quick.length) b.appendChild(badge(quick.join(" • "), "bg-light text-dark"));
+    }
+
+    $("payload").textContent = typeof payload === "string" ? payload : pretty(payload);
+
+    // chips
+    const section = obj.section_name || (payload && payload.section_name);
+    const run = obj.run_id || (payload && payload.run_id);
+    if (section) { const el = $("chip-section"); el.textContent = section; el.classList.remove("d-none"); }
+    if (run)     { const el = $("chip-run");     el.textContent = `run_id: ${run}`; el.classList.remove("d-none"); }
+
+    // highlight selected row
     for (const tr of document.querySelectorAll("#list-body tr")) {
       tr.classList.toggle("table-active", String(tr.dataset.id) === String(id));
     }

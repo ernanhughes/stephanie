@@ -255,6 +255,8 @@ class StrategyManager:
                     context=(context or {}),
                     stage="learning",
                     event="strategy.section_rollup",
+                    run_id=(context or {}).get("pipeline_run_id"),
+                    agent="strategy_manager",
                     case_id=case.id,
                     final_score=rollup["scores"]["final"],
                     avg_gain=rollup["scores"]["avg_gain"],
@@ -276,6 +278,7 @@ class StrategyManager:
                 self.memory.experiments.complete_trial(
                     variant_id=assign["variant_id"],
                     case_id=case_id,
+
                     performance=final_score,
                     metrics={"avg_gain": avg_gain, "k_lift": k_lift},
                     tokens=(context or {}).get("tokens"),
@@ -312,6 +315,8 @@ class StrategyManager:
                 if reporter:
                     coro = reporter.emit(
                         context=(context or {}),
+                        run_id=(context or {}).get("pipeline_run_id"),
+                        agent="strategy_manager",
                         stage="learning",
                         event="strategy.ab_validation",
                         experiment_id=exp.id,
