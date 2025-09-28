@@ -658,7 +658,7 @@ class ScoringService(Service):
             sa = sum(sr.score for sr in bundle_a.results.values()) / max(1, len(bundle_a.results))
             sb = sum(sr.score for sr in bundle_b.results.values()) / max(1, len(bundle_b.results))
             res = {
-                "winner": "a" if sa >= sb else "b",
+                I: "a" if sa >= sb else "b",
                 "score_a": float(sa),
                 "score_b": float(sb),
                 "mode": "aggregate_fallback",

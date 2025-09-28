@@ -151,6 +151,7 @@ class EventService(Service):
 
     async def publish(self, subject: str, payload: dict) -> None:
         await self.memory.bus.publish(subject, self._envelope(subject, payload))
+        self.memory.bus_events.insert(subject, payload)
 
     async def request(
         self, rpc_name: str, payload: dict, timeout: float = 5.0
@@ -211,3 +212,6 @@ class EventService(Service):
         record = dict(enveloped)
         record["error"] = error
         await self.memory.bus.publish(dlq_subject, record)
+        self.memory.bus_events.insert(dlq_subject, record)
+
+        

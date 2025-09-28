@@ -37,3 +37,29 @@ class TrainingEventORM(Base):
     fp           = Column(String(40), nullable=True, unique=True)
     processed    = Column(Boolean, nullable=False, default=False)
     created_at   = Column(DateTime, nullable=False, default=datetime.now)
+
+    def __repr__(self):
+        return f"<TrainingEvent(id={self.id}, model_key={self.model_key}, dimension={self.dimension}, kind={self.kind}, created_at={self.created_at})>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "model_key": self.model_key,
+            "dimension": self.dimension,
+            "goal_id": self.goal_id,
+            "pipeline_run_id": self.pipeline_run_id,
+            "agent_name": self.agent_name,
+            "kind": self.kind,
+            "query_text": self.query_text,
+            "pos_text": self.pos_text,
+            "neg_text": self.neg_text,
+            "cand_text": self.cand_text,
+            "label": self.label,
+            "weight": self.weight,
+            "trust": self.trust,
+            "source": self.source,
+            "meta": self.meta,
+            "fp": self.fp,
+            "processed": self.processed,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

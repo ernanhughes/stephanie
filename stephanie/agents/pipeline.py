@@ -10,7 +10,7 @@ from stephanie.models import EvaluationORM
 
 class PipelineJudgeAgent(BaseAgent):
     async def run(self, context: dict) -> dict:
-        self.logger.log("PipelineJudgeAgentStart", {"run_id": context.get(RUN_ID)})
+        self.logger.log("PipelineJudgeAgentStart", {"run_id": context.get(PIPELINE_RUN_ID)})
 
         goal = context["goal"]
         pipeline = context[PIPELINE]
@@ -32,7 +32,7 @@ class PipelineJudgeAgent(BaseAgent):
                 {
                     "error": "No hypotheses found",
                     "goal_id": goal.get("id"),
-                    "run_id": context.get(RUN_ID),
+                    "run_id": context.get(PIPELINE_RUN_ID),
                 },
             )
             return context
@@ -68,7 +68,7 @@ class PipelineJudgeAgent(BaseAgent):
                     "agent": self.name,
                     "judgement": judgement,
                     "goal_id": goal.get("id"),
-                    "run_id": context.get(RUN_ID),
+                    "run_id": context.get(PIPELINE_RUN_ID),
                     "emoji": "🚨❓🧠",
                 },
             )
@@ -110,7 +110,7 @@ class PipelineJudgeAgent(BaseAgent):
             score_type="pipeline_judgment",
             score=score,
             rationale=rationale,
-            pipeline_run_id=context.get(RUN_ID),
+            pipeline_run_id=context.get(PIPELINE_RUN_ID),
             symbolic_rule_id=rule_application_id,
             extra_data={"raw_response": judgement},
             dimensions=dimensions,  # new: parsed dimensions

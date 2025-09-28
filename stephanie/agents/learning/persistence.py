@@ -35,6 +35,7 @@ class Persistence:
         """
         try:
             reporter = self.container.get("reporting")
+            
             coro = reporter.emit(context=context, **payload)
             try:
                 loop = asyncio.get_running_loop()
@@ -255,12 +256,13 @@ class Persistence:
         return case
     
     def persist_pairs(self, case_id: int, baseline: str, verify: Dict[str, Any], context: Dict[str, Any]):
+        pipeline_run_id = context.get("pipeline_run_id")
         metrics = verify["metrics"]
         improved = verify["summary"]
         try:
             self.memory.casebooks.add_scorable(
                 case_id=case_id, role="knowledge_pair_positive", text=improved,
-                pipeline_run_id=context.get("pipeline_run_id"),
+                pipeline_run_id=pipeline_run_id,
                 meta={"verification_score": metrics.get("overall",0.0),
                       "knowledge_score": metrics.get("knowledge_score",0.0),
                       "strategy_version": context.get("strategy_version")},
@@ -268,7 +270,7 @@ class Persistence:
             if metrics.get("overall",0.0) >= 0.85:
                 self.memory.casebooks.add_scorable(
                     case_id=case_id, role="knowledge_pair_negative", text=baseline,
-                    pipeline_run_id=context.get("pipeline_run_id"),
+                    pipeline_run_id=pipeline_run_id,
                     meta={"verification_score": max(0.0, metrics.get("overall",0.0)-0.15),
                           "knowledge_score": max(0.0, metrics.get("knowledge_score",0.0)*0.7),
                           "strategy_version": context.get("strategy_version")},
@@ -454,6 +456,8 @@ class Persistence:
                 "stage": "arena",                 # aligns with your CBR example
                 "event": "winner",                # specific event name
                 "summary": "Arena winner selected",
+                "agent": "Persistence",        # stable label
+                "run_id": pipeline_run_id,
                 "paper_id": str(paper.get("id") or paper.get("doc_id")),
                 "section_name": section.get("section_name"),
                 "winner": {
@@ -480,6 +484,8 @@ class Persistence:
                 "stage": "arena",
                 "event": "summary",
                 "title": "Arena Winner",
+                "agent": "Persistence",        
+                "run_id": pipeline_run_id,
                 "cards": [
                     {"type": "metric", "title": "Winner Overall", "value": round(float(w_score.get("overall", 0.0)), 3)},
                     {"type": "bar", "title": "K/C/G", "series": [

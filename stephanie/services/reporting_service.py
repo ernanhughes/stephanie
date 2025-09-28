@@ -58,6 +58,9 @@ class LoggerSink(BaseSink):
     async def emit(self, event: Dict[str, Any]):
         msg = {k: event[k] for k in ("ts","run_id","agent","stage","note") if k in event}
         try:
+            agent = msg.get("agent") 
+            if agent == "UnknownAgent":
+                self.logger.info("LogReport", msg)
             self.logger.log("CBRReport", msg)
         except Exception:
             pass

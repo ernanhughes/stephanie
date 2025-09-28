@@ -1,6 +1,6 @@
 from stephanie.utils.loaders import get_memory, get_logger, get_config
 from stephanie.agents.pipeline_judge import PipelineJudgeAgent
-from stephanie.constants import GOAL, PIPELINE_RUN_ID, RUN_ID
+from stephanie.constants import GOAL, PIPELINE_RUN_ID
 from stephanie.models import EvaluationORM, HypothesisORM
 
 
@@ -30,7 +30,6 @@ async def score_unscored_hypotheses(memory, logger, config, run_id=None):
             GOAL: goal.to_dict(),
             "hypotheses": [hypo.to_dict()],
             PIPELINE_RUN_ID: hypo.pipeline_run_id,
-            RUN_ID: f"batch-repair-{hypo.id}",
             "rule_applications": [ra.to_dict() for ra in rule_apps],
         }
 

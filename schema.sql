@@ -1743,4 +1743,33 @@ CREATE INDEX IF NOT EXISTS ix_tka_score_desc
     ON turn_knowledge_analysis (knowledge_score DESC);
 
 
+-- events table: one row per published event
+CREATE TABLE IF NOT EXISTS bus_events (
+  id            SERIAL,      -- or BIGSERIAL in PG
+  event_id      TEXT,                                   -- publisher’s unique id
+  subject       TEXT NOT NULL,                          -- e.g. stephanie.events.arena.run.round_end
+  event         TEXT,                                   -- e.g. "round_end"
+  ts            REAL NOT NULL,                          -- publish time (epoch seconds)
+  -- linkages (nullable; index each you care about)
+  run_id        TEXT,
+  case_id       TEXT,
+  paper_id      TEXT,
+  section_name  TEXT,
+  agent         TEXT,
+  -- payloads
+  payload_json  TEXT NOT NULL,                          -- original payload (pretty raw)
+  extras_json   TEXT,                                   -- normalized/derived fields (see below)
+  -- dedupe & querying helpers
+  hash          TEXT,                                   -- sha256(payload_json) for idempotency
+  UNIQUE(subject, event_id)                             -- or UNIQUE(hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bus_events_ts        ON bus_events(ts);
+CREATE INDEX IF NOT EXISTS idx_bus_events_run       ON bus_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_bus_events_case      ON bus_events(case_id);
+CREATE INDEX IF NOT EXISTS idx_bus_events_subject   ON bus_events(subject);
+CREATE INDEX IF NOT EXISTS idx_bus_events_event     ON bus_events(event);
+CREATE INDEX IF NOT EXISTS idx_bus_events_paper_sec ON bus_events(paper_id, section_name);
+
+
 COMMIT; 

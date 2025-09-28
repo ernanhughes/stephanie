@@ -36,7 +36,7 @@ class BaseAgent(ABC):
         self.memory = memory
         self.container = container
         self.logger = logger
-
+        self.run_id = None # set by supervisor
         self.enabled_scorers = self.cfg.get("enabled_scorers", ["sicql"])
 
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")

@@ -9,14 +9,16 @@ from typing import Any, Dict, Optional, Tuple
 
 class Evidence:
     def __init__(self, cfg, memory, container, logger):
-        self.cfg, self.memory, self.container, self.logger = (
-            cfg, memory, container, logger
-        )
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
         self.casebook_tag = cfg.get("casebook_action", "blog")
         self._last: Dict[str, Any] = {}   # NEW: last snapshot for delta reporting
 
     def _emit(self, event: str, **fields):
-        payload = {"event": event, **fields}
+        payload = {"event": event, 
+                   "agent": "Evidence",
+                   **fields}
         """
         Fire-and-forget reporting event using container.get('reporting').emit(...)
         Safe to call from sync code (no await).
@@ -46,8 +48,10 @@ class Evidence:
             return 0.0
 
     # -------------- longitudinal (unchanged logic; added emit) --------------
-    def collect_longitudinal(self) -> Dict[str, Any]:
+    def collect_longitudinal(self, context: Dict[str, Any]) -> Dict[str, Any]:
         out = {
+            "run_id": context.get("pipeline_run_id"),
+            "agent": "evidence", 
             "total_papers": 0,
             "verification_scores": [],
             "iteration_counts": [],
@@ -92,6 +96,7 @@ class Evidence:
             # EMIT longitudinal snapshot + deltas (NEW)
             self._emit("evidence.longitudinal",
                        at=time.time(),
+                       run_id=context.get("pipeline_run_id"),
                        total_papers=out["total_papers"],
                        avg_score=out["avg_verification_score"],
                        avg_iters=out["avg_iterations"],
@@ -283,7 +288,7 @@ class Evidence:
             prev_citations = cites_here
         return reused / max(1, denom)
 
-    def cross_episode(self) -> Dict[str, Any]:
+    def cross_episode(self, context: Dict[str, Any]) -> Dict[str, Any]:
         kt = self._calculate_knowledge_transfer()
         dom = self._calculate_domain_learning()
         meta = self._calculate_meta_patterns()
@@ -291,6 +296,7 @@ class Evidence:
         ak = self._collect_improve_attributions()
         strict_tr = self._strict_transfer_rate()
         out = {
+            "run_id": context.get("pipeline_run_id"),
             "knowledge_transfer_rate": kt["rate"],
             "knowledge_transfer_examples": kt["examples"][:3],
             "domain_learning_patterns": dom,
@@ -305,6 +311,7 @@ class Evidence:
         # EMIT cross-episode snapshot + deltas (NEW)
         self._emit("evidence.cross_episode",
                    at=time.time(),
+                   run_id=context.get("pipeline_run_id"),
                    knowledge_transfer_rate=out["knowledge_transfer_rate"],
                    attribution_rate=out["attribution_rate"],
                    applied_knowledge_lift=out["applied_knowledge_lift"],
@@ -315,6 +322,7 @@ class Evidence:
         # one-line headline (NEW)
         self._emit("evidence.summary",
                    at=time.time(),
+                   run_id=context.get("pipeline_run_id"),
                    msg=("AR={:.0%} | AKL={:+.3f} | RNΔ={}".format(
                         out["attribution_rate"],
                         out["applied_knowledge_lift"],
@@ -325,7 +333,7 @@ class Evidence:
     def _calculate_evidence_strength(self, kt: Dict[str, Any], dom: Dict[str, Any], meta: Dict[str, Any], adapt_rate: float) -> float:
         return max(0.0, min(1.0, 0.35*kt.get("rate",0.0) + 0.25*dom.get("all_mean",0.0) + 0.20*(meta.get("avg_rounds",0.0)/5.0) + 0.20*adapt_rate))
 
-    def report(self, longitudinal: Dict[str, Any], cross: Dict[str, Any]) -> str:
+    def report(self, longitudinal: Dict[str, Any], cross: Dict[str, Any], context: Dict[str, Any]) -> str:
         if not longitudinal or longitudinal.get("total_papers", 0) < 3:
             return ""
         score_trend = longitudinal.get("score_improvement_pct", 0.0)
@@ -335,6 +343,9 @@ class Evidence:
 
         lines = []
         lines.append("## Learning from Learning: Evidence Report")
+        lines.append("")
+        lines.append(f"**Run ID**: {context.get('pipeline_run_id', 'n/a')}")
+        lines.append("**Agent**: Evidence")
         lines.append("")
         lines.append(f"- **Total papers processed**: {longitudinal.get('total_papers', 0)}")
         lines.append(f"- **Verification score trend**: {score_trend:.1f}% {arrow_score}")

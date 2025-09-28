@@ -22,22 +22,20 @@ import os
 import random
 import sys
 import time
-import uuid
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from nats.aio.client import Client as NATS
-from nats.errors import ConnectionClosedError, NoServersError
 from nats.errors import TimeoutError
 from nats.errors import TimeoutError as NatsTimeoutError
-from nats.js.api import ConsumerConfig, DeliverPolicy, RetentionPolicy
-from nats.js.errors import NotFoundError
+from nats.js.api import ConsumerConfig, DeliverPolicy
+from nats.aio import errors as nats_errors
+
 
 from .bus_protocol import BusProtocol
-from .errors import (BusConnectionError, BusPublishError, BusRequestError,
-                     BusSubscribeError)
-from .idempotency import InMemoryIdempotencyStore, NatsKVIdempotencyStore
+from .errors import (BusRequestError)
+from .idempotency import InMemoryIdempotencyStore
 
 
 def _sanitize_durable(stream: str, subject: str) -> str:
@@ -99,95 +97,43 @@ class NatsKnowledgeBus(BusProtocol):
 
     # ---------- Connection management ----------
 
-    async def connect(self) -> bool:
-        if self._connected:
+    async def connect(self, force: bool = False) -> bool:
+        if self._nc and not self._nc.is_closed and not force:
             return True
-
-        # stop monitors if any (we'll restart on success)
-        await self._stop_tasks()
-
-        for attempt in range(self.max_retries + 1):
+        if self._nc and not self._nc.is_closed and force:
             try:
-                if self._nc:
-                    with contextlib.suppress(Exception):
-                        await self._nc.close()
-                    self._nc = None
+                await self._nc.drain()
+            except Exception:
+                pass
 
-                self._nc = NATS()
-                await self._nc.connect(
-                    servers=self.servers,
-                    name="stephanie-nats-bus",
-                    allow_reconnect=True,
-                    reconnect_time_wait=2.0,
-                    max_reconnect_attempts=-1 if self.debug else 10,
-                    ping_interval=10,
-                    max_outstanding_pings=5,
-                    connect_timeout=3.0,
-                    drain_timeout=2.0,
-                    disconnected_cb=self._on_disconnected_cb,
-                    reconnected_cb=self._on_reconnected_cb,
-                    closed_cb=self._on_closed_cb,
-                    error_cb=self._on_error_cb,
-                )
-                self._js = self._nc.jetstream()
+        import nats
+        async def _err_cb(e):
+            # nats InvalidStateError on pong is harmless; just log at low level
+            _logger.debug(f"NATS error_cb: {e!r}")
 
-                # Ensure stream exists (OK if it already exists)
-                try:
-                    await self._js.stream_info(self.stream)
-                    _logger.info(f"JetStream stream '{self.stream}' present.")
-                except NotFoundError:
-                    await self._js.add_stream(
-                        name=self.stream,
-                        subjects=[f"{self.stream}.>"],
-                        retention=RetentionPolicy.LIMITS,
-                        max_msgs=-1,
-                        max_bytes=1_073_741_824,  # 1 GB (tune for your box)
-                        max_age=0,                # no TTL by default
-                    )
-                    _logger.info(f"Created JetStream stream '{self.stream}'.")
+        async def _disc_cb():
+            _logger.warning("NATS disconnected")
 
-                # KV for idempotency
-                self._idem_store = NatsKVIdempotencyStore(
-                    self._js, bucket=f"{self.stream}_idem"
-                )
+        async def _reconn_cb():
+            _logger.info("NATS reconnected")
 
-                self._connected = True
-                _logger.info(
-                    "Connected to NATS JetStream (servers: %s)",
-                    ", ".join(self.servers),
-                )
+        async def _closed_cb():
+            _logger.warning("NATS connection closed")
 
-                # start keepalive + health monitors
-                self._start_keepalive()
-                self._start_health_monitoring()
-                # re-subscribe any stored intents (durables continue where they left off)
-                await self._resubscribe_all()
-
-                return True
-
-            except (NoServersError, OSError, ConnectionClosedError, TimeoutError) as e:
-                if attempt < self.max_retries:
-                    wait_time = self._backoff(attempt)
-                    _logger.warning(
-                        "NATS connect attempt %d failed (%s). Retrying in %.2fs",
-                        attempt + 1, type(e).__name__, wait_time
-                    )
-                    await asyncio.sleep(wait_time)
-                    continue
-                _logger.error("Failed to connect to NATS: %s", e, exc_info=True)
-                return False
-            except Exception as e:
-                if attempt < self.max_retries:
-                    wait_time = self._backoff(attempt)
-                    _logger.warning(
-                        "Unexpected error on connect (%s). Retrying in %.2fs",
-                        type(e).__name__, wait_time, exc_info=True
-                    )
-                    await asyncio.sleep(wait_time)
-                    continue
-                _logger.error("Unexpected error connecting to NATS", exc_info=True)
-                return False
-        return False
+        self._nc = await nats.connect(
+            servers=self.servers,
+            name=self.stream,
+            allow_reconnect=True,
+            max_reconnect_attempts=-1,
+            reconnect_time_wait=0.5,     # quicker retries
+            ping_interval=5,              # more frequent pings
+            max_outstanding_pings=2,      # fail fast if peer unresponsive
+            error_cb=_err_cb,
+            disconnected_cb=_disc_cb,
+            reconnected_cb=_reconn_cb,
+            closed_cb=_closed_cb,
+        )
+        _logger.info("Connected to NATS")
 
     async def _on_reconnected(self):
         # Refresh JS context (defensive: cheap call)
@@ -207,92 +153,26 @@ class NatsKnowledgeBus(BusProtocol):
                 _logger.exception("Failed to re-subscribe to %s", subject)
 
     async def _ensure_connected(self) -> None:
-        """
-        Lightweight health check that never raises CancelledError upstream.
-        Uses NATS' own flush timeout instead of asyncio.wait_for, and
-        treats cancellations as transient (debug-friendly).
-        """
-        if not self._nc or self._nc.is_closed or not self._connected:
-            await self.connect()
+        # If already connected, don’t flush here — it races with reconnect/pongs.
+        if self._nc and not self._nc.is_closed:
             return
-        try:
-            # Use the client's own timeout handling; no wait_for wrapper.
-            await self._nc.flush(timeout=1.0)
-        except (NatsTimeoutError, asyncio.TimeoutError): 
-            _logger.warning("NATS flush timeout; attempting reconnect")
-            await self.connect()
-        except asyncio.CancelledError:
-            # Don't derail caller during debug/breakpoints. Mark unhealthy and return.
-            _logger.debug("NATS flush cancelled; will reconnect on next op")
-            self._connected = False
-            return
-        except Exception:
-            # Any other error → reconnect path
-            self._connected = False
-            await self.connect()
+        await self.connect()  # no flu
 
     # ---------- Publish / Subscribe / Request ----------
 
-    async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
-        """
-        Publish with bounded concurrency, deadline, retries, and optional fallback.
-        """
-        start = time.time()
-
-        await self._ensure_connected()
-
-        envelope = {
-            "event_id": f"{subject}-{uuid.uuid4().hex}",
-            "timestamp": time.time(),
-            "subject": subject,
-            "payload": payload,
-            "bus_backend": "nats",
-        }
-
-        # Plain NATS (no JS) for telemetry subjects if configured
-        if subject in self._faf_subjects:
-            data = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-            async with self._sem:
-                await self._nc.publish(f"{self.stream}.{subject}", data)
-                await self._nc.flush(timeout=min(self.timeout, 1.0))
-                self._last_publish_time = time.time()
-                self._publish_failures = 0
-                _logger.debug("FAF published %s in %.3fs", subject, time.time() - start)
-                return
-
-        data = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-        full_subject = f"{self.stream}.{subject}"
-        _logger.info("BUS → %s : %s", full_subject, data[:200])
-        async with self._sem:
-            last_exc = None
-            for attempt in range(self.max_retries + 1):
-                try:
-                    coro = self._js.publish(full_subject, data)
-                    await asyncio.wait_for(coro, timeout=self.timeout)
-                    self._last_publish_time = time.time()
-                    self._publish_failures = 0
-                    _logger.info(
-                        "Published %s (id=%s) in %.3fs",
-                        subject, envelope["event_id"], time.time() - start
-                    )
-                    return
-                except (asyncio.TimeoutError, TimeoutError) as e:
-                    _logger.exception("Error publishing to %s: %s", subject, e)
-                    last_exc = e
-                    if attempt < self.max_retries:
-                        await asyncio.sleep(self._backoff(attempt))
-                        continue
-                    # Final failure → DLQ + raise
-                    self._write_dlq("publish_timeout", subject, envelope)
-                    raise BusPublishError(f"Publish timeout for {subject}") from e
-                except Exception as e:
-                    _logger.exception("Error publishing to %s: %s", subject, e)
-                    last_exc = e
-                    if attempt < self.max_retries:
-                        await asyncio.sleep(self._backoff(attempt))
-                        continue
-                    self._write_dlq(f"publish_error:{type(e).__name__}", subject, envelope)
-                    raise BusPublishError(f"Failed to publish to {subject}") from e
+    async def publish(self, subject: str, payload: dict) -> None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        try:
+            await self._ensure_connected()
+            await self._nc.publish(subject, data)
+        except (nats_errors.TimeoutError,
+                nats_errors.FlushTimeoutError,
+                nats_errors.ConnectionClosedError,
+                nats_errors.NoServersError,
+                ConnectionResetError) as e:
+            _logger.warning(f"NATS publish error, retrying once: {e!r}")
+            await self.connect(force=True)
+            await self._nc.publish(subject, data)
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         await self._ensure_connected()
@@ -565,13 +445,16 @@ class NatsKnowledgeBus(BusProtocol):
         _logger.debug("Health monitor started")
 
     async def _stop_tasks(self):
-        for t in (self._keepalive_task, self._health_task):
-            if t:
+        for t in list(self._tasks):
+            if not t.done():
                 t.cancel()
-                with contextlib.suppress(Exception):
-                    await t
-        self._keepalive_task = None
-        self._health_task = None
+                try:
+                    await asyncio.shield(t)
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+        self._tasks.clear()
 
     async def _safe_flush(self, timeout: float = 1.0) -> bool:
         """

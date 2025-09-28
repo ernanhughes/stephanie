@@ -51,7 +51,9 @@ class ArenaReporter:
                  run_id: Optional[str] = None, meta: Optional[Dict[str, Any]] = None):
         self.reporting = reporting_service
         self.events = event_service
-        self.run_id = run_id or uuid.uuid4().hex
+        self.run_id = run_id
+        if not self.run_id:
+            self.run_id = f"{uuid.uuid4().hex}"
         self.meta = meta or {}
 
     # inside ArenaReporter

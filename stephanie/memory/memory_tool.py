@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from stephanie.logging import JSONLogger
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
+from stephanie.memory.bus_event_store import BusEventStore
 from stephanie.memory.calibration_event_store import CalibrationEventStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
@@ -205,6 +206,7 @@ class MemoryTool:
         self.register_store(TrainingStatsStore(self.session_maker, logger))
         self.register_store(ModelsStore(self.session_maker, logger))
         self.register_store(SelfPlayStore(self.session_maker, logger))
+        self.register_store(BusEventStore(self.session_maker, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

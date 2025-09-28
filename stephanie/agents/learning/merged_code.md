@@ -6,25 +6,28 @@
 `python
 # stephanie/agents/learning/agent.py
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Set
-import time
-import logging
+
 import json
+import logging
 import random
+import time
+from typing import Any, Dict, List, Optional, Set
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.learning.attribution import AttributionTracker
-from stephanie.agents.learning.strategy_manager import StrategyManager
-from stephanie.agents.learning.corpus_service import CorpusService
-from stephanie.agents.learning.summarizer import Summarizer
-from stephanie.agents.learning.arena import ArenaService
-from stephanie.agents.learning.persistence import Persistence
+from stephanie.agents.learning.corpus_retriever import CorpusRetriever
 from stephanie.agents.learning.evidence import Evidence
+from stephanie.agents.learning.knowledge_arena import KnowledgeArena
+from stephanie.agents.learning.persistence import Persistence
 from stephanie.agents.learning.progress import ProgressAdapter
 from stephanie.agents.learning.scoring import Scoring
+from stephanie.agents.learning.strategy_manager import StrategyManager
+from stephanie.agents.learning.summarizer import Summarizer
+from stephanie.services.arena_reporting_adapter import ArenaReporter
 from stephanie.utils.progress import AgentProgress
 
 _logger = logging.getLogger(__name__)
+
 
 class LearningFromLearningAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
@@ -36,16 +39,19 @@ class LearningFromLearningAgent(BaseAgent):
 
         # Services
         self.strategy = StrategyManager(cfg, memory, container, logger)
-        self.corpus = CorpusService(cfg, memory, container, logger)
+        self.corpus = CorpusRetriever(cfg, memory, container, logger)
         self.scoring = Scoring(cfg, memory, container, logger)
         self.summarizer = Summarizer(
-            cfg, memory, container, logger,
+            cfg,
+            memory,
+            container,
+            logger,
             strategy=self.strategy,
             scoring=self.scoring,
             prompt_loader=self.prompt_loader,
             call_llm=self.call_llm,
         )
-        self.arena = ArenaService(cfg, memory, container, logger)
+        self.arena = KnowledgeArena(cfg, memory, container, logger)
         self.arena.score_candidate = self.scoring.score_candidate
         self.arena.improve = lambda text, meta: self.summarizer.improve_once(
             paper=meta.get("paper"),
@@ -63,6 +69,19 @@ class LearningFromLearningAgent(BaseAgent):
         self.use_arena = bool(cfg.get("use_arena", True))
         self.single_random_doc = bool(cfg.get("single_random_doc", False))
 
+        self.reporter = container.get("reporting")
+        self.event_service = self.container.get("event_service")
+
+    async def _emit(self, evt: Dict[str, Any]):
+        try:
+            # push minimal payload; reporter can enrich with ctx
+            # if your ReportingService requires async, enqueue to a background loop or use a thread-safe queue.
+            await self.reporter.emit(
+                context={}, stage="learning", event=evt
+            )  # or a small wrapper that does loop.create_task(...)
+        except Exception:
+            pass
+
     # ---------- Canonical keys for masking ----------
     @staticmethod
     def _corpus_key(it: Dict[str, Any]) -> str:
@@ -71,7 +90,7 @@ class LearningFromLearningAgent(BaseAgent):
     @staticmethod
     def _cand_key(c: Dict[str, Any]) -> str:
         # origin+variant uniquely identify arena candidates we persist
-        return f"arena:{c.get('origin','')}#{c.get('variant','')}"
+        return f"arena:{c.get('origin', '')}#{c.get('variant', '')}"
 
     # ---------- Build candidates (supports mask) ----------
     def _build_candidates(
@@ -85,7 +104,9 @@ class LearningFromLearningAgent(BaseAgent):
         out: List[Dict[str, Any]] = []
 
         # corpus-backed candidates
-        for it in (corpus_items or [])[: int(self.cfg.get("max_corpus_candidates", 8))]:
+        for it in (corpus_items or [])[
+            : int(self.cfg.get("max_corpus_candidates", 8))
+        ]:
             t = (it.get("assistant_text") or "").strip()
             if len(t) < 60:
                 continue
@@ -93,23 +114,27 @@ class LearningFromLearningAgent(BaseAgent):
             cand_k = f"arena:chat_corpus#c{it.get('id')}"
             if corpus_k in mask_keys or cand_k in mask_keys:
                 continue
-            out.append({
-                "origin": "chat_corpus",
-                "variant": f"c{it.get('id')}",
-                "text": t,
-                "meta": {"source": "corpus"},
-            })
+            out.append(
+                {
+                    "origin": "chat_corpus",
+                    "variant": f"c{it.get('id')}",
+                    "text": t,
+                    "meta": {"source": "corpus"},
+                }
+            )
 
         # seed candidate from section text
         seed = (section.get("section_text") or "").strip()[:800]
         seed_key = "arena:lfl_seed#seed"
         if len(seed) >= 60 and seed_key not in mask_keys:
-            out.append({
-                "origin": "lfl_seed",
-                "variant": "seed",
-                "text": seed,
-                "meta": {"source": "section_text"},
-            })
+            out.append(
+                {
+                    "origin": "lfl_seed",
+                    "variant": "seed",
+                    "text": seed,
+                    "meta": {"source": "section_text"},
+                }
+            )
 
         # de-duplicate by normalized text
         seen = set()
@@ -121,12 +146,23 @@ class LearningFromLearningAgent(BaseAgent):
             seen.add(key)
             uniq.append(c)
 
-        return uniq or ([{
-            "origin": "lfl_seed", "variant": "seed", "text": seed or "", "meta": {}
-        }] if seed_key not in mask_keys else [])
+        return uniq or (
+            [
+                {
+                    "origin": "lfl_seed",
+                    "variant": "seed",
+                    "text": seed or "",
+                    "meta": {},
+                }
+            ]
+            if seed_key not in mask_keys
+            else []
+        )
 
     # ---------- Translate supports → mask keys ----------
-    def _build_mask_keys_from_supports(self, supports: List[Dict[str, Any]]) -> Set[str]:
+    def _build_mask_keys_from_supports(
+        self, supports: List[Dict[str, Any]]
+    ) -> Set[str]:
         """
         supports examples:
         - {"kind":"corpus","id":"123"}
@@ -137,9 +173,11 @@ class LearningFromLearningAgent(BaseAgent):
             k = s.get("kind")
             if k == "corpus" and s.get("id") is not None:
                 out.add(f"corpus:{str(s['id'])}")
-                out.add(f"arena:chat_corpus#c{str(s['id'])}")  # mirror arena candidate
+                out.add(
+                    f"arena:chat_corpus#c{str(s['id'])}"
+                )  # mirror arena candidate
             elif k == "arena":
-                out.add(f"arena:{s.get('origin','')}#{s.get('variant','')}")
+                out.add(f"arena:{s.get('origin', '')}#{s.get('variant', '')}")
         return out
 
     # ---------- Collect "starred" supports (stub: adapt to your memory schema) ----------
@@ -158,18 +196,31 @@ class LearningFromLearningAgent(BaseAgent):
         try:
             for s in self.memory.casebooks.list_scorables(case_id) or []:
                 # Example: users starred a retrieved item
-                if s.role == "knowledge_vote" and (s.meta or {}).get("stars", 0) >= 5:
+                if (
+                    s.role == "knowledge_vote"
+                    and (s.meta or {}).get("stars", 0) >= 5
+                ):
                     corpus_id = (s.meta or {}).get("corpus_id")
                     if corpus_id is not None:
                         out.append({"kind": "corpus", "id": str(corpus_id)})
                 # Example: auto-citations from arena
                 if s.role == "arena_citations":
-                    j = json.loads(s.text) if isinstance(s.text, str) else (s.text or {})
+                    j = (
+                        json.loads(s.text)
+                        if isinstance(s.text, str)
+                        else (s.text or {})
+                    )
                     for c in (j.get("citations") or [])[:2]:
                         origin = c.get("support_origin")
                         variant = c.get("support_variant")
                         if origin and variant:
-                            out.append({"kind": "arena", "origin": origin, "variant": variant})
+                            out.append(
+                                {
+                                    "kind": "arena",
+                                    "origin": origin,
+                                    "variant": variant,
+                                }
+                            )
         except Exception:
             pass
         return out
@@ -189,17 +240,25 @@ class LearningFromLearningAgent(BaseAgent):
             attribution_tracker=self.attribution,
         )
         # 2) candidates with mask
-        cands = self._build_candidates(section, corpus_items, mask_keys=mask_keys)
+        cands = self._build_candidates(
+            section, corpus_items, mask_keys=mask_keys
+        )
         for c in cands:
-            c.setdefault("meta", {}).update({"paper": paper, "section": section, "context": ctx_case})
+            c.setdefault("meta", {}).update(
+                {"paper": paper, "section": section, "context": ctx_case}
+            )
         # 3) (arena|baseline)
         if self.use_arena:
             arena_res = self.arena.run(section["section_text"], cands)
             baseline = arena_res["winner"]["text"]
         else:
-            baseline = self.summarizer.baseline(paper, section, corpus_items, ctx_case)
+            baseline = self.summarizer.baseline(
+                paper, section, corpus_items, ctx_case
+            )
         # 4) verify using current strategy
-        verify = self.summarizer.verify_and_improve(baseline, paper, section, ctx_case)
+        verify = self.summarizer.verify_and_improve(
+            baseline, paper, section, ctx_case
+        )
         return {"baseline": baseline, "verify": verify}
 
     # ---------- Main ----------
@@ -210,11 +269,19 @@ class LearningFromLearningAgent(BaseAgent):
             doc = self.memory.documents.get_random()
             if not doc:
                 return {**context, "error": "no_documents"}
-            documents = [getattr(doc, "to_dict", lambda: {"id": doc.id, "title": getattr(doc, "title", "")})()]
+            documents = [
+                getattr(
+                    doc,
+                    "to_dict",
+                    lambda: {"id": doc.id, "title": getattr(doc, "title", "")},
+                )()
+            ]
 
         out: Dict[str, Any] = {}
         for paper in documents:
-            casebook, goal, sections = self.persist.prepare_casebook_goal_sections(paper, context)
+            casebook, goal, sections = (
+                self.persist.prepare_casebook_goal_sections(paper, context)
+            )
             self.progress.start_paper(paper, sections)
 
             results: List[Dict[str, Any]] = []
@@ -222,7 +289,9 @@ class LearningFromLearningAgent(BaseAgent):
                 if not self.persist.section_is_large_enough(section):
                     continue
 
-                case = self.persist.create_section_case(casebook, paper, section, goal, context)
+                case = self.persist.create_section_case(
+                    casebook, paper, section, goal, context
+                )
                 ctx_case = {
                     **context,
                     "case_id": case.id,
@@ -238,16 +307,28 @@ class LearningFromLearningAgent(BaseAgent):
                     section["section_text"],
                     attribution_tracker=self.attribution,
                 )
-                self.progress.stage(section, "corpus:done", items=len(corpus_items or []))
+                self.progress.stage(
+                    section, "corpus:done", items=len(corpus_items or [])
+                )
 
                 # (Optional) random retrieval ablation for RN metric
-                ablate = random.random() < float(self.cfg.get("retrieval_ablate_prob", 0.0))
+                ablate = random.random() < float(
+                    self.cfg.get("retrieval_ablate_prob", 0.0)
+                )
                 if ablate:
                     self.progress.stage(section, "corpus:ablated")
                     try:
                         self.memory.casebooks.add_scorable(
-                            case_id=case.id, role="ablation",
-                            text=json.dumps({"ablation": {"retrieval": "masked", "k": len(corpus_items)}}),
+                            case_id=case.id,
+                            role="ablation",
+                            text=json.dumps(
+                                {
+                                    "ablation": {
+                                        "retrieval": "masked",
+                                        "k": len(corpus_items),
+                                    }
+                                }
+                            ),
                             pipeline_run_id=context.get("pipeline_run_id"),
                             meta={"type": "retrieval_mask"},
                         )
@@ -259,41 +340,141 @@ class LearningFromLearningAgent(BaseAgent):
 
                 # Attach retrieval pool for downstream attribution (optional)
                 ctx_case["retrieval_items"] = [
-                    {"id": it.get("id"), "text": (it.get("assistant_text") or it.get("text") or "")}
+                    {
+                        "id": it.get("id"),
+                        "text": (
+                            it.get("assistant_text") or it.get("text") or ""
+                        ),
+                    }
                     for it in (corpus_items or [])
                 ]
 
                 # ----- Draft (arena | baseline) -----
                 if self.use_arena:
-                    cands = self._build_candidates(section, corpus_items_for_baseline)
+                    cands = self._build_candidates(
+                        section, corpus_items_for_baseline
+                    )
                     for c in cands:
-                        c.setdefault("meta", {}).update({"paper": paper, "section": section, "context": ctx_case})
-                    arena_res = self.arena.run(section["section_text"], cands)
+                        c.setdefault("meta", {}).update(
+                            {
+                                "paper": paper,
+                                "section": section,
+                                "context": ctx_case,
+                            }
+                        )
+
+                    arena_meta = {
+                        "paper_id": str(
+                            paper.get("id") or paper.get("doc_id")
+                        ),
+                        "section_name": section.get("section_name"),
+                        "case_id": case.id,
+                        "agent": "LearningFromLearningAgent",
+                    }
+                    arena_adapter = ArenaReporter(
+                        reporting_service=self.reporter,     
+                        event_service=self.event_service,            
+                        run_id=context.get("pipeline_run_id"),
+                        meta=arena_meta
+                    )
+                    await arena_adapter.start(context)
+
+                    # async def emit_evt(evt: dict, arena_adapter=arena_adapter):
+                    #     typ = evt.get("event")
+                    #     if typ == "initial_scored":
+                    #         await arena_adapter.initial_scored(context, scored_topk=evt.get("topk") or [])
+                    #     elif typ == "round_end":
+                    #         await arena_adapter.round_end(
+                    #             context,
+                    #             round_ix=int(evt.get("round", 0)),
+                    #             best_overall=float(evt.get("best_overall", 0.0)),
+                    #             marginal_per_ktok=float(evt.get("marginal_per_ktok", 0.0)),
+                    #         )
+                    #     elif typ == "arena_stop":
+                    #         await arena_adapter.stop(
+                    #             context,
+                    #             winner_overall=float(evt.get("winner_overall", 0.0)),
+                    #             rounds_run=int(evt.get("rounds_run", 0)),
+                    #             reason=evt.get("reason") or "",
+                    #         )
+                    #     elif typ == "arena_done":
+                    #         await arena_adapter.done(context, ended_at=evt.get("ended_at"))
+
+                    arena_res = await self.arena.run(
+                        section["section_text"],
+                        cands,
+                        emit=arena_adapter,                      # <-- now the reporter is the emit
+                        run_meta={
+                            "paper_id": str(
+                                paper.get("id") or paper.get("doc_id")
+                            ),
+                            "section_name": section.get("section_name"),
+                            "case_id": case.id,
+                            "agent": "LearningFromLearningAgent",
+                        },
+                        context=context
+                    )
                     ctx_case["arena_initial_pool"] = [
-                        {"origin": c.get("origin"), "variant": c.get("variant"), "text": c.get("text", "")}
+                        {
+                            "origin": c.get("origin"),
+                            "variant": c.get("variant"),
+                            "text": c.get("text", ""),
+                        }
                         for c in (arena_res.get("initial_pool") or [])
                     ]
                     baseline = arena_res["winner"]["text"]
-                    self.persist.persist_arena(case, paper, section, arena_res, ctx_case)
-                    self.progress.stage(section, "arena:done",
-                        winner_overall=round(float(arena_res["winner"]["score"].get("overall", 0.0)), 3))
+                    self.persist.persist_arena(
+                        case, paper, section, arena_res, ctx_case
+                    )
+                    self.progress.stage(
+                        section,
+                        "arena:done",
+                        winner_overall=round(
+                            float(
+                                arena_res["winner"]["score"].get(
+                                    "overall", 0.0
+                                )
+                            ),
+                            3,
+                        ),
+                    )
                 else:
-                    baseline = self.summarizer.baseline(paper, section, corpus_items_for_baseline, ctx_case)
+                    baseline = self.summarizer.baseline(
+                        paper, section, corpus_items_for_baseline, ctx_case
+                    )
                     self.progress.stage(section, "baseline:done")
 
                 # ----- Verify & improve -----
                 self.progress.stage(section, "verify:start")
-                verify = self.summarizer.verify_and_improve(baseline, paper, section, ctx_case)
-                self.progress.stage(section, "verify:done", overall=round(float(verify["metrics"].get("overall", 0.0)), 3))
+                verify = self.summarizer.verify_and_improve(
+                    baseline, paper, section, ctx_case
+                )
+                self.progress.stage(
+                    section,
+                    "verify:done",
+                    overall=round(
+                        float(verify["metrics"].get("overall", 0.0)), 3
+                    ),
+                )
 
                 # ----- Persist -----
                 self.progress.stage(section, "persist:start")
-                saved_case = self.persist.save_section(casebook, paper, section, verify, baseline, goal["id"], ctx_case)
+                saved_case = self.persist.save_section(
+                    casebook,
+                    paper,
+                    section,
+                    verify,
+                    baseline,
+                    goal["id"],
+                    ctx_case,
+                )
                 self.progress.stage(section, "persist:done")
 
                 # Strategy tracking & knowledge pairs
                 self.strategy.track_section(saved_case, verify["iterations"])
-                self.persist.persist_pairs(saved_case.id, baseline, verify, ctx_case)
+                self.persist.persist_pairs(
+                    saved_case.id, baseline, verify, ctx_case
+                )
 
                 # Progress metrics
                 section_metrics = {
@@ -308,28 +489,37 @@ class LearningFromLearningAgent(BaseAgent):
                 # ----- Ablation “proof” (deterministic) -----
                 if bool(self.cfg.get("run_proof", False)):
                     star_supports = self._collect_star_supports(case.id)
-                    mask_keys = self._build_mask_keys_from_supports(star_supports)
+                    mask_keys = self._build_mask_keys_from_supports(
+                        star_supports
+                    )
 
                     with_metrics = verify["metrics"]
-                    masked = await self._run_with_mask(paper, section, ctx_case, mask_keys)
+                    masked = await self._run_with_mask(
+                        paper, section, ctx_case, mask_keys
+                    )
                     without_metrics = masked["verify"]["metrics"]
 
                     delta = {
-                        "overall": with_metrics["overall"] - without_metrics["overall"],
-                        "grounding": with_metrics["grounding"] - without_metrics["grounding"],
-                        "knowledge": with_metrics["knowledge_score"] - without_metrics["knowledge_score"],
+                        "overall": with_metrics["overall"]
+                        - without_metrics["overall"],
+                        "grounding": with_metrics["grounding"]
+                        - without_metrics["grounding"],
+                        "knowledge": with_metrics["knowledge_score"]
+                        - without_metrics["knowledge_score"],
                     }
 
                     try:
                         self.memory.casebooks.add_scorable(
                             case_id=case.id,
                             role="ablation_result",
-                            text=json.dumps({
-                                "mask": sorted(list(mask_keys)),
-                                "with": with_metrics,
-                                "without": without_metrics,
-                                "delta": delta,
-                            }),
+                            text=json.dumps(
+                                {
+                                    "mask": sorted(list(mask_keys)),
+                                    "with": with_metrics,
+                                    "without": without_metrics,
+                                    "delta": delta,
+                                }
+                            ),
                             pipeline_run_id=ctx_case.get("pipeline_run_id"),
                             meta={"type": "proof"},
                         )
@@ -337,17 +527,19 @@ class LearningFromLearningAgent(BaseAgent):
                         pass
 
                 # Collect result for this section
-                results.append({
-                    "section_name": section["section_name"],
-                    "summary": verify["summary"],
-                    "metrics": verify["metrics"],
-                    "iterations": verify["iterations"],
-                })
+                results.append(
+                    {
+                        "section_name": section["section_name"],
+                        "summary": verify["summary"],
+                        "metrics": verify["metrics"],
+                        "iterations": verify["iterations"],
+                    }
+                )
 
             # ----- Evidence / report -----
-            longitudinal = self.evidence.collect_longitudinal()
-            cross = self.evidence.cross_episode()
-            report_md = self.evidence.report(longitudinal, cross)
+            longitudinal = self.evidence.collect_longitudinal(context=context)
+            cross = self.evidence.cross_episode(context=context)
+            report_md = self.evidence.report(longitudinal, cross, context=context)
 
             paper_out = {
                 "paper_id": paper.get("id") or paper.get("doc_id"),
@@ -368,265 +560,14 @@ class LearningFromLearningAgent(BaseAgent):
         return {**context, **out}
 ``n
 
-## File: arena.py
-
-`python
-# stephanie/agents/learning/arena_service.py
-from __future__ import annotations
-from typing import Any, Dict, List, Callable, Optional
-import logging
-
-_logger = logging.getLogger(__name__)
-
-Score = Dict[str, float]
-Candidate = Dict[str, Any]
-
-
-class ArenaService:
-    """
-    Self-play tournament: rank -> improve -> re-rank across rounds.
-    No DB side effects; caller persists.
-    """
-
-    def __init__(
-        self,
-        cfg,
-        memory,
-        container,
-        logger,
-        *,
-        token_estimator: Optional[Callable[[str], int]] = None,
-    ):
-        self.cfg = cfg
-        self.memory = memory
-        self.container = container
-        self.logger = logger
-
-        # cache config with sane defaults
-        self._beam_w = max(1, int(cfg.get("beam_width", 5)))
-        self._max_rounds = max(0, int(cfg.get("self_play_rounds", 2)))
-        self._plateau_eps = max(
-            0.0, float(cfg.get("self_play_plateau_eps", 0.005))
-        )
-        self._min_marg = max(
-            0.0, float(cfg.get("min_marginal_reward_per_ktok", 0.05))
-        )
-        self._enable_diversity_guard = bool(
-            cfg.get("enable_diversity_guard", True)
-        )
-
-        self._tok = token_estimator or (
-            lambda t: max(1, int(len(t or "") / 4))
-        )
-
-    # ---- external scoring hooks provided by caller ----
-    def score_candidate(self, text: str, section_text: str) -> Score:
-        raise NotImplementedError  # caller injects
-
-    def improve(self, cand_text: str, improve_context: Dict[str, Any]) -> str:
-        raise NotImplementedError  # caller injects
-
-    # ---- helpers ----
-    @staticmethod
-    def _norm_score(s: Optional[Score]) -> Score:
-        s = s or {}
-        return {
-            "k": float(s.get("k", 0.0)),
-            "c": float(s.get("c", 0.0)),
-            "g": float(s.get("g", 0.0)),
-            "overall": float(s.get("overall", 0.0)),
-            "verified": bool(s.get("verified", False)),
-        }
-
-    @staticmethod
-    def _safe_improve(call: Callable[[], str], fallback: str) -> str:
-        try:
-            out = call()
-            return out if isinstance(out, str) and out else fallback
-        except Exception as e:
-            _logger.warning(f"Arena.improve failed; keeping original: {e}")
-            return fallback
-
-    @staticmethod
-    def _safe_score(call: Callable[[], Score]) -> Score:
-        try:
-            return ArenaService._norm_score(call())
-        except Exception as e:
-            _logger.warning(
-                f"Arena.score_candidate failed; zeroing score: {e}"
-            )
-            return ArenaService._norm_score(None)
-
-    # ---- main API ----
-    def run(
-        self, section_text: str, initial_candidates: List[Candidate]
-    ) -> Dict[str, Any]:
-        # Empty/degenerate guard
-        if not initial_candidates:
-            empty = {
-                "text": "",
-                "score": self._norm_score(None),
-                "origin": "empty",
-                "variant": "v0",
-            }
-            return {
-                "winner": empty,
-                "beam": [empty],
-                "initial_pool": [],
-                "iterations": [],
-                "rounds_run": 0,
-                "best_history": [],
-                "marginal_history": [],
-                "stop_reason": "no_candidates",
-            }
-
-        # 1) initial scoring
-        scored: List[Candidate] = []
-        for c in initial_candidates:
-            s = self._safe_score(
-                lambda: self.score_candidate(c.get("text", ""), section_text)
-            )
-            scored.append({**c, "score": s})
-
-        # stable sort: verified desc, overall desc, then text length desc
-        scored.sort(
-            key=lambda x: (
-                bool(x.get("score", {}).get("verified", False)),
-                float(x.get("score", {}).get("overall", 0.0)),
-                len(x.get("text", "") or ""),
-            ),
-            reverse=True,
-        )
-
-        beam = scored[: self._beam_w]
-        iters: List[List[Dict[str, Any]]] = []
-        best_history: List[float] = []
-        marginal_history: List[float] = []
-        stop_reason = "max_rounds"
-
-        # seed baseline for marginal calc
-        prev_best = beam[0]["score"]["overall"] if beam else 0.0
-        prev_toks = self._tok(beam[0]["text"]) if beam else 1
-
-        def _marginal(
-            prev_best: float, curr_best: float, prev_toks: int, curr_toks: int
-        ) -> float:
-            dr = curr_best - prev_best
-            dt = max(1, curr_toks - prev_toks)
-            return (dr / dt) * 1000.0
-
-        rounds_run = 0
-        for r in range(self._max_rounds):
-            rounds_run = r + 1
-            new_beam: List[Candidate] = []
-
-            for cand in beam:
-                improved_text = self._safe_improve(
-                    lambda: self.improve(
-                        cand.get("text", ""),
-                        {**(cand.get("meta") or {}), "round": r},
-                    ),
-                    fallback=cand.get("text", "") or "",
-                )
-                s = self._safe_score(
-                    lambda: self.score_candidate(improved_text, section_text)
-                )
-                new_beam.append(
-                    {
-                        **cand,
-                        "variant": f"{cand.get('variant', 'v')}+r{r + 1}",
-                        "text": improved_text,
-                        "score": s,
-                    }
-                )
-
-            # rank new_beam (stable tie-break as above)
-            new_beam.sort(
-                key=lambda x: (
-                    bool(x.get("score", {}).get("verified", False)),
-                    float(x.get("score", {}).get("overall", 0.0)),
-                    len(x.get("text", "") or ""),
-                ),
-                reverse=True,
-            )
-
-            # optional diversity guard
-            if self._enable_diversity_guard:
-                origins = {b.get("origin") for b in new_beam}
-                if len(origins) == 1:
-                    alt = next(
-                        (c for c in scored if c.get("origin") not in origins),
-                        None,
-                    )
-                    if alt:
-                        new_beam[-1] = alt
-
-            curr_best = (
-                new_beam[0]["score"]["overall"] if new_beam else prev_best
-            )
-            curr_toks = (
-                self._tok(new_beam[0]["text"]) if new_beam else prev_toks
-            )
-            marg = _marginal(prev_best, curr_best, prev_toks, curr_toks)
-            marginal_history.append(marg)
-            best_history.append(curr_best)
-
-            # compact telemetry for this round
-            iters.append(
-                [
-                    {
-                        "variant": b.get("variant"),
-                        "overall": float(
-                            b.get("score", {}).get("overall", 0.0)
-                        ),
-                        "k": float(b.get("score", {}).get("k", 0.0)),
-                        "verified": bool(
-                            b.get("score", {}).get("verified", False)
-                        ),
-                    }
-                    for b in new_beam
-                ]
-            )
-
-            if marg < self._min_marg:
-                stop_reason = "low_marginal_reward"
-                break
-            if (
-                len(best_history) >= 2
-                and (best_history[-1] - best_history[-2]) < self._plateau_eps
-            ):
-                stop_reason = "plateau"
-                break
-
-            beam, prev_best, prev_toks = (
-                new_beam[: self._beam_w],
-                curr_best,
-                curr_toks,
-            )
-
-        winner = (
-            beam or scored or [{"text": "", "score": self._norm_score(None)}]
-        )[0]
-
-        return {
-            "winner": winner,
-            "beam": beam,
-            "initial_pool": scored,
-            "iterations": iters,
-            "rounds_run": rounds_run,
-            "best_history": best_history,
-            "marginal_history": marginal_history,
-            "stop_reason": stop_reason,
-        }
-``n
-
 ## File: attribution.py
 
 `python
 # stephanie/agents/learning/attribution.py
 from __future__ import annotations
-from typing import Dict, Any, List
+
 import time
+from typing import Any, Dict, List
 
 
 class AttributionTracker:
@@ -714,42 +655,101 @@ class AttributionTracker:
         return "\n".join(lines)
 ``n
 
-## File: corpus_service.py
+## File: corpus_retriever.py
 
 `python
-# stephanie/agents/learning/corpus_service.py
+# stephanie/agents/learning/corpus_retriever.py
 from __future__ import annotations
-from typing import List, Dict, Any, Set, Optional
-from stephanie.agents.learning.attribution import AttributionTracker
-from stephanie.agents.knowledge.chat_analyze import ChatAnalyzeAgent
-from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
-from stephanie.tools.chat_corpus_tool import build_chat_corpus_tool
 
 import logging
+from typing import Any, Dict, Iterable, List, Optional, Set
+
+from stephanie.agents.knowledge.chat_analyze import ChatAnalyzeAgent
+from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
+from stephanie.agents.learning.attribution import AttributionTracker
+from stephanie.tools.chat_corpus_tool import build_chat_corpus_tool
 
 _logger = logging.getLogger(__name__)
 
 
-class CorpusService:
+class CorpusRetriever:
+    """
+    Retrieval with optional tag-aware filtering/boosting.
+    Works even if underlying chat_corpus tool doesn't support tags natively
+    (falls back to local filter/boost using item.meta/conversation tags).
+    """
+
     def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.container = container
         self.logger = logger
+
         self.chat_corpus = build_chat_corpus_tool(
             memory=memory, container=container, cfg=cfg.get("chat_corpus", {})
         )
+
         # Sub-agents / utilities
-        self.annotate = ScorableAnnotateAgent(
-            cfg.get("annotate", {}), memory, container, logger
-        )
-        self.analyze = ChatAnalyzeAgent(
-            cfg.get("analyze", {}), memory, container, logger
-        )
+        self.annotate = ScorableAnnotateAgent(cfg.get("annotate", {}), memory, container, logger)
+        self.analyze = ChatAnalyzeAgent(cfg.get("analyze", {}), memory, container, logger)
+
+        # --- Tag controls (config defaults, can be overridden per fetch) ---
+        tf = cfg.get("tag_filters", {}) or {}
+        self.default_tag_any:   List[str] = list(tf.get("any", []) or [])
+        self.default_tag_all:   List[str] = list(tf.get("all", []) or [])
+        self.default_tag_none:  List[str] = list(tf.get("none", []) or [])
+        self.default_tag_mode:  str       = str(cfg.get("tag_mode", "require")).lower()  # "require" | "prefer"
+        self.default_tag_boost: float     = float(cfg.get("tag_boost", 0.25))            # used when mode="prefer"
+
+        # Optional: restrict to a dedicated sub-index / corpus
+        self.default_corpus_id: Optional[str] = cfg.get("corpus_id")
 
     @staticmethod
     def _corpus_key(it: Dict[str, Any]) -> str:
         return f"corpus:{str(it.get('id'))}"
+
+    @staticmethod
+    def _tags_from_item(it: Dict[str, Any]) -> List[str]:
+        """
+        Try common places where conversation/message tags might be stored.
+        Adjust to your actual schema if needed.
+        """
+        meta = (it.get("meta") or {})
+        # Prefer explicit conversation tags if present
+        conv = meta.get("conversation") or {}
+        if isinstance(conv, dict) and isinstance(conv.get("tags"), list):
+            return list(conv.get("tags") or [])
+        # Fallbacks
+        if isinstance(meta.get("tags"), list):
+            return list(meta.get("tags") or [])
+        if isinstance(it.get("conversation_tags"), list):
+            return list(it.get("conversation_tags") or [])
+        return []
+
+    def _ensure_tags(self, it: Dict[str, Any]) -> List[str]:
+        return self._tags_from_item(it)
+
+    @staticmethod
+    def _match_tags(
+        tags: Iterable[str],
+        any_of: Iterable[str],
+        all_of: Iterable[str],
+        none_of: Iterable[str],
+    ) -> bool:
+        """Return True if tags satisfy (any | all) and do not include excluded."""
+        tags = set(t.lower() for t in (tags or []))
+        any_of = set(t.lower() for t in (any_of or []))
+        all_of = set(t.lower() for t in (all_of or []))
+        none_of = set(t.lower() for t in (none_of or []))
+
+        if none_of and tags & none_of:
+            return False
+        if all_of and not all_of.issubset(tags):
+            return False
+        if any_of and not (tags & any_of):
+            return False
+        # If no constraints, accept
+        return True if (any_of or all_of or none_of) else True
 
     async def fetch(
         self,
@@ -757,48 +757,113 @@ class CorpusService:
         *,
         mask_keys: Optional[Set[str]] = None,
         allow_keys: Optional[Set[str]] = None,
-        attribution_tracker: Optional[AttributionTracker] = None,  # NEW
+        attribution_tracker: Optional[AttributionTracker] = None,
+        # --- per-call tag overrides ---
+        tags_any: Optional[List[str]] = None,
+        tags_all: Optional[List[str]] = None,
+        tags_none: Optional[List[str]] = None,
+        tag_mode: Optional[str] = None,     # "require" (hard filter) or "prefer" (soft boost)
+        tag_boost: Optional[float] = None,  # only used if tag_mode="prefer"
+        corpus_id: Optional[str] = None,    # restrict to a specific corpus/index if supported
     ) -> List[Dict[str, Any]]:
+        tag_mode = (tag_mode or self.default_tag_mode).lower()
+        tag_boost = float(tag_boost if tag_boost is not None else self.default_tag_boost)
+
+        tags_any  = list(tags_any  if tags_any  is not None else self.default_tag_any)
+        tags_all  = list(tags_all  if tags_all  is not None else self.default_tag_all)
+        tags_none = list(tags_none if tags_none is not None else self.default_tag_none)
+
+        # Try to pass tag/corpus hints through to the tool if it supports them
+        # We'll catch TypeError and fall back to local filtering/boosting.
+        tool_kwargs = dict(
+            k=self.cfg.get("chat_corpus_k", 60),
+            weights={"semantic": 0.6, "entity": 0.25, "domain": 0.15},
+            include_text=True,
+        )
+        if corpus_id or self.default_corpus_id:
+            tool_kwargs["corpus_id"] = corpus_id or self.default_corpus_id
+        # Hypothetical API; safe to ignore by try/except
+        if tags_any or tags_all or tags_none:
+            tool_kwargs["filters"] = {
+                "tags_any": tags_any,
+                "tags_all": tags_all,
+                "tags_none": tags_none,
+                "mode": tag_mode,  # in case tool supports it
+            }
+
         try:
-            res = self.chat_corpus(
-                section_text,
-                k=self.cfg.get("chat_corpus_k", 60),
-                weights={"semantic": 0.6, "entity": 0.25, "domain": 0.15},
-                include_text=True,
-            )
-            items = res.get("items", []) or []
+            res = self.chat_corpus(section_text, **tool_kwargs)
+        except TypeError:
+            # Old tool signature, retry without unsupported kwargs
+            _logger.info("chat_corpus tool does not support filters/corpus_id; falling back to local filtering.")
+            tool_kwargs.pop("filters", None)
+            tool_kwargs.pop("corpus_id", None)
+            res = self.chat_corpus(section_text, **tool_kwargs)
 
-            # NEW: allowlist/mask
-            if allow_keys is not None:
-                items = [it for it in items if self._corpus_key(it) in allow_keys]
-            if mask_keys:
-                mk = set(mask_keys)
-                items = [it for it in items if self._corpus_key(it) not in mk]
+        items = res.get("items", []) or []
 
-            if attribution_tracker:
+        # Allowlist/mask
+        if allow_keys is not None:
+            ak = set(allow_keys)
+            items = [it for it in items if self._corpus_key(it) in ak]
+        if mask_keys:
+            mk = set(mask_keys)
+            items = [it for it in items if self._corpus_key(it) not in mk]
+
+        # If tool didn’t natively filter by tags (or we want boost), do it here
+        if tags_any or tags_all or tags_none:
+            if tag_mode == "require":
+                kept = []
                 for it in items:
-                    k = self._corpus_key(it)
-                    it["attribution_id"] = k
-                    attribution_tracker.record_contribution(k, {
-                        "source": "corpus",
-                        "id": it.get("id"),
-                        "score": float((it.get("score") or 0.0)),
-                        "section_text": section_text[:240],
-                        "retrieval_context": "section processing",
-                    })
+                    tgs = self._ensure_tags(it)
+                    if self._match_tags(tgs, tags_any, tags_all, tags_none):
+                        kept.append(it)
+                items = kept
+            elif tag_mode == "prefer":
+                # Soft boost items that match; keep others
+                for it in items:
+                    tgs = self._ensure_tags(it)
+                    if self._match_tags(tgs, tags_any, tags_all, tags_none):
+                        try:
+                            it["score"] = float(it.get("score", 0.0)) + float(tag_boost)
+                        except Exception:
+                            # leave score untouched on failure
+                            pass
+                # re-sort by the adjusted score (desc)
+                items.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
 
-            # (annotate/analyze) unchanged
-            try:
-                if self.annotate: 
-                    await self.annotate.run(context={"scorables": items})
-                if self.analyze:  
-                    await self.analyze.run(context={"chats": items})
-            except Exception as e:
-                _logger.warning(f"Corpus annotate/analyze skipped: {e}")
-            return items
+        # Attribution tracking
+        if attribution_tracker:
+            for it in items:
+                k = self._corpus_key(it)
+                it["attribution_id"] = k
+                try:
+                    attribution_tracker.record_contribution(
+                        k,
+                        {
+                            "source": "corpus",
+                            "id": it.get("id"),
+                            "score": float((it.get("score") or 0.0)),
+                            "section_text": section_text[:240],
+                            "retrieval_context": "section processing",
+                            "tags": self._ensure_tags(it),
+                            "corpus_id": corpus_id or self.default_corpus_id,
+                        },
+                    )
+                except Exception:
+                    # never break retrieval on attribution logging
+                    pass
+
+        # (annotate/analyze) — best-effort
+        try:
+            if self.annotate:
+                await self.annotate.run(context={"scorables": items})
+            if self.analyze:
+                await self.analyze.run(context={"chats": items})
         except Exception as e:
-            _logger.warning(f"Chat corpus retrieval failed: {e}")
-            return []
+            _logger.warning(f"Corpus annotate/analyze skipped: {e}")
+
+        return items
 ``n
 
 ## File: evidence.py
@@ -806,28 +871,32 @@ class CorpusService:
 `python
 # stephanie/agents/learning/evidence.py
 from __future__ import annotations
-from typing import Dict, Any, Optional, Tuple
+
 import asyncio
 import json
 import time
+from typing import Any, Dict, Optional, Tuple
+
 
 class Evidence:
     def __init__(self, cfg, memory, container, logger):
-        self.cfg, self.memory, self.container, self.logger = (
-            cfg, memory, container, logger
-        )
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
         self.casebook_tag = cfg.get("casebook_action", "blog")
         self._last: Dict[str, Any] = {}   # NEW: last snapshot for delta reporting
 
     def _emit(self, event: str, **fields):
-        payload = {"event": event, **fields}
+        payload = {"event": event, 
+                   "agent": "Evidence",
+                   **fields}
         """
         Fire-and-forget reporting event using container.get('reporting').emit(...)
         Safe to call from sync code (no await).
         """
         try:
             reporter = self.container.get("reporting")
-            coro = reporter.emit(ctx={}, stage="learning",  **payload)
+            coro = reporter.emit(context={}, stage="learning",  **payload)
             try:
                 loop = asyncio.get_running_loop()
                 loop.create_task(coro)
@@ -850,8 +919,10 @@ class Evidence:
             return 0.0
 
     # -------------- longitudinal (unchanged logic; added emit) --------------
-    def collect_longitudinal(self) -> Dict[str, Any]:
+    def collect_longitudinal(self, context: Dict[str, Any]) -> Dict[str, Any]:
         out = {
+            "run_id": context.get("pipeline_run_id"),
+            "agent": "evidence", 
             "total_papers": 0,
             "verification_scores": [],
             "iteration_counts": [],
@@ -896,6 +967,7 @@ class Evidence:
             # EMIT longitudinal snapshot + deltas (NEW)
             self._emit("evidence.longitudinal",
                        at=time.time(),
+                       run_id=context.get("pipeline_run_id"),
                        total_papers=out["total_papers"],
                        avg_score=out["avg_verification_score"],
                        avg_iters=out["avg_iterations"],
@@ -1087,7 +1159,7 @@ class Evidence:
             prev_citations = cites_here
         return reused / max(1, denom)
 
-    def cross_episode(self) -> Dict[str, Any]:
+    def cross_episode(self, context: Dict[str, Any]) -> Dict[str, Any]:
         kt = self._calculate_knowledge_transfer()
         dom = self._calculate_domain_learning()
         meta = self._calculate_meta_patterns()
@@ -1095,6 +1167,7 @@ class Evidence:
         ak = self._collect_improve_attributions()
         strict_tr = self._strict_transfer_rate()
         out = {
+            "run_id": context.get("pipeline_run_id"),
             "knowledge_transfer_rate": kt["rate"],
             "knowledge_transfer_examples": kt["examples"][:3],
             "domain_learning_patterns": dom,
@@ -1109,6 +1182,7 @@ class Evidence:
         # EMIT cross-episode snapshot + deltas (NEW)
         self._emit("evidence.cross_episode",
                    at=time.time(),
+                   run_id=context.get("pipeline_run_id"),
                    knowledge_transfer_rate=out["knowledge_transfer_rate"],
                    attribution_rate=out["attribution_rate"],
                    applied_knowledge_lift=out["applied_knowledge_lift"],
@@ -1119,6 +1193,7 @@ class Evidence:
         # one-line headline (NEW)
         self._emit("evidence.summary",
                    at=time.time(),
+                   run_id=context.get("pipeline_run_id"),
                    msg=("AR={:.0%} | AKL={:+.3f} | RNΔ={}".format(
                         out["attribution_rate"],
                         out["applied_knowledge_lift"],
@@ -1129,7 +1204,7 @@ class Evidence:
     def _calculate_evidence_strength(self, kt: Dict[str, Any], dom: Dict[str, Any], meta: Dict[str, Any], adapt_rate: float) -> float:
         return max(0.0, min(1.0, 0.35*kt.get("rate",0.0) + 0.25*dom.get("all_mean",0.0) + 0.20*(meta.get("avg_rounds",0.0)/5.0) + 0.20*adapt_rate))
 
-    def report(self, longitudinal: Dict[str, Any], cross: Dict[str, Any]) -> str:
+    def report(self, longitudinal: Dict[str, Any], cross: Dict[str, Any], context: Dict[str, Any]) -> str:
         if not longitudinal or longitudinal.get("total_papers", 0) < 3:
             return ""
         score_trend = longitudinal.get("score_improvement_pct", 0.0)
@@ -1139,6 +1214,9 @@ class Evidence:
 
         lines = []
         lines.append("## Learning from Learning: Evidence Report")
+        lines.append("")
+        lines.append(f"**Run ID**: {context.get('pipeline_run_id', 'n/a')}")
+        lines.append("**Agent**: Evidence")
         lines.append("")
         lines.append(f"- **Total papers processed**: {longitudinal.get('total_papers', 0)}")
         lines.append(f"- **Verification score trend**: {score_trend:.1f}% {arrow_score}")
@@ -1177,21 +1255,455 @@ class Evidence:
         return md
 ``n
 
+## File: knowledge_arena.py
+
+`python
+# stephanie/agents/learning/knowledge_arena.py
+from __future__ import annotations
+
+
+from stephanie.utils.emit_utils import prepare_emit
+
+import asyncio
+import logging
+import math
+import time
+import uuid
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+
+Logger = logging.Logger
+Score = Dict[str, float]
+Candidate = Dict[str, Any]
+EmitFn = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
+
+_logger = logging.getLogger(__name__)
+
+def _is_coro_fn(fn: Callable) -> bool:
+    return asyncio.iscoroutinefunction(fn)
+
+def _to_float(v: Any, default: float = 0.0) -> float:
+    try:
+        if hasattr(v, "item"):  # numpy scalar
+            v = v.item()
+        f = float(v)
+        return 0.0 if math.isnan(f) or math.isinf(f) else f
+    except Exception:
+        return default
+
+def _to_bool(v: Any) -> bool:
+    try:
+        if hasattr(v, "item"):
+            v = v.item()
+        return bool(v)
+    except Exception:
+        return False
+
+def _sanitize_payload(d: Dict[str, Any]) -> Dict[str, Any]:
+    out = {}
+    for k, v in d.items():
+        if hasattr(v, "item"):
+            v = v.item()
+        if isinstance(v, float):
+            if math.isnan(v) or math.isinf(v):
+                v = None
+        out[k] = v
+    return out
+
+def _norm_score(s: Optional[Score]) -> Score:
+    s = s or {}
+    return {
+        "k": _to_float(s.get("k")),
+        "c": _to_float(s.get("c")),
+        "g": _to_float(s.get("g")),
+        "overall": _to_float(s.get("overall")),
+        "verified": _to_bool(s.get("verified")),
+    }
+
+class KnowledgeArena:
+    """
+    “to the best of my knowledge” — run self-play rounds to select the best candidate.
+
+    Responsibilities:
+      - Score an initial pool -> keep top-K (beam)
+      - Iteratively improve and re-score candidates
+      - Early-stop on plateau or low marginal reward per kTok
+      - Emit structured lifecycle events (caller persists as needed)
+
+    Injected hooks (sync or async):
+      - score_candidate(text: str, section_text: str) -> Score
+      - improve(text: str, improve_ctx: Dict[str, Any]) -> str
+    """
+
+    def __init__(
+        self,
+        cfg: Dict[str, Any],
+        memory: Any,
+        container: Any,
+        logger: Optional[Logger],
+        *,
+        token_estimator: Optional[Callable[[str], int]] = None,
+    ):
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger or _logger
+
+        # config with sensible defaults
+        self._beam_w = max(1, int(cfg.get("beam_width", 5)))
+        self._max_rounds = max(0, int(cfg.get("self_play_rounds", 2)))
+        self._plateau_eps = max(0.0, float(cfg.get("self_play_plateau_eps", 0.005)))
+        self._min_marg = max(0.0, float(cfg.get("min_marginal_reward_per_ktok", 0.05)))
+        self._enable_diversity_guard = bool(cfg.get("enable_diversity_guard", True))
+        # how to pick a diversity replacement: "last" (replace worst), "closest" (replace closest duplicate), "none"
+        self._diversity_mode = str(cfg.get("diversity_mode", "last")).lower()
+        # parallelism for scoring/improving
+        self._max_parallel = max(1, int(cfg.get("max_parallel", 8)))
+        self._sem = asyncio.Semaphore(self._max_parallel)
+
+        self._tok = token_estimator or (lambda t: max(1, int(len(t or "") / 4)))
+
+        # hook signatures (caller must override these)
+        # sync or async are both supported — we detect and await if needed.
+        self.score_candidate: Callable[[str, str], Score] = self._must_override_score
+        self.improve: Callable[[str, Dict[str, Any]], str] = self._must_override_improve
+
+    # ---- abstract defaults (raise helpful errors if not set) ----
+    def _must_override_score(self, *_a, **_k) -> Score:
+        raise NotImplementedError("KnowledgeArena.score_candidate must be provided by the caller.")
+
+    def _must_override_improve(self, *_a, **_k) -> str:
+        raise NotImplementedError("KnowledgeArena.improve must be provided by the caller.")
+
+    # ---- unified call wrappers (sync/async transparent) ----
+    async def _call_score(self, text: str, section_text: str) -> Score:
+        try:
+            if _is_coro_fn(self.score_candidate):
+                s = await self.score_candidate(text, section_text)
+            else:
+                s = self.score_candidate(text, section_text)
+            return _norm_score(s)
+        except Exception as e:
+            self.logger.warning("Arena.score_candidate failed; zeroing score: %s", e)
+            return _norm_score(None)
+
+    async def _call_improve(self, text: str, improve_ctx: Dict[str, Any]) -> str:
+        try:
+            if _is_coro_fn(self.improve):
+                out = await self.improve(text, improve_ctx)
+            else:
+                out = self.improve(text, improve_ctx)
+            return out if isinstance(out, str) and out else text
+        except Exception as e:
+            self.logger.warning("Arena.improve failed; keeping original: %s", e)
+            return text
+
+    # ---- emitter that supports fn or events object ----
+    async def _emit(self, emit: EmitFn | Any, payload: Dict[str, Any], *, method: Optional[str] = None) -> None:
+        if not emit:
+            return
+        try:
+            safe = _sanitize_payload(payload)
+            # If an events object was provided (with named method), call it; else call emit(safe).
+            if method and hasattr(emit, method):
+                fn = getattr(emit, method)
+                if asyncio.iscoroutinefunction(fn):
+                    await fn(safe)
+                else:
+                    fn(safe)
+            else:
+                if asyncio.iscoroutinefunction(emit):
+                    await emit(safe)
+                else:
+                    emit(safe)
+        except Exception as e:
+            # never fail the arena for telemetry issues
+            self.logger.debug("Arena emit skipped: %s", e)
+
+    # ---- helpers ----
+    def _marginal_per_ktok(self, prev_best: float, curr_best: float, prev_toks: int, curr_toks: int) -> float:
+        dr, dt = (curr_best - prev_best), max(1, curr_toks - prev_toks)
+        return (dr / dt) * 1000.0
+
+    def _cfg_snapshot(self) -> Dict[str, Any]:
+        return {
+            "beam_width": self._beam_w,
+            "self_play_rounds": self._max_rounds,
+            "self_play_plateau_eps": self._plateau_eps,
+            "min_marginal_reward_per_ktok": self._min_marg,
+            "enable_diversity_guard": self._enable_diversity_guard,
+            "diversity_mode": self._diversity_mode,
+            "max_parallel": self._max_parallel,
+        }
+
+    # ---- diversity guard ----
+    def _apply_diversity_guard(self, new_beam: List[Candidate], scored_pool: List[Candidate]) -> Tuple[List[Candidate], bool]:
+        if not self._enable_diversity_guard or not new_beam:
+            return new_beam, False
+
+        origins = [b.get("origin") for b in new_beam]
+        unique = set(o for o in origins if o is not None)
+        if len(unique) > 1:
+            return new_beam, False
+
+        # find an alternative candidate with a different origin
+        alt = next((c for c in scored_pool if c.get("origin") not in unique), None)
+        if not alt:
+            return new_beam, False
+
+        replaced = False
+        if self._diversity_mode == "closest":
+            # replace the item whose score is closest to the leader (preserves tail diversity)
+            lead = _to_float(new_beam[0].get("score", {}).get("overall"))
+            idx, _ = min(
+                enumerate(new_beam),
+                key=lambda kv: abs(_to_float(kv[1].get("score", {}).get("overall")) - lead),
+            )
+            new_beam[idx] = alt
+            replaced = True
+        else:
+            # default: replace the last item (worst)
+            new_beam[-1] = alt
+            replaced = True
+
+        return new_beam, replaced
+
+    # ---- concurrent map utility ----
+    async def _bounded_gather(self, coros: List[Callable[[], Awaitable[Any]]]) -> List[Any]:
+        async def _run(coro_factory: Callable[[], Awaitable[Any]]):
+            async with self._sem:
+                return await coro_factory()
+        return await asyncio.gather(*[_run(cf) for cf in coros], return_exceptions=False)
+
+    # ---- main API ----
+    async def run(
+        self,
+        section_text: str,
+        initial_candidates: List[Candidate],
+        context: Optional[Dict[str, Any]],
+        *,
+        emit: EmitFn | Any = None,  # callable OR events object with .started/.round_start/.round_end/.done
+        run_meta: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        run_id = context.get("pipeline_run_id")
+        started_at = time.time()
+        cfg_snap = self._cfg_snapshot()
+
+        await self._emit(
+            emit,
+            prepare_emit("arena_start", {"run_id": run_id, "t": started_at, **(run_meta or {}), **cfg_snap}),
+            method="started",
+        )
+
+        # ---- empty guard ----
+        if not initial_candidates:
+            empty = {"text": "", "score": _norm_score(None), "origin": "empty", "variant": "v0"}
+            out = {
+                "winner": empty, "beam": [empty], "initial_pool": [],
+                "iterations": [], "rounds_run": 0,
+                "best_history": [], "marginal_history": [],
+                "stop_reason": "no_candidates",
+                "arena_run_id": run_id, "started_at": started_at, "ended_at": time.time(),
+                "summary": {"winner_overall": 0.0, "rounds_run": 0, "reason": "no_candidates"},
+            }
+            await self._emit(emit, {"event": "arena_stop", "run_id": run_id, "reason": "no_candidates", "winner_overall": 0.0, "rounds_run": 0}, method="round_end")
+            await self._emit(emit, {"event": "arena_done", "run_id": run_id, "winner_overall": 0.0}, method="done")
+            return out
+
+        # ---- initial scoring (parallel) ----
+        score_jobs = [
+            (c, lambda txt=c.get("text", ""): self._call_score(txt, section_text))
+            for c in initial_candidates
+        ]
+        scored: List[Candidate] = []
+        results = await self._bounded_gather([job for _, job in score_jobs])
+        for (c, _), s in zip(score_jobs, results):
+            scored.append({**c, "score": s})
+        scored.sort(
+            key=lambda x: (
+                _to_bool(x.get("score", {}).get("verified")),
+                _to_float(x.get("score", {}).get("overall")),
+                len(x.get("text", "") or ""),
+            ),
+            reverse=True,
+        )
+
+        # top-k preview for dashboards
+        topk_preview = [
+            {
+                "origin": sc.get("origin"),
+                "variant": sc.get("variant"),
+                "overall": _to_float(sc.get("score", {}).get("overall")),
+                "k": _to_float(sc.get("score", {}).get("k")),
+                "verified": _to_bool(sc.get("score", {}).get("verified")),
+            }
+            for sc in scored[: min(5, len(scored))]
+        ]
+        await self._emit(
+            emit,
+            prepare_emit("initial_scored", {"run_id": run_id, "topk": topk_preview}),
+            method="round_start",
+        )
+
+        beam = scored[: self._beam_w]
+        iters: List[List[Dict[str, Any]]] = []
+        best_history: List[float] = []
+        marginal_history: List[float] = []
+        stop_reason = "max_rounds"
+
+        prev_best = _to_float(beam[0]["score"]["overall"]) if beam else 0.0
+        prev_toks = self._tok(beam[0]["text"]) if beam else 1
+        rounds_run = 0
+
+        for r in range(self._max_rounds):
+            rounds_run = r + 1
+            await self._emit(
+                emit,
+                prepare_emit("round_begin", {"run_id": run_id, "round": rounds_run, "prev_best": float(prev_best)}),
+                method="round_start",
+            )
+
+            # ---- improve & score (parallel, bounded) ----
+            improve_jobs = []
+            for cand in beam:
+                meta = {**(cand.get("meta") or {}), "round": r}
+                improve_jobs.append(lambda c=cand, m=meta: self._call_improve(c.get("text", "") or "", m))
+            improved_texts: List[str] = await self._bounded_gather(improve_jobs)
+
+            score_jobs = [
+                (cand, txt, lambda t=txt: self._call_score(t, section_text))
+                for cand, txt in zip(beam, improved_texts)
+            ]
+            scored_improved: List[Candidate] = []
+            score_results = await self._bounded_gather([job for _, _, job in score_jobs])
+            for (cand, txt, _), s in zip(score_jobs, score_results):
+                scored_improved.append({
+                    **cand,
+                    "variant": f"{cand.get('variant', 'v')}+r{rounds_run}",
+                    "text": txt,
+                    "score": s
+                })
+
+            scored_improved.sort(
+                key=lambda x: (
+                    _to_bool(x.get("score", {}).get("verified")),
+                    _to_float(x.get("score", {}).get("overall")),
+                    len(x.get("text", "") or ""),
+                ),
+                reverse=True,
+            )
+
+            # ---- diversity guard ----
+            replaced = False
+            scored_improved, replaced = self._apply_diversity_guard(scored_improved, scored)
+
+            curr_best = _to_float(scored_improved[0]["score"]["overall"]) if scored_improved else prev_best
+            curr_toks = self._tok(scored_improved[0]["text"]) if scored_improved else prev_toks
+            marg = self._marginal_per_ktok(prev_best, curr_best, prev_toks, curr_toks)
+
+            marginal_history.append(float(marg))
+            best_history.append(float(curr_best))
+            iters.append(
+                [
+                    {
+                        "variant": b.get("variant"),
+                        "overall": _to_float(b.get("score", {}).get("overall")),
+                        "k": _to_float(b.get("score", {}).get("k")),
+                        "verified": _to_bool(b.get("score", {}).get("verified")),
+                    }
+                    for b in scored_improved
+                ]
+            )
+
+            await self._emit(
+                emit,
+                prepare_emit(
+                    "round_end",
+                    {
+                        "run_id": run_id,
+                        "round": rounds_run,
+                        "best_overall": float(curr_best),
+                        "marginal_per_ktok": float(marg),
+                        "diversity_replaced": bool(replaced),
+                    },
+                ),
+                method="round_end",
+            )
+
+            # ---- early stop checks ----
+            if marg < self._min_marg:
+                stop_reason = "low_marginal_reward"
+                break
+            if len(best_history) >= 2 and (best_history[-1] - best_history[-2]) < self._plateau_eps:
+                stop_reason = "plateau"
+                break
+
+            beam, prev_best, prev_toks = (scored_improved[: self._beam_w], curr_best, curr_toks)
+
+        winner = (beam or scored or [{"text": "", "score": _norm_score(None)}])[0]
+
+        await self._emit(
+            emit,
+            prepare_emit(
+                "arena_stop",
+                {
+                    "run_id": run_id,
+                    "reason": stop_reason,
+                    "winner_overall": _to_float(winner.get("score", {}).get("overall")),
+                    "rounds_run": int(rounds_run),
+                },
+            ),
+            method="round_end",
+        )
+
+        out = {
+            "winner": winner,
+            "beam": beam,
+            "initial_pool": scored,
+            "iterations": iters,
+            "rounds_run": rounds_run,
+            "best_history": best_history,
+            "marginal_history": marginal_history,
+            "stop_reason": stop_reason,
+            "arena_run_id": run_id,
+            "started_at": started_at,
+            "ended_at": time.time(),
+            # compact summary for dashboards
+            "summary": {
+                "winner_overall": _to_float(winner.get("score", {}).get("overall")),
+                "rounds_run": int(rounds_run),
+                "reason": stop_reason,
+            },
+        }
+
+        await self._emit(
+            emit,
+            prepare_emit(
+                "arena_done",
+                {"run_id": run_id, "ended_at": out["ended_at"], "summary": out["summary"]},
+            ),
+            method="done",
+        )
+        return out
+``n
+
 ## File: persistence.py
 
 `python
 # stephanie/agents/learning/persistence.py
 from __future__ import annotations
-from typing import Dict, Any, List
-import time
+
 import asyncio  # ← NEW
 import json
+import logging
+import time
+from typing import Any, Dict, List
+
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.utils.paper_utils import build_paper_goal_text, build_paper_goal_meta
-import logging
+from stephanie.utils.paper_utils import (build_paper_goal_meta,
+                                         build_paper_goal_text)
 
 _logger = logging.getLogger(__name__)
 
@@ -1214,7 +1726,8 @@ class Persistence:
         """
         try:
             reporter = self.container.get("reporting")
-            coro = reporter.emit(context=context, stage="learning", **payload)
+            
+            coro = reporter.emit(context=context, **payload)
             try:
                 loop = asyncio.get_running_loop()
                 loop.create_task(coro)
@@ -1434,12 +1947,13 @@ class Persistence:
         return case
     
     def persist_pairs(self, case_id: int, baseline: str, verify: Dict[str, Any], context: Dict[str, Any]):
+        pipeline_run_id = context.get("pipeline_run_id")
         metrics = verify["metrics"]
         improved = verify["summary"]
         try:
             self.memory.casebooks.add_scorable(
                 case_id=case_id, role="knowledge_pair_positive", text=improved,
-                pipeline_run_id=context.get("pipeline_run_id"),
+                pipeline_run_id=pipeline_run_id,
                 meta={"verification_score": metrics.get("overall",0.0),
                       "knowledge_score": metrics.get("knowledge_score",0.0),
                       "strategy_version": context.get("strategy_version")},
@@ -1447,7 +1961,7 @@ class Persistence:
             if metrics.get("overall",0.0) >= 0.85:
                 self.memory.casebooks.add_scorable(
                     case_id=case_id, role="knowledge_pair_negative", text=baseline,
-                    pipeline_run_id=context.get("pipeline_run_id"),
+                    pipeline_run_id=pipeline_run_id,
                     meta={"verification_score": max(0.0, metrics.get("overall",0.0)-0.15),
                           "knowledge_score": max(0.0, metrics.get("knowledge_score",0.0)*0.7),
                           "strategy_version": context.get("strategy_version")},
@@ -1633,6 +2147,8 @@ class Persistence:
                 "stage": "arena",                 # aligns with your CBR example
                 "event": "winner",                # specific event name
                 "summary": "Arena winner selected",
+                "agent": "Persistence",        # stable label
+                "run_id": pipeline_run_id,
                 "paper_id": str(paper.get("id") or paper.get("doc_id")),
                 "section_name": section.get("section_name"),
                 "winner": {
@@ -1652,13 +2168,15 @@ class Persistence:
                     "pipeline_run_id": pipeline_run_id,
                 },
             }
-            self._emit_report(ctx=context, **winner_payload)
+            self._emit_report(context=context, **winner_payload)
 
             # Optional: a second, dashboard-friendly summary event
             summary_payload = {
                 "stage": "arena",
                 "event": "summary",
                 "title": "Arena Winner",
+                "agent": "Persistence",        
+                "run_id": pipeline_run_id,
                 "cards": [
                     {"type": "metric", "title": "Winner Overall", "value": round(float(w_score.get("overall", 0.0)), 3)},
                     {"type": "bar", "title": "K/C/G", "series": [
@@ -1678,7 +2196,7 @@ class Persistence:
                     "section_name": section.get("section_name"),
                 },
             }
-            self._emit_report(ctx=context, **summary_payload)
+            self._emit_report(context=context, **summary_payload)
 
             
         except Exception as e:
@@ -1738,9 +2256,9 @@ class ProgressAdapter:
 
 `python
 # stephanie/agents/learning/proof.py
-from dataclasses import dataclass
-from typing import List, Dict, Any
 import json
+from dataclasses import dataclass
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -1841,8 +2359,10 @@ class ProofOfAppliedKnowledge:
 `python
 # stephanie/agents/learning/scoring.py
 from __future__ import annotations
-from typing import Dict, Any, Tuple, List
+
 import re
+from typing import Any, Dict, List, Tuple
+
 
 class Scoring:
     def __init__(self, cfg, memory, container, logger):
@@ -1851,7 +2371,8 @@ class Scoring:
         self.container = container
         self.logger = logger
         try:
-            from stephanie.scoring.scorer.knowledge_scorer import KnowledgeScorer
+            from stephanie.scoring.scorer.knowledge_scorer import \
+                KnowledgeScorer
             self.knowledge = KnowledgeScorer(cfg.get("knowledge_scorer", {}), memory, container, logger)
         except Exception:
             self.knowledge = None
@@ -1913,13 +2434,14 @@ class Scoring:
 `python
 # stephanie/agents/learning/strategy_manager.py
 from __future__ import annotations
-from dataclasses import dataclass, asdict, replace
-from typing import Any, Dict, List, Optional, Tuple
+
 import json
+import logging
+import math
 import random
 import time
-import math
-import logging
+from dataclasses import asdict, dataclass, replace
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.utils.json_sanitize import dumps_safe
 
@@ -2379,9 +2901,13 @@ class StrategyManager:
 `python
 # stephanie/agents/learning/summarizer.py
 from __future__ import annotations
-from typing import Dict, Any, List
+
 import json
 import time
+from typing import Any, Dict, List
+
+from stephanie.utils.json_sanitize import dumps_safe
+
 
 class Summarizer:
     def __init__(self, cfg, memory, container, logger, strategy, scoring=None, prompt_loader=None, call_llm=None):
@@ -2448,7 +2974,7 @@ class Summarizer:
                 payload = {"claims": matches, "threshold": th, "timestamp": time.time()}
                 self.memory.casebooks.add_scorable(
                     case_id=case_id, role="improve_attribution",
-                    text=json.dumps(payload, ensure_ascii=False),
+                    text=dumps_safe(payload),
                     pipeline_run_id=context.get("pipeline_run_id"),
                     meta={"iteration": context.get("iteration")}
                 )

@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from time import time
+import time
 from typing import Any, Callable, Dict, List, Optional
 
 from .bus_protocol import BusProtocol

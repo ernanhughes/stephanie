@@ -531,9 +531,9 @@ class LearningFromLearningAgent(BaseAgent):
                 )
 
             # ----- Evidence / report -----
-            longitudinal = self.evidence.collect_longitudinal()
-            cross = self.evidence.cross_episode()
-            report_md = self.evidence.report(longitudinal, cross)
+            longitudinal = self.evidence.collect_longitudinal(context=context)
+            cross = self.evidence.cross_episode(context=context)
+            report_md = self.evidence.report(longitudinal, cross, context=context)
 
             paper_out = {
                 "paper_id": paper.get("id") or paper.get("doc_id"),
