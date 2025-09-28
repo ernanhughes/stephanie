@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex align-items-center gap-3">
+      <h2 class="mb-0">Arena (history)</h2>
+      <span id="chip-run" class="badge bg-secondary d-none"></span>
+      <span id="chip-section" class="badge bg-secondary d-none"></span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <input id="filter-run" class="form-control form-control-sm" placeholder="run_id (optional)" style="width:16rem">
+      <input id="filter-subj" class="form-control form-control-sm" placeholder="subject like e.g. stephanie.events.arena.run.%">
+      <input id="filter-ev" class="form-control form-control-sm" placeholder="event e.g. round_end" style="width:12rem">
+      <button id="btn-refresh" class="btn btn-sm btn-primary">Refresh</button>
+      <button id="btn-clear" class="btn btn-sm btn-outline-secondary">Clear filters</button>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Events</span>
+          <div class="d-flex align-items-center gap-2">
+            <select id="limit" class="form-select form-select-sm" style="width:auto">
+              <option>50</option><option selected>200</option><option>500</option><option>1000</option>
+            </select>
+            <button id="btn-tail" class="btn btn-sm btn-outline-dark" title="Tail (since last id)">Tail</button>
+          </div>
+        </div>
+        <div class="card-body p-0" style="max-height:60vh; overflow:auto">
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th style="width:90px;">Time</th>
+                <th>Subject</th>
+                <th>Event</th>
+                <th style="width:110px;">run_id</th>
+              </tr>
+            </thead>
+            <tbody id="list-body"><tr><td colspan="4" class="text-muted small p-3">No data yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Event detail</span>
+          <span class="small text-muted" id="detail-meta"></span>
+        </div>
+        <div class="card-body">
+          <div id="badges" class="mb-2"></div>
+          <pre id="payload" class="small" style="white-space:pre-wrap; background:#0b0b0b; color:#e8e8e8; padding:10px; border-radius:6px; max-height:60vh; overflow:auto;">Select an event…</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let rows = [];
+  let lastId = null; // for tailing
+  let selectedId = null;
+
+  function tsToClock(ts) {
+    try { return new Date(ts * 1000).toLocaleTimeString(); } catch { return "—"; }
+  }
+
+  function badge(txt, cls="bg-secondary") {
+    const span = document.createElement("span");
+    span.className = "badge " + cls + " me-2";
+    span.textContent = txt;
+    return span;
+  }
+
+  function setChip(id, text) {
+    const el = $(id);
+    if (!text) { el.classList.add("d-none"); return; }
+    el.textContent = text;
+    el.classList.remove("d-none");
+  }
+
+  function renderList() {
+    const tb = $("list-body");
+    tb.innerHTML = "";
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="4" class="text-muted small p-3">No data.</td></tr>';
+      return;
+    }
+    for (const r of rows) {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.dataset.id = r.id;
+      tr.onclick = () => loadDetail(r.id);
+      tr.innerHTML = `
+        <td class="small text-nowrap">${tsToClock(r.ts)}</td>
+        <td class="small text-truncate" title="${r.subject}">${r.subject}</td>
+        <td class="small">${r.event || "—"}</td>
+        <td class="small text-truncate" title="${r.run_id || ''}">${r.run_id || "—"}</td>`;
+      if (selectedId === r.id) tr.classList.add("table-active");
+      tb.appendChild(tr);
+    }
+  }
+
+  async function fetchList(useTail=false) {
+    const limit = Number($("limit").value) || 200;
+    const run = $("filter-run").value.trim();
+    const subj = $("filter-subj").value.trim();
+    const ev = $("filter-ev").value.trim();
+
+    const url = new URL("/tap/api/recent", window.location.origin);
+    url.searchParams.set("limit", String(limit));
+    if (run) url.searchParams.set("run_id", run);
+    if (subj) url.searchParams.set("subject_like", subj);
+    if (ev) url.searchParams.set("event", ev);
+    if (useTail && lastId) url.searchParams.set("since_id", String(lastId));
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error("recent fetch failed", res.status);
+      return;
+    }
+    const arr = await res.json();
+    if (useTail) {
+      rows = rows.concat(arr);
+    } else {
+      rows = arr;
+    }
+    if (rows.length) lastId = rows[rows.length - 1].id;
+    renderList();
+
+    // set chips if we’re filtering by run
+    setChip("chip-run", run ? `run_id: ${run}` : null);
+  }
+
+  async function loadDetail(id) {
+    selectedId = id;
+    const res = await fetch(`/tap/api/event/${id}`);
+    if (!res.ok) return;
+    const obj = await res.json();
+
+    const b = $("badges");
+    b.innerHTML = "";
+    if (obj.subject) b.appendChild(badge(obj.subject, "bg-dark"));
+    if (obj.event) b.appendChild(badge(obj.event, "bg-primary"));
+    if (obj.run_id) b.appendChild(badge(`run:${obj.run_id}`, "bg-success"));
+    if (obj.case_id) b.appendChild(badge(`case:${obj.case_id}`, "bg-info"));
+    if (obj.paper_id) b.appendChild(badge(`paper:${obj.paper_id}`, "bg-warning text-dark"));
+    if (obj.section_name) b.appendChild(badge(obj.section_name, "bg-secondary"));
+
+    $("detail-meta").textContent = `id ${obj.id} • ${new Date(obj.ts*1000).toLocaleString()}`;
+    $("payload").textContent = JSON.stringify(obj.payload ?? {}, null, 2);
+
+    // optional chip for section
+    setChip("chip-section", obj.section_name || null);
+
+    // update active row styling
+    for (const tr of document.querySelectorAll("#list-body tr")) {
+      tr.classList.toggle("table-active", String(tr.dataset.id) === String(id));
+    }
+  }
+
+  $("btn-refresh").addEventListener("click", () => fetchList(false));
+  $("btn-tail").addEventListener("click", () => fetchList(true));
+  $("btn-clear").addEventListener("click", () => {
+    $("filter-run").value = "";
+    $("filter-subj").value = "";
+    $("filter-ev").value = "";
+    rows = []; lastId = null; selectedId = null;
+    renderList();
+  });
+
+  // Deep-link: ?run_id=... prefill and fetch
+  const p = new URLSearchParams(location.search);
+  const rid = p.get("run_id");
+  if (rid) $("filter-run").value = rid;
+
+  fetchList(false);
+})();
+</script>
+{% endblock %}

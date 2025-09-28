@@ -211,7 +211,7 @@ class CalibrationEventStore(BaseSQLAlchemyStore):
         path = os.path.join(self.model_dir, f"{domain}_calibration.json")
         tmp = path + ".tmp"
         payload = dict(model)
-        payload.setdefault("timestamp", datetime.datetime.utcnow().isoformat())
+        payload.setdefault("timestamp", datetime.datetime.now().isoformat())
         try:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2)

@@ -67,7 +67,7 @@ class ZeroModelService(Service):
         if not enable:
             return path
         root, ext = os.path.splitext(path)
-        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
         return f"{root}_{ts}{ext}"
 
     # --------------------------

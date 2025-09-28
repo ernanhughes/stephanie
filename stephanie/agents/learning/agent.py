@@ -465,7 +465,7 @@ class LearningFromLearningAgent(BaseAgent):
                 self.progress.stage(section, "persist:done")
 
                 # Strategy tracking & knowledge pairs
-                self.strategy.track_section(saved_case, verify["iterations"])
+                self.strategy.track_section(saved_case, verify["iterations"], context)
                 self.persist.persist_pairs(
                     saved_case.id, baseline, verify, ctx_case
                 )

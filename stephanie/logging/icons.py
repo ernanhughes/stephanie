@@ -32,6 +32,11 @@ SYSTEM_INIT = {
 # AGENT OPERATIONS
 # =================
 AGENT_EVENTS = {
+    "BusEventInserted": "🚌➕",  # Bus event inserted
+    "CBRReport": "📝📊",  # CBR report
+    "EpistemicPlanHRMScorerWarning": "👾⚠️",  # Epistemic plan HRM scorer warning
+    "EpistemicPlanHRMScorerModelLoaded": "👾🧠✅",  # Epistemic plan HRM scorer model loaded
+    "EpistemicPlanHRMScorerModelError": "👾🧠❌",  # Epistemic plan HRM scorer model error
     "LfL_Paper_Start": "📚📄▶️",  # Learning from Learning paper 
     "LfL_Section_Started": "📚▶️",  # Learning from Learning section started
     "LfL_Section_Staged": "📚✅",  # Learning from Learning section staged

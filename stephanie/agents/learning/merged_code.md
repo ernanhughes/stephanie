@@ -471,7 +471,7 @@ class LearningFromLearningAgent(BaseAgent):
                 self.progress.stage(section, "persist:done")
 
                 # Strategy tracking & knowledge pairs
-                self.strategy.track_section(saved_case, verify["iterations"])
+                self.strategy.track_section(saved_case, verify["iterations"], context)
                 self.persist.persist_pairs(
                     saved_case.id, baseline, verify, ctx_case
                 )
@@ -2442,7 +2442,8 @@ import random
 import time
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Dict, List, Optional, Tuple
-
+import random, time, math
+from dataclasses import dataclass, asdict
 from stephanie.utils.json_sanitize import dumps_safe
 
 _logger = logging.getLogger(__name__)
@@ -2484,14 +2485,13 @@ class StrategyManager:
         self.rng = random.Random(seed) if seed is not None else random.Random()
 
         # Current state (immutable dataclass)
-        self.state: Strategy = Strategy(
-            verification_threshold=float(cfg.get("verification_threshold", 0.85)),
-            skeptic_weight=float(cfg.get("skeptic_weight", 0.34)),
-            editor_weight=float(cfg.get("editor_weight", 0.33)),
-            risk_weight=float(cfg.get("risk_weight", 0.33)),
-            version=1,
-        )
-
+        self.state = self._load_or_default()
+        self._last_commit_ts = 0.0
+        self._ab_buffer: List[Dict[str, Any]] = []  # rolling results: {"group":"A|B","performance":float,"domain":str}
+        self._min_per_arm = int(cfg.get("ab_min_per_arm", 8))
+        self._cooldown_sec = float(cfg.get("ab_cooldown_sec", 1800))
+        self._min_pct_improve = float(cfg.get("min_strategy_improvement", 2.0))
+        self._min_effect = float(cfg.get("min_effect_size", 0.147))  # Cliff's Δ ~ small
         self._evolution_log: List[Dict[str, Any]] = []
 
     # ---------- Public helpers ----------
@@ -2608,29 +2608,145 @@ class StrategyManager:
                     meta={"group": group},
                 )
         except Exception:
-            pass
+            pass 
 
-    def track_section(self, case, iterations):
+    def track_section(self, case, iterations, context: Optional[Dict[str, Any]] = None):
         """
-        Optional compact attribute (avg_gain, iters, version) for dashboards/queries.
+        Compact, audit-friendly rollup for dashboards/queries and A/B validation.
+        - Computes gain stats and knowledge-applied lift
+        - Captures elapsed time and a tiny score timeline
+        - Tags A/B group, version, and (optional) domain
+        - Appends to internal A/B buffer for later validation
         """
+        import time as _t
         try:
             if not iterations:
                 return
-            gains = [
-                (iterations[i]["score"] - iterations[i - 1]["score"])
-                for i in range(1, len(iterations))
-                if "score" in iterations[i] and "score" in iterations[i - 1]
-            ]
+
+            # --- core series ---
+            scores = [it.get("score", 0.0) for it in iterations]
+            ka_flags = [bool(it.get("knowledge_applied")) for it in iterations]
+
+            start_score = float(scores[0])
+            final_score = float(scores[-1])
+            gains = [scores[i] - scores[i-1] for i in range(1, len(scores))]
             avg_gain = (sum(gains) / len(gains)) if gains else 0.0
+
+            # robust stdev (0 if <2 points)
+            try:
+                import statistics as stats
+                stdev_gain = float(stats.pstdev(gains)) if len(gains) > 1 else 0.0
+            except Exception:
+                stdev_gain = 0.0
+
+            # knowledge-applied lift (rederive if verify() metrics not provided here)
+            first_ka_idx = next((i for i, f in enumerate(ka_flags) if f), None)
+            if first_ka_idx is not None and first_ka_idx < len(scores):
+                first_ka_score = float(scores[first_ka_idx])
+                knowledge_applied_lift = final_score - first_ka_score
+            else:
+                knowledge_applied_lift = 0.0
+
+            knowledge_applied_iters = sum(1 for f in ka_flags if f)
+
+            # elapsed timing (best-effort)
+            step_secs = sum(float(it.get("elapsed_sec", 0.0)) for it in iterations)
+            verify_wall = float(iterations[-1].get("verify_wall_sec", step_secs))
+
+            # context + strategy metadata
+            group = getattr(self.state, "ab_group", "A")
+            version = int(getattr(self.state, "version", 1))
+            domain = (self.cfg.get("domain") or (context or {}).get("domain") or "default")
+            domain = str(domain).lower()
+
+            # tiny timeline for charts (cap to 24 entries to keep attr small)
+            timeline = [
+                {"i": int(it.get("iteration", idx + 1)),
+                "s": float(it.get("score", 0.0)),
+                "ka": bool(it.get("knowledge_applied", False))}
+                for idx, it in enumerate(iterations[-24:])
+            ]
+
             payload = {
-                "avg_gain": round(avg_gain, 6),
-                "iteration_count": len(iterations),
-                "strategy": self.as_dict(),
-                "timestamp": time.time(),
+                "timestamp": _t.time(),
+                "run_id": (context or {}).get("pipeline_run_id"),
+                "agent": "strategy_manager",
+                "strategy": {
+                    "version": version,
+                    "ab_group": group,
+                    "verification_threshold": float(getattr(self.state, "verification_threshold", 0.85)),
+                    "skeptic_weight": float(getattr(self.state, "skeptic_weight", 0.34)),
+                    "editor_weight": float(getattr(self.state, "editor_weight", 0.33)),
+                    "risk_weight": float(getattr(self.state, "risk_weight", 0.33)),
+                    "domain": domain,
+                },
+                "scores": {
+                    "start": round(start_score, 6),
+                    "final": round(final_score, 6),
+                    "total_gain": round(final_score - start_score, 6),
+                    "avg_gain": round(avg_gain, 6),
+                    "stdev_gain": round(stdev_gain, 6),
+                },
+                "knowledge": {
+                    "applied_iters": int(knowledge_applied_iters),
+                    "first_applied_iter": int(first_ka_idx + 1) if first_ka_idx is not None else None,
+                    "applied_lift": round(float(knowledge_applied_lift), 6),
+                },
+                "timing": {
+                    "verify_wall_sec": round(verify_wall, 3),
+                    "sum_step_secs": round(step_secs, 3),
+                },
+                "timeline": timeline,  # small: [{i,s,ka}, ...]
             }
-            self.memory.casebooks.set_case_attr(case.id, "strategy_evolution", value_json=payload)
+
+            # 1) persist one compact attribute
+            self.memory.casebooks.set_case_attr(
+                case.id,
+                "strategy_evolution",
+                value_json=payload
+            )
+
+            # 2) (optional) emit a lightweight event for dashboards
+            try:
+                reporter = self.container.get("reporting")
+                coro = reporter.emit(
+                    context=(context or {}),
+                    stage="learning",
+                    event="strategy.section_rollup",
+                    case_id=case.id,
+                    final_score=payload["scores"]["final"],
+                    avg_gain=payload["scores"]["avg_gain"],
+                    k_lift=payload["knowledge"]["applied_lift"],
+                    iters=len(iterations),
+                    ab_group=group,
+                    strategy_version=version,
+                    domain=domain,
+                )
+                try:
+                    import asyncio
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(coro)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            # 3) add a point to the internal A/B buffer for later validation
+                self._ab_buffer.append({
+                    "group": group,
+                    "performance": float(final_score),
+                    "domain": domain,
+                    "ts": _t.time(),
+                    "case_id": int(getattr(case, "id", 0)),
+                })
+                # cap buffer length
+                if len(self._ab_buffer) > 400:
+                    self._ab_buffer = self._ab_buffer[-400:]
+            except Exception:
+                pass
+
         except Exception:
+            # never break the agent on telemetry
             pass
 
     # ---------- A/B effectiveness ----------

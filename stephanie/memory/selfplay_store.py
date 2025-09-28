@@ -21,14 +21,14 @@ class SelfPlayStore(BaseSQLAlchemyStore):
     """
 
     orm_model = SelfPlayItemORM
-    default_order_by = "ts_ms"
+    default_order_by = SelfPlayItemORM.ts_ms.desc()
 
     def __init__(self, session_maker, logger=None):
         super().__init__(session_maker, logger)
-        self._name = "selfplay"
+        self.name = "selfplay"
 
     def name(self) -> str:
-        return self._name
+        return self.name
 
     # --- writes ---
 
