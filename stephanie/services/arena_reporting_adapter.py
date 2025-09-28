@@ -1,9 +1,12 @@
 # stephanie/services/arena_reporting_adapter.py
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
 import math
 import uuid
+from typing import Any, Dict, List, Optional
+
 from stephanie.utils.emit_utils import prepare_emit  # at top
+
 
 def _sf(v: Any):
     if hasattr(v, "item"):

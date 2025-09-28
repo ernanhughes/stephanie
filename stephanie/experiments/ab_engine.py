@@ -1,10 +1,11 @@
 # stephanie/experiments/ab_engine.py
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Generic
-import time
-import random
+
 import logging
+import random
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar
 
 T = TypeVar('T')  # Generic type for experiment variants
 

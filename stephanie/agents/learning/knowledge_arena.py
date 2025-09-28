@@ -1,15 +1,14 @@
 # stephanie/agents/learning/knowledge_arena.py
 from __future__ import annotations
 
-
-from stephanie.utils.emit_utils import prepare_emit
-
 import asyncio
 import logging
 import math
 import time
 import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+
+from stephanie.utils.emit_utils import prepare_emit
 
 Logger = logging.Logger
 Score = Dict[str, float]

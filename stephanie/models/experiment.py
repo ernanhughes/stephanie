@@ -1,17 +1,14 @@
 # stephanie/models/experiment.py
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Index
-from sqlalchemy.orm import relationship
-from stephanie.models.base import Base  # your existing Base
-
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
-from sqlalchemy import (
-    Float, Boolean, UniqueConstraint
-)
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
+                        Index, Integer, String, UniqueConstraint)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from stephanie.models.base import Base  # your existing Base
 
 
 class ExperimentORM(Base):

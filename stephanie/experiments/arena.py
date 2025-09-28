@@ -1,8 +1,9 @@
 # stephanie/experiments/arena.py
 from __future__ import annotations
-from typing import Any, Dict, List, Callable, Optional
+
 import logging
 import time
+from typing import Any, Callable, Dict, List, Optional
 
 _logger = logging.getLogger(__name__)
 

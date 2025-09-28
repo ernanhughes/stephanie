@@ -1,9 +1,9 @@
 # stephanie/data/strategy.py
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import Dict, Any, Optional, cast
 import logging
+from dataclasses import dataclass, replace
+from typing import Any, Dict, Optional, cast
 
 _logger = logging.getLogger(__name__)
 

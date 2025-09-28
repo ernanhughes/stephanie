@@ -27,6 +27,7 @@ from stephanie.memory.evaluation_attribute_store import \
     EvaluationAttributeStore
 from stephanie.memory.evaluation_store import EvaluationStore
 from stephanie.memory.execution_step_store import ExecutionStepStore
+from stephanie.memory.experiment_store import ExperimentStore
 from stephanie.memory.goal_dimensions_store import GoalDimensionsStore
 from stephanie.memory.goal_store import GoalStore
 from stephanie.memory.hf_embedding_store import HuggingFaceEmbeddingStore
@@ -207,6 +208,7 @@ class MemoryTool:
         self.register_store(ModelsStore(self.session_maker, logger))
         self.register_store(SelfPlayStore(self.session_maker, logger))
         self.register_store(BusEventStore(self.session_maker, logger))
+        self.register_store(ExperimentStore(self.session_maker, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

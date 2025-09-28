@@ -24,7 +24,7 @@ class ChatAnalyzeAgent(BaseAgent):
         for row in batch:
             turn_id = row.get("id")
             if row.get("ai_score") is not None:
-                _logger.info(f"ChatAnalyzeAgent: Already analyzed turn_id: {turn_id}")
+                _logger.debug(f"ChatAnalyzeAgent: Already analyzed turn_id: {turn_id}")
                 continue
 
             merged_context = {**row, **context}

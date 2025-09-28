@@ -3,16 +3,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from sqlalchemy import (
-    JSON,
-    Column,
-    Integer,
-    String,
-    Text,
-    Float,
-    Index,
-    UniqueConstraint,
-)
+from sqlalchemy import (JSON, Column, Float, Index, Integer, String, Text,
+                        UniqueConstraint)
+
 from stephanie.models.base import Base
 
 

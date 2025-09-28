@@ -3,18 +3,18 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.utils.statistics_utils import (
-    winsorize, mean_stdev, welch_ttest, mann_whitney_u, bootstrap_ci, cohens_d
-)
 # NOTE: your models live under singular "experiment" per your snippet
-from stephanie.models.experiment import (
-    ExperimentModelSnapshotORM, ExperimentORM, VariantORM, TrialORM, TrialMetricORM
-)
+from stephanie.models.experiment import (ExperimentModelSnapshotORM,
+                                         ExperimentORM, TrialMetricORM,
+                                         TrialORM, VariantORM)
+from stephanie.utils.statistics_utils import (bootstrap_ci, cohens_d,
+                                              mann_whitney_u, mean_stdev,
+                                              welch_ttest, winsorize)
 
 
 class ExperimentStore(BaseSQLAlchemyStore):
@@ -30,11 +30,11 @@ class ExperimentStore(BaseSQLAlchemyStore):
 
     def __init__(self, session_maker, logger=None):
         super().__init__(session_maker, logger)
-        self._name = "experiments"
+        self.name = "experiments"
         self.table_name = "experiments"
 
     def name(self) -> str:
-        return self._name
+        return self.name
 
     # ---------------------------------------------------------------------
     # Experiments

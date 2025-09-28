@@ -5,6 +5,7 @@ import math
 import random
 from typing import List, Tuple
 
+
 def winsorize(xs: List[float], alpha: float = 0.05) -> List[float]:
     """Winsorize to reduce outlier impact (clamp tails)."""
     if not xs:

@@ -26,15 +26,14 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from nats.aio import errors as nats_errors
 from nats.aio.client import Client as NATS
 from nats.errors import TimeoutError
 from nats.errors import TimeoutError as NatsTimeoutError
 from nats.js.api import ConsumerConfig, DeliverPolicy
-from nats.aio import errors as nats_errors
-
 
 from .bus_protocol import BusProtocol
-from .errors import (BusRequestError)
+from .errors import BusRequestError
 from .idempotency import InMemoryIdempotencyStore
 
 

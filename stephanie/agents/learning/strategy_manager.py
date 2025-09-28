@@ -5,7 +5,8 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from stephanie.data.strategy import Strategy  # <- new domain dataclass (validated + normalize + to_dict)
+from stephanie.data.strategy import \
+    Strategy  # <- new domain dataclass (validated + normalize + to_dict)
 from stephanie.utils.json_sanitize import dumps_safe
 
 _logger = logging.getLogger(__name__)
