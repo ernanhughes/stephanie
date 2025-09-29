@@ -389,7 +389,7 @@ def normalize_turns(turns: List[Dict[str, str]]) -> List[Dict[str, str]]:
     return out
 
 
-def conversation_to_casebook(memory, bundle: dict, context: dict) -> CaseBookORM:
+def conversation_to_casebook(memory, bundle: dict,  context: dict, tags: list[str]=None) -> CaseBookORM:
     """
     Convert a conversation into a casebook with individual turns as cases.
     
@@ -412,6 +412,7 @@ def conversation_to_casebook(memory, bundle: dict, context: dict) -> CaseBookORM
         name=f"chat_{conversation_id or title[:200]}",
         pipeline_run_id=pipeline_run_id,
         description=f"Imported chat conversation: {title}",
+        tags=tags or [],
     )
     logger.info(f"CaseBook: {cb.name} (id={cb.id})")
 

@@ -160,7 +160,9 @@ class ImageProcessorAgent(BaseAgent):
     def _save_case(self, casebook_name: Optional[str], prompt: str, best: Dict[str, Any], context: Dict[str, Any]):
         try:
             # Ensure casebook (use your CaseBookStore)
-            cb = self.memory.casebooks.ensure_casebook(casebook_name or "images::default", tag="images")
+            cb = self.memory.casebooks.ensure_casebook(casebook_name or "images::default", 
+                                                       pipeline_run_id=context.get("pipeline_run_id"),
+                                                       tags=["images"])
             # Create case and store best image path + metrics
             meta = {
                 "type": "image_result",

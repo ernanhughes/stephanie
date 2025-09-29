@@ -9,16 +9,15 @@ from stephanie.utils.json_sanitize import dumps_safe
 
 
 class Summarizer:
-    def __init__(self, cfg, memory, container, logger, strategy, scoring=None, prompt_loader=None, call_llm=None):
-        self.cfg, self.memory, self.container, self.logger = cfg, memory, container, logger
+    def __init__(self, cfg, memory, container, logger, strategy, scoring, prompt_loader, call_llm):
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
         self.strategy = strategy
-        # fallbacks
-        self.scoring = scoring or (container.get("scoring") if hasattr(container, "get") else None)
-        if self.scoring is None:
-            from .scoring import Scoring
-            self.scoring = Scoring(cfg, memory, container, logger)
-        self.prompt_loader = prompt_loader or (container.get("prompt_loader") if hasattr(container, "get") else None)
-        self.call_llm = call_llm or (container.get("call_llm") if hasattr(container, "get") else None)
+        self.scoring = scoring
+        self.prompt_loader = prompt_loader
+        self.call_llm = call_llm
 
     def baseline(self, paper: Dict[str, Any], section: Dict[str, Any],
                  critical_msgs: List[Dict[str, Any]], context: Dict[str, Any]) -> str:
@@ -39,7 +38,7 @@ class Summarizer:
                      current_summary: str, context: Dict[str, Any],
                      return_attribution: bool=False):
         metrics = self.scoring.score_summary(current_summary, paper, section, context)
-        merged = {
+        merged_context = {
             "title": paper.get("title", ""),
             "section_name": section.get("section_name"),
             "section_text": section.get("section_text", "")[:6000],
@@ -50,8 +49,8 @@ class Summarizer:
             "weaknesses": json.dumps(metrics.get("weaknesses", []), ensure_ascii=False),
             **context,
         }
-        prompt = self.prompt_loader.from_file("improve_summary", self.cfg, merged)
-        improved = self.call_llm(prompt, merged)   # ← pass merged, not context
+        prompt = self.prompt_loader.from_file("improve_summary", self.cfg, merged_context)
+        improved = self.call_llm(prompt, merged_context)   # ← pass merged, not context
 
         if not return_attribution:
             return improved

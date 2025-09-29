@@ -15,7 +15,7 @@ class DefaultCasebookScopeManager:
             return self.memory.casebooks.ensure_casebook_scope(pipeline_run_id, agent, tag)
         except AttributeError:
             name = f"cb:{agent or 'all'}:{pipeline_run_id or 'all'}:{tag}"
-            return self.memory.casebooks.ensure_casebook(name, description="Scoped fallback")
+            return self.memory.casebooks.ensure_casebook(name, description="Scoped fallback", tags=[tag])
 
     def home_casebook_id(self, ctx: Dict, agent_name: str, tag: str) -> int:
         cb = self.ensure_scope(ctx[PIPELINE_RUN_ID], agent_name, tag)

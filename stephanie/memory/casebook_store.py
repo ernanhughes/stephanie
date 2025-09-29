@@ -48,7 +48,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         name: str,
         pipeline_run_id: int,
         description: str = "",
-        tag: str = "",
+        tags: list[str] = [],
         meta: dict = None,
     ) -> CaseBookORM:
         def op(s):
@@ -56,7 +56,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
             if cb:
                 return cb
             cb = CaseBookORM(
-                name=name, description=description, tag=tag, meta=meta
+                name=name, description=description, pipeline_run_id=pipeline_run_id, tags=tags, meta=meta
             )
             s.add(cb)
             s.flush()

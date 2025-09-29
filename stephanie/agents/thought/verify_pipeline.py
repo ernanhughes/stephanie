@@ -591,7 +591,7 @@ class Persistence:
             # ensure blog casebook (action_type='blog')
             casebook_name = generate_casebook_name("blog", paper_title)
             pipeline_run_id = context.get("pipeline_run_id")
-            casebook = self.memory.casebooks.ensure_casebook(name=casebook_name, tag="blog",
+            casebook = self.memory.casebooks.ensure_casebook(name=casebook_name, tags=["blog"],
                                                              pipeline_run_id=pipeline_run_id,
                                                              meta={"paper_id": str(doc_id), "title": paper_title})
             case = self.memory.casebooks.add_case(

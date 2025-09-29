@@ -7,13 +7,13 @@ dump_schema.py
 Usage examples
 --------------
 # 1) Dump directly from DB (password via prompt)
-python tools/dump_schema.py --host localhost --user postgres --dbname co --output schema.sql --ask-password
+python scripts/dump_schema.py --host localhost --user co --dbname co --output schema_raw.sql --ask-password
 
 # 2) Dump with PGPASSWORD env (PowerShell)
-$env:PGPASSWORD="secret"; python tools/dump_schema.py --host localhost --user postgres --dbname co --output schema.sql
+$env:PGPASSWORD="secret"; python scripts/dump_schema.py --host localhost --user postgres --dbname co --output schema_raw.sql
 
 # 3) Format an existing file
-python tools/dump_schema.py --input schema_raw.sql --output schema.sql
+python scripts/dump_schema.py --input schema_raw.sql --output schema.sql
 """
 from __future__ import annotations
 

@@ -32,6 +32,7 @@ class KAMinerAgent(BaseAgent):
 
         cb = self.memory.casebooks.ensure_casebook(
             name=KABOOK,
+            pipeline_run_id=context.get("pipeline_run_id"),
             description="Applied Knowledge Atoms mined from high-K turns."
         )
 

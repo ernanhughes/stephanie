@@ -79,7 +79,7 @@ class CaseBookORM(Base):
             "description": self.description or "",
             "pipeline_run_id": self.pipeline_run_id,
             "agent_name": self.agent_name,
-            "tag": self.tag,
+            "tags": self.tags or [],
             "created_at": iso_date(self.created_at),
         }
 

@@ -226,7 +226,7 @@ class DraftGeneratorAgent(BaseAgent):
             name=casebook_name,
             pipeline_run_id=pipeline_run_id,
             description=f"Draft trajectory for '{section_name}' from fused knowledge",
-            tag="draft_generator",
+            tags=["draft_generator"],
             meta=meta
         )
 

@@ -36,7 +36,7 @@ def user_assistant_pairs(bundle: list):
             yield (user_turn, turn)
             user_turn = None
 
-def conversation_to_casebook(memory, bundle: dict, context: dict) -> tuple[CaseBookORM, dict]:
+def conversation_to_casebook(memory, bundle: dict, context: dict, tags: list[str]=None) -> tuple[CaseBookORM, dict]:
     """
     Convert a parsed conversation bundle into a CaseBook + Cases + Scorables.
     Returns (CaseBookORM, counts).
@@ -48,7 +48,9 @@ def conversation_to_casebook(memory, bundle: dict, context: dict) -> tuple[CaseB
 
     cb = memory.casebooks.ensure_casebook(
         name=f"chat_{conversation_id or title[:200]}",
-        description=f"Imported chat conversation: {title}"
+        pipeline_run_id=context.get("pipeline_run_id"),
+        description=f"Imported chat conversation: {title}",
+        tags=tags or [],
     )
     logger.info(f"[CaseBook] Using: {cb.name} (id={cb.id})")
 

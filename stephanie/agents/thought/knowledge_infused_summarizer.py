@@ -43,6 +43,7 @@ PACS_WEIGHTS_DEFAULT = {"skeptic": 0.34, "editor": 0.33, "risk": 0.33}
 
 _logger = logging.getLogger(__name__)
 
+
 class KnowledgeInfusedVerifierAgent(BaseAgent):
     """
     Track C: Knowledge-Infused Verifier with true Learning-From-Learning
@@ -125,7 +126,9 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         self.audit_enabled = bool(cfg.get("enable_audit_report", True))
         self.report_dir = str(cfg.get("audit_report_dir", "reports/track_c"))
         os.makedirs(self.report_dir, exist_ok=True)
-        self.max_time_sec = int(cfg.get("max_time_sec", 120))  # 2 minutes default
+        self.max_time_sec = int(
+            cfg.get("max_time_sec", 120)
+        )  # 2 minutes default
 
         self.logger.log(
             "KnowledgeInfusedVerifierInit",
@@ -154,7 +157,9 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
     def _save_strategy_profile(self, strategy: StrategyProfile):
         if getattr(self, "strategy_store", None):
             self.strategy_store.save(
-                agent_name=self.name, profile=strategy, scope=self.strategy_scope
+                agent_name=self.name,
+                profile=strategy,
+                scope=self.strategy_scope,
             )
             self.strategy = strategy
             self.verification_threshold = strategy.verification_threshold
@@ -516,9 +521,14 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                     audit["kbase_hints"] = panel_detail.get("kb_hints", [])
 
             if time.time() > time_limit_at:
-                self.report({"event": "early_stop", "reason": "time_limit", "iteration": iter_idx + 1})
+                self.report(
+                    {
+                        "event": "early_stop",
+                        "reason": "time_limit",
+                        "iteration": iter_idx + 1,
+                    }
+                )
                 break
-
 
             # accept if improves enough
             if (
@@ -622,17 +632,27 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         try:
             # 1) ensure blog casebook
             paper_id = str(paper_data.get("paper_id", doc_id))
-            post_slug = (paper_data.get("post_slug") or "main")
+            post_slug = paper_data.get("post_slug") or "main"
 
             title = paper_data.get("title")
             name = f"blog::{title}"
-            meta = {"paper_id": paper_id, "arxiv_id": paper_data.get("arxiv_id"), "title": paper_data.get("title", ""), "post_slug": post_slug}
-            casebook = self.memory.casebooks.ensure_casebook(name=name, tag="blog", meta=meta)
+            meta = {
+                "paper_id": paper_id,
+                "arxiv_id": paper_data.get("arxiv_id"),
+                "title": paper_data.get("title", ""),
+                "post_slug": post_slug,
+            }
+            casebook = self.memory.casebooks.ensure_casebook(
+                name=name,
+                pipeline_run_id=context.get("pipeline_run_id"),
+                tags=["blog"],
+                meta=meta,
+            )
 
-            meta ={}
+            meta = {}
             response_texts = [raw_llm, candidate]
             case = self.memory.casebooks.add_case(
-                casebook_id=casebook.id, 
+                casebook_id=casebook.id,
                 goal_id=casebook.goal_id,
                 prompt_text=prompt,
                 agent_name=self.name,
@@ -659,8 +679,9 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             # except Exception as e:
             #     self.logger.log("BlogChampionEvalWarn", {"error": str(e)})
         except Exception as e:
-            self.logger.log("BlogCasebookWriteWarn", {"doc_id": doc_id, "error": str(e)})
-
+            self.logger.log(
+                "BlogCasebookWriteWarn", {"doc_id": doc_id, "error": str(e)}
+            )
 
         # persist as dynamic scorable
         try:
@@ -708,9 +729,6 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                     "traceback": traceback.format_exc(),
                 },
             )
-
-
-
 
         domain = self._derive_domain(paper_data, context)
         strategy_delta = {
@@ -837,25 +855,35 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         }
         # Optional: calibration events (soft dependency)
         try:
-            self.memory.calibration_events.add({
+            self.memory.calibration_events.add(
+                {
                     "domain": domain or "general",
-                    "query": f"{paper_id}:{domain}",                # any non-null string
+                    "query": f"{paper_id}:{domain}",  # any non-null string
                     "raw_similarity": float(metrics.get("overall", 0.0)),
-                    "is_relevant": bool(float(metrics.get("overall", 0.0)) >= self.min_overall),
+                    "is_relevant": bool(
+                        float(metrics.get("overall", 0.0)) >= self.min_overall
+                    ),
                     "scorable_id": str(paper_id),
                     "scorable_type": "paper",
                     "entity_type": "summary_verification",
                     "features": {
                         "quality": float(metrics.get("overall", 0.0)),
-                        "knowledge_verification": float(metrics.get("knowledge_verification", 0.0)),
-                        "hrm_score": None if metrics.get("hrm_score") is None else float(metrics["hrm_score"]),
-                        "verification_threshold": float(strategy.verification_threshold),
+                        "knowledge_verification": float(
+                            metrics.get("knowledge_verification", 0.0)
+                        ),
+                        "hrm_score": None
+                        if metrics.get("hrm_score") is None
+                        else float(metrics["hrm_score"]),
+                        "verification_threshold": float(
+                            strategy.verification_threshold
+                        ),
                         "pacs_weights": dict(strategy.pacs_weights or {}),
                         "iterations": int(len(iterations or [])),
                         "first_iter_score": payload.get("first_iter_score"),
                         "last_iter_score": payload.get("last_iter_score"),
                     },
-                })
+                }
+            )
         except Exception as e:
             _logger.error("CalibrationAddWarn", {"error": str(e)})
 
@@ -895,7 +923,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
             if not (casebooks and hasattr(casebooks, "get_by_casebook")):
                 self.logger.log(
                     "TransferAnalyzeSkip", {"reason": "casebooks missing"}
-                ) 
+                )
                 return None
 
             rows = (
@@ -1252,14 +1280,18 @@ Constraints:
 Verified summary:
 """.strip()
 
-    def _verify_against_knowledge_tree(self, summary: str, knowledge_tree: Dict[str, Any]) -> float:
+    def _verify_against_knowledge_tree(
+        self, summary: str, knowledge_tree: Dict[str, Any]
+    ) -> float:
         if not knowledge_tree:
             return 0.5
         claims = knowledge_tree.get("claims", []) or []
         covered = 0
         for claim in claims:
             text = claim.get("text", "")
-            if text and self.metrics_calculator._contains_concept(summary, text):
+            if text and self.metrics_calculator._contains_concept(
+                summary, text
+            ):
                 covered += 1
         claim_coverage = covered / max(1, len(claims))
         rels = knowledge_tree.get("relationships", []) or []
@@ -1268,7 +1300,9 @@ Verified summary:
             _logger.info(f"Using strategy threshold: {threshold}")
         else:
             threshold = self.verification_threshold
-        strong = [r for r in rels if float(r.get("confidence", 0.0)) >= threshold]
+        strong = [
+            r for r in rels if float(r.get("confidence", 0.0)) >= threshold
+        ]
         evidence_strength = len(strong) / max(1, len(rels))
         return (0.7 * claim_coverage) + (0.3 * evidence_strength)
 

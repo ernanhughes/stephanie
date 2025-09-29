@@ -35,8 +35,8 @@ from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 CTX_NS = "_MEMENTO"
 VARIANTS = "variants"
 # Optional deps are loaded lazily inside _set_random_seed
-np = None    # type: ignore
-torch = None # type: ignore
+np = None  # type: ignore
+torch = None  # type: ignore
 
 
 class MementoAgent(MCTSReasoningAgent):
@@ -51,11 +51,17 @@ class MementoAgent(MCTSReasoningAgent):
         # Ranker + (optional) MARS
         self.ranker = ScorableRanker(cfg, memory, container, logger)
         self.include_mars = cfg.get("include_mars", True)
-        self.mars = MARSCalculator(cfg, memory, container, logger) if self.include_mars else None
+        self.mars = (
+            MARSCalculator(cfg, memory, container, logger)
+            if self.include_mars
+            else None
+        )
 
         # Behavior knobs
         self.casebook_tag = cfg.get("casebook_tag", "default")
-        self.retrieval_mode = cfg.get("retrieval_mode", "fallback")  # "strict"|"fallback"|"union"
+        self.retrieval_mode = cfg.get(
+            "retrieval_mode", "fallback"
+        )  # "strict"|"fallback"|"union"
         self.reuse_budget = int(cfg.get("reuse_budget", 16))
         self.novelty_k = int(cfg.get("novelty_k", 6))
         self.improve_eps = float(cfg.get("improve_eps", 1e-6))
@@ -63,12 +69,16 @@ class MementoAgent(MCTSReasoningAgent):
 
         # A/B validation
         self.ab_cfg = cfg.get("ab_validation", {}) or {}
-        self.ab_mode = self.ab_cfg.get("mode", "periodic")  # "off"|"periodic"|"always"
+        self.ab_mode = self.ab_cfg.get(
+            "mode", "periodic"
+        )  # "off"|"periodic"|"always"
         self.ab_period = int(self.ab_cfg.get("period", 5))
         self.ab_control_tag = self.ab_cfg.get("control_tag", "control")
         self.ab_delta_eps = float(self.ab_cfg.get("delta_eps", 1e-6))
         self.ab_seed_lock = bool(self.ab_cfg.get("seed_lock", True))
-        self.ab_freeze_training = bool(self.ab_cfg.get("freeze_training", True))
+        self.ab_freeze_training = bool(
+            self.ab_cfg.get("freeze_training", True)
+        )
 
         # Quality weights
         self.qw = cfg.get("quality_weights", {}) or {
@@ -90,13 +100,17 @@ class MementoAgent(MCTSReasoningAgent):
         home_casebook_id = self._home_casebook(context)
 
         try:
-            run_ix = self._bump_and_get_run_counter(home_casebook_id, goal["id"])
+            run_ix = self._bump_and_get_run_counter(
+                home_casebook_id, goal["id"]
+            )
             do_ab = self._ab_should_run(run_ix)
             if do_ab and self.ab_seed_lock:
                 self._set_random_seed(context.get("seed") or 42)
 
             if do_ab:
-                self._report_event("ab_start", {"goal_id": goal["id"], "run_ix": run_ix})
+                self._report_event(
+                    "ab_start", {"goal_id": goal["id"], "run_ix": run_ix}
+                )
 
                 # A) BASELINE (no casebook)
                 base_res = await self._run_single_variant(
@@ -123,7 +137,9 @@ class MementoAgent(MCTSReasoningAgent):
                 improved = q_cbr > (q_base + self.ab_delta_eps)
 
                 # Non-regression champion update
-                self._update_non_regression(home_casebook_id, goal["id"], cbr_res, improved)
+                self._update_non_regression(
+                    home_casebook_id, goal["id"], cbr_res, improved
+                )
 
                 # Project winner to canonical output
                 winner_variant = "cbr" if improved else "baseline"
@@ -140,7 +156,9 @@ class MementoAgent(MCTSReasoningAgent):
                 }
                 self.logger.log("MementoABCompare", payload)
                 self._report_event("ab_compare", payload)
-                self._report_event("ab_end", {"goal_id": goal["id"], "winner": winner_variant})
+                self._report_event(
+                    "ab_end", {"goal_id": goal["id"], "winner": winner_variant}
+                )
                 return context
 
             # No A/B → run CBR once
@@ -153,13 +171,20 @@ class MementoAgent(MCTSReasoningAgent):
                 train_enabled=True,
                 casebook_tag=self.casebook_tag,
             )
-            context[self.output_key] = context.get(self._variant_output_key("cbr"), [])
+            context[self.output_key] = context.get(
+                self._variant_output_key("cbr"), []
+            )
             self._report_event("cbr_single_end", {"goal_id": goal["id"]})
             return context
 
         except Exception as e:
-            self.logger.error("CBRRunFailed", {"error": str(e), "trace": traceback.format_exc()})
-            self._report_event("error", {"step": "MementoAgent", "details": str(e)})
+            self.logger.error(
+                "CBRRunFailed",
+                {"error": str(e), "trace": traceback.format_exc()},
+            )
+            self._report_event(
+                "error", {"step": "MementoAgent", "details": str(e)}
+            )
             return context
 
     # -------------------------
@@ -189,55 +214,104 @@ class MementoAgent(MCTSReasoningAgent):
         reuse_candidates: List[str] = []
         if use_casebook:
             past_cases = self._retrieve_cases(context)
-            reuse_candidates = self._build_reuse_candidates(home_casebook_id, goal["id"], past_cases)
+            reuse_candidates = self._build_reuse_candidates(
+                home_casebook_id, goal["id"], past_cases
+            )
 
         # Namespaced scratch, never top-level
         vb = self._vb(context, variant)
         vb["cases_found"] = len(past_cases)
         vb["reuse_candidates"] = reuse_candidates
 
-        self.logger.log("CBRVariantStart", {
-            "goal_id": goal["id"], "variant": variant,
-            "cases_found": len(past_cases), "reuse_candidates": len(reuse_candidates)
-        })
-        self._report_event("retrieve", {
-            "variant": variant, "details": f"Reuse candidates: {len(reuse_candidates)}"
-        })
+        self.logger.log(
+            "CBRVariantStart",
+            {
+                "goal_id": goal["id"],
+                "variant": variant,
+                "cases_found": len(past_cases),
+                "reuse_candidates": len(reuse_candidates),
+            },
+        )
+        self._report_event(
+            "retrieve",
+            {
+                "variant": variant,
+                "details": f"Reuse candidates: {len(reuse_candidates)}",
+            },
+        )
 
         # Temporarily expose reuse_candidates + redirect output into variant-local key
-        with self._temp_ctx_key(context, "reuse_candidates", reuse_candidates), self._variant_output(variant):
+        with (
+            self._temp_ctx_key(context, "reuse_candidates", reuse_candidates),
+            self._variant_output(variant),
+        ):
             # REUSE (super.run) → RANK → MARS
             lats_result = await super().run(context)
             best_hypotheses = lats_result.get("hypotheses", []) or []
-            self.logger.log("CBRReuse", {"goal_id": goal["id"], "variant": variant, "count": len(best_hypotheses)})
-            self._report_event("reuse", {"variant": variant, "details": f"Produced {len(best_hypotheses)} hypotheses"})
+            self.logger.log(
+                "CBRReuse",
+                {
+                    "goal_id": goal["id"],
+                    "variant": variant,
+                    "count": len(best_hypotheses),
+                },
+            )
+            self._report_event(
+                "reuse",
+                {
+                    "variant": variant,
+                    "details": f"Produced {len(best_hypotheses)} hypotheses",
+                },
+            )
 
             # Ensure hypotheses carry IDs for scoring/retention/training
             best_hypotheses = self._ensure_ids(best_hypotheses)
 
-            ranked, corpus, mars_results, recommendations, scores_payload = self._rank_and_analyze(context, best_hypotheses)
-            self.logger.log("CBRRank", {"goal_id": goal["id"], "variant": variant, "ranked_count": len(ranked)})
+            ranked, corpus, mars_results, recommendations, scores_payload = (
+                self._rank_and_analyze(context, best_hypotheses)
+            )
+            self.logger.log(
+                "CBRRank",
+                {
+                    "goal_id": goal["id"],
+                    "variant": variant,
+                    "ranked_count": len(ranked),
+                },
+            )
 
             if self.mars:
-                self.logger.log("CBRRevise", {
-                    "goal_id": goal["id"], "variant": variant,
-                    "mars_summary_size": len(mars_results), "recommendations": recommendations
-                })
-                self._report_event("revise", {
-                    "variant": variant, "details": f"MARS results: {len(mars_results)}",
-                    "recommendations": recommendations
-                })
+                self.logger.log(
+                    "CBRRevise",
+                    {
+                        "goal_id": goal["id"],
+                        "variant": variant,
+                        "mars_summary_size": len(mars_results),
+                        "recommendations": recommendations,
+                    },
+                )
+                self._report_event(
+                    "revise",
+                    {
+                        "variant": variant,
+                        "details": f"MARS results: {len(mars_results)}",
+                        "recommendations": recommendations,
+                    },
+                )
 
             # Attach MARS agreement to ranked for downstream consumers
             if ranked and mars_results:
                 for r in ranked:
                     rid = r.get("id")
-                    r["mars_confidence"] = (mars_results.get(rid, {}) or {}).get("agreement_score")
+                    r["mars_confidence"] = (
+                        mars_results.get(rid, {}) or {}
+                    ).get("agreement_score")
 
             # Retain & micro-learning
             retained_case_id = None
             if retain:
-                retained_case_id = self._retain_case(context, ranked, mars_results, scores_payload)
+                retained_case_id = self._retain_case(
+                    context, ranked, mars_results, scores_payload
+                )
 
             if self._training_enabled:
                 try:
@@ -257,16 +331,25 @@ class MementoAgent(MCTSReasoningAgent):
             vb["metrics"] = metrics
             context[self._variant_output_key(variant)] = ranked
 
-            self._report_event("conclusion", {
-                "variant": variant,
-                "goal": goal.get("goal_text", ""),
-                "summary": f"Ranked {len(ranked)}; retained {retained_case_id if retain else 'no-retain'}; quality={quality:.4f}",
-                "recommendations": recommendations,
-            })
-            self.logger.log("CBRVariantEnd", {
-                "goal_id": goal["id"], "variant": variant, "quality": quality,
-                "retained_case_id": retained_case_id, "ranked_count": len(ranked)
-            })
+            self._report_event(
+                "conclusion",
+                {
+                    "variant": variant,
+                    "goal": goal.get("goal_text", ""),
+                    "summary": f"Ranked {len(ranked)}; retained {retained_case_id if retain else 'no-retain'}; quality={quality:.4f}",
+                    "recommendations": recommendations,
+                },
+            )
+            self.logger.log(
+                "CBRVariantEnd",
+                {
+                    "goal_id": goal["id"],
+                    "variant": variant,
+                    "quality": quality,
+                    "retained_case_id": retained_case_id,
+                    "ranked_count": len(ranked),
+                },
+            )
 
         return vb
 
@@ -282,28 +365,40 @@ class MementoAgent(MCTSReasoningAgent):
         scopes = [(pipeline_run_id, agent, self.casebook_tag)]
         if self.retrieval_mode in ("fallback", "union"):
             scopes += [
-                (None, agent, self.casebook_tag),            # agent-global
+                (None, agent, self.casebook_tag),  # agent-global
                 (pipeline_run_id, None, self.casebook_tag),  # pipeline-global
-                (None, None, self.casebook_tag),             # system-global
+                (None, None, self.casebook_tag),  # system-global
             ]
 
         try:
             if self.retrieval_mode == "strict":
-                cb = self._ensure_casebook_scope(pipeline_run_id, agent, self.casebook_tag)
-                return self.memory.casebooks.get_cases_for_goal_in_casebook(cb.id, goal["id"])
+                cb = self._ensure_casebook_scope(
+                    pipeline_run_id, agent, self.casebook_tag
+                )
+                return self.memory.casebooks.get_cases_for_goal_in_casebook(
+                    cb.id, goal["id"]
+                )
             elif self.retrieval_mode == "fallback":
                 for sc in scopes:
-                    cases = self.memory.casebooks.get_cases_for_goal_scoped(goal["id"], [sc])
+                    cases = self.memory.casebooks.get_cases_for_goal_scoped(
+                        goal["id"], [sc]
+                    )
                     if cases:
                         return cases
                 return []
             else:  # union
-                return self.memory.casebooks.get_cases_for_goal_scoped(goal["id"], scopes)
+                return self.memory.casebooks.get_cases_for_goal_scoped(
+                    goal["id"], scopes
+                )
         except AttributeError:
-            self.logger.log("CBRRetrieveFallback", {"reason": "scoped_methods_missing"})
+            self.logger.log(
+                "CBRRetrieveFallback", {"reason": "scoped_methods_missing"}
+            )
             return self.memory.casebooks.get_cases_for_goal(goal["id"])
 
-    def _build_reuse_candidates(self, casebook_id: int, goal_id: str, cases) -> List[str]:
+    def _build_reuse_candidates(
+        self, casebook_id: int, goal_id: str, cases
+    ) -> List[str]:
         """
         Build a bounded list of scorable IDs:
         champion-first → recent-success → diverse-novel, capped at reuse_budget.
@@ -314,7 +409,9 @@ class MementoAgent(MCTSReasoningAgent):
         try:
             state = self.memory.casebooks.get_goal_state(casebook_id, goal_id)
             if state and state.champion_case_id:
-                champ_case = next((c for c in cases if c.id == state.champion_case_id), None)
+                champ_case = next(
+                    (c for c in cases if c.id == state.champion_case_id), None
+                )
                 if champ_case:
                     ids.extend(self._top_scorables_from_case(champ_case))
         except AttributeError:
@@ -323,7 +420,10 @@ class MementoAgent(MCTSReasoningAgent):
         # Recent-success (best-effort)
         try:
             recent = self.memory.casebooks.get_recent_cases(
-                casebook_id, goal_id, limit=max(1, self.reuse_budget // 2), only_accepted=True
+                casebook_id,
+                goal_id,
+                limit=max(1, self.reuse_budget // 2),
+                only_accepted=True,
             )
             for c in recent:
                 ids.extend(self._top_scorables_from_case(c))
@@ -336,7 +436,10 @@ class MementoAgent(MCTSReasoningAgent):
         novel_pool = []
         try:
             pool = self.memory.casebooks.get_pool_for_goal(
-                casebook_id, goal_id, exclude_ids=[getattr(c, "id", None) for c in cases], limit=200
+                casebook_id,
+                goal_id,
+                exclude_ids=[getattr(c, "id", None) for c in cases],
+                limit=200,
             )
             novel_pool = pool or []
         except AttributeError:
@@ -348,7 +451,11 @@ class MementoAgent(MCTSReasoningAgent):
 
         # Exploration injection
         if random.random() < float(self.exploration_eps):
-            extra = (cases[self.novelty_k : self.novelty_k + 2]) if len(cases) > self.novelty_k else []
+            extra = (
+                (cases[self.novelty_k : self.novelty_k + 2])
+                if len(cases) > self.novelty_k
+                else []
+            )
             for c in extra:
                 ids.extend(self._top_scorables_from_case(c))
 
@@ -356,7 +463,8 @@ class MementoAgent(MCTSReasoningAgent):
         seen, deduped = set(), []
         for x in ids:
             if x and x not in seen:
-                deduped.append(x); seen.add(x)
+                deduped.append(x)
+                seen.add(x)
             if len(deduped) >= self.reuse_budget:
                 break
         return deduped
@@ -366,7 +474,11 @@ class MementoAgent(MCTSReasoningAgent):
         """Prefer 'output' roles and lower rank numbers."""
         out: List[str] = []
         try:
-            outs = [cs for cs in case.scorables if (getattr(cs, "role", "") or "").lower() == "output"]
+            outs = [
+                cs
+                for cs in case.scorables
+                if (getattr(cs, "role", "") or "").lower() == "output"
+            ]
             outs.sort(key=lambda cs: getattr(cs, "rank", 1_000_000))
             for cs in outs[:3]:
                 sid = getattr(cs, "scorable_id", None)
@@ -380,7 +492,9 @@ class MementoAgent(MCTSReasoningAgent):
     # Rank + Analyze
     # -------------------------
     def _rank_and_analyze(
-        self, context: dict, best_hypotheses: List[dict],
+        self,
+        context: dict,
+        best_hypotheses: List[dict],
     ) -> Tuple[List[dict], ScoreCorpus, Dict, List[str], Dict]:
         """
         Returns:
@@ -391,26 +505,46 @@ class MementoAgent(MCTSReasoningAgent):
             scores_payload: dict (id -> serialized bundle)
         """
         goal = context[GOAL]
-        query_scorable = Scorable(id=goal["id"], text=goal["goal_text"], target_type=ScorableType.GOAL)
+        query_scorable = Scorable(
+            id=goal["id"],
+            text=goal["goal_text"],
+            target_type=ScorableType.GOAL,
+        )
 
         ranked: List[dict] = []
         bundles: Dict[str, object] = {}
 
         if best_hypotheses:
             # Convert to Scorables and rank
-            scorables = [Scorable(id=h.get("id"), text=h.get("text", ""), target_type=ScorableType.HYPOTHESIS)
-                         for h in best_hypotheses]
+            scorables = [
+                Scorable(
+                    id=h.get("id"),
+                    text=h.get("text", ""),
+                    target_type=ScorableType.HYPOTHESIS,
+                )
+                for h in best_hypotheses
+            ]
 
-            ranked_raw = self.ranker.rank(query=query_scorable, candidates=scorables, context=context) or []
+            ranked_raw = (
+                self.ranker.rank(
+                    query=query_scorable, candidates=scorables, context=context
+                )
+                or []
+            )
             ranked = [self._normalize_rank_item(r) for r in ranked_raw]
 
             # Score bundles for MARS
             for scorable in scorables:
                 try:
-                    _scores, bundle = self._score(context=context, scorable=scorable)
+                    _scores, bundle = self._score(
+                        context=context, scorable=scorable
+                    )
                     bundles[scorable.id] = bundle
                 except Exception as e:
-                    self.logger.log("CBRScoreSkip", {"scorable_id": scorable.id, "reason": str(e)})
+                    self.logger.log(
+                        "CBRScoreSkip",
+                        {"scorable_id": scorable.id, "reason": str(e)},
+                    )
 
         corpus = ScoreCorpus(bundles=bundles)
 
@@ -419,8 +553,12 @@ class MementoAgent(MCTSReasoningAgent):
         recommendations: List[str] = []
         if self.mars:
             try:
-                mars_results = self.mars.calculate(corpus, context=context) or {}
-                recommendations = self.mars.generate_recommendations(mars_results) or []
+                mars_results = (
+                    self.mars.calculate(corpus, context=context) or {}
+                )
+                recommendations = (
+                    self.mars.generate_recommendations(mars_results) or []
+                )
             except Exception as e:
                 self.logger.log("CBRMarSkip", {"reason": str(e)})
 
@@ -446,7 +584,8 @@ class MementoAgent(MCTSReasoningAgent):
                 r["rank"] = r.get("position", 0) or r.get("order", 0) or 0
             return r
         return {
-            "id": getattr(item, "id", None) or getattr(item, "scorable_id", None),
+            "id": getattr(item, "id", None)
+            or getattr(item, "scorable_id", None),
             "text": getattr(item, "text", "") or getattr(item, "content", ""),
             "rank": getattr(item, "rank", 0),
         }
@@ -455,7 +594,11 @@ class MementoAgent(MCTSReasoningAgent):
     # Retain + Champion
     # -------------------------
     def _retain_case(
-        self, context: dict, ranked: List[dict], mars_results: Dict, scores_payload: Dict,
+        self,
+        context: dict,
+        ranked: List[dict],
+        mars_results: Dict,
+        scores_payload: Dict,
     ) -> Optional[int]:
         """Persist a CaseORM with scorables and metadata (CBR only)."""
         goal = context[GOAL]
@@ -463,13 +606,18 @@ class MementoAgent(MCTSReasoningAgent):
 
         scorables_payload = []
         for idx, r in enumerate(ranked):
-            scorables_payload.append({
-                "id": r.get("id"),
-                "type": "hypothesis",
-                "role": "output",
-                "rank": (idx + 1),
-                "meta": {"text": r.get("text", ""), "mars_confidence": r.get("mars_confidence")},
-            })
+            scorables_payload.append(
+                {
+                    "id": r.get("id"),
+                    "type": "hypothesis",
+                    "role": "output",
+                    "rank": (idx + 1),
+                    "meta": {
+                        "text": r.get("text", ""),
+                        "mars_confidence": r.get("mars_confidence"),
+                    },
+                }
+            )
 
         try:
             case = self.memory.casebooks.add_case(
@@ -486,14 +634,23 @@ class MementoAgent(MCTSReasoningAgent):
                 },
                 scorables=scorables_payload,
             )
-            self.logger.log("CBRRetain", {"case_id": case.id, "goal_id": goal["id"]})
-            self._report_event("retain", {"details": f"Retained case {case.id} with {len(ranked)} outputs"})
+            self.logger.log(
+                "CBRRetain", {"case_id": case.id, "goal_id": goal["id"]}
+            )
+            self._report_event(
+                "retain",
+                {
+                    "details": f"Retained case {case.id} with {len(ranked)} outputs"
+                },
+            )
             return case.id
         except Exception as e:
             self.logger.log("CBRRetainError", {"error": str(e)})
             return None
 
-    def _update_non_regression(self, casebook_id: int, goal_id: str, run_result: dict, improved: bool):
+    def _update_non_regression(
+        self, casebook_id: int, goal_id: str, run_result: dict, improved: bool
+    ):
         """Promote champion only if improved (no regression)."""
         if not improved:
             return
@@ -501,19 +658,33 @@ class MementoAgent(MCTSReasoningAgent):
             case_id = run_result.get("retained_case")
             quality = float(run_result.get("metrics", {}).get("quality", 0.0))
             if case_id:
-                self.memory.casebooks.upsert_goal_state(casebook_id, goal_id, case_id, quality)
-                self.logger.log("CBRChampionUpdate", {"goal_id": goal_id, "case_id": case_id, "quality": quality})
+                self.memory.casebooks.upsert_goal_state(
+                    casebook_id, goal_id, case_id, quality
+                )
+                self.logger.log(
+                    "CBRChampionUpdate",
+                    {
+                        "goal_id": goal_id,
+                        "case_id": case_id,
+                        "quality": quality,
+                    },
+                )
         except AttributeError:
             pass
 
     # -------------------------
     # Quality metric
     # -------------------------
-    def _compute_quality(self, mars_results: Dict, scores_payload: Dict) -> float:
+    def _compute_quality(
+        self, mars_results: Dict, scores_payload: Dict
+    ) -> float:
         """Combine MARS agreement (and future HRM/LLM/reward) into one scalar."""
         mars_agree = 0.0
         if mars_results:
-            vals = [float(v.get("agreement_score", 0.0)) for v in mars_results.values()]
+            vals = [
+                float(v.get("agreement_score", 0.0))
+                for v in mars_results.values()
+            ]
             mars_agree = (sum(vals) / len(vals)) if vals else 0.0
         hrm_score = 0.0
         llm_grade = 0.0
@@ -538,16 +709,30 @@ class MementoAgent(MCTSReasoningAgent):
         except AttributeError:
             casebook_id = self.cfg.get("casebook_id")
             if not casebook_id:
-                raise RuntimeError("No scoped helpers and no cfg.casebook_id provided for MementoAgent.")
+                raise RuntimeError(
+                    "No scoped helpers and no cfg.casebook_id provided for MementoAgent."
+                )
             return int(casebook_id)
 
-    def _ensure_casebook_scope(self, pipeline_run_id: Optional[str], agent_name: Optional[str], tag: str):
+    def _ensure_casebook_scope(
+        self,
+        pipeline_run_id: Optional[str],
+        agent_name: Optional[str],
+        tag: str,
+    ):
         """Prefer CaseBookStore.ensure_casebook_scope; fallback to a named casebook."""
         try:
-            return self.memory.casebooks.ensure_casebook_scope(pipeline_run_id, agent_name, tag)
+            return self.memory.casebooks.ensure_casebook_scope(
+                pipeline_run_id, agent_name, tag
+            )
         except AttributeError:
             name = f"cb:{agent_name or 'all'}:{pipeline_run_id or 'all'}:{tag}"
-            return self.memory.casebooks.ensure_casebook(name, pipeline_run_id=pipeline_run_id, description="Scoped fallback")
+            return self.memory.casebooks.ensure_casebook(
+                name,
+                pipeline_run_id=pipeline_run_id,
+                description="Scoped fallback",
+                tags=[tag],
+            )
 
     def _bump_and_get_run_counter(self, casebook_id: int, goal_id: str) -> int:
         """
@@ -557,8 +742,12 @@ class MementoAgent(MCTSReasoningAgent):
         try:
             state = self.memory.casebooks.get_goal_state(casebook_id, goal_id)
             if state is None:
-                self.memory.casebooks.upsert_goal_state(casebook_id, goal_id, case_id=None, quality=0.0)
-                state = self.memory.casebooks.get_goal_state(casebook_id, goal_id)
+                self.memory.casebooks.upsert_goal_state(
+                    casebook_id, goal_id, case_id=None, quality=0.0
+                )
+                state = self.memory.casebooks.get_goal_state(
+                    casebook_id, goal_id
+                )
             ix = getattr(state, "run_ix", 0) + 1
             setattr(state, "run_ix", ix)
             self.memory.casebooks.session.commit()  # type: ignore[attr-defined]
@@ -585,6 +774,7 @@ class MementoAgent(MCTSReasoningAgent):
         if np is None:
             try:
                 import numpy as _np  # type: ignore
+
                 np = _np
             except Exception:
                 np = None
@@ -596,6 +786,7 @@ class MementoAgent(MCTSReasoningAgent):
         if torch is None:
             try:
                 import torch as _torch  # type: ignore
+
                 torch = _torch
             except Exception:
                 torch = None
@@ -610,7 +801,9 @@ class MementoAgent(MCTSReasoningAgent):
     # -------------------------
     # Learning hooks (best-effort)
     # -------------------------
-    def _online_learn(self, context: dict, ranked: List[dict], mars_results: Dict):
+    def _online_learn(
+        self, context: dict, ranked: List[dict], mars_results: Dict
+    ):
         """
         Emit training signals + kick tiny online steps.
         Prefers DB-backed TrainingStore; falls back to in-memory TrainingBuffers.
@@ -626,15 +819,21 @@ class MementoAgent(MCTSReasoningAgent):
         agent_name = self.name
 
         tr_cfg = self.cfg.get("training", {}) or {}
-        model_key_ranker = tr_cfg.get("buffers", {}).get("model_key_ranker", "ranker.sicql.v1")
-        model_key_retriever = tr_cfg.get("buffers", {}).get("model_key_retriever", "retriever.mrq.v1")
+        model_key_ranker = tr_cfg.get("buffers", {}).get(
+            "model_key_ranker", "ranker.sicql.v1"
+        )
+        model_key_retriever = tr_cfg.get("buffers", {}).get(
+            "model_key_retriever", "retriever.mrq.v1"
+        )
         dimension = tr_cfg.get("dimension", "alignment")
 
         def agree(hid: Optional[str]) -> float:
             if not hid:
                 return 0.0
             try:
-                return float((mars_results.get(hid) or {}).get("agreement_score") or 0.0)
+                return float(
+                    (mars_results.get(hid) or {}).get("agreement_score") or 0.0
+                )
             except Exception:
                 return 0.0
 
@@ -660,7 +859,9 @@ class MementoAgent(MCTSReasoningAgent):
             neg_w = agree(neg_id)
             pair_w = max(0.1, 0.5 * (pos_w + neg_w))  # conservative
 
-            pairs_for_validation.append({"text_a": pos_text, "text_b": neg_text, "weight": pair_w})
+            pairs_for_validation.append(
+                {"text_a": pos_text, "text_b": neg_text, "weight": pair_w}
+            )
 
             try:
                 self.memory.training_events.add_pairwise(
@@ -678,7 +879,9 @@ class MementoAgent(MCTSReasoningAgent):
                     meta={"run_id": pipeline_run_id},
                 )
             except Exception as e:
-                self.logger.log("TrainStoreAddPairwiseError", {"error": str(e)})
+                self.logger.log(
+                    "TrainStoreAddPairwiseError", {"error": str(e)}
+                )
 
             try:
                 self.memory.training_events.add_pointwise(
@@ -711,23 +914,39 @@ class MementoAgent(MCTSReasoningAgent):
                         meta={"run_id": pipeline_run_id},
                     )
             except Exception as e:
-                self.logger.log("TrainStoreAddPointwiseError", {"error": str(e)})
+                self.logger.log(
+                    "TrainStoreAddPointwiseError", {"error": str(e)}
+                )
 
         # Kick controller (validate+maybe-train)
         try:
-            self.container.get("training").maybe_train(goal=goal_id, dimension=dimension, pairs=pairs_for_validation)
+            self.container.get("training").maybe_train(
+                goal=goal_id, dimension=dimension, pairs=pairs_for_validation
+            )
         except Exception as e:
             self.logger.log("TrainingControllerCallFailed", {"error": str(e)})
 
         # Tiny online steps (best-effort)
         try:
-            steps = int(self.cfg.get("trainer", {}).get("sicql", {}).get("online_steps", 50))
-            self.container.get("training").trainers["sicql"].train_step(max_steps=steps)
+            steps = int(
+                self.cfg.get("trainer", {})
+                .get("sicql", {})
+                .get("online_steps", 50)
+            )
+            self.container.get("training").trainers["sicql"].train_step(
+                max_steps=steps
+            )
         except Exception:
             pass
         try:
-            steps = int(self.cfg.get("trainer", {}).get("mrq", {}).get("online_steps", 50))
-            self.container.get("training").trainers["mrq"].train_step(max_steps=steps)
+            steps = int(
+                self.cfg.get("trainer", {})
+                .get("mrq", {})
+                .get("online_steps", 50)
+            )
+            self.container.get("training").trainers["mrq"].train_step(
+                max_steps=steps
+            )
         except Exception:
             pass
 
@@ -745,10 +964,15 @@ class MementoAgent(MCTSReasoningAgent):
                 out.append(h)
                 continue
             text = (h.get("text") or "").strip()
-            sid = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16] if text else hashlib.sha1(
-                str(random.random()).encode("utf-8")
-            ).hexdigest()[:16]
-            nh = dict(h); nh["id"] = sid
+            sid = (
+                hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+                if text
+                else hashlib.sha1(
+                    str(random.random()).encode("utf-8")
+                ).hexdigest()[:16]
+            )
+            nh = dict(h)
+            nh["id"] = sid
             out.append(nh)
         return out
 
