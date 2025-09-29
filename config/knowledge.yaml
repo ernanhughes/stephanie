@@ -53,17 +53,17 @@ embeddings:
 
 bus:
   backend: nats
-  servers: ["nats://localhost:4222"]
+  servers: "nats://localhost:4222"
   stream: stephanie
   strict: true
 
 goal:
   goal_text: >
     Lets design a process where we can effectively use our chat history to improve our future results.
-  goal_type: "strategic"
-  goal_category: "meta_reasoning"
-  focus_area: "case_based_learning"
-  strategy: "retrieve_reuse_revise_retain"
+  goal_type: "knowledge_application"
+  goal_category: "knowledge"
+  focus_area: "learnming_from_learning"
+  strategy: "knowledge"
   difficulty: "high"
   expected_formats:
     - "case_trace"

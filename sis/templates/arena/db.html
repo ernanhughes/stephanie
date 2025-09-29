@@ -113,7 +113,7 @@
     const subj = $("filter-subj").value.trim();
     const ev = $("filter-ev").value.trim();
 
-    const url = new URL("/tap/api/recent", window.location.origin);
+    const url = new URL("/arena/api/recent", window.location.origin);
     url.searchParams.set("limit", String(limit));
     if (run) url.searchParams.set("run_id", run);
     if (subj) url.searchParams.set("subject_like", subj);
@@ -162,7 +162,7 @@
 
   async function loadDetail(id) {
     selectedId = id;
-    const res = await fetch(`/tap/api/event/${id}`);
+    const res = await fetch(`/arena/api/event/${id}`);
     if (!res.ok) return;
     const obj = await res.json();
 

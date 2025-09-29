@@ -1,0 +1,131 @@
+{# sis/templates/cards/list.html #}
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">SIS Cards</h2>
+    <div class="d-flex gap-2">
+      <input id="filter-key" class="form-control form-control-sm" placeholder="key (optional)" style="width:20rem" value="{{ key or '' }}">
+      <button id="btn-load" class="btn btn-sm btn-primary">Load</button>
+    </div>
+  </div>
+
+  <div id="cards" class="row g-3"></div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const wrap = (html) => { const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstChild; };
+  const NOW = Date.now() / 1000;
+
+  function cardMetric(c){
+    return wrap(`
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="small text-muted">${c.title||'Metric'}</div>
+          <div class="display-6">${c.value ?? '—'}</div>
+        </div>
+      </div>`);
+  }
+
+  function cardBar(c){
+    const items = (c.series||[]).map(s=>`
+      <div class="mb-1">
+        <div class="d-flex justify-content-between small">
+          <span>${s.name}</span><span>${s.value}</span>
+        </div>
+        <div class="progress" style="height:6px">
+          <div class="progress-bar" role="progressbar" style="width:${Math.max(0, Math.min(100, (Number(s.value)||0)*100))}%"></div>
+        </div>
+      </div>`).join("");
+    return wrap(`
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="small text-muted">${c.title||'Bars'}</div>
+          ${items || '<div class="text-muted small">No data</div>'}
+        </div>
+      </div>`);
+  }
+
+  function cardList(c){
+    const items = (c.items||[]).map(x=>`<li>${String(x)}</li>`).join("");
+    return wrap(`
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="small text-muted mb-1">${c.title||'List'}</div>
+          <ul class="mb-0 small">${items || '<li class="text-muted">No items</li>'}</ul>
+        </div>
+      </div>`);
+  }
+
+  function renderRow(row){
+    const timestamp = row.ts ? new Date(row.ts * 1000) : new Date();
+    const timestampStr = timestamp.toLocaleString();
+
+    const col = wrap(`<div class="col-md-6 col-lg-4"></div>`);
+    const outer = wrap(`<div class="card h-100 border-0"></div>`);
+    const hdr = wrap(`
+      <div class="card-header bg-transparent">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">${row.title || 'SIS Card'}</div>
+            <div class="small text-muted">${row.scope || '—'} • ${row.key || ''}</div>
+          </div>
+          <div class="small text-muted">${timestampStr}</div>
+        </div>
+      </div>`);
+    const body = wrap(`<div class="card-body"><div class="row g-2"></div></div>`);
+    const grid = body.querySelector('.row');
+
+    (row.cards||[]).forEach(c=>{
+      const cell = wrap(`<div class="col-12"></div>`);
+      let el;
+      if (c.type === "metric") el = cardMetric(c);
+      else if (c.type === "bar") el = cardBar(c);
+      else if (c.type === "list") el = cardList(c);
+      else el = wrap(`<pre class="small p-2 bg-light rounded">${JSON.stringify(c,null,2)}</pre>`);
+      cell.appendChild(el);
+      grid.appendChild(cell);
+    });
+
+    outer.appendChild(hdr); outer.appendChild(body);
+    col.appendChild(outer);
+    return col;
+  }
+
+  async function load(){
+    const key = $("#filter-key").value.trim();
+    const url = new URL(key ? `/cards/api/key/${encodeURIComponent(key)}` : "/cards/api/recent", window.location.origin);
+    console.log("Loading cards with", {key, url: url.toString()});
+    
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+      
+      const arr = await res.json();
+      const root = $("#cards"); 
+      root.innerHTML = "";
+      
+      if (!arr.length) { 
+        root.innerHTML = '<div class="text-muted">No cards found.</div>'; 
+        return; 
+      }
+      
+      const withTimestamps = arr.map(item => ({
+        ...item,
+        ts: item.ts || NOW
+      }));
+      
+      withTimestamps.forEach(r => root.appendChild(renderRow(r)));
+    } catch (error) {
+      $("#cards").innerHTML = `<div class="alert alert-danger">Error loading cards: ${error.message}</div>`;
+      console.error("Card loading error:", error);
+    }
+  }
+
+  $("#btn-load").addEventListener("click", load);
+  load();
+})();
+</script>
+{% endblock %}

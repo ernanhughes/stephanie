@@ -6,11 +6,12 @@ import json
 import time
 from typing import Any, Dict, Iterable, List, Optional, Union
 
-from sqlalchemy import and_, func
-from sqlalchemy.exc import IntegrityError
-
+from sqlalchemy import cast, func, Integer   
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.bus_event import BusEventORM
+from stephanie.models.casebook import CaseORM
+from stephanie.models.goal import GoalORM
+from stephanie.models.pipeline_run import PipelineRunORM
 
 
 class BusEventStore(BaseSQLAlchemyStore):
@@ -36,8 +37,110 @@ class BusEventStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "bus_events"
 
-    def name(self) -> str:
-        return self.name
+    def _goal_from_payload(self, p: dict) -> dict:
+        """
+        Try to pull a human-friendly goal/title from a run's earliest payload.
+        We look across common fields used by your arena pipeline.
+        """
+        if not isinstance(p, dict):
+            return {"title": None, "goal": None, "paper_id": None, "section_name": None, "agent": None}
+
+        meta = p.get("meta") or {}
+        # title candidates
+        title = (
+            p.get("title")
+            or p.get("paper_title")
+            or meta.get("title")
+            or meta.get("paper_title")
+            or p.get("goal_title")
+        )
+        # goal/intent candidates
+        goal = (
+            p.get("goal")
+            or p.get("arena_goal")
+            or meta.get("goal")
+            or (p.get("plan") or {}).get("goal")
+        )
+
+        return {
+            "title": title,
+            "goal": goal,
+            "paper_id": str(p.get("paper_id") or meta.get("paper_id") or "") or None,
+            "section_name": str(p.get("section_name") or meta.get("section_name") or "") or None,
+            "agent": str(p.get("agent") or meta.get("agent") or "") or None,
+        }
+
+    def recent_runs(self, limit: int = 50) -> list[dict]:
+        """
+        Latest distinct run_ids with counts, first/last ts, last event,
+        plus goal_text from the joined pipeline_runs/goals.
+        """
+        def op(s):
+            # aggregate with joins
+            agg = (
+                s.query(
+                    BusEventORM.run_id.label("run_id"),
+                    BusEventORM.case_id.label("case_id"),
+                    func.count(BusEventORM.id).label("count"),
+                    func.min(BusEventORM.ts).label("first_ts"),
+                    func.max(BusEventORM.ts).label("last_ts"),
+                    GoalORM.goal_text.label("goal_text"),
+                    CaseORM.case_name.label("case_name"),
+                )
+                .join(PipelineRunORM, PipelineRunORM.id == cast(BusEventORM.run_id, Integer))
+                .join(GoalORM, GoalORM.id == PipelineRunORM.goal_id)
+                .filter(BusEventORM.run_id.isnot(None))
+                .group_by(BusEventORM.run_id, GoalORM.goal_text)
+                .order_by(func.max(BusEventORM.ts).desc())
+                .limit(limit)
+            ).all()
+
+            run_ids = [r.run_id for r in agg]
+            if not run_ids:
+                return []
+
+            # last event per run
+            last_rows = (
+                s.query(BusEventORM.run_id, BusEventORM.event)
+                .filter(BusEventORM.run_id.in_(run_ids))
+                .order_by(BusEventORM.run_id.asc(), BusEventORM.ts.desc(), BusEventORM.id.desc())
+            ).all()
+            last_event_by_run = {}
+            for rid, ev in last_rows:
+                if rid not in last_event_by_run:
+                    last_event_by_run[rid] = ev
+
+            # earliest payload per run
+            earliest_rows = (
+                s.query(BusEventORM)
+                .filter(BusEventORM.run_id.in_(run_ids))
+                .order_by(BusEventORM.run_id.asc(), BusEventORM.ts.asc(), BusEventORM.id.asc())
+            ).all()
+            first_payload_by_run = {}
+            for row in earliest_rows:
+                if row.run_id not in first_payload_by_run:
+                    first_payload_by_run[row.run_id] = row.payload_json
+
+            # build output
+            out = []
+            for r in agg:
+                meta = self._goal_from_payload(first_payload_by_run.get(r.run_id, {}) or {})
+                out.append({
+                    "run_id": r.run_id,
+                    "count": int(r.count or 0),
+                    "first_ts": float(r.first_ts or 0),
+                    "last_ts": float(r.last_ts or 0),
+                    "last_event": last_event_by_run.get(r.run_id),
+                    "title": meta.get("title"),
+                    "goal": meta.get("goal"),
+                    "goal_text": r.goal_text,   # <-- comes from the join
+                    "paper_id": meta.get("paper_id"),
+                    "section_name": meta.get("section_name"),
+                    "agent": meta.get("agent"),
+                })
+            return out
+
+        return self._run(op)
 
     # -------------------------------------------------------------------------
     # Public API
@@ -200,56 +303,6 @@ class BusEventStore(BaseSQLAlchemyStore):
             return s.get(BusEventORM, event_id)
         return self._run(op)
 
-
-    def recent_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """
-        Return latest run_ids with counts, first/last ts, and the last event name.
-        """
-        def op(s):
-            agg = (
-                s.query(
-                    BusEventORM.run_id.label("run_id"),
-                    func.count(BusEventORM.id).label("count"),
-                    func.min(BusEventORM.ts).label("first_ts"),
-                    func.max(BusEventORM.ts).label("last_ts"),
-                )
-                .filter(BusEventORM.run_id.isnot(None))
-                .group_by(BusEventORM.run_id)
-                .order_by(func.max(BusEventORM.ts).desc())
-                .limit(limit)
-                .subquery()
-            )
-
-            # SQLAlchemy 1.x: .as_scalar(); 2.x: .scalar_subquery()
-            scalar = getattr(agg.c, "run_id")._annotations.get("parententity", None)
-            last_event_subq = (
-                s.query(BusEventORM.event)
-                .filter(BusEventORM.run_id == agg.c.run_id)
-                .order_by(BusEventORM.ts.desc(), BusEventORM.id.desc())
-                .limit(1)
-                .correlate(agg)
-            )
-            last_event_scalar = (
-                last_event_subq.as_scalar()
-                if hasattr(last_event_subq, "as_scalar")
-                else last_event_subq.scalar_subquery()
-            )
-
-            rows = s.query(
-                agg.c.run_id, agg.c.count, agg.c.first_ts, agg.c.last_ts, last_event_scalar.label("last_event")
-            ).all()
-
-            return [
-                {
-                    "run_id": r.run_id,
-                    "count": int(r.count or 0),
-                    "first_ts": float(r.first_ts or 0),
-                    "last_ts": float(r.last_ts or 0),
-                    "last_event": r.last_event or None,
-                }
-                for r in rows
-            ]
-        return self._run(op)
 
     def payloads_by_run(self, run_id: str, limit: int = 2000) -> List[Dict[str, Any]]:
         """

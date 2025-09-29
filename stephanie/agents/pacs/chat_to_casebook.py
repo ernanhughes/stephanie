@@ -106,7 +106,7 @@ class ChatToCaseBookAgent(BaseAgent):
                 continue
 
             try:
-                cb = self._convert_conversation(conv)  # Gate 2 happens inside
+                cb = self._convert_conversation(conv, context)  # Gate 2 happens inside
                 casebooks_created.append(cb)
                 await self._mark_converted(conv.id)
                 self.report({
@@ -132,7 +132,7 @@ class ChatToCaseBookAgent(BaseAgent):
         context["casebooks_created"] = [cb.id for cb in casebooks_created]
         return context
 
-    def _convert_conversation(self, conv: ChatConversationORM) -> CaseBookORM:
+    def _convert_conversation(self, conv: ChatConversationORM, context: dict) -> CaseBookORM:
         """
         Convert a single conversation into a CaseBook with Cases and Scorables.
         Skips if a casebook for this conversation already has cases.
@@ -153,8 +153,10 @@ class ChatToCaseBookAgent(BaseAgent):
         cb_name = f"[chat:{conv.id}] {conv.title}"
 
         # Create/retrieve the casebook (include meta for future querying, if supported)
+        pipeline_run_id = context.get("pipeline_run_id")
         cb = self.memory.casebooks.ensure_casebook(
             name=cb_name,
+            pipeline_run_id=pipeline_run_id,
             description=f"Imported chat conversation: {conv.id} - {conv.title}",
             meta={"conversation_id": conv.id} if hasattr(self.memory.casebooks, "ensure_casebook") else None
         )

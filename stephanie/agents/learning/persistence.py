@@ -50,7 +50,8 @@ class Persistence:
     def prepare_casebook_goal_sections(self, paper: Dict[str, Any], context: Dict[str, Any]):
         title = paper.get("title",""); doc_id = paper.get("id") or paper.get("doc_id")
         name = generate_casebook_name(self.casebook_action, title)
-        cb = self.memory.casebooks.ensure_casebook(name=name, description=f"LfL agent runs for paper {title}", tag=self.casebook_action)
+        pipeline_run_id = context.get("pipeline_run_id")
+        cb = self.memory.casebooks.ensure_casebook(name=name, pipeline_run_id=pipeline_run_id, description=f"LfL agent runs for paper {title}", tag=self.casebook_action)
         goal = self.memory.goals.get_or_create({
             "goal_text": build_paper_goal_text(title),
             "description": "LfL: verify & improve per section",

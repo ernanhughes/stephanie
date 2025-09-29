@@ -7,9 +7,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-from sis.routes import db, pipelines, models, logs, plan_traces, documents, mars
+from sis.routes import arena, db, pipelines, models, logs, plan_traces, documents, mars
 from sis.routes import casebooks as casebooks_routes
-from sis.routes import chats, arena, tap
+from sis.routes import chats, cards
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -62,10 +62,6 @@ app.state.templates.env.filters["datetimeformat"] = datetimeformat
 app.state.config = cfg
 
 
-
-
-
-
 # Static assets
 app.mount("/static", StaticFiles(directory="sis/static"), name="static")
 
@@ -79,7 +75,7 @@ app.include_router(documents.router)
 app.include_router(mars.router)
 app.include_router(casebooks_routes.router)
 app.include_router(chats.router)
-# app.include_router(arena.router)
-app.include_router(tap.router)
+app.include_router(arena.router)
+app.include_router(cards.router)
 
 

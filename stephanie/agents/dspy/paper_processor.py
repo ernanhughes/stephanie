@@ -278,6 +278,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         processed_sections = []
         self.report({"event": "input", "agent": self.name, "docs_count": len(documents)})
 
+        pipeline_run_id = context.get("pipeline_run_id")
         # Process each document
         for di, doc in enumerate(documents, start=1):
             dt0 = self._t0()
@@ -289,6 +290,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             casebook_name = generate_casebook_name(self.casebook_action, title)
             casebook = self.memory.casebooks.ensure_casebook(
                 name=casebook_name,
+                pipeline_run_id=pipeline_run_id,
                 description=f"Agent generated blog for paper {title}",
                 tag=self.casebook_action,
             )

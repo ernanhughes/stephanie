@@ -138,6 +138,7 @@ class LearningFromLearningAgent(BaseAgent):
         )
 
         out = {}
+        pipeline_run_id = context.get("pipeline_run_id")
         for paper in documents:
             doc_id = paper.get("id") or paper.get("doc_id")
             title = paper.get("title", "")
@@ -146,6 +147,7 @@ class LearningFromLearningAgent(BaseAgent):
             casebook_name = generate_casebook_name(self.casebook_action, title)
             casebook = self.memory.casebooks.ensure_casebook(
                 name=casebook_name,
+                pipeline_run_id=pipeline_run_id,
                 description=f"LfL agent runs for paper {title}",
                 tag=self.casebook_action,
             )

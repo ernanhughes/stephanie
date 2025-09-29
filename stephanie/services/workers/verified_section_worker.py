@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import traceback
 
 from stephanie.agents.knowledge.verified_section_generator import \

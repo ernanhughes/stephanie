@@ -87,7 +87,7 @@ class DraftGeneratorAgent(BaseAgent):
         plan["kg"] = kg_ctx  # pass into TextImprover
 
         # --------- CaseBook to log the trajectory ----------
-        casebook = self._ensure_casebook(paper, section_name, plan)
+        casebook = self._ensure_casebook(paper, section_name, plan, context)
         context["casebook_id"] = casebook.id
 
         # --------- Trajectory loop ----------
@@ -211,7 +211,7 @@ class DraftGeneratorAgent(BaseAgent):
         all_msgs = sorted(all_msgs, key=lambda m: m.get("ts") or 0)
         return all_msgs[-self.chat_max_messages:]
 
-    def _ensure_casebook(self, paper: dict, section_name: str, plan: dict) -> CaseBookORM:
+    def _ensure_casebook(self, paper: dict, section_name: str, plan: dict, context: dict) -> CaseBookORM:
         casebook_name = f"blog_{paper.get('id','unknown')}_{section_name}_{int(time.time())}"
         meta = {
             "paper_id": paper.get("id"),
@@ -221,8 +221,10 @@ class DraftGeneratorAgent(BaseAgent):
             "knowledge_hash": plan.get("meta", {}).get("knowledge_hash"),
             "transient": True,   # ⚠️ transient domains/NER; not persisted elsewhere
         }
+        pipeline_run_id = context.get("pipeline_run_id")
         return self.memory.casebooks.ensure_casebook(
             name=casebook_name,
+            pipeline_run_id=pipeline_run_id,
             description=f"Draft trajectory for '{section_name}' from fused knowledge",
             tag="draft_generator",
             meta=meta

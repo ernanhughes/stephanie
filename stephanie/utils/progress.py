@@ -34,29 +34,7 @@ class AgentProgress:
             pass
 
         # 3) SIS card (optional, non-blocking)
-        if self.enable_sis:
-            try:
-                sis = getattr(self.agent.container, "get_service", lambda *_: None)("sis")
-                if sis:
-                    title = payload.get("title") or event.replace("_", " ").title()
-                    cards = []
-                    # Compact default cards
-                    if "progress_pct" in payload:
-                        cards.append({"type": "metric", "title": "Progress %", "value": round(payload["progress_pct"], 1)})
-                    if "elapsed_ms" in payload:
-                        cards.append({"type": "metric", "title": "Elapsed (ms)", "value": int(payload["elapsed_ms"])})
-                    if "stage" in payload:
-                        cards.append({"type": "list", "title": "Stage", "items": [str(payload["stage"])]})
-                    meta = payload.get("meta") or {}
-                    sis.publish_cards({
-                        "scope": "agent",
-                        "key": f"{self.agent.name}:{event}",
-                        "title": title,
-                        "cards": cards,
-                        "meta": meta
-                    })
-            except Exception:
-                pass
+        self.agent.memory.sis_cards.upsert_payload({**payload, "ts": payload.get("ts") or time.time()})
 
     def _ms(self) -> float:
         return round((time.time() - self.t0) * 1000.0, 1)

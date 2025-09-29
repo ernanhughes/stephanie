@@ -280,7 +280,7 @@
     setStatus("connecting"); hideError();
 
     // Subscribe to arena subjects on the bus via tap
-    const url = new URL("/tap/stream", window.location.origin);
+    const url = new URL("/arena/stream", window.location.origin);
     url.searchParams.set("subject", "stephanie.events.arena.run.>"); // adjust prefix if needed
     url.searchParams.set("debug", "1");
 
@@ -307,7 +307,7 @@
     // ... (clear UI as you already do)
 
     try {
-      const res = await fetch(`/tap/api/events?run_id=${encodeURIComponent(runId)}`);
+      const res = await fetch(`/arena/api/events?run_id=${encodeURIComponent(runId)}`);
       if (!res.ok) throw new Error("HTTP " + res.status);
       const raw = await res.json();                // array of strings or objects
       const events = raw.map(tryParseJSON);        // <- normalize to objects

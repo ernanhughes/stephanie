@@ -29,14 +29,15 @@ class SeedCaseBookAgent(BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.documents_key = cfg.get("documents_key") or self.input_key or self.name  # be flexible
+        self.documents_key = (
+            cfg.get("documents_key") or self.input_key or self.name
+        )  # be flexible
         self.max_docs = int(cfg.get("max_docs", 50))
         # self.casebook_name = cfg.get("casebook_name", "default_casebook")
         self.casebook_name = "default_casebook"
         self.mode = cfg.get("mode", "one_case_per_doc")
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
-
         goal = context.get(GOAL, {}) or {}
         goal_text = goal.get("goal_text", "") or ""
         pipeline_run_id = context.get(PIPELINE_RUN_ID)
@@ -47,22 +48,31 @@ class SeedCaseBookAgent(BaseAgent):
         # derive a casebook name if not provided
         if not self.casebook_name:
             date = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.casebook_name = f"cb_{simple_slugify(goal_text or 'goal')}_{date}"
+            self.casebook_name = (
+                f"cb_{simple_slugify(goal_text or 'goal')}_{date}"
+            )
 
-        # create/ensure casebook
-        cb = self.memory.casebooks.ensure_casebook(name=self.casebook_name, description=goal_text[:240])
+        # create/ensure
+        pipeline_run_id = context.get(PIPELINE_RUN_ID)
+        cb = self.memory.casebooks.ensure_casebook(
+            name=self.casebook_name,
+            pipeline_run_id=pipeline_run_id,
+            description=goal_text[:240],
+        )
 
         goal_id_str = str(goal.get("id"))
         # create a parent "goal" case (if not already present)
         pipeline_run_id = context.get(PIPELINE_RUN_ID)
-        goal_case = self.memory.casebooks.ensure_goal_state_for_case(casebook_id=cb.id, 
-                                                                     goal_id=goal_id_str, 
-                                                                     goal_text=goal_text, 
-                                                                     pipeline_run_id=pipeline_run_id)
+        goal_case = self.memory.casebooks.ensure_goal_state_for_case(
+            casebook_id=cb.id,
+            goal_id=goal_id_str,
+            goal_text=goal_text,
+            pipeline_run_id=pipeline_run_id,
+        )
 
-        existing = self.memory.casebooks.list_cases(casebook_id=cb.id, goal_id=goal_id_str)
-
-
+        existing = self.memory.casebooks.list_cases(
+            casebook_id=cb.id, goal_id=goal_id_str
+        )
 
         created = 0
         for d in docs[: self.max_docs]:
@@ -76,11 +86,17 @@ class SeedCaseBookAgent(BaseAgent):
                 "score": d.get("score"),
                 "source": d.get("source"),
                 "snippet": (d.get("summary") or d.get("text", "")[:280]),
-                "retrieval": {"agent": self.name, "documents_key": self.documents_key},
+                "retrieval": {
+                    "agent": self.name,
+                    "documents_key": self.documents_key,
+                },
             }
-            scorable = Scorable(id=str(doc_id), text=d.get("text", title), 
-                                target_type=ScorableType.DOCUMENT,
-                                meta=meta)
+            scorable = Scorable(
+                id=str(doc_id),
+                text=d.get("text", title),
+                target_type=ScorableType.DOCUMENT,
+                meta=meta,
+            )
 
             self.memory.casebooks.add_case(
                 casebook_id=cb.id,
@@ -116,7 +132,9 @@ class SeedCaseBookAgent(BaseAgent):
         )
 
         # Return handy references for downstream stages
-        context.setdefault("casebook", {"id": cb.id, "name": self.casebook_name})
+        context.setdefault(
+            "casebook", {"id": cb.id, "name": self.casebook_name}
+        )
         context.setdefault("cases_seeded", 0)
         context["cases_seeded"] += created
         return context

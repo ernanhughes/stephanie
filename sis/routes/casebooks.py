@@ -108,7 +108,7 @@ def casebook_for_run(
     request: Request,
     run_id: int,
     goal: Optional[str] = Query(
-        default=None, description="Filter cases by goal_id"
+        default=None, description="Filter cases by run_id"
     ),
     limit: int = Query(default=500, ge=1, le=2000),
 ):
@@ -121,7 +121,7 @@ def casebook_for_run(
 
     cb = memory.casebooks.get_for_run_id(run_id)
     if not cb:
-        return PlainTextResponse("Casebook not found for run", status_code=404)
+        return PlainTextResponse(f"Casebook not found for run: {run_id}", status_code=404)
 
     # Fetch cases via the store with optional goal filter
     cases = memory.casebooks.list_cases(

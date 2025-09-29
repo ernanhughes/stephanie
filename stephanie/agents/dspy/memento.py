@@ -547,7 +547,7 @@ class MementoAgent(MCTSReasoningAgent):
             return self.memory.casebooks.ensure_casebook_scope(pipeline_run_id, agent_name, tag)
         except AttributeError:
             name = f"cb:{agent_name or 'all'}:{pipeline_run_id or 'all'}:{tag}"
-            return self.memory.casebooks.ensure_casebook(name, description="Scoped fallback")
+            return self.memory.casebooks.ensure_casebook(name, pipeline_run_id=pipeline_run_id, description="Scoped fallback")
 
     def _bump_and_get_run_counter(self, casebook_id: int, goal_id: str) -> int:
         """

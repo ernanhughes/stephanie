@@ -46,6 +46,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
     def ensure_casebook(
         self,
         name: str,
+        pipeline_run_id: int,
         description: str = "",
         tag: str = "",
         meta: dict = None,

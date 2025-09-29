@@ -211,7 +211,7 @@ class EventService(Service):
         dlq_subject = f"dlq.{subject}"
         record = dict(enveloped)
         record["error"] = error
-        await self.memory.bus.publish(dlq_subject, record)
+        await self.memory. OK (dlq_subject, record)
         self.memory.bus_events.insert(dlq_subject, record)
 
         

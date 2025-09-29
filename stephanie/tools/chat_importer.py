@@ -407,8 +407,10 @@ def conversation_to_casebook(memory, bundle: dict, context: dict) -> CaseBookORM
     logger.info(f"Converting conversation to casebook: {title}")
 
     # Create or get casebook
+    pipeline_run_id = context.get("pipeline_run_id")
     cb = memory.casebooks.ensure_casebook(
         name=f"chat_{conversation_id or title[:200]}",
+        pipeline_run_id=pipeline_run_id,
         description=f"Imported chat conversation: {title}",
     )
     logger.info(f"CaseBook: {cb.name} (id={cb.id})")

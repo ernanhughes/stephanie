@@ -172,8 +172,10 @@ class CodeImprover:
         (run_dir / "dpo_pair.json").write_text(json.dumps(dpo_pair, indent=2))
 
         casebook_name = f"code_{spec['function_name']}"
+        pipeline_run_id = context.get("pipeline_run_id")
         cb = self.casebooks.ensure_casebook(
             name=casebook_name,
+            pipeline_run_id=pipeline_run_id,
             tags=["code_improver", "exemplar_code"],
             meta={"spec_sha": spec_hash, "backend": self.backend},
         )

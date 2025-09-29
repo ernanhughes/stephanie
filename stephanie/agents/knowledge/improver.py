@@ -14,10 +14,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from stephanie.agents.paper_improver.goals import GoalScorer
-from stephanie.knowledge.casebook_store import CaseBookStore
-from stephanie.knowledge.knowledge_bus import KnowledgeBus
+from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import ScorableType
+from stephanie.services.knowledge_bus import KnowledgeBus
 from stephanie.utils.json_sanitize import safe_json
 
 from ..paper_improver.faithfulness import FaithfulnessBot
@@ -58,6 +58,7 @@ class Improver:
         self,
         cfg, 
         memory,
+        context: Dict[str, Any],
         workdir: str = "./data/text_runs",
         timeout: int = 60,
         seed: int = 0,
@@ -69,6 +70,7 @@ class Improver:
     ):
         self.cfg = cfg
         self.memory = memory
+        self.context = context
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
         self.run_id = 0
@@ -171,8 +173,10 @@ class Improver:
 
         # 2) Casebook + Case
         casebook_name = f"text_{plan_hash}_{(content_plan.get('section_title') or 'section')}"
+        pipeline_run_id = self.context.get("pipeline_run_id")
         cb = self.casebooks.ensure_casebook(
             name=casebook_name,
+            pipeline_run_id=pipeline_run_id,
             tags=["text_improver", "exemplar_text"],
             meta={"plan_sha": plan_hash},
         )
