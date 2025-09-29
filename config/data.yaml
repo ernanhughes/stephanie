@@ -1,0 +1,93 @@
+# config/data.yaml
+
+# This pipeline is designed to generate data on an empty system it'll search arxiv get some results 
+# and we'll fill out some scores it'll be likely the first pipeline you run in the system
+
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: disabled
+  - scoring/service/default
+  - logging/json_logger
+  - mars/default
+
+  - scorer: all  
+
+  - agents/arxiv_search
+  - agents/document_loader
+  - agents/document_profiler
+  - agents/document_reward_scorer
+  - agents/icl_reasoning
+  - agents/knowledge_loader
+  - agents/planner_reuse
+  - agents/knowledge_db_loader
+  - agents/pipeline_judge
+  - agents/paper_score
+  - logging/json_logger
+
+embeddings:
+  backend: hnet
+
+goal:
+  goal_text: self-improving AI OR self-learning OR autonomous learning OR continual learning
+  goal_type: "tactical"
+  goal_category: "meta_learning"
+  focus_area: "self_improvement"
+  strategy: "stepwise_decomposition"
+  difficulty: "medium-high"
+  expected_formats:
+    - "symbolic_prompt_plan"
+    - "stepwise_reasoning_trace"
+    - "annotated_score_vector"
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+web_search:
+  engine: "searxng"
+  instance_url: "http://localhost:8080"
+
+pipeline:
+  name: cartridge
+  tag: "cartridge"
+  description: "Search Arxiv for papers related to a goal generate information cartridges from this knowledge"
+  stages:
+     - name: arxiv_search
+       description: "Search Arxiv for papers related to the goal" 
+       cls: stephanie.agents.knowledge.arxiv_search.ArxivSearchAgent
+       enabled: true
+       iterations: 1
+     - name: document_loader
+       description: "Load documents from the search results and summarize them"
+       cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
+       enabled: true
+       iterations: 1
+     - name: document_profiler
+       description: "Profile the loaded documents to extract key sections"
+       cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
+       enabled: true
+       iterations: 1
+     - name: paper_score
+       description: "Score the papers based on their relevance and quality"
+       cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
+       enabled: true
+       iterations: 1
+     - name: planner_reuse
+       description: "Adapt past plans to current goal"
+       cls: stephanie.agents.planning.planner_reuse.PlannerReuseAgent
+       enabled: true
+       iterations: 1
+     - name: knowledge_loader
+       description: "Load knowledge from the scored papers into the system"
+       cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
+       enabled: true
+       iterations: 1
+     - name: knowledge_db_loader
+       description: "Load knowledge from the database"
+       cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
+       enabled: true
+       iterations: 1    

@@ -1,7 +1,9 @@
+# you will need this to run hnsw models
+
 from huggingface_hub import snapshot_download
 
 # Replace with your Hugging Face token if required (for gated models)
-# export HUGGINGFACE_HUB_TOKEN="your_token_here"
+# export HF_TOKEN="your_token_here"
 
 model_id = "meta-llama/Llama-3.2-1B-Instruct"
 
