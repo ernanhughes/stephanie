@@ -63,6 +63,18 @@ class PromptLoader:
         except KeyError as e:
             _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
 
+    def from_context(self, config: dict, context: dict) -> str:
+        """Load prompt directly from context variable."""
+        prompt_text = context.get("prompt_text", "")
+        if not prompt_text:
+            raise ValueError("Missing 'prompt_text' in context.")
+        merged = self._merge_context(config, context)
+        try:
+            return Template(prompt_text).render(**merged)
+        except KeyError as e:
+            _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
+            return prompt_text  # Fallback: return raw
+
     def score_prompt(self, file_name: str, config: dict, context: dict) -> str:
         """Manually load and render a prompt file."""
         path = self.get_score_path(file_name, config, context)

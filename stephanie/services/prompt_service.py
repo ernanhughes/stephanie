@@ -5,25 +5,42 @@ import time
 import uuid
 from typing import Any, Dict, Optional
 
+import logging
+
 from stephanie.services.service_protocol import Service
 # stephanie/agents/prompt_runner_agent.py
 from stephanie.agents.base_agent import BaseAgent
 
+_logger = logging.getLogger(__name__)
+
+config = """
+prompt_service:
+  name: prompt_service
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal"]   # add nodes
+  output_key: prompt_service
+  prompt_mode: context
+"""
+
 class PromptRunnerAgent(BaseAgent):
-    def __init__(self, cfg, memory, container, logger):
-        super().__init__(cfg, memory, container, logger)
+    def __init__(self, memory, container, logger):
+        super().__init__(config, memory, container, logger)
 
-
-    async def run(self, prompt_text: str, context: dict | None = None) -> dict:
-        
-        prompt = self.build_prompt(prompt_text, context=context)
-        result = await self.call_llm(prompt, context=context)
-        return {
-            "prompt": prompt,
-            "response": result,
-            "context": context,
-        }
-
+    async def run(self, context: dict) -> dict:
+        prompt = self.prompt_loader.from_context(self.cfg, context=context)
+        _logger.info(f"PromptService prompt: {prompt}")
+        # Generate response from LLM
+        response = self.call_llm(prompt, context=context)
+        _logger.info(f"PromptService response: {response}")
+        # Store response in context
+        context[self.output_key] = response
+        return context
 
 class PromptService(Service):
     """
@@ -31,11 +48,15 @@ class PromptService(Service):
     and publishes results back. Designed to decouple prompt execution from Arena loops.
     """
 
-    def __init__(self, llm_client, *, max_concurrent: int = 8):
-        self.llm_client = llm_client
-        self.semaphore = asyncio.Semaphore(max_concurrent)
+    def __init__(self, cfg: Dict, memory, container, logger):
+        self.cfg = cfg
+        self.memory = memory
+        self.logger = logger
+        self.container = container
+        self.semaphore = asyncio.Semaphore(self.cfg.get("max_concurrent", 8))
         self._initialized = False
         self._consumer_tasks: list[asyncio.Task] = []
+        self.prompt_runner = PromptRunnerAgent(memory, container, logger)
 
     # === Service Protocol ===
     def initialize(self, **kwargs) -> None:
