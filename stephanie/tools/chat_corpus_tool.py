@@ -152,10 +152,11 @@ def build_chat_corpus_tool(
         weights: Optional[Dict[str, float]] = None,
         candidate_multiplier: int = 3,
         include_text: bool = True,
+        tags: Optional[List[str]] = None,   # NEW
     ) -> Dict[str, Any]:
         qt = (query_text or "").strip()
         if not qt:
-            return {"items": [], "meta": {"k": k}}
+            return {"items": [], "meta": {"k": k, "tags": tags or []}}
 
         w = {"semantic": 0.6, "entity": 0.25, "domain": 0.15}
         if weights:
@@ -164,15 +165,25 @@ def build_chat_corpus_tool(
         # 1) candidates from embedding index
         cands = _embedding_candidates(qt, k * max(2, candidate_multiplier))
         if not cands:
-            return {"items": [], "meta": {"k": k}}
+            return {"items": [], "meta": {"k": k, "tags": tags or []}}
 
         cand_ids = [
             c.get("id") or c.get("scorable_id")
             for c in cands
             if (c.get("id") or c.get("scorable_id"))
         ]
-        # 2) fetch same-field snapshot as conversation query
+
+        # 2) fetch snapshot for candidates
         snapshot = memory.chats.list_turns_by_ids_with_texts(cand_ids)
+
+        # 2b) optional filter by conversation tags
+        if tags:
+            tags_set = {t.strip().lower() for t in tags}
+            snapshot = [
+                s for s in snapshot
+                if tags_set.intersection(set(map(str.lower, (s.get("tags") or []))))
+            ]
+
         snap_by_id = {int(s["id"]): s for s in snapshot}
 
         # 3) query-side features

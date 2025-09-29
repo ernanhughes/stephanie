@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, desc, func, text
-from sqlalchemy.dialects.postgresql import JSONB  # only used if dialect is PG
+from sqlalchemy import or_, desc, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
@@ -1318,6 +1318,7 @@ class ChatStore(BaseSQLAlchemyStore):
                     U.text.label("user_text"),
                     A.text.label("assistant_text"),
                     C.title.label("goal_text"),
+                    C.tags.label("tags"),
                 )
                 .join(U, ChatTurnORM.user_message_id == U.id)
                 .join(A, ChatTurnORM.assistant_message_id == A.id)
@@ -1337,8 +1338,51 @@ class ChatStore(BaseSQLAlchemyStore):
                     "ner": r.ner or [],
                     "domains": r.domains or [],
                     "goal_text": r.goal_text or "",
+                    "tags": r.tags or [],
                     "ai_score": r.ai_score,
                     "ai_rationale": r.ai_rationale or "",
                 })
             return out
+        return self._run(op)
+
+
+    def get_conversations_by_tags(
+        self,
+        tags: list[str],
+        *,
+        match: str = "any",   # "any" = at least one tag; "all" = must contain all
+        limit: int = 200,
+        include_messages: bool = False,
+    ) -> List[ChatConversationORM]:
+        """
+        Return ChatConversationORM rows filtered by tags.
+        
+        Args:
+            tags: List of tags to filter by.
+            match: "any" (default) requires at least one tag to match,
+                   "all" requires all tags to be present.
+            limit: Max number of results to return.
+            include_messages: If True, eager-load messages.
+        """
+        def op(s):
+            q = s.query(ChatConversationORM)
+
+            if tags:
+                if match == "all":
+                    for t in tags:
+                        q = q.filter(ChatConversationORM.tags.contains([t]))
+                else:  # match == "any"
+                    q = q.filter(or_(*[ChatConversationORM.tags.contains([t]) for t in tags]))
+
+            if include_messages:
+                q = q.options(selectinload(ChatConversationORM.messages))
+
+            order_col = getattr(ChatConversationORM, "created_at", None)
+            if order_col is not None:
+                q = q.order_by(order_col.desc())
+            else:
+                q = q.order_by(ChatConversationORM.id.desc())
+
+            return q.limit(limit).all()
+
         return self._run(op)

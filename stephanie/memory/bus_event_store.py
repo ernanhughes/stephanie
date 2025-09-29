@@ -80,13 +80,11 @@ class BusEventStore(BaseSQLAlchemyStore):
             agg = (
                 s.query(
                     BusEventORM.run_id.label("run_id"),
-                    BusEventORM.case_id.label("case_id"),
                     func.count(BusEventORM.id).label("count"),
                     func.min(BusEventORM.ts).label("first_ts"),
                     func.max(BusEventORM.ts).label("last_ts"),
                     GoalORM.goal_text.label("goal_text"),
-                    CaseORM.case_name.label("case_name"),
-                )
+                ) 
                 .join(PipelineRunORM, PipelineRunORM.id == cast(BusEventORM.run_id, Integer))
                 .join(GoalORM, GoalORM.id == PipelineRunORM.goal_id)
                 .filter(BusEventORM.run_id.isnot(None))

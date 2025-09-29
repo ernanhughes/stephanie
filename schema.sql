@@ -1367,6 +1367,7 @@ CREATE TABLE casebooks (
     name VARCHAR(128) NOT NULL,
     description TEXT,
     domain TEXT,
+    tags JSONB DEFAULT '[]'::jsonb,
 
     created_at TIMESTAMP DEFAULT NOW()
 );

@@ -33,9 +33,6 @@ class ExperimentStore(BaseSQLAlchemyStore):
         self.name = "experiments"
         self.table_name = "experiments"
 
-    def name(self) -> str:
-        return self.name
-
     # ---------------------------------------------------------------------
     # Experiments
     # ---------------------------------------------------------------------
@@ -47,7 +44,7 @@ class ExperimentStore(BaseSQLAlchemyStore):
         config: Optional[Dict[str, Any]] = None,
         label: Optional[str] = None,
     ) -> ExperimentORM:
-        def op(s: Session):
+        def op(s):
             q = s.query(ExperimentORM).filter(ExperimentORM.name == name)
             if domain:
                 q = q.filter(ExperimentORM.domain == domain)
@@ -68,7 +65,7 @@ class ExperimentStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def get_by_name(self, name: str, *, domain: Optional[str] = None) -> Optional[dict]:
-        def op(s: Session):
+        def op(s):
             q = s.query(ExperimentORM).filter(ExperimentORM.name == name)
             if domain:
                 q = q.filter(ExperimentORM.domain == domain)
@@ -78,7 +75,7 @@ class ExperimentStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def list(self, limit: int = 100) -> List[dict]:
-        def op(s: Session):
+        def op(s):
             q = s.query(ExperimentORM).order_by(self.default_order_by).limit(limit)
             return [self._orm_to_dict_experiment(r) for r in q.all()]
 
@@ -95,7 +92,7 @@ class ExperimentStore(BaseSQLAlchemyStore):
         is_control: bool = False,
         payload: Optional[Dict[str, Any]] = None,
     ) -> VariantORM:
-        def op(s: Session):
+        def op(s):
             v = (
                 s.query(VariantORM)
                 .filter(
@@ -123,7 +120,7 @@ class ExperimentStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def list_variants(self, experiment_id: int) -> List[dict]:
-        def op(s: Session):
+        def op(s):
             q = s.query(VariantORM).filter(VariantORM.experiment_id == experiment_id)
             return [self._orm_to_dict_variant(v) for v in q.all()]
 
@@ -144,7 +141,7 @@ class ExperimentStore(BaseSQLAlchemyStore):
         If case_id is None, pick "B" if present, else the first control/variant.
         Also creates a Trial shell so we don’t double-assign later.
         """
-        def op(s: Session):
+        def op(s):
             exp = s.query(ExperimentORM).get(experiment.id)
             if not exp:
                 raise ValueError("Experiment not found")
@@ -195,6 +192,8 @@ class ExperimentStore(BaseSQLAlchemyStore):
         pipeline_run_id: Optional[str] = None,
         domain: Optional[str] = None,
         meta: Optional[Dict[str, Any]] = None,
+        experiment_group: Optional[str] = None,        # new
+        tags_used: Optional[List[str]] = None,         # new
     ) -> TrialORM:
         def op(s: Session):
             trial = (
@@ -219,17 +218,13 @@ class ExperimentStore(BaseSQLAlchemyStore):
             trial.pipeline_run_id = pipeline_run_id
             trial.domain = domain
             trial.meta = (meta or {})
+            trial.experiment_group = experiment_group
+            trial.tags_used = tags_used or []
             s.add(trial)
             s.flush()
 
             for k, v in (metrics or {}).items():
-                s.add(
-                    TrialMetricORM(
-                        trial_id=trial.id,
-                        key=str(k),
-                        value=float(v),
-                    )
-                )
+                s.add(TrialMetricORM(trial_id=trial.id, key=str(k), value=float(v)))
             s.flush()
             return trial
 
@@ -245,7 +240,7 @@ class ExperimentStore(BaseSQLAlchemyStore):
         window_seconds: Optional[int] = None,
         limit: int = 400,
     ) -> List[Dict[str, Any]]:
-        def op(s: Session):
+        def op(s):
             q = (
                 s.query(TrialORM, VariantORM)
                 .join(VariantORM, VariantORM.id == TrialORM.variant_id)
@@ -399,7 +394,8 @@ class ExperimentStore(BaseSQLAlchemyStore):
         committed_at: Optional[datetime] = None,
     ) -> ExperimentModelSnapshotORM:
         """Persist a versioned model snapshot tied to an experiment (commit point)."""
-        with self._Session() as s:
+
+        def op(s):
             row = ExperimentModelSnapshotORM(
                 experiment_id=experiment_id,
                 name=name,
@@ -411,9 +407,10 @@ class ExperimentStore(BaseSQLAlchemyStore):
                 created_at=datetime.now(),
             )
             s.add(row)
-            s.commit()
-            s.refresh(row)
+            s.flush()
             return row
+
+        return self._run(op)
 
     def get_latest_model_snapshot(
         self,
@@ -423,8 +420,8 @@ class ExperimentStore(BaseSQLAlchemyStore):
         domain: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Fetch the latest snapshot payload (and metadata) for a given logical model name."""
-        with self._Session() as s:
-            # find experiment
+
+        def op(s):
             exp = (
                 s.query(ExperimentORM)
                 .filter(ExperimentORM.name == experiment_name)
@@ -434,6 +431,7 @@ class ExperimentStore(BaseSQLAlchemyStore):
             )
             if not exp:
                 return None
+
             q = (
                 s.query(ExperimentModelSnapshotORM)
                 .filter(ExperimentModelSnapshotORM.experiment_id == exp.id)
@@ -441,9 +439,11 @@ class ExperimentStore(BaseSQLAlchemyStore):
             )
             if domain:
                 q = q.filter(ExperimentModelSnapshotORM.domain == domain)
+
             row = q.order_by(ExperimentModelSnapshotORM.version.desc()).first()
             if not row:
                 return None
+
             return {
                 "experiment_id": row.experiment_id,
                 "name": row.name,
@@ -453,3 +453,60 @@ class ExperimentStore(BaseSQLAlchemyStore):
                 "validation": row.validation,
                 "committed_at": row.committed_at,
             }
+
+        return self._run(op)
+
+
+    def validate_groups(
+        self,
+        experiment_id: int,
+        *,
+        groups: Optional[List[str]] = None,
+        window_seconds: Optional[int] = None,
+        min_per_group: int = 8,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Compare multiple groups (A/B/C...) using ANOVA + pairwise stats.
+        Returns dict of group stats + comparisons.
+        """
+        trials = self.recent_trials(experiment_id, window_seconds=window_seconds, limit=1000)
+        if groups:
+            trials = [t for t in trials if t.get("experiment_group") in groups]
+
+        grouped: Dict[str, List[float]] = {}
+        for t in trials:
+            grp = t.get("experiment_group") or t.get("group")  # fallback to A/B
+            if t.get("performance") is None:
+                continue
+            grouped.setdefault(grp, []).append(float(t["performance"]))
+
+        # ensure min samples
+        for g, vals in grouped.items():
+            if len(vals) < min_per_group:
+                return None
+
+        stats = {}
+        for g, vals in grouped.items():
+            mean, sd = mean_stdev(vals)
+            stats[g] = {"n": len(vals), "mean": mean, "sd": sd}
+
+        # pairwise comparisons
+        comparisons = {}
+        groups_list = list(grouped.keys())
+        for i in range(len(groups_list)):
+            for j in range(i + 1, len(groups_list)):
+                g1, g2 = groups_list[i], groups_list[j]
+                v1, v2 = grouped[g1], grouped[g2]
+                t, p_t = welch_ttest(v1, v2)
+                u, p_u = mann_whitney_u(v1, v2)
+                d = cohens_d(v1, v2)
+                comparisons[f"{g2}_minus_{g1}"] = {
+                    "delta": (stats[g2]["mean"] - stats[g1]["mean"]),
+                    "cohens_d": d,
+                    "welch_t": t,
+                    "p_value_welch": p_t,
+                    "mann_whitney_u": u,
+                    "p_value_mann_whitney": p_u,
+                }
+
+        return {"groups": stats, "comparisons": comparisons}

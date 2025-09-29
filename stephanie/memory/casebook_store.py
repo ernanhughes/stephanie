@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from sqlalchemy import and_, desc, func
+from sqlalchemy import and_, desc, func,  or_
 from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
@@ -137,7 +137,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         """Return CaseBookORM rows filtered by the simple `tag` column."""
 
         def op(s):
-            q = s.query(CaseBookORM).filter(CaseBookORM.tag == tag)
+            q = s.query(CaseBookORM).filter(CaseBookORM.tags.contains([tag]))
             if agent_name is not None:
                 q = q.filter(CaseBookORM.agent_name == agent_name)
             if pipeline_run_id is not None:
@@ -152,6 +152,49 @@ class CaseBookStore(BaseSQLAlchemyStore):
             return q.limit(limit).all()
 
         return self._run(op)
+
+    def get_casebooks_by_tags(
+        self,
+        tags: list[str],
+        *,
+        match: str = "any",   # "any" (default) or "all"
+        limit: int = 200,
+        agent_name: Optional[str] = None,
+        pipeline_run_id: Optional[int] = None,
+    ):
+        """
+        Return CaseBookORM rows filtered by multiple tags.
+        - match="any": casebook must contain at least one tag
+        - match="all": casebook must contain all tags
+        """
+
+        def op(s):
+            q = s.query(CaseBookORM)
+
+            if tags:
+                if match == "all":
+                    # must contain all tags
+                    for t in tags:
+                        q = q.filter(CaseBookORM.tags.contains([t]))
+                else:
+                    # any of the tags
+                    q = q.filter(or_(*[CaseBookORM.tags.contains([t]) for t in tags]))
+
+            if agent_name is not None:
+                q = q.filter(CaseBookORM.agent_name == agent_name)
+            if pipeline_run_id is not None:
+                q = q.filter(CaseBookORM.pipeline_run_id == pipeline_run_id)
+
+            order_col = getattr(CaseBookORM, "created_at", None)
+            q = q.order_by(
+                order_col.desc()
+                if order_col is not None
+                else CaseBookORM.id.desc()
+            )
+            return q.limit(limit).all()
+
+        return self._run(op)
+
 
     def count_cases(self, casebook_id: int) -> int:
         def op(s):

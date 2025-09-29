@@ -45,7 +45,7 @@ class CaseBookORM(Base):
     description = Column(Text, default="")
     pipeline_run_id = Column(Integer, nullable=True, index=True)
     agent_name = Column(String, nullable=True, index=True)
-    tag = Column(String, nullable=False, default="default", index=True)
+    tags = Column(JSONB, default=list)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     meta = Column(SA_JSON, nullable=True, default=dict)
 

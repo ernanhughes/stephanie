@@ -11,6 +11,10 @@ from stephanie.utils.json_sanitize import dumps_safe
 
 _logger = logging.getLogger(__name__)
 
+def _log_state(prefix: str, state: Strategy):
+    _logger.info("[%s] Strategy v%s | skeptic=%.2f editor=%.2f risk=%.2f threshold=%.2f",
+        prefix, state.version, state.skeptic_weight, state.editor_weight,
+        state.risk_weight, state.verification_threshold)
 
 class StrategyManager:
     """
@@ -52,7 +56,6 @@ class StrategyManager:
     # ---------- State I/O ----------
     def _load_or_default(self) -> Strategy:
         try:
-            # Load latest committed snapshot from ExperimentsStore
             exp = self.memory.experiments.get_or_create_experiment(
                 self.EXPERIMENT_NAME, domain=self.domain, config={"source": "strategy_manager"}
             )
@@ -62,9 +65,13 @@ class StrategyManager:
                 domain=self.domain,
             )
             if not snap or not snap.get("payload"):
-                return Strategy()  # defaults
-            return Strategy.from_dict(snap["payload"])
-        except Exception:
+                _logger.info("[StrategyManager] No snapshot found, using defaults")
+                return Strategy()
+            s = Strategy.from_dict(snap["payload"])
+            _log_state("Loaded snapshot", s)
+            return s
+        except Exception as e:
+            _logger.warning("[StrategyManager] Failed to load snapshot: %s", e)
             return Strategy()
 
     def get_state(self) -> Strategy:
@@ -93,6 +100,7 @@ class StrategyManager:
         """
         Create the next proposed Strategy based on avg gain; clamp/normalize via Strategy.normalize().
         """
+        _logger.info("[StrategyManager] Proposing new strategy (avg_gain=%.4f)", avg_gain)
         s = self.state
         if avg_gain < self.min_gain:
             # shift attention to skeptic; gently trim editor/risk
@@ -102,13 +110,16 @@ class StrategyManager:
                 editor_weight=max(0.20, s.editor_weight - change / 2),
                 risk_weight=max(0.20, s.risk_weight - change / 2),
             )
+            _log_state(f"Proposed {avg_gain:.4f} < {self.min_gain:.4f}", proposed)
             return proposed.normalize()
         elif avg_gain > self.high_gain:
             # lower the bar slightly if we’re cruising (prevents over-polishing)
             proposed = s.apply_changes(
                 verification_threshold=max(0.80, s.verification_threshold - 0.01)
             )
+            _log_state(f"Proposed {avg_gain:.4f} > {self.min_gain:.4f}", proposed)
             return proposed.normalize()
+        _log_state("Proposed", s)
         return s.normalize()
 
     # ---------- A/B: register variants + assign next work ----------
@@ -128,6 +139,7 @@ class StrategyManager:
 
         # breadcrumbs
         old_payload = self.as_dict()
+        _log_state("Before evolve", self.state)
         self.record_state(context, "pre_change")
 
         # experiment record
@@ -139,7 +151,10 @@ class StrategyManager:
         prop = self._propose(avg_gain)
         va = self.memory.experiments.upsert_variant(exp.id, "A", is_control=True, payload=self.as_dict())
         vb = self.memory.experiments.upsert_variant(exp.id, "B", is_control=False, payload=prop.to_dict())
-
+        vc = self.memory.experiments.upsert_variant(
+            exp.id, "C", is_control=False,
+            payload=prop.to_dict() | {"knob":"extra"}  # placeholder for 3rd arm
+        )
         # assign deterministically by case_id if present
         case_id = (context or {}).get("case_id")
         chosen = self.memory.experiments.assign_variant(exp, case_id=case_id, deterministic=True)
@@ -147,6 +162,8 @@ class StrategyManager:
         # save enrollment breadcrumb
         self._record_ab_enrollment(context, group=chosen.name, avg_gain=avg_gain, proposed=prop)
 
+        _logger.info("[StrategyManager] Assigned variant=%s case_id=%s exp_id=%s",
+                 chosen.name, case_id, exp.id)
         # update in-memory state if we’re assigned to B (use its payload as new knobs for NEXT unit)
         if chosen.name.upper() == "B":
             self.state = Strategy.from_dict(vb.payload or {}).normalize().apply_changes(version=self.state.version + 1)
@@ -157,6 +174,7 @@ class StrategyManager:
 
         # optional evolution log
         try:
+            _log_state("State updated", self.state)
             if chosen.name.upper() == "B":
                 self.logger.log("LfL_Strategy_Evolved(AB)", {
                     "avg_gain": round(avg_gain, 4),
@@ -207,6 +225,7 @@ class StrategyManager:
             gains = [scores[i] - scores[i - 1] for i in range(1, len(scores))]
             avg_gain = (sum(gains) / len(gains)) if gains else 0.0
 
+
             first_ka_idx = next((i for i, f in enumerate(ka_flags) if f), None)
             k_lift = (final_score - float(scores[first_ka_idx])) if first_ka_idx is not None else 0.0
             k_iters = sum(1 for f in ka_flags if f)
@@ -214,6 +233,12 @@ class StrategyManager:
             # wall/timing if you have it in the iteration dicts
             step_secs = sum(float(it.get("elapsed_sec", 0.0)) for it in iterations)
             verify_wall = float(iterations[-1].get("verify_wall_sec", step_secs))
+
+            _logger.info("[StrategyManager] track_section case_id=%s run_id=%s "
+             "final_score=%.3f avg_gain=%.3f k_lift=%.3f iters=%d",
+             getattr(case, "id", None),
+             (context or {}).get("pipeline_run_id"),
+             final_score, avg_gain, k_lift, len(iterations))
 
             # persist compact attribute for dashboards
             rollup = {
@@ -278,7 +303,6 @@ class StrategyManager:
                 self.memory.experiments.complete_trial(
                     variant_id=assign["variant_id"],
                     case_id=case_id,
-
                     performance=final_score,
                     metrics={"avg_gain": avg_gain, "k_lift": k_lift},
                     tokens=(context or {}).get("tokens"),
@@ -287,6 +311,8 @@ class StrategyManager:
                     pipeline_run_id=(context or {}).get("pipeline_run_id"),
                     domain=self.domain,
                     meta={"section_iters": len(iterations)},
+                    experiment_group=(context or {}).get("experiment_group"),     # NEW
+                    tags_used=(context or {}).get("corpus_tags", []),             # NEW
                 )
                 # one trial per case; you can keep or clear the assignment
                 # del self._assignments[case_id]
@@ -303,9 +329,14 @@ class StrategyManager:
         """
         try:
             exp = self.memory.experiments.get_or_create_experiment(self.EXPERIMENT_NAME, domain=self.domain)
-            stats = self.memory.experiments.validate_simple(
-                exp.id, window_seconds=self.window_seconds, min_per_group=self.min_per_arm
+            stats = self.memory.experiments.validate_groups(
+                exp.id,
+                groups=context.get("experiment_groups"),   # optional, restrict to ["experimental","control","null"]
+                window_seconds=self.window_seconds,
+                min_per_group=self.min_per_arm,
             )
+            _logger.info("[StrategyManager] validate_ab exp_id=%s stats=%s", exp.id, stats)
+
             if not stats:
                 return None
 
@@ -329,7 +360,12 @@ class StrategyManager:
                 pass
 
             # Structured log
-            self.logger.log("StrategyAB_Validation", {**stats, "experiment_id": exp.id})
+            self.logger.log("StrategyAB_Validation", {
+                "experiment_id": exp.id,
+                "groups": stats.get("groups", {}),
+                "comparisons": stats.get("comparisons", {}),
+            })
+
 
             return stats
         except Exception:
@@ -347,16 +383,29 @@ class StrategyManager:
             return False
 
         # Heuristic: positive delta + reasonable p-value via either test + min rel improvement
-        delta = float(validation.get("delta_B_minus_A", 0.0))
-        p_ok = (float(validation.get("p_value_welch", 1.0)) <= float(self.cfg.get("max_p_value", 0.10))) or \
-               (float(validation.get("p_value_mann_whitney", 1.0)) <= float(self.cfg.get("max_p_value", 0.10)))
-        rel = float(validation.get("relative_improvement", 0.0))
+        comparisons = validation.get("comparisons", {})
+        best = max(comparisons.items(), key=lambda kv: kv[1].get("delta", 0.0)) if comparisons else None
+
+        if not best:
+            return False
+
+        delta = best[1]["delta"]
+        p_ok = (
+            best[1].get("p_value_welch", 1.0) <= float(self.cfg.get("max_p_value", 0.10))
+            or best[1].get("p_value_mann_whitney", 1.0) <= float(self.cfg.get("max_p_value", 0.10))
+        )
+        rel = delta / max(1e-6, validation["groups"][best[0].split("_minus_")[0]]["mean"])
         min_rel = float(self.cfg.get("min_strategy_improvement", 0.02))
 
+        _logger.info("[StrategyManager] maybe_commit_strategy called delta=%.4f rel=%.4f p_ok=%s",
+             delta, rel, p_ok)
+        
         if not (delta > 0.0 and p_ok and rel >= min_rel):
             return False
-        if validation.get("samples_A", 0) < self.min_per_arm or validation.get("samples_B", 0) < self.min_per_arm:
-            return False
+        for g, stats_g in validation.get("groups", {}).items():
+            if stats_g["n"] < self.min_per_arm:
+                return False
+
 
 
         try:
@@ -389,4 +438,5 @@ class StrategyManager:
             pass
 
         self._last_commit_ts = now
+        _log_state("Committed strategy", self.state)
         return True

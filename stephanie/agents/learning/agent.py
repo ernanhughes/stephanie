@@ -272,27 +272,27 @@ class LearningFromLearningAgent(BaseAgent):
             ]
 
         out: Dict[str, Any] = {}
+        pipeline_run_id = context.get("pipeline_run_id")
         for paper in documents:
             casebook, goal, sections = (
                 self.persist.prepare_casebook_goal_sections(paper, context)
             )
             self.progress.start_paper(paper, sections)
-
+            case_context = {
+                **context,
+                "strategy_version": self.strategy.state.version,
+                "verification_threshold": self.strategy.state.verification_threshold,
+                "goal": goal,
+            }
             results: List[Dict[str, Any]] = []
             for idx, section in enumerate(sections, start=1):
                 if not self.persist.section_is_large_enough(section):
                     continue
-
                 case = self.persist.create_section_case(
                     casebook, paper, section, goal, context
                 )
-                ctx_case = {
-                    **context,
-                    "case_id": case.id,
-                    "pipeline_run_id": context.get("pipeline_run_id"),
-                    "strategy_version": self.strategy.state.version,
-                    "verification_threshold": self.strategy.state.verification_threshold,
-                }
+                case_context["case_id"] = case.id
+                # we construct a specific context for this case  
                 self.progress.start_section(section, idx)
 
                 # ----- Corpus -----
@@ -323,7 +323,7 @@ class LearningFromLearningAgent(BaseAgent):
                                     }
                                 }
                             ),
-                            pipeline_run_id=context.get("pipeline_run_id"),
+                            pipeline_run_id=pipeline_run_id,
                             meta={"type": "retrieval_mask"},
                         )
                     except Exception:
@@ -333,7 +333,7 @@ class LearningFromLearningAgent(BaseAgent):
                     corpus_items_for_baseline = corpus_items
 
                 # Attach retrieval pool for downstream attribution (optional)
-                ctx_case["retrieval_items"] = [
+                case_context["retrieval_items"] = [
                     {
                         "id": it.get("id"),
                         "text": (
@@ -353,7 +353,7 @@ class LearningFromLearningAgent(BaseAgent):
                             {
                                 "paper": paper,
                                 "section": section,
-                                "context": ctx_case,
+                                "context": case_context,
                             }
                         )
 
@@ -368,31 +368,10 @@ class LearningFromLearningAgent(BaseAgent):
                     arena_adapter = ArenaReporter(
                         reporting_service=self.reporter,     
                         event_service=self.event_service,            
-                        run_id=context.get("pipeline_run_id"),
+                        run_id=pipeline_run_id,
                         meta=arena_meta
                     )
                     await arena_adapter.start(context)
-
-                    # async def emit_evt(evt: dict, arena_adapter=arena_adapter):
-                    #     typ = evt.get("event")
-                    #     if typ == "initial_scored":
-                    #         await arena_adapter.initial_scored(context, scored_topk=evt.get("topk") or [])
-                    #     elif typ == "round_end":
-                    #         await arena_adapter.round_end(
-                    #             context,
-                    #             round_ix=int(evt.get("round", 0)),
-                    #             best_overall=float(evt.get("best_overall", 0.0)),
-                    #             marginal_per_ktok=float(evt.get("marginal_per_ktok", 0.0)),
-                    #         )
-                    #     elif typ == "arena_stop":
-                    #         await arena_adapter.stop(
-                    #             context,
-                    #             winner_overall=float(evt.get("winner_overall", 0.0)),
-                    #             rounds_run=int(evt.get("rounds_run", 0)),
-                    #             reason=evt.get("reason") or "",
-                    #         )
-                    #     elif typ == "arena_done":
-                    #         await arena_adapter.done(context, ended_at=evt.get("ended_at"))
 
                     arena_res = await self.arena.run(
                         section["section_text"],
@@ -406,9 +385,9 @@ class LearningFromLearningAgent(BaseAgent):
                             "case_id": case.id,
                             "agent": "LearningFromLearningAgent",
                         },
-                        context=context
+                        context=case_context
                     )
-                    ctx_case["arena_initial_pool"] = [
+                    case_context["arena_initial_pool"] = [
                         {
                             "origin": c.get("origin"),
                             "variant": c.get("variant"),
@@ -418,7 +397,7 @@ class LearningFromLearningAgent(BaseAgent):
                     ]
                     baseline = arena_res["winner"]["text"]
                     self.persist.persist_arena(
-                        case, paper, section, arena_res, ctx_case
+                        case, paper, section, arena_res, case_context
                     )
                     self.progress.stage(
                         section,
@@ -434,14 +413,14 @@ class LearningFromLearningAgent(BaseAgent):
                     )
                 else:
                     baseline = self.summarizer.baseline(
-                        paper, section, corpus_items_for_baseline, ctx_case
+                        paper, section, corpus_items_for_baseline, case_context
                     )
                     self.progress.stage(section, "baseline:done")
 
                 # ----- Verify & improve -----
                 self.progress.stage(section, "verify:start")
                 verify = self.summarizer.verify_and_improve(
-                    baseline, paper, section, ctx_case
+                    baseline, paper, section, case_context
                 )
                 self.progress.stage(
                     section,
@@ -460,14 +439,14 @@ class LearningFromLearningAgent(BaseAgent):
                     verify,
                     baseline,
                     goal["id"],
-                    ctx_case,
+                    case_context,
                 )
                 self.progress.stage(section, "persist:done")
 
                 # Strategy tracking & knowledge pairs
                 self.strategy.track_section(saved_case, verify["iterations"], context)
                 self.persist.persist_pairs(
-                    saved_case.id, baseline, verify, ctx_case
+                    saved_case.id, baseline, verify, case_context
                 )
 
                 # Progress metrics
@@ -478,7 +457,7 @@ class LearningFromLearningAgent(BaseAgent):
                 self.progress.end_section(saved_case, section, section_metrics)
 
                 # A/B validation (optional)
-                _ = self.strategy.validate_ab(context=ctx_case)
+                _ = self.strategy.validate_ab(context=case_context)
 
                 # ----- Ablation “proof” (deterministic) -----
                 if bool(self.cfg.get("run_proof", False)):
@@ -489,7 +468,7 @@ class LearningFromLearningAgent(BaseAgent):
 
                     with_metrics = verify["metrics"]
                     masked = await self._run_with_mask(
-                        paper, section, ctx_case, mask_keys
+                        paper, section, case_context, mask_keys
                     )
                     without_metrics = masked["verify"]["metrics"]
 
@@ -514,7 +493,7 @@ class LearningFromLearningAgent(BaseAgent):
                                     "delta": delta,
                                 }
                             ),
-                            pipeline_run_id=ctx_case.get("pipeline_run_id"),
+                            pipeline_run_id=pipeline_run_id,
                             meta={"type": "proof"},
                         )
                     except Exception:

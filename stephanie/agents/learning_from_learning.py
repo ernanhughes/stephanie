@@ -93,7 +93,7 @@ class LearningFromLearningAgent(BaseAgent):
 
         # Chat corpus tool
         self.chat_corpus = build_chat_corpus_tool(
-            memory=memory, container=container, cfg=cfg.get("chat_corpus", {})
+            memory=memory, container=container, cfg=cfg.get(" All right", {})
         )
 
         # Optional two-head scorer
