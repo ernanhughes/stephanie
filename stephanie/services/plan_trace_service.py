@@ -101,7 +101,7 @@ class PlanTraceService(Service):
             "timestamp": time.time(),
             **revision
         })
-        self.memory.plan_traces.update(trace)
+        self.memory.plan_traces.upsert(trace)
         self.logger.log("PlanTraceRevised", {"trace_id": trace_id, "revision": revision})
 
     def apply_retention_policy(self):

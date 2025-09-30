@@ -36,7 +36,7 @@ class PlanTraceScorerAgent(BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg.get("agents", {}).get("plan_trace_scorer", {}), memory, container=container, logger=logger)
-        self.dimensions = self.cfg.get("dimensions", [])
+        self.dimensions = cfg.get("dimensions") or ["alignment"]
         self.include_mars = self.cfg.get("include_mars", True)
 
         # Configure which scorers to use
