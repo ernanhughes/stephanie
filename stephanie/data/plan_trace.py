@@ -166,6 +166,7 @@ class PlanTrace:
     # Any other execution metadata (e.g., time taken, DSPy optimizer version)
     meta: Optional[Dict[str, Any]] = field(default_factory=dict) 
 
+    extra_data: Optional[Dict[str, Any]] = field(default_factory=dict) 
 
     def to_dict(self) -> dict:
         result = {

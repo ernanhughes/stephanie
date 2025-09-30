@@ -214,18 +214,19 @@ class DocumentRewardScorerAgent(BaseAgent):
         
         # Create ScoreBundle for this document
         bundle = ScoreBundle(results=score_results)
-        
-        eval_id = self.memory.evaluations.save_bundle(
-            bundle=bundle,
-            scorable=scorable,
-            context=context,
-            cfg=self.cfg,
-            source="document_reward",
-            agent_name=self.name,
-            model_name="ensemble",
-            evaluator_name=str(self.scorers.keys())
-        )
-        self.logger.log("EvaluationSaved", {"id": eval_id})
+
+        # Don't save this will break things
+        # eval_id = self.memory.evaluations.save_bundle(
+        #     bundle=bundle,
+        #     scorable=scorable,
+        #     context=context,
+        #     cfg=self.cfg,
+        #     source="document_reward",
+        #     agent_name=self.name,
+        #     model_name="ensemble",
+        #     evaluator_name=str(self.scorers.keys())
+        # )
+        # self.logger.log("EvaluationSaved", {"id": eval_id})
         
         # Prepare results for reporting
         report_scores = {

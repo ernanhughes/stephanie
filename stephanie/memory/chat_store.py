@@ -264,6 +264,10 @@ class ChatStore(BaseSQLAlchemyStore):
         def op(s):
             return (
                 s.query(ChatTurnORM)
+                .options(
+                     selectinload(ChatTurnORM.user_message),
+                     selectinload(ChatTurnORM.assistant_message),
+                 )
                 .filter_by(conversation_id=conv_id)
                 .order_by(ChatTurnORM.id)
                 .all()
@@ -337,6 +341,10 @@ class ChatStore(BaseSQLAlchemyStore):
                         ChatConversationORM,
                         func.count(ChatTurnORM.id).label("count"),
                     )
+                    .options(
+                         selectinload(ChatTurnORM.user_message),
+                         selectinload(ChatTurnORM.assistant_message),
+                     )
                     .join(ChatTurnORM)
                     .group_by(ChatConversationORM.id)
                     .order_by(func.count(ChatTurnORM.id).desc())
@@ -813,7 +821,11 @@ class ChatStore(BaseSQLAlchemyStore):
             # Base: join assistant message so we can filter by its text
             q: Query = (
                 s.query(ChatTurnORM)
-                .join(ChatMessageORM, ChatTurnORM.assistant_message)  # relationship join
+                .options(
+                     selectinload(ChatTurnORM.user_message),
+                     selectinload(ChatTurnORM.assistant_message),
+                )
+               .join(ChatMessageORM, ChatTurnORM.assistant_message)  # relationship join
             )
 
             # Assistant text not null/empty

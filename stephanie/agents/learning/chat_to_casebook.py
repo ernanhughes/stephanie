@@ -1,4 +1,4 @@
-# stephanie/agents/pacs/chat_to_casebook.py
+# stephanie/agents/learning/chat_to_casebook.py
 """
 Chat to CaseBook Conversion Agent
 

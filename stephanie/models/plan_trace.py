@@ -77,6 +77,8 @@ class PlanTraceORM(Base):
 
     # --- Metadata ---
     meta: Mapped[Dict[str, Any]] = mapped_column(JSON, default={})
+    extra_data: Mapped[Dict[str, Any]] = mapped_column(JSON, default={})
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
@@ -151,6 +153,9 @@ class ExecutionStepORM(Base):
 
     # Unique identifier for the step (matches ExecutionStep.step_id)
     step_id: Mapped[str] = mapped_column(String, nullable=False)
+
+    step_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
 
     # Description of the step
     description: Mapped[str] = mapped_column(Text, nullable=False)

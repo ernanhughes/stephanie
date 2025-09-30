@@ -36,7 +36,7 @@ class EpistemicPlanHRMScorer(BaseScorer):
         self.target_type = cfg.get("target_type", "plan_trace")
         self.model_path = cfg.get("model_path", "models")
         self.version = cfg.get("model_version", "v1")
-        self.dimensions = cfg.get("dimensions", [])
+        self.dimensions = ["alignment"] 
         self.get_trace_score_stats = get_trace_score_stats
 
         # HRM dimension is a specific dimension for this scorer        # Dictionary to hold the loaded HRM model instance

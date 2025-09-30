@@ -327,7 +327,7 @@ class PlanTraceService(Service):
 
         # Store in memory
         try:
-            self.memory.plan_traces.update(self.current_plan_trace)
+            self.memory.plan_traces.upsert(self.current_plan_trace)
             scorable = ScorableFactory.from_orm(self.current_plan_trace)
             self.memory.scorable_embeddings.get_or_create(scorable)
             self.logger.log("PlanTraceStored", {
@@ -374,7 +374,7 @@ class PlanTraceService(Service):
             self.current_plan_trace.mars_analysis = scored_context.get("mars_analysis", {})
             
             # Update in memory
-            self.memory.plan_traces.update(self.current_plan_trace)
+            self.memory.plan_traces.upsert(self.current_plan_trace)
             
             self.logger.log("PlanTraceScored", {
                 "trace_id": self.current_plan_trace.trace_id,
@@ -404,7 +404,7 @@ class PlanTraceService(Service):
         
         # Store in memory
         try:
-            self.memory.plan_traces.update(self.current_plan_trace)
+            self.memory.plan_traces.upsert(self.current_plan_trace)
         except Exception as e:
             self.logger.log("PlanTraceSaveError", {
                 "trace_id": self.current_plan_trace.trace_id,

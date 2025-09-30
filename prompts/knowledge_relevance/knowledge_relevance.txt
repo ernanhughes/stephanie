@@ -1,0 +1,31 @@
+Oh God what's going on with this why is it always doing this## TASK
+Evaluate whether the candidate knowledge is RELEVANT to solving the current problem.
+
+## CRITERIA FOR RELEVANCE
+- ✅ DIRECTLY addresses the goal or section
+- ✅ Provides specific, actionable insight needed for this task
+- ❌ Reject if only topically similar but not useful
+- ❌ Reject if overly generic (applies to any task)
+- ⚖️ If uncertain, prefer to assign a lower score
+
+## CONTEXT
+Goal: {{ goal_text }}
+Section: {{ section_name }}
+Section text (excerpt): {{ section_text }}
+
+## CANDIDATE KNOWLEDGE
+{{ candidate_knowledge }}
+
+## INSTRUCTIONS
+1. Decide if this knowledge DIRECTLY contributes to solving the goal.  
+2. Ask yourself: "Would removing this knowledge make the output worse?"  
+3. Assign a score from 0–100:  
+   - **0** = completely irrelevant or distracting  
+   - **50** = somewhat related but only partially useful  
+   - **100** = directly essential to solving the task  
+4. Provide a one-sentence rationale explaining your score.
+
+## OUTPUT FORMAT
+
+relevance_score: <integer 0-100>
+rationale: <one sentence explanation>

@@ -1,0 +1,92 @@
+# config/config.yaml
+
+# The Knowledge Pipeline is designed to transform chat conversations exported from Foundation AI (e.g., OpenAI, Qwen, Gemini, DeepSeek) 
+# into structured CaseBooks that can be used for Learning-from-Learning.
+# It detects, measures, and applies knowledge by converting unstructured dialog 
+# into a training signal that Stephanie can re-use for reasoning, scoring, and plan revision.
+
+defaults:
+  - _self_
+  - db: postgres
+  - logging/json_logger
+  - plan_monitor: disabled
+  - scoring/service/default
+  - logging/json_logger
+  - mars/default
+
+  - scorer: all  
+
+  - agents/chat_annotate
+  - agents/chat_import
+  - agents/chat_to_casebook
+  - agents/scorable_loader
+
+embeddings:
+  backend: hnet
+
+bus:
+  backend: nats
+  servers: "nats://localhost:4222"
+  stream: stephanie
+  strict: true
+
+goal:
+  goal_text: >
+    Lets design a process where we use knowledge from our chat history to enhance our future results.
+  goal_type: "knowledge_application"
+  goal_category: "knowledge"
+  focus_area: "learning_from_learning"
+  strategy: "knowledge"
+  difficulty: "high"
+  expected_formats:
+    - "case_trace"
+    - "scorable_rankings"
+    - "revised_plan"
+    - "retained_cartridge"
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+
+pipeline:
+  name: knowledge_pipeline
+  tag: knowledge
+  description: >
+    Learning from learning, detecting, measuring, and applying knowledge in AI solutions.
+
+  stages:
+     - name: chat_import
+       description: >
+         🗂️ Import raw chat logs (JSON/HTML) from OpenAI, Qwen, Gemini, and DeepSeek.
+         Parse, deduplicate, and normalize conversations into structured ORM objects.
+       cls: stephanie.agents.knowledge.chat_import.ChatImportAgent
+       enabled: true
+       iterations: 1
+
+     - name: chat_annotate
+       description: >
+         📌 Annotate raw chat logs with metadata (participants, timestamps, message types,
+         etc.) to prepare for ingestion.  This is a lightweight preprocessing step that
+         adds structure to unstructured chat data.
+       cls: stephanie.agents.chat_annotate.ChatAnnotateAgent
+       enabled: true
+       iterations: 1 
+
+     - name: chat_to_casebook
+       description: >
+         🐦‍🔥 Transform imported conversations into CaseBooks.  
+         Each conversation (or turn/message, depending on granularity) becomes a Case
+         with linked Scorables, tied to a goal context.
+       cls: stephanie.agents.learning.chat_to_casebook.ChatToCaseBookAgent
+       enabled: true
+       iterations: 1
+
+     - name: scorable_loader
+       description: "🔓 Will score the imported conversation turns"
+       cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
+       enabled: true
+       iterations: 1    

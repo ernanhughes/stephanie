@@ -340,13 +340,12 @@ class EpistemicPlanExecutorAgent(BaseAgent):
                 executed_trace.save_as_markdown(reports_dir="reports")
 
                 # --- Store the PlanTrace and ExecutionSteps in Memory ---
-                plan_trace_id = self.memory.plan_traces.add(executed_trace)
+                plan_trace = self.memory.plan_traces.upsert(executed_trace)
                 
                 for i, step in enumerate(execution_steps):
-                    step.plan_trace_id = plan_trace_id
+                    step.plan_trace_id = plan_trace.id
                     step.step_order = i + 1
-                    self.memory.execution_steps.add(step)
-                self.memory.session.commit()  # Commit all changes
+                    self.memory.execution_steps.upsert(step)
 
                 # --- Update Context ---
                 context["executed_plan_trace"] = executed_trace

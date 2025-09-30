@@ -103,6 +103,15 @@ pipeline:
        enabled: false
        iterations: 1 
 
+     - name: chat_to_casebook
+       description: >
+         🐦‍🔥 Transform imported conversations into CaseBooks.  
+         Each conversation (or turn/message, depending on granularity) becomes a Case
+         with linked Scorables, tied to a goal context.
+       cls: stephanie.agents.learning.chat_to_casebook.ChatToCaseBookAgent
+       enabled: true
+       iterations: 1
+
      - name: knowledge_trainer
        description: >
           🤖 Train Stephanie using the Knowledge Scorer.  
@@ -136,7 +145,7 @@ pipeline:
           A meta-learning technique that uses past learning experiences to improve
           future learning efficiency and effectiveness.
        cls: stephanie.agents.learning.agent.LearningFromLearningAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
 

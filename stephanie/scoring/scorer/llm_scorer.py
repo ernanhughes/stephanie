@@ -100,7 +100,7 @@ class LLMScorer(BaseScorer):
             agent_name=self.name,
             source=self.scorer.model_type,
             model_name=self.scorer.get_model_name(),
-            evaluator_name=self.scorer.name,
+            evaluator=self.scorer.name,
         )
         return bundle
 

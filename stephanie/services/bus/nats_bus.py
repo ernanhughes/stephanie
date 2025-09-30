@@ -93,6 +93,8 @@ class NatsKnowledgeBus(BusProtocol):
 
         # Subjects that should use plain NATS (no PUBACK, no JS), useful for telemetry
         self._faf_subjects: Set[str] = fire_and_forget_subjects or set()
+        self._tasks: Set[asyncio.Task] = set()
+
 
     # ---------- Connection management ----------
 
@@ -132,6 +134,8 @@ class NatsKnowledgeBus(BusProtocol):
             reconnected_cb=_reconn_cb,
             closed_cb=_closed_cb,
         )
+        self._js = self._nc.jetstream()
+        self._connected = True
         _logger.info("Connected to NATS")
 
     async def _on_reconnected(self):
@@ -197,25 +201,24 @@ class NatsKnowledgeBus(BusProtocol):
                 raise BusRequestError(f"Request failed for {subject}") from e
 
     # ---------- Shutdown ----------
-
     async def close(self) -> None:
         await self._stop_tasks()
-        if self._connected and self._nc:
-            # best-effort unsubscribe
-            for subject, meta in list(self._subscriptions.items()):
-                sub = meta.get("sub")
-                if sub:
-                    with contextlib.suppress(Exception):
-                        await sub.unsubscribe()
-                    _logger.debug("Unsubscribed from %s", subject)
-            self._subscriptions.clear()
-
-            with contextlib.suppress(Exception):
+        if self._nc:
+            try:
+                # Unsubscribe cleanly
+                for subject, meta in list(self._subscriptions.items()):
+                    sub = meta.get("sub")
+                    if sub:
+                        with contextlib.suppress(Exception):
+                            await sub.unsubscribe()
+                self._subscriptions.clear()
                 await self._nc.drain()
-            with contextlib.suppress(Exception):
-                await self._nc.close()
-            self._connected = False
-            _logger.info("NATS connection closed")
+            except Exception:
+                with contextlib.suppress(Exception):
+                    await self._nc.close()
+            finally:
+                self._connected = False
+                _logger.info("NATS connection closed")
 
     # ---------- Helpers ----------
 
@@ -407,7 +410,10 @@ class NatsKnowledgeBus(BusProtocol):
                 # optional: any cleanup here
                 pass
 
-        self._keepalive_task = asyncio.create_task(_loop())
+        keepalive_task = asyncio.create_task(_loop())
+        self._tasks.add(keepalive_task)
+        keepalive_task.add_done_callback(lambda f: self._tasks.discard(keepalive_task))
+        self._keepalive_task = keepalive_task
         _logger.debug("Keepalive started")
 
     def _start_health_monitoring(self):
@@ -440,7 +446,11 @@ class NatsKnowledgeBus(BusProtocol):
             finally:
                 pass
 
-        self._health_task = asyncio.create_task(_health())
+        health_task = asyncio.create_task(_health())
+        self._tasks.add(health_task)
+        health_task.add_done_callback(lambda f: self._tasks.discard(health_task))
+        self._health_task = health_task
+
         _logger.debug("Health monitor started")
 
     async def _stop_tasks(self):
