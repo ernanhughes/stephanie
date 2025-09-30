@@ -1,12 +1,16 @@
 # stephanie/agents/learning/summarizer.py
 from __future__ import annotations
 
+import asyncio
 import json
 import time
+import uuid
 from typing import Any, Dict, List
 
 from stephanie.utils.json_sanitize import dumps_safe
 
+import logging
+_logger = logging.getLogger(__name__)
 
 class Summarizer:
     def __init__(self, cfg, memory, container, logger, strategy, scoring, prompt_loader, call_llm):
@@ -19,7 +23,13 @@ class Summarizer:
         self.prompt_loader = prompt_loader
         self.call_llm = call_llm
 
-    def baseline(self, paper: Dict[str, Any], section: Dict[str, Any],
+        # Configure concurrency
+        self._max_concurrent = int(cfg.get("max_concurrent_improvements", 8))
+        self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        self._in_flight: Dict[str, float] = {}  # track outstanding prompt_id
+        self._cleanup_task = None
+
+    async def baseline(self, paper: Dict[str, Any], section: Dict[str, Any],
                  critical_msgs: List[Dict[str, Any]], context: Dict[str, Any]) -> str:
         merged = {
             "title": paper.get("title", ""),
@@ -32,11 +42,13 @@ class Summarizer:
             **context,
         }
         prompt = self.prompt_loader.from_file("baseline_summary", self.cfg, merged)
-        return self.call_llm(prompt, merged)
+        prompt_service = self.container.get("prompt")
+        return await prompt_service.run_prompt(prompt, merged)
 
-    def improve_once(self, paper: Dict[str, Any], section: Dict[str, Any],
-                     current_summary: str, context: Dict[str, Any],
-                     return_attribution: bool=False):
+    async def improve_once(self, paper: Dict[str, Any], section: Dict[str, Any],
+                    current_summary: str, context: Dict[str, Any],
+                    return_attribution: bool = False):
+
         metrics = self.scoring.score_summary(current_summary, paper, section, context)
         merged_context = {
             "title": paper.get("title", ""),
@@ -50,22 +62,26 @@ class Summarizer:
             **context,
         }
         prompt = self.prompt_loader.from_file("improve_summary", self.cfg, merged_context)
-        improved = self.call_llm(prompt, merged_context)   # ← pass merged, not context
 
+        prompt_service = self.container.get("prompt")
+        # 🚀 call the PromptService instead of LLM directly
+        improved = await prompt_service.run_prompt(prompt, merged_context)
+
+        # --- if no attribution needed ---
         if not return_attribution:
-            return improved
+            return improved 
 
         # --- attribution (AR/AKL) ---
         claims = self._extract_claim_sentences(improved)
 
-        # Normalize retrieval & arena pools to a common {text, origin, variant} schema
+        # Normalize retrieval & arena pools
         rpool = (context.get("retrieval_items") or []) + (context.get("arena_initial_pool") or [])
         norm_sources = self._normalize_sources(rpool)
 
         th = float(self.cfg.get("applied_knowledge", {}).get("attr_sim_threshold", 0.75))
         matches = self._attribute_claims(claims, norm_sources, th)
 
-        # store a compact scorable for this improve step (if a case is present)
+        # store a compact scorable if case exists
         try:
             case_id = context.get("case_id")
             if case_id and matches:
@@ -76,10 +92,80 @@ class Summarizer:
                     pipeline_run_id=context.get("pipeline_run_id"),
                     meta={"iteration": context.get("iteration")}
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            _logger.error(f"Failed to save attribution: {str(e)}", exc_info=True)
 
         return {"text": improved, "attribution": matches}
+    
+
+    async def _run_prompt_service(self, prompt: str, context: dict) -> Dict[str, Any]:
+        """Fixed implementation with proper subscription handling"""
+        prompt_id = str(uuid.uuid4())
+        fut = asyncio.get_event_loop().create_future()
+
+        async def _handler(msg: dict):
+            """Handler for prompt results - properly cleans up after itself"""
+            if msg.get("prompt_id") == prompt_id:
+                try:
+                    if "response" in msg:
+                        fut.set_result({
+                            "prompt_service": msg["response"],
+                            "prompt_id": prompt_id,
+                            "meta": msg.get("meta", {})
+                        })
+                    else:
+                        error = msg.get("error", "unknown error")
+                        error_type = msg.get("error_type", "RuntimeError")
+                        fut.set_exception(
+                            RuntimeError(f"{error_type}: {error}")
+                        )
+                finally:
+                    # Always clean up subscription
+                    try:
+                        await self.memory.bus.unsubscribe("prompts.run.result", _handler)
+                    except Exception as e:
+                        _logger.debug(f"Error unsubscribing: {str(e)}")
+                    self._in_flight.pop(prompt_id, None)
+        
+        # Add to in-flight tracking
+        self._in_flight[prompt_id] = time.time()
+        
+        # Subscribe before publishing to avoid race condition
+        await self.memory.bus.subscribe("prompts.run.result", _handler)
+        
+        # Publish request with proper timeout handling
+        async with self._semaphore:
+            try:
+                await self.memory.bus.publish("prompts.run.request", {
+                    "prompt_id": prompt_id,
+                    "text": prompt,
+                    "meta": {
+                        "context": {k: str(v)[:200] for k,v in (context or {}).items()}
+                    },
+                    "timeout": self.cfg.get("prompt_timeout", 300)
+                })
+                
+                # Add timeout guard
+                return await asyncio.wait_for(
+                    fut, 
+                    timeout=self.cfg.get("prompt_timeout", 300)
+                )
+            except asyncio.TimeoutError:
+                # Clean up on timeout
+                try:
+                    await self.memory.bus.unsubscribe("prompts.run.result", _handler)
+                    self._in_flight.pop(prompt_id, None)
+                except Exception:
+                    pass
+                raise RuntimeError(f"Prompt {prompt_id} timed out after {self.cfg.get('prompt_timeout', 300)}s")
+            except Exception:
+                # Clean up on error
+                try:
+                    await self.memory.bus.unsubscribe("prompts.run.result", _handler)
+                    self._in_flight.pop(prompt_id, None)
+                except Exception:
+                    pass
+                raise
 
     def _normalize_sources(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Map mixed corpus/arena items to {text, origin, variant}."""
@@ -146,7 +232,8 @@ class Summarizer:
                 })
         return out
 
-    def verify_and_improve(self, baseline: str, paper: Dict[str, Any], section: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    async def verify_and_improve(self, baseline: str, paper: Dict[str, Any], section: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Fixed implementation with proper async handling"""
         current = baseline
         iters: List[Dict[str, Any]] = []
         max_iter = int(self.cfg.get("max_iterations", 3))
@@ -167,7 +254,7 @@ class Summarizer:
                 break
 
             # run one improvement with attribution
-            improved = self.improve_once(paper, section, current, {**context, "iteration": i}, return_attribution=True)
+            improved = await self.improve_once(paper, section, current, {**context, "iteration": i}, return_attribution=True)
             if isinstance(improved, dict):
                 current = improved["text"]
                 last_attr_supported = bool(improved.get("attribution"))
@@ -182,6 +269,19 @@ class Summarizer:
         self.strategy.evolve(iters, context)
         return {"summary": current, "metrics": {**metrics, "knowledge_applied_iters": k_applied_iters, "knowledge_applied_lift": k_applied_lift}, "iterations": iters}
 
+    def health_status(self) -> Dict[str, Any]:
+        """Expose summarizer health for dashboards / SIS"""
+        now = time.time()
+        return {
+            "max_concurrent": self._max_concurrent,
+            "in_flight": len(self._in_flight),
+            "oldest_task_age": (
+                round(now - min(self._in_flight.values()), 1) if self._in_flight else 0
+            ),
+            "queue_backlog": self._semaphore._value < self._max_concurrent,
+            "timeout": self.cfg.get("prompt_timeout", 300)
+        }
+    
     def _extract_claim_sentences(self, text: str) -> List[str]:
         import re
         sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', (text or '').strip()) if s.strip()]

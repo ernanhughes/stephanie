@@ -9,6 +9,8 @@ from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict
+import asyncio
+import functools
 
 import litellm
 import torch
@@ -113,7 +115,19 @@ class BaseAgent(ABC):
             )
         return prompt
 
+
     def call_llm(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
+        """Synchronous call (blocking)"""
+        return self._call_llm_internal(prompt, context, llm_cfg)
+
+    async def async_call_llm(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
+        """Async wrapper — runs blocking litellm in a thread executor"""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self._call_llm_internal, prompt, context, llm_cfg)
+        )
+
+    def _call_llm_internal(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
         updated_cfg = self.rule_applier.apply_to_prompt(self.cfg, context)
         if self.llm is None:
             # 🔁 Apply rules here (now that goal is known)

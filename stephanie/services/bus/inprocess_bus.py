@@ -29,6 +29,7 @@ from typing import Any, Callable, Dict, List, Optional
 from .bus_protocol import BusProtocol
 from .idempotency import InMemoryIdempotencyStore
 
+_logger = logging.getLogger(__name__)
 
 class InProcessKnowledgeBus(BusProtocol):
     """
@@ -52,7 +53,7 @@ class InProcessKnowledgeBus(BusProtocol):
         Args:
             logger: Optional logger instance (defaults to module logger)
         """
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger
         self._subscribers: Dict[str, List[Callable[[Dict[str, Any]], None]]] = {}
         self._idem_store = InMemoryIdempotencyStore()
         self._connected = False
@@ -66,7 +67,7 @@ class InProcessKnowledgeBus(BusProtocol):
             bool: Always returns True (in-process bus is always available)
         """
         self._connected = True
-        self.logger.info("Connected to in-process event bus (development mode)")
+        _logger.info("Connected to in-process event bus (development mode)")
         return True
         
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
@@ -119,7 +120,7 @@ class InProcessKnowledgeBus(BusProtocol):
         if subject not in self._subscribers:
             self._subscribers[subject] = []
         self._subscribers[subject].append(handler)
-        self.logger.debug(f"Subscribed to {subject} with {len(self._subscribers[subject])} total handlers")
+        _logger.debug(f"Subscribed to {subject} with {len(self._subscribers[subject])} total handlers")
         
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         """
@@ -136,14 +137,14 @@ class InProcessKnowledgeBus(BusProtocol):
         Returns:
             None: Always returns None (not supported)
         """
-        self.logger.warning("Request/reply pattern not supported in in-process bus")
+        _logger.warning("Request/reply pattern not supported in in-process bus")
         return None
         
     async def close(self) -> None:
         """Gracefully shut down the connection."""
         self._subscribers.clear()
         self._connected = False
-        self.logger.info("In-process bus disconnected")
+        _logger.info("In-process bus disconnected")
         
     def get_backend(self) -> str:
         """Return the active backend name."""

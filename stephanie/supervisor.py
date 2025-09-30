@@ -25,6 +25,7 @@ from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.services.llm_service import LLMService
 from stephanie.services.meta_confidence_service import MetaConfidenceService
 from stephanie.services.plan_trace_service import PlanTraceService
+from stephanie.services.prompt_service import PromptService
 from stephanie.services.reporting_service import (JsonlSink, LoggerSink,
                                                   ReportingService)
 from stephanie.services.rules_service import RulesService
@@ -204,6 +205,11 @@ class Supervisor:
         self.container.register(
             "event_service",
             lambda: EventService(cfg=cfg, memory=memory, logger=logger),
+        )
+
+        self.container.register(
+            "prompt",
+            lambda: PromptService(cfg=cfg, memory=memory, logger=logger, container=self.container),
         )
 
     def _create_reward_model(self, cfg, memory, logger):

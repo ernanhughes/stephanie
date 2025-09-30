@@ -1,6 +1,7 @@
 # stephanie/agents/learning/agent.py
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import random
@@ -47,12 +48,15 @@ class LearningFromLearningAgent(BaseAgent):
         )
         self.arena = KnowledgeArena(cfg, memory, container, logger)
         self.arena.score_candidate = self.scoring.score_candidate
-        self.arena.improve = lambda text, meta: self.summarizer.improve_once(
-            paper=meta.get("paper"),
-            section=meta.get("section"),
-            current_summary=text,
-            context=meta.get("context"),
-        )
+        async def _arena_improve(text, meta):
+            return await self.summarizer.improve_once(
+                paper=meta.get("paper"),
+                section=meta.get("section"),
+                current_summary=text,
+                context=meta.get("context"),
+            )
+
+        self.arena.improve = _arena_improve
         self.persist = Persistence(cfg, memory, container, logger)
         self.evidence = Evidence(cfg, memory, container, logger)
 
@@ -65,16 +69,48 @@ class LearningFromLearningAgent(BaseAgent):
 
         self.reporter = container.get("reporting")
         self.event_service = self.container.get("event_service")
+        
+        # Start health monitoring
+        self._start_health_monitor()
+
+    def _start_health_monitor(self):
+        """Start background task to monitor health metrics"""
+        async def _monitor():
+            while True:
+                try:
+                    if hasattr(self.summarizer, 'health_status'):
+                        health = self.summarizer.health_status()
+                        if health.get("in_flight", 0) > 0:
+                            _logger.info(f"Prompt service status: {health}")
+                except Exception as e:
+                    _logger.error(f"Health monitoring error: {str(e)}", exc_info=True)
+                
+                await asyncio.sleep(10)  # Check every 10 seconds
+        # Start the monitoring task
+        asyncio.create_task(_monitor())
 
     async def _emit(self, evt: Dict[str, Any]):
         try:
             # push minimal payload; reporter can enrich with ctx
-            # if your ReportingService requires async, enqueue to a background loop or use a thread-safe queue.
-            await self.reporter.emit(
-                context={}, stage="learning", event=evt
-            )  # or a small wrapper that does loop.create_task(...)
-        except Exception:
-            pass
+            if self.reporter and hasattr(self.reporter, 'emit'):
+                # If reporter is async
+                if asyncio.iscoroutinefunction(self.reporter.emit):
+                    await self.reporter.emit(
+                        context={}, stage="learning", event=evt
+                    )
+                else:
+                    # If reporter is sync, run in executor
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        None, 
+                        lambda: self.reporter.emit(
+                            context={}, stage="learning", event=evt
+                        )
+                    )
+        except Exception as e:
+            _logger.error(f"Failed to emit event: {str(e)}", exc_info=True)
+
+
 
     # ---------- Canonical keys for masking ----------
     @staticmethod
@@ -246,11 +282,11 @@ class LearningFromLearningAgent(BaseAgent):
             arena_res = self.arena.run(section["section_text"], cands)
             baseline = arena_res["winner"]["text"]
         else:
-            baseline = self.summarizer.baseline(
+            baseline = await self.summarizer.baseline(
                 paper, section, corpus_items, ctx_case
             )
         # 4) verify using current strategy
-        verify = self.summarizer.verify_and_improve(
+        verify = await self.summarizer.verify_and_improve(
             baseline, paper, section, ctx_case
         )
         return {"baseline": baseline, "verify": verify}
@@ -412,14 +448,14 @@ class LearningFromLearningAgent(BaseAgent):
                         ),
                     )
                 else:
-                    baseline = self.summarizer.baseline(
+                    baseline = await self.summarizer.baseline(
                         paper, section, corpus_items_for_baseline, case_context
                     )
                     self.progress.stage(section, "baseline:done")
 
                 # ----- Verify & improve -----
                 self.progress.stage(section, "verify:start")
-                verify = self.summarizer.verify_and_improve(
+                verify = await self.summarizer.verify_and_improve(
                     baseline, paper, section, case_context
                 )
                 self.progress.stage(

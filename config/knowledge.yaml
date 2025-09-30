@@ -136,7 +136,7 @@ pipeline:
           A meta-learning technique that uses past learning experiences to improve
           future learning efficiency and effectiveness.
        cls: stephanie.agents.learning.agent.LearningFromLearningAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
 
@@ -144,7 +144,7 @@ pipeline:
        description: >
             🤖 Fast test of Learning from Learning with minimal data and iterations.
        cls: stephanie.agents.learning.agent.LearningFromLearningAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: universal_scorer

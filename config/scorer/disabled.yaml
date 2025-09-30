@@ -1,0 +1,5 @@
+# Pulls in all scorer defaults in one shot.
+# Tip: set package to "scorer" so each subconfig lands under scorer.*
+# (only if those child configs don't already set package themselves)
+
+defaults:
