@@ -2,15 +2,12 @@
 defaults:
   - _self_
   - db: postgres
-  - plan_monitor: default
-  
-  - scorer/ebt/default
-  - scorer/hrm/default
-  - scorer/mrq/default
-  - scorer/sicql/default
-  - scorer/svm/default
-  - scorer/contrastive_ranker/default
-  - scorer/epistemic_hrm/default
+  - plan_monitor: disabled
+  - scoring/service/default
+  - logging/json_logger
+  - mars/default
+
+  - scorer: all  
 
   - agents/plan_trace_scorer
   - agents/literature

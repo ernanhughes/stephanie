@@ -8,7 +8,7 @@ class ScoreDisplay:
         table_data = [
             [
                 dim_name,
-                f"{dim_data['score']:.2f}",
+                f"{dim_data.get('score', 0.0):.2f}",
                 dim_data.get("weight", 1.0),
                 dim_data.get("rationale", "")[:60],
             ]

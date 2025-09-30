@@ -182,7 +182,6 @@ modular_memento:
     top_k: 1            # adapt the top-1 item
     improv_eps: 0.01    # keep only if revised improves ≥ 0.01
     scorer_name: sicql  # optional; defaults to sicql
-    dimensions: null    # optional; null → default scorer dims
 
   mrq:
     similarity_threshold: 0.85

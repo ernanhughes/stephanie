@@ -5,11 +5,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import GOAL, PIPELINE_RUN_ID
-from stephanie.scoring.scorable import ScorableFactory, ScorableType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.services.scoring_service import ScoringService
 
 

@@ -86,7 +86,10 @@ class DefaultAdaptorCfg:
     top_goal_kws: int = 12
     donor_sent_limit: int = 2
     merge_strategy: str = "append_best"  # or "replace_worst"
-
+    top_k: int = 12
+    improv_eps: float = 0.1  # require at least this much improvement in goal coverage
+    scorer_name: str = "sicql"
+    
 
 # -------- Adaptor implementation --------
 class DefaultAdaptor:

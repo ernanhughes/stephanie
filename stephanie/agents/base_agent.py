@@ -374,8 +374,6 @@ class BaseAgent(ABC):
         Central method to save hypotheses and track document section links.
         """
         from stephanie.models.hypothesis import HypothesisORM
-        from stephanie.models.hypothesis_document_section import \
-            HypothesisDocumentSectionORM
 
         # Ensure metadata is set if not already in the dict
         goal = context.get(GOAL, {})
@@ -384,21 +382,12 @@ class BaseAgent(ABC):
         hypothesis_dict["pipeline_run_id"] = context.get(PIPELINE_RUN_ID)
         hypothesis_dict["source"] = self.name
         hypothesis_dict["strategy"] = self.strategy
-
         hypothesis = HypothesisORM(**hypothesis_dict)
-        self.memory.session.add(hypothesis)
-        self.memory.session.flush()  # ensures ID is available
+        self.memory.hypotheses.insert(hypothesis)
 
         # Link to document sections if provided
         section_ids = context.get("used_document_section_ids", [])
-        for section_id in section_ids:
-            link = HypothesisDocumentSectionORM(
-                hypothesis_id=hypothesis.id,
-                document_section_id=section_id,
-            )
-            self.memory.session.add(link)
-
-        self.memory.session.commit()
+        self.memory.hypotheses.link_sections(hypothesis.id, section_ids)
         return hypothesis
 
     def report(self, item: dict):

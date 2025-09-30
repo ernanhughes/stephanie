@@ -59,7 +59,7 @@ bus:
 
 goal:
   goal_text: >
-    Lets design a process where we can effectively use our chat history to improve our future results.
+    Lets design a process where we use knowledge from our chat history to enhance our future results.
   goal_type: "knowledge_application"
   goal_category: "knowledge"
   focus_area: "learnming_from_learning"
@@ -110,7 +110,7 @@ pipeline:
           (chat, knowledge) to learn to rank relevant knowledge higher.
        cls: stephanie.agents.maintenance.knowledge_trainer.KnowledgeTrainerAgent
        enabled: false
-       iterations: 1
+       iterations: 1 Just put it in top K
 
      - name: scorable_loader
        description: "🔓 Load scorables from the database for processing"

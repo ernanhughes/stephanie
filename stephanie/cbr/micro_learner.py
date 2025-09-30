@@ -4,7 +4,10 @@ from typing import Dict, List
 
 class DefaultMicroLearner:
     def __init__(self, cfg, memory, container, logger):
-        self.cfg, self.memory, self.logger = cfg, memory, container, logger
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
 
     def learn(self, ctx: Dict, ranked: List[Dict], mars: Dict) -> None:
         if not ranked or len(ranked) < 2: return

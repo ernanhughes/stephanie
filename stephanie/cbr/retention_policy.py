@@ -6,7 +6,10 @@ from stephanie.constants import GOAL, PIPELINE_RUN_ID
 
 class DefaultRetentionPolicy:
     def __init__(self, cfg, memory, container, logger, casebook_scope_mgr):
-        self.cfg, self.memory, self.logger = cfg, memory, container, logger
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
         self.scope_mgr = casebook_scope_mgr
         self.tag = cfg.get("casebook_tag", "default")
 

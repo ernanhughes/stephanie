@@ -68,12 +68,12 @@ class CaseBookStore(BaseSQLAlchemyStore):
         self,
         name,
         description: str = "",
-        tag: str = "",
+        tags: list[str] = [],
         meta: dict | None = None,
     ):
         def op(s):
             cb = CaseBookORM(
-                name=name, description=description, tag=tag, meta=meta
+                name=name, description=description, tags=tags, meta=meta
             )
             s.add(cb)
             s.flush()
@@ -226,10 +226,10 @@ class CaseBookStore(BaseSQLAlchemyStore):
         def op(s):
             return (
                 s.query(CaseBookORM)
-                .filter_by(
-                    pipeline_run_id=pipeline_run_id,
-                    agent_name=agent_name,
-                    tag=tag,
+                .filter(
+                    CaseBookORM.pipeline_run_id == pipeline_run_id,
+                    CaseBookORM.agent_name == agent_name,
+                    CaseBookORM.tags.contains([tag])  # JSONB containment
                 )
                 .first()
             )
@@ -243,24 +243,27 @@ class CaseBookStore(BaseSQLAlchemyStore):
         tag: str = "default",
     ) -> CaseBookORM:
         def op(s):
+            # Look for an existing casebook with this scope & containing the tag
             row = (
                 s.query(CaseBookORM)
-                .filter_by(
-                    pipeline_run_id=pipeline_run_id,
-                    agent_name=agent_name,
-                    tag=tag,
+                .filter(
+                    CaseBookORM.pipeline_run_id == pipeline_run_id,
+                    CaseBookORM.agent_name == agent_name,
+                    CaseBookORM.tags.contains([tag])  # JSONB array containment
                 )
                 .first()
             )
             if row:
                 return row
+
+            # Create a new scoped casebook if none exists
             name = f"cb:{agent_name or 'all'}:{pipeline_run_id or 'all'}:{tag}"
             cb = CaseBookORM(
                 name=name,
                 description="Scoped casebook",
                 pipeline_run_id=pipeline_run_id,
                 agent_name=agent_name,
-                tag=tag,
+                tags=[tag],   # ← FIX: initialize as list
             )
             s.add(cb)
             s.flush()

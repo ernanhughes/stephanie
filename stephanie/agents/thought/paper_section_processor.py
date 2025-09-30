@@ -217,7 +217,7 @@ class PaperSectionProcessorAgent(BaseAgent):
             casebook = self.memory.casebooks.create_casebook(
                 name=casebook_name,
                 description=f"Blog post casebook for paper {paper_id}",
-                tag="blog_post",
+                tags=["blog_post"],
                 meta={
                     "paper_id": paper_id,
                     "post_title": post_title,

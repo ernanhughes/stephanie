@@ -5,7 +5,10 @@ from typing import List
 
 class DefaultCaseSelector:
     def __init__(self, cfg, memory, container, logger):
-        self.cfg, self.memory, self.logger = cfg, memory, container, logger
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
 
     @staticmethod 
     def _top_scorables_from_case(case, k=3) -> List[str]:

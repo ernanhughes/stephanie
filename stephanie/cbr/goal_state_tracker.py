@@ -1,7 +1,10 @@
 # stephanie/cbr/goal_state_tracker.py
 class DefaultGoalStateTracker:
     def __init__(self, cfg, memory, container, logger):
-        self.cfg, self.memory, self.logger = cfg, memory, container, logger
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
         self._mem = {}
 
     def bump_run_ix(self, casebook_id: int, goal_id: str) -> int:

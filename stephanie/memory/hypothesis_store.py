@@ -8,7 +8,8 @@ import numpy as np
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 from stephanie.models.hypothesis import HypothesisORM
-
+from stephanie.models.hypothesis_document_section import HypothesisDocumentSectionORM
+from typing import Sequence
 
 class HypothesisStore(BaseSQLAlchemyStore):
     orm_model = HypothesisORM
@@ -192,3 +193,33 @@ class HypothesisStore(BaseSQLAlchemyStore):
             if self.logger:
                 self.logger.log("SimilarHypothesesSearchFailed", {"error": str(e)})
             return []
+
+    def link_sections(self, hyp_id: int, section_ids: Sequence[int]) -> None:
+        """
+        Link a hypothesis to one or more document sections.
+        Creates HypothesisDocumentSectionORM rows.
+        """
+
+        def op(s):
+            hyp = s.get(HypothesisORM, hyp_id)
+            if not hyp:
+                raise ValueError(f"No hypothesis found with ID {hyp_id}")
+
+            for section_id in section_ids:
+                link = HypothesisDocumentSectionORM(
+                    hypothesis_id=hyp_id,
+                    document_section_id=section_id,
+                )
+                s.add(link)
+
+            if self.logger:
+                self.logger.log(
+                    "HypothesisSectionsLinked",
+                    {
+                        "hypothesis_id": hyp_id,
+                        "section_ids": list(section_ids),
+                        "count": len(section_ids),
+                    },
+                )
+
+        self._run(op)

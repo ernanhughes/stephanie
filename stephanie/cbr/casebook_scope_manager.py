@@ -6,7 +6,10 @@ from stephanie.constants import GOAL, PIPELINE_RUN_ID
 
 class DefaultCasebookScopeManager:
     def __init__(self, cfg, memory, container, logger):
-        self.cfg, self.memory, self.logger = cfg, memory, container, logger
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
         self.tag = cfg.get("casebook_tag", "default")
         self.retrieval_mode = cfg.get("retrieval_mode", "fallback")
 

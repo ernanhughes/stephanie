@@ -4,8 +4,12 @@ from typing import Callable, Dict, Tuple
 
 class DefaultABValidator:
     def __init__(self, cfg, memory, container, logger, ns, assessor):
-        self.cfg, self.memory, self.logger = cfg, memory, container, logger
-        self.ns, self.assessor = ns, assessor
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+        self.ns = ns
+        self.assessor = assessor
         self.delta_eps = float(cfg.get("ab_validation",{}).get("delta_eps", 1e-6))
 
     async def run_two(self, ctx, run_cbr: Callable[[], dict], run_baseline: Callable[[], dict]) -> Tuple[str, Dict]:
