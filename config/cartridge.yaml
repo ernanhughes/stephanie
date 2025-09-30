@@ -79,7 +79,7 @@ pipeline:
        iterations: 1
      - name: planner_reuse
        description: "Adapt past plans to current goal"
-       cls: stephanie.agents.planning.planner_reuse.PlannerReuseAgent
+       cls: stephanie.agents.knowledge.planner_reuse.PlannerReuseAgent
        enabled: true
        iterations: 1
      - name: knowledge_loader
