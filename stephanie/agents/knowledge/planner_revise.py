@@ -329,6 +329,7 @@ class PlannerReviseAgent(BaseAgent):
             scorable=scorable,
             context=context,          # carries pipeline_run_id + goal
             cfg=self.cfg,
+            agent_name=self.name,
             source="plan_revise",
             embedding_type=self.memory.embedding.name,
         )

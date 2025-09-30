@@ -178,6 +178,7 @@ class MRQInferenceAgent(BaseAgent):
                 context=context,
                 cfg=self.cfg,
                 source=self.name,
+                agent_name=self.name,
                 embedding_type=self.memory.embedding.name,
                 model_name=model_name,
                 evaluator=self.name,

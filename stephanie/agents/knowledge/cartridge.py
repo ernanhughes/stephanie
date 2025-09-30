@@ -69,19 +69,19 @@ class CartridgeAgent(BaseAgent):
     def _init_scorer(self, full_cfg, scorer_type):
         if scorer_type == "sicql":
             return SICQLScorer(
-                full_cfg.scorer.sicql, memory=self.memory, logger=self.logger
+                full_cfg.scorer.sicql, memory=self.memory, container=self.container, logger=self.logger
             )
         if scorer_type == "mrq":
             return MRQScorer(
-                full_cfg.scorer.mrq, memory=self.memory, logger=self.logger
+                full_cfg.scorer.mrq, memory=self.memory, container=self.container, logger=self.logger
             )
         if scorer_type == "svm":
             return SVMScorer(
-                full_cfg.scorer.svm, memory=self.memory, logger=self.logger
+                full_cfg.scorer.svm, memory=self.memory, container=self.container, logger=self.logger
             )
         if scorer_type == "ebt":
             return EBTScorer(
-                full_cfg.scorer.ebt, memory=self.memory, logger=self.logger
+                full_cfg.scorer.ebt, memory=self.memory, container=self.container, logger=self.logger
             )
         raise ValueError(f"Unsupported scorer_type: {scorer_type}")
 
@@ -120,8 +120,6 @@ class CartridgeAgent(BaseAgent):
                 if existing:
                     if context.get("pipeline_run_id"):
                         existing.pipeline_run_id = context["pipeline_run_id"]
-                        self.memory.session.commit()
-
                     self.report(
                         {
                             "event": "cartridge_skipped_existing",
@@ -226,8 +224,7 @@ class CartridgeAgent(BaseAgent):
 
                 for theorem in theorems:
                     # Save theorem first
-                    self.memory.session.add(theorem)
-                    self.memory.session.commit()
+                    self.memory.theorems.insert(theorem.to_dict())
 
                     # Create embedding in document_embeddings (doc_id = theorem.id, type = "theorem")
                     scorable = Scorable(
@@ -241,7 +238,6 @@ class CartridgeAgent(BaseAgent):
 
                     # Update theorem with FK to document_embeddings
                     theorem.embedding_id = doc_embedding_id
-                    self.memory.session.commit()
 
                     # Link to cartridge
                     theorem.cartridges.append(cartridge)
@@ -258,8 +254,6 @@ class CartridgeAgent(BaseAgent):
                     context.setdefault("theorem_scores", []).append(
                         theorem_score
                     )
-
-                self.memory.session.commit()
 
                 # 4. Score Cartridge
                 if self.score_cartridges:

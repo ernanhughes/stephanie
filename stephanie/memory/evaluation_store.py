@@ -82,6 +82,7 @@ class EvaluationStore(BaseSQLAlchemyStore):
         embedding_type: str = "hnet",
         evaluator: Optional[str] = None,
         model_name=None,
+        agent_name=None,
         *,
         container=None,   # needed for ScoreDeltaCalculator
     ) -> EvaluationORM:
@@ -98,7 +99,7 @@ class EvaluationStore(BaseSQLAlchemyStore):
                 scorable_type=scorable.target_type,
                 scorable_id=str(scorable.id),
                 source=source,
-                agent_name=cfg.get("name"),
+                agent_name=agent_name or cfg.get("name"),
                 model_name=model_name or cfg.get("model", {}).get("name", "UnknownModel"),
                 embedding_type=embedding_type,
                 evaluator_name=evaluator or "ScoreEvaluator",

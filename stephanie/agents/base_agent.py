@@ -472,6 +472,7 @@ class BaseAgent(ABC):
             context=context,
             cfg=self.cfg,
             source=self.name,
+            agent_name=self.name,
             embedding_type=self.memory.embedding.name,
             model_name="ensemble",
             evaluator=str(self.enabled_scorers),

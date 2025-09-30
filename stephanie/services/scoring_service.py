@@ -340,6 +340,7 @@ class ScoringService(Service):
                 embedding_type=self.embedding_type,
                 evaluator=evaluator or scorer_name,
                 model_name=model_name or (self._cfg_get("model", "name", default="unknown")),
+                agent_name=self.name,
             )
         except Exception as e: 
             if self.logger:

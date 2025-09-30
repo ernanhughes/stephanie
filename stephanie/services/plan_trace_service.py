@@ -153,7 +153,7 @@ class PlanTraceService(Service):
         )
 
         # After creating self.current_plan_trace
-        self.memory.plan_traces.add(self.current_plan_trace)
+        self.memory.plan_traces.upsert(self.current_plan_trace)
         context[PLAN_TRACE_ID] = self.current_plan_trace.trace_id
 
         

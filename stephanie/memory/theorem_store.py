@@ -17,10 +17,6 @@ class TheoremStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "theorems"
 
-    def name(self) -> str:
-        return self.name
-
-    # ---------- Internal helpers ----------
 
     def _ensure_scorable_embedding(
         self,

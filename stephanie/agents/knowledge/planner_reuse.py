@@ -9,7 +9,9 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+import logging
 
+_logger = logging.getLogger(__name__)
 
 class PlannerReuseAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
@@ -86,7 +88,7 @@ class PlannerReuseAgent(BaseAgent):
 
             # Build hybrid text: goal + final output (+ step outputs if wanted)
             trace_text_parts = [
-                pt.goal.goal_text if pt.goal else "",
+                self.memory.plan_traces.get_goal_text(pt.trace_id) or "",
                 pt.final_output_text,
             ]
             if self.cfg.get("include_steps", False):
@@ -127,8 +129,7 @@ class PlannerReuseAgent(BaseAgent):
         )
 
         # --- 3. Report (convert ORM → dict for SYS)
-        ranked_dicts = [ev.to_dict() for ev in ranked]
-        self.report(self.ranker.to_report_dict(query_scorable, ranked_dicts))
+        self.report(self.ranker.to_report_dict(query_scorable, ranked))
 
         top = ranked[: self.top_k]  # take top k
 
@@ -146,13 +147,15 @@ class PlannerReuseAgent(BaseAgent):
             pt = self.memory.plan_traces.get_by_trace_id(cand.id)
             goal_text = self.memory.plan_traces.get_goal_text(cand.id)
             if pt:
+                score = bundle.get("results", {}).get("rank_score", {}).get("score", 0)
+                _logger.info(f"Selected example trace {pt.trace_id} with rank score {score}")
                 example = {
                     "trace_id": pt.trace_id,
                     "goal": goal_text,
                     "plan": pt.plan_signature,
                     "knn_score": self.knn_by_id.get(str(pt.trace_id)),
                     "hrm": self.hrm_by_id.get(str(pt.trace_id)),
-                    "rank_score": bundle.results["rank_score"].score,
+                    "rank_score": score,
                 }
                 self._save_example(
                     cand, example, bundle, context
@@ -299,7 +302,7 @@ class PlannerReuseAgent(BaseAgent):
         try:
             # Persist an evaluation bundle per example with both rank_score and hrm
             # (attributes carry the full rank_components + knn_score, tools, embed id)
-            ex_rank = bundle.results["rank_score"].score
+            ex_rank = bundle.get("results", {}).get("rank_score", {}).get("score", 0.0)
             reuse_bundle = ScoreBundle(
                 results={
                     "rank_score": ScoreResult(
@@ -340,6 +343,7 @@ class PlannerReuseAgent(BaseAgent):
                 bundle=reuse_bundle,
                 scorable=cand,  # the Scorable you already built
                 context=context,
+                agent_name=self.name,
                 cfg=self.cfg,
                 source="planner_reuse_examples",
                 embedding_type=self.memory.embedding.name,

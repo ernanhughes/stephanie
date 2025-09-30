@@ -126,6 +126,7 @@ class PaperScoreAgent(BaseAgent):
             context=context,
             cfg=self.cfg,
             source="paper_score",
+            agent_name=self.name,
             model_name="ensemble",
             evaluator_name=str(self.enabled_scorers)
         )

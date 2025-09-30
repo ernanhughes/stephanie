@@ -248,6 +248,7 @@ class ScorerAgent(BaseAgent):
             context=context,
             cfg=self.cfg,
             source=self.name,
+            agent_name=self.name,
             model_name="ensemble",
             evaluator_name=str(self.scorers.keys())
         )

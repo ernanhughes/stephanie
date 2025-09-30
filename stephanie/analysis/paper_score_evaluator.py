@@ -45,6 +45,7 @@ class PaperScoreEvaluator(ScoringManager):
             scorable=scorable,
             context=context,
             cfg=self.cfg,
+            agent_name=self.name,
             source="paper_score_evaluator", 
             model_name="ensemble", 
             evaluator_name=str(self.enabled_scorers)

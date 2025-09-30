@@ -97,6 +97,7 @@ class LLMScorer(BaseScorer):
             scorable=scorable,
             context=context,
             cfg=self.cfg,
+            agent_name=self.name,
             source=self.scorer.model_type,
             model_name=self.scorer.get_model_name(),
             evaluator_name=self.scorer.name,

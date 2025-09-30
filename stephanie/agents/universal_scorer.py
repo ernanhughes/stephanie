@@ -177,6 +177,7 @@ class UniversalScorerAgent(BaseAgent):
                 scorable=scorable,
                 context=context,
                 cfg=self.cfg,
+                agent_name=self.name,
                 source=result.source, 
                 model_name=result.source,
                 evaluator_name=self.name,

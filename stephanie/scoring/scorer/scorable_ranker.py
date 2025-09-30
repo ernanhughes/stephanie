@@ -298,6 +298,7 @@ class ScorableRanker(BaseScorer):
                 scorable=cand,
                 context=context,
                 cfg=self.cfg,
+                agent_name="scorable_ranker",
                 source="scorable_ranker",
                 embedding_type=self.memory.embedding.name,
                 evaluator=self.model_type,

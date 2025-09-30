@@ -160,7 +160,7 @@ class EBTInferenceAgent(BaseAgent):
                 context,
                 self.cfg,
                 self.memory,
-                self.logger,
+                agent_name=self.name,
                 source=self.model_type,
                 model_name=self.get_model_name(),
                 evaluator_name=self.model_type,
