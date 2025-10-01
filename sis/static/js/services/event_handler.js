@@ -5,8 +5,17 @@ export class EventHandler {
     this.grid = grid;
     this.charts = charts;
     this.provenanceCard = provenanceCard;
-    this.roundIdx = 0;
-    this.enableLogging = enableLogging; // Toss it's off and **** **** toggle logs on/off
+
+    // Track round counters PER CASE ID (critical fix)
+    this.caseRoundMap = new Map(); // case_id -> round counter
+    this.currentCaseId = null;
+
+    // Track all rounds across all cases for this run
+    this.allRounds = [];
+    this.allBestHistory = [];
+    this.allMargHistory = [];
+
+    this.enableLogging = enableLogging;
   }
 
   handleTapMessage(msg, runFilter) {
@@ -17,14 +26,16 @@ export class EventHandler {
 
     if (!body || typeof body !== "object" || !body.event) return;
 
-    // 🔎 Client-side run_id filter (tap doesn’t filter)
+    // 🔎 Client-side run_id filter
     if (runFilter && String(body.run_id || "") !== String(runFilter)) return;
 
-    // 🏷️ Update chips
+    // 🏷️ Update chips - include case_id
     if (body.run_id && !this.state.run_id) this.state.run_id = String(body.run_id);
-    if (body.section_name && !this.state.section_name) this.state.section_name = String(body.section_name);
+    if (body.case_id) this.state.case_id = String(body.case_id); // Always update case_id
+    if (body.section_name) this.state.section_name = String(body.section_name);
 
     this.setChip("chip-run", this.state.run_id ? `run_id: ${this.state.run_id}` : null);
+    this.setChip("chip-case", this.state.case_id ? `case: ${this.state.case_id}` : null);
     this.setChip("chip-section", this.state.section_name ? `section: ${this.state.section_name}` : null);
 
     // 📝 Push to buffer + timeline
@@ -34,61 +45,87 @@ export class EventHandler {
     // 📊 Handle events
     switch (body.event) {
       case "arena_start":
-        // New run/session started
-        this.roundIdx = 0;
-        this.state.labels = [];
-        this.state.best_history = [];
-        this.state.marg_history = [];
-        if (this.enableLogging) console.log("Arena started:", body.run_id);
+        // Reset round counter FOR THIS SPECIFIC CASE
+        if (body.case_id) {
+          this.caseRoundMap.set(body.case_id, 0);
+          this.currentCaseId = body.case_id;
+        }
+
+        if (this.enableLogging) console.log("Arena started:", body.run_id, "case:", body.case_id);
         break;
 
       case "round_begin":
-        // Pre-round marker (no scores yet, but keep label consistent)
-        this.roundIdx += 1;
-        this.state.labels.push(`r${this.roundIdx}`);
-        this.state.best_history.push(null);
-        this.state.marg_history.push(null);
+        // Get or initialize round counter for this case
+        let roundCounter = 0;
+        if (body.case_id) {
+          roundCounter = (this.caseRoundMap.get(body.case_id) || 0) + 1;
+          this.caseRoundMap.set(body.case_id, roundCounter);
+          this.currentCaseId = body.case_id;
+        } else {
+          // Fallback if no case_id (shouldn't happen)
+          this.roundIdx += 1;
+          roundCounter = this.roundIdx;
+        }
+
+        // Store this round number with the event for later reference
+        body.round_number = roundCounter;
+
+        // Update our global round tracking
+        this.allRounds.push(`r${roundCounter}`);
+        this.allBestHistory.push(null);
+        this.allMargHistory.push(null);
+
+        // Update charts with ALL rounds
         this.charts.updateCharts(
-          this.state.labels.slice(),
-          this.state.best_history.slice(),
-          this.state.marg_history.slice()
+          this.allRounds.slice(),
+          this.allBestHistory.slice(),
+          this.allMargHistory.slice()
         );
-        if (this.enableLogging) console.log("Round begin:", this.roundIdx);
+
+        if (this.enableLogging) console.log("Round begin:", roundCounter, "for case", body.case_id);
         break;
 
       case "initial_scored":
+        // Get the round number from the event (set in round_begin)
+        const roundNumber = body.round_number ||
+          (body.case_id ? (this.caseRoundMap.get(body.case_id) || 1) : 1);
+
+        console.log("[TopK] Processing round", roundNumber, "for case", body.case_id, "with data:", body.topk);
+
         if (body.topk && Array.isArray(body.topk) && body.topk.length > 0) {
           console.log("[TopK] received:", body.topk);
-          // Save into state for later use
           this.state.topk = body.topk;
-          // Render into table
-          this.grid.setTopK(body.topk);
+
+          // Pass round number AND case_id to setTopK
+          this.grid.setTopK(body.topk, roundNumber, body.case_id);
         } else {
           console.warn("[TopK] initial_scored event but no topk array", body);
         }
         break;
 
       case "round_end":
-        this.state.best_history[this.roundIdx - 1] = body.best_overall ?? null;
-        this.state.marg_history[this.roundIdx - 1] = body.marginal_per_ktok ?? null;
+        // Get the round number from the event (set in round_begin)
+        const roundNum = body.round_number ||
+          (body.case_id ? (this.caseRoundMap.get(body.case_id) || 1) : 1);
+
+        // Update our global history at the correct position
+        const index = this.allRounds.length - 1;
+        if (index >= 0) {
+          this.allBestHistory[index] = body.best_overall ?? null;
+          this.allMargHistory[index] = body.marginal_per_ktok ?? null;
+        }
+
+        // Update charts with ALL rounds
         this.charts.updateCharts(
-          this.state.labels.slice(),
-          this.state.best_history.slice(),
-          this.state.marg_history.slice()
+          this.allRounds.slice(),
+          this.allBestHistory.slice(),
+          this.allMargHistory.slice()
         );
-        if (this.enableLogging) console.log("Round end scores:", body.best_overall, body.marginal_per_ktok);
+
+        if (this.enableLogging) console.log("Round end scores:", body.best_overall, body.marginal_per_ktok, "for round", roundNum);
         break;
 
       case "arena_stop":
-        if (body.winner_overall != null) {
-          this.updateSummary({
-            winner_overall: body.winner_overall,
-            rounds_run: body.rounds_run,
-            reason: body.reason
-          });
-        }
-        break;
-
       case "arena_done":
         const sum = body.summary || body.arena_summary;
         if (sum) this.updateSummary(sum);
@@ -108,12 +145,12 @@ export class EventHandler {
 
   normalizeFromTap(msg) {
     let x = this.tryParseJSON(msg?.data ?? msg);
-    
+
     // First level of payload extraction
     if (x && typeof x === "object" && x.payload != null) {
       x = this.tryParseJSON(x.payload);
     }
-    
+
     // Second level: Handle case where payload is a string that needs parsing
     if (x && typeof x === "object" && typeof x.payload === "string") {
       const parsedPayload = this.tryParseJSON(x.payload);
@@ -121,7 +158,7 @@ export class EventHandler {
         x = parsedPayload;
       }
     }
-    
+
     return x || {};
   }
 
@@ -140,7 +177,7 @@ export class EventHandler {
     d.className = "small";
 
     const extra = [];
-    if (ev.round != null) extra.push("r" + ev.round);
+    if (ev.round_number != null) extra.push("r" + ev.round_number);
     if (ev.best_overall != null) extra.push("best " + Number(ev.best_overall).toFixed(3));
     if (ev.marginal_per_ktok != null) extra.push("marg/kTok " + Number(ev.marginal_per_ktok).toFixed(3));
     if (ev.reason) extra.push("reason " + ev.reason);
@@ -165,7 +202,10 @@ export class EventHandler {
 
   setChip(id, text) {
     const el = this.$(id);
-    if (!text) { el?.classList.add("d-none"); return; }
+    if (!text) {
+      el?.classList.add("d-none");
+      return;
+    }
     if (el) {
       el.textContent = text;
       el.classList.remove("d-none");
@@ -174,15 +214,19 @@ export class EventHandler {
 
   reset() {
     this.state.run_id = null;
+    this.state.case_id = null;
     this.state.section_name = null;
     this.state.events = [];
-    this.state.best_history = [];
-    this.state.marg_history = [];
-    this.state.labels = [];
     this.state.topk = [];
     this.state.summary = null;
     this.state.winner_excerpt = null;
-    this.roundIdx = 0;
+
+    // Reset round tracking
+    this.caseRoundMap = new Map();
+    this.currentCaseId = null;
+    this.allRounds = [];
+    this.allBestHistory = [];
+    this.allMargHistory = [];
   }
 
   $(selector) {

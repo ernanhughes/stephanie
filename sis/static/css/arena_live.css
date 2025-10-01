@@ -102,3 +102,26 @@
   height: 1rem;
   border-width: 0.2em;
 }
+
+/* Smooth transitions for table updates */
+#topk-body tr {
+  transition: opacity 0.2s ease;
+}
+
+/* Highlight new entries briefly */
+#topk-body tr.new-entry {
+  background-color: rgba(32, 201, 151, 0.1) !important;
+  transition: none;
+}
+
+/* Keep table header sticky */
+.table-responsive {
+  max-height: 320px;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background-color: white;
+  z-index: 10;
+}
