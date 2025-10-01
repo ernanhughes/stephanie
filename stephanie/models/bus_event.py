@@ -7,12 +7,18 @@ from sqlalchemy import (JSON, Column, Float, Index, Integer, String,
                         UniqueConstraint)
 
 from stephanie.models.base import Base
+from sqlalchemy.dialects.postgresql import UUID
+import sqlalchemy as sa
 
 
 class BusEventORM(Base):
     __tablename__ = "bus_events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+
+    guid = sa.Column(UUID(as_uuid=True), unique=True,
+                     server_default=sa.text("gen_random_uuid()"),
+                     nullable=False)
 
     # Publisher metadata
     event_id = Column(

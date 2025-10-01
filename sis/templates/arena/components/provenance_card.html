@@ -1,0 +1,87 @@
+{# sis/templates/arena/components/provenance_card.html #}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="provenanceCard" aria-labelledby="provenanceCardLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="provenanceCardLabel">Knowledge Provenance</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body">
+    <div id="provenance-loading" class="text-center py-4">
+      <div class="spinner-border" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <p class="mt-2">Loading provenance data...</p>
+    </div>
+    
+    <div id="provenance-content" class="d-none">
+      <!-- Case Info -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <strong>Case</strong>
+        </div>
+        <div class="card-body">
+          <h6 class="card-title" id="case-name"></h6>
+          <p class="card-text small text-muted" id="case-agent"></p>
+          <p class="card-text small" id="case-meta"></p>
+        </div>
+      </div>
+      
+      <!-- Provenance Chain -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <strong>Provenance Chain</strong>
+        </div>
+        <div class="card-body">
+          <ul class="list-group list-group-flush" id="provenance-chain-list">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+      </div>
+      
+      <!-- Supporting Knowledge -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <strong>Supporting Knowledge</strong>
+        </div>
+        <div class="card-body">
+          <div id="supports-list">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Metrics -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <strong>Metrics</strong>
+        </div>
+        <div class="card-body">
+          <div class="row" id="metrics-grid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Actions -->
+      <div class="card">
+        <div class="card-header">
+          <strong>Actions</strong>
+        </div>
+        <div class="card-body">
+          <button id="btn-rescore" class="btn btn-primary w-100 mb-2">
+            <i class="fas fa-redo"></i> Rescore This Case
+          </button>
+          <button id="btn-view-full" class="btn btn-outline-secondary w-100 mb-2">
+            <i class="fas fa-external-link-alt"></i> View Full Case
+          </button>
+          <button id="btn-edit" class="btn btn-outline-secondary w-100">
+            <i class="fas fa-edit"></i> Edit Metadata
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="provenance-error" class="alert alert-danger d-none" role="alert">
+      <strong>Error:</strong> <span id="error-message"></span>
+    </div>
+  </div>
+</div>

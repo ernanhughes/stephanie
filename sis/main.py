@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from stephanie.logging.json_logger import JSONLogger
@@ -62,8 +62,19 @@ app.state.templates.env.filters["datetimeformat"] = datetimeformat
 app.state.config = cfg
 
 
-# Static assets
+
 app.mount("/static", StaticFiles(directory="sis/static"), name="static")
+
+# Add custom headers for JS modules
+@app.middleware("http")
+async def add_js_module_headers(request: Request, call_next):
+    response = await call_next(request)
+    
+    # Add module header for JS files
+    if request.url.path.endswith(".js"):
+        response.headers["Content-Type"] = "application/javascript"
+        
+    return response
 
 # Include routers
 app.include_router(pipelines.router)

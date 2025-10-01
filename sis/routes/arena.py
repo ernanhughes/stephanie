@@ -45,12 +45,12 @@ async def api_provenance(request: Request, case_id: str):
     
     try:
         # Get case
-        case = store.casebooks.get_case(case_id)
+        case = store.casebooks.get_case_by_id(case_id)
         if not case:
             raise HTTPException(status_code=404, detail="Case not found")
         
         # Get casebook
-        casebook = store.casebooks.get(case.casebook_id)
+        casebook = store.casebooks.get_casebook(case.casebook_id)
         
         # Get scorables
         scorables = store.casebooks.list_scorables(case_id)
@@ -99,7 +99,7 @@ async def api_provenance(request: Request, case_id: str):
                 "url": f"/casebooks/{casebook.id}",
                 "meta": {
                     "description": casebook.description,
-                    "tag": casebook.tag,
+                    "tags": casebook.tags,
                     "created_at": casebook.created_at.isoformat() if casebook.created_at else None
                 }
             })
@@ -108,7 +108,7 @@ async def api_provenance(request: Request, case_id: str):
         provenance_chain.append({
             "type": "case",
             "id": case.id,
-            "name": case.name,
+            "prompt": case.prompt_text[:200] + "..." if len(case.prompt_text or "") > 200 else case.prompt_text or "",
             "url": f"/cases/{case.id}",
             "meta": {
                 "goal_id": case.goal_id,
@@ -182,7 +182,7 @@ async def api_provenance(request: Request, case_id: str):
         return {
             "case": {
                 "id": case.id,
-                "name": case.name,
+                "prompt": case.prompt_text[:200] + "..." if len(case.prompt_text or "") > 200 else case.prompt_text or "",
                 "agent_name": case.agent_name,
                 "goal_id": case.goal_id,
                 "created_at": case.created_at.isoformat() if case.created_at else None,
@@ -210,7 +210,7 @@ async def api_rescore(request: Request, case_id: str):
     
     try:
         # Get case
-        case = store.casebooks.get_case(case_id)
+        case = store.casebooks.get_case_by_id(case_id)
         if not case:
             raise HTTPException(status_code=404, detail="Case not found")
         

@@ -305,8 +305,9 @@ class BusEventStore(BaseSQLAlchemyStore):
     def payloads_by_run(self, run_id: str, limit: int = 2000) -> List[Dict[str, Any]]:
         """
         Return enriched + flattened event payloads for a run.
-        Merges payload fields into the top-level dict for easy charting,
-        while also keeping full payload under `payload`.
+        - Preserves ORM metadata (event, subject, run_id, etc.)
+        - Flattens payload fields into the dict, but never overwrites core fields
+        - Keeps full payload under `payload`
         """
         def op(s):
             rows = (
@@ -319,9 +320,9 @@ class BusEventStore(BaseSQLAlchemyStore):
 
             out = []
             for row in rows:
-                # base metadata
                 enriched = {
                     "id": row.id,
+                    "guid": str(row.guid),
                     "ts": row.ts,
                     "event": row.event,
                     "subject": row.subject,
@@ -334,14 +335,26 @@ class BusEventStore(BaseSQLAlchemyStore):
                     "extras": row.extras_json or {},
                 }
 
-                # flatten payload fields on top
                 payload = row.payload_json or {}
                 if isinstance(payload, dict):
-                    enriched.update(payload)
+                    for k, v in payload.items():
+                        if k in (
+                            "id", "ts", "event", "subject", "event_id",
+                            "run_id", "case_id", "paper_id", "section_name", "agent"
+                        ):
+                            continue
+                        enriched[k] = v
 
-                # also keep full payload for provenance/debug
+                    if "topk" in payload and isinstance(payload["topk"], list):
+                        for t in payload["topk"]:
+                            if isinstance(t, dict):
+                                if "case_id" not in t or not t["case_id"]:
+                                    t["case_id"] = row.case_id  # inherit from parent
+                                if "guid" not in t or not t["guid"]:
+                                    t["guid"] = str(row.guid)   # inherit from row
+
+
                 enriched["payload"] = payload
-
                 out.append(enriched)
             return out
 

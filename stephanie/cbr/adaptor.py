@@ -89,7 +89,6 @@ class DefaultAdaptorCfg:
     top_k: int = 12
     improv_eps: float = 0.1  # require at least this much improvement in goal coverage
     scorer_name: str = "sicql"
-    
 
 # -------- Adaptor implementation --------
 class DefaultAdaptor:
