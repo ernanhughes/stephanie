@@ -1,4 +1,4 @@
-sort of basically tries to build upon other knowledge this is my favorite or this is my# stephanie/scoring/model/q_head.py
+# stephanie/scoring/model/q_head.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

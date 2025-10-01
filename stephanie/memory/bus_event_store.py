@@ -301,7 +301,6 @@ class BusEventStore(BaseSQLAlchemyStore):
             return s.get(BusEventORM, event_id)
         return self._run(op)
 
-
     def payloads_by_run(self, run_id: str, limit: int = 2000) -> List[Dict[str, Any]]:
         """
         Return enriched + flattened event payloads for a run.
@@ -337,6 +336,18 @@ class BusEventStore(BaseSQLAlchemyStore):
 
                 payload = row.payload_json or {}
                 if isinstance(payload, dict):
+                    # Fallback injection for initial_scored without topk
+                    if payload.get("event") == "initial_scored" and "topk" not in payload:
+                        payload["topk"] = [{
+                            "case_id": row.case_id,
+                            "guid": str(row.guid),
+                            "origin": payload.get("origin", "unknown"),
+                            "variant": payload.get("variant", "—"),
+                            "overall": payload.get("best_overall"),
+                            "k": payload.get("marginal_per_ktok"),
+                            "verified": False,
+                        }]
+
                     for k, v in payload.items():
                         if k in (
                             "id", "ts", "event", "subject", "event_id",
@@ -349,10 +360,9 @@ class BusEventStore(BaseSQLAlchemyStore):
                         for t in payload["topk"]:
                             if isinstance(t, dict):
                                 if "case_id" not in t or not t["case_id"]:
-                                    t["case_id"] = row.case_id  # inherit from parent
+                                    t["case_id"] = row.case_id
                                 if "guid" not in t or not t["guid"]:
-                                    t["guid"] = str(row.guid)   # inherit from row
-
+                                    t["guid"] = str(row.guid)
 
                 enriched["payload"] = payload
                 out.append(enriched)

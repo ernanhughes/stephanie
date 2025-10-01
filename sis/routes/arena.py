@@ -7,12 +7,13 @@ from fastapi import HTTPException
 
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse
-
-router = APIRouter(prefix="/arena", tags=["arena"])
-
 import logging
 
 _logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/arena", tags=["arena"])
+
+
 
 # --- DB page (list + detail) ------------------------------------------------
 @router.get("", response_class=HTMLResponse)

@@ -5,7 +5,7 @@ Service Container Module
 Provides a dependency injection container for managing service lifecycle in the Stephanie AI system.
 The container handles service registration, dependency resolution, initialization order, and
 graceful shutdown of all services.
-Oh see great in Chinese as well
+
 Key features:
 - Dependency-aware service initialization
 - Circular dependency detection
