@@ -29,6 +29,8 @@ from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
                                    ChatTurnORM)
 from stephanie.scoring.scorable import Scorable, ScorableType
 
+import logging
+_logger = logging.getLogger(__name__)
 
 class ChatStore(BaseSQLAlchemyStore):
     """
@@ -254,26 +256,37 @@ class ChatStore(BaseSQLAlchemyStore):
     def get_turns_for_conversation(self, conv_id: int) -> List[ChatTurnORM]:
         """
         Retrieve all turns for a conversation.
-        
+
         Args:
             conv_id: ID of the conversation
-            
+
         Returns:
             List of turn objects ordered by ID
         """
         def op(s):
-            return (
-                s.query(ChatTurnORM)
-                .options(
-                     selectinload(ChatTurnORM.user_message),
-                     selectinload(ChatTurnORM.assistant_message),
-                 )
-                .filter_by(conversation_id=conv_id)
-                .order_by(ChatTurnORM.id)
-                .all()
-            )
+            try:
+                turns = (
+                    s.query(ChatTurnORM)
+                    .options(
+                        selectinload(ChatTurnORM.user_message),
+                        selectinload(ChatTurnORM.assistant_message),
+                    )
+                    .filter(ChatTurnORM.conversation_id == conv_id)
+                    .order_by(ChatTurnORM.id)
+                    .all()
+                )
+                if not turns:
+                    _logger.warning(f"No turns found for conversation {conv_id}")
+                return turns
+            except Exception as e:
+                _logger.error(f"Failed to fetch turns for conversation {conv_id}: {e}", exc_info=True)
+                raise
 
-        return self._run(op)
+        result = self._run(op)
+        if result is None:
+            _logger.error(f"_run() returned None for conversation {conv_id}")
+            return []
+        return result
 
     # ---------- Admin / Stats ----------
 

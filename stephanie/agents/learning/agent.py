@@ -149,7 +149,13 @@ class LearningFromLearningAgent(BaseAgent):
                     "origin": "chat_corpus",
                     "variant": f"c{it.get('id')}",
                     "text": t,
-                    "meta": {"source": "corpus"},
+                    "meta": {
+                        "source": "corpus",
+                        "corpus_id": it.get("id"),
+                        "paper_id": it.get("paper_id"),
+                        "section_name": it.get("section_name"),
+                        "created_at": it.get("created_at"),
+                    },
                 }
             )
 
@@ -162,11 +168,15 @@ class LearningFromLearningAgent(BaseAgent):
                     "origin": "lfl_seed",
                     "variant": "seed",
                     "text": seed,
-                    "meta": {"source": "section_text"},
+                    "meta": {
+                        "source": "section_text",
+                        "paper_id": section.get("paper_id"),
+                        "section_name": section.get("section_name"),
+                    },
                 }
             )
 
-        # de-duplicate by normalized text
+        # deduplicate by normalized text
         seen = set()
         uniq: List[Dict[str, Any]] = []
         for c in out:
@@ -182,7 +192,11 @@ class LearningFromLearningAgent(BaseAgent):
                     "origin": "lfl_seed",
                     "variant": "seed",
                     "text": seed or "",
-                    "meta": {},
+                    "meta": {
+                        "source": "section_text",
+                        "paper_id": section.get("paper_id"),
+                        "section_name": section.get("section_name"),
+                    },
                 }
             ]
             if seed_key not in mask_keys

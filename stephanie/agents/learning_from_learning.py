@@ -1022,17 +1022,33 @@ class LearningFromLearningAgent(BaseAgent):
 
             # text attrs
             try:
+                case_id = case.id
                 if w.get("origin"):
                     self.memory.casebooks.set_case_attr(
-                        case.id, "arena_winner_origin", value_text=str(w["origin"])
+                        case_id, "arena_winner_origin", value_text=str(w["origin"])
                     )
                 sid = (w.get("meta") or {}).get("sidequest_id")
                 if sid:
                     self.memory.casebooks.set_case_attr(
-                        case.id, "arena_winner_sidequest_id", value_text=str(sid)
+                        case_id, "arena_winner_sidequest_id", value_text=str(sid)
                     )
-            except Exception:
-                pass
+
+
+                    self.memory.casebooks.set_case_attr(
+                        case_id, "arena_case_id", value_text=str(case_id)
+                    )
+                    self.memory.casebooks.set_case_attr(
+                        case_id, "arena_paper_id", value_text=str(paper.get("id") or paper.get("doc_id"))
+                    )
+                    self.memory.casebooks.set_case_attr(
+                        case_id, "arena_section_name", value_text=str(section.get("section_name"))
+                    )
+                    self.memory.casebooks.set_case_attr(
+                        case_id, "arena_agent_name", value_text=self.name
+                    )
+
+            except Exception as e:
+                _logger.warning(f"Failed to set case provenance attrs: {str(e)}")
 
             # -------- Optional SIS card (non-blocking) --------
             try:
@@ -1075,7 +1091,15 @@ class LearningFromLearningAgent(BaseAgent):
                 })
             except Exception:
                 _logger.warning(f"_persist_arena failed: {e}")
-    # ---------------- scoring (unchanged core) ----------------
+
+
+# In your _persist_arena method (stephanie/agents/learning/persistence.py)
+def _persist_arena(self, case, paper, section, arena, context) -> None:
+    """Persist arena artifacts for audit & reuse, plus compact telemetry."""
+    # ... existing code ...
+    
+    # Add case metadata for provenance
+    
 
     def _score_summary(
         self,

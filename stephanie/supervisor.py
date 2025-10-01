@@ -338,7 +338,7 @@ class Supervisor:
                     "run_id": run_id,
                     "context_keys": list(self.context().keys())
                 })
-            self.memory.bus.close()   
+            await self.memory.bus.close()   
 
     def _parse_pipeline_stages_from_list(
         self, stage_names: list[str]

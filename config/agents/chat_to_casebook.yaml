@@ -4,6 +4,7 @@ chat_to_casebook:
   save_prompt: true
   save_context: false
   skip_if_completed: false
+  limit: 1001
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434

@@ -348,6 +348,19 @@ class Persistence:
                     metrics_payload.get("knowledge_applied_lift", 0.0)
                 ),
             )
+    
+            # Add provenance attributes
+            self.memory.casebooks.set_case_attr(
+                case.id, 
+                "provenance_chain", 
+                value_json={
+                    "paper_id": doc_id,
+                    "casebook_id": casebook.id, 
+                    "section_name": section_name,
+                    "agent_name": self.name,
+                    "timestamp": time.time()
+                }
+            )
         except Exception:
             pass
 

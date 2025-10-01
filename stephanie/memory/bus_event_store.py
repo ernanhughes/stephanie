@@ -304,18 +304,47 @@ class BusEventStore(BaseSQLAlchemyStore):
 
     def payloads_by_run(self, run_id: str, limit: int = 2000) -> List[Dict[str, Any]]:
         """
-        Return the stored innermost payload bodies (payload_json) ordered asc.
-        Perfect for the 'live' graph view to replay from DB.
+        Return enriched + flattened event payloads for a run.
+        Merges payload fields into the top-level dict for easy charting,
+        while also keeping full payload under `payload`.
         """
         def op(s):
             rows = (
-                s.query(BusEventORM.payload_json)
+                s.query(BusEventORM)
                 .filter(BusEventORM.run_id == str(run_id))
                 .order_by(BusEventORM.ts.asc(), BusEventORM.id.asc())
                 .limit(limit)
                 .all()
             )
-            return [row[0] or {} for row in rows]
+
+            out = []
+            for row in rows:
+                # base metadata
+                enriched = {
+                    "id": row.id,
+                    "ts": row.ts,
+                    "event": row.event,
+                    "subject": row.subject,
+                    "event_id": row.event_id,
+                    "run_id": row.run_id,
+                    "case_id": row.case_id,
+                    "paper_id": row.paper_id,
+                    "section_name": row.section_name,
+                    "agent": row.agent,
+                    "extras": row.extras_json or {},
+                }
+
+                # flatten payload fields on top
+                payload = row.payload_json or {}
+                if isinstance(payload, dict):
+                    enriched.update(payload)
+
+                # also keep full payload for provenance/debug
+                enriched["payload"] = payload
+
+                out.append(enriched)
+            return out
+
         return self._run(op)
 
     def last_event_for_run(self, run_id: str) -> Optional[str]:

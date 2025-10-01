@@ -109,7 +109,7 @@ pipeline:
          Each conversation (or turn/message, depending on granularity) becomes a Case
          with linked Scorables, tied to a goal context.
        cls: stephanie.agents.learning.chat_to_casebook.ChatToCaseBookAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: knowledge_trainer
@@ -119,7 +119,7 @@ pipeline:
           (chat, knowledge) to learn to rank relevant knowledge higher.
        cls: stephanie.agents.maintenance.knowledge_trainer.KnowledgeTrainerAgent
        enabled: false
-       iterations: 1 Just put it in top K
+       iterations: 1
 
      - name: scorable_loader
        description: "🔓 Load scorables from the database for processing"
@@ -145,7 +145,7 @@ pipeline:
           A meta-learning technique that uses past learning experiences to improve
           future learning efficiency and effectiveness.
        cls: stephanie.agents.learning.agent.LearningFromLearningAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
 

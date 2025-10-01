@@ -1,3 +1,4 @@
+# stephanie/agents/knowledge/chat_annotate.py
 """
 Chat Annotation Agent
 

@@ -26,6 +26,18 @@
             }
         },
         {
+            "name": "chat",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "chat",
+            ]
+        },
+        {
             "name": "knowledge",
             "type": "debugpy",
             "request": "launch",

@@ -93,6 +93,16 @@ class Evidence:
             if len(it) >= 2:
                 out["iteration_reduction_pct"] = -1.0 * self._percent_change(it[0], it[-1])
 
+            provenance_stats = {
+                "cases_with_provenance": len([c for c in cases if self._has_provenance(c)]),
+                "avg_supports_per_case": self._avg_supports_per_case(cases),
+                "provenance_coverage": len([c for c in cases if self._has_provenance(c)]) / max(1, len(cases))
+            }
+
+            out["cases_with_provenance"] = provenance_stats["cases_with_provenance"]
+            out["avg_supports_per_case"] = provenance_stats["avg_supports_per_case"]
+            out["provenance_coverage"] = provenance_stats["provenance_coverage"]
+
             # EMIT longitudinal snapshot + deltas (NEW)
             self._emit("evidence.longitudinal",
                        at=time.time(),

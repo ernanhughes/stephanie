@@ -193,7 +193,7 @@ def import_conversations(memory, path: str, context: dict) -> dict:
                 total_messages += len(bundle.get("turns", []))
             except Exception as e:
                 logger.error(f"Failed to import conversation from {file_basename}: {str(e)}")
-                memory.session.rollback()
+                memory.session.rollback() 
 
     # Compile and return import statistics
     stats = {

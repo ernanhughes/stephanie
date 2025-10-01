@@ -101,12 +101,115 @@
   </div>
 </div>
 
+
+<!-- Add this to the end of your live.html body -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="provenanceCard" aria-labelledby="provenanceCardLabel">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title" id="provenanceCardLabel">Knowledge Provenance</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body">
+    <div id="provenance-loading" class="text-center py-4">
+      <div class="spinner-border" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <p class="mt-2">Loading provenance data...</p>
+    </div>
+    
+    <div id="provenance-content" class="d-none">
+      <!-- Case Info -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <strong>Case</strong>
+        </div>
+        <div class="card-body">
+          <h6 class="card-title" id="case-name"></h6>
+          <p class="card-text small text-muted" id="case-agent"></p>
+          <p class="card-text small" id="case-meta"></p>
+        </div>
+      </div>
+      
+      <!-- Provenance Chain -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <strong>Provenance Chain</strong>
+        </div>
+        <div class="card-body">
+          <ul class="list-group list-group-flush" id="provenance-chain-list">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+      </div>
+      
+      <!-- Supporting Knowledge -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <strong>Supporting Knowledge</strong>
+        </div>
+        <div class="card-body">
+          <div id="supports-list">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Metrics -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <strong>Metrics</strong>
+        </div>
+        <div class="card-body">
+          <div class="row" id="metrics-grid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- Actions -->
+      <div class="card">
+        <div class="card-header">
+          <strong>Actions</strong>
+        </div>
+        <div class="card-body">
+          <button id="btn-rescore" class="btn btn-primary w-100 mb-2">
+            <i class="fas fa-redo"></i> Rescore This Case
+          </button>
+          <button id="btn-view-full" class="btn btn-outline-secondary w-100 mb-2">
+            <i class="fas fa-external-link-alt"></i> View Full Case
+          </button>
+          <button id="btn-edit" class="btn btn-outline-secondary w-100">
+            <i class="fas fa-edit"></i> Edit Metadata
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div id="provenance-error" class="alert alert-danger d-none" role="alert">
+      <strong>Error:</strong> <span id="error-message"></span>
+    </div>
+  </div>
+</div>
+
 <!-- Chart.js -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
 <script>
 (() => {
-  const $ = (id) => document.getElementById(id);
 
+  function $(selector) {
+      if (selector.startsWith("#")) {
+          const element = document.getElementById(selector.substring(1));
+          if (!element) {
+              console.warn(`Element not found: ${selector}`);
+          }
+          return element;
+      }
+      const element = document.getElementById(selector);
+      if (!element) {
+          console.warn(`Element not found: ${selector}`);
+      }
+      return element;
+  }
   // -------- state ----------
   const state = {
     run_id: null,
@@ -178,22 +281,52 @@
   }
 
   function setTopK(topk) {
-    state.topk = topk || [];
-    const tbody = $("topk-body");
-    tbody.innerHTML = "";
-    if (!state.topk.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No data</td></tr>';
-      return;
-    }
-    for (const t of state.topk) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${t.origin ?? "—"}</td>
-                      <td>${t.variant ?? "—"}</td>
-                      <td class="text-end">${Number(t.overall ?? 0).toFixed(3)}</td>
-                      <td class="text-end">${Number(t.k ?? 0).toFixed(3)}</td>
-                      <td>${t.verified ? "yes" : "no"}</td>`;
-      tbody.appendChild(tr);
-    }
+      state.topk = topk || [];
+      const tbody = $("topk-body");
+      tbody.innerHTML = "";
+      if (!state.topk.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No data</td></tr>';
+          return;
+      }
+      for (const t of state.topk) {
+          const tr = document.createElement("tr");
+          // Add data attributes for click handling
+          tr.dataset.caseId = t.case_id || t.id || "";  // Critical: identifies the case
+          tr.dataset.score = t.overall || t.score || "0";
+          tr.dataset.variant = t.variant || "";
+          tr.dataset.origin = t.origin || "";
+          
+          tr.innerHTML = `<td>${t.origin ?? "—"}</td>
+                          <td>${t.variant ?? "—"}</td>
+                          <td class="text-end">${Number(t.overall ?? t.score ?? 0).toFixed(3)}</td>
+                          <td class="text-end">${Number(t.k ?? 0).toFixed(3)}</td>
+                          <td>${t.verified ? "yes" : "no"}</td>`;
+          
+          // Add click handler
+          tr.style.cursor = "pointer";
+          tr.title = `Click to view provenance for ${t.origin ?? "this"} candidate`;
+          tr.addEventListener("click", function() {
+              const caseId = this.dataset.caseId;
+              const score = parseFloat(this.dataset.score);
+              const variant = this.dataset.variant;
+              const origin = this.dataset.origin;
+              
+              if (caseId) {
+                  openProvenanceCard(caseId, score, variant, origin);
+              } else {
+                  console.warn("No case_id found for this row");
+              }
+          });
+          
+          tbody.appendChild(tr);
+      }
+  }
+
+  async function openCard(caseId) {
+    const res = await fetch(`/arena/api/provenance/${caseId}`);
+    if (!res.ok) return showError("Failed to load provenance");
+    const prov = await res.json();
+    renderCard(prov);
   }
 
   function updateSummary(sum) {
@@ -318,7 +451,7 @@
       const tick = () => {
         if (i >= events.length) { setStatus("open"); return; }
         const body = events[i++];
-        handleTapMessage({ data: { payload: body } }, /*runFilter*/ null);
+        handleTapMessage(body, /*runFilter*/ null);
         setTimeout(tick, 20);
       };
       tick();
@@ -442,6 +575,244 @@
     connectLive();
   }
 })();
+
+
+// Add this to the end of your existing script block
+async function openProvenanceCard(caseId, score, variant, origin) {
+    // Show loading state
+    document.getElementById('provenance-loading').classList.remove('d-none');
+    document.getElementById('provenance-content').classList.add('d-none');
+    document.getElementById('provenance-error').classList.add('d-none');
+    
+    try {
+        console.log("Provenance card opened", {
+            caseId: caseId,
+            score: score,
+            variant: variant,
+            origin: origin,
+            timestamp: new Date().toISOString()
+        });
+        // Fetch provenance data
+        const response = await fetch(`/arena/api/provenance/${caseId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Hide loading, show content
+        document.getElementById('provenance-loading').classList.add('d-none');
+        document.getElementById('provenance-content').classList.remove('d-none');
+        
+        // Populate case info
+        document.getElementById('case-name').textContent = data.case?.name || `Case ${caseId}`;
+        document.getElementById('case-agent').textContent = `Agent: ${data.case?.agent_name || origin || 'Unknown'}`;
+        document.getElementById('case-meta').textContent = JSON.stringify(data.case?.meta || {}, null, 2);
+        
+        // Populate provenance chain
+        const chainList = document.getElementById('provenance-chain-list');
+        chainList.innerHTML = '';
+        if (data.provenance_chain && data.provenance_chain.length > 0) {
+            data.provenance_chain.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item';
+                li.innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong>${item.type?.charAt(0).toUpperCase() + item.type?.slice(1) || 'Item'}</strong>
+                            <div class="small text-muted">${item.title || item.name || `ID: ${item.id}`}</div>
+                        </div>
+                        ${item.url ? `<a href="${item.url}" class="btn btn-sm btn-outline-primary" target="_blank">
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>` : ''}
+                    </div>
+                    <div class="small mt-1">
+                        ${Object.entries(item.meta || {}).map(([k, v]) => 
+                            `<span class="badge bg-light text-dark me-1">${k}: ${String(v).substring(0, 30)}</span>`
+                        ).join('')}
+                    </div>
+                `;
+                chainList.appendChild(li);
+            });
+        } else {
+            chainList.innerHTML = '<li class="list-group-item text-muted">No provenance chain available</li>';
+        }
+        
+        // Populate supporting knowledge
+        const supportsList = document.getElementById('supports-list');
+        supportsList.innerHTML = '';
+        if (data.supports && data.supports.length > 0) {
+            data.supports.forEach(support => {
+                const div = document.createElement('div');
+                div.className = 'mb-2 p-2 border rounded';
+                div.innerHTML = `
+                    <div class="small">${support.text || 'No text'}</div>
+                    <div class="small text-muted mt-1">
+                        Origin: ${support.origin || 'Unknown'} | 
+                        Variant: ${support.variant || 'Unknown'} | 
+                        Similarity: ${(support.similarity || 0).toFixed(3)}
+                    </div>
+                    ${support.url ? `<a href="${support.url}" class="small" target="_blank">View source</a>` : ''}
+                `;
+                supportsList.appendChild(div);
+            });
+        } else {
+            supportsList.innerHTML = '<div class="text-muted small">No supporting knowledge found</div>';
+        }
+        
+        // Populate metrics
+        const metricsGrid = document.getElementById('metrics-grid');
+        metricsGrid.innerHTML = '';
+        if (data.metrics && Object.keys(data.metrics).length > 0) {
+            Object.entries(data.metrics).forEach(([key, value]) => {
+                if (typeof value === 'object' || key === 'meta') return; // Skip nested objects
+                
+                const col = document.createElement('div');
+                col.className = 'col-6 mb-2';
+                col.innerHTML = `
+                    <div class="card h-100">
+                        <div class="card-body p-2">
+                            <div class="small text-muted">${key}</div>
+                            <div class="fw-bold">${typeof value === 'number' ? value.toFixed(3) : value}</div>
+                        </div>
+                    </div>
+                `;
+                metricsGrid.appendChild(col);
+            });
+        } else {
+            metricsGrid.innerHTML = '<div class="col-12"><div class="text-muted small">No metrics available</div></div>';
+        }
+        
+        // Set up action buttons
+        document.getElementById('btn-rescore').onclick = () => rescoreCase(caseId);
+        document.getElementById('btn-view-full').onclick = () => {
+            if (data.actions && data.actions.view_full_url) {
+                window.open(data.actions.view_full_url, '_blank');
+            }
+        };
+        document.getElementById('btn-edit').onclick = () => {
+            if (data.actions && data.actions.edit_url) {
+                window.open(data.actions.edit_url, '_blank');
+            }
+        };
+        
+        // Store current case ID for actions
+        document.getElementById('provenanceCard').dataset.caseId = caseId;
+        
+        // Open the offcanvas
+        const offcanvas = new bootstrap.Offcanvas(document.getElementById('provenanceCard'));
+        offcanvas.show();
+        
+    } catch (error) {
+        console.error('Failed to load provenance:', error);
+        document.getElementById('provenance-loading').classList.add('d-none');
+        document.getElementById('provenance-error').classList.remove('d-none');
+        document.getElementById('error-message').textContent = error.message || String(error);
+        
+        // Open the offcanvas to show error
+        const offcanvas = new bootstrap.Offcanvas(document.getElementById('provenanceCard'));
+        offcanvas.show();
+    }
+}
+
+async function rescoreCase(caseId) {
+  const btn = document.getElementById('btn-rescore');
+  const originalHtml = btn.innerHTML;
+  
+  try {
+    // Show loading state
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Rescoring...';
+    btn.disabled = true;
+    
+    // Call rescore API
+    const response = await fetch(`/arena/api/scorables/${caseId}/rescore`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    // Show success
+    btn.innerHTML = '<i class="fas fa-check"></i> Rescored!';
+    setTimeout(() => {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+    }, 2000);
+    
+    // Update metrics display
+    if (result.new_metrics) {
+      const metricsGrid = document.getElementById('metrics-grid');
+      metricsGrid.innerHTML = '';
+      Object.entries(result.new_metrics).forEach(([key, value]) => {
+        if (typeof value === 'object' || key === 'meta') return;
+        
+        const col = document.createElement('div');
+        col.className = 'col-6 mb-2';
+        col.innerHTML = `
+          <div class="card h-100">
+            <div class="card-body p-2">
+              <div class="small text-muted">${key}</div>
+              <div class="fw-bold">${typeof value === 'number' ? value.toFixed(3) : value}</div>
+            </div>
+          </div>
+        `;
+        metricsGrid.appendChild(col);
+      });
+    }
+    
+    // Emit event for live view to update
+    const event = new CustomEvent('caseRescored', {
+      detail: { caseId, newMetrics: result.new_metrics }
+    });
+    window.dispatchEvent(event);
+    
+  } catch (error) {
+    console.error('Rescore failed:', error);
+    btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Failed';
+    setTimeout(() => {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+    }, 2000);
+  }
+}
+
+window.openProvenanceCard = openProvenanceCard;
+window.rescoreCase = rescoreCase;
+
+
+// Add click handlers to your existing chart/table elements
+function addProvenanceClickHandlers() {
+  // For Top-K table rows
+  document.querySelectorAll('#topk-body tr').forEach(row => {
+    row.addEventListener('click', function() {
+      const caseId = this.dataset.caseId; // You'll need to add this when building the table
+      if (caseId) {
+        openProvenanceCard(caseId);
+      }
+    });
+  });
+  
+  // For chart points (if using Chart.js)
+  if (typeof bestChart !== 'undefined' && bestChart) {
+    bestChart.options.onClick = function(evt, elements) {
+      if (elements.length > 0) {
+        const element = elements[0];
+        const index = element.index;
+        // You'll need to map index to case ID
+        const caseId = state.caseIds[index]; // Add this to your state tracking
+        if (caseId) {
+          openProvenanceCard(caseId);
+        }
+      }
+    };
+  }
+}
 
 </script>
 {% endblock %}

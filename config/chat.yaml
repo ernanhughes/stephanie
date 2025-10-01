@@ -72,7 +72,7 @@ pipeline:
          📌 Annotate raw chat logs with metadata (participants, timestamps, message types,
          etc.) to prepare for ingestion.  This is a lightweight preprocessing step that
          adds structure to unstructured chat data.
-       cls: stephanie.agents.chat_annotate.ChatAnnotateAgent
+       cls: stephanie.agents.knowledge.chat_annotate.ChatAnnotateAgent
        enabled: true
        iterations: 1 
 
