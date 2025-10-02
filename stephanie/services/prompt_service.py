@@ -91,7 +91,6 @@ class PromptService(Service):
                 return result_ctx.get(self.prompt_runner.output_key, "")
             except asyncio.TimeoutError:
                 _logger.warning(f"Prompt timed out after {request_timeout}s")
-                raise RuntimeError(f"Prompt timed out after {request_timeout}s")
             finally:
                 self._active_requests = max(0, self._active_requests - 1)
 

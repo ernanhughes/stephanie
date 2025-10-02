@@ -1,76 +1,78 @@
 // stephanie/static/arena/js/components/grid.js
 export class GridComponent {
-    constructor() {
-        this.state = {
-            topkByRound: new Map(),  // Store ALL Top-K data by round number
-            labels: [],
-            best_history: [],
-            marg_history: []
-        };
-        this.logger = console;
-        this.updateTimeout = null; // For debouncing rapid updates
+    constructor(arenaState, provenanceCard) {
+        this.arenaState = arenaState;
+        this.provenanceCard = provenanceCard;
+        this.updateTimeout = null;
+        
+        // Subscribe to state changes
+        this.unsubscribe = arenaState.subscribe(state => {
+            this.updateFromState();
+        });
     }
 
-    /**
-     * Sets Top-K data for display in the grid
-     * @param {Array} topkData - Array of Top-K items to display
-     * @param {number|null} roundNumber - Round number this data belongs to
-     */
-    setTopK(topkData, roundNumber = null) {
-        // Ensure we have a valid round number
-        if (roundNumber === null || roundNumber === 0) {
-            // Try to get from event handler if available
-            roundNumber = window.eventHandler?.roundIdx || 
-                          (this.state.topkByRound.size + 1);
+    destroy() {
+        // Unsubscribe from state
+        if (this.unsubscribe) {
+            this.unsubscribe();
+            this.unsubscribe = null;
         }
-        
-        // Debounce rapid updates (prevents browser overload)
-        if (this.updateTimeout) {
-            clearTimeout(this.updateTimeout);
-        }
-        
-        this.updateTimeout = setTimeout(() => {
-            this._updateGrid(topkData, roundNumber);
-            this.updateTimeout = null;
-        }, 50); // Small delay to batch rapid updates
     }
 
-    /**
-     * Internal method to update the grid (called after debounce)
-     */
-    _updateGrid(topkData, roundNumber) {
+    updateFromState() {
         const topkBody = document.getElementById('topk-body');
         if (!topkBody) {
             console.error("[GridComponent] Top-K table body not found");
             return;
         }
 
-        // Store data in our persistent state
-        this.state.topkByRound.set(roundNumber, topkData);
+        const state = this.arenaState.getState();
+        let currentCaseId = state.currentCaseId;
+        
+        // CRITICAL FIX: Ensure case_id is consistently a string
+        if (currentCaseId) {
+            currentCaseId = String(currentCaseId);
+        }
+        
+        // CRITICAL FIX: If no current case, try to get from state
+        if (!currentCaseId && state.events && state.events.length > 0) {
+            // Try to find the most recent case_id from events
+            for (let i = state.events.length - 1; i >= 0; i--) {
+                if (state.events[i].case_id) {
+                    currentCaseId = String(state.events[i].case_id);
+                    this.arenaState.setState({ currentCaseId }, false);
+                    break;
+                }
+            }
+        }
+        
+        if (!currentCaseId) {
+            topkBody.innerHTML = '<tr><td colspan="5" class="text-muted">Select a case to view Top-K data</td></tr>';
+            return;
+        }
+        
+        // CRITICAL FIX: Ensure case is initialized in state with string case_id
+        this.arenaState.ensureCaseInitialized(currentCaseId);
+        const caseData = this.arenaState.getTopKData(currentCaseId);
         
         // Always rebuild the ENTIRE grid from our state
-        // This ensures consistency and avoids race conditions
         topkBody.innerHTML = '';
         
-        // Sort rounds numerically (not alphabetically)
-        const sortedRounds = Array.from(this.state.topkByRound.keys())
-            .sort((a, b) => a - b);
-        
         // Build the grid from our complete state
-        for (const round of sortedRounds) {
-            const data = this.state.topkByRound.get(round);
+        for (const roundNumber of caseData.roundNumbers) {
+            const topkData = caseData.rounds.get(roundNumber);
             
             // Skip if data is invalid
-            if (!data || !Array.isArray(data) || data.length === 0) continue;
+            if (!topkData || !Array.isArray(topkData) || topkData.length === 0) continue;
             
             // Add round separator
             const separator = document.createElement('tr');
             separator.className = 'table-secondary';
-            separator.innerHTML = `<td colspan="5" class="small fw-bold py-1">Round ${round}</td>`;
+            separator.innerHTML = `<td colspan="5" class="small fw-bold py-1">Round ${roundNumber}</td>`;
             topkBody.appendChild(separator);
             
             // Process each Top-K entry for this round
-            data.forEach(item => {
+            topkData.forEach(item => {
                 const formatValue = (value, decimals = 2) => {
                     if (typeof value === 'number') {
                         return value.toFixed(decimals);
@@ -87,6 +89,32 @@ export class GridComponent {
                     <td>${item.verified ? '<span class="text-success">✓</span>' : '<span class="text-danger">✗</span>'}</td>
                 `;
                 
+                // Add click handler for provenance
+                if (this.provenanceCard && item.case_id) {
+                    // CRITICAL FIX: Ensure case_id is consistently a string
+                    const caseId = String(item.case_id);
+                    
+                    row.style.cursor = 'pointer';
+                    row.classList.add('table-row-hover');
+                    
+                    // Add data attributes for provenance lookup
+                    row.dataset.caseId = caseId;
+                    row.dataset.score = item.overall;
+                    row.dataset.variant = item.variant;
+                    row.dataset.origin = item.origin;
+                    
+                    // Add click event handler
+                    row.addEventListener('click', () => {
+                        console.log(`[Grid] Clicked item with case_id: ${caseId}`);
+                        this.provenanceCard.openCard(
+                            caseId,
+                            item.overall,
+                            item.variant,
+                            item.origin
+                        );
+                    });
+                }
+                
                 row.className = 'new-entry';
                 topkBody.appendChild(row);
                 
@@ -100,10 +128,20 @@ export class GridComponent {
         }
         
         // Handle empty state
-        if (sortedRounds.length === 0 || 
-            Array.from(this.state.topkByRound.values()).every(data => !data || data.length === 0)) {
+        if (caseData.roundNumbers.length === 0) {
+            // CRITICAL FIX: Add debug logging
+            console.log("[Grid] No rounds for case", currentCaseId, {
+                topkByCase: Array.from(this.arenaState.getState().topkByCase.entries()),
+                chartData: this.arenaState.getState().chartData,
+                allEvents: this.arenaState.getState().events.map(e => ({ 
+                    event: e.event, 
+                    case_id: e.case_id,
+                    hasTopK: !!e.topk
+                }))
+            });
+            
             const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="5" class="text-muted">Waiting for Top-K data...</td>`;
+            row.innerHTML = `<td colspan="5" class="text-muted">No Top-K data for this case</td>`;
             topkBody.appendChild(row);
         }
         
@@ -113,34 +151,34 @@ export class GridComponent {
             timelineEl.scrollTop = timelineEl.scrollHeight;
         }
         
-        console.log(`[TopK] Grid updated with ${sortedRounds.length} rounds of data`);
+        console.log(`[TopK] Grid updated with ${caseData.roundNumbers.length} rounds of data for case ${currentCaseId}`);
     }
 
-    // Add a reset method to clear state when starting new run
-    resetTopK() {
-        // Clear our internal state
-        this.state.topkByRound = new Map();
-        
-        const topkBody = document.getElementById('topk-body');
-        if (topkBody) {
-            topkBody.innerHTML = '<tr><td colspan="5" class="text-muted">Waiting for data...</td></tr>';
-        }
-        
-        console.log("[TopK] Grid reset");
-    }
-
+    // Add to your new GridComponent class
     clear() {
-        this.resetTopK();
-        
-        // Clear other state
-        this.state.labels = [];
-        this.state.best_history = [];
-        this.state.marg_history = [];
+        this.updateFromState(); // Rebuild with current state
     }
 
-    /**
-     * Helper method for DOM selection
-     */
+    resetTopK() {
+        // Clear the current case's data in state
+        const state = this.arenaState.getState();
+        if (state.currentCaseId) {
+            const caseId = String(state.currentCaseId);
+            const caseData = this.arenaState.getTopKData(caseId);
+            caseData.rounds.clear();
+            caseData.roundNumbers = [];
+            this.updateFromState();
+        }
+    }
+
+    setTopK(topkData, roundNumber = null, caseId = null) {
+        // In centralized state, this should notify the ArenaState instead
+        if (caseId && roundNumber) {
+            this.arenaState.initialScored(String(caseId), roundNumber, topkData);
+        }
+        // The state subscription will automatically call updateFromState()
+    }
+
     $(selector) {
         if (selector.startsWith("#")) {
             return document.getElementById(selector.substring(1));
