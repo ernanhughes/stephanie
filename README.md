@@ -1,12 +1,6 @@
-# 🤖 Stephanie
+# 🧪 Stephanie: A Self-Evolving AI Research Assistant
 
 > Self-Tuning Epistemic Framework for Autonomous Navigation and Inference Engineering
-
-Absolutely — here's a rewritten, cleaner, and more compelling version of your README that keeps the core ideas while improving structure, flow, and clarity. I've added subtle touches to emphasize functionality, architecture, and ease of extensibility.
-
----
-
-# 🧪 Stephanie: A Self-Evolving AI Research Assistant
 
 **Turn research papers into executable reasoning pipelines using local AI.**
 
