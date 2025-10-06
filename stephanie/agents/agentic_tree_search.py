@@ -462,7 +462,7 @@ class AgenticTreeSearch:
             return ExecutionResult(stdout="", stderr=str(e), returncode=1, has_submission_file=False)
         finally:
             try:
-                shutil.rmtree(tmpdir, ignore_errors=True) OK
+                shutil.rmtree(tmpdir, ignore_errors=True) 
             except Exception:
                 pass
 
