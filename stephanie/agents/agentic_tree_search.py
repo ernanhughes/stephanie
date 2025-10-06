@@ -1,15 +1,39 @@
 # stephanie/agents/agentic_tree_search.py
+"""
+Agentic Tree Search (MCTS‑lite) for Stephanie
+--------------------------------------------
+Key upgrades vs. your original:
+- **SolutionNode** is now a dataclass with stable IDs and parent/child links.
+- **MCTS‑lite policy** using UCB1 over candidate parents; backpropagates value.
+- **Richer OutputVerifier** extracts more metrics (acc, f1, auc, rmse; % and floats),
+  merges stdout/stderr, and summarizes robustly.
+- **Safer code execution** in an isolated temp folder with `sys.executable -I`,
+  60s timeout, and full cleanup.
+- **Deterministic sampling** (seedable) + early‑stop on no‑improve.
+- **Async fan‑out** for initial drafts.
+- **Extensibility hooks**: custom metric_fn, reward shaping, and emit callbacks.
+
+This module remains framework‑friendly: it only depends on `BaseAgent.llm` and
+returns a `final_solution` dict in the passed `context`.
+"""
 from __future__ import annotations
 
+import asyncio
+import os
 import random
 import re
+import shutil
+import sys
+import tempfile
 import time
 import uuid
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass, field, asdict
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 
+
+# ----------------------------- Data structures ----------------------------- #
 
 @dataclass
 class ExecutionResult:
@@ -19,134 +43,138 @@ class ExecutionResult:
     has_submission_file: bool = False
 
 
+@dataclass
 class SolutionNode:
-    def __init__(
-        self,
-        plan: str,
-        code: Optional[str] = None,
-        metric: Optional[float] = None,
-        output: Optional[str] = None,
-        summary: Optional[str] = None,
-        parent_id: Optional[str] = None,
-        is_buggy: bool = False,
-        node_type: str = "draft",  # 'draft', 'improve', 'debug'
-        timestamp: Optional[float] = None,
-    ):
-        # Use UUID for stable, unique ID (hash(self) changes per instance!)
-        self.id: str = str(uuid.uuid4())
-        self.plan = plan
-        self.code = code
-        self.metric = metric
-        self.output = output
-        self.summary = summary
-        self.parent_id = parent_id
-        self.is_buggy = is_buggy
-        self.node_type = node_type
-        self.timestamp = timestamp or time.time()
+    plan: str
+    code: Optional[str] = None
+    metric: Optional[float] = None
+    output: Optional[str] = None
+    summary: Optional[str] = None
+    parent_id: Optional[str] = None
+    is_buggy: bool = False
+    node_type: str = "draft"  # 'draft', 'improve', 'debug'
+    timestamp: float = field(default_factory=lambda: time.time())
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    children: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "plan": self.plan,
-            "code": self.code,
-            "metric": self.metric,
-            "output": self.output,
-            "summary": self.summary,
-            "parent_id": self.parent_id,
-            "is_buggy": self.is_buggy,
-            "node_type": self.node_type,
-            "timestamp": self.timestamp,
-        }
+        d = asdict(self)
+        # maintain stable public schema
+        return d
 
-    @classmethod
-    def from_dict(cls, data: dict) -> "SolutionNode":
-        # Remove 'id' since it's regenerated
-        data = data.copy()
-        data.pop("id", None)
-        return cls(**data)
 
+# ----------------------------- Plan generator ------------------------------ #
 
 class PlanGenerator:
     def __init__(self, agent: BaseAgent):
         self.agent = agent
 
-    async def draft_plan(self, task_description: str, knowledge: list) -> str:
+    async def draft_plan(self, task_description: str, knowledge: List[str]) -> str:
         prompt = f"""
-You are an expert machine learning engineer.
-Create a detailed solution plan for this task:
+You are an expert ML engineer.
+Create a detailed solution plan for this task (no code):
 {task_description}
 
-Some relevant tricks from past solutions:
-{" ".join(knowledge) if knowledge else "None"}
-
-Output only the plan as natural language text. Do not include code.
+Relevant tricks from past solutions: {" ".join(knowledge) if knowledge else "None"}
+Return only the plan text.
 """
         response = await self.agent.llm(prompt)
         return response.strip()
 
-    async def improve_plan(
-        self, previous_plan: str, feedback: str, knowledge: list
-    ) -> str:
+    async def improve_plan(self, previous_plan: str, feedback: str, knowledge: List[str]) -> str:
         prompt = f"""
-Improve this ML solution plan:
+Improve this ML solution plan (no code):
 {previous_plan}
 
 Feedback: {feedback}
 Additional knowledge: {" ".join(knowledge) if knowledge else "None"}
-
-Output only the improved plan. Do not include code.
+Return only the improved plan text.
 """
         response = await self.agent.llm(prompt)
         return response.strip()
 
     async def debug_plan(self, previous_plan: str, error_log: str) -> str:
         prompt = f"""
-Fix this buggy ML solution plan:
+Fix this buggy ML solution plan (no code). Plan:
 {previous_plan}
 
-Error log: {error_log}
-Output only the corrected plan. Do not include code.
+Error log:
+{error_log}
+Return only the corrected plan text.
 """
         response = await self.agent.llm(prompt)
         return response.strip()
 
 
-class OutputVerifier:
-    def verify(self, output: str, has_submission_file: bool) -> Dict[str, Any]:
-        is_bug = "Error" in output or "Exception" in output or "Traceback" in output
-        is_overfitting = "val_loss increasing" in output.lower()
-        metric = self.extract_metric(output)
-        summary = self.summarize(output)
+# ------------------------------ Verification ------------------------------- #
 
+class OutputVerifier:
+    """Extracts signals from program output and stderr."""
+
+    # common metrics: add patterns as needed
+    _METRIC_PATTERNS = [
+        r"val[_\s]?accuracy[:=]\s*([0-9]*\.?[0-9]+%?)",
+        r"accuracy[:=]\s*([0-9]*\.?[0-9]+%?)",
+        r"f1[_\s]?(score)?[:=]\s*([0-9]*\.?[0-9]+%?)",
+        r"auc[:=]\s*([0-9]*\.?[0-9]+%?)",
+        r"rmse[:=]\s*([0-9]*\.?[0-9]+)",
+        r"score[:=]\s*([0-9]*\.?[0-9]+%?)",
+        r"metric[:=]\s*([0-9]*\.?[0-9]+%?)",
+    ]
+
+    def __init__(self, prefer_higher: bool = True):
+        self.prefer_higher = prefer_higher
+
+    def verify(self, stdout: str, stderr: str, has_submission_file: bool) -> Dict[str, Any]:
+        merged = self._merge_streams(stdout, stderr)
+        is_bug = any(k in merged for k in ("Traceback", "Exception", "Error"))
+        is_overfitting = "val_loss increasing" in merged.lower()
+        metric = self.extract_metric(merged)
+        summary = self.summarize(merged)
         return {
             "is_bug": is_bug,
             "is_overfitting": is_overfitting,
             "has_csv_submission": has_submission_file,
             "metric": metric,
             "summary": summary,
+            "merged_output": merged,
         }
 
-    def extract_metric(self, output: str) -> Optional[float]:
-        # Try common patterns: "val_accuracy: 0.85", "score=0.92", etc.
-        patterns = [
-            r"val[_\s]?accuracy[:=]\s*([0-9]*\.?[0-9]+)",
-            r"accuracy[:=]\s*([0-9]*\.?[0-9]+)",
-            r"score[:=]\s*([0-9]*\.?[0-9]+)",
-            r"metric[:=]\s*([0-9]*\.?[0-9]+)",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, output, re.IGNORECASE)
-            if match:
-                try:
-                    return float(match.group(1))
-                except ValueError:
-                    continue
-        return None  # Return None if no metric found
+    def extract_metric(self, text: str) -> Optional[float]:
+        for pattern in self._METRIC_PATTERNS:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if not m:
+                continue
+            # pick the last numeric group
+            g = next((grp for grp in m.groups()[::-1] if grp is not None), None)
+            if not g:
+                continue
+            try:
+                if g.endswith('%'):
+                    return float(g[:-1]) / 100.0
+                val = float(g)
+                # normalize RMSE (lower is better) by inverting to a bounded reward
+                if 'rmse' in pattern.lower():
+                    return 1.0 / (1.0 + val)
+                return val
+            except ValueError:
+                continue
+        return None
 
-    def summarize(self, output: str) -> str:
-        lines = output.strip().split("\n")[-5:]  # Last 5 lines
+    def summarize(self, text: str, tail_lines: int = 8) -> str:
+        lines = [ln.strip() for ln in text.strip().splitlines()[-tail_lines:]]
         return " ".join(lines) if lines else "No output."
 
+    @staticmethod
+    def _merge_streams(stdout: str, stderr: str) -> str:
+        if not stderr:
+            return stdout or ""
+        if not stdout:
+            return stderr or ""
+        return stdout + "\n--- STDERR ---\n" + stderr
+
+
+# ------------------------------ Code executor ------------------------------ #
 
 class CodeExecutor:
     def __init__(self, agent: BaseAgent):
@@ -162,104 +190,136 @@ Respond with a single number between 1 and 5.
 """
         response = await self.agent.llm(prompt)
         try:
-            score = float(response.strip())
+            score = float(re.findall(r"\d+(?:\.\d+)?", response.strip())[0])
             return max(1.0, min(5.0, score))
-        except (ValueError, TypeError):
+        except Exception:
             return 3.0
+
+    @staticmethod
+    def _strip_markdown(code: str) -> str:
+        # remove triple‑fenced blocks if present
+        fence = re.compile(r"^```(?:python)?\n|\n```$", re.IGNORECASE)
+        return fence.sub("", code).strip()
 
     async def one_pass_codegen(self, plan: str) -> str:
         prompt = f"""
 Generate complete, runnable Python code for the following machine learning plan.
-Do not explain. Only output code.
+Only output code (no backticks, no explanation).
 
 Plan:
 {plan}
 """
         response = await self.agent.llm(prompt)
-        # Optional: post-process to remove markdown
-        if response.startswith("```python"):
-            response = response[9:]
-        if response.endswith("```"):
-            response = response[:-3]
-        return response.strip()
+        return self._strip_markdown(response)
 
     async def stepwise_codegen(self, plan: str) -> str:
-        # For now, fallback to one-pass; stepwise is complex and LLMs rarely return structured steps reliably
+        # Future: break into steps; for now use same path
         return await self.one_pass_codegen(plan)
 
+
+# ------------------------------ Tree Search -------------------------------- #
 
 class AgenticTreeSearch:
     def __init__(
         self,
         agent: BaseAgent,
         max_iterations: int = 500,
-        time_limit: int = 86400,  # 24 hours
+        time_limit: int = 24 * 60 * 60,
         N_init: int = 5,
-        H_debug: float = 0.8,
-        H_greedy: float = 0.8,
+        C_ucb: float = 1.2,
+        H_debug: float = 0.5,
+        no_improve_patience: int = 50,
+        random_seed: Optional[int] = 42,
+        metric_fn: Optional[Callable[[Optional[float]], float]] = None,
+        emit_cb: Optional[Callable[[str, Dict[str, Any]], Awaitable[None]]] = None,
     ):
         self.agent = agent
         self.tree: List[SolutionNode] = []
+        self.nodes_by_id: Dict[str, SolutionNode] = {}
+        self.parent_map: Dict[str, Optional[str]] = {}
+        self.children_map: Dict[str, List[str]] = {}
+
         self.max_iterations = max_iterations
         self.time_limit = time_limit
         self.N_init = N_init
+        self.C_ucb = C_ucb
         self.H_debug = H_debug
-        self.H_greedy = H_greedy
-        self.iteration = 0
-        self.start_time = time.time()
-        self.best_node: Optional[SolutionNode] = None
+        self.no_improve_patience = no_improve_patience
+        self.emit_cb = emit_cb
 
         self.plan_generator = PlanGenerator(agent)
         self.code_executor = CodeExecutor(agent)
         self.verifier = OutputVerifier()
 
-    async def run(self, context: dict) -> dict:
-        task_description = context.get("goal", {}).get("goal_text", "")
-        knowledge = context.get("knowledge", [])
+        self.iteration = 0
+        self.start_time = time.time()
+        self.best_node: Optional[SolutionNode] = None
+        self.best_metric: float = -float('inf')
+        self.last_improve_iter: int = 0
 
+        # MCTS stats
+        self.visits: Dict[str, int] = {}  # node_id -> N
+        self.value: Dict[str, float] = {}  # node_id -> mean value
+
+        # reward shaping
+        self.metric_fn = metric_fn or (lambda m: -1.0 if m is None else float(m))
+
+        if random_seed is not None:
+            random.seed(random_seed)
+
+    # ----------------------------- Orchestration ---------------------------- #
+
+    async def run(self, context: dict) -> dict:
+        goal = context.get("goal", {})
+        task_description = goal.get("goal_text", "").strip()
+        knowledge = context.get("knowledge", [])
         if not task_description:
             raise ValueError("Context must contain 'goal.goal_text'")
 
-        # Initial drafts
-        for _ in range(self.N_init):
+        await self._emit("start", {"goal": task_description})
+
+        # 1) Initial drafts in parallel
+        init_tasks = [self.plan_generator.draft_plan(task_description, knowledge) for _ in range(self.N_init)]
+        for plan in await asyncio.gather(*init_tasks):
             if self._should_stop():
                 break
-            plan = await self.plan_generator.draft_plan(task_description, knowledge)
-            node = await self._process_plan(plan, None, "draft", task_description, knowledge)
-            self.tree.append(node)
-            self.update_best_node(node)
+            node = await self._process_plan(plan, parent_node=None, node_type="draft", task_description=task_description, knowledge=knowledge)
+            self._add_node(node)
+            self._update_best(node)
             self.iteration += 1
 
-        # Main loop
+        # 2) Main loop (MCTS‑lite)
         while not self._should_stop():
-            action, parent_node = self.select_action()
-            if action == "draft":
+            parent = self._select_parent_ucb()
+            action = self._choose_action(parent)
+
+            if action == "draft" or parent is None:
                 plan = await self.plan_generator.draft_plan(task_description, knowledge)
                 node = await self._process_plan(plan, None, "draft", task_description, knowledge)
             elif action == "improve":
-                assert parent_node is not None
-                feedback = parent_node.summary or "No specific feedback."
-                plan = await self.plan_generator.improve_plan(parent_node.plan, feedback, knowledge)
-                node = await self._process_plan(plan, parent_node, "improve", task_description, knowledge)
+                feedback = (parent.summary or "No specific feedback.")
+                plan = await self.plan_generator.improve_plan(parent.plan, feedback, knowledge)
+                node = await self._process_plan(plan, parent, "improve", task_description, knowledge)
             elif action == "debug":
-                assert parent_node is not None
-                error_log = parent_node.output or "Unknown error."
-                plan = await self.plan_generator.debug_plan(parent_node.plan, error_log)
-                node = await self._process_plan(plan, parent_node, "debug", task_description, knowledge)
+                error_log = parent.output or parent.summary or "Unknown error."
+                plan = await self.plan_generator.debug_plan(parent.plan, error_log)
+                node = await self._process_plan(plan, parent, "debug", task_description, knowledge)
             else:
                 raise ValueError(f"Unknown action: {action}")
 
-            self.tree.append(node)
-            self.update_best_node(node)
+            self._add_node(node)
+            self._backprop(node)
+            self._update_best(node)
             self.iteration += 1
 
-        # Final result
-        best_solution = self.get_best_solution()
-        if best_solution:
-            context["final_solution"] = best_solution.to_dict()
-        else:
-            context["final_solution"] = None
+        # 3) Final result
+        best = self.best_node.to_dict() if self.best_node else None
+        await self._emit("done", {"iterations": self.iteration, "best_metric": self.best_metric})
+        context["final_solution"] = best
+        context["search_tree_size"] = len(self.tree)
         return context
+
+    # ------------------------------- Core steps ----------------------------- #
 
     async def _process_plan(
         self,
@@ -267,102 +327,152 @@ class AgenticTreeSearch:
         parent_node: Optional[SolutionNode],
         node_type: str,
         task_description: str,
-        knowledge: list,
+        knowledge: List[str],
     ) -> SolutionNode:
-        # Generate code
+        # codegen
         complexity = await self.code_executor.score_complexity(task_description, plan)
-        if complexity > 3.5:
-            code = await self.code_executor.stepwise_codegen(plan)
-        else:
-            code = await self.code_executor.one_pass_codegen(plan)
+        code = (
+            await self.code_executor.stepwise_codegen(plan)
+            if complexity > 3.5
+            else await self.code_executor.one_pass_codegen(plan)
+        )
 
-        # Execute code (⚠️ WARNING: This must be sandboxed in production!)
+        # execute (⚠️ sandbox in production)
         result = await self.execute_code(code)
 
-        # Verify output
-        verification = self.verifier.verify(result.stdout, result.has_submission_file)
+        # verify
+        v = self.verifier.verify(result.stdout, result.stderr, result.has_submission_file)
 
-        return SolutionNode(
+        node = SolutionNode(
             plan=plan,
             code=code,
-            metric=verification["metric"],
-            output=result.stdout,
-            summary=verification["summary"],
+            metric=v["metric"],
+            output=v["merged_output"],
+            summary=v["summary"],
             parent_id=parent_node.id if parent_node else None,
-            is_buggy=verification["is_bug"],
+            is_buggy=v["is_bug"],
             node_type=node_type,
         )
+
+        await self._emit("node", {"id": node.id, "parent_id": node.parent_id, "type": node.node_type, "metric": node.metric})
+        return node
+
+    # ------------------------------- Policy -------------------------------- #
+
+    def _select_parent_ucb(self) -> Optional[SolutionNode]:
+        """Choose a parent node to expand using UCB1 over non‑buggy nodes with any metric signal.
+        Falls back to a random valid node or None (to draft anew)."""
+        candidates = [n for n in self.tree if not n.is_buggy]
+        if not candidates:
+            return None
+        total_N = sum(self.visits.get(n.id, 1) for n in candidates)
+
+        def ucb(n: SolutionNode) -> float:
+            N = self.visits.get(n.id, 1)
+            Q = self.value.get(n.id, 0.0)
+            return Q + self.C_ucb * ((total_N ** 0.5) / (1 + N))
+
+        # prefer best or random early on
+        if self.iteration < self.N_init * 2 and self.best_node:
+            return self.best_node
+        return max(candidates, key=ucb)
+
+    def _choose_action(self, parent: Optional[SolutionNode]) -> str:
+        if parent is None:
+            return "draft"
+        if parent.is_buggy and random.random() < self.H_debug:
+            return "debug"
+        # otherwise improve by default
+        return "improve"
+
+    # ------------------------------- Bookkeeping ---------------------------- #
+
+    def _add_node(self, node: SolutionNode) -> None:
+        self.tree.append(node)
+        self.nodes_by_id[node.id] = node
+        self.parent_map[node.id] = node.parent_id
+        if node.parent_id:
+            self.children_map.setdefault(node.parent_id, []).append(node.id)
+            # link on the parent instance too (for convenience)
+            p = self.nodes_by_id.get(node.parent_id)
+            if p:
+                p.children.append(node.id)
+        self.visits.setdefault(node.id, 0)
+        self.value.setdefault(node.id, 0.0)
+
+    def _backprop(self, leaf: SolutionNode) -> None:
+        reward = self.metric_fn(leaf.metric)
+        node_id = leaf.id
+        while node_id is not None:
+            self.visits[node_id] = self.visits.get(node_id, 0) + 1
+            # incremental mean update
+            v_prev = self.value.get(node_id, 0.0)
+            n = self.visits[node_id]
+            self.value[node_id] = v_prev + (reward - v_prev) / n
+            node_id = self.parent_map.get(node_id)
+
+    def _update_best(self, node: SolutionNode) -> None:
+        m = self.metric_fn(node.metric)
+        if m > self.best_metric:
+            self.best_metric = m
+            self.best_node = node
+            self.last_improve_iter = self.iteration
+
+    # ------------------------------ Stopping -------------------------------- #
 
     def _should_stop(self) -> bool:
         if self.iteration >= self.max_iterations:
             return True
-        if time.time() - self.start_time > self.time_limit:
+        if (time.time() - self.start_time) > self.time_limit:
+            return True
+        if (self.iteration - self.last_improve_iter) >= self.no_improve_patience and self.iteration > 0:
             return True
         return False
 
-    def select_action(self) -> Tuple[str, Optional[SolutionNode]]:
-        draft_count = sum(1 for n in self.tree if n.node_type == "draft")
-        if draft_count < self.N_init:
-            return "draft", None
-
-        buggy_nodes = [n for n in self.tree if n.is_buggy]
-        valid_nodes = [n for n in self.tree if not n.is_buggy and n.metric is not None]
-
-        if buggy_nodes and random.random() < self.H_debug:
-            return "debug", random.choice(buggy_nodes)
-
-        if self.best_node and random.random() < self.H_greedy:
-            return "improve", self.best_node
-
-        if valid_nodes:
-            return "improve", random.choice(valid_nodes)
-
-        return "draft", None
+    # ------------------------------- Exec ----------------------------------- #
 
     async def execute_code(self, code: str) -> ExecutionResult:
         """
-        ⚠️ SECURITY WARNING:
-        Executing arbitrary LLM-generated code is EXTREMELY DANGEROUS.
-        In production, this must run in a sandboxed environment (e.g., Docker, gVisor, or restricted subprocess).
-        For now, this is a placeholder that simulates execution.
+        ⚠ SECURITY: This still runs untrusted code; use Docker/gVisor/Firejail in prod.
+        We isolate to a fresh temp dir, use `-I` (isolated mode), and clean up.
         """
-        # TODO: Replace with real sandboxed execution
-        import os
-        import subprocess
-        import tempfile
-
+        tmpdir = tempfile.mkdtemp(prefix="ats_run_")
+        py_path = os.path.join(tmpdir, "main.py")
         try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            with open(py_path, "w", encoding="utf-8") as f:
                 f.write(code)
-                f.flush()
-                # ⚠️ NEVER do this in production without sandboxing!
-                result = subprocess.run(
-                    ['python', f.name],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,  # 60s timeout
-                    cwd=tempfile.gettempdir()
-                )
-                has_csv = any(fname.endswith('.csv') for fname in os.listdir(tempfile.gettempdir()))
-                os.unlink(f.name)
-                return ExecutionResult(
-                    stdout=result.stdout,
-                    stderr=result.stderr,
-                    returncode=result.returncode,
-                    has_submission_file=has_csv
-                )
-        except Exception as e:
-            return ExecutionResult(
-                stdout="",
-                stderr=str(e),
-                returncode=1,
-                has_submission_file=False
+            # run
+            import subprocess
+            result = subprocess.run(
+                [sys.executable, "-I", py_path],
+                cwd=tmpdir,
+                capture_output=True,
+                text=True,
+                timeout=60,
             )
+            # detect outputs
+            has_csv = any(fn.lower().endswith(".csv") for fn in os.listdir(tmpdir))
+            return ExecutionResult(
+                stdout=result.stdout,
+                stderr=result.stderr,
+                returncode=result.returncode,
+                has_submission_file=has_csv,
+            )
+        except Exception as e:
+            return ExecutionResult(stdout="", stderr=str(e), returncode=1, has_submission_file=False)
+        finally:
+            try:
+                shutil.rmtree(tmpdir, ignore_errors=True) OK
+            except Exception:
+                pass
 
-    def update_best_node(self, node: SolutionNode):
-        if node.metric is not None:
-            if self.best_node is None or node.metric > self.best_node.metric:
-                self.best_node = node
+    # ------------------------------- Events -------------------------------- #
 
-    def get_best_solution(self) -> Optional[SolutionNode]:
-        return self.best_node
+    async def _emit(self, event: str, payload: Dict[str, Any]) -> None:
+        if self.emit_cb is None:
+            return
+        try:
+            await self.emit_cb(event, payload)
+        except Exception:
+            # never let telemetry kill the run
+            pass
