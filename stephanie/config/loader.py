@@ -1,12 +1,15 @@
 # stephanie/config/loader.py
 from __future__ import annotations
 
-from typing import List
-import os
+import hashlib
 import json
-import hashlib 
+import os
+from typing import List
+
 from omegaconf import OmegaConf
+
 from stephanie.config.schema import AppConfig
+
 
 def load_config(yaml_paths: List[str] | None = None,
                 cli_overrides: List[str] | None = None,

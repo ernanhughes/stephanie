@@ -864,7 +864,7 @@ class MementoAgent(MCTSReasoningAgent):
             )
 
             try:
-                self.memory.training_events.add_pairwise(
+                self.memory.training_events.insert_pairwise(
                     model_key=model_key_ranker,
                     dimension=dimension,
                     query_text=goal_text,

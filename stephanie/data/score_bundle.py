@@ -1,7 +1,7 @@
 # stephanie/scoring/score_bundle.py
 import json
 from dataclasses import dataclass, field
-from statistics import stdev, pvariance
+from statistics import pvariance, stdev
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np

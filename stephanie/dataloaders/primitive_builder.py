@@ -24,10 +24,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from stephanie.models.casebook import CaseBookORM
-
 # ORM imports – adjust paths to your repo
 from stephanie.models.chat import ChatTurnORM
-
 
 # ======= Primitive Metadata =======
 

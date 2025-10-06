@@ -2,15 +2,12 @@
 defaults:
   - _self_
   - db: postgres
-  - plan_monitor: default
-
-  - scorer/ebt/default
-  - scorer/hrm/default
-  - scorer/mrq/default
-  - scorer/sicql/default
-  - scorer/svm/default
-  - scorer/contrastive_ranker/default
-  - scorer/epistemic_hrm/default
+  - plan_monitor: disabled
+  - bus: enabled   
+  - logging/json_logger
+  - mars/default
+  - services/default
+  - scorer: all  
 
   - agents/arxiv_search
   - agents/cartridge

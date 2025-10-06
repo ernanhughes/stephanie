@@ -8,12 +8,11 @@
 defaults:
   - _self_
   - db: postgres
-  - logging/json_logger
   - plan_monitor: disabled
-  - scoring/service/default
+  - bus: enabled   
   - logging/json_logger
   - mars/default
-
+  - services/default
   - scorer: all  
 
   - agents/chat_annotate

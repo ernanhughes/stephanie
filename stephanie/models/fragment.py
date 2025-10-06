@@ -1,6 +1,8 @@
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
+
 from stephanie.models.base import Base
+
 
 class FragmentORM(Base):
     __tablename__ = "fragments"

@@ -1,9 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,
-                        String, Text)
-from sqlalchemy.orm import relationship
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
 
 from stephanie.models.base import Base
 

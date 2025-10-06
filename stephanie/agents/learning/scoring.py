@@ -42,9 +42,8 @@ class Scoring:
 
         # Knowledge scorer
         try:
-            from stephanie.scoring.scorer.knowledge_scorer import (
-                KnowledgeScorer,
-            )
+            from stephanie.scoring.scorer.knowledge_scorer import \
+                KnowledgeScorer
 
             self.knowledge = KnowledgeScorer(
                 cfg.get("knowledge_scorer", {}), memory, container, logger

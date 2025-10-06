@@ -11,10 +11,8 @@ from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.utils.paper_utils import (
-    build_paper_goal_meta,
-    build_paper_goal_text,
-)
+from stephanie.utils.paper_utils import (build_paper_goal_meta,
+                                         build_paper_goal_text)
 
 _logger = logging.getLogger(__name__)
 

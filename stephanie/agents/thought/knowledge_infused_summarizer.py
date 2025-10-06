@@ -1573,7 +1573,7 @@ Verified summary:
         )
 
         # pairwise vs. Track B
-        self.memory.training_events.add_pairwise(
+        self.memory.training_events.insert_pairwise(
             model_key=self.model_key_ranker,
             dimension="alignment",
             query_text=title,
@@ -1609,7 +1609,7 @@ Verified summary:
             ) > author_metrics.get("overall", 0.0)
             pos = verified_summary if prefer_verified else author_summary
             neg = author_summary if prefer_verified else verified_summary
-            self.memory.training_events.add_pairwise(
+            self.memory.training_events.insert_pairwise(
                 model_key=self.model_key_ranker,
                 dimension="alignment",
                 query_text=title,

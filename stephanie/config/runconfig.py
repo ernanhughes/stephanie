@@ -1,9 +1,12 @@
 # stephanie/config/runconfig.py
 from __future__ import annotations
 
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
+
 from stephanie.config.schema import AppConfig
+
 
 class RunConfig(BaseModel):
     configurable: Dict[str, Any] = Field(default_factory=dict)  # e.g., {"mcts.max_depth": 6}

@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from typing import Literal
-from pydantic import BaseModel, conint, PositiveInt, conlist
+
+from pydantic import BaseModel, PositiveInt, conint, conlist
 
 
 class AIRWeights(BaseModel):

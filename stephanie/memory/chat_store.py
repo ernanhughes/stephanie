@@ -18,9 +18,10 @@ through the BaseSQLAlchemyStore parent class.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import or_, desc, func, text
+from sqlalchemy import desc, func, or_, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Query, aliased, selectinload
 
@@ -29,7 +30,6 @@ from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
                                    ChatTurnORM)
 from stephanie.scoring.scorable import Scorable, ScorableType
 
-import logging
 _logger = logging.getLogger(__name__)
 
 class ChatStore(BaseSQLAlchemyStore):

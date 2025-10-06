@@ -1,5 +1,6 @@
 # stephanie/types/events.py
 from typing import Any, Dict, Optional
+
 from pydantic import BaseModel, Field, NonNegativeInt, field_validator
 
 

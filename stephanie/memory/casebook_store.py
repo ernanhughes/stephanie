@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from sqlalchemy import and_, desc, func,  or_
+from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore

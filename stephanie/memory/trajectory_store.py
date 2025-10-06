@@ -8,6 +8,7 @@ from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.fragment import FragmentORM
 from stephanie.models.transition import TransitionORM
 
+
 def _sha1(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 

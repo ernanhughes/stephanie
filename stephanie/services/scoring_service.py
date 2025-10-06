@@ -24,6 +24,7 @@ Design Principles:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -34,7 +35,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.services.service_protocol import Service
 
-import logging
 _logger = logging.getLogger(__name__)
 
 

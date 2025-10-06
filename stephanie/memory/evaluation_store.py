@@ -35,41 +35,48 @@ class EvaluationStore(BaseSQLAlchemyStore):
     # -------------------
     def insert(self, evaluation: EvaluationORM) -> int:
         """Insert a new Evaluation row and link to rule applications if relevant."""
-        def op(s):
-            
-                s.add(evaluation)
-                s.flush()
 
-                # Link to rule applications if possible
-                if evaluation.pipeline_run_id and evaluation.goal_id:
-                    rule_apps = (
-                        s.query(RuleApplicationORM)
-                        .filter_by(
-                            pipeline_run_id=evaluation.pipeline_run_id,
-                            goal_id=evaluation.goal_id,
-                        )
-                        .all()
+        def op(s):
+            s.add(evaluation)
+            s.flush()
+
+            # Link to rule applications if possible
+            if evaluation.pipeline_run_id and evaluation.goal_id:
+                rule_apps = (
+                    s.query(RuleApplicationORM)
+                    .filter_by(
+                        pipeline_run_id=evaluation.pipeline_run_id,
+                        goal_id=evaluation.goal_id,
                     )
-                    for ra in rule_apps:
-                        s.add(EvaluationRuleLinkORM(
+                    .all()
+                )
+                for ra in rule_apps:
+                    s.add(
+                        EvaluationRuleLinkORM(
                             evaluation_id=evaluation.id,
                             rule_application_id=ra.id,
-                        ))
-                return evaluation.id
+                        )
+                    )
+            return evaluation.id
 
         eval_id = self._run(op)
 
         if self.logger:
-            self.logger.log("ScoreStored", {
-                "evaluation_id": eval_id,
-                "goal_id": evaluation.goal_id,
-                "scorable_id": evaluation.scorable_id,
-                "scorable_type": evaluation.scorable_type,
-                "agent": evaluation.agent_name,
-                "model": evaluation.model_name,
-                "scores": evaluation.scores,
-                "timestamp": evaluation.created_at.isoformat() if evaluation.created_at else None,
-            })
+            self.logger.log(
+                "ScoreStored",
+                {
+                    "evaluation_id": eval_id,
+                    "goal_id": evaluation.goal_id,
+                    "scorable_id": evaluation.scorable_id,
+                    "scorable_type": evaluation.scorable_type,
+                    "agent": evaluation.agent_name,
+                    "model": evaluation.model_name,
+                    "scores": evaluation.scores,
+                    "timestamp": evaluation.created_at.isoformat()
+                    if evaluation.created_at
+                    else None,
+                },
+            )
         return eval_id
 
     def save_bundle(
@@ -84,11 +91,12 @@ class EvaluationStore(BaseSQLAlchemyStore):
         model_name=None,
         agent_name=None,
         *,
-        container=None,   # needed for ScoreDeltaCalculator
+        container=None,  # needed for ScoreDeltaCalculator
     ) -> EvaluationORM:
         """Persist a full bundle (Evaluation + Scores + Attributes) into the DB,
         then handle delta logging and display.
         """
+
         def op(s):
             goal = context.get("goal")
             pipeline_run_id = context.get("pipeline_run_id")
@@ -100,7 +108,8 @@ class EvaluationStore(BaseSQLAlchemyStore):
                 scorable_id=str(scorable.id),
                 source=source,
                 agent_name=agent_name or cfg.get("name"),
-                model_name=model_name or cfg.get("model", {}).get("name", "UnknownModel"),
+                model_name=model_name
+                or cfg.get("model", {}).get("name", "UnknownModel"),
                 embedding_type=embedding_type,
                 evaluator_name=evaluator or "ScoreEvaluator",
                 strategy=cfg.get("strategy"),
@@ -125,16 +134,22 @@ class EvaluationStore(BaseSQLAlchemyStore):
 
                 # Attributes
                 for k, v in (result.attributes or {}).items():
-                    s.add(ScoreAttributeORM(
-                        score_id=score_orm.id,
-                        key=k,
-                        value=json.dumps(v) if isinstance(v, (list, dict)) else str(v),
-                        data_type=(
-                            "json" if isinstance(v, (list, dict))
-                            else "float" if isinstance(v, (int, float))
-                            else "string"
-                        ),
-                    ))
+                    s.add(
+                        ScoreAttributeORM(
+                            score_id=score_orm.id,
+                            key=k,
+                            value=json.dumps(v)
+                            if isinstance(v, (list, dict))
+                            else str(v),
+                            data_type=(
+                                "json"
+                                if isinstance(v, (list, dict))
+                                else "float"
+                                if isinstance(v, (int, float))
+                                else "string"
+                            ),
+                        )
+                    )
 
             return eval_orm
 
@@ -142,13 +157,16 @@ class EvaluationStore(BaseSQLAlchemyStore):
 
         # ---- Post-persistence hooks ----
         if self.logger:
-            self.logger.log("BundleSaved", {
-                "evaluation_id": eval_orm.id,
-                "goal_id": eval_orm.goal_id,
-                "scorable_id": eval_orm.scorable_id,
-                "scorable_type": eval_orm.scorable_type,
-                "bundle_keys": list(bundle.results.keys()),
-            })
+            self.logger.log(
+                "BundleSaved",
+                {
+                    "evaluation_id": eval_orm.id,
+                    "goal_id": eval_orm.goal_id,
+                    "scorable_id": eval_orm.scorable_id,
+                    "scorable_type": eval_orm.scorable_type,
+                    "bundle_keys": list(bundle.results.keys()),
+                },
+            )
 
         weighted_score = bundle.aggregate()
 
@@ -157,12 +175,14 @@ class EvaluationStore(BaseSQLAlchemyStore):
         if goal and "id" in goal and container is not None:
             from stephanie.scoring.calculations.score_delta import \
                 ScoreDeltaCalculator
-            ScoreDeltaCalculator(cfg, self, container, self.logger).log_score_delta(
-                scorable, weighted_score, goal["id"]
-            )
+
+            ScoreDeltaCalculator(
+                cfg, self, container, self.logger
+            ).log_score_delta(scorable, weighted_score, goal["id"])
 
         # Optional display
         from stephanie.scoring.score_display import ScoreDisplay
+
         ScoreDisplay.show(scorable, bundle.to_dict(), weighted_score)
 
         return eval_orm
@@ -187,6 +207,7 @@ class EvaluationStore(BaseSQLAlchemyStore):
                 return None
             goal = s.query(GoalORM).filter_by(id=ev.goal_id).first()
             return goal.goal_text if goal else None
+
         return self._run(op)
 
     def get_by_goal_type(self, goal_type: str) -> list[dict]:
@@ -235,7 +256,7 @@ class EvaluationStore(BaseSQLAlchemyStore):
 
     def get_all(self, limit: int = 100) -> list[dict]:
         return self._run(
-            lambda s : [
+            lambda s: [
                 self._orm_to_dict(r)
                 for r in s.query(EvaluationORM)
                 .order_by(EvaluationORM.created_at.desc())
@@ -247,7 +268,10 @@ class EvaluationStore(BaseSQLAlchemyStore):
     def get_rules_for_score(self, evaluation_id: int) -> list[int]:
         return self._run(
             lambda s: [
-                rid for (rid,) in s.query(EvaluationRuleLinkORM.rule_application_id)
+                rid
+                for (rid,) in s.query(
+                    EvaluationRuleLinkORM.rule_application_id
+                )
                 .filter_by(evaluation_id=evaluation_id)
                 .all()
             ]
@@ -270,6 +294,7 @@ class EvaluationStore(BaseSQLAlchemyStore):
                 )
                 return scores.get("final_score")
             return None
+
         return self._run(op)
 
     def get_by_scorable(
@@ -293,11 +318,13 @@ class EvaluationStore(BaseSQLAlchemyStore):
                 q = q.filter(EvaluationORM.created_at >= since)
             q = q.order_by(
                 EvaluationORM.created_at.desc()
-                if newest_first else EvaluationORM.created_at.asc()
+                if newest_first
+                else EvaluationORM.created_at.asc()
             )
             if limit is not None:
                 q = q.limit(limit)
             return [self._orm_to_dict(r) for r in q.all()]
+
         return self._run(op)
 
     # -------------------
@@ -313,14 +340,21 @@ class EvaluationStore(BaseSQLAlchemyStore):
             "model_name": row.model_name,
             "evaluator_name": row.evaluator_name,
             "scores": (
-                row.scores if isinstance(row.scores, dict) else json.loads(row.scores)
-            ) if row.scores else {},
+                row.scores
+                if isinstance(row.scores, dict)
+                else json.loads(row.scores)
+            )
+            if row.scores
+            else {},
             "strategy": row.strategy,
             "reasoning_strategy": row.reasoning_strategy,
             "pipeline_run_id": row.pipeline_run_id,
             "extra_data": (
-                row.extra_data if isinstance(row.extra_data, dict)
+                row.extra_data
+                if isinstance(row.extra_data, dict)
                 else json.loads(row.extra_data)
-            ) if row.extra_data else {},
+            )
+            if row.extra_data
+            else {},
             "created_at": row.created_at,
         }

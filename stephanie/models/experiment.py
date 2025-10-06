@@ -4,21 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import (
-    JSON,
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Index,
-    Integer,
-    String,
-    UniqueConstraint,
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
+                        Index, Integer, String, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import JSONB
-
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from stephanie.models.base import Base  # your existing Base
 

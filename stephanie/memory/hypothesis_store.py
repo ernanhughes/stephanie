@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from difflib import SequenceMatcher
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import numpy as np
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM
 from stephanie.models.hypothesis import HypothesisORM
-from stephanie.models.hypothesis_document_section import HypothesisDocumentSectionORM
-from typing import Sequence
+from stephanie.models.hypothesis_document_section import \
+    HypothesisDocumentSectionORM
+
 
 class HypothesisStore(BaseSQLAlchemyStore):
     orm_model = HypothesisORM

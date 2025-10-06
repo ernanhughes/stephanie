@@ -1,15 +1,17 @@
 # stephanie/agents/prompt_runner_agent.py
 from __future__ import annotations
 
-import uuid
 import asyncio
 import logging
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
-from stephanie.services.service_protocol import Service
+
 import yaml
+
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.services.service_protocol import Service
 
 _logger = logging.getLogger(__name__)
 

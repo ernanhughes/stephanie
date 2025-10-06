@@ -1,7 +1,7 @@
 # stephanie/prompts/prompt_loader.py
+import logging
 import os
 
-import logging
 from jinja2 import Template
 
 from stephanie.constants import (DEFAULT, FILE, NAME, PROMPT_DIR, PROMPT_FILE,

@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import random
 import time
-from typing import Any, Dict, List, Optional, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from stephanie.services.service_protocol import Service
 

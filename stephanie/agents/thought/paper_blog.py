@@ -246,7 +246,7 @@ class SimplePaperBlogAgent(BaseAgent):
             pos_text = summary if prefer_baseline else arxiv_summary
             neg_text = arxiv_summary if prefer_baseline else summary
 
-            self.memory.training_events.add_pairwise(
+            self.memory.training_events.insert_pairwise(
                 model_key=self.model_key_ranker,
                 dimension="alignment",
                 query_text=title,

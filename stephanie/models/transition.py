@@ -1,6 +1,8 @@
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
+
 from stephanie.models.base import Base
+
 
 class TransitionORM(Base):
     __tablename__ = "agent_transitions"

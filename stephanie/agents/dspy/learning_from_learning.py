@@ -1,18 +1,20 @@
 # stephanie/agents/dspy/learning_from_learning.py
 from __future__ import annotations
-import dspy
+
 import json
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.agents.learning.strategy_manager import StrategyManager
+import dspy
+
 from stephanie.agents.learning.corpus_retriever import CorpusRetriever
-from stephanie.agents.learning.scoring import Scoring
-from stephanie.agents.learning.summarizer import Summarizer
+from stephanie.agents.learning.evidence import Evidence
 from stephanie.agents.learning.knowledge_arena import KnowledgeArena
 from stephanie.agents.learning.persistence import Persistence
-from stephanie.agents.learning.evidence import Evidence
+from stephanie.agents.learning.scoring import Scoring
+from stephanie.agents.learning.strategy_manager import StrategyManager
+from stephanie.agents.learning.summarizer import Summarizer
 from stephanie.utils.json_sanitize import dumps_safe
-import time
 
 
 class BaselineSummarySignature(dspy.Signature):

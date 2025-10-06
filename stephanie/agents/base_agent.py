@@ -1,6 +1,8 @@
 # stephanie/agents/base_agent.py
 from __future__ import annotations
 
+import asyncio
+import functools
 import random
 import re
 import time
@@ -9,8 +11,6 @@ from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict
-import asyncio
-import functools
 
 import litellm
 import torch

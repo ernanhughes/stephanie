@@ -26,6 +26,7 @@ from stephanie.services.llm_service import LLMService
 from stephanie.services.meta_confidence_service import MetaConfidenceService
 from stephanie.services.plan_trace_service import PlanTraceService
 from stephanie.services.prompt_service import PromptService
+from stephanie.services.registry_loader import load_services_profile
 from stephanie.services.reporting_service import (JsonlSink, LoggerSink,
                                                   ReportingService)
 from stephanie.services.rules_service import RulesService
@@ -37,7 +38,6 @@ from stephanie.services.strategy_profile_service import StrategyProfileService
 from stephanie.services.training_service import TrainingService
 from stephanie.services.zeromodel import ZeroModelService
 from stephanie.utils.report_utils import get_stage_details
-from stephanie.services.registry_loader import load_services_profile
 
 
 class PipelineStage:

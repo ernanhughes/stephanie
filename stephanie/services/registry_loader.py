@@ -1,9 +1,13 @@
 from __future__ import annotations
-import os
+
 import importlib
+import os
 from typing import Any, Dict, Optional
+
 from omegaconf import OmegaConf
+
 from stephanie.services.service_container import ServiceContainer
+
 
 class _DeferredServiceRef:
     def __init__(self, container: ServiceContainer, name: str, attr: Optional[str] = None):

@@ -1,6 +1,8 @@
 # stephanie/types/training_event.py
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 from pydantic import BaseModel, Field, field_validator
+
 
 class TrainingEventCreate(BaseModel):
     model_key: str

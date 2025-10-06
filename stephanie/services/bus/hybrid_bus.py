@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Callable, Dict, Optional, List
+from typing import Any, Callable, Dict, List, Optional
 
 from .bus_protocol import BusProtocol
-from .errors import (
-    BusConnectionError, BusPublishError, BusRequestError, BusSubscribeError
-)
+from .errors import (BusConnectionError, BusPublishError, BusRequestError,
+                     BusSubscribeError)
 from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
 from .nats_bus import NatsKnowledgeBus
