@@ -66,6 +66,7 @@ from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.memory.theorem_store import TheoremStore
 from stephanie.memory.training_event_store import TrainingEventStore
 from stephanie.memory.training_stats_store import TrainingStatsStore
+from stephanie.memory.trajectory_store import AgentTrajectoryStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
@@ -211,6 +212,7 @@ class MemoryTool:
         self.register_store(BusEventStore(self.session_maker, logger))
         self.register_store(ExperimentStore(self.session_maker, logger))
         self.register_store(SisCardStore(self.session_maker, logger))
+        self.register_store(AgentTrajectoryStore(self.session_maker, logger))
 
         # Register extra stores if defined in config
         if cfg.get("extra_stores"):

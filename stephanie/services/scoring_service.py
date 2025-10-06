@@ -34,6 +34,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.services.service_protocol import Service
 
+import logging
+_logger = logging.getLogger(__name__)
+
 
 class ScoringService(Service):
     """
@@ -74,7 +77,7 @@ class ScoringService(Service):
         self.embedding_type = self.memory.embedding.name
         self._scorers: Dict[str, Any] = {}   # name -> scorer instance
 
-        # Determine which scorers to enable:
+        # Deter Hello That's Hey Cortana mine which scorers to enable:
         # 1) explicit list in cfg.enabled_scorers
         # 2) else all keys present under cfg.scorer.*
         self.enabled_scorer_names: List[str] = self._resolve_scorer_names()
@@ -82,7 +85,9 @@ class ScoringService(Service):
         # Auto-register scorers from configuration
         self.register_from_cfg(self.enabled_scorer_names)
 
-        self._log_init()
+        _logger.debug("ScoringServiceInitialized: enabled=%s registered=%s",
+            self.enabled_scorer_names, list(self._scorers.keys()))
+
 
     @property
     def name(self) -> str:

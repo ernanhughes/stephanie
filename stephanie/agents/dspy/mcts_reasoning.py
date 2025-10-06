@@ -182,6 +182,9 @@ class MCTSReasoningAgent(BaseAgent):
         self._best_so_far = (float("-inf"), None)  # (score, node)
         self.top_k = int(cfg.get("top_k_leaves", 3))
 
+        self.search_strategy_name = cfg.get("strategy_name", "mcts_v1")
+        self.domain = cfg.get("domain", "general")
+
         _logger.debug(
             "MCTSInitialized depth=%s bf=%s sims=%s ucb=%s dims=%s max_lm_calls=%s eval_at=%s stride=%s",
             self.max_depth,
@@ -424,6 +427,9 @@ class MCTSReasoningAgent(BaseAgent):
                 "completions": completions,
             },
         )
+
+
+
         return children[0] if children else node
 
     def _should_eval(self, node: MCTSReasoningNode) -> bool:
@@ -438,6 +444,7 @@ class MCTSReasoningAgent(BaseAgent):
             return 0.0
 
         text = "\n".join(node.trace)
+        rewards_vec = {}
         try:
             if text in self.score_cache:
                 score = float(self.score_cache[text] or 0.0)
@@ -453,10 +460,39 @@ class MCTSReasoningAgent(BaseAgent):
                 agg = bundle.aggregate()
                 score = float(agg if agg is not None else 0.0) / 100.0
                 self.score_cache[text] = score
+                rewards_vec = bundle.to_rewards_vector(prefix="sicql_")
         except Exception as e:
             self.logger.log("MCTSEvaluateError", {"error": str(e)})
             score = 0.0
 
+        air = 0.0
+        children = self.children.get(node.id, [])
+        if children:
+            air = sum((c.score or 0.0) for c in children) / len(children)
+        else:
+            air = node.score or 0.0
+
+        # Transition: evaluation at this node
+        self.memory.trajectory.emit_transition(
+                run_id=context.get("pipeline_run_id"),
+                step_idx=len(self.nodes),
+                agent=self.name,
+                state={
+                    "goal_preview": node.state[:200],
+                    "trace_len": len(node.trace),
+                    "strategy": self.search_strategy_name,
+                    "node_id": node.id,
+                    "event": "evaluate",
+                },
+                action={
+                    "type": "score",
+                    "name": self.scorer_name,
+                    "strategy": self.search_strategy_name,
+                    "output": {"text_len": len(text)},
+                },
+                reward_air=0.0,
+                rewards_vec=rewards_vec,
+            )
         node.score = score
         node.reward += score
         self.logger.log(

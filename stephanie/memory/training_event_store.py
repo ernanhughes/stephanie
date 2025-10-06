@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import random
-import time
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy.orm import Session
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.training_event import TrainingEventORM
