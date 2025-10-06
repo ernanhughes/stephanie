@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import random
 import time
 import uuid
 from datetime import datetime, timezone
@@ -51,19 +52,33 @@ class JsonlSink(BaseSink):
         async with self._lock:
             with open(self.path, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
+    async def flush(self):
+        # File writes are sync/atomic per emit; nothing to flush.
+        return
 
 class LoggerSink(BaseSink):
-    def __init__(self, logger):
+    def __init__(self, logger, level: str = "INFO"):
         self.logger = logger
+        self.level = level.upper()
+        self._level_map = {
+            "DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50
+        }
     async def emit(self, event: Dict[str, Any]):
-        msg = {k: event[k] for k in ("ts","run_id","agent","stage","note") if k in event}
+        # Keep log concise but useful; include core keys and summary/note if present.
+        base = {k: event.get(k) for k in ("ts","run_id","agent","stage","status","summary")}
+        note = event.get("note")
+        if note: base["note"] = note
         try:
-            agent = msg.get("agent") 
-            if agent == "UnknownAgent":
-                self.logger.info("LogReport", msg)
-            self.logger.log("CBRReport", msg)
+            lvl = self._level_map.get(event.get("level","").upper(), self._level_map.get(self.level, 20))
+            self.logger.log(lvl, "ReportEvent", extra={"event": base})
         except Exception:
-            pass
+            # best-effort fallback
+            try:
+                self.logger.info("ReportEvent %s", base)
+            except Exception:
+                pass
+    async def flush(self):
+        return
 
 
 # --- Reporting Service ---
@@ -76,7 +91,7 @@ class ReportingService(Service):
     def __init__(self, sinks: List[BaseSink], enabled: bool = True, sample_rate: float = 1.0):
         self.enabled = enabled
         self.sinks = sinks
-        self.sample_rate = float(sample_rate)
+        self.sample_rate = float(sample_rate or 1.0)
 
         self._q: asyncio.Queue = asyncio.Queue(maxsize=2048)
         self._consumer: Optional[asyncio.Task] = None
@@ -85,29 +100,78 @@ class ReportingService(Service):
     # === Service Protocol ===
     def initialize(self, **kwargs) -> None:
         """Start background consumer loop for reporting."""
-        if not self._initialized:
-            loop = asyncio.get_event_loop()
+        if self._initialized or not self.enabled:
+            self._initialized = True
+            return
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.get_event_loop()
             self._consumer = loop.create_task(self._run())
             self._initialized = True
+        except Exception:
+            # If we can't start consumer, keep service disabled gracefully
+            self.enabled = False
+            self._initialized = False
 
     def health_check(self) -> Dict[str, Any]:
         return {
-            "status": "healthy" if self._initialized else "unhealthy",
+            "status": "healthy" if (self._initialized and self.enabled) else "unhealthy",
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "metrics": {
                 "queue_size": self._q.qsize(),
                 "queue_capacity": self._q.maxsize,
                 "sinks": len(self.sinks),
                 "consumer_running": bool(self._consumer and not self._consumer.done()),
+                "sample_rate": self.sample_rate,
             },
             "dependencies": {},
         }
 
     def shutdown(self) -> None:
-        """Stop consumer and clear queue."""
+        """Drain queue, stop consumer, and flush sinks."""
+        async def _drain_and_stop():
+            # Drain queue
+            try:
+                while not self._q.empty():
+                    ev = self._q.get_nowait()
+                    for s in self.sinks:
+                        try:
+                            await s.emit(ev)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+            # Flush sinks
+            for s in self.sinks:
+                try:
+                    await s.flush()
+                except Exception:
+                    pass
+            # Cancel consumer
+            if self._consumer:
+                self._consumer.cancel()
+                try:
+                    await self._consumer
+                except asyncio.CancelledError:
+                    pass
+
         if self._consumer:
-            self._consumer.cancel()
-            self._consumer = None
+            try:
+                loop = None
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(_drain_and_stop())
+                else:
+                    loop.run_until_complete(_drain_and_stop())
+            except Exception:
+                pass
+
+        self._consumer = None
         self._initialized = False
         self._q = asyncio.Queue(maxsize=2048)
 
@@ -129,10 +193,30 @@ class ReportingService(Service):
             pass
 
     # === Public API ===
+    def emit_sync(
+        self,
+        *,
+        context: Optional[Dict[str,Any]] = None,
+        stage: str = "stage",
+        status: Optional[str] = None,
+        summary: Optional[str] = None,
+        finalize: bool = False,
+        **payload
+    ):
+        """Convenience wrapper for sync callers; schedules async emit."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.emit(context=context or {}, stage=stage, status=status,
+                                       summary=summary, finalize=finalize, **payload))
+        except RuntimeError:
+            # No running loop; start a temp loop to execute
+            asyncio.run(self.emit(context=context or {}, stage=stage, status=status,
+                                  summary=summary, finalize=finalize, **payload))
+
     async def emit(
         self,
         *,
-        context: Dict[str,Any],
+        context: Optional[Dict[str,Any]],
         stage: str,
         status: Optional[str] = None,
         summary: Optional[str] = None,
@@ -149,28 +233,45 @@ class ReportingService(Service):
         if not self.enabled:
             return
 
-        g = context.get("goal") or {}
+        # sampling
+        if self.sample_rate < 1.0 and random.random() > self.sample_rate:
+            return
+
+        ctx = context or {}
+        g = (ctx.get("goal") or {}) if isinstance(ctx, dict) else {}
+        now = time.time()
         event = {
-            "ts": time.time(),
-            "run_id": context.get("run_id") or g.get("run_id") or context.get("pipeline_run_id") or str(uuid.uuid4()),
-            "plan_trace_id": context.get("plan_trace_id"),
+            "ts": now,
+            "ts_iso": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
+            "run_id": ctx.get("run_id") or g.get("run_id") or ctx.get("pipeline_run_id") or str(uuid.uuid4()),
+            "plan_trace_id": ctx.get("plan_trace_id"),
             "goal_id": g.get("id"),
-            "agent": context.get("agent_name") or context.get("AGENT_NAME") or "UnknownAgent",
+            "agent": ctx.get("agent_name") or ctx.get("AGENT_NAME") or "UnknownAgent",
             "stage": stage,
+            "status": status or "running",
+            "summary": summary or "",
             **_safe(payload),
         }
 
         # Append to context report
         try:
-            self._append_ctx_report(context, event, status=status, summary=summary, finalize=finalize)
+            if isinstance(ctx, dict):
+                self._append_ctx_report(ctx, event, status=status, summary=summary, finalize=finalize)
         except Exception:
             pass
 
-        # Enqueue for sinks
+        # Enqueue for sinks (drop-oldest-on-full)
         try:
             self._q.put_nowait(event)
         except asyncio.QueueFull:
-            pass  # drop silently
+            try:
+                _ = self._q.get_nowait()  # drop oldest
+            except Exception:
+                pass
+            try:
+                self._q.put_nowait(event)
+            except Exception:
+                pass
 
     # === Context Reporting ===
     def _append_ctx_report(
@@ -211,7 +312,7 @@ class ReportingService(Service):
 
         entry_event = event.get("event") or event.get("note") or "event"
         entry_payload = {k: v for k, v in event.items()
-                         if k not in {"ts","run_id","plan_trace_id","goal_id","agent","stage"}}
+                         if k not in {"ts","ts_iso","run_id","plan_trace_id","goal_id","agent","stage","status","summary"}}
 
         row["entries"].append({
             "event": entry_event,

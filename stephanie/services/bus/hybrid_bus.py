@@ -1,163 +1,188 @@
-# stephanie/services/bus/hybrid_bus.py
-"""
-Hybrid Event Bus Implementation
+from __future__ import annotations
 
-Auto-selects the best available transport backend in priority order:
-1. NATS JetStream (persistent, durable) - Production preferred
-2. Redis Pub/Sub (transient) - Fallback option  
-3. In-process bus (dev-only) - Development fallback
-
-All services use the same interface regardless of backend, ensuring consistency
-across development and production environments.
-
-Features:
-- Automatic failover between backends
-- Consistent API regardless of underlying transport
-- Built-in idempotency handling
-- Connection pooling and management
-"""
-
+import asyncio
 import logging
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, List
 
 from .bus_protocol import BusProtocol
-from .errors import (BusConnectionError, BusPublishError, BusRequestError,
-                     BusSubscribeError)
+from .errors import (
+    BusConnectionError, BusPublishError, BusRequestError, BusSubscribeError
+)
 from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
-from .nats_bus import \
-    NatsKnowledgeBus  # <-- OK now; nats_bus no longer imports hybrid_bus
+from .nats_bus import NatsKnowledgeBus
 
 _logger = logging.getLogger(__name__)
 
+
 class HybridKnowledgeBus(BusProtocol):
     """
-    Auto-selects the best available bus implementation.
-    
-    This bus implementation provides a unified interface while automatically
-    selecting the most appropriate backend based on configuration and availability.
-    
-    Attributes:
-        cfg: Configuration dictionary for bus setup
-        logger: Logger instance for bus operations
-        _bus: Active bus implementation instance
-        _idem_store: Idempotency store for message tracking
-        _backend: Name of the active backend
+    Flat-config only.
+
+    Expected cfg shape (flat dict):
+      {
+        "enabled": true,
+        "backend": "nats",                # "nats" | "inproc"
+        "servers": "nats://localhost:4222" or ["nats://..."],
+        "stream": "stephanie",
+        "required": false,                # or "strict": false
+        "strict": false,
+        "connect_timeout_s": 2.0,
+        "fallback": "inproc"              # "inproc" | "none"
+      }
     """
-    
+
     def __init__(self, cfg: Dict[str, Any], logger: Optional[logging.Logger] = None):
-        """
-        Initialize the hybrid bus.
-        
-        Args:
-            cfg: Configuration dictionary with bus settings
-            logger: Optional logger instance (defaults to module logger)
-        """
-        self.cfg = cfg
-        self.logger = logger or logging.getLogger(__name__)
+        self.cfg = dict(cfg or {})  # flat only
+        self.logger = logger or _logger
         self._bus: Optional[BusProtocol] = None
+        self._backend: str = "none"
         self._idem_store = None
-        self._backend: Optional[str] = None
+        self._disabled = False
 
-    async def connect(self) -> bool:
-        """
-        Connect to the best available bus backend.
-        
-        Attempts connection to backends in priority order:
-        1. NATS JetStream (production)
-        2. Redis Pub/Sub (alternative)
-        3. In-process (development fallback)
-        
-        Returns:
-            bool: True if connection to any backend was successful
-        """
-        # Accept both {"bus": {...}} and {...}
-        bus_config = self.cfg.get("bus", None)
-        if bus_config is None and isinstance(self.cfg, dict) and "backend" in self.cfg:
-            bus_config = self.cfg  # flat shape accepted
-        if bus_config is None:
-            bus_config = {}        # final fallback
+    # --------------- helpers ---------------
 
-        preferred_backend = bus_config.get("backend")
-        strict = bool(bus_config.get("strict", False))
+    def _norm_servers(self, servers: Any) -> List[str]:
+        if servers is None:
+            return ["nats://localhost:4222"]
+        if isinstance(servers, str):
+            return [servers]
+        if isinstance(servers, (list, tuple)):
+            return [str(s) for s in servers]
+        return ["nats://localhost:4222"]
 
-        # NATS first...
-        if preferred_backend in (None, "nats"):
+    def _norm(self) -> Dict[str, Any]:
+        enabled = bool(self.cfg.get("enabled", True))
+        required = bool(self.cfg.get("required", False) or self.cfg.get("strict", False))
+        return {
+            "enabled": enabled,
+            "backend": (self.cfg.get("backend") or "nats").lower(),
+            "servers": self._norm_servers(self.cfg.get("servers")),
+            "stream": self.cfg.get("stream", "stephanie"),
+            "required": required,
+            "timeout": float(self.cfg.get("connect_timeout_s", 2.0)),
+            "fallback": (self.cfg.get("fallback", "inproc") or "inproc").lower(),
+        }
+
+    async def _with_timeout(self, coro, timeout: float) -> Any:
+        return await asyncio.wait_for(coro, timeout=timeout)
+
+    # --------------- connect/fallback ---------------
+
+    async def connect(self, *, timeout: Optional[float] = None) -> bool:
+        cfg = self._norm()
+
+        if not cfg["enabled"]:
+            self._disabled = True
+            self._bus = None
+            self._backend = "none"
+            self._idem_store = None
+            self.logger.info("Hybrid bus disabled by config; continuing without bus.")
+            return True  # disabled is not an error
+
+        if self._bus is not None:
+            return True  # already connected
+
+        timeout = cfg["timeout"] if timeout is None else float(timeout)
+
+        # Try NATS first
+        if cfg["backend"] in ("nats", None):
             try:
                 nats_bus = NatsKnowledgeBus(
-                    servers=bus_config.get("servers", ["nats://localhost:4222"]),
-                    stream=bus_config.get("stream", "stephanie"),
+                    servers=cfg["servers"],
+                    stream=cfg["stream"],
                     logger=self.logger,
                 )
-                if await nats_bus.connect():
+                ok = await self._with_timeout(nats_bus.connect(), timeout)
+                if ok:
                     self._bus = nats_bus
                     self._backend = "nats"
-                    self._idem_store = nats_bus.idempotency_store
-                    _logger.info("Connected to NATS JetStream bus")
+                    self._idem_store = getattr(nats_bus, "idempotency_store", None)
+                    self.logger.info("Connected to NATS JetStream bus")
                     return True
+            except asyncio.TimeoutError:
+                self.logger.warning(f"NATS connection timed out (<= {timeout}s).")
             except Exception as e:
-                _logger.warning("NATS connection failed: %r", e)
-                if strict:
-                    raise
+                self.logger.warning("NATS connection failed: %r", e)
+            if cfg["required"]:
+                raise BusConnectionError("NATS connection required but unavailable")
 
-        # (optionally) Redis here...
+        # Fallbacks
+        if cfg["fallback"] == "inproc":
+            try:
+                inproc = InProcessKnowledgeBus(logger=self.logger)
+                ok = await self._with_timeout(inproc.connect(), timeout)
+                if ok:
+                    self._bus = inproc
+                    self._backend = "inproc"
+                    self._idem_store = getattr(inproc, "idempotency_store", None)
+                    self.logger.info("Connected to in-process event bus (fallback).")
+                    return True
+            except asyncio.TimeoutError:
+                self.logger.warning(f"InProcessBus connect timed out (<= {timeout}s).")
+            except Exception as e:
+                self.logger.error(f"InProcessBus connect error: {e}")
 
-        # In-process fallback
-        try:
-            inproc = InProcessKnowledgeBus(logger=self.logger)
-            if await inproc.connect():
-                self._bus = inproc
-                self._backend = "inprocess"
-                self._idem_store = inproc.idempotency_store
-                _logger.info("Connected to in-process event bus (dev mode)")
-                return True
-        except Exception as e:
-            _logger.error(f"In-process bus failed: {e}")
-
-        _logger.error("No bus backend available")
+        self._bus = None
+        self._backend = "none"
+        self._idem_store = None
+        self.logger.error("No bus backend available (nats down, no usable fallback).")
         return False
 
+    # --------------- API ---------------
+
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
-        """Publish an event with standard envelope."""
-        if not self._bus and not await self.connect():
-            raise BusConnectionError("No bus connection available")
+        if self._bus is None and not self._disabled:
+            ok = await self.connect()
+            if not ok:
+                raise BusConnectionError("No bus connection available")
+        if self._bus is None:  # disabled
+            return
         try:
             await self._bus.publish(subject, payload)
         except Exception as e:
-            _logger.error(f"Failed to publish to {subject}: {e}")
+            self.logger.error(f"Failed to publish to {subject}: {e}")
             raise BusPublishError(f"Failed to publish to {subject}") from e
 
     async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], None]) -> None:
-        """Subscribe to events with idempotency handling."""
-        if not self._bus and not await self.connect():
-            raise BusConnectionError("No bus connection available")
+        if self._bus is None and not self._disabled:
+            ok = await self.connect()
+            if not ok:
+                raise BusConnectionError("No bus connection available")
+        if self._bus is None:  # disabled
+            return
         try:
             await self._bus.subscribe(subject, handler)
         except Exception as e:
-            _logger.error(f"Failed to subscribe to {subject}: {e}")
+            self.logger.error(f"Failed to subscribe to {subject}: {e}")
             raise BusSubscribeError(f"Failed to subscribe to {subject}") from e
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
-        """Send a request and wait for a reply."""
-        if not self._bus and not await self.connect():
-            raise BusConnectionError("No bus connection available")
+        if self._bus is None and not self._disabled:
+            ok = await self.connect()
+            if not ok:
+                raise BusConnectionError("No bus connection available")
+        if self._bus is None:  # disabled
+            return None
         try:
             return await self._bus.request(subject, payload, timeout)
         except Exception as e:
-            _logger.error(f"Request failed for {subject}: {e}")
+            self.logger.error(f"Request failed for {subject}: {e}")
             raise BusRequestError(f"Request failed for {subject}") from e
 
     async def close(self) -> None:
-        """<<< This was missing, causing the ABC error >>>"""
         if self._bus:
             try:
                 await self._bus.close()
-                _logger.info("Bus connection closed")
+                self.logger.info("Bus connection closed")
             except Exception as e:
-                _logger.error(f"Error during bus shutdown: {e}")
+                self.logger.error(f"Error during bus shutdown: {e}")
+        self._bus = None
+        self._backend = "none"
+        self._idem_store = None
 
     def get_backend(self) -> str:
-        return self._backend or "none"
+        return self._backend
 
     @property
     def idempotency_store(self):

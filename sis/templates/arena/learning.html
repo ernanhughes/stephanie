@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-baseline mb-3">
+    <h2 class="mb-0">Arena • Learning</h2>
+    <div class="d-flex gap-2">
+      <select id="run-select" class="form-select form-select-sm" style="min-width: 18rem">
+        <option value="">Latest (multi-run)</option>
+        {% for r in runs %}
+          <option value="{{ r.run_id }}">
+            {{ r.run_id }} — {{ (r.title or r.goal or r.goal_text or 'no title') | truncate(60) }}
+          </option>
+        {% endfor %}
+      </select>
+      <input id="filter-agent" class="form-control form-control-sm" placeholder="agent (optional)" />
+      <input id="filter-section" class="form-control form-control-sm" placeholder="section (optional)" />
+      <button id="btn-refresh" class="btn btn-sm btn-primary">Refresh</button>
+    </div>
+  </div>
+
+  <!-- Learning Score KPI -->
+  <div class="row mb-3">
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <div class="text-muted small">Learning Effectiveness</div>
+              <div class="display-4 fw-bold text-primary" id="learning-score">—</div>
+            </div>
+            <div class="bg-primary bg-opacity-10 text-primary p-2 rounded">
+              <i class="bi bi-brain fs-4"></i>
+            </div>
+          </div>
+          <div class="progress" style="height: 8px;">
+            <div id="learning-progress" class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="row g-3">
+        <div class="col"><div class="card shadow-sm"><div class="card-body"><div class="text-muted">Runs</div><div id="kpi-runs" class="h4 mb-0">—</div></div></div></div>
+        <div class="col"><div class="card shadow-sm"><div class="card-body"><div class="text-muted">Papers</div><div id="kpi-papers" class="h4 mb-0">—</div></div></div></div>
+        <div class="col"><div class="card shadow-sm"><div class="card-body"><div class="text-muted">Sections</div><div id="kpi-sections" class="h4 mb-0">—</div></div></div></div>
+        <div class="col"><div class="card shadow-sm"><div class="card-body"><div class="text-muted">Agents</div><div id="kpi-agents" class="h4 mb-0">—</div></div></div></div>
+        <div class="col"><div class="card shadow-sm"><div class="card-body"><div class="text-muted">Cross-paper transfers</div><div id="kpi-xfer" class="h4 mb-0">—</div></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Left: Knowledge Transfer -->
+    <div class="col-lg-7">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center bg-dark text-white py-2">
+          <span>Knowledge Transfer Evidence</span>
+          <div class="d-flex gap-2">
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-dark transfer-type-filter active" data-type="all">All</button>
+              <button type="button" class="btn btn-dark transfer-type-filter" data-type="conceptual">
+                <i class="bi bi-lightbulb me-1"></i>Conceptual
+              </button>
+              <button type="button" class="btn btn-dark transfer-type-filter" data-type="procedural">
+                <i class="bi bi-gear me-1"></i>Procedural
+              </button>
+              <button type="button" class="btn btn-dark transfer-type-filter" data-type="metacognitive">
+                <i class="bi bi-brain me-1"></i>Metacognitive
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" id="tbl-evidence">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 15%">From</th>
+                  <th style="width: 15%">To</th>
+                  <th style="width: 15%">Section</th>
+                  <th style="width: 15%">Type</th>
+                  <th style="width: 15%">Agent</th>
+                  <th style="width: 15%">Confidence</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer small text-muted">
+          Each row represents a cross-paper boundary observed in chronological event flow.
+        </div>
+      </div>
+
+      <div class="card shadow-sm mt-3">
+        <div class="card-header py-2">Learning Insights</div>
+        <div class="card-body">
+          <div id="learning-insights-container" class="row"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Run timeline -->
+    <div class="col-lg-5">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-dark text-white py-2">Selected Run Timeline</div>
+        <div class="card-body">
+          <div id="timeline-meta" class="small text-muted mb-2">Select a run to view its events.</div>
+          <div id="timeline" class="list-group small" style="max-height: 540px; overflow:auto;"></div>
+        </div>
+      </div>
+      
+      <div class="card shadow-sm mt-3">
+        <div class="card-header py-2">Top Paper→Paper Transfers</div>
+        <ul id="top-pairs" class="list-group list-group-flush"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+  
+  const fmtTs = (t) => {
+    if (!t) return "—";
+    try { 
+      return new Date(t * 1000).toLocaleString(); 
+    } catch { 
+      return "—"; 
+    }
+  };
+  
+  const transferTypeColors = {
+    "conceptual": { bg: "bg-primary bg-opacity-10", text: "text-primary", icon: "bi-lightbulb" },
+    "procedural": { bg: "bg-info bg-opacity-10", text: "text-info", icon: "bi-gear" },
+    "metacognitive": { bg: "bg-success bg-opacity-10", text: "text-success", icon: "bi-brain" }
+  };
+  
+  const getTransferTypeClass = (type) => {
+    return transferTypeColors[type] || transferTypeColors.procedural;
+  };
+
+  const loadTransfer = async () => {
+    const run_id = $("#run-select").value.trim();
+    const agent = $("#filter-agent").value.trim();
+    const section = $("#filter-section").value.trim();
+    
+    try {
+      const qs = new URLSearchParams();
+      if (run_id) qs.set("run_id", run_id);
+      if (agent) qs.set("agent", agent);
+      if (section) qs.set("section", section);
+
+      const res = await fetch(`/arena/learning/api/transfer?${qs.toString()}`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      
+      const data = await res.json();
+
+      // Learning Score KPI
+      const learningScore = data.kpi?.learning_score || 0;
+      $("#learning-score").textContent = learningScore.toFixed(1);
+      $("#learning-progress").style.width = `${Math.min(100, learningScore * 10)}%`;
+      
+      // Standard KPIs
+      $("#kpi-runs").textContent = data.kpi?.runs ?? "—";
+      $("#kpi-papers").textContent = data.kpi?.papers ?? "—";
+      $("#kpi-sections").textContent = data.kpi?.sections ?? "—";
+      $("#kpi-agents").textContent = data.kpi?.agents ?? "—";
+      $("#kpi-xfer").textContent = data.kpi?.cross_paper_transfers ?? "—";
+
+      // Evidence rows
+      const tbody = $("#tbl-evidence tbody");
+      tbody.innerHTML = "";
+      (data.knowledge_transfer_evidence || []).slice().reverse().forEach(e => {
+        const typeClass = getTransferTypeClass(e.transfer_type);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><span class="badge text-bg-secondary">${e.from_paper || "—"}</span></td>
+          <td><span class="badge text-bg-primary">${e.to_paper || "—"}</span></td>
+          <td>${e.section || "—"}</td>
+          <td>
+            <span class="badge ${typeClass.bg} ${typeClass.text} px-2 py-1">
+              <i class="bi ${typeClass.icon} me-1"></i>${e.type_label}
+            </span>
+          </td>
+          <td><code>${e.agent || "—"}</code></td>
+          <td>
+            <div class="d-flex align-items-center">
+              <div class="progress flex-grow-1 me-2" style="height: 8px;">
+                <div class="progress-bar ${typeClass.text}" role="progressbar" style="width: ${(e.confidence * 100).toFixed(0)}%"></div>
+              </div>
+              <span>${(e.confidence * 100).toFixed(0)}%</span>
+            </div>
+          </td>
+          <td>${fmtTs(e.timestamp)}</td>
+        `;
+        tr.dataset.transferType = e.transfer_type;
+        tbody.appendChild(tr);
+      });
+      
+      // Apply transfer type filter
+      const activeFilter = $(".transfer-type-filter.active").dataset.type;
+      applyTransferTypeFilter(activeFilter);
+
+      // Top pairs
+      const list = $("#top-pairs");
+      list.innerHTML = "";
+      (data.top_pairs || []).forEach(p => {
+        const li = document.createElement("li");
+        li.className = "list-group-item d-flex justify-content-between align-items-center";
+        li.innerHTML = `<span><strong>${p.from || "—"}</strong> → <strong>${p.to || "—"}</strong></span><span class="badge text-bg-dark">${p.count}</span>`;
+        list.appendChild(li);
+      });
+      
+      // Learning Insights
+      renderLearningInsights(data.learning_insights || []);
+
+      // Timeline (only if a run is selected)
+      await loadTimeline(run_id);
+      
+    } catch (error) {
+      console.error('Error loading transfer data:', error);
+      const container = $("#learning-insights-container");
+      container.innerHTML = `
+        <div class="col-12">
+          <div class="alert alert-danger">
+            Error loading learning data: ${error.message}
+          </div>
+        </div>
+      `;
+    }
+  };
+  
+  function applyTransferTypeFilter(type) {
+    const rows = $$("#tbl-evidence tbody tr");
+    rows.forEach(row => {
+      if (type === "all" || row.dataset.transferType === type) {
+        row.style.display = "";
+      } else {
+        row.style.display = "none";
+      }
+    });
+  }
+
+  function renderLearningInsights(insights) {
+    const container = $("#learning-insights-container");
+    container.innerHTML = "";
+    
+    if (insights.length === 0) {
+      container.innerHTML = `
+        <div class="col-12">
+          <div class="alert alert-light text-center py-4">
+            <i class="bi bi-brain display-4 text-muted mb-3"></i>
+            <h5 class="text-muted">No learning insights available</h5>
+            <p class="text-muted mb-0">Run the pipeline with more papers to generate learning evidence.</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+    
+    insights.forEach(insight => {
+      const typeClass = getTransferTypeClass(insight.type);
+      const col = document.createElement("div");
+      col.className = "col-md-6 mb-3";
+      col.innerHTML = `
+        <div class="card h-100 border-0 shadow-sm" style="border-top: 3px solid ${typeClass.text.replace('text-', '')};">
+          <div class="card-body">
+            <div class="d-flex align-items-center mb-3">
+              <div class="rounded-circle p-2 me-3" style="background-color: ${typeClass.bg.replace('bg-', '').replace('bg-opacity-10', '')}20;">
+                <i class="bi ${typeClass.icon} ${typeClass.text}" style="font-size: 1.2rem;"></i>
+              </div>
+              <h5 class="card-title mb-0 ${typeClass.text}">${insight.title}</h5>
+            </div>
+            <p class="card-text text-muted">${insight.content}</p>
+            <div class="mt-3 p-2 bg-light rounded">
+              <h6 class="mb-1">Recommendation:</h6>
+              <p class="mb-0 small">${insight.recommendation}</p>
+            </div>
+          </div>
+        </div>
+      `;
+      container.appendChild(col);
+    });
+  }
+
+  const loadTimeline = async (run_id) => {
+    const container = $("#timeline");
+    const meta = $("#timeline-meta");
+    container.innerHTML = "";
+    
+    if (!run_id) { 
+      meta.textContent = "Select a run to view its events."; 
+      return; 
+    }
+
+    try {
+      const res = await fetch(`/arena/learning/api/run/${run_id}/timeline`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      
+      const data = await res.json();
+      meta.textContent = `Run ${data.run_id} · ${data.events?.length ?? 0} events`;
+      
+      (data.events || []).forEach(ev => {
+        const item = document.createElement("div");
+        item.className = "list-group-item";
+        
+        // Add learning context indicators if available
+        let learningBadge = "";
+        if (ev.learning_context && ev.learning_context.paper_context) {
+          learningBadge = `<span class="badge bg-light text-dark border ms-2">${ev.learning_context.paper_context}</span>`;
+        }
+        
+        item.innerHTML = `
+          <div class="d-flex justify-content-between">
+            <div>
+              <strong>${ev.event || "event"}</strong> 
+              <small class="text-muted">(${ev.agent || "—"})</small>
+              ${learningBadge}
+            </div>
+            <div class="text-muted">${fmtTs(ev.ts)}</div>
+          </div>
+          <div class="small text-muted">
+            paper: ${ev.paper_id || "—"} · section: ${ev.section_name || "—"}
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    } catch (error) {
+      console.error('Error loading timeline:', error);
+      container.innerHTML = `
+        <div class="alert alert-danger">
+          Error loading timeline: ${error.message}
+        </div>
+      `;
+    }
+  };
+
+  // Initialize transfer type filters
+  $$(".transfer-type-filter").forEach(btn => {
+    btn.addEventListener("click", function() {
+      $$(".transfer-type-filter").forEach(b => b.classList.remove("active"));
+      this.classList.add("active");
+      applyTransferTypeFilter(this.dataset.type);
+    });
+  });
+
+  $("#btn-refresh").addEventListener("click", loadTransfer);
+  $("#run-select").addEventListener("change", loadTransfer);
+  
+  // Load recent runs for the dropdown
+  (async () => {
+    try {
+      const res = await fetch("/arena/api/runs?limit=30");
+      const runs = await res.json();
+      
+      const runSelect = $("#run-select");
+      runs.forEach(run => {
+        const option = document.createElement("option");
+        option.value = run.run_id;
+        option.textContent = `${run.run_id} — ${run.title || run.goal || run.goal_text || 'no title'}`.substring(0, 60);
+        runSelect.appendChild(option);
+      });
+      
+      // Load initial data
+      loadTransfer();
+    } catch (error) {
+      console.error('Error loading runs:', error);
+    }
+  })();
+});
+</script>
+{% endblock %}

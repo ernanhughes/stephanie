@@ -10,6 +10,7 @@ methods directly to Stephanie’s ORM classes:
 These methods output both a feature vector tensor and a `PrimitiveMetadata`
 object for MemCube/CartridgeORM persistence.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,10 +24,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from stephanie.models.casebook import CaseBookORM
+
 # ORM imports – adjust paths to your repo
 from stephanie.models.chat import ChatTurnORM
-# import your embedding fn
-from stephanie.utils.embeddings import get_embedding
+
 
 # ======= Primitive Metadata =======
 
@@ -34,7 +35,7 @@ from stephanie.utils.embeddings import get_embedding
 class PrimitiveMetadata:
     primitive_id: str
     source_artifact_id: str
-    source_type: str   # "chat" or "casebook"
+    source_type: str  # "chat" or "casebook"
     created_at: float
     embedding_model: str
     tags: List[str]
@@ -42,7 +43,9 @@ class PrimitiveMetadata:
     last_used: float = 0.0
     version: int = 1
 
+
 # ======= PrimitiveBuilder with ORM integration =======
+
 
 class PrimitiveBuilder:
     """ORM-aware primitive feature builder for Stephanie.
@@ -57,6 +60,7 @@ class PrimitiveBuilder:
       - Optional field maps let you override names without changing code
       - Returns (tensor, PrimitiveMetadata) for persistence
     """
+
     def __init__(
         self,
         embedder,
@@ -64,25 +68,27 @@ class PrimitiveBuilder:
         chat_field_map: Optional[Dict[str, str]] = None,
         case_field_map: Optional[Dict[str, str]] = None,
     ):
-        self.embedder = embedder  # e.g., HNet/Ollama/HF embedding fn -> np.ndarray/list
+        self.embedder = (
+            embedder  # e.g., HNet/Ollama/HF embedding fn -> np.ndarray/list
+        )
         self.embedding_model_name = embedding_model_name
         # Defaults (override via maps)
         self.chat_map = {
             "id": "id",
-            "user_text": "user_text",            # alt: "user_message", "question"
+            "user_text": "user_text",  # alt: "user_message", "question"
             "assistant_text": "assistant_text",  # alt: "assistant_message", "answer"
-            "goal": "goal",                      # JSON/dict or str
-            "entities": "entities",              # list/JSON
-            "tags": "tags",                      # list/JSON
+            "goal": "goal",  # JSON/dict or str
+            "entities": "entities",  # list/JSON
+            "tags": "tags",  # list/JSON
         }
         self.case_map = {
             "id": "id",
             "summary": "summary",
-            "citations": "citations",            # list[str]
+            "citations": "citations",  # list[str]
             "tags": "tags",
             # Optional extras (if present):
-            "policy": "policy",                  # dict/JSON of structured params
-            "constraints": "constraints",        # list/JSON
+            "policy": "policy",  # dict/JSON of structured params
+            "constraints": "constraints",  # list/JSON
         }
         if chat_field_map:
             self.chat_map.update(chat_field_map)
@@ -90,12 +96,14 @@ class PrimitiveBuilder:
             self.case_map.update(case_field_map)
 
     # ---------- Public API ----------
-    def from_chat_turn(self, turn_obj: Any) -> Tuple[torch.Tensor, PrimitiveMetadata]:
+    def from_chat_turn(
+        self, turn_obj: Any
+    ) -> Tuple[torch.Tensor, PrimitiveMetadata]:
         data = self._as_dict(turn_obj, which="chat")
         text = self._fmt_chat_text(data)
         vec = self._embed(text)
         pm = PrimitiveMetadata(
-            primitive_id=f"chat_{data.get('id','unknown')}",
+            primitive_id=f"chat_{data.get('id', 'unknown')}",
             source_artifact_id=str(data.get("id", "unknown")),
             source_type="chat",
             created_at=time.time(),
@@ -104,12 +112,14 @@ class PrimitiveBuilder:
         )
         return torch.tensor(vec, dtype=torch.float32), pm
 
-    def from_casebook_case(self, case_obj: Any) -> Tuple[torch.Tensor, PrimitiveMetadata]:
+    def from_casebook_case(
+        self, case_obj: Any
+    ) -> Tuple[torch.Tensor, PrimitiveMetadata]:
         data = self._as_dict(case_obj, which="case")
         text = self._fmt_case_text(data)
         vec = self._embed(text)
         pm = PrimitiveMetadata(
-            primitive_id=f"case_{data.get('id','unknown')}",
+            primitive_id=f"case_{data.get('id', 'unknown')}",
             source_artifact_id=str(data.get("id", "unknown")),
             source_type="casebook",
             created_at=time.time(),
@@ -119,18 +129,24 @@ class PrimitiveBuilder:
         return torch.tensor(vec, dtype=torch.float32), pm
 
     # ---------- Batch helpers (DB session optional) ----------
-    def build_from_chat_turns(self, turns: List[Any]) -> Tuple[torch.Tensor, List[PrimitiveMetadata]]:
+    def build_from_chat_turns(
+        self, turns: List[Any]
+    ) -> Tuple[torch.Tensor, List[PrimitiveMetadata]]:
         vecs, metas = [], []
         for t in turns:
             v, m = self.from_chat_turn(t)
-            vecs.append(v); metas.append(m)
+            vecs.append(v)
+            metas.append(m)
         return torch.stack(vecs, dim=0), metas
 
-    def build_from_cases(self, cases: List[Any]) -> Tuple[torch.Tensor, List[PrimitiveMetadata]]:
+    def build_from_cases(
+        self, cases: List[Any]
+    ) -> Tuple[torch.Tensor, List[PrimitiveMetadata]]:
         vecs, metas = [], []
         for c in cases:
             v, m = self.from_casebook_case(c)
-            vecs.append(v); metas.append(m)
+            vecs.append(v)
+            metas.append(m)
         return torch.stack(vecs, dim=0), metas
 
     # ---------- Internals ----------
@@ -139,12 +155,16 @@ class PrimitiveBuilder:
 
     def _fmt_chat_text(self, d: Dict[str, Any]) -> str:
         user_text = str(d.get("user_text") or d.get("question") or "").strip()
-        assistant_text = str(d.get("assistant_text") or d.get("answer") or "").strip()
+        assistant_text = str(
+            d.get("assistant_text") or d.get("answer") or ""
+        ).strip()
         goal = d.get("goal")
         entities = self._to_list(d.get("entities"))
         tags = self._to_list(d.get("tags"))
         goal_str = goal if isinstance(goal, str) else json.dumps(goal or {})
-        meta = json.dumps({"entities": entities, "tags": tags}, ensure_ascii=False)
+        meta = json.dumps(
+            {"entities": entities, "tags": tags}, ensure_ascii=False
+        )
         return f"""<CHAT_USER>
 {user_text}
 <CHAT_ASSISTANT>
@@ -152,7 +172,7 @@ class PrimitiveBuilder:
 <GOAL>
 {goal_str}
 <META>
-{meta}""" I
+{meta}"""
 
     def _fmt_case_text(self, d: Dict[str, Any]) -> str:
         summary = str(d.get("summary") or "").strip()
@@ -160,17 +180,19 @@ class PrimitiveBuilder:
         policy = d.get("policy")
         constraints = self._to_list(d.get("constraints"))
         policy_str = json.dumps(policy or {}, ensure_ascii=False)
-        meta = json.dumps({"citations": citations, "constraints": constraints}, ensure_ascii=False)
-        cite_blob = "
-".join(citations)
-        return f"<CASE_SUMMARY>
+        meta = json.dumps(
+            {"citations": citations, "constraints": constraints},
+            ensure_ascii=False,
+        )
+        cite_blob = "".join(citations)
+        return f"""<CASE_SUMMARY>
 {summary}
 <POLICY>
 {policy_str}
 <CITATIONS>
 {cite_blob}
 <META>
-{meta}"
+{meta}"""
 
     def _as_dict(self, obj: Any, which: str) -> Dict[str, Any]:
         """Extract a dict from ORM or dict using field maps and getattr fallbacks."""
@@ -192,8 +214,12 @@ class PrimitiveBuilder:
         else:  # case
             meta = getattr(obj, "meta", None)
             if isinstance(meta, dict):
-                out["citations"] = out.get("citations") or meta.get("citations")
-                out["constraints"] = out.get("constraints") or meta.get("constraints")
+                out["citations"] = out.get("citations") or meta.get(
+                    "citations"
+                )
+                out["constraints"] = out.get("constraints") or meta.get(
+                    "constraints"
+                )
                 out["tags"] = out.get("tags") or meta.get("tags")
         return out
 
@@ -212,7 +238,9 @@ class PrimitiveBuilder:
                 return [x]
         return [x]
 
+
 # ======= Edge Builder (unchanged, for PlanTraces) =======
+
 
 class EdgeBuilder:
     @staticmethod
@@ -220,23 +248,35 @@ class EdgeBuilder:
         src, dst = [], []
         for i, n in enumerate(nodes):
             for p in n.get("parents", []) or []:
-                src.append(p); dst.append(i)
+                src.append(p)
+                dst.append(i)
             for s in n.get("siblings", []) or []:
-                src.append(s); dst.append(i)
+                src.append(s)
+                dst.append(i)
             for c in n.get("contradicts", []) or []:
-                src.append(c); dst.append(i)
+                src.append(c)
+                dst.append(i)
         if not src:
-            src = list(range(len(nodes)-1))
+            src = list(range(len(nodes) - 1))
             dst = list(range(1, len(nodes)))
         return torch.tensor([src, dst], dtype=torch.long)
+
 
 # ======= Example usage with ORM =======
 if __name__ == "__main__":
     pb = PrimitiveBuilder("hnet-v4")
 
     # Fake ORM objects (replace with session query)
-    chat_turn = ChatTurnORM(id=1, user_text="How do we handle refunds?", assistant_text="By escalation policy.")
-    case = CaseBookORM(id=10, summary="Refunds must be approved if >30 days.", citations=["Policy123"])
+    chat_turn = ChatTurnORM(
+        id=1,
+        user_text="How do we handle refunds?",
+        assistant_text="By escalation policy.",
+    )
+    case = CaseBookORM(
+        id=10,
+        summary="Refunds must be approved if >30 days.",
+        citations=["Policy123"],
+    )
 
     x_chat, meta_chat = pb.from_chat_turn(chat_turn)
     x_case, meta_case = pb.from_casebook_case(case)

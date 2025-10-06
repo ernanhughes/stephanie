@@ -1,3 +1,4 @@
+# stephanie/agents/knowledge/chat_import.py
 """
 Chat Import Agent
 
@@ -14,6 +15,7 @@ Key Responsibilities:
 The agent ensures chat data is properly ingested and available for downstream
 processing including casebook creation and knowledge extraction.
 """
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL

@@ -39,12 +39,8 @@ class ValidationResult:
 
 class TrainingService(Service):
     """
-    Service that decides when to retrain based on validation feedback & tracker state.
-
-    Owns:
-    - Retrain policy (thresholds, cooldowns, patience)
-    - Cooldown management
-    - Calls into provided trainer_fn
+    Decides when to retrain based on validation feedback & tracker state.
+    If validator/tracker/trainer_fn are not provided, resolves them from the container.
     """
 
     def __init__(
@@ -52,14 +48,17 @@ class TrainingService(Service):
         cfg,
         memory,
         logger,
-        validator,                # SelfValidationService-like
-        tracker,                  # MetaConfidenceService-like
-        trainer_fn: Callable,     # Callable(goal, dimension, **kwargs)
+        validator: Optional[Any] = None,          # SelfValidationService-like
+        tracker: Optional[Any] = None,            # MetaConfidenceService-like
+        trainer_fn: Optional[Callable] = None,    # Callable(goal, dimension, **kwargs)
         policy: Optional[RetrainPolicy] = None,
+        container: Optional[Any] = None,
     ):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
+        self.container = container
+
         self.validator = validator
         self.tracker = tracker
         self.trainer_fn = trainer_fn
@@ -77,16 +76,35 @@ class TrainingService(Service):
 
         self.cooldowns: Dict[Tuple[str, str], int] = {}
         self._initialized = False
-
-        self.trainers = {}  # type: Dict[str, BaseTrainer]  # Optional mapping of (goal, dimension) to trainer instances
+        self.trainers: Dict[str, BaseTrainer] = {}  # e.g., {"sicql": ..., "mrq": ...}
 
     # === Service Protocol ===
     def initialize(self, **kwargs) -> None:
-        self._initialized = True
+        # Lazy-resolve dependencies if not injected
+        if self.validator is None:
+            if not self.container:
+                raise RuntimeError("TrainingService needs 'validator' or a 'container' to resolve it.")
+            self.validator = self.container.get("validation")
 
+        if self.tracker is None:
+            if not self.container:
+                raise RuntimeError("TrainingService needs 'tracker' or a 'container' to resolve it.")
+            self.tracker = self.container.get("confidence")
+
+        if self.trainer_fn is None:
+            def _default_trainer(*, goal, dimension, stats=None, validator_result=None, **_):
+                if self.logger:
+                    self.logger.info(
+                        f"[TRAIN] (default) Training RM for goal={goal!r}, "
+                        f"dimension={dimension!r} | statsKeys={list((stats or {}).keys())}"
+                    )
+            self.trainer_fn = _default_trainer
+
+        # Optional trainer registry (kept as-is)
         self.trainers["sicql"] = SICQLTrainer(self.cfg, self.memory, self.logger)
         self.trainers["mrq"] = MRQTrainer(self.cfg, self.memory, self.logger)
 
+        self._initialized = True
         if self.logger:
             self.logger.log("TrainingServiceInit", {"status": "initialized"})
 
@@ -102,6 +120,7 @@ class TrainingService(Service):
             "dependencies": {
                 "validator": "attached" if self.validator else "missing",
                 "tracker": "attached" if self.tracker else "missing",
+                "trainer_fn": "attached" if self.trainer_fn else "missing",
             },
         }
 
@@ -114,7 +133,7 @@ class TrainingService(Service):
 
     @property
     def name(self) -> str:
-        return "training"
+        return "training-service-v1"
 
     # === Domain Logic ===
     def _log(self, event: str, payload: Dict):
@@ -214,6 +233,7 @@ class TrainingService(Service):
                 "ema_confidence": ema_conf, "target": self.policy.target_confidence,
                 "slope_confidence": slope_conf, "bad_streak": bad_streak
             })
+            # Pass useful context to the trainer
             self.trainer_fn(goal=goal, dimension=dimension, stats=snapshot, validator_result=v)
             self._arm_cooldown(key)
             self.tracker.mark_retrained(goal, dimension, when=time.time())

@@ -37,6 +37,7 @@ from stephanie.services.strategy_profile_service import StrategyProfileService
 from stephanie.services.training_service import TrainingService
 from stephanie.services.zeromodel import ZeroModelService
 from stephanie.utils.report_utils import get_stage_details
+from stephanie.services.registry_loader import load_services_profile
 
 
 class PipelineStage:
@@ -56,161 +57,47 @@ class Supervisor:
         self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
         self.logger.log("SupervisorInit", {"cfg": cfg})
 
-        self.container = ServiceContainer(cfg=cfg, logger=logger)
-        # Register core services
-        self._register_core_services(cfg, memory, logger)
+        # DI container
+        self.container = ServiceContainer(cfg=cfg, logger=self.logger)
+
+        # Load + register services from selected profile
+        profile_path = self._resolve_services_profile_path(cfg)
+        load_services_profile(
+            self.container,
+            cfg=cfg,
+            memory=self.memory,
+            logger=self.logger,
+            profile_path=profile_path,
+            supervisor=self,  # enables ${supervisor:...} in YAML
+        )
 
         print(f"Parsing pipeline stages from config: {cfg.pipeline}")
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
 
         self.context = self._init_context()
-        self.logger.log("ContextManagerInitialized", {
-            "context": self.context
+        self.logger.log("ContextManagerInitialized", {"context": self.context})
+
+        # (Note: actual instantiation happens in initialize below)
+        self.logger.log("SupervisorServicesRegistered", {
+            "registered": list(self.container._factories.keys()),
+            "count": len(self.container._factories),
+            "profile": profile_path
         })
 
-        self.logger.log("SupervisorComponentsRegistered", {
-            "services": list(self.container._services.keys()),
-            "service_count": len(self.container._services)
-        })
-
-    def _register_core_services(self, cfg, memory, logger):
-        """Register all core services with the container."""
-        
-        # Scoring service
-        self.container.register(
-            "scoring",
-            lambda: ScoringService(cfg, memory, self.container, logger),
-            dependencies=[]
-        )
-        
-        # State tracking
-        self.container.register(
-            "state",
-            lambda: StateTrackerService(cfg, memory, logger),
-            dependencies=[]
-        )
-        
-        # Confidence tracking
-        self.container.register(
-            "confidence",
-            lambda: MetaConfidenceService(cfg, memory, logger),
-            dependencies=["state"]
-        )
-
-
-        # Symbolic rule applier
-        self.container.register(
-            "rules",
-            lambda: RulesService(cfg, memory, logger),
-            dependencies=[]
-        )
-
-        # LLM service
-        self.container.register(
-            "llm",
-            lambda: LLMService(cfg, memory, self.container, logger),
-            dependencies=["rules"]
-        )
-        
-        
-        # Cycle watcher
-        self.container.register(
-            "cycle",
-            lambda: CycleWatcherService(cfg, memory, logger),
-            dependencies=["state"]
-        )
-        
-        # Validation engine
-        self.container.register(
-            "validation",
-            lambda: SelfValidationService(
-                cfg=cfg,
-                memory=memory,
-                logger=logger,
-                reward_model=self._create_reward_model(cfg, memory, logger),
-                llm_judge=self._create_llm_judge(cfg, memory, logger),
-            ),
-            dependencies=["scoring"]
-        )
-        
-        # Training controller
-        self.container.register(
-            "training",
-            lambda: TrainingService(
-                cfg=cfg,
-                memory=memory,
-                logger=logger,
-                validator=self.container.get("validation"),
-                tracker=self.container.get("confidence"),
-                trainer_fn=self._create_trainer_fn(cfg, memory, logger),
-            ),
-            dependencies=["validation", "confidence"]
-        )
-        
-        # Plan trace monitor
-        self.container.register(
-            "plan_trace",
-            lambda: PlanTraceService(
-                cfg, memory, self.container, logger=logger
-            ),
-            dependencies=["scoring", "state"]
-        )
-        
-        # Reporter service
-        self.container.register(
-            "reporting",
-            lambda: ReportingService(
-                sinks=[
-                    JsonlSink(cfg.logging.logger.report_path or "reports/pipeline_events.jsonl"),
-                    LoggerSink(logger),
-                ],
-                enabled=True,
-                sample_rate=1.0,
-            ),
-            dependencies=[]
-        )
-
-        # Knowledge Graph service
-        self.container.register(
-            "knowledge_graph",
-            lambda: KnowledgeGraphService(cfg, memory, logger),
-            dependencies=[]
-        )
-
-        # Knowledge Base service
-        self.container.register(
-            "kbase",
-            lambda: KnowledgeBaseService(cfg, memory, logger),
-            dependencies=[]
-        )
-
-        self.container.register(
-            "zeromodel",
-            lambda: ZeroModelService(cfg, memory, logger),
-            dependencies=[]
-        )
-
-        # Symbolic rule applier
-        self.container.register(
-            "cbr",
-            lambda: CBRService(cfg, memory, self.container, logger),
-            dependencies=["llm", "scoring"]
-        )
-
-        self.container.register(
-            "strategy",
-            lambda: StrategyProfileService(cfg=cfg, memory=memory, logger=logger, namespace="track_c")
-        )
-
-        self.container.register(
-            "event_service",
-            lambda: EventService(cfg=cfg, memory=memory, logger=logger),
-        )
-
-        self.container.register(
-            "prompt",
-            lambda: PromptService(cfg=cfg, memory=memory, logger=logger, container=self.container),
-        )
+    def _resolve_services_profile_path(self, cfg) -> str:
+        # Prefer hydra knob: services.profile (e.g., "services/default")
+        prof = None
+        try:
+            prof = cfg.services.profile
+        except Exception:
+            pass
+        if not prof:
+            # Fallback path
+            prof = "services/default"
+        # Allow both "services/default" and "config/services/default.yaml"
+        if prof.endswith(".yaml"):
+            return prof
+        return f"config/{prof}.yaml"
 
     def _create_reward_model(self, cfg, memory, logger):
         scoring: ScoringService = self.container.get("scoring")

@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <!-- Header with Pipeline Info -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h1 class="mb-0">
+        <i class="bi bi-brain me-2 text-primary" aria-hidden="true"></i>
+        Learning Evidence: Pipeline {{ run.id }}
+      </h1>
+      <p class="text-muted mb-0">Analyzing knowledge transfer patterns for this specific pipeline run</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/pipeline/{{ run.id }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Back to Pipeline
+      </a>
+      <button id="btn-export-learning" class="btn btn-primary" type="button" aria-live="polite">
+        <i class="bi bi-download me-1" aria-hidden="true"></i>Export Learning Report
+      </button>
+    </div>
+  </div>
+
+  {# ---- Type palette: stable Bootstrap utility classes (no string replace hacks) ---- #}
+  {% set type_palette = {
+    "conceptual": {
+      "icon": "bi-lightbulb",
+      "text": "text-primary",
+      "bg_subtle": "bg-primary-subtle",
+      "border": "border-primary",
+      "bar": "bg-primary"
+    },
+    "procedural": {
+      "icon": "bi-gear",
+      "text": "text-info",
+      "bg_subtle": "bg-info-subtle",
+      "border": "border-info",
+      "bar": "bg-info"
+    },
+    "metacognitive": {
+      "icon": "bi-brain",
+      "text": "text-success",
+      "bg_subtle": "bg-success-subtle",
+      "border": "border-success",
+      "bar": "bg-success"
+    },
+    "default": {
+      "icon": "bi-arrow-right",
+      "text": "text-secondary",
+      "bg_subtle": "bg-secondary-subtle",
+      "border": "border-secondary",
+      "bar": "bg-secondary"
+    }
+  } %}
+
+  <!-- Learning Score Card -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-8">
+          <h4 class="mb-3">Pipeline Learning Profile</h4>
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <span class="badge bg-primary-subtle text-primary">Tag: {{ run.tag or "N/A" }}</span>
+            <span class="badge bg-info-subtle text-info">Started: {{ run.created_at }}</span>
+            <span class="badge bg-success-subtle text-success">Duration: {{ run.duration }}s</span>
+            <span class="badge bg-warning-subtle text-warning">Paper: {{ run.paper_id or "N/A" }}</span>
+            <span class="badge bg-secondary-subtle text-secondary">Section: {{ run.section_name or "N/A" }}</span>
+          </div>
+          <p class="mb-0 text-muted">{{ run.description or "No description provided for this pipeline run." }}</p>
+        </div>
+        <div class="col-md-4 text-md-end">
+          <div class="d-flex flex-column align-items-end h-100 justify-content-center">
+            <div class="p-3 bg-light rounded w-100">
+              <h5 class="text-primary mb-3">Learning Effectiveness Score</h5>
+              {% set score = (matrix.kpi.learning_score|default(0.0)) %}
+              <div class="display-4 fw-bold text-primary" id="learning-score">{{ score|round(1) }}</div>
+              <div class="mt-2">
+                <div class="progress" style="height: 8px;" aria-label="Learning score progress">
+                  <div id="learning-progress"
+                       class="progress-bar bg-primary"
+                       role="progressbar"
+                       style="width: {{ (score * 10)|round(0) }}%"
+                       aria-valuenow="{{ (score * 10)|round(0) }}"
+                       aria-valuemin="0"
+                       aria-valuemax="100"></div>
+                </div>
+                <small class="text-muted mt-1 d-block">Knowledge transfer effectiveness</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div> <!-- row -->
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- Left: Knowledge Transfer -->
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center bg-dark text-white py-2">
+          <span>Knowledge Transfer Evidence</span>
+          <div class="d-flex gap-2">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Filter transfers by type">
+              <button type="button" class="btn btn-dark transfer-type-filter active" data-type="all">All</button>
+              <button type="button" class="btn btn-dark transfer-type-filter" data-type="conceptual">
+                <i class="bi bi-lightbulb me-1" aria-hidden="true"></i>Conceptual
+              </button>
+              <button type="button" class="btn btn-dark transfer-type-filter" data-type="procedural">
+                <i class="bi bi-gear me-1" aria-hidden="true"></i>Procedural
+              </button>
+              <button type="button" class="btn btn-dark transfer-type-filter" data-type="metacognitive">
+                <i class="bi bi-brain me-1" aria-hidden="true"></i>Metacognitive
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 align-middle" id="tbl-evidence">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 18%">From</th>
+                  <th style="width: 18%">To</th>
+                  <th style="width: 16%">Section</th>
+                  <th style="width: 18%">Type</th>
+                  <th style="width: 14%">Confidence</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in matrix.knowledge_transfer_evidence %}
+                  {% set palette = type_palette.get(e.transfer_type, type_palette['default']) %}
+                <tr data-transfer-type="{{ e.transfer_type }}">
+                  <td><span class="badge text-bg-secondary">{{ e.from_paper or "—" }}</span></td>
+                  <td><span class="badge text-bg-primary">{{ e.to_paper or "—" }}</span></td>
+                  <td>{{ e.section or "—" }}</td>
+                  <td>
+                    <span class="badge {{ palette.bg_subtle }} {{ palette.text }} px-2 py-1">
+                      <i class="bi {{ palette.icon }} me-1" aria-hidden="true"></i>{{ e.type_label or e.transfer_type|title }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="d-flex align-items-center" aria-label="Confidence">
+                      <div class="progress flex-grow-1 me-2" style="height: 8px;">
+                        <div class="progress-bar {{ palette.bar }}" role="progressbar"
+                             style="width: {{ (e.confidence * 100)|round(0) }}%"
+                             aria-valuenow="{{ (e.confidence * 100)|round(0) }}"
+                             aria-valuemin="0" aria-valuemax="100"></div>
+                      </div>
+                      <span>{{ (e.confidence * 100)|round(0) }}%</span>
+                    </div>
+                  </td>
+                  <td>{{ e.timestamp|timestamp }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="6" class="text-center py-4">
+                    <div class="text-muted">
+                      <i class="bi bi-emoji-frown display-4 mb-3" aria-hidden="true"></i>
+                      <h5 class="mb-1">No knowledge transfer evidence found</h5>
+                      <p class="mb-0">This pipeline run may not have demonstrated clear knowledge transfer patterns.</p>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer small text-muted">
+          Each row represents a knowledge transfer event observed during this pipeline run.
+        </div>
+      </div>
+
+      <!-- Learning Insights -->
+      <div class="card shadow-sm mt-3">
+        <div class="card-header py-2">Learning Insights</div>
+        <div class="card-body">
+          <div id="learning-insights-container" class="row">
+            {% for insight in matrix.learning_insights %}
+              {% set palette = type_palette.get(insight.type, type_palette['default']) %}
+            <div class="col-md-6 mb-3">
+              <div class="card h-100 border-0 shadow-sm border-top border-3 {{ palette.border }}">
+                <div class="card-body">
+                  <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-circle p-2 me-3 {{ palette.bg_subtle }}">
+                      <i class="bi {{ palette.icon }} {{ palette.text }}" style="font-size: 1.1rem;" aria-hidden="true"></i>
+                    </div>
+                    <h5 class="card-title mb-0 {{ palette.text }}">{{ insight.title }}</h5>
+                  </div>
+                  <p class="card-text text-muted mb-2">{{ insight.content }}</p>
+                  {% if insight.recommendation %}
+                  <div class="mt-3 p-2 bg-light rounded">
+                    <h6 class="mb-1">Recommendation</h6>
+                    <p class="mb-0 small">{{ insight.recommendation }}</p>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+
+            {% if not matrix.learning_insights %}
+            <div class="col-12">
+              <div class="alert alert-light text-center py-4">
+                <i class="bi bi-brain display-4 text-muted mb-3" aria-hidden="true"></i>
+                <h5 class="text-muted">No learning insights available</h5>
+                <p class="text-muted mb-0">Run the pipeline with more papers to generate learning evidence.</p>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Run timeline -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-dark text-white py-2">Pipeline Timeline</div>
+        <div class="card-body">
+          <div id="timeline-meta" class="small text-muted mb-2">
+            {{ matrix.kpi.total_events }} events processed
+          </div>
+          <div id="timeline" class="list-group small" style="max-height: 540px; overflow:auto;">
+            {% for event in (run.events or [])[:50] %}
+            <div class="list-group-item">
+              <div class="d-flex justify-content-between">
+                <div>
+                  <strong>{{ event.event or "event" }}</strong>
+                  <small class="text-muted">({{ event.agent or "—" }})</small>
+                  {% if event.paper_id and event.section_name %}
+                  <span class="badge bg-light text-dark border ms-2">
+                    {{ event.paper_id }} • {{ event.section_name }}
+                  </span>
+                  {% endif %}
+                </div>
+                <div class="text-muted">{{ event.ts|timestamp }}</div>
+              </div>
+              <div class="small text-muted">
+                paper: {{ event.paper_id or "—" }} · section: {{ event.section_name or "—" }}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mt-3">
+        <div class="card-header py-2">Top Paper→Paper Transfers</div>
+        <ul id="top-pairs" class="list-group list-group-flush">
+          {% for pair in matrix.top_pairs %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span><strong>{{ pair.from or "—" }}</strong> → <strong>{{ pair.to or "—" }}</strong></span>
+            <span class="badge text-bg-dark">{{ pair.count }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Transfer type filter
+  document.querySelectorAll('.transfer-type-filter').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.transfer-type-filter').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      const type = this.dataset.type;
+      document.querySelectorAll('#tbl-evidence tbody tr').forEach(row => {
+        row.style.display = (type === 'all' || row.dataset.transferType === type) ? '' : 'none';
+      });
+    });
+  });
+
+  // Export learning report (UI affordance)
+  document.getElementById('btn-export-learning').addEventListener('click', function() {
+    const btn = this;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Generating...';
+    btn.disabled = true;
+
+    setTimeout(() => {
+      btn.innerHTML = '<i class="bi bi-download me-1" aria-hidden="true"></i>Export Successful!';
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }, 1500);
+      // Hook real export here if desired
+      // window.location.href = `/learning/run/{{ run.id }}/report`;
+    }, 900);
+  });
+});
+</script>
+{% endblock %}

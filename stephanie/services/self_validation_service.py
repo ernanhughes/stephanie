@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import random
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable
 
 from stephanie.services.service_protocol import Service
 
@@ -31,12 +31,16 @@ class SelfValidationService(Service):
         cfg,
         memory,
         logger,
-        reward_model: callable,  # (goal, a, b, dimension=...) -> pref
-        llm_judge: callable,     # (goal, a, b, dimension=...) -> pref
+        container: Optional[Any] = None,
+        reward_model: Optional[Callable] = None,  # (goal, a, b, dimension=...) -> pref
+        llm_judge: Optional[Callable] = None,     # (goal, a, b, dimension=...) -> pref
     ):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
+        self.container = container
+
+        # Optional injected callables (can be None; we'll backfill in initialize)
         self.reward_model = reward_model
         self.llm_judge = llm_judge
 
@@ -60,6 +64,31 @@ class SelfValidationService(Service):
 
     # === Service Protocol ===
     def initialize(self, **kwargs) -> None:
+        """
+        If reward_model / llm_judge were not provided, derive them from ScoringService
+        via the container. This keeps the service self-sufficient and decoupled from
+        Supervisor factories.
+        """
+        if self.reward_model is None or self.llm_judge is None:
+            if not self.container:
+                raise RuntimeError(
+                    "SelfValidationService needs a container (or explicit reward_model/llm_judge)"
+                )
+            try:
+                scoring = self.container.get("scoring")
+            except Exception as e:
+                raise RuntimeError("SelfValidationService could not resolve 'scoring'") from e
+
+            # Defaults mirror the previous helpers
+            if self.reward_model is None:
+                self.reward_model = lambda goal, a, b, dimension=None: scoring.reward_compare(
+                    "reward", goal, a, b, dimension
+                )
+            if self.llm_judge is None:
+                self.llm_judge = lambda goal, a, b, dimension=None: scoring.compare_pair(
+                    "reward", goal, a, b, dimension
+                )
+
         self._initialized = True
         if self.logger:
             self.logger.log("SelfValidationInit", {"status": "initialized"})
@@ -72,7 +101,9 @@ class SelfValidationService(Service):
                 "cache_size": len(self._cache),
                 "cache_capacity": self.cache_size,
             },
-            "dependencies": {},
+            "dependencies": {
+                "scoring_bound": bool(self.reward_model and self.llm_judge)
+            },
         }
 
     def shutdown(self) -> None:
@@ -148,6 +179,7 @@ class SelfValidationService(Service):
 
         self._log("SelfValidationSummary", summary)
 
+        # Persist (best-effort)
         try:
             if self.memory and hasattr(self.memory, "save"):
                 self.memory.save("self_validation", {
@@ -164,13 +196,14 @@ class SelfValidationService(Service):
 
         return summary
 
-    # === Internals (unchanged) ===
+    # === Internals ===
     def _log(self, event: str, payload: Dict[str, Any]):
         if not self.logger:
             return
         try:
             self.logger.log(event, payload)
         except TypeError:
+            # In case downstream logger expects 'extra='
             self.logger.log(event, extra=payload)
 
     def _sample_pairs(self, pairs: List[dict]) -> List[dict]:
@@ -214,7 +247,7 @@ class SelfValidationService(Service):
                 return 0.0
         return 0.0
 
-    def _safe_call(self, fn: callable, goal: str, a: str, b: str, dimension: Optional[str]) -> Any:
+    def _safe_call(self, fn: Callable, goal: str, a: str, b: str, dimension: Optional[str]) -> Any:
         try:
             return fn(goal, a, b, dimension=dimension)
         except TypeError:

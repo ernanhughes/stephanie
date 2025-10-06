@@ -1,7 +1,7 @@
 # stephanie/scoring/scorer/knowledge_relevance_scorer.py
 from stephanie.data.score_result import ScoreResult
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable import Scorable, ScorableFactory
 
 class KnowledgeRelevanceAgent(BaseAgent):
     """Verifies if knowledge is RELEVANT to the current task (not just topically similar)"""
@@ -16,8 +16,8 @@ class KnowledgeRelevanceAgent(BaseAgent):
         documents  = context.get("documents", [])
         for document in documents:
             section = context.get("section")
-            section = context.get("section")
-            merged_context = {**context, } Yeah but I think it was section
+            merged_context = {**context, **document, "section": section}
+            scorable = ScorableFactory.from_dict(merged_context)
             score_result = self.score(context, scorable)
             
             # Store result in context

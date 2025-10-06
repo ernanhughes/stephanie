@@ -1,0 +1,8 @@
+enabled: false
+backend: inproc          # value is ignored when enabled=false
+servers: ""
+stream: ""
+required: false
+strict: false
+connect_timeout_s: 0.2
+fallback: none

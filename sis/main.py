@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-from sis.routes import arena, db, pipelines, models, logs, plan_traces, documents, mars
+from sis.routes import arena, db, pipelines, models, logs, plan_traces, documents, mars, learning
 from sis.routes import casebooks as casebooks_routes
 from sis.routes import chats, cards
 from zoneinfo import ZoneInfo
@@ -88,5 +88,4 @@ app.include_router(casebooks_routes.router)
 app.include_router(chats.router)
 app.include_router(arena.router)
 app.include_router(cards.router)
-
-
+app.include_router(learning.router)

@@ -3,10 +3,10 @@ defaults:
   - _self_
   - db: postgres
   - plan_monitor: disabled
-  - scoring/service/default
+  - bus: enabled   
   - logging/json_logger
   - mars/default
-
+  - services/default
   - scorer: all  
 
   - agents/learning_from_learning_fast
@@ -50,12 +50,6 @@ defaults:
 
 embeddings:
   backend: hnet
-
-bus:
-  backend: nats
-  servers: "nats://localhost:4222"
-  stream: stephanie
-  strict: true
 
 goal:
   goal_text: >

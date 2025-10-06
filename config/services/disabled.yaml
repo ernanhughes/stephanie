@@ -1,0 +1,18 @@
+# Everything off. Good for unit tests or minimal boots.
+services:
+  state:         { enabled: false }
+  rules:         { enabled: false }
+  llm:           { enabled: false }
+  scoring:       { enabled: false }
+  confidence:    { enabled: false }
+  plan_trace:    { enabled: false }
+  reporting:     { enabled: false }
+  validation:    { enabled: false }
+  training:      { enabled: false }
+  telemetry:     { enabled: false }
+  cbr:           { enabled: false }
+  kbase:         { enabled: false }
+  knowledge_graph:{ enabled: false }
+  zeromodel:     { enabled: false }
+  cycle:         { enabled: false }
+  strategy:      { enabled: false }

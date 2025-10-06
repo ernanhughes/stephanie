@@ -1,0 +1,163 @@
+# Baseline set you normally want on.
+services:
+  state:
+    enabled: true
+    cls: stephanie.services.state_tracker_service.StateTrackerService
+    dependencies: []
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  rules:
+    enabled: true
+    cls: stephanie.services.rules_service.RulesService
+    dependencies: []
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  llm:
+    enabled: true
+    cls: stephanie.services.llm_service.LLMService
+    dependencies: [rules]
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  scoring:
+    enabled: true
+    cls: stephanie.services.scoring_service.ScoringService
+    dependencies: []
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      container: ${container}
+      logger: ${logger}
+
+  confidence:
+    enabled: true
+    cls: stephanie.services.meta_confidence_service.MetaConfidenceService
+    dependencies: [state]
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  plan_trace:
+    enabled: true
+    cls: stephanie.services.plan_trace_service.PlanTraceService
+    dependencies: [scoring, state]
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      container: ${container}
+      logger: ${logger}
+
+  reporting:
+    enabled: true
+    factory: "stephanie.services.factories:make_reporting_service"
+    dependencies: []
+    args:
+      sinks:
+        - cls: stephanie.services.reporting_service.JsonlSink
+          args:
+            path: ${cfg:logging.logger.report_path}
+        - cls: stephanie.services.reporting_service.LoggerSink
+          args:
+            logger: ${logger}
+      enabled: ${cfg:reporting.enabled}
+      sample_rate: ${cfg:reporting.sample_rate}
+
+  validation:
+    enabled: true
+    factory: "stephanie.services.factories:create_self_validator"
+    dependencies: [scoring]
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  training:
+    enabled: true
+    factory: "stephanie.services.factories:create_training_controller"
+    dependencies: [validation, confidence]
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+  event_service:
+    enabled: true
+    cls: stephanie.services.event_service.EventService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  prompt:
+    enabled: true
+    cls: stephanie.services.prompt_service.PromptService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+
+  kbase:
+    enabled: true
+    cls: stephanie.services.knowledge_base_service.KnowledgeBaseService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+  zeromodel:
+    enabled: true
+    cls: stephanie.services.zeromodel.ZeroModelService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+  # CBR tends to be used by learning agents
+  cbr:
+    enabled: true
+    cls: stephanie.services.cbr_service.CBRService
+    dependencies: [llm, scoring]
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+  strategy:
+    enabled: true
+    cls: stephanie.services.strategy_profile_service.StrategyProfileService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+  # Optional: cycle watcher if you use it anywhere
+  cycle:
+    enabled: false
+    cls: stephanie.services.cycle_watcher_service.CycleWatcherService
+    dependencies: [state]
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}

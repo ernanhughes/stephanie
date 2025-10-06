@@ -30,7 +30,7 @@ class LearningFromLearningAgent(BaseAgent):
 
         # Progress
         self._progress_core = AgentProgress(self)
-        self.progress = ProgressAdapter(self._progress_core, cfg=cfg)
+        self.progress = ProgressAdapter(self._progress_core, cfg=cfg) 
 
         # Services
         self.strategy = StrategyManager(cfg, memory, container, logger)

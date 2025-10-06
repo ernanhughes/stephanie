@@ -93,7 +93,7 @@ class LearningFromLearningAgent(BaseAgent):
 
         # Chat corpus tool
         self.chat_corpus = build_chat_corpus_tool(
-            memory=memory, container=container, cfg=cfg.get(" All right", {})
+            memory=memory, container=container, cfg=cfg.get("chat_corpus", {})
         )
 
         # Optional two-head scorer
@@ -299,16 +299,12 @@ class LearningFromLearningAgent(BaseAgent):
 
             longitudinal = self._collect_longitudinal_metrics()
             cross = self._calculate_cross_episode_metrics()
-
-            # Store for later use
+            # Optional: attach A/B validation snapshot into cross so evidence report can render it
+            ab_val = self._validate_strategy_effectiveness(context)
+            if ab_val:
+                cross["strategy_ab_validation"] = ab_val
+            # Store for later use and build evidence once
             self._last_cross_episode = cross
-            
-            # Generate evidence report with cross-episode metrics
-            longitudinal = self._collect_longitudinal_metrics()
-            evidence_md = self._generate_evidence_report(longitudinal, cross)
-
-
-            self._last_cross_episode = cross  # so _generate_evidence_report can include it
             evidence_md = self._generate_evidence_report(longitudinal, cross)
             paper_out["cross_episode"] = cross
             paper_out["longitudinal_metrics"] = longitudinal
@@ -1032,20 +1028,19 @@ class LearningFromLearningAgent(BaseAgent):
                     self.memory.casebooks.set_case_attr(
                         case_id, "arena_winner_sidequest_id", value_text=str(sid)
                     )
-
-
-                    self.memory.casebooks.set_case_attr(
-                        case_id, "arena_case_id", value_text=str(case_id)
-                    )
-                    self.memory.casebooks.set_case_attr(
-                        case_id, "arena_paper_id", value_text=str(paper.get("id") or paper.get("doc_id"))
-                    )
-                    self.memory.casebooks.set_case_attr(
-                        case_id, "arena_section_name", value_text=str(section.get("section_name"))
-                    )
-                    self.memory.casebooks.set_case_attr(
-                        case_id, "arena_agent_name", value_text=self.name
-                    )
+                # Always set provenance attrs (were mistakenly nested under if sid)
+                self.memory.casebooks.set_case_attr(
+                    case_id, "arena_case_id", value_text=str(case_id)
+                )
+                self.memory.casebooks.set_case_attr(
+                    case_id, "arena_paper_id", value_text=str(paper.get("id") or paper.get("doc_id"))
+                )
+                self.memory.casebooks.set_case_attr(
+                    case_id, "arena_section_name", value_text=str(section.get("section_name"))
+                )
+                self.memory.casebooks.set_case_attr(
+                    case_id, "arena_agent_name", value_text=self.name
+                )
 
             except Exception as e:
                 _logger.warning(f"Failed to set case provenance attrs: {str(e)}")
@@ -1093,14 +1088,7 @@ class LearningFromLearningAgent(BaseAgent):
                 _logger.warning(f"_persist_arena failed: {e}")
 
 
-# In your _persist_arena method (stephanie/agents/learning/persistence.py)
-def _persist_arena(self, case, paper, section, arena, context) -> None:
-    """Persist arena artifacts for audit & reuse, plus compact telemetry."""
-    # ... existing code ...
-    
-    # Add case metadata for provenance
-    
-
+    # NOTE: removed accidental duplicate _persist_arena definition that overwrote the real one
     def _score_summary(
         self,
         text: str,
@@ -1723,42 +1711,6 @@ def _persist_arena(self, case, paper, section, arena, context) -> None:
             )
         }
 
-    def _validate_strategy_effectiveness(self, context: Dict[str, Any]) -> None:
-        """Validate which strategy performed better and commit or revert"""
-        # Get A/B test results from the last N sections
-        test_results = self._get_strategy_test_results(context)
-        
-        if not test_results or len(test_results) < 2:
-            return
-        
-        # Calculate performance difference
-        perf_a = [r["performance"] for r in test_results if r["group"] == "A"]
-        perf_b = [r["performance"] for r in test_results if r["group"] == "B"]
-        
-        if not perf_a or not perf_b:
-            return
-        
-        avg_perf_a = sum(perf_a) / len(perf_a)
-        avg_perf_b = sum(perf_b) / len(perf_b)
-        improvement = (avg_perf_b - avg_perf_a) / avg_perf_a * 100
-        
-        # Only commit if improvement is significant (e.g., > 2%)
-        if improvement > self.cfg.get("min_strategy_improvement", 2.0):
-            self.logger.log("StrategyValidated", {
-                "improvement_pct": improvement,
-                "new_strategy": vars(self.strategy),
-                "test_count": len(test_results)
-            })
-        else:
-            # Revert to better strategy
-            better_strategy = self._determine_better_strategy(test_results)
-            self.strategy = better_strategy
-            self.logger.log("StrategyReverted", {
-                "reason": "insufficient_improvement",
-                "improvement_pct": improvement,
-                "reverted_to": vars(better_strategy)
-            })
-
     def _get_strategy_test_results(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get results of recent strategy A/B tests from scorables (not attributes)"""
         results = []
@@ -1868,8 +1820,9 @@ def _persist_arena(self, case, paper, section, arena, context) -> None:
                         if s.role == "strategy_ab_enroll":
                             try:
                                 rec = json.loads(s.text) if isinstance(s.text, str) else s.text
-                                if rec.get("test_group") == "B" and "new_strategy" in rec:
-                                    new_strat = rec["new_strategy"]
+                                # _record_strategy_test stores keys 'new' and 'old', not 'new_strategy'
+                                if rec.get("test_group") == "B" and "new" in rec:
+                                    new_strat = rec["new"]
                                     return Strategy(
                                         verification_threshold=new_strat["verification_threshold"],
                                         skeptic_weight=new_strat["skeptic_weight"],
@@ -1888,8 +1841,8 @@ def _persist_arena(self, case, paper, section, arena, context) -> None:
                         if s.role == "strategy_ab_enroll":
                             try:
                                 rec = json.loads(s.text) if isinstance(s.text, str) else s.text
-                                if rec.get("test_group") == "A" and "old_strategy" in rec:
-                                    old_strat = rec["old_strategy"]
+                                if rec.get("test_group") == "A" and "old" in rec:
+                                    old_strat = rec["old"]
                                     return Strategy(
                                         verification_threshold=old_strat["verification_threshold"],
                                         skeptic_weight=old_strat["skeptic_weight"],
