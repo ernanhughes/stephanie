@@ -5,11 +5,13 @@ import asyncio
 import json
 import uuid
 from typing import Any, Dict, Optional, Tuple, List
+from copy import deepcopy
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.agentic_tree_search import AgenticTreeSearch, ExecutionResult
 from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
-from copy import deepcopy
+from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.utils.emit_broadcaster import EmitBroadcaster
 
 
 class PromptCompilerAgent(BaseAgent):
@@ -30,27 +32,30 @@ class PromptCompilerAgent(BaseAgent):
 
     def __init__(self, cfg, memory=None, container=None, logger=None, full_cfg=None):
         super().__init__(cfg, memory, container, logger)
-        self.runner = PipelineRunnerAgent(cfg, memory=memory, logger=logger, container=container, full_cfg=full_cfg)
-        
-        # Initialize ZeroModelService RPC client
-        self.zm_service = self.memory.services.get("zeromodel-service-v1")
-        if not self.zm_service:
-            raise RuntimeError("ZeroModelService not available in memory")
-        
+        self.runner = PipelineRunnerAgent(
+            cfg, memory=memory, logger=logger, container=container, full_cfg=full_cfg
+        )
+
+        # ---- Resolve ZeroModelService from the container (robustly) ----
+        self.zm = container.get("zeromodel")
+        if not self.zm:
+            raise RuntimeError(
+                "ZeroModelService not found. Please ensure it is registered in the container."
+            )
+
         # --- Config knobs (with sensible defaults) ---
         self.ats_cfg = {
-            "N_init":            cfg.get("ats_N_init", 4),
-            "max_iterations":    cfg.get("ats_max_iter", 80),
-            "time_limit":        cfg.get("ats_time_limit", 1200),  # 20 min
-            "no_improve_patience": cfg.get("ats_patience", 25),
-            "H_debug":           0.0,   # not executing code
-            "H_greedy":          cfg.get("ats_H_greedy", 0.5),
-            "C_ucb":             cfg.get("ats_C_ucb", 1.2),
-            "random_seed":       cfg.get("random_seed", 42),
+            "N_init":               cfg.get("ats_N_init", 4),
+            "max_iterations":       cfg.get("ats_max_iter", 80),
+            "time_limit":           cfg.get("ats_time_limit", 1200),  # 20 min
+            "no_improve_patience":  cfg.get("ats_patience", 25),
+            "H_debug":              0.0,   # not executing user code here
+            "H_greedy":             cfg.get("ats_H_greedy", 0.5),
+            "C_ucb":                cfg.get("ats_C_ucb", 1.2),
+            "random_seed":          cfg.get("random_seed", 42),
         }
 
         # How to extract score/text from the judge output (dot-paths)
-        # Default aligns with: {"selected": {"text": "...", "score": <float 0..1>}}
         self.score_path: str = cfg.get("score_path", "selected.score")
         self.text_path:  str = cfg.get("text_path",  "selected.text")
 
@@ -68,7 +73,28 @@ class PromptCompilerAgent(BaseAgent):
         # Optional: let caller inject explicit pipeline_stages
         self.pipeline_stages: Optional[List[Dict[str, Any]]] = cfg.get("pipeline_stages")
 
-        # Build ATS with ZeroModel timeline emitter
+        # ---- ATS + timeline sink wiring ----
+        self._goal_text: str = ""
+        self.run_id: str = ""
+
+        async def _timeline_sink(event: str, payload: Dict[str, Any]) -> None:
+            """Append rows on 'node'; finalize on 'report'. Never raise."""
+            if not self.run_id:
+                return
+            try:
+                if event == "node":
+                    node = payload.get("node", payload)
+                    extra = {
+                        "value": payload.get("value"),
+                        "best_metric": payload.get("best_metric"),
+                    }
+                    self.zm.timeline_append_row(self.run_id, node=node, extra=extra)
+                elif event == "report":
+                    return  # do nothing finalize at the end of run
+            except Exception:
+                # Telemetry must never stop the run
+                pass
+
         self.ats = AgenticTreeSearch(
             agent=self,
             N_init=self.ats_cfg["N_init"],
@@ -79,7 +105,7 @@ class PromptCompilerAgent(BaseAgent):
             H_greedy=self.ats_cfg["H_greedy"],
             C_ucb=self.ats_cfg["C_ucb"],
             metric_fn=lambda m: 0.0 if m is None else float(m),
-            emit_cb=self._emit_to_zero_model,  # New timeline-aware emitter
+            emit_cb=EmitBroadcaster(self._emit_to_logger, _timeline_sink),
             random_seed=self.ats_cfg["random_seed"],
         )
 
@@ -87,21 +113,30 @@ class PromptCompilerAgent(BaseAgent):
         self.ats.execute_code = self._execute_prompt  # type: ignore[assignment]
         self.ats.verifier.verify = self._verify_prompt  # type: ignore[assignment]
 
-        self._goal_text: str = ""
-        self.run_id: str = ""  # Will be set in run()
+    # ---------------------------------------------------------------------
+    # Sink 1/2 for EmitBroadcaster: safe logger
+    # ---------------------------------------------------------------------
+    def _emit_to_logger(self, event: str, payload: Dict[str, Any]) -> None:
+        """
+        Lightweight logging sink. Must not raise. Works whether self.logger is stdlib-like or a custom reporter.
+        """
+        try:
+            if not self.logger:
+                return
+            # Prefer a structured log method if present; fall back to info()
+            if hasattr(self.logger, "log") and callable(getattr(self.logger, "log")):
+                self.logger.log(f"PromptCompiler::{event}", payload)
+            elif hasattr(self.logger, "info"):
+                self.logger.info("PromptCompiler::%s %s", event, payload)
+        except Exception:
+            # swallow logging errors by design
+            pass
 
     # ---------------------------------------------------------------------
     # ATS hook: "execute" a prompt candidate by sending it to your judge.
     # ---------------------------------------------------------------------
     async def _execute_prompt(self, prompt_candidate: str) -> ExecutionResult:
-        """
-        Score a prompt candidate using your pipeline judge.
-        - We pass through the *entire* input context (so the judge can see knowledge, etc.)
-        - We add `current_thought` = the candidate prompt
-        - Optionally include configured pipeline_stages
-        """
         try:
-            # Base context: carry the original inputs through to the runner
             request_ctx = deepcopy(getattr(self, "_base_context", {}))
             request_ctx["goal"] = {"goal_text": self._goal_text}
             request_ctx["current_thought"] = (prompt_candidate or "").strip()
@@ -111,13 +146,10 @@ class PromptCompilerAgent(BaseAgent):
 
             result = await self.runner.run(request_ctx)
 
-            # Extract score and text via configured paths
             score = self._dig(result, self.score_path)
             text  = self._dig(result, self.text_path) or ""
 
-            # Normalize score to [0,1]
             metric = self._normalize_score(score)
-
             payload = {
                 "selected_text": text,
                 "score": metric,   # already normalized in [0,1]
@@ -136,19 +168,16 @@ class PromptCompilerAgent(BaseAgent):
     # ATS hook: verify/parse the judge result
     # ---------------------------------------------------------------------
     def _verify_prompt(self, stdout: str, stderr: str, has_submission_file: bool) -> Dict[str, Any]:
-        """Parse normalized score from JSON stdout; assume no code bugs."""
         metric: Optional[float] = None
         summary: str = ""
         try:
             if stdout:
                 obj = json.loads(stdout)
                 metric = obj.get("score")
-                # prefer the judge-selected text as a brief summary
                 summary = (obj.get("selected_text") or "")[:500]
         except Exception:
             summary = (stdout or "")[:500]
 
-        # Clamp for safety
         if metric is not None:
             try:
                 metric = max(0.0, min(1.0, float(metric)))
@@ -165,30 +194,6 @@ class PromptCompilerAgent(BaseAgent):
         }
 
     # ---------------------------------------------------------------------
-    # ZeroModel timeline control
-    # ---------------------------------------------------------------------
-    async def _emit_to_zero_model(self, event: str, payload: Dict[str, Any]) -> None:
-        """Emit events to ZeroModelService for timeline generation"""
-        # Only process node events for timeline
-        if event == "node":
-            # Add run_id to payload
-            payload["run_id"] = self.run_id
-            # Fire-and-forget event push
-            asyncio.create_task(
-                self.zm_service.request("add_event", {
-                    "run_id": self.run_id,
-                    "event": payload
-                })
-            )
-        
-        # Keep original logging
-        if self.logger:
-            try:
-                self.logger.log(f"PromptCompiler::{event}", payload)
-            except Exception:
-                pass
-
-    # ---------------------------------------------------------------------
     # BaseAgent integration & public API
     # ---------------------------------------------------------------------
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -197,23 +202,16 @@ class PromptCompilerAgent(BaseAgent):
         if not goal_text:
             raise ValueError("Missing 'goal.goal_text' in context")
 
-        # Generate unique run ID
-        self.run_id = str(uuid.uuid4())
-        
-        # Create timeline context
-        await self.zm_service.request("create_timeline", {
-            "run_id": self.run_id,
-            "config": {
-                "metrics": ["metric", "draft", "improve", "debug"],
-                "options": {
-                    "title": f"Prompt Search (Run: {self.run_id[:8]})",
-                    "x_label": "Time (seconds)",
-                    "y_label": "Metric Value",
-                    "bar_alpha": 0.3
-                }
-            }
-        })
-        
+        # Run ID: prefer given PIPELINE_RUN_ID, else generate
+        self.run_id = context.get(PIPELINE_RUN_ID) or str(uuid.uuid4())
+        context[PIPELINE_RUN_ID] = self.run_id
+
+        # Open timeline session (direct, in-process)
+        self.zm.timeline_open(
+            self.run_id,
+            metrics=["metric","value","visits","bug","action_draft","action_improve","action_debug"],
+        )
+
         # Keep originals for the runner
         self._base_context = context
         self._goal_text = goal_text
@@ -221,20 +219,25 @@ class PromptCompilerAgent(BaseAgent):
         # Run the search
         result_ctx = await self.ats.run(context)
 
-        # Finalize timeline
-        timeline_result = await self.zm_service.request("finalize_timeline", {
-            "run_id": self.run_id
-        })
-        
+        # Finalize timeline (defensive: in case no 'report' was emitted)
+        finalize_res = await self.zm.timeline_finalize(self.run_id)
+        timeline_path = (
+            finalize_res.get("gif") or finalize_res.get("output_path") or
+            # fallback: look for last generated file in out_dir
+            getattr(self.zm, "last_output_for", lambda _rid: "")(self.run_id)
+        )
+
         # Best solution
         best = result_ctx.get("final_solution") or {}
         context["final_prompt"] = best.get("code") or best.get("plan") or ""
         context["final_prompt_metric"] = best.get("metric")
         context["final_prompt_summary"] = best.get("summary")
-        context["timeline_path"] = timeline_result.get("timeline_path", "")
+        context["timeline_path"] = timeline_path
+
+        # Accurate stats
         context["prompt_search_stats"] = {
             "iterations": getattr(self.ats, "iteration", 0),
-            "tree_size": len(getattr(self.ats, "tree", []) or []),
+            "tree_size":  len(getattr(self.ats, "tree", []) or []),
             "best_metric": getattr(self.ats, "best_metric", None),
         }
 
@@ -244,10 +247,6 @@ class PromptCompilerAgent(BaseAgent):
     # Helpers
     # ---------------------------------------------------------------------
     def _dig(self, obj: Any, path: str) -> Any:
-        """
-        Retrieve nested value by dot-path (e.g., "selected.score").
-        Returns None if anything is missing.
-        """
         try:
             cur = obj
             for part in path.split("."):
@@ -260,19 +259,16 @@ class PromptCompilerAgent(BaseAgent):
             return None
 
     def _normalize_score(self, score: Any) -> Optional[float]:
-        """Map any numeric score to [0,1] using optional score_range, else assume already [0,1]."""
         if score is None:
             return None
         try:
             val = float(score)
         except Exception:
             return None
-
         if self.score_range:
             lo, hi = self.score_range
-            if hi == lo:
-                return 0.0
-            # linear map to [0,1]
-            val = (val - lo) / (hi - lo)
-        # final clamp
+            if hi != lo:
+                val = (val - lo) / (hi - lo)
+            else:
+                val = 0.0
         return max(0.0, min(1.0, val))

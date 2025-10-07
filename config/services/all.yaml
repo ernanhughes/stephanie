@@ -122,13 +122,12 @@ services:
 
   zeromodel:
     enabled: true
-    cls: stephanie.services.zeromodel.ZeroModelService
+    cls: stephanie.services.zeromodel_service.ZeroModelService
     dependencies: []
     args: 
       cfg: ${cfg}
       memory: ${memory}
       logger: ${logger}
-      container: ${container}
 
   # CBR tends to be used by learning agents
   cbr:
