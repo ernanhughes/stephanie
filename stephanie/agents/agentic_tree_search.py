@@ -72,7 +72,7 @@ class PlanGenerator:
     def __init__(self, agent: BaseAgent):
         self.agent = agent
 
-    def draft_plan(self, task_description: str, context: dict) -> str:
+    async def draft_plan(self, task_description: str, context: dict) -> str:
         knowledge = context.get("knowledge", [])
         prompt = f"""
 You are an expert ML engineer.
@@ -82,10 +82,10 @@ Create a detailed solution plan for this task (no code):
 Relevant tricks from past solutions: {" ".join(knowledge) if knowledge else "None"}
 Return only the plan text.
 """
-        response = self.agent.call_llm(prompt, context=context)
+        response = await self.agent.async_call_llm(prompt, context=context)
         return response.strip()
 
-    def improve_plan(
+    async def improve_plan(
         self, previous_plan: str, feedback: str, context: dict
     ) -> str:
         knowledge = context.get("knowledge", [])
@@ -97,10 +97,10 @@ Feedback: {feedback}
 Additional knowledge: {" ".join(knowledge) if knowledge else "None"}
 Return only the improved plan text.
 """
-        response = self.agent.call_llm(prompt, context=context)
+        response = await self.agent.async_call_llm(prompt, context=context)
         return response.strip()
 
-    def debug_plan(
+    async def debug_plan(
         self, previous_plan: str, error_log: str, context: dict
     ) -> str:
         prompt = f"""
@@ -111,7 +111,7 @@ Error log:
 {error_log}
 Return only the corrected plan text.
 """
-        response = self.agent.call_llm(prompt, context=context)
+        response = await self.agent.async_call_llm(prompt, context=context)
         return response.strip()
 
 
@@ -196,7 +196,7 @@ class CodeExecutor:
         self.agent = agent
 
     async def score_complexity(
-        self, task_description: str, plan: str
+        self, task_description: str, plan: str, context: dict
     ) -> float:
         prompt = f"""
 Rate the complexity of this task and plan on a scale of 1–5 (1 = simple, 5 = very complex).
@@ -205,7 +205,7 @@ Plan: {plan}
 
 Respond with a single number between 1 and 5.
 """
-        response = await self.agent.llm(prompt)
+        response = await self.agent.async_call_llm(prompt, context=context)
         try:
             score = float(re.findall(r"\d+(?:\.\d+)?", response.strip())[0])
             return max(1.0, min(5.0, score))
@@ -218,7 +218,7 @@ Respond with a single number between 1 and 5.
         fence = re.compile(r"^```(?:python)?\n|\n```$", re.IGNORECASE)
         return fence.sub("", code).strip()
 
-    async def one_pass_codegen(self, plan: str) -> str:
+    async def one_pass_codegen(self, plan: str, context: dict) -> str:
         prompt = f"""
 Generate complete, runnable Python code for the following machine learning plan.
 Only output code (no backticks, no explanation).
@@ -226,12 +226,12 @@ Only output code (no backticks, no explanation).
 Plan:
 {plan}
 """
-        response = await self.agent.llm(prompt)
+        response = await self.agent.async_call_llm(prompt, context=context)
         return self._strip_markdown(response)
 
-    async def stepwise_codegen(self, plan: str) -> str:
+    async def stepwise_codegen(self, plan: str, context: dict) -> str:
         # Future: break into steps; for now use same path
-        return await self.one_pass_codegen(plan)
+        return await self.one_pass_codegen(plan, context=context)
 
 
 # ------------------------------ Tree Search -------------------------------- #
@@ -404,12 +404,12 @@ class AgenticTreeSearch:
     ) -> SolutionNode:
         # codegen
         complexity = await self.code_executor.score_complexity(
-            task_description, plan
+            task_description, plan, context
         )
         code = (
-            await self.code_executor.stepwise_codegen(plan)
+            await self.code_executor.stepwise_codegen(plan, context=context)
             if complexity > 3.5
-            else await self.code_executor.one_pass_codegen(plan)
+            else await self.code_executor.one_pass_codegen(plan, context=context)
         )
 
         # execute (⚠️ sandbox in production)
