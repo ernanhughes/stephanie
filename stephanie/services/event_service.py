@@ -164,6 +164,14 @@ class EventService(Service):
             self._metrics["rpc_failed"] += 1
             raise
 
+    async def add_route(self, subject: str, handler: Handler) -> None:
+        """Dynamically subscribe a new subject with idempotency + DLQ."""
+        await self._subscribe(subject, handler)
+
+    async def remove_route(self, subject: str) -> None:
+        """Best-effort unbind: keep our bookkeeping clean; underlying bus unsubscribe is optional."""
+        self._subscriptions = [(s, h) for (s, h) in self._subscriptions if s != subject]
+
     # ============== Internals ==============
 
     async def _subscribe(self, subject: str, handler: Handler):
@@ -214,4 +222,3 @@ class EventService(Service):
         await self.memory. OK (dlq_subject, record)
         self.memory.bus_events.insert(dlq_subject, record)
 
-        

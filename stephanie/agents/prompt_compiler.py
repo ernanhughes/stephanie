@@ -1,6 +1,9 @@
+# stephanie/agents/prompt_compiler_agent.py
 from __future__ import annotations
 
+import asyncio
 import json
+import uuid
 from typing import Any, Dict, Optional, Tuple, List
 
 from stephanie.agents.base_agent import BaseAgent
@@ -11,8 +14,8 @@ from copy import deepcopy
 
 class PromptCompilerAgent(BaseAgent):
     """ 
-    Unified, minimal prompt compiler using Agentic Tree Search (ATS).
-
+    Unified, minimal prompt compiler using Agentic Tree Search (ATS) with ZeroModel timeline control.
+    
     INPUT (context):
       context["goal"]["goal_text"] : natural-language description of what the final prompt should achieve
       context["knowledge"]         : optional list[str] of hints/templates to bias planning (used by ATS)
@@ -22,17 +25,18 @@ class PromptCompilerAgent(BaseAgent):
       context["final_prompt_metric"]  : score in [0,1]
       context["final_prompt_summary"] : short excerpt or explanation
       context["prompt_search_stats"]  : {"iterations", "tree_size", "best_metric"}
-
-    INTERNALS:
-      - Treat each ATS "plan" as a candidate prompt string.
-      - Score via PipelineRunnerAgent (your judge pipeline).
-      - ATS explores/improves candidates (debug branch disabled).
+      context["timeline_path"]        : path to generated timeline GIF
     """
 
     def __init__(self, cfg, memory=None, container=None, logger=None, full_cfg=None):
         super().__init__(cfg, memory, container, logger)
         self.runner = PipelineRunnerAgent(cfg, memory=memory, logger=logger, container=container, full_cfg=full_cfg)
-
+        
+        # Initialize ZeroModelService RPC client
+        self.zm_service = self.memory.services.get("zeromodel-service-v1")
+        if not self.zm_service:
+            raise RuntimeError("ZeroModelService not available in memory")
+        
         # --- Config knobs (with sensible defaults) ---
         self.ats_cfg = {
             "N_init":            cfg.get("ats_N_init", 4),
@@ -64,7 +68,7 @@ class PromptCompilerAgent(BaseAgent):
         # Optional: let caller inject explicit pipeline_stages
         self.pipeline_stages: Optional[List[Dict[str, Any]]] = cfg.get("pipeline_stages")
 
-        # Build ATS
+        # Build ATS with ZeroModel timeline emitter
         self.ats = AgenticTreeSearch(
             agent=self,
             N_init=self.ats_cfg["N_init"],
@@ -75,7 +79,7 @@ class PromptCompilerAgent(BaseAgent):
             H_greedy=self.ats_cfg["H_greedy"],
             C_ucb=self.ats_cfg["C_ucb"],
             metric_fn=lambda m: 0.0 if m is None else float(m),
-            emit_cb=self._emit_to_logger,
+            emit_cb=self._emit_to_zero_model,  # New timeline-aware emitter
             random_seed=self.ats_cfg["random_seed"],
         )
 
@@ -84,6 +88,7 @@ class PromptCompilerAgent(BaseAgent):
         self.ats.verifier.verify = self._verify_prompt  # type: ignore[assignment]
 
         self._goal_text: str = ""
+        self.run_id: str = ""  # Will be set in run()
 
     # ---------------------------------------------------------------------
     # ATS hook: "execute" a prompt candidate by sending it to your judge.
@@ -160,21 +165,55 @@ class PromptCompilerAgent(BaseAgent):
         }
 
     # ---------------------------------------------------------------------
-    # BaseAgent integration & public API
+    # ZeroModel timeline control
     # ---------------------------------------------------------------------
-    async def _emit_to_logger(self, event: str, payload: Dict[str, Any]) -> None:
+    async def _emit_to_zero_model(self, event: str, payload: Dict[str, Any]) -> None:
+        """Emit events to ZeroModelService for timeline generation"""
+        # Only process node events for timeline
+        if event == "node":
+            # Add run_id to payload
+            payload["run_id"] = self.run_id
+            # Fire-and-forget event push
+            asyncio.create_task(
+                self.zm_service.request("add_event", {
+                    "run_id": self.run_id,
+                    "event": payload
+                })
+            )
+        
+        # Keep original logging
         if self.logger:
             try:
                 self.logger.log(f"PromptCompiler::{event}", payload)
             except Exception:
                 pass
 
+    # ---------------------------------------------------------------------
+    # BaseAgent integration & public API
+    # ---------------------------------------------------------------------
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         goal = context.get("goal", {}) or {}
         goal_text = (goal.get("goal_text") or "").strip()
         if not goal_text:
             raise ValueError("Missing 'goal.goal_text' in context")
 
+        # Generate unique run ID
+        self.run_id = str(uuid.uuid4())
+        
+        # Create timeline context
+        await self.zm_service.request("create_timeline", {
+            "run_id": self.run_id,
+            "config": {
+                "metrics": ["metric", "draft", "improve", "debug"],
+                "options": {
+                    "title": f"Prompt Search (Run: {self.run_id[:8]})",
+                    "x_label": "Time (seconds)",
+                    "y_label": "Metric Value",
+                    "bar_alpha": 0.3
+                }
+            }
+        })
+        
         # Keep originals for the runner
         self._base_context = context
         self._goal_text = goal_text
@@ -182,16 +221,20 @@ class PromptCompilerAgent(BaseAgent):
         # Run the search
         result_ctx = await self.ats.run(context)
 
+        # Finalize timeline
+        timeline_result = await self.zm_service.request("finalize_timeline", {
+            "run_id": self.run_id
+        })
+        
         # Best solution
         best = result_ctx.get("final_solution") or {}
         context["final_prompt"] = best.get("code") or best.get("plan") or ""
         context["final_prompt_metric"] = best.get("metric")
         context["final_prompt_summary"] = best.get("summary")
-
-        # Accurate stats (ATS doesn't return iteration count inside result_ctx)
+        context["timeline_path"] = timeline_result.get("timeline_path", "")
         context["prompt_search_stats"] = {
             "iterations": getattr(self.ats, "iteration", 0),
-            "tree_size":  len(getattr(self.ats, "tree", []) or []),
+            "tree_size": len(getattr(self.ats, "tree", []) or []),
             "best_metric": getattr(self.ats, "best_metric", None),
         }
 

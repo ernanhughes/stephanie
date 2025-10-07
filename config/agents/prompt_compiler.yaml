@@ -15,7 +15,7 @@ prompt_compiler:
 
 
   model:
-    name: ollama_chat/qwen3
+    name: ollama_chat/qwen3:0.6b
     api_base: http://localhost:11434
     api_key: null
 
