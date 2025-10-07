@@ -290,7 +290,7 @@ class NatsKnowledgeBus(BusProtocol):
         # Remember intent (for auto re-subscribe on reconnect)
         self._subscriptions[subject] = {
             "handler": handler,
-            "durable": durable_name,
+
             # store the built callback so we reuse the exact same closure on reconnects
             "cb": wrapped_cb,
         }

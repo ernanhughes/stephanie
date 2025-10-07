@@ -56,3 +56,9 @@ PROMPT_PATH = "prompt_path"
 SAVE_CONTEXT = "save_context"
 SAVE_PROMPT = "save_prompt"
 SKIP_IF_COMPLETED = "skip_if_completed"
+
+# metrics
+METRICS_REQ  = "arena.metrics.request"
+METRICS_OK   = "arena.metrics.ready"
+ATS_NODE     = "arena.ats.node"     # if you already emit node events, keep it
+ATS_REPORT   = "arena.ats.report"

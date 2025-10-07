@@ -201,7 +201,12 @@ class Service(ABC):
             # If logging fails, continue without logging
             pass
 
-    async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], Awaitable[None]] | Callable[[Dict[str, Any]], None]) -> None:
+    async def subscribe(
+        self,
+        subject: str,
+        handler: Callable[[Dict[str, Any]], Awaitable[None]] | Callable[[Dict[str, Any]], None],
+        queue_group: Optional[str] = None,
+    ) -> None:
         """
         Subscribe to events on the event bus if available.
         
@@ -215,14 +220,14 @@ class Service(ABC):
         bus = getattr(self, "bus", None)
         if not bus:
             return
-            
-        # Convert sync handlers to async for consistency
+
+        # normalize sync handlers to async
         if not asyncio.iscoroutinefunction(handler):
             async def _async_handler(payload: Dict[str, Any]):
                 handler(payload)
-            return await bus.subscribe(subject, _async_handler)
-            
-        return await bus.subscribe(subject, handler)
+            return await bus.subscribe(subject, _async_handler, queue_group=queue_group)
+
+        return await bus.subscribe(subject, handler, queue_group=queue_group)
 
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
         """

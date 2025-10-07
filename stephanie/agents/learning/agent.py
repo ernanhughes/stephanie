@@ -68,7 +68,7 @@ class LearningFromLearningAgent(BaseAgent):
         self.single_random_doc = bool(cfg.get("single_random_doc", False))
 
         self.reporter = container.get("reporting")
-        self.event_service = self.container.get("event_service")
+        self.event_service = self.container.get("event")
         
         # Start health monitoring
         self._start_health_monitor()

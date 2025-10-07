@@ -90,7 +90,7 @@ services:
       logger: ${logger}
       container: ${container}
 
-  event_service:
+  event:
     enabled: true
     cls: stephanie.services.event_service.EventService
     dependencies: []
@@ -156,6 +156,16 @@ services:
     cls: stephanie.services.cycle_watcher_service.CycleWatcherService
     dependencies: [state]
     args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+  metrics:
+    enabled: true
+    cls: stephanie.services.metrics_service.MetricsService
+    dependencies: [scoring]   # optional but handy if your scorer provider is used
+    args:
       cfg: ${cfg}
       memory: ${memory}
       logger: ${logger}

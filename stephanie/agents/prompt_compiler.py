@@ -11,8 +11,10 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.agentic_tree_search import AgenticTreeSearch, ExecutionResult
 from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
 from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.services.workers.metrics_worker import MetricsWorker
+from stephanie.services.workers.vpm_worker import VPMWorker
 from stephanie.utils.emit_broadcaster import EmitBroadcaster
-
+import time
 
 class PromptCompilerAgent(BaseAgent):
     """ 
@@ -77,23 +79,50 @@ class PromptCompilerAgent(BaseAgent):
         self._goal_text: str = ""
         self.run_id: str = ""
 
+        self.metrics_worker = MetricsWorker(cfg, memory, container, logger)
+        self.vpm_worker = VPMWorker(cfg, memory, container, logger)
+        msubj_req   = (cfg.get("metrics", {}) or {}).get("subjects", {}).get("request", "arena.metrics.request")
+        ats_report  = (cfg.get("zeromodel", {}) or {}).get("subjects", {}).get("ats_report", "arena.ats.report")
+
         async def _timeline_sink(event: str, payload: Dict[str, Any]) -> None:
             """Append rows on 'node'; finalize on 'report'. Never raise."""
             if not self.run_id:
                 return
             try:
                 if event == "node":
+                    # 1) append to ZeroModel timeline (optional, if you want the immediate line)
                     node = payload.get("node", payload)
                     extra = {
                         "value": payload.get("value"),
                         "best_metric": payload.get("best_metric"),
                     }
                     self.zm.timeline_append_row(self.run_id, node=node, extra=extra)
+
+                    # 2) publish a metrics job for the worker
+                    await self.memory.bus.publish(
+                        subject=msubj_req,
+                        payload={
+                            "run_id": self.run_id,
+                            "node_id": node.get("id"),
+                            "parent_id": node.get("parent_id"),
+                            "action_type": node.get("type", "draft"),
+                            "goal_text": self._goal_text,
+                            "prompt_text": node.get("code") or node.get("plan") or node.get("text") or payload.get("prompt") or "",
+                            "best_metric": node.get("metric"),
+                            "bug": bool(node.get("bug", False)),
+                            "ts_enqueued": time.time(),
+                        },
+                    )
+
                 elif event == "report":
-                    return  # do nothing finalize at the end of run
+                    await self.memory.bus.publish(
+                        subject=ats_report,
+                        payload={"run_id": self.run_id},
+                    )
             except Exception:
                 # Telemetry must never stop the run
                 pass
+
 
         self.ats = AgenticTreeSearch(
             agent=self,
@@ -112,6 +141,8 @@ class PromptCompilerAgent(BaseAgent):
         # Override ATS execution & verification to use prompt scoring
         self.ats.execute_code = self._execute_prompt  # type: ignore[assignment]
         self.ats.verifier.verify = self._verify_prompt  # type: ignore[assignment]
+
+        self.start_time: float = time.time()
 
     # ---------------------------------------------------------------------
     # Sink 1/2 for EmitBroadcaster: safe logger
@@ -197,8 +228,12 @@ class PromptCompilerAgent(BaseAgent):
     # BaseAgent integration & public API
     # ---------------------------------------------------------------------
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        await self.metrics_worker.start()
+        await self.vpm_worker.start()
+
         goal = context.get("goal", {}) or {}
         goal_text = (goal.get("goal_text") or "").strip()
+
         if not goal_text:
             raise ValueError("Missing 'goal.goal_text' in context")
 
@@ -272,3 +307,5 @@ class PromptCompilerAgent(BaseAgent):
             else:
                 val = 0.0
         return max(0.0, min(1.0, val))
+
+

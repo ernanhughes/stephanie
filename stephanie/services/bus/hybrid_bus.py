@@ -1,3 +1,4 @@
+# stephanie/services/bus/hybrid_bus.py
 from __future__ import annotations
 
 import asyncio
@@ -143,15 +144,24 @@ class HybridKnowledgeBus(BusProtocol):
             self.logger.error(f"Failed to publish to {subject}: {e}")
             raise BusPublishError(f"Failed to publish to {subject}") from e
 
-    async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], None]) -> None:
+    async def subscribe(
+        self,
+        subject: str,
+        handler: Callable[[Dict[str, Any]], None],
+        queue_group: Optional[str] = None,
+    ) -> None:
         if self._bus is None and not self._disabled:
             ok = await self.connect()
             if not ok:
                 raise BusConnectionError("No bus connection available")
-        if self._bus is None:  # disabled
+        if self._bus is None:
             return
         try:
-            await self._bus.subscribe(subject, handler)
+            # Try passing queue_group; fall back if backend doesn't accept it
+            try:
+                return await self._bus.subscribe(subject, handler, queue_group=queue_group)
+            except TypeError:
+                return await self._bus.subscribe(subject, handler)
         except Exception as e:
             self.logger.error(f"Failed to subscribe to {subject}: {e}")
             raise BusSubscribeError(f"Failed to subscribe to {subject}") from e

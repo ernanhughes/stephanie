@@ -12,10 +12,9 @@ from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger  # ZeroModel owns rendering
 
 _DEFAULT_PIPELINE = [
-    {"name": "normalize", "params": {}},
-    {"name": "feature_engineering", "params": {}},
-    {"name": "organization", "params": {"strategy": "spatial"}},
-    # renderer stays inside ZeroModel (no matplotlib here)
+    {"stage": "normalize", "params": {}},
+    {"stage": "feature_engineering", "params": {}},
+    {"stage": "organization", "params": {"strategy": "spatial"}},
 ]
 
 @dataclass
@@ -209,35 +208,69 @@ class ZeroModelService(Service):
         for subj in self._bus_bindings.pop(run_id, []):
             await self._evt.remove_route(subj)  # type: ignore
 
-    # --------------------------
-    # Existing rendering entrypoint (unchanged API)
-    # --------------------------
     def render_timeline_from_matrix(
         self,
         matrix: np.ndarray,
         out_path: str,
         *,
         fps: Optional[int] = None,
-        metrics: Optional[List[str]] = None,
+        metrics: Optional[List[str]] = None,   # kept for signature compat; not used by your executor
         options: Optional[Dict[str, Any]] = None,
         datestamp: bool = False,
     ) -> Dict[str, Any]:
-        """Delegate to ZeroModel pipeline + GifLogger; no matplotlib here."""
+        """
+        Render a timeline GIF by delegating to ZeroModel's PipelineExecutor.run(vpm, context).
+        We give it the matrix as the VPM and a prepared context that includes a GifLogger,
+        target gif path, and fps. The executor will add frames and save to gif_path.
+        """
         assert self._pipeline is not None, "ZeroModelService not initialized"
 
-        ctx: Dict[str, Any] = (options or {}).copy()
-        ctx["vpm"] = matrix
-        ctx["metric_names"] = metrics or ["metric","value","visits","bug","action_draft","action_improve","action_debug"]
-
-        gif = GifLogger(max_frames=self._max_frames)
-        ctx["gif_logger"] = gif
-
-        self._pipeline.process(ctx)
-
-        # datestamp
-        if datestamp:
+        # --- ensure .gif extension ---
+        root, ext = os.path.splitext(out_path)
+        if not ext:
+            out_path = root + ".gif"
             root, ext = os.path.splitext(out_path)
+
+        # --- datestamp prior to saving (keep .gif extension) ---
+        if datestamp:
             out_path = f"{root}_{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}{ext}"
 
-        gif.save_gif(out_path, fps=(fps or self._gif_fps))
-        return {"output_path": out_path, "frames": len(gif.frames), "shape": list(matrix.shape)}
+        # --- empty-matrix guard (executor expects a VPM-like ndarray) ---
+        if not isinstance(matrix, np.ndarray) or matrix.size == 0:
+            # 1 x max(1,N) zero VPM to produce a valid (minimal) GIF
+            ncols = 1 if metrics is None else max(1, len(metrics))
+            matrix = np.zeros((1, ncols), dtype=np.float32)
+
+        # Prepare context for the executor. It will:
+        #   - create its own GifLogger if none present,
+        #   - but we provide one so we keep control over max_frames, etc.
+        gif = GifLogger(max_frames=self._max_frames)
+        ctx: Dict[str, Any] = {
+            **(options or {}),
+            "gif_logger": gif,
+            "gif_path": out_path,           # <-- REQUIRED so executor saves it
+            "gif_fps": (fps or self._gif_fps),
+            "enable_gif": True,
+            # Optional debug stripe keys supported by your executor helpers
+            "gif_debug_stripe": True,
+            "gif_debug_stripe_label": "ATS",
+        }
+
+        # Run the pipeline. It will add frames and save to gif_path when finishing.
+        vpm_out, ctx_out = self._pipeline.run(matrix, ctx)
+
+        # If for any reason the executor didn’t save, save here as a fallback.
+        saved_path = ctx_out.get("gif_saved")
+        if not saved_path:
+            try:
+                gif.save_gif(out_path, fps=(fps or self._gif_fps))
+                saved_path = out_path
+            except Exception as _:
+                # leave saved_path as None
+                pass
+
+        return {
+            "output_path": saved_path or out_path,
+            "frames": len(gif.frames),
+            "shape": list(vpm_out.shape),
+        }
