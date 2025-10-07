@@ -1,477 +1,169 @@
+# stephanie/agents/agent_scorer_agent.py
+"""
+AgentScorerAgent
+
+Meta-agent that scores the outputs of other agents.
+
+- Activates only if `scorable_details` exist in context
+- Relates output back to the goal
+- Runs multi-scorer evaluation (SICQL, MRQ, EBT, etc.)
+- Performs MARS analysis for consensus
+- Ranks performance vs similar past cases
+- Suggests alternative agent options for improvement
+"""
 from __future__ import annotations
 
-"""
-Agentic Tree Search (MCTS‑lite) for Stephanie
---------------------------------------------
-Key upgrades vs. your original:
-- **SolutionNode** is now a dataclass with stable IDs and parent/child links.
-- **MCTS‑lite policy** using UCB1 over candidate parents; backpropagates value.
-- **Richer OutputVerifier** extracts more metrics (acc, f1, auc, rmse; % and floats),
-  merges stdout/stderr, and summarizes robustly.
-- **Safer code execution** in an isolated temp folder with `sys.executable -I`,
-  60s timeout, and full cleanup.
-- **Deterministic sampling** (seedable) + early‑stop on no‑improve.
-- **Async fan‑out** for initial drafts.
-- **Extensibility hooks**: custom metric_fn, reward shaping, and emit callbacks.
-
-This module remains framework‑friendly: it only depends on `BaseAgent.llm` and
-returns a `final_solution` dict in the passed `context`.
-"""
-
-import asyncio
-import os
-import random
-import re
-import shutil
-import sys
-import tempfile
+import logging
 import time
-import uuid
-from dataclasses import asdict, dataclass, field
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+import traceback
+from typing import Dict, List
+from uuid import uuid4
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.constants import SCORABLE_DETAILS
+from stephanie.data.score_corpus import ScoreCorpus
+from stephanie.scoring.calculations.mars_calculator import MARSCalculator
+from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
-# ----------------------------- Data structures ----------------------------- #
-
-@dataclass
-class ExecutionResult:
-    stdout: str = ""
-    stderr: str = ""
-    returncode: int = 0
-    has_submission_file: bool = False
+_logger = logging.getLogger(__name__)
 
 
-@dataclass
-class SolutionNode:
-    plan: str
-    code: Optional[str] = None
-    metric: Optional[float] = None
-    output: Optional[str] = None
-    summary: Optional[str] = None
-    parent_id: Optional[str] = None
-    is_buggy: bool = False
-    node_type: str = "draft"  # 'draft', 'improve', 'debug'
-    timestamp: float = field(default_factory=lambda: time.time())
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    children: List[str] = field(default_factory=list)
+class AgentScorerAgent(BaseAgent):
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(
+            cfg.get("agents", {}).get("agent_scorer", {}), memory, container=container, logger=logger
+        )
+        self.dimensions = self.cfg.get(
+            "dimensions",
+            [
+                "novelty",
+                "clarity",
+                "relevance",
+                "implementability",
+                "alignment",
+            ],
+        )
+        self.include_mars = self.cfg.get("include_mars", True)
 
-    def to_dict(self) -> dict:
-        d = asdict(self)
-        # maintain stable public schema
-        return d
+        self.include_ranking = self.cfg.get("include_ranking", True)
+        self.rank_top_k = self.cfg.get("rank_top_k", 5)
 
+        dimension_config = self.cfg.get("dimension_config", {})
 
-# ----------------------------- Plan generator ------------------------------ #
+        # Components
+        self.mars_calculator = MARSCalculator(
+            dimension_config, self.memory, self.container, self.logger
+        )
+        self.ranker = ScorableRanker(cfg, memory, self.container, logger)
 
-class PlanGenerator:
-    def __init__(self, agent: BaseAgent):
-        self.agent = agent
-
-    async def draft_plan(self, task_description: str, knowledge: List[str]) -> str:
-        prompt = f"""
-You are an expert ML engineer.
-Create a detailed solution plan for this task (no code):
-{task_description}
-
-Relevant tricks from past solutions: {" ".join(knowledge) if knowledge else "None"}
-Return only the plan text.
-"""
-        response = await self.agent.llm(prompt)
-        return response.strip()
-
-    async def improve_plan(self, previous_plan: str, feedback: str, knowledge: List[str]) -> str:
-        prompt = f"""
-Improve this ML solution plan (no code):
-{previous_plan}
-
-Feedback: {feedback}
-Additional knowledge: {" ".join(knowledge) if knowledge else "None"}
-Return only the improved plan text.
-"""
-        response = await self.agent.llm(prompt)
-        return response.strip()
-
-    async def debug_plan(self, previous_plan: str, error_log: str) -> str:
-        prompt = f"""
-Fix this buggy ML solution plan (no code). Plan:
-{previous_plan}
-
-Error log:
-{error_log}
-Return only the corrected plan text.
-"""
-        response = await self.agent.llm(prompt)
-        return response.strip()
-
-
-# ------------------------------ Verification ------------------------------- #
-
-class OutputVerifier:
-    """Extracts signals from program output and stderr."""
-
-    # common metrics: add patterns as needed
-    _METRIC_PATTERNS = [
-        r"val[_\s]?accuracy[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"accuracy[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"f1[_\s]?(score)?[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"auc[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"rmse[:=]\s*([0-9]*\.?[0-9]+)",
-        r"score[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"metric[:=]\s*([0-9]*\.?[0-9]+%?)",
-    ]
-
-    def __init__(self, prefer_higher: bool = True):
-        self.prefer_higher = prefer_higher
-
-    def verify(self, stdout: str, stderr: str, has_submission_file: bool) -> Dict[str, Any]:
-        merged = self._merge_streams(stdout, stderr)
-        is_bug = any(k in merged for k in ("Traceback", "Exception", "Error"))
-        is_overfitting = "val_loss increasing" in merged.lower()
-        metric = self.extract_metric(merged)
-        summary = self.summarize(merged)
-        return {
-            "is_bug": is_bug,
-            "is_overfitting": is_overfitting,
-            "has_csv_submission": has_submission_file,
-            "metric": metric,
-            "summary": summary,
-            "merged_output": merged,
-        }
-
-    def extract_metric(self, text: str) -> Optional[float]:
-        for pattern in self._METRIC_PATTERNS:
-            m = re.search(pattern, text, re.IGNORECASE)
-            if not m:
-                continue
-            # pick the last numeric group
-            g = next((grp for grp in m.groups()[::-1] if grp is not None), None)
-            if not g:
-                continue
-            try:
-                if g.endswith('%'):
-                    return float(g[:-1]) / 100.0
-                val = float(g)
-                # normalize RMSE (lower is better) by inverting to a bounded reward
-                if 'rmse' in pattern.lower():
-                    return 1.0 / (1.0 + val)
-                return val
-            except ValueError:
-                continue
-        return None
-
-    def summarize(self, text: str, tail_lines: int = 8) -> str:
-        lines = [ln.strip() for ln in text.strip().splitlines()[-tail_lines:]]
-        return " ".join(lines) if lines else "No output."
-
-    @staticmethod
-    def _merge_streams(stdout: str, stderr: str) -> str:
-        if not stderr:
-            return stdout or ""
-        if not stdout:
-            return stderr or ""
-        return stdout + "\n--- STDERR ---\n" + stderr
-
-
-# ------------------------------ Code executor ------------------------------ #
-
-class CodeExecutor:
-    def __init__(self, agent: BaseAgent):
-        self.agent = agent
-
-    async def score_complexity(self, task_description: str, plan: str) -> float:
-        prompt = f"""
-Rate the complexity of this task and plan on a scale of 1–5 (1 = simple, 5 = very complex).
-Task: {task_description}
-Plan: {plan}
-
-Respond with a single number between 1 and 5.
-"""
-        response = await self.agent.llm(prompt)
-        try:
-            score = float(re.findall(r"\d+(?:\.\d+)?", response.strip())[0])
-            return max(1.0, min(5.0, score))
-        except Exception:
-            return 3.0
-
-    @staticmethod
-    def _strip_markdown(code: str) -> str:
-        # remove triple‑fenced blocks if present
-        fence = re.compile(r"^```(?:python)?\n|\n```$", re.IGNORECASE)
-        return fence.sub("", code).strip()
-
-    async def one_pass_codegen(self, plan: str) -> str:
-        prompt = f"""
-Generate complete, runnable Python code for the following machine learning plan.
-Only output code (no backticks, no explanation).
-
-Plan:
-{plan}
-"""
-        response = await self.agent.llm(prompt)
-        return self._strip_markdown(response)
-
-    async def stepwise_codegen(self, plan: str) -> str:
-        # Future: break into steps; for now use same path
-        return await self.one_pass_codegen(plan)
-
-
-# ------------------------------ Tree Search -------------------------------- #
-
-class AgenticTreeSearch:
-    def __init__(
-        self,
-        agent: BaseAgent,
-        max_iterations: int = 500,
-        time_limit: int = 24 * 60 * 60,
-        N_init: int = 5,
-        C_ucb: float = 1.2,
-        H_debug: float = 0.5,
-        no_improve_patience: int = 50,
-        random_seed: Optional[int] = 42,
-        metric_fn: Optional[Callable[[Optional[float]], float]] = None,
-        emit_cb: Optional[Callable[[str, Dict[str, Any]], Awaitable[None]]] = None,
-    ):
-        self.agent = agent
-        self.tree: List[SolutionNode] = []
-        self.nodes_by_id: Dict[str, SolutionNode] = {}
-        self.parent_map: Dict[str, Optional[str]] = {}
-        self.children_map: Dict[str, List[str]] = {}
-
-        self.max_iterations = max_iterations
-        self.time_limit = time_limit
-        self.N_init = N_init
-        self.C_ucb = C_ucb
-        self.H_debug = H_debug
-        self.no_improve_patience = no_improve_patience
-        self.emit_cb = emit_cb
-
-        self.plan_generator = PlanGenerator(agent)
-        self.code_executor = CodeExecutor(agent)
-        self.verifier = OutputVerifier()
-
-        self.iteration = 0
-        self.start_time = time.time()
-        self.best_node: Optional[SolutionNode] = None
-        self.best_metric: float = -float('inf')
-        self.last_improve_iter: int = 0
-
-        # MCTS stats
-        self.visits: Dict[str, int] = {}  # node_id -> N
-        self.value: Dict[str, float] = {}  # node_id -> mean value
-
-        # reward shaping
-        self.metric_fn = metric_fn or (lambda m: -1.0 if m is None else float(m))
-
-        if random_seed is not None:
-            random.seed(random_seed)
-
-    # ----------------------------- Orchestration ---------------------------- #
-
-    async def run(self, context: dict) -> dict:
-        goal = context.get("goal", {})
-        task_description = goal.get("goal_text", "").strip()
-        knowledge = context.get("knowledge", [])
-        if not task_description:
-            raise ValueError("Context must contain 'goal.goal_text'")
-
-        await self._emit("start", {"goal": task_description})
-
-        # 1) Initial drafts in parallel
-        init_tasks = [self.plan_generator.draft_plan(task_description, knowledge) for _ in range(self.N_init)]
-        for plan in await asyncio.gather(*init_tasks):
-            if self._should_stop():
-                break
-            node = await self._process_plan(plan, parent_node=None, node_type="draft", task_description=task_description, knowledge=knowledge)
-            self._add_node(node)
-            self._update_best(node)
-            self.iteration += 1
-
-        # 2) Main loop (MCTS‑lite)
-        while not self._should_stop():
-            parent = self._select_parent_ucb()
-            action = self._choose_action(parent)
-
-            if action == "draft" or parent is None:
-                plan = await self.plan_generator.draft_plan(task_description, knowledge)
-                node = await self._process_plan(plan, None, "draft", task_description, knowledge)
-            elif action == "improve":
-                feedback = (parent.summary or "No specific feedback.")
-                plan = await self.plan_generator.improve_plan(parent.plan, feedback, knowledge)
-                node = await self._process_plan(plan, parent, "improve", task_description, knowledge)
-            elif action == "debug":
-                error_log = parent.output or parent.summary or "Unknown error."
-                plan = await self.plan_generator.debug_plan(parent.plan, error_log)
-                node = await self._process_plan(plan, parent, "debug", task_description, knowledge)
-            else:
-                raise ValueError(f"Unknown action: {action}")
-
-            self._add_node(node)
-            self._backprop(node)
-            self._update_best(node)
-            self.iteration += 1
-
-        # 3) Final result
-        best = self.best_node.to_dict() if self.best_node else None
-        await self._emit("done", {"iterations": self.iteration, "best_metric": self.best_metric})
-        context["final_solution"] = best
-        context["search_tree_size"] = len(self.tree)
-        return context
-
-    # ------------------------------- Core steps ----------------------------- #
-
-    async def _process_plan(
-        self,
-        plan: str,
-        parent_node: Optional[SolutionNode],
-        node_type: str,
-        task_description: str,
-        knowledge: List[str],
-    ) -> SolutionNode:
-        # codegen
-        complexity = await self.code_executor.score_complexity(task_description, plan)
-        code = (
-            await self.code_executor.stepwise_codegen(plan)
-            if complexity > 3.5
-            else await self.code_executor.one_pass_codegen(plan)
+        _logger.debug(
+            f"AgentScorerInitialized: "
+            f"enabled_scorers={self.enabled_scorers}, "
+            f"include_mars={self.include_mars}, "
+            f"include_ranking={self.include_ranking}, "
+            f"rank_top_k={self.rank_top_k}"
         )
 
-        # execute (⚠️ sandbox in production)
-        result = await self.execute_code(code)
+    async def run(self, context: Dict) -> Dict:
+        start_time = time.time()
 
-        # verify
-        v = self.verifier.verify(result.stdout, result.stderr, result.has_submission_file)
-
-        node = SolutionNode(
-            plan=plan,
-            code=code,
-            metric=v["metric"],
-            output=v["merged_output"],
-            summary=v["summary"],
-            parent_id=parent_node.id if parent_node else None,
-            is_buggy=v["is_bug"],
-            node_type=node_type,
-        )
-
-        await self._emit("node", {"id": node.id, "parent_id": node.parent_id, "type": node.node_type, "metric": node.metric})
-        return node
-
-    # ------------------------------- Policy -------------------------------- #
-
-    def _select_parent_ucb(self) -> Optional[SolutionNode]:
-        """Choose a parent node to expand using UCB1 over non‑buggy nodes with any metric signal.
-        Falls back to a random valid node or None (to draft anew)."""
-        candidates = [n for n in self.tree if not n.is_buggy]
-        if not candidates:
-            return None
-        total_N = sum(self.visits.get(n.id, 1) for n in candidates)
-
-        def ucb(n: SolutionNode) -> float:
-            N = self.visits.get(n.id, 1)
-            Q = self.value.get(n.id, 0.0)
-            return Q + self.C_ucb * ((total_N ** 0.5) / (1 + N))
-
-        # prefer best or random early on
-        if self.iteration < self.N_init * 2 and self.best_node:
-            return self.best_node
-        return max(candidates, key=ucb)
-
-    def _choose_action(self, parent: Optional[SolutionNode]) -> str:
-        if parent is None:
-            return "draft"
-        if parent.is_buggy and random.random() < self.H_debug:
-            return "debug"
-        # otherwise improve by default
-        return "improve"
-
-    # ------------------------------- Bookkeeping ---------------------------- #
-
-    def _add_node(self, node: SolutionNode) -> None:
-        self.tree.append(node)
-        self.nodes_by_id[node.id] = node
-        self.parent_map[node.id] = node.parent_id
-        if node.parent_id:
-            self.children_map.setdefault(node.parent_id, []).append(node.id)
-            # link on the parent instance too (for convenience)
-            p = self.nodes_by_id.get(node.parent_id)
-            if p:
-                p.children.append(node.id)
-        self.visits.setdefault(node.id, 0)
-        self.value.setdefault(node.id, 0.0)
-
-    def _backprop(self, leaf: SolutionNode) -> None:
-        reward = self.metric_fn(leaf.metric)
-        node_id = leaf.id
-        while node_id is not None:
-            self.visits[node_id] = self.visits.get(node_id, 0) + 1
-            # incremental mean update
-            v_prev = self.value.get(node_id, 0.0)
-            n = self.visits[node_id]
-            self.value[node_id] = v_prev + (reward - v_prev) / n
-            node_id = self.parent_map.get(node_id)
-
-    def _update_best(self, node: SolutionNode) -> None:
-        m = self.metric_fn(node.metric)
-        if m > self.best_metric:
-            self.best_metric = m
-            self.best_node = node
-            self.last_improve_iter = self.iteration
-
-    # ------------------------------ Stopping -------------------------------- #
-
-    def _should_stop(self) -> bool:
-        if self.iteration >= self.max_iterations:
-            return True
-        if (time.time() - self.start_time) > self.time_limit:
-            return True
-        if (self.iteration - self.last_improve_iter) >= self.no_improve_patience and self.iteration > 0:
-            return True
-        return False
-
-    # ------------------------------- Exec ----------------------------------- #
-
-    async def execute_code(self, code: str) -> ExecutionResult:
-        """
-        ⚠ SECURITY: This still runs untrusted code; use Docker/gVisor/Firejail in prod.
-        We isolate to a fresh temp dir, use `-I` (isolated mode), and clean up.
-        """
-        tmpdir = tempfile.mkdtemp(prefix="ats_run_")
-        py_path = os.path.join(tmpdir, "main.py")
         try:
-            with open(py_path, "w", encoding="utf-8") as f:
-                f.write(code)
-            # run
-            import subprocess
-            result = subprocess.run(
-                [sys.executable, "-I", py_path],
-                cwd=tmpdir,
-                capture_output=True,
-                text=True,
-                timeout=60,
+            goal = context.get("goal", {})
+            scorable_details = context.get(SCORABLE_DETAILS)
+            output_text = scorable_details.get("output_text", "")
+            self.report(
+                {
+                    "event": "start",
+                    "step": "AgentScoring",
+                    "details": f"{output_text}",
+                }
             )
-            # detect outputs
-            has_csv = any(fn.lower().endswith(".csv") for fn in os.listdir(tmpdir))
-            return ExecutionResult(
-                stdout=result.stdout,
-                stderr=result.stderr,
-                returncode=result.returncode,
-                has_submission_file=has_csv,
+
+            if not output_text:
+                self.logger.log(
+                    "AgentScorerSkipped",
+                    {"reason": "No output text available"},
+                )
+                return context
+
+            scorable_id = str(uuid4())
+            scorable = Scorable(
+                id=scorable_id,
+                text=scorable_details.get("output_text"),
+                target_type=ScorableType.AGENT_OUTPUT,
+                meta={
+                    "agent_name": scorable_details.get("agent_name"),
+                    "stage_name": scorable_details.get("stage_name"),
+                    "pipeline_run_id": context.get("pipeline_run_id"),
+                    "goal_id": goal.get("id"),
+                }
             )
+
+            # === 1. Run configured scorers === 
+            scores, bundle = self._score(context=context, scorable=scorable)
+            corpus = ScoreCorpus(bundles={scorable_id: bundle})
+            # === 2. MARS Analysis ===
+            mars_result = {}
+            if self.include_mars:
+                mars_result = self.mars_calculator.calculate(
+                    corpus, context=context
+                )
+
+            # === 3. Ranking vs similar cases ===
+            ranking = []
+            if self.include_ranking:
+                candidates = self.memory.embedding.search_related_scorables(
+                    scorable.text, ScorableType.AGENT_OUTPUT, include_ner=False
+                )
+                ranking = self.ranker.rank(
+                    query=scorable, candidates=candidates, context=context
+                )
+
+            # === 4. Suggest Alternatives ===
+            alternatives = self._suggest_alternatives(
+                ranking, scorable_details
+            )
+
+            # Store everything back
+            context["agent_scoring"] = {
+                "scorable_id": scorable.id,
+                "scores": scores,
+                "mars": mars_result,
+                "ranking": ranking,
+                "alternatives": alternatives,
+            }
+
+            self.logger.log(
+                "AgentScored",
+                {
+                    "agent": scorable_details.get("agent_name"),
+                    "goal": goal.get("goal_text", "")[:80],
+                    "scores": scores,
+                    "mars": mars_result,
+                    "top_alt": alternatives[:2],
+                },
+            )
+
+            _logger.info(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
+            return context
+
         except Exception as e:
-            return ExecutionResult(stdout="", stderr=str(e), returncode=1, has_submission_file=False)
-        finally:
-            try:
-                shutil.rmtree(tmpdir, ignore_errors=True)
-            except Exception:
-                pass
+            self.logger.error(
+                "AgentScorerError",
+                {"error": str(e), "trace": traceback.format_exc()},
+            )
+            return context
 
-    # ------------------------------- Events -------------------------------- #
+    def _suggest_alternatives(
+        self, ranking: List[Dict], scorable: Scorable
+    ) -> List[Dict]:
+        """Suggest alternative agents from ranking results"""
+        alternatives = []
+        for r in ranking:
+            alt_agent = r.get("agent_name")
+            if alt_agent and alt_agent != scorable.meta.get("agent_name"):
+                alternatives.append(r)
+        return alternatives
 
-    async def _emit(self, event: str, payload: Dict[str, Any]) -> None:
-        if self.emit_cb is None:
-            return
-        try:
-            await self.emit_cb(event, payload)
-        except Exception:
-            # never let telemetry kill the run
-            pass
+ 

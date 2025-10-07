@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - db: postgres
+
   - agents/arxiv_search
   - agents/document_loader
   - agents/document_profiler

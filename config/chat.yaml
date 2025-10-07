@@ -1,4 +1,4 @@
-# config/config.yaml
+# config/chat.yaml
 
 # The Knowledge Pipeline is designed to transform chat conversations exported from Foundation AI (e.g., OpenAI, Qwen, Gemini, DeepSeek) 
 # into structured CaseBooks that can be used for Learning-from-Learning.

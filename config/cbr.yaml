@@ -1,4 +1,4 @@
-# config/config.yaml
+# config/cbr.yaml
 defaults:
   - _self_
   - db: postgres

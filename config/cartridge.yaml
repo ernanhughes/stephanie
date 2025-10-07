@@ -1,4 +1,4 @@
-# config/config.yaml
+# config/cartridge.yaml
 defaults:
   - _self_
   - db: postgres
