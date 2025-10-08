@@ -35,7 +35,7 @@ class VPMWorker:
         self.subject_report = scfg.get("ats_report", "arena.ats.report")
 
         # ZeroModel service (timeline_open/append don’t need initialize; finalize does)
-        self.zm = ZeroModelService(cfg=self.cfg, memory=self.memory, logger=_logger)
+        self.zm: ZeroModelService = container.get("zeromodel")
 
         # Track open timelines so we only open once per run
         self._open_runs: set[str] = set()
@@ -76,34 +76,19 @@ class VPMWorker:
                     f"Failed to subscribe to {subject} after {self._max_retries} retries"
                 )
 
-    async def handle_metrics_ready(self, payload: Any) -> None:
-        """Handle payload as either dict or bytes"""
-        if isinstance(payload, bytes):
-            payload = payload.decode("utf-8")
-        if isinstance(payload, str):
-            try:
-                payload = json.loads(payload)
-            except json.JSONDecodeError:
-                _logger.error("Invalid JSON payload")
-                return
-
-        if not isinstance(payload, dict):
-            _logger.error("Payload must be dict or JSON string")
-            return
-
+    async def handle_metrics_ready(self, payload: Dict[str, Any]) -> None:
+        """Handle completed metrics payloads and record them in the ZeroModel timeline."""
         run_id = str(payload.get("run_id") or "")
         node_id = str(payload.get("node_id") or "")
+        if not run_id:
+            return
 
         try:
-            if not run_id:
-                return
-
-            # Open timeline once per run
+            # Ensure the timeline session is open once per run
             if run_id not in self._open_runs:
                 self.zm.timeline_open(run_id)
                 self._open_runs.add(run_id)
 
-            # Build node fields ZeroModel expects
             node = {
                 "id": node_id,
                 "parent_id": payload.get("parent_id"),
@@ -113,31 +98,40 @@ class VPMWorker:
                 "bug": bool(payload.get("bug", False)),
             }
 
-            # Choose a scalar value lane (e.g., mean of provided vector)
-            vec = payload.get("metrics_vector") or {}
-            vals = vec.get("values") or []
-            value = float(sum(vals) / len(vals)) if vals else 0.0
+            # --- 1️⃣ Extract metrics consistently ---
+            names: list[str] = []
+            values: list[float] = []
 
+            if isinstance(payload.get("metrics_columns"), (list, tuple)):
+                names = list(payload["metrics_columns"])
+                values = [float(v) for v in payload.get("metrics_values", [])]
+            elif isinstance(payload.get("metrics_vector"), dict):
+                names = list(payload["metrics_vector"].keys())
+                values = [float(v) for v in payload["metrics_vector"].values()]
+            elif isinstance(payload.get("vector"), dict):
+                vec = payload["vector"]
+                names = vec.get("names") or []
+                values = [float(v) for v in vec.get("values", [])]
+
+            # Fallback scalar
+            mean_val = float(sum(values) / len(values)) if values else 0.0
+
+            # --- 2️⃣ Send full set to ZeroModel ---
             self.zm.timeline_append_row(
                 run_id,
-                node=node,
-                extra={"value": value, "best_metric": node["metric"]},
+                metrics_columns=names,
+                metrics_values=values,
             )
 
             self.logger.log(
                 "VPMRowAppended",
-                {"run_id": run_id, "node_id": node_id, "value": value, "metric": node["metric"]},
+                {"run_id": run_id, "node_id": node_id, "metrics_count": len(values), "mean": mean_val},
             )
 
         except Exception as e:
             self.logger.log(
                 "VPMMetricsReadyError",
-                {
-                    "error": str(e),
-                    "trace": traceback.format_exc(),
-                    "run_id": run_id or "unknown",
-                    "node_id": node_id or "unknown",
-                },
+                {"error": str(e), "trace": traceback.format_exc(), "run_id": run_id, "node_id": node_id},
             )
 
     async def handle_report(self, payload: Any) -> None:
@@ -200,13 +194,10 @@ class VPMWorker:
                     details_str = str(details)
                 
                 # Log with color-coded status
-                if status == "connected":
-                    _logger.info(f"BUS HEALTH: 🟢 {bus_type} - {status} | {details_str}")
+                if status :
+                    _logger.debug(f"BUS HEALTH: 🟢 {bus_type} - {status} | {details_str}")
                 elif status == "disconnected":
                     _logger.warning(f"BUS HEALTH: 🔴 {bus_type} - {status} | {details_str}")
-                else:
-                    _logger.error(f"BUS HEALTH: 🔴 {bus_type} - {status} | {details_str}")
-                
                 await asyncio.sleep(30)
             except Exception as e:
                 _logger.error(f"BUS HEALTH CHECK FAILED: {str(e)}")

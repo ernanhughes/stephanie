@@ -456,7 +456,7 @@ class AgenticTreeSearch:
         out_h  = self._hash_or_none(v["merged_output"])
 
         # tree_id from context (use your run_id)
-        tree_id = str(context.get("run_id") or context.get("pipeline_run_id") or "")
+        tree_id = context.get("pipeline_run_id")
 
         root_id = (parent.root_id if parent else None)
         if root_id is None:
@@ -464,6 +464,8 @@ class AgenticTreeSearch:
             root_id = None  # temporarily None; we’ll set after instantiation if needed
 
         node = SolutionNode(
+            tree_id=tree_id,
+            id = f"{tree_id}.{node_depth}.{sibling_idx}",
             plan=plan,
             code=code,
             metric=v["metric"],
@@ -474,7 +476,6 @@ class AgenticTreeSearch:
             node_type=node_type,
 
             # provenance
-            tree_id=tree_id or None,
             root_id=root_id,           # may be None for first node; fixed in _add_node
             depth=node_depth,
             sibling_index=sibling_idx,
@@ -487,6 +488,7 @@ class AgenticTreeSearch:
             code_sha256=code_h,
             output_sha256=out_h,
         )
+
 
         await self._emit("node", {
             "id": node.id,
@@ -503,6 +505,7 @@ class AgenticTreeSearch:
             # NEW: provenance
             "tree_id": node.tree_id,
             "root_id": node.root_id,
+            "node_id": node.id,
             "depth": node.depth,
             "sibling_index": node.sibling_index,
             "path": node.path,

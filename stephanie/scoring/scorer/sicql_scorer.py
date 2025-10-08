@@ -162,7 +162,6 @@ class SICQLScorer(BaseScorer):
 
             # Rationale and hash
             rationale = f"Q={q_value:.4f}, V={v_value:.4f}, Δ={uncertainty:.3f}, H={entropy:.3f}"
-            prompt_hash = ScoreORM.compute_prompt_hash(goal_text, scorable)
 
             # --- Create ScoreResult with optional zsa ---
             attributes = {
@@ -173,7 +172,6 @@ class SICQLScorer(BaseScorer):
                 "uncertainty": uncertainty,
                 "entropy": entropy,
                 "advantage": advantage,
-                "prompt_hash": prompt_hash,
             }
             # Add zsa if it was calculated and return_zsa is True
             if self.return_zsa and zsa_tensor is not None:

@@ -220,7 +220,7 @@ class HybridKnowledgeBus(BusProtocol):
                 return {
                     "is_healthy": is_healthy,
                     "bus_type": "nats",
-                    "status": "connected" if is_healthy else "disconnected",
+                    "status": "connected" if nats_connected else "disconnected",
                     "details": {
                         "connected": nats_connected,
                         "closed": nats_closed,

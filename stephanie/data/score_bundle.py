@@ -415,9 +415,23 @@ class ScoreBundle:
             k = key.replace(" ", "_")
             if numeric_only:
                 try:
-                    x = float(val)
-                    if x != x:  # NaN
-                        return
+                    if isinstance(val, (list, tuple)):
+                        for i, subval in enumerate(val):
+                            try:
+                                x = float(subval)
+                                if x != x:  # NaN
+                                    return
+                                out[f"{key}[{i}]"] = x
+                            except Exception:
+                                out[f"{key}[{i}]"] = str(subval)
+                    else:
+                        try:
+                            x = float(val)
+                            if x != x:  # NaN
+                                return
+                            out[key] = x
+                        except Exception:
+                            out[key] = str(val)
                     out.setdefault(k, x)
                 except Exception:
                     # allow some safe aggregates for lists even in numeric_only

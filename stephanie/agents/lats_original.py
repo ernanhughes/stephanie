@@ -226,7 +226,7 @@ class LATSAgent(BaseAgent):
             goal = context.get("goal")
             prompt_id = self.memory.prompts.save(
                 goal, self.name, self.name, prompt_text, response
-            )
+            ).id
         else:
             prompt_id = prompt.id
         # Parse completions

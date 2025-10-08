@@ -1,7 +1,10 @@
 # stephanie/services/zero_model_service.py
 from __future__ import annotations
 
-import os, json, time
+import os
+import json
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +13,9 @@ from stephanie.services.service_protocol import Service
 from stephanie.services.event_service import EventService
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger  # ZeroModel owns rendering
+
+
+_logger = logging.getLogger(__name__)
 
 _DEFAULT_PIPELINE = [
     {"stage": "normalize", "params": {}},
@@ -107,34 +113,64 @@ class ZeroModelService(Service):
         os.makedirs(odir, exist_ok=True)
         self._sessions[run_id] = _TimelineSession(run_id=run_id, metrics_order=order, out_dir=odir)
 
-    def timeline_append_row(self, run_id: str, *, node: Dict[str, Any], extra: Optional[Dict[str, Any]] = None) -> None:
-        """Append one row derived from a node event (fast, in-process)."""
+
+    def timeline_append_row(
+        self,
+        run_id: str,
+        *,
+        metrics_columns: List[str],
+        metrics_values: List[Any],
+    ) -> None:
+        """
+        Append a single prompt's metrics vector to the session timeline.
+
+        - Each row corresponds to metrics_columns (the same order every time).
+        - Values are normalized per scalar:
+            0–1 stays as-is, 1–100 → /100, >100 → 1.0, <0 → 0.0.
+        - If columns differ or expand, we pad existing rows with zeros.
+        - Never fails, never logs errors.
+        """
         sess = self._sessions.get(run_id)
         if not sess:
             return
-        extra = extra or {}
-        act = node.get("type","draft")
-        row = [
-            float(node.get("metric") or 0.0),          # metric (primary)
-            float(extra.get("value") or 0.0),          # value/ucb mean
-            float(node.get("visits") or 1.0),          # visits
-            1.0 if node.get("bug") else 0.0,           # bug flag
-            1.0 if act == "draft"   else 0.0,
-            1.0 if act == "improve" else 0.0,
-            1.0 if act == "debug"   else 0.0,
-        ]
-        # shape safety
-        if len(row) < len(sess.metrics_order):
-            row += [0.0]*(len(sess.metrics_order)-len(row))
-        elif len(row) > len(sess.metrics_order):
-            row = row[:len(sess.metrics_order)]
+
+        # 1️⃣ Normalize all incoming values (per your rule)
+        normalized = []
+        for v in metrics_values:
+            try:
+                f = float(v)
+            except Exception:
+                f = 0.0
+            if f < 0:
+                f = abs(f)
+            elif f > 1.0:
+                f = min(f / 100.0, 1.0)
+            normalized.append(f)
+
+        # 2️⃣ Initialize metrics_order if first row
+        if not sess.metrics_order:
+            sess.metrics_order = list(metrics_columns)
+
+        # 3️⃣ Handle expanded metric sets gracefully
+        if len(metrics_columns) > len(sess.metrics_order):
+            old_len = len(sess.metrics_order)
+            # extend metric order to include new names
+            for name in metrics_columns:
+                if name not in sess.metrics_order:
+                    sess.metrics_order.append(name)
+            # pad previous rows with zeros to match new width
+            new_len = len(sess.metrics_order)
+            for i in range(len(sess.rows)):
+                old = sess.rows[i]
+                if len(old) < new_len:
+                    sess.rows[i] = old + [0.0] * (new_len - len(old))
+
+        # 4️⃣ Align incoming row to the session order
+        name_to_val = dict(zip(metrics_columns, normalized))
+        row = [float(name_to_val.get(name, 0.0)) for name in sess.metrics_order]
+
+        # 5️⃣ Append
         sess.rows.append(row)
-        sess.meta.append({
-            "node_id": node.get("id"),
-            "parent_id": node.get("parent_id"),
-            "type": act,
-            "ts": time.time(),
-        })
 
     async def timeline_finalize(self, run_id: str, *, fps: Optional[int] = None, datestamp: bool = True) -> Dict[str, Any]:
         """Close session, render GIF, emit bus event, and persist companion JSON."""
@@ -143,10 +179,13 @@ class ZeroModelService(Service):
             return {"status": "noop", "reason": "no_session"}
 
         mat = sess.as_matrix()  # (steps, metrics)
+        _logger.info(f"ZeroModelService: finalizing timeline for run_id={run_id} with {mat.shape[0]} steps and {mat.shape[1]} metrics")
+
         base = os.path.join(sess.out_dir, f"vpm_timeline_{run_id}")
         # guarantee .gif at the call site
         gif_path = base if base.lower().endswith(".gif") else base + ".gif"
 
+        _logger.info(f"ZeroModelService: rendering timeline for run_id={run_id} to {gif_path} with fps={fps or self._gif_fps}")
         res = self.render_timeline_from_matrix(
             mat,
             gif_path,  # <-- always ends with .gif
@@ -154,7 +193,7 @@ class ZeroModelService(Service):
             metrics=sess.metrics_order,
             options={"panel": "timeline"},
             datestamp=datestamp,
-        )
+        ) 
 
         # robust meta path derivation even if a dot is missing for some reason
         op = res["output_path"]
@@ -214,63 +253,34 @@ class ZeroModelService(Service):
         out_path: str,
         *,
         fps: Optional[int] = None,
-        metrics: Optional[List[str]] = None,   # kept for signature compat; not used by your executor
+        metrics: Optional[List[str]] = None,
         options: Optional[Dict[str, Any]] = None,
         datestamp: bool = False,
     ) -> Dict[str, Any]:
-        """
-        Render a timeline GIF by delegating to ZeroModel's PipelineExecutor.run(vpm, context).
-        We give it the matrix as the VPM and a prepared context that includes a GifLogger,
-        target gif path, and fps. The executor will add frames and save to gif_path.
-        """
         assert self._pipeline is not None, "ZeroModelService not initialized"
 
-        # --- ensure .gif extension ---
-        root, ext = os.path.splitext(out_path)
-        if not ext:
-            out_path = root + ".gif"
-            root, ext = os.path.splitext(out_path)
-
-        # --- datestamp prior to saving (keep .gif extension) ---
-        if datestamp:
-            out_path = f"{root}_{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}{ext}"
-
-        # --- empty-matrix guard (executor expects a VPM-like ndarray) ---
         if not isinstance(matrix, np.ndarray) or matrix.size == 0:
-            # 1 x max(1,N) zero VPM to produce a valid (minimal) GIF
             ncols = 1 if metrics is None else max(1, len(metrics))
             matrix = np.zeros((1, ncols), dtype=np.float32)
 
-        # Prepare context for the executor. It will:
-        #   - create its own GifLogger if none present,
-        #   - but we provide one so we keep control over max_frames, etc.
         gif = GifLogger(max_frames=self._max_frames)
-        ctx: Dict[str, Any] = {
-            **(options or {}),
-            "gif_logger": gif,
-            "gif_path": out_path,           # <-- REQUIRED so executor saves it
-            "gif_fps": (fps or self._gif_fps),
-            "enable_gif": True,
-            # Optional debug stripe keys supported by your executor helpers
-            "gif_debug_stripe": True,
-            "gif_debug_stripe_label": "ATS",
-        }
+        fps = fps or self._gif_fps
 
-        # Run the pipeline. It will add frames and save to gif_path when finishing.
-        vpm_out, ctx_out = self._pipeline.run(matrix, ctx)
+        # 🎥 <-- NEW: add one frame per row
+        for i in range(matrix.shape[0]):
+            row = matrix[i : i + 1, :]
+            vpm_out, _ = self._pipeline.run(row, {"enable_gif": False})
+            gif.add_frame(
+                vpm_out,
+                metrics={"step": i, "loss": 1 - row.mean(), "val_loss": row.mean(), "acc": row.std()},
+            )
 
-        # If for any reason the executor didn’t save, save here as a fallback.
-        saved_path = ctx_out.get("gif_saved")
-        if not saved_path:
-            try:
-                gif.save_gif(out_path, fps=(fps or self._gif_fps))
-                saved_path = out_path
-            except Exception as _:
-                # leave saved_path as None
-                pass
+        gif_path = out_path
+        gif.save_gif(gif_path, fps=fps)
+        _logger.info(f"ZeroModelService: rendered {len(gif.frames)} frames to {gif_path}")
 
         return {
-            "output_path": saved_path or out_path,
+            "output_path": gif_path,
             "frames": len(gif.frames),
-            "shape": list(vpm_out.shape),
+            "shape": list(matrix.shape),
         }

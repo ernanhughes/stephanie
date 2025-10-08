@@ -11,10 +11,15 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.agentic_tree_search import AgenticTreeSearch, ExecutionResult
 from stephanie.agents.pipeline.pipeline_runner import PipelineRunnerAgent
 from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.services.scoring_service import ScoringService
 from stephanie.services.workers.metrics_worker import MetricsWorker
 from stephanie.services.workers.vpm_worker import VPMWorker
 from stephanie.utils.emit_broadcaster import EmitBroadcaster
 import time
+import logging
+
+_logger = logging.getLogger(__name__)
 
 class PromptCompilerAgent(BaseAgent):
     """ 
@@ -88,11 +93,6 @@ class PromptCompilerAgent(BaseAgent):
                 if event == "node":
                     # 1) append to ZeroModel timeline (optional, if you want the immediate line)
                     node = payload.get("node", payload)
-                    extra = {
-                        "value": payload.get("value"),
-                        "best_metric": payload.get("best_metric"),
-                    }
-                    self.zm.timeline_append_row(self.run_id, node=node, extra=extra)
 
                     # 2) publish a metrics job for the worker
                     await self.memory.bus.publish(
@@ -115,9 +115,9 @@ class PromptCompilerAgent(BaseAgent):
                         subject=ats_report,
                         payload={"run_id": self.run_id},
                     )
-            except Exception:
+            except Exception as e:
                 # Telemetry must never stop the run
-                pass
+                _logger.warning("Error publishing event: %s", e)
 
 
         self.ats = AgenticTreeSearch(
@@ -138,74 +138,13 @@ class PromptCompilerAgent(BaseAgent):
         self.ats.execute_code = self._execute_prompt  # type: ignore[assignment]
         self.ats.verifier.verify = self._verify_prompt  # type: ignore[assignment]
 
+        self.user_scoring = cfg.get("user_scoring", True)
+        self.scorable_type = ScorableType.PROMPT
+        self.scorer = cfg.get("scorer", "sicql")  # default scorer name
+        self.dimensions = cfg.get("dimensions", ["alignment"])
+
         self.start_time: float = time.time()
 
-    # ---------------------------------------------------------------------
-    # Sink 1/2 for EmitBroadcaster: safe logger
-    # ---------------------------------------------------------------------
-    def _emit_to_logger(self, event: str, payload: Dict[str, Any]) -> None:
-        self.logger.log(f"PromptCompiler::{event}", payload)
-
-    # ---------------------------------------------------------------------
-    # ATS hook: "execute" a prompt candidate by sending it to your judge.
-    # ---------------------------------------------------------------------
-    async def _execute_prompt(self, prompt_candidate: str) -> ExecutionResult:
-        try:
-            request_ctx = deepcopy(getattr(self, "_base_context", {}))
-            request_ctx["goal"] = {"goal_text": self._goal_text}
-            request_ctx["current_thought"] = (prompt_candidate or "").strip()
-
-            if self.pipeline_stages:
-                request_ctx["pipeline_stages"] = self.pipeline_stages
-
-            result = await self.runner.run(request_ctx)
-
-            score = self._dig(result, self.score_path)
-            text  = self._dig(result, self.text_path) or ""
-
-            metric = self._normalize_score(score)
-            payload = {
-                "selected_text": text,
-                "score": metric,   # already normalized in [0,1]
-                "raw_score": score,
-            }
-            return ExecutionResult(
-                stdout=json.dumps(payload),
-                stderr="",
-                returncode=0,
-                has_submission_file=False,
-            )
-        except Exception as e:
-            return ExecutionResult(stdout="", stderr=str(e), returncode=1, has_submission_file=False)
-
-    # ---------------------------------------------------------------------
-    # ATS hook: verify/parse the judge result
-    # ---------------------------------------------------------------------
-    def _verify_prompt(self, stdout: str, stderr: str, has_submission_file: bool) -> Dict[str, Any]:
-        metric: Optional[float] = None
-        summary: str = ""
-        try:
-            if stdout:
-                obj = json.loads(stdout)
-                metric = obj.get("score")
-                summary = (obj.get("selected_text") or "")[:500]
-        except Exception:
-            summary = (stdout or "")[:500]
-
-        if metric is not None:
-            try:
-                metric = max(0.0, min(1.0, float(metric)))
-            except Exception:
-                metric = 0.0
-
-        return {
-            "is_bug": False,
-            "is_overfitting": False,
-            "has_csv_submission": False,
-            "metric": metric,
-            "summary": summary,
-            "merged_output": stdout if not stderr else f"{stdout}\n--- STDERR ---\n{stderr}",
-        }
 
     # ---------------------------------------------------------------------
     # BaseAgent integration & public API
@@ -260,6 +199,102 @@ class PromptCompilerAgent(BaseAgent):
         }
 
         return context
+
+    # ---------------------------------------------------------------------
+    # Sink 1/2 for EmitBroadcaster: safe logger
+    # ---------------------------------------------------------------------
+    def _emit_to_logger(self, event: str, payload: Dict[str, Any]) -> None:
+        self.logger.log(f"PromptCompiler::{event}", payload)
+
+    # ---------------------------------------------------------------------
+    # ATS hook: "execute" a prompt candidate by sending it to your judge.
+    # ---------------------------------------------------------------------
+    async def _execute_prompt(self, prompt_candidate: str) -> ExecutionResult:
+        try:
+            if self.user_scoring:
+                scorable = Scorable(id=None, text=prompt_candidate, target_type=ScorableType.PROMPT)
+                scorer: ScoringService = self.container.get("scoring")
+
+                bundle = scorer.score(
+                    scorer_name=self.scorer,
+                    scorable=scorable,
+                    context={
+                        "goal": {"goal_text": self._goal_text},
+                        "pipeline_run_id": self.run_id,
+                    },
+                    dimensions=self.dimensions,
+                )
+                score = float(bundle.aggregate())
+
+                metric = self._normalize_score(score)
+                payload = {
+                    "selected_text": prompt_candidate,
+                    "score": metric,   # already normalized in [0,1]
+                    "raw_score": score,
+                }
+                return ExecutionResult(
+                    stdout=json.dumps(payload),
+                    stderr="",
+                    returncode=0,
+                    has_submission_file=False,
+                )
+
+            else:
+                request_ctx = deepcopy(getattr(self, "_base_context", {}))
+                request_ctx["goal"] = {"goal_text": self._goal_text}
+                request_ctx["current_thought"] = (prompt_candidate or "").strip()
+
+                if self.pipeline_stages:
+                    request_ctx["pipeline_stages"] = self.pipeline_stages
+
+                result = await self.runner.run(request_ctx)
+
+                score = self._dig(result, self.score_path)
+                text  = self._dig(result, self.text_path) or ""
+
+                metric = self._normalize_score(score)
+                payload = {
+                    "selected_text": text,
+                    "score": metric,   # already normalized in [0,1]
+                    "raw_score": score,
+                }
+                return ExecutionResult(
+                    stdout=json.dumps(payload),
+                    stderr="",
+                    returncode=0,
+                    has_submission_file=False,
+                )
+        except Exception as e:
+            return ExecutionResult(stdout="", stderr=str(e), returncode=1, has_submission_file=False)
+
+    # ---------------------------------------------------------------------
+    # ATS hook: verify/parse the judge result
+    # ---------------------------------------------------------------------
+    def _verify_prompt(self, stdout: str, stderr: str, has_submission_file: bool) -> Dict[str, Any]:
+        metric: Optional[float] = None
+        summary: str = ""
+        try:
+            if stdout:
+                obj = json.loads(stdout)
+                metric = obj.get("score")
+                summary = (obj.get("selected_text") or "")[:500]
+        except Exception:
+            summary = (stdout or "")[:500]
+
+        if metric is not None:
+            try:
+                metric = max(0.0, min(1.0, float(metric)))
+            except Exception:
+                metric = 0.0
+
+        return {
+            "is_bug": False,
+            "is_overfitting": False,
+            "has_csv_submission": False,
+            "metric": metric,
+            "summary": summary,
+            "merged_output": stdout if not stderr else f"{stdout}\n--- STDERR ---\n{stderr}",
+        }
 
     # ---------------------------------------------------------------------
     # Helpers

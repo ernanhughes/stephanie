@@ -69,16 +69,10 @@ class Supervisor:
         })
 
     def _resolve_services_profile_path(self, cfg) -> str:
-        # Prefer hydra knob: services.profile (e.g., "services/default")
-        prof = None
-        try:
-            prof = cfg.services.profile
-        except Exception:
-            pass
+        prof = OmegaConf.select(cfg, "services.profile", default=None)
         if not prof:
-            # Fallback path
             prof = "services/default"
-        # Allow both "services/default" and "config/services/default.yaml"
+
         if prof.endswith(".yaml"):
             return prof
         return f"config/{prof}.yaml"

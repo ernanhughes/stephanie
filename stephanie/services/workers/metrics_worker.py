@@ -190,12 +190,10 @@ class MetricsWorker:
                     details_str = str(details)
                 
                 # Log with color-coded status
-                if status == "connected":
-                    _logger.info(f"BUS HEALTH: 🟢 {bus_type} - {status} | {details_str}")
+                if status:
+                    _logger.debug(f"BUS HEALTH: 🟢 {bus_type} - {status} | {details_str}")
                 elif status == "disconnected":
                     _logger.warning(f"BUS HEALTH: 🔴 {bus_type} - {status} | {details_str}")
-                else:
-                    _logger.error(f"BUS HEALTH: 🔴 {bus_type} - {status} | {details_str}")
                 
                 await asyncio.sleep(30)
             except Exception as e:
