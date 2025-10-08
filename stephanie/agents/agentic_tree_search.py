@@ -20,6 +20,7 @@ returns a `final_solution` dict in the passed `context`.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import random
 import re
@@ -59,10 +60,27 @@ class SolutionNode:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     children: List[str] = field(default_factory=list)
 
+    # --- NEW provenance fields ---
+    tree_id: Optional[str] = None         # run_id or external tree key
+    root_id: Optional[str] = None         # UUID of root node
+    depth: int = 0                        # 0 for root
+    sibling_index: int = 0                # position among siblings
+    path: str = "0"                       # dot path e.g., "0.2.1"
+    origin: Dict[str, Any] = field(default_factory=dict)  # action/source/reason
+    lineage: List[str] = field(default_factory=list)      # ordered ids root..parent
+
+    # integrity hashes (content proofs)
+    plan_sha256: Optional[str] = None
+    code_sha256: Optional[str] = None
+    output_sha256: Optional[str] = None
+
     def to_dict(self) -> dict:
         d = asdict(self)
-        # maintain stable public schema
+        # aliases for downstream consumers
+        d.setdefault("prompt_text", self.plan)
+        d.setdefault("compiled_prompt", self.plan)
         return d
+
 
 
 # ----------------------------- Plan generator ------------------------------ #
@@ -420,15 +438,54 @@ class AgenticTreeSearch:
             result.stdout, result.stderr, result.has_submission_file
         )
 
+        parent = parent_node
+        sibling_idx = self._next_child_index(parent.id if parent else None)
+        node_depth = 0 if parent is None else (parent.depth + 1)
+        node_path = self._make_path(parent, sibling_idx)
+
+        # origin record
+        origin = {
+            "action": node_type,                      # 'draft' | 'improve' | 'debug'
+            "source_id": parent.id if parent else None,
+            "reason": (parent.summary or "") if parent else "initial draft",
+        }
+
+        # integrity hashes
+        plan_h = self._hash_or_none(plan)
+        code_h = self._hash_or_none(code)
+        out_h  = self._hash_or_none(v["merged_output"])
+
+        # tree_id from context (use your run_id)
+        tree_id = str(context.get("run_id") or context.get("pipeline_run_id") or "")
+
+        root_id = (parent.root_id if parent else None)
+        if root_id is None:
+            # first node of the tree becomes the root
+            root_id = None  # temporarily None; we’ll set after instantiation if needed
+
         node = SolutionNode(
             plan=plan,
             code=code,
             metric=v["metric"],
             output=v["merged_output"],
             summary=v["summary"],
-            parent_id=parent_node.id if parent_node else None,
+            parent_id=parent.id if parent else None,
             is_buggy=v["is_bug"],
             node_type=node_type,
+
+            # provenance
+            tree_id=tree_id or None,
+            root_id=root_id,           # may be None for first node; fixed in _add_node
+            depth=node_depth,
+            sibling_index=sibling_idx,
+            path=node_path,
+            origin=origin,
+            lineage=((parent.lineage + [parent.id]) if parent else []),
+
+            # content proofs
+            plan_sha256=plan_h,
+            code_sha256=code_h,
+            output_sha256=out_h,
         )
 
         await self._emit("node", {
@@ -439,6 +496,23 @@ class AgenticTreeSearch:
             "bug": node.is_buggy,
             "visits": self.visits.get(node.id, 0),
             "value": self.value.get(node.id, 0.0),
+
+            "prompt_text": node.plan,
+            "prompt_preview": (node.plan[:160] if node.plan else ""),
+
+            # NEW: provenance
+            "tree_id": node.tree_id,
+            "root_id": node.root_id,
+            "depth": node.depth,
+            "sibling_index": node.sibling_index,
+            "path": node.path,
+            "origin": node.origin,
+            "lineage": node.lineage,
+
+            # content proofs (optional to emit every time)
+            "plan_sha256": node.plan_sha256,
+            "code_sha256": node.code_sha256,
+            "output_sha256": node.output_sha256,
         })
         return node
 
@@ -483,15 +557,31 @@ class AgenticTreeSearch:
     # ------------------------------- Bookkeeping ---------------------------- #
 
     def _add_node(self, node: SolutionNode) -> None:
+        # assign root_id for the very first node
+        if node.parent_id is None and not any(n.parent_id is None for n in self.tree):
+            node.root_id = node.id
+            node.path = "0"         # ensure root path is "0"
+            node.depth = 0
+            node.sibling_index = 0
+            # track a synthetic bucket for root children counts if you ever add more roots
+            self.children_map.setdefault(None, []).append(node.id)
+
         self.tree.append(node)
         self.nodes_by_id[node.id] = node
         self.parent_map[node.id] = node.parent_id
+
+        # link child into parent & children_map
         if node.parent_id:
             self.children_map.setdefault(node.parent_id, []).append(node.id)
-            # link on the parent instance too (for convenience)
             p = self.nodes_by_id.get(node.parent_id)
             if p:
                 p.children.append(node.id)
+                # ensure root_id cascades
+                node.root_id = p.root_id or p.id
+        else:
+            # root node already placed; nothing more to do
+            pass
+
         self.visits.setdefault(node.id, 0)
         self.value.setdefault(node.id, 0.0)
         self.count_nodes += 1
@@ -681,3 +771,21 @@ class AgenticTreeSearch:
                 for n in leaderboard
             ],
         }
+
+    def _hash_or_none(self, s: Optional[str]) -> Optional[str]:
+        if not s:
+            return None
+        return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+    def _next_child_index(self, parent_id: Optional[str]) -> int:
+        if not parent_id:
+            # root child index is 0 for the first root; we keep a simple counter
+            # but since we only have a single root series, use current root count
+            return len(self.children_map.get(None, []))  # will be 0 for first root
+        return len(self.children_map.get(parent_id, []))
+
+    def _make_path(self, parent_node: Optional[SolutionNode], sibling_index: int) -> str:
+        if parent_node is None:
+            # root nodes live under "0", "1", ... if you ever allow multiple roots
+            return str(sibling_index)
+        return f"{parent_node.path}.{sibling_index}"

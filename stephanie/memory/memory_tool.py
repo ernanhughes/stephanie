@@ -76,21 +76,13 @@ class MemoryTool:
     def __init__(self, cfg: dict, logger: Optional[JSONLogger] = None):
         self.cfg = cfg
         self.logger = logger
-        self._stores = {}  # name -> Store instance
+        self._stores = {}
 
-        # Create a new session
-        self.session_maker = sessionmaker(
-            bind=engine,
-            expire_on_commit=False,
-            autocommit=False,
-            autoflush=False,
-        )
-        self.session = (
-            self.session_maker
-        )  # backward-compat: stores expect `memory.session`
+        self.session_maker = sessionmaker(bind=engine, expire_on_commit=False,
+                                          autocommit=False, autoflush=False)
+        self.session = self.session_maker
 
         db_cfg = self.cfg.get("db", {})
-        # Create connection
         self.conn = psycopg2.connect(
             dbname=db_cfg.get("name"),
             user=db_cfg.get("user"),
@@ -99,36 +91,26 @@ class MemoryTool:
             port=db_cfg.get("port"),
         )
         self.conn.autocommit = True
-        register_vector(self.conn)  # Register pgvector extension
+        register_vector(self.conn)
 
-        # Setup knowledge bus needed before embeddings bvecause of ner
+        # --- Knowledge bus (do NOT auto-connect here) ---
         self.bus = self._setup_knowledge_bus()
-        self._bus_started = False   # track state
-        loop = asyncio.get_event_loop()
-        self._starter = loop.create_task(self.bus.connect())
+        # Idempotent connection guards
+        self._bus_lock: asyncio.Lock = asyncio.Lock()
+        self._bus_connected_evt: asyncio.Event = asyncio.Event()
 
         embedding_cfg = self.cfg.get("embeddings", {})
-        # Register stores
+
+        # Register embedding stores
         mxbai = EmbeddingStore(embedding_cfg, memory=self, logger=logger)
-        self.register_store(mxbai)
         hnet = HNetEmbeddingStore(embedding_cfg, memory=self, logger=logger)
+        hf   = HuggingFaceEmbeddingStore(embedding_cfg, memory=self, logger=logger)
+        self.register_store(mxbai)
         self.register_store(hnet)
-        hf = HuggingFaceEmbeddingStore(
-            embedding_cfg, memory=self, logger=logger
-        )
         self.register_store(hf)
 
-        # Choose embedding backend based on config
+        # Choose embedding backend (single block!)
         selected_backend = embedding_cfg.get("backend", "hnet")
-        if selected_backend == "hnet":
-            self.embedding = hnet
-        elif selected_backend == "huggingface":
-            self.embedding = hf
-        else:
-            self.embedding = mxbai
-
-        # Choose embedding backend based on config
-        selected_backend = embedding_cfg.get("backend", "mxbai")
         if selected_backend == "hnet":
             self.embedding = hnet
         elif selected_backend == "huggingface":
@@ -143,7 +125,7 @@ class MemoryTool:
                 "db_host": db_cfg.get("host"),
                 "db_name": db_cfg.get("name"),
                 "db_port": db_cfg.get("port"),
-                "conn_id": id(self.conn),  # unique Python object ID
+                "conn_id": id(self.conn),
             },
         )
 
@@ -214,10 +196,38 @@ class MemoryTool:
         self.register_store(SisCardStore(self.session_maker, logger))
         self.register_store(AgentTrajectoryStore(self.session_maker, logger))
 
-        # Register extra stores if defined in config
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):
                 self.register_store(store_class(self.session_maker, logger))
+
+    def _setup_knowledge_bus(self) -> KnowledgeBus:
+        # Always pass nested {"bus": {...}} to make Hybrid bus happier
+        bus_cfg = {"bus": self.cfg.get("bus", {"backend": "nats"})}
+        bus = HybridKnowledgeBus(bus_cfg, self.logger)
+        self.logger.log("KnowledgeBusInitialized", {"type": bus.get_backend()})
+        return bus
+
+    async def ensure_bus_connected(self) -> None:
+        bus_cfg = (self.cfg or {}).get("bus", {})
+        required = bool(bus_cfg.get("required", False))
+
+        if self._bus_connected_evt.is_set():
+            return
+
+        async with self._bus_lock:
+            if self._bus_connected_evt.is_set():
+                return
+            ok = await self.bus.connect()
+            if ok:
+                self._bus_connected_evt.set()
+                self.logger.info("KnowledgeBusReady", {"backend": self.bus.get_backend()})
+                return
+
+        # failed to connect
+        self.logger.warning("KnowledgeBusConnectFailed", {"required": required})
+        if required:
+            raise RuntimeError("Knowledge bus failed to connect")
+        # else: continue without a bus (backend = "none")
 
     def register_store(self, store):
         store_name = getattr(store, "name", store.__class__.__name__)
@@ -243,18 +253,3 @@ class MemoryTool:
         """Lightweight, process-local key/value store for small state."""
         return self._meta
 
-    def _setup_knowledge_bus(self) -> KnowledgeBus:
-        # Always pass nested {"bus": {...}} to make Hybrid bus happier
-        bus_cfg = {"bus": self.cfg.get("bus", {"backend": "nats"})}
-        bus = HybridKnowledgeBus(bus_cfg, self.logger)
-        self.logger.log("KnowledgeBusInitialized", {"type": bus.get_backend()})
-        return bus
-
-    async def ensure_bus_connected(self) -> None:
-        """Idempotent: connect bus if not already connected."""
-        if self._bus_started:
-            return
-        ok = await self.bus.connect()
-        self._bus_started = bool(ok)
-        if not ok:
-            self.logger.log("KnowledgeBusConnectFailed", {})

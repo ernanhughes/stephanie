@@ -107,7 +107,7 @@ class PromptCompilerAgent(BaseAgent):
                             "parent_id": node.get("parent_id"),
                             "action_type": node.get("type", "draft"),
                             "goal_text": self._goal_text,
-                            "prompt_text": node.get("code") or node.get("plan") or node.get("text") or payload.get("prompt") or "",
+                            "prompt_text": payload.get("prompt_text", node.get("plan")),
                             "best_metric": node.get("metric"),
                             "bug": bool(node.get("bug", False)),
                             "ts_enqueued": time.time(),

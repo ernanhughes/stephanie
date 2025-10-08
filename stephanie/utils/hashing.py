@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, Optional
+
+    
 
 
 def hash_dict(

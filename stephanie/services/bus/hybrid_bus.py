@@ -34,7 +34,7 @@ class HybridKnowledgeBus(BusProtocol):
 
     def __init__(self, cfg: Dict[str, Any], logger: Optional[logging.Logger] = None):
         self.cfg = dict(cfg or {})  # flat only
-        self.logger = logger or _logger
+        self.logger = logger
         self._bus: Optional[BusProtocol] = None
         self._backend: str = "none"
         self._idem_store = None
@@ -77,7 +77,7 @@ class HybridKnowledgeBus(BusProtocol):
             self._bus = None
             self._backend = "none"
             self._idem_store = None
-            self.logger.info("Hybrid bus disabled by config; continuing without bus.")
+            _logger.info("Hybrid bus disabled by config; continuing without bus.")
             return True  # disabled is not an error
 
         if self._bus is not None:
@@ -98,40 +98,51 @@ class HybridKnowledgeBus(BusProtocol):
                     self._bus = nats_bus
                     self._backend = "nats"
                     self._idem_store = getattr(nats_bus, "idempotency_store", None)
-                    self.logger.info("Connected to NATS JetStream bus")
+                    _logger.info("Connected to NATS JetStream bus")
                     return True
             except asyncio.TimeoutError:
-                self.logger.warning(f"NATS connection timed out (<= {timeout}s).")
+                _logger.warning(f"NATS connection timed out (<= {timeout}s).")
             except Exception as e:
-                self.logger.warning("NATS connection failed: %r", e)
+                _logger.warning("NATS connection failed: %r", e)
             if cfg["required"]:
                 raise BusConnectionError("NATS connection required but unavailable")
 
         # Fallbacks
         if cfg["fallback"] == "inproc":
             try:
-                inproc = InProcessKnowledgeBus(logger=self.logger)
+                inproc = InProcessKnowledgeBus(logger=_logger)
                 ok = await self._with_timeout(inproc.connect(), timeout)
                 if ok:
                     self._bus = inproc
                     self._backend = "inproc"
                     self._idem_store = getattr(inproc, "idempotency_store", None)
-                    self.logger.info("Connected to in-process event bus (fallback).")
+                    _logger.info("Connected to in-process event bus (fallback).")
                     return True
             except asyncio.TimeoutError:
-                self.logger.warning(f"InProcessBus connect timed out (<= {timeout}s).")
+                _logger.warning(f"InProcessBus connect timed out (<= {timeout}s).")
             except Exception as e:
-                self.logger.error(f"InProcessBus connect error: {e}")
+                _logger.error(f"InProcessBus connect error: {e}")
 
         self._bus = None
         self._backend = "none"
         self._idem_store = None
-        self.logger.error("No bus backend available (nats down, no usable fallback).")
+        _logger.error("No bus backend available (nats down, no usable fallback).")
         return False
 
+    async def close(self):
+        async with self._lock:
+            if self._nc:
+                try:
+                    await self._nc.close()
+                except Exception:
+                    pass
+            self._nc = None
+            self._js = None
+            self._connected = False
     # --------------- API ---------------
 
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
+        _logger.info(f"Publishing to {subject}: {payload}")
         if self._bus is None and not self._disabled:
             ok = await self.connect()
             if not ok:
@@ -141,14 +152,13 @@ class HybridKnowledgeBus(BusProtocol):
         try:
             await self._bus.publish(subject, payload)
         except Exception as e:
-            self.logger.error(f"Failed to publish to {subject}: {e}")
+            _logger.error(f"Failed to publish to {subject}: {e}")
             raise BusPublishError(f"Failed to publish to {subject}") from e
 
     async def subscribe(
         self,
         subject: str,
         handler: Callable[[Dict[str, Any]], None],
-        queue_group: Optional[str] = None,
     ) -> None:
         if self._bus is None and not self._disabled:
             ok = await self.connect()
@@ -157,13 +167,9 @@ class HybridKnowledgeBus(BusProtocol):
         if self._bus is None:
             return
         try:
-            # Try passing queue_group; fall back if backend doesn't accept it
-            try:
-                return await self._bus.subscribe(subject, handler, queue_group=queue_group)
-            except TypeError:
-                return await self._bus.subscribe(subject, handler)
+            return await self._bus.subscribe(subject, handler)
         except Exception as e:
-            self.logger.error(f"Failed to subscribe to {subject}: {e}")
+            _logger.error(f"Failed to subscribe to {subject}: {e}")
             raise BusSubscribeError(f"Failed to subscribe to {subject}") from e
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
@@ -176,16 +182,92 @@ class HybridKnowledgeBus(BusProtocol):
         try:
             return await self._bus.request(subject, payload, timeout)
         except Exception as e:
-            self.logger.error(f"Request failed for {subject}: {e}")
+            _logger.error(f"Request failed for {subject}: {e}")
             raise BusRequestError(f"Request failed for {subject}") from e
+
+    def health_check(self) -> dict:
+        """Returns detailed health status including bus type and connection state"""
+        if self._disabled:
+            return {
+                "is_healthy": True,
+                "bus_type": "disabled",
+                "status": "disabled",
+                "backend": {self._backend},
+                "details": "Bus explicitly disabled by config"
+            }
+        
+        if self._bus is None:
+            return {
+                "is_healthy": False,
+                "bus_type": "none",
+                "backend": {self._backend},
+                "status": "not_connected",
+                "details": "No bus instance created"
+            }
+
+        try:
+            if self._backend == "nats":
+                # Check NATS-specific connection state
+                nats_connected = getattr(self._bus, '_connected', False)
+                nats_closed = getattr(self._bus, 'is_closed', True)
+                
+                # Check connection details
+                conn_details = {}
+                if hasattr(self._bus, 'debug_connection_status'):
+                    conn_details = self._bus.debug_connection_status()
+                
+                is_healthy = nats_connected and not nats_closed
+                return {
+                    "is_healthy": is_healthy,
+                    "bus_type": "nats",
+                    "status": "connected" if is_healthy else "disconnected",
+                    "details": {
+                        "connected": nats_connected,
+                        "closed": nats_closed,
+                        "servers": self._bus.servers,
+                        "stream": self._bus.stream,
+                        "connection_uptime": conn_details.get("connection_uptime", 0),
+                        "reconnect_attempts": conn_details.get("reconnect_attempts", 0),
+                        "debug_mode": conn_details.get("debug_mode", False)
+                    }
+                }
+            
+            elif self._backend == "inproc":
+                # InProcessBus always connected if initialized
+                return {
+                    "is_healthy": True,
+                    "bus_type": "inproc",
+                    "status": "connected",
+                    "details": {
+                        "subscriptions": len(self._bus._subscribers),
+                        "idempotency": bool(self._bus.idempotency_store),
+                        "memory_usage": f"{id(self._bus):x}"
+                    }
+                }
+            
+            else:
+                return {
+                    "is_healthy": False,
+                    "bus_type": self._backend,
+                    "status": "unsupported",
+                    "details": f"Unsupported bus type: {self._backend}"
+                }
+                
+        except Exception as e:
+            return {
+                "is_healthy": False,
+                "bus_type": self._backend,
+                "status": "error",
+                "details": f"Health check failed: {str(e)}"
+            }
 
     async def close(self) -> None:
         if self._bus:
             try:
                 await self._bus.close()
-                self.logger.info("Bus connection closed")
+                _logger.info("Bus connection closed")
             except Exception as e:
-                self.logger.error(f"Error during bus shutdown: {e}")
+                _logger.error(f"Error during bus shutdown: {e}")
         self._bus = None
         self._backend = "none"
         self._idem_store = None
