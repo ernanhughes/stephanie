@@ -3,7 +3,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import numpy as np
 
-from stephanie.cbr.adaptor import DefaultAdaptor
+from stephanie.components.cbr.adaptor import DefaultAdaptor
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.reporting_service import ReportingService
 
