@@ -1,9 +1,12 @@
 # stephanie/tools/metrics_enqueue_tool.py
 from __future__ import annotations
+
 import time
-from typing import Dict, Any
-from stephanie.services.service_protocol import Service
+from typing import Any, Dict
+
 from stephanie.constants_metrics import METRICS_REQ
+from stephanie.services.service_protocol import Service
+
 
 class MetricsEnqueueTool(Service):
     """

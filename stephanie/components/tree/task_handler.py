@@ -7,9 +7,10 @@ to their appropriate execution handlers.
 from __future__ import annotations
 
 from typing import Any, Dict
-from stephanie.components.tree.task_executor import TaskExecutor
+
 from stephanie.components.tree.output_verifier import OutputVerifier
 from stephanie.components.tree.plan_generator import PlanGenerator
+from stephanie.components.tree.task_executor import TaskExecutor
 
 
 class TaskHandler:

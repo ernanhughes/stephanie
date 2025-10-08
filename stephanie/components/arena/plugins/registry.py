@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Dict, Type
 
-from stephanie.arena.plugins.interfaces import Play, Scorer
+from stephanie.components.arena.plugins.interfaces import Play, Scorer
 
 _PLAYS: Dict[str, Play] = {}
 _SCORERS: Dict[str, Scorer] = {}

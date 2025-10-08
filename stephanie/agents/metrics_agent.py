@@ -1,6 +1,7 @@
 # stephanie/agents/prompt_metrics_agent.py
-from stephanie.services.metrics_service import MetricsService
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.services.metrics_service import MetricsService
+
 
 class MetricsAgent(BaseAgent):
     def __init__(self, cfg, memory=None, container=None, logger=None, full_cfg=None):

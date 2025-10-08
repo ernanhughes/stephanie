@@ -1,19 +1,19 @@
 # stephanie/services/zero_model_service.py
 from __future__ import annotations
 
-import os
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from stephanie.services.service_protocol import Service
-from stephanie.services.event_service import EventService
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger  # ZeroModel owns rendering
 
+from stephanie.services.event_service import EventService
+from stephanie.services.service_protocol import Service
 
 _logger = logging.getLogger(__name__)
 
@@ -266,9 +266,10 @@ class ZeroModelService(Service):
         gif = GifLogger(max_frames=self._max_frames)
         fps = fps or self._gif_fps
 
+        sorted_matrix = self.sort_on_first_index(matrix)
         # 🎥 <-- NEW: add one frame per row
-        for i in range(matrix.shape[0]):
-            row = matrix[i : i + 1, :]
+        for i in range(sorted_matrix.shape[0]):
+            row = sorted_matrix[i : i + 1, :]
             vpm_out, _ = self._pipeline.run(row, {"enable_gif": False})
             gif.add_frame(
                 vpm_out,
@@ -284,3 +285,42 @@ class ZeroModelService(Service):
             "frames": len(gif.frames),
             "shape": list(matrix.shape),
         }
+
+
+    def sort_on_first_index(self, matrix: np.ndarray, descending: bool = False) -> np.ndarray:
+        """
+        Sort a 2D NumPy matrix by its first column (index 0).
+        Designed for Stephanie VPM matrices where the first column is node_id.
+
+        Args:
+            matrix (np.ndarray): The input 2D array (N x D).
+            descending (bool): Sort descending if True (default False).
+
+        Returns:
+            np.ndarray: Sorted matrix (same shape as input).
+
+        Behavior:
+            - Skips sorting if the matrix has < 2 rows or < 1 column.
+            - Casts first column to float for safety.
+            - Logs before/after ranges for debugging.
+        """
+        try:
+            if matrix.ndim != 2 or matrix.shape[0] < 2 or matrix.shape[1] == 0:
+                return matrix
+
+            # Defensive cast for mixed types
+            col0 = matrix[:, 0].astype(float)
+            order = np.argsort(col0)
+            if descending:
+                order = order[::-1]
+
+            sorted_matrix = matrix[order]
+            _logger.info(
+                f"Matrix sorted by first index "
+                f"(min={col0.min():.4f}, max={col0.max():.4f}, rows={matrix.shape[0]})"
+            )
+            return sorted_matrix
+
+        except Exception as e:
+            _logger.warning(f"sort_on_first_index failed: {e}")
+            return matrix

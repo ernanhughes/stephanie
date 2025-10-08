@@ -1,84 +1,85 @@
-# stephanie/components/tree/output_verifier.py
-
-"""
-Evaluates stdout/stderr from executed or generated tasks.
-Extracts numeric metrics and detects anomalies (bugs, overfitting, etc.).
-"""
-
 from __future__ import annotations
-import re
-from typing import Any, Dict
+
+from typing import Any, Dict, Optional
 
 
 class OutputVerifier:
-    _METRIC_PATTERNS = [
-        r"val[_\s]?accuracy[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"accuracy[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"f1[_\s]?(score)?[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"auc[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"precision[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"recall[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"loss[:=]\s*([0-9]*\.?[0-9]+)",
-        r"rmse[:=]\s*([0-9]*\.?[0-9]+)",
-        r"mae[:=]\s*([0-9]*\.?[0-9]+)",
-        r"mse[:=]\s*([0-9]*\.?[0-9]+)",
-        r"score[:=]\s*([0-9]*\.?[0-9]+%?)",
-        r"metric[:=]\s*([0-9]*\.?[0-9]+%?)",
-    ]
+    """
+    Modern verifier for structured score dictionaries.
+    Validates expected dimensions and enforces thresholds.
+    """
 
-    def __init__(self, prefer_higher: bool = True):
-        self.prefer_higher = prefer_higher
-        self.name = "OutputVerifier-v1.0"
+    def __init__(self,
+                 thresholds: Optional[Dict[str, float]] = None,
+                 require_all: bool = True):
+        """
+        thresholds: e.g. {"alignment": 0.9, "clarity": 0.7}
+        require_all: if True, fail verification if any threshold unmet
+        """
+        self.thresholds = thresholds or {"alignment": 0.9}
+        self.require_all = require_all
 
-    def verify(self, stdout: str, stderr: str, has_submission_file: bool) -> Dict[str, Any]:
-        merged = self._merge_streams(stdout, stderr)
-        lower = merged.lower()
+    # --------------------------------------------------------------
+    def verify(self,
+               result: Dict[str, Any],
+               stderr: str = "",
+               has_submission_file: bool = False) -> Dict[str, Any]:
+        """
+        Validate a structured task result dict.
+        Returns a standardized record with flags.
+        """
 
-        is_bug = any(kw in merged for kw in ("Traceback", "Exception", "Error", "RuntimeWarning"))
-        is_overfitting = any(p in lower for p in ("val_loss increasing", "overfit", "unstable training"))
-        metric, all_metrics = self.extract_metrics(merged)
-        summary = self.summarize(merged)
+        # --- Safety ---
+        if not isinstance(result, dict):
+            return {
+                "metric": 0.0,
+                "summary": "Invalid result type",
+                "is_bug": True,
+                "is_verified": False,
+                "merged_output": str(result)
+            }
 
-        if metric is not None and not self.prefer_higher:
-            metric = 1.0 - metric
+        metric = float(result.get("metric", 0.0))
+        vector = result.get("vector", {}) or {}
+        summary = result.get("summary", "")
+        merged_output = result.get("merged_output", "")
+
+        # --- Check thresholds ---
+        flags = {}
+        for dim, thresh in self.thresholds.items():
+            score = self._find_score_for(dim, vector)
+            ok = (score is not None) and (score >= thresh)
+            flags[dim] = {
+                "score": score,
+                "threshold": thresh,
+                "ok": ok
+            }
+
+        # Aggregate success/failure
+        ok_flags = [f["ok"] for f in flags.values()]
+        verified = all(ok_flags) if self.require_all else any(ok_flags)
+
+        # --- Compute verification metric (optional) ---
+        # Example: average over verified dimensions
+        verified_scores = [f["score"] for f in flags.values() if f["score"] is not None]
+        verify_metric = sum(verified_scores) / len(verified_scores) if verified_scores else metric
 
         return {
-            "verifier_name": self.name,
-            "is_bug": is_bug,
-            "is_overfitting": is_overfitting,
-            "has_csv_submission": has_submission_file,
-            "metric": metric,
-            "metrics_found": all_metrics,
+            "metric": verify_metric,
             "summary": summary,
-            "merged_output": merged,
+            "merged_output": merged_output,
+            "is_bug": not verified,
+            "is_verified": verified,
+            "flags": flags
         }
 
-    def extract_metrics(self, text: str):
-        metrics = []
-        for pattern in self._METRIC_PATTERNS:
-            for m in re.finditer(pattern, text, re.IGNORECASE):
-                val = m.groups()[-1]
+    # --------------------------------------------------------------
+    def _find_score_for(self, dim: str, vector: Dict[str, float]) -> Optional[float]:
+        """Find a score key containing the given dimension name."""
+        for k, v in vector.items():
+            if dim.lower() in k.lower():
                 try:
-                    if val.endswith("%"):
-                        num = float(val[:-1]) / 100.0
-                    else:
-                        num = float(val)
-                        if any(k in pattern.lower() for k in ("rmse", "mae", "mse", "loss")):
-                            num = 1.0 / (1.0 + num)
-                    metrics.append(num)
+                    return float(v)
                 except Exception:
-                    continue
-        return (metrics[-1] if metrics else None, metrics)
-
-    def summarize(self, text: str, tail_lines: int = 8, max_chars: int = 400) -> str:
-        lines = [ln.strip() for ln in text.splitlines()[-tail_lines:] if ln.strip()]
-        summary = " ".join(lines) or "No output."
-        return summary[: max_chars - 3] + "..." if len(summary) > max_chars else summary
-
-    @staticmethod
-    def _merge_streams(stdout: str, stderr: str) -> str:
-        if not stderr:
-            return stdout or ""
-        if not stdout:
-            return stderr or ""
-        return f"{stdout}\n--- STDERR ---\n{stderr}"
+                    pass
+        return None

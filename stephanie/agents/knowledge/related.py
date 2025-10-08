@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
@@ -131,7 +131,8 @@ Return strictly JSON with a list of objects: {{"idx": int, "score": float}}.
         try:
             raw = await self.llm(prompt)  # BaseAgent.llm
             # naive JSON extract (be tolerant to model formatting)
-            import json, re
+            import json
+            import re
             m = re.search(r"\{.*\}", raw, re.S) or re.search(r"\[.*\]", raw, re.S)
             obj = json.loads(m.group(0)) if m else []
             scores = {int(d.get("idx")): float(d.get("score")) for d in obj if "idx" in d and "score" in d}

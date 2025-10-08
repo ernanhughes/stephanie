@@ -5,7 +5,7 @@ import math
 from collections import defaultdict
 from typing import Dict, List, Tuple
 
-from stephanie.arena.plugins.interfaces import JobCtx
+from stephanie.components.arena.plugins.interfaces import JobCtx
 
 Key = Tuple[str, str, str]   # (task_type, topic, season_or_all)
 

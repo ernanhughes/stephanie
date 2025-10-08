@@ -29,11 +29,10 @@ import sys
 import tempfile
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
-
 
 # ----------------------------- Data structures ----------------------------- #
 

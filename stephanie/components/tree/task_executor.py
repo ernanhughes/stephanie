@@ -6,14 +6,15 @@ using the system's scorers (MRQ, SICQL, EBT, etc.) or external LLMs.
 """
 
 from __future__ import annotations
-import json
+
 import hashlib
+import json
 from typing import Any, Dict, Optional
 
-from stephanie.services.scoring_service import ScoringService
-from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.tree.output_verifier import OutputVerifier
+from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.services.scoring_service import ScoringService
 
 
 class TaskExecutor:
@@ -45,13 +46,31 @@ class TaskExecutor:
                 text=task_text,
                 target_type=ScorableType.PROMPT if "prompt" in task_type else ScorableType.TEXT,
             )
-            bundle = await self.scoring.score(
-                scorer_name=context.get("scorer", "sicql"),
+            scorer_name=context.get("scorer", "sicql")
+            
+            bundle = self.scoring.score(
+                scorer_name=scorer_name,
                 scorable=scorable,
                 context=context,
                 dimensions=context.get("dimensions", ["alignment"]),
             )
             metric = float(bundle.aggregate())
+            flat = bundle.flatten(
+                include_scores=True,
+                include_weights=False,
+                include_sources=False,
+                include_rationales=False,
+                include_attributes=True,
+                include_meta=False,
+                numeric_only=True,
+                sep=".",
+                attr_prefix="attr",
+            )
+            vector: Dict[str, float] = {}
+            for k, v in flat.items():
+                vector[f"{scorer_name}.{k}"] = float(v)
+            vector[f"{scorer_name}.aggregate"] = metric
+
             return {
                 "metric": metric,
                 "summary": task_text[:400],
@@ -59,6 +78,7 @@ class TaskExecutor:
                 "stdout": json.dumps({"score": metric}),
                 "stderr": "",
                 "returncode": 0,
+                "vector": vector,
             }
 
         except Exception as e:

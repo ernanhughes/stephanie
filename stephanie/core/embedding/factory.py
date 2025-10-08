@@ -41,10 +41,10 @@ class EmbedderFactory:
     def validate_embedder(self, embedder: EmbedderProtocol):
         """Ensure embedder meets requirements"""
         if not hasattr(embedder, "get_or_create"):
-            raise InterfaceValidationError("Missing required method: get_or_create")
+            raise RuntimeError("Missing required method: get_or_create")
         if not hasattr(embedder, "find_similar"):
-            raise InterfaceValidationError("Missing required method: find_similar")
-    
+            raise RuntimeError("Missing required method: find_similar")
+
     def get_embedding(self, text: str, embedder_name: str = None) -> list[float]:
         """Get embedding from selected embedder"""
         embedder = self.get_embedder(embedder_name)

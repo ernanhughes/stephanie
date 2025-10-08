@@ -37,17 +37,8 @@ import inspect
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Set,
-    Tuple,
-)
+from typing import (Any, Awaitable, Callable, Dict, Iterable, List, Optional,
+                    Set, Tuple)
 
 logger = logging.getLogger(__name__)
 

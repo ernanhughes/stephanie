@@ -1,8 +1,10 @@
 # stephanie/utils/metrics_schema.py
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Dict, List, Tuple, Any, Optional, Union
+
 import math
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 
 @dataclass(frozen=True)
 class MetricVector:

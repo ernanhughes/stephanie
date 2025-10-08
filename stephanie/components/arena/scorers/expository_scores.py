@@ -1,8 +1,8 @@
 # stephanie/arena/scorers/expository_scores.py
 from __future__ import annotations
 
-from stephanie.arena.plugins.interfaces import JobCtx, Scorer
-from stephanie.arena.plugins.registry import register_scorer
+from stephanie.components.arena.plugins.interfaces import JobCtx, Scorer
+from stephanie.components.arena.plugins.registry import register_scorer
 
 
 @register_scorer
@@ -26,4 +26,3 @@ class LengthPreferenceScorer:
         # optional: look up draft by id to compute exact word count, or include in metrics
         # placeholder: n/a if not available
         return {"primary": 0.0}
-Be better than this and then

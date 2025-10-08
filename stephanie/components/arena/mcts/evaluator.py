@@ -1,7 +1,7 @@
 # stephanie/arena/mcts/evaluator.py
-from stephanie.arena.plugins.interfaces import JobCtx
-from stephanie.arena.plugins.registry import get_play, list_scorers
-from stephanie.arena.scoring.aggregate import WeightedAggregator
+from stephanie.components.arena.plugins.interfaces import JobCtx
+from stephanie.components.arena.plugins.registry import get_play, list_scorers
+from stephanie.components.arena.scoring.aggregate import WeightedAggregator
 
 
 class PlayEvaluator:

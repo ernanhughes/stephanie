@@ -5,8 +5,6 @@ import hashlib
 import json
 from typing import Any, Optional
 
-    
-
 
 def hash_dict(
     data: dict[str, Any], sort_keys: bool = True, exclude_keys: list = None

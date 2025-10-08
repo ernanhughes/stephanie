@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import traceback
 from typing import Any, Dict, Optional
-import json
+
 from stephanie.services.zeromodel_service import ZeroModelService
 
 _logger = logging.getLogger(__name__)
@@ -89,43 +90,24 @@ class VPMWorker:
                 self.zm.timeline_open(run_id)
                 self._open_runs.add(run_id)
 
-            node = {
-                "id": node_id,
-                "parent_id": payload.get("parent_id"),
-                "type": payload.get("action_type", "draft"),
-                "metric": payload.get("best_metric"),
-                "visits": 1,
-                "bug": bool(payload.get("bug", False)),
-            }
-
             # --- 1️⃣ Extract metrics consistently ---
-            names: list[str] = []
-            values: list[float] = []
 
-            if isinstance(payload.get("metrics_columns"), (list, tuple)):
-                names = list(payload["metrics_columns"])
-                values = [float(v) for v in payload.get("metrics_values", [])]
-            elif isinstance(payload.get("metrics_vector"), dict):
-                names = list(payload["metrics_vector"].keys())
-                values = [float(v) for v in payload["metrics_vector"].values()]
-            elif isinstance(payload.get("vector"), dict):
-                vec = payload["vector"]
-                names = vec.get("names") or []
-                values = [float(v) for v in vec.get("values", [])]
+            names = list(payload["metrics_columns"])
+            values = [float(v) for v in payload.get("metrics_values", [])]
+            names = ["node_id"] + names
+            values = [node_id] + values
 
-            # Fallback scalar
-            mean_val = float(sum(values) / len(values)) if values else 0.0
 
             # --- 2️⃣ Send full set to ZeroModel ---
             self.zm.timeline_append_row(
                 run_id,
                 metrics_columns=names,
-                metrics_values=values,
+                metrics_values=values, 
             )
 
             self.logger.log(
                 "VPMRowAppended",
-                {"run_id": run_id, "node_id": node_id, "metrics_count": len(values), "mean": mean_val},
+                {"run_id": run_id, "node_id": node_id, "metrics_count": len(values)},
             )
 
         except Exception as e:

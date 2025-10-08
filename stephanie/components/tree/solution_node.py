@@ -1,10 +1,11 @@
 # stephanie/components/tree/solution_node.py
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
 import time
 import uuid
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
+
 
 @dataclass
 class ExecutionResult:
@@ -28,6 +29,7 @@ class SolutionNode:
     children: List[str] = field(default_factory=list)
     tree_id: Optional[str] = None
     root_id: Optional[str] = None
+    task_description: Optional[str] = None
     depth: int = 0
     sibling_index: int = 0
     path: str = "0"

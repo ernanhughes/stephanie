@@ -11,6 +11,7 @@ This version imports modular components:
 """
 
 from __future__ import annotations
+
 import asyncio
 import hashlib
 import random
@@ -18,10 +19,10 @@ import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.tree.solution_node import SolutionNode
-from stephanie.components.tree.plan_generator import PlanGenerator
-from stephanie.components.tree.task_executor import TaskExecutor
 from stephanie.components.tree.output_verifier import OutputVerifier
+from stephanie.components.tree.plan_generator import PlanGenerator
+from stephanie.components.tree.solution_node import SolutionNode
+from stephanie.components.tree.task_executor import TaskExecutor
 from stephanie.components.tree.task_handler import TaskHandler
 
 
@@ -203,9 +204,10 @@ class AgenticTreeSearch:
         tree_id = context.get("pipeline_run_id")
         root_id = parent.root_id if parent else None
 
+        id = self._make_numeric_id(tree_id, node_depth, sibling_idx)
         node = SolutionNode(
             tree_id=tree_id,
-            id=f"{tree_id}.{node_depth}.{sibling_idx}",
+            id=id,
             plan=plan,
             code=None,
             task_description=task_description,
@@ -416,3 +418,11 @@ class AgenticTreeSearch:
         if parent_node is None:
             return str(sibling_index)
         return f"{parent_node.path}.{sibling_index}"
+
+    def _make_numeric_id(self, tree_id: int, node_depth: int, sibling_idx: int) -> int:
+        """
+        Build a sortable numeric ID from (tree, depth, sibling).
+        Layout: TTTTDDDSIII  (tree_id up to 9999, depth up to 999, sibling up to 9999)
+        Example: tree 12, depth 3, sibling 45 -> 120030045
+        """
+        return (int(tree_id) * 10**7) + (node_depth * 10**4) + sibling_idx
