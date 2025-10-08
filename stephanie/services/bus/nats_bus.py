@@ -42,18 +42,6 @@ def _sanitize_durable(stream: str, subject: str) -> str:
     name = f"durable_{stream}_{subject}".replace(".", "_").replace(">", "all")
     return name[:240]
 
-# put near the top of nats_bus.py (with other helpers)
-def _ns_from_seconds(seconds: float) -> int:
-    """Convert seconds -> nanoseconds, clipped to Go time.Duration int64 range."""
-    if seconds <= 0:
-        return 1_000_000  # 1 ms minimum so it's > 0
-    ns = int(seconds * 1_000_000_000)
-    # Go's time.Duration is int64 nanoseconds; cap to avoid 400 BadRequest overflow
-    INT64_MAX_NS = 9_223_372_036_854_775_807  # 2^63-1
-    if ns > INT64_MAX_NS:
-        ns = INT64_MAX_NS
-    return ns
-
 class NatsKnowledgeBus(BusProtocol):
     """
     Production-grade NATS JetStream bus with resilience + good DX while debugging.
@@ -143,17 +131,17 @@ class NatsKnowledgeBus(BusProtocol):
 
             async def _err_cb(e):
                 # nats InvalidStateError on pong is harmless; low-level
-                _logger.debug("NATSLowLevelError", {"error": repr(e)})
+                _logger.debug(f"NATSLowLevelError error: {repr(e)}")
 
             async def _disc_cb():
-                _logger.warning("NATSDisconnected", {})
+                _logger.warning("NATSDisconnected")
 
             async def _reconn_cb():
-                _logger.info("NATSReconnected", {})
+                _logger.info("NATSReconnected")
                 await self._on_reconnected()
 
             async def _closed_cb():
-                _logger.warning("NATSClosed", {})
+                _logger.warning("NATSClosed")
 
             nc = None
             try:
@@ -188,7 +176,7 @@ class NatsKnowledgeBus(BusProtocol):
                 try:
                     await js.publish(health_subject, b"ping")
                 except Exception as e:
-                    _logger.warning("NATSHealthPublishFailed", {"subject": health_subject, "error": repr(e)})
+                    _logger.warning(f"NATSHealthPublishFailed subject: {health_subject}, error: {repr(e)}")
                     with contextlib.suppress(Exception):
                         await nc.close()
                     return False
@@ -197,7 +185,7 @@ class NatsKnowledgeBus(BusProtocol):
                 self._nc = nc
                 self._js = js
                 self._connected = True
-                _logger.info("NATSReady", {"servers": self.servers, "stream": self.stream, "subjects": self._stream_subjects})
+                _logger.info(f"NATSReady servers: {self.servers}, stream: {self.stream}, subjects: {self._stream_subjects}")
 
                 # Start monitors (idempotent)
                 self._start_keepalive()
@@ -205,7 +193,7 @@ class NatsKnowledgeBus(BusProtocol):
                 return True
 
             except Exception as e:
-                _logger.warning("NATSClientConnectFailed", {"error": repr(e)})
+                _logger.warning(f"NATSClientConnectFailed error: {repr(e)}")
                 with contextlib.suppress(Exception):
                     if nc and not nc.is_closed:
                         await nc.close()
@@ -217,9 +205,9 @@ class NatsKnowledgeBus(BusProtocol):
             if self._nc:
                 self._js = self._nc.jetstream()
         except Exception as e:
-            _logger.warning("NATSRefreshJSOnReconnectFailed", {"error": repr(e)})
+            _logger.warning(f"NATSRefreshJSOnReconnectFailed error: {repr(e)}")
         await self._resubscribe_all()
-        _logger.info("NATSReconnectedSubscriptionsRefreshed", {})
+        _logger.info("NATSReconnectedSubscriptionsRefreshed")
 
     async def _ensure_connected(self) -> None:
         if self._connected and self._nc and not self._nc.is_closed:
@@ -377,7 +365,7 @@ class NatsKnowledgeBus(BusProtocol):
                     await self._nc.close()
             finally:
                 self._connected = False
-                _logger.info("NATSClosedCleanly", {})
+                _logger.info("NATSClosedCleanly")
 
     # ---------- Helpers ----------
 

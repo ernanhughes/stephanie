@@ -176,7 +176,7 @@ class BaseWorker:
                 await handler(payload)
             except Exception as e:
                 self._stats["messages_err"] += 1
-                _logger.info("WorkerHandlerError", {"name": self.name, "error": str(e)})
+                _logger.info("WorkerHandlerError name=%s, error=%s", self.name, str(e))
         return wrapped
 
     async def _health_loop(self):

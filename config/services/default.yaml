@@ -161,12 +161,3 @@ services:
       logger: ${logger}
       container: ${container}
 
-  metrics:
-    enabled: true
-    cls: stephanie.services.metrics_service.MetricsService
-    dependencies: [scoring]   # optional but handy if your scorer provider is used
-    args:
-      cfg: ${cfg}
-      memory: ${memory}
-      logger: ${logger}
-      container: ${container}

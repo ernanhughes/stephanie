@@ -367,3 +367,113 @@ class ScoreBundle:
             rewards["overall_norm"] = max(0.0, min(1.0, overall))
 
         return rewards
+
+    def flatten(
+        self,
+        *,
+        include_scores: bool = True,
+        include_weights: bool = False,
+        include_sources: bool = False,
+        include_rationales: bool = False,
+        include_attributes: bool = True,
+        include_meta: bool = False,
+        numeric_only: bool = True,
+        sep: str = ".",
+        attr_prefix: str = "attr",
+        meta_prefix: str = "meta",
+        list_policy: str = "index",   # "index" | "sum" | "mean" | "len" | "first"
+        max_list_len: int = 16,
+    ) -> Dict[str, float]:
+        """
+        Flatten bundle into a single-level dict {name: value}.
+        Keys look like:
+          - "<dimension>.score"
+          - "<dimension>.weight" (opt)
+          - "<dimension>.source" / ".rationale" (opt; numeric_only=False to include)
+          - "<dimension>.attr.<key>" (attributes), lists become indices: ".attr.foo[0]"
+          - "meta.<key>" (opt)
+
+        Args:
+            include_*: toggles for emitted fields.
+            numeric_only: if True, only numeric outputs are included; otherwise strings
+                          are included (useful for logging/export).
+            sep: key separator.
+            attr_prefix: path segment for attributes.
+            meta_prefix: path segment for meta fields.
+            list_policy: how to handle list/tuple attributes when numeric_only=True.
+                         - "index": emit up to max_list_len as [...][i]
+                         - "sum"/"mean"/"len"/"first": aggregate into a single value
+            max_list_len: cap for "index" expansion.
+
+        Returns:
+            Dict[str, float|str] (if numeric_only=False, may include strings)
+        """
+        out: Dict[str, Any] = {}
+
+        def _emit(key: str, val: Any):
+            # normalize keys a bit
+            k = key.replace(" ", "_")
+            if numeric_only:
+                try:
+                    x = float(val)
+                    if x != x:  # NaN
+                        return
+                    out.setdefault(k, x)
+                except Exception:
+                    # allow some safe aggregates for lists even in numeric_only
+                    if isinstance(val, (list, tuple)) and val:
+                        nums = []
+                        for v in val:
+                            try:
+                                vv = float(v)
+                                if vv == vv:
+                                    nums.append(vv)
+                            except Exception:
+                                pass
+                        if not nums:
+                            return
+                        if list_policy == "sum":
+                            out.setdefault(k, float(sum(nums)))
+                        elif list_policy == "mean":
+                            out.setdefault(k, float(sum(nums) / len(nums)))
+                        elif list_policy == "len":
+                            out.setdefault(k, float(len(nums)))
+                        elif list_policy == "first":
+                            out.setdefault(k, float(nums[0]))
+                        elif list_policy == "index":
+                            for i, vv in enumerate(nums[:max_list_len]):
+                                out.setdefault(f"{k}[{i}]", float(vv))
+                    # else drop
+            else:
+                out.setdefault(k, val)
+
+        # Per-dimension fields
+        for dim, res in self.results.items():
+            base = f"{dim}"
+            if include_scores:
+                _emit(f"{base}{sep}score", res.score)
+            if include_weights:
+                _emit(f"{base}{sep}weight", res.weight)
+            if include_sources:
+                _emit(f"{base}{sep}source", getattr(res, "source", None))
+            if include_rationales:
+                _emit(f"{base}{sep}rationale", getattr(res, "rationale", None))
+
+            if include_attributes and getattr(res, "attributes", None):
+                for k, v in res.attributes.items():
+                    _emit(f"{base}{sep}{attr_prefix}{sep}{k}", v)
+
+            # If your ScoreResult sometimes carries `metrics` separate from `attributes`
+            if include_attributes and getattr(res, "metrics", None):
+                for k, v in res.metrics.items():
+                    # don't overwrite attr key if both exist
+                    key = f"{base}{sep}{attr_prefix}{sep}{k}"
+                    if key not in out:
+                        _emit(key, v)
+
+        # Meta block (optional)
+        if include_meta and self.meta:
+            for k, v in self.meta.items():
+                _emit(f"{meta_prefix}{sep}{k}", v)
+
+        return out

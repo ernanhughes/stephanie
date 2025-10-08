@@ -204,7 +204,6 @@ class MemoryTool:
         # Always pass nested {"bus": {...}} to make Hybrid bus happier
         bus_cfg = {"bus": self.cfg.get("bus", {"backend": "nats"})}
         bus = HybridKnowledgeBus(bus_cfg, self.logger)
-        self.logger.log("KnowledgeBusInitialized", {"type": bus.get_backend()})
         return bus
 
     async def ensure_bus_connected(self) -> None:

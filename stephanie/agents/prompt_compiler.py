@@ -32,18 +32,14 @@ class PromptCompilerAgent(BaseAgent):
       context["timeline_path"]        : path to generated timeline GIF
     """
 
-    def __init__(self, cfg, memory=None, container=None, logger=None, full_cfg=None):
+    def __init__(self, cfg, memory, container, logger, full_cfg):
         super().__init__(cfg, memory, container, logger)
         self.runner = PipelineRunnerAgent(
             cfg, memory=memory, logger=logger, container=container, full_cfg=full_cfg
         )
 
-        # ---- Resolve ZeroModelService from the container (robustly) ----
+        # ---- ZeroModelService from the container ----
         self.zm = container.get("zeromodel")
-        if not self.zm:
-            raise RuntimeError(
-                "ZeroModelService not found. Please ensure it is registered in the container."
-            )
 
         # --- Config knobs (with sensible defaults) ---
         self.ats_cfg = {
@@ -63,7 +59,7 @@ class PromptCompilerAgent(BaseAgent):
 
         # Optional original score range -> normalize to [0,1], e.g., [0,100]
         self.score_range: Optional[Tuple[float, float]] = None
-        rng = cfg.get("score_range")
+        rng = cfg.get("score_range", "[0,100]")
         if isinstance(rng, (list, tuple)) and len(rng) == 2:
             try:
                 a, b = float(rng[0]), float(rng[1])
@@ -148,20 +144,7 @@ class PromptCompilerAgent(BaseAgent):
     # Sink 1/2 for EmitBroadcaster: safe logger
     # ---------------------------------------------------------------------
     def _emit_to_logger(self, event: str, payload: Dict[str, Any]) -> None:
-        """
-        Lightweight logging sink. Must not raise. Works whether self.logger is stdlib-like or a custom reporter.
-        """
-        try:
-            if not self.logger:
-                return
-            # Prefer a structured log method if present; fall back to info()
-            if hasattr(self.logger, "log") and callable(getattr(self.logger, "log")):
-                self.logger.log(f"PromptCompiler::{event}", payload)
-            elif hasattr(self.logger, "info"):
-                self.logger.info("PromptCompiler::%s %s", event, payload)
-        except Exception:
-            # swallow logging errors by design
-            pass
+        self.logger.log(f"PromptCompiler::{event}", payload)
 
     # ---------------------------------------------------------------------
     # ATS hook: "execute" a prompt candidate by sending it to your judge.

@@ -32,7 +32,9 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Core types
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable, ScorableFactory
+from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.services.service_protocol import Service
 
 _logger = logging.getLogger(__name__)
@@ -75,7 +77,7 @@ class ScoringService(Service):
         self.container = container
         self.logger = logger
         self.embedding_type = self.memory.embedding.name
-        self._scorers: Dict[str, Any] = {}   # name -> scorer instance
+        self._scorers: Dict[str, BaseScorer] = {}   # name -> scorer instance
 
         # Deter Hello That's Hey Cortana mine which scorers to enable:
         # 1) explicit list in cfg.enabled_scorers
@@ -278,7 +280,7 @@ class ScoringService(Service):
         scorable: Scorable,
         context: Dict[str, Any],
         dimensions: Optional[List[str]] = None,
-    ):
+    ) -> ScoreBundle:
         """
         Call the underlying scorer and return its ScoreBundle.
         
@@ -314,7 +316,7 @@ class ScoringService(Service):
         source: Optional[str] = None,
         evaluator: Optional[str] = None,
         model_name: Optional[str] = None,
-    ):
+    ) -> ScoreBundle:
         """
         Compute and persist scores using EvaluationStore.save_bundle.
         
