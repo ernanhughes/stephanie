@@ -4,9 +4,11 @@ from __future__ import annotations
 from stephanie.agents.dspy.mcts_reasoning import MCTSReasoningAgent
 from stephanie.components.cbr.ab_validator import DefaultABValidator
 from stephanie.components.cbr.case_selector import DefaultCaseSelector
-from stephanie.components.cbr.casebook_scope_manager import DefaultCasebookScopeManager
+from stephanie.components.cbr.casebook_scope_manager import \
+    DefaultCasebookScopeManager
 from stephanie.components.cbr.champion_promoter import DefaultChampionPromoter
-from stephanie.components.cbr.context_namespacer import DefaultContextNamespacer
+from stephanie.components.cbr.context_namespacer import \
+    DefaultContextNamespacer
 from stephanie.components.cbr.goal_state_tracker import DefaultGoalStateTracker
 from stephanie.components.cbr.micro_learner import DefaultMicroLearner
 from stephanie.components.cbr.middleware import CBRMiddleware

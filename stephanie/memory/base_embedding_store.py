@@ -744,3 +744,169 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
         except Exception as e:
             self.logger.log("CalibrationTrainingFailed", {"error": str(e)})
             return {"coefficients": [1.0, 0.0]}
+
+    def find_dissimilar_texts(
+        self,
+        text: str,
+        k: int = 10,
+        min_distance: float = 0.4,
+    ) -> list[dict]:
+        """
+        Return texts that are semantically *dissimilar* to the given input text.
+
+        Parameters
+        ----------
+        text : str
+            The reference text to compare against.
+        k : int
+            Number of dissimilar results to return.
+        min_distance : float
+            Minimum distance threshold (1 - cosine similarity). 
+            Increase for more extreme opposites.
+
+        Returns
+        -------
+        list[dict]
+            List of {id, text, distance, similarity} sorted by distance DESC.
+        """
+        try:
+            embedding = self.get_or_create(text)
+            if isinstance(embedding, torch.Tensor):
+                embedding = embedding.detach().cpu().tolist()
+
+            sql = f"""
+                SELECT e.id, e.text, (e.embedding <-> %s::vector) AS distance,
+                    1 - (e.embedding <-> %s::vector) AS similarity
+                FROM {self.table} e
+                WHERE e.embedding IS NOT NULL
+                AND (e.embedding <-> %s::vector) > %s
+                ORDER BY distance DESC
+                LIMIT %s;
+            """
+
+            with self.conn.cursor() as cur:
+                cur.execute(sql, (embedding, embedding, embedding, min_distance, k))
+                rows = cur.fetchall()
+
+            results = [
+                {
+                    "id": row[0],
+                    "text": row[1],
+                    "distance": float(row[2]),
+                    "similarity": float(row[3]),
+                    "retrieval_type": "semantic_inverse",
+                }
+                for row in rows
+            ]
+            self.logger.log(
+                "DissimilarSearchResults",
+                {
+                    "query": text[:100],
+                    "count": len(results),
+                    "min_distance": min_distance,
+                    "top_distance": float(results[0]["distance"]) if results else None,
+                },
+            )
+            return results
+
+        except Exception as e:
+            self.logger and self.logger.log(
+                "DissimilarSearchFailed", {"error": str(e), "query": text[:100]}
+            )
+            return []
+
+    def search_unrelated_scorables(
+        self,
+        query: str,
+        target_type: str = "document",
+        top_k: int = 10,
+    ) -> List[Dict]:
+        """
+        Return scorables least similar to the query (inverse similarity search).
+        Uses the same embedding table and metric but sorts ascending.
+        """
+        sql = """
+            SELECT se.scorable_id, se.scorable_type, e.text, 1 - (e.embedding <-> %s::vector) AS score
+            FROM scorable_embeddings se
+            JOIN {table} e ON se.embedding_id = e.id
+            WHERE se.scorable_type = %s
+            ORDER BY e.embedding <-> %s::vector DESC  -- reverse order = least similar
+            LIMIT %s;
+        """.format(table=self.table)
+
+        try:
+            query_emb = self.get_or_create(query)
+            with self.conn.cursor() as cur:
+                cur.execute(sql, (query_emb, target_type, query_emb, top_k))
+                rows = cur.fetchall()
+
+            return [
+                {
+                    "id": row[0],
+                    "scorable_type": row[1],
+                    "text": row[2],
+                    "score": float(row[3]),
+                    "retrieval_type": "inverse_semantic",
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            self.logger.log("InverseSearchFailed", {"error": str(e), "query": query})
+            return []
+
+
+    def search_scorables_in_similarity_band(
+        self,
+        query: str,
+        target_type: str = "document",
+        lower: float = 0.45,
+        upper: float = 0.65,
+        top_k: int = 50,
+    ) -> List[Dict]:
+        """
+        Return scorables whose semantic similarity to `query`
+        lies between `lower` and `upper` bounds (inclusive).
+        Useful for "middle" or neutral contrast sets in PhosAgent.
+
+        Similarity is computed as 1 - (embedding <-> query_vector).
+        """
+        sql = f"""
+            SELECT se.scorable_id, se.scorable_type, e.text,
+                1 - (e.embedding <-> %s::vector) AS score
+            FROM scorable_embeddings se
+            JOIN {self.table} e ON se.embedding_id = e.id
+            WHERE se.scorable_type = %s
+            AND (1 - (e.embedding <-> %s::vector)) BETWEEN %s AND %s
+            ORDER BY ABS(1 - (e.embedding <-> %s::vector) - ((%s + %s)/2)) ASC
+            LIMIT %s;
+        """
+
+        try:
+            query_emb = self.get_or_create(query)
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    sql,
+                    (query_emb, target_type, query_emb, lower, upper,
+                    query_emb, lower, upper, top_k),
+                )
+                rows = cur.fetchall()
+
+            return [
+                {
+                    "id": row[0],
+                    "scorable_type": row[1],
+                    "text": row[2],
+                    "similarity": float(row[3]),
+                    "retrieval_type": "band_semantic",
+                }
+                for row in rows
+            ]
+
+        except Exception as e:
+            self.logger.log("BandSearchFailed", {
+                "error": str(e),
+                "query": query,
+                "lower": lower, 
+                "upper": upper
+            })
+            return []

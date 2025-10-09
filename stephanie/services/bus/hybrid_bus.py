@@ -142,7 +142,7 @@ class HybridKnowledgeBus(BusProtocol):
     # --------------- API ---------------
 
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
-        _logger.info(f"Publishing to {subject}: {payload}")
+        _logger.debug(f"Publishing to {subject}: {payload}")
         if self._bus is None and not self._disabled:
             ok = await self.connect()
             if not ok:

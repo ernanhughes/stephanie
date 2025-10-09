@@ -1,9 +1,6 @@
 # stephanie/services/workers/metrics_worker.py
 from __future__ import annotations
-
 import asyncio
-import json
-import logging
 import time
 import traceback
 from typing import Any, Dict, Optional
@@ -11,8 +8,7 @@ from typing import Any, Dict, Optional
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.scoring_service import ScoringService
 
-# relies on your ScoringService already registered in container as "scoring"
-
+import logging
 _logger = logging.getLogger(__name__)
 
 class MetricsWorker:
@@ -36,7 +32,7 @@ class MetricsWorker:
         
         self.persist   = bool(mcfg.get("persist", False))
         self.timeout_s = float(mcfg.get("timeout_s", 10))
-        self.scorable_type = str(mcfg.get("scorable_type", "prompt"))
+        self.scorable_type = str(mcfg.get("scorable_type", "response"))
         self.max_conc  = int(mcfg.get("max_concurrency", 8))
         self.sem       = asyncio.Semaphore(self.max_conc)
 

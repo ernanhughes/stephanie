@@ -78,42 +78,50 @@ class VPMWorker:
                 )
 
     async def handle_metrics_ready(self, payload: Dict[str, Any]) -> None:
-        """Handle completed metrics payloads and record them in the ZeroModel timeline."""
-        run_id = str(payload.get("run_id") or "")
-        node_id = str(payload.get("node_id") or "")
-        if not run_id:
-            return
-
+        """
+        Safely handle metrics.ready messages, even if partial or malformed.
+        """
         try:
-            # Ensure the timeline session is open once per run
-            if run_id not in self._open_runs:
-                self.zm.timeline_open(run_id)
-                self._open_runs.add(run_id)
+            run_id = payload.get("run_id")
+            node_id = payload.get("node_id")
+            if not run_id or not node_id:
+                self.logger.warning(f"[VPMWorker] ⚠️ Missing run_id/node_id in payload: {payload}")
+                return
 
-            # --- 1️⃣ Extract metrics consistently ---
+            # 🧩 Gracefully handle incomplete payloads
+            names = list(payload.get("metrics_columns") or [])
+            values = list(payload.get("metrics_values") or [])
+            vector = payload.get("metrics_vector", {})
 
-            names = list(payload["metrics_columns"])
-            values = [float(v) for v in payload.get("metrics_values", [])]
-            names = ["node_id"] + names
-            values = [node_id] + values
+            if not names or not values:
+                # Try to reconstruct something minimal from results
+                scores = payload.get("scores") or {}
+                if scores:
+                    # Flatten fallback: each scorer.aggregate as metric
+                    for scorer, result in scores.items():
+                        if "aggregate" in result:
+                            names.append(f"{scorer}.aggregate")
+                            values.append(result["aggregate"])
+                    self.logger.info(
+                        f"[VPMWorker] 🧩 Fallback metrics built for node {node_id} ({len(names)} metrics)"
+                    )
+                else:
+                    self.logger.warning(
+                        f"[VPMWorker] ⚠️ No metrics found for node {node_id}, skipping."
+                    )
+                    return  # nothing to append
 
-
-            # --- 2️⃣ Send full set to ZeroModel ---
+            # ✅ Append to ZeroModel timeline
             self.zm.timeline_append_row(
-                run_id,
+                run_id=run_id,
                 metrics_columns=names,
-                metrics_values=values, 
+                metrics_values=values,
             )
-
-            self.logger.log(
-                "VPMRowAppended",
-                {"run_id": run_id, "node_id": node_id, "metrics_count": len(values)},
-            )
+            self.logger.info(f"[VPMWorker] ✅ Row appended for node {node_id}")
 
         except Exception as e:
-            self.logger.log(
-                "VPMMetricsReadyError",
-                {"error": str(e), "trace": traceback.format_exc(), "run_id": run_id, "node_id": node_id},
+            self.logger.error(
+                f"[VPMWorker] ❌ handle_metrics_ready failed: {e} | payload={payload}"
             )
 
     async def handle_report(self, payload: Any) -> None:

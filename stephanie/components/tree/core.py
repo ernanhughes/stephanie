@@ -1,13 +1,20 @@
 # stephanie/components/tree/core.py
 """
-Agentic Tree Search (MCTS-lite).
+Agentic Tree Search (MCTS-lite) Core Module.
 
-This version imports modular components:
-- SolutionNode / ExecutionResult (data)
-- PlanGenerator
-- TaskExecutor
-- OutputVerifier
-- TaskHandler (dispatches between task types)
+This module implements a Monte Carlo Tree Search-inspired reasoning system for 
+autonomous problem solving. It combines planning, execution, and verification 
+in a tree-based search framework with modular components.
+
+Key Components:
+- SolutionNode: Data structure for tree nodes
+- PlanGenerator: Generates and improves plans
+- TaskExecutor: Executes plans and produces outputs  
+- OutputVerifier: Validates and scores outputs
+- TaskHandler: Dispatches tasks based on type
+
+The system explores solution space through iterative drafting, improvement, 
+and debugging cycles while maintaining search statistics and progress tracking.
 """
 
 from __future__ import annotations
@@ -27,7 +34,37 @@ from stephanie.components.tree.task_handler import TaskHandler
 
 
 class AgenticTreeSearch:
-    """Monte-Carlo-lite reasoning tree with pluggable task handlers."""
+    """
+    Monte-Carlo-lite reasoning tree with pluggable task handlers.
+    
+    This class implements a tree search algorithm that combines MCTS principles
+    with agentic reasoning. It maintains a tree of solution attempts where each
+    node represents a plan-execution-verification cycle.
+    
+    The search proceeds through:
+    1. Initial draft generation
+    2. Iterative improvement cycles  
+    3. Debugging of failed attempts
+    4. UCB-based parent selection for expansion
+    
+    Attributes:
+        agent: The base agent used for planning and execution
+        tree: List of all solution nodes in search order
+        nodes_by_id: Dictionary mapping node IDs to node objects
+        parent_map: Dictionary tracking parent-child relationships
+        children_map: Dictionary of children for each parent node
+        max_iterations: Maximum number of search iterations
+        time_limit: Maximum search time in seconds
+        N_init: Number of initial draft plans
+        C_ucb: UCB exploration constant
+        H_greedy: Probability of greedy improvement on best node
+        H_debug: Probability of debugging buggy nodes
+        no_improve_patience: Iterations without improvement before stopping
+        emit_cb: Callback for emitting progress events
+        progress_every: Emit progress every N iterations
+        heartbeat_secs: Minimum time between progress emissions
+        report_top_k: Number of top solutions to include in final report
+    """
 
     def __init__(
         self,
@@ -46,12 +83,14 @@ class AgenticTreeSearch:
         heartbeat_secs: float = 20.0,
         report_top_k: int = 5,
     ):
+        # Core agent and component initialization
         self.agent = agent
         self.tree: List[SolutionNode] = []
         self.nodes_by_id: Dict[str, SolutionNode] = {}
         self.parent_map: Dict[str, Optional[str]] = {}
         self.children_map: Dict[str, List[str]] = {}
 
+        # Search configuration parameters
         self.max_iterations = max_iterations
         self.time_limit = time_limit
         self.N_init = N_init
@@ -65,6 +104,7 @@ class AgenticTreeSearch:
         self.report_top_k = max(1, int(report_top_k))
         self._last_progress_ts = time.time()
 
+        # Modular components for different search phases
         self.plan_generator = PlanGenerator(agent)
         self.verifier = OutputVerifier()
         self.task_executor = TaskExecutor(agent, agent.container, self.verifier)
@@ -75,26 +115,26 @@ class AgenticTreeSearch:
             plan_gen=self.plan_generator,
         )
 
+        # Search state and statistics
         self.iteration = 0
         self.start_time = time.time()
         self.best_node: Optional[SolutionNode] = None
         self.best_metric: float = -float("inf")
         self.last_improve_iter: int = 0
 
-        # MCTS stats
+        # MCTS statistics for node selection
         self.visits: Dict[str, int] = {}
         self.value: Dict[str, float] = {}
 
+        # Metric processing and caching
         self.metric_fn = metric_fn or (lambda m: -1.0 if m is None else float(m))
-
         self.count_actions = {"draft": 0, "improve": 0, "debug": 0}
         self.count_buggy = 0
         self.count_nodes = 0
-
         self.result_cache: Dict[str, Dict[str, Any]] = {}
         self.metric_policy = "maximize"
 
-
+        # Random seed for reproducible search
         if random_seed is not None:
             random.seed(random_seed)
 
@@ -103,6 +143,18 @@ class AgenticTreeSearch:
     # ---------------------------------------------------------------------- #
 
     async def run(self, context: dict) -> dict:
+        """
+        Execute the complete tree search process.
+        
+        Args:
+            context: Dictionary containing task context including 'goal' with 'goal_text'
+            
+        Returns:
+            Updated context with search results and final solution
+            
+        Raises:
+            ValueError: If context doesn't contain a valid task description
+        """
         await self._emit("progress", self._progress_payload(None))
         goal = context.get("goal", {})
         task_description = goal.get("goal_text", "").strip()
@@ -111,7 +163,7 @@ class AgenticTreeSearch:
 
         await self._emit("start", {"goal": task_description})
 
-        # 1. Initial drafts
+        # Phase 1: Generate initial draft plans
         init_tasks = [
             self.plan_generator.draft_plan(task_description, context)
             for _ in range(self.N_init)
@@ -132,7 +184,7 @@ class AgenticTreeSearch:
             self.count_actions["draft"] += 1
             self._maybe_emit_progress(node)
 
-        # 2. Main loop
+        # Phase 2: Main search loop with UCB selection
         while not self._should_stop():
             parent = self._select_parent_ucb()
             action, target = self._choose_action(parent)
@@ -158,7 +210,7 @@ class AgenticTreeSearch:
             self.count_actions[action] = self.count_actions.get(action, 0) + 1
             self._maybe_emit_progress(node)
 
-        # 3. Finalize
+        # Phase 3: Final results compilation
         best = self.best_node.to_dict() if self.best_node else None
         await self._emit("progress", self._progress_payload(None, force_complete=True))
         report = self._make_report(self.best_node)
@@ -173,70 +225,19 @@ class AgenticTreeSearch:
     # Core processing
     # ---------------------------------------------------------------------- #
 
-    async def _process_plan(
-        self,
-        plan: str,
-        parent_node: Optional[SolutionNode],
-        node_type: str,
-        task_description: str,
-        context: dict,
-    ) -> SolutionNode:
-        """Delegates plan execution to TaskHandler depending on context.task_type."""
-        plan_hash = self._hash_or_none(plan)
-        if plan_hash in self.result_cache:
-            return self.result_cache[plan_hash]
-        task = context.get("task") or {"type": context.get("task_type", "code_compile")}
-        v = await self.task_handler.handle(task.get("type"), plan, context)
-        parent = parent_node
-        sibling_idx = self._next_child_index(parent.id if parent else None)
-        node_depth = 0 if parent is None else (parent.depth + 1)
-        node_path = self._make_path(parent, sibling_idx)
-
-        origin = {
-            "action": node_type,
-            "task_type": task.get("type"),
-            "source_id": parent.id if parent else None,
-            "reason": (parent.summary or "") if parent else "initial draft",
-        }
-
-        plan_h = self._hash_or_none(plan)
-        out_h = self._hash_or_none(v.get("merged_output", ""))
-        tree_id = context.get("pipeline_run_id")
-        root_id = parent.root_id if parent else None
-
-        id = self._make_numeric_id(tree_id, node_depth, sibling_idx)
-        node = SolutionNode(
-            tree_id=tree_id,
-            id=id,
-            plan=plan,
-            code=None,
-            task_description=task_description,
-            timestamp=time.time(), 
-            metric=v.get("metric"),
-            output=v.get("merged_output"),
-            summary=v.get("summary"),
-            parent_id=parent.id if parent else None,
-            is_buggy=v.get("is_bug", False),
-            node_type=node_type,
-            root_id=root_id,
-            depth=node_depth,
-            sibling_index=sibling_idx,
-            path=node_path,
-            origin=origin,
-            lineage=((parent.lineage + [parent.id]) if parent else []),
-            plan_sha256=plan_h,
-            code_sha256=None,
-            output_sha256=out_h,
-        )
-        self.result_cache[plan_hash] = node
-        await self._emit("node", node.to_dict())
-        return node
-
-    # ---------------------------------------------------------------------- #
     # MCTS policy
     # ---------------------------------------------------------------------- #
 
     def _select_parent_ucb(self) -> Optional[SolutionNode]:
+        """
+        Select parent node for expansion using UCB formula.
+        
+        Balances exploration (less-visited nodes) and exploitation (high-value nodes).
+        Uses modified UCB: Q + C * sqrt(total_N) / (1 + N)
+        
+        Returns:
+            Selected parent node, or None if no valid candidates
+        """
         candidates = [n for n in self.tree if not n.is_buggy]
         if not candidates:
             return None
@@ -247,11 +248,22 @@ class AgenticTreeSearch:
             Q = self.value.get(n.id, 0.0)
             return Q + self.C_ucb * ((total_N**0.5) / (1 + N))
 
+        # Early search bias: favor best node for first iterations
         if self.iteration < self.N_init * 2 and self.best_node:
             return self.best_node
         return max(candidates, key=ucb)
 
     def _choose_action(self, parent: Optional[SolutionNode]) -> Tuple[str, Optional[SolutionNode]]:
+        """
+        Choose next action based on current state and heuristics.
+        
+        Args:
+            parent: Selected parent node for expansion
+            
+        Returns:
+            Tuple of (action_type, target_node) where action_type is one of:
+            'draft', 'improve', 'debug'
+        """
         if parent is None:
             return "draft", None
         if self.best_node and random.random() < self.H_greedy:
@@ -265,6 +277,11 @@ class AgenticTreeSearch:
     # ---------------------------------------------------------------------- #
 
     def _add_node(self, node: SolutionNode) -> None:
+        """
+        Add a new node to the search tree and update data structures.
+        
+        Maintains parent-child relationships, tree statistics, and node metadata.
+        """
         if node.parent_id is None and not any(n.parent_id is None for n in self.tree):
             node.root_id = node.id
             node.path = "0"
@@ -290,6 +307,15 @@ class AgenticTreeSearch:
             self.count_buggy += 1
 
     def _backprop(self, leaf: SolutionNode) -> None:
+        """
+        Backpropagate reward values through the tree.
+        
+        Updates node values and visit counts from leaf to root using
+        incremental average calculation.
+        
+        Args:
+            leaf: Leaf node where the current simulation ended
+        """
         reward = self.metric_fn(leaf.metric)
         node_id = leaf.id
         while node_id is not None:
@@ -300,6 +326,12 @@ class AgenticTreeSearch:
             node_id = self.parent_map.get(node_id)
 
     def _update_best(self, node: SolutionNode) -> None:
+        """
+        Update the best solution found so far.
+        
+        Args:
+            node: Candidate node to compare against current best
+        """
         m = self.metric_fn(node.metric)
         if self.metric_policy == "minimize":
             m = -m
@@ -313,6 +345,7 @@ class AgenticTreeSearch:
     # ---------------------------------------------------------------------- #
 
     def _should_stop(self) -> bool:
+        """Check if search should terminate based on stopping criteria."""
         if self.iteration >= self.max_iterations:
             return True
         if (time.time() - self.start_time) > self.time_limit:
@@ -322,6 +355,13 @@ class AgenticTreeSearch:
         return False
 
     async def _emit(self, event: str, payload: Dict[str, Any]) -> None:
+        """
+        Emit event via callback if configured.
+        
+        Args:
+            event: Event type ('start', 'progress', 'node', 'report')
+            payload: Event-specific data payload
+        """
         if not self.emit_cb:
             return
         try:
@@ -330,6 +370,16 @@ class AgenticTreeSearch:
             pass
 
     def _progress_payload(self, last_node: Optional[SolutionNode], force_complete: bool = False) -> Dict[str, Any]:
+        """
+        Generate progress report payload.
+        
+        Args:
+            last_node: Most recently processed node
+            force_complete: Whether to force progress to 100%
+            
+        Returns:
+            Dictionary containing progress metrics and statistics
+        """
         elapsed = time.time() - self.start_time
         frac_iter = self.iteration / max(1, self.max_iterations)
         frac_time = elapsed / max(1e-6, self.time_limit)
@@ -363,6 +413,11 @@ class AgenticTreeSearch:
         }
 
     def _maybe_emit_progress(self, last_node: Optional[SolutionNode]) -> None:
+        """
+        Emit progress report if conditions are met.
+        
+        Conditions: iteration multiple of progress_every OR heartbeat timeout reached.
+        """
         now = time.time()
         if not ((self.iteration % self.progress_every) == 0 or (now - self._last_progress_ts) >= self.heartbeat_secs):
             return
@@ -370,6 +425,15 @@ class AgenticTreeSearch:
         asyncio.create_task(self._emit("progress", self._progress_payload(last_node)))
 
     def _make_report(self, best_node: Optional[SolutionNode]) -> Dict[str, Any]:
+        """
+        Generate final search report.
+        
+        Args:
+            best_node: The best solution node found
+            
+        Returns:
+            Comprehensive report dictionary with summary and leaderboard
+        """
         leaderboard = sorted(
             (n for n in self.tree if n.metric is not None),
             key=lambda n: n.metric,
@@ -405,16 +469,19 @@ class AgenticTreeSearch:
         }
 
     def _hash_or_none(self, s: Optional[str]) -> Optional[str]:
+        """Generate SHA256 hash of string or return None for empty input."""
         if not s:
             return None
         return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
     def _next_child_index(self, parent_id: Optional[str]) -> int:
+        """Get next available sibling index for a parent node."""
         if not parent_id:
             return len(self.children_map.get(None, []))
         return len(self.children_map.get(parent_id, []))
 
     def _make_path(self, parent_node: Optional[SolutionNode], sibling_index: int) -> str:
+        """Generate hierarchical path string for node positioning."""
         if parent_node is None:
             return str(sibling_index)
         return f"{parent_node.path}.{sibling_index}"
@@ -422,6 +489,7 @@ class AgenticTreeSearch:
     def _make_numeric_id(self, tree_id: int, node_depth: int, sibling_idx: int) -> int:
         """
         Build a sortable numeric ID from (tree, depth, sibling).
+        
         Layout: TTTTDDDSIII  (tree_id up to 9999, depth up to 999, sibling up to 9999)
         Example: tree 12, depth 3, sibling 45 -> 120030045
         """

@@ -1,16 +1,14 @@
 # scripts/import_evaluations.py
 import csv
 import json
-import sys
 from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from tqdm import tqdm  # pip install tqdm
+from tqdm import tqdm
 
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.score import ScoreORM
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
-from stephanie.models.base import Base
 
 # Increase CSV field size limit (safe for Windows)
 csv.field_size_limit(1_000_000_000)

@@ -229,7 +229,7 @@ class NatsKnowledgeBus(BusProtocol):
         await self._ensure_connected()
         if not (self._nc and not self._nc.is_closed):
             self._publish_failures += 1
-            _logger.warning("NATSPublishSkippedNotConnected", {"subject": subject})
+            _logger.warning(f"NATSPublishSkippedNotConnected subject: {subject}")
             return
 
         try:
@@ -246,7 +246,7 @@ class NatsKnowledgeBus(BusProtocol):
                 nats_errors.ConnectionClosedError,
                 nats_errors.NoServersError,
                 ConnectionResetError) as e:
-            _logger.warning("NATSPublishErrorRetrying", {"subject": subject, "error": repr(e)})
+            _logger.warning(f"NATSPublishErrorRetrying subject: {subject}, error: {repr(e)}")
             ok = await self.connect(force=True)
             if not ok:
                 self._publish_failures += 1
@@ -278,18 +278,16 @@ class NatsKnowledgeBus(BusProtocol):
                 resp = await self._nc.request(rpc_subject, data, timeout=request_timeout)
                 return json.loads(resp.data.decode())
             except NatsTimeoutError as e:
-                last_exc = e
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt))
                     continue
-                _logger.warning("NATSRequestTimeout", {"subject": subject, "attempts": attempt + 1})
+                _logger.warning(f"NATSRequestTimeout subject: {subject}, attempts: {attempt + 1}")
                 return None
             except Exception as e:
-                last_exc = e
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt))
                     continue
-                _logger.error("NATSRequestFailed", {"subject": subject, "error": repr(e)})
+                _logger.error(f"NATSRequestFailed subject: {subject}, error: {repr(e)}")
                 raise BusRequestError(f"Request failed for {subject}") from e
 
     async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], Any]) -> None:
@@ -299,7 +297,7 @@ class NatsKnowledgeBus(BusProtocol):
         """
         await self._ensure_connected()
         if not (self._js and self._nc and not self._nc.is_closed):
-            _logger.warning("NATSSubscribeSkippedNotConnected", {"subject": subject})
+            _logger.warning(f"NATSSubscribeSkippedNotConnected subject: {subject}")
             return
 
         durable_name = _sanitize_durable(self.stream, subject)
@@ -343,9 +341,9 @@ class NatsKnowledgeBus(BusProtocol):
             cb = meta.get("cb") or self._build_wrapped(subject, handler)
             try:
                 await self._do_subscribe(subject, durable, cb)
-                _logger.debug("NATSResubscribed", {"subject": subject})
+                _logger.debug(f"NATSResubscribed subject: {subject}")
             except Exception as e:
-                _logger.error("NATSResubscribeFailed", {"subject": subject, "error": repr(e)})
+                _logger.error(f"NATSResubscribeFailed subject: {subject}, error: {repr(e)}")
 
     # ---------- Shutdown ----------
 
@@ -427,15 +425,15 @@ class NatsKnowledgeBus(BusProtocol):
         try:
             self._js = self._nc.jetstream()
         except Exception as e:
-            _logger.error("NATSRefreshJSOnReconnectFailed", {"error": repr(e)})
+            _logger.error(f"NATSRefreshJSOnReconnectFailed error: {repr(e)}")
         await self._resubscribe_all()
-        _logger.info("NATSReconnectedSubscriptionsRefreshed", {})
+        _logger.info("NATSReconnectedSubscriptionsRefreshed")
 
     async def _on_closed_cb(self, *args, **kwargs):
-        _logger.warning("NATSClosed", {})
+        _logger.warning("NATSClosed")
 
     async def _on_error_cb(self, e):
-        _logger.error("NATSLowLevelError", {"error": repr(e)})
+        _logger.error(f"NATSLowLevelError error: {repr(e)}")
 
     # Monitors
 
@@ -536,7 +534,7 @@ class NatsKnowledgeBus(BusProtocol):
                 }
             )
         except Exception as e:
-            _logger.error("DLQWriterFailed", {"subject": subject, "error": repr(e)})
+            _logger.error(f"DLQWriterFailed subject: {subject}, error: {repr(e)}")
 
     async def _safe_flush(self, timeout: float = 1.0) -> bool:
         """

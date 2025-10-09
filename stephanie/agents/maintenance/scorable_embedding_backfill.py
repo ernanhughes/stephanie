@@ -16,6 +16,7 @@ class ScorableEmbeddingBackfillAgent(BaseAgent):
     ORM_MAP = {
         "document": DocumentORM,
         "prompt": PromptORM,
+        "response": PromptORM,
         "hypothesis": HypothesisORM,
         "case": CaseORM,
         "plan_trace": PlanTraceORM
@@ -23,7 +24,8 @@ class ScorableEmbeddingBackfillAgent(BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.scorable_type = cfg.get("scorable_type", "case")
+        # self.scorable_type = cfg.get("scorable_type", "case")
+        self.scorable_type = cfg.get("scorable_type", "response")
         self.embed_full_document = cfg.get("embed_full_document", True)
         self.embedding_type = self.memory.embedding.name  # e.g. "hf_embeddings"
 
@@ -33,27 +35,28 @@ class ScorableEmbeddingBackfillAgent(BaseAgent):
         self.orm_cls = self.ORM_MAP[self.scorable_type]
 
     async def run(self, context: dict) -> dict:
-        session = self.memory.session
         updated, skipped = 0, 0
 
-        # Step 1: Fetch all documents of the given type
-        scorables = session.query(self.orm_cls).all()
+        # Step 1: Fetch all documents of the given 
+        scorables  = []
+        with self.memory.session() as session:
+            scorables = session.query(self.orm_cls).all()
         total_docs = len(scorables)
 
         # Wrap in tqdm progress bar
         for scorable in tqdm(scorables, desc=f"Backfilling {self.scorable_type} embeddings", unit="doc"):
             # Step 2: Check if embedding already exists in the embedding store
             exists = self.memory.scorable_embeddings.get_by_scorable(
-                document_id=str(scorable.id),
-                document_type=self.scorable_type,
+                scorable_id=str(scorable.id),
+                scorable_type=self.scorable_type,
                 embedding_type=self.embedding_type,
             )
             if exists:
                 skipped += 1
-                continue
+                continue 
 
             # Step 3: Choose text for embedding
-            scorable = ScorableFactory.from_orm(scorable, mode="full")
+            scorable = ScorableFactory.from_orm(scorable, mode="response_only")
 
             # Step 4: Generate embedding
 
@@ -61,15 +64,13 @@ class ScorableEmbeddingBackfillAgent(BaseAgent):
             embedding_id = self.memory.scorable_embeddings.get_or_create(scorable)
 
             self.logger.log("ScorableEmbeddingBackfilled", {
-                "document_id": str(scorable.id),
-                "document_type": self.document_type,
+                "scorable_id": str(scorable.id),
+                "scorable_type": self.scorable_type,
                 "embedding_id": embedding_id,
                 "embedding_type": self.embedding_type,
             })
 
             updated += 1
-
-        session.commit()
 
         # Final log + report
         summary = {
