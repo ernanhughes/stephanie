@@ -814,7 +814,7 @@ class LearningFromLearningAgent(BaseAgent):
             curr_tokens = _est_tokens(new_beam[0]["text"]) if new_beam else prev_tokens
             marginal = _marginal(prev_best, curr_best, prev_tokens, curr_tokens)
             if marginal < min_marg:
-                _logger.info(f"[arena] early-stop@r={r+1} marginal={marginal:.3f} < {min_marg}")
+                _logger.debug(f"[arena] early-stop@r={r+1} marginal={marginal:.3f} < {min_marg}")
                 beam = new_beam[:beam_w]
                 # snapshot beam before breaking
                 iters.append([{"variant": b["variant"], "overall": b["score"]["overall"], "k": b["score"]["k"]} for b in beam])
@@ -823,7 +823,7 @@ class LearningFromLearningAgent(BaseAgent):
             # Plateau stop (no meaningful improvement)
             best_hist.append(curr_best)
             if len(best_hist) >= 2 and (best_hist[-1] - best_hist[-2]) < plateau_eps:
-                _logger.info(f"[arena] plateau-stop@r={r+1} Δ={best_hist[-1]-best_hist[-2]:.4f} < {plateau_eps}")
+                _logger.debug(f"[arena] plateau-stop@r={r+1} Δ={best_hist[-1]-best_hist[-2]:.4f} < {plateau_eps}")
                 beam = new_beam[:beam_w]
                 iters.append([{"variant": b["variant"], "overall": b["score"]["overall"], "k": b["score"]["k"]} for b in beam])
                 break
@@ -1236,7 +1236,7 @@ class LearningFromLearningAgent(BaseAgent):
                 "timestamp": time.time(),
             }
             self._evolution_log.append(event)
-            _logger.info(f"LfL_Strategy_Evolved(AB): {event}")
+            _logger.debug(f"LfL_Strategy_Evolved(AB): {event}")
             if context is not None:
                 context.setdefault("strategy_evolution", []).append(event)
 

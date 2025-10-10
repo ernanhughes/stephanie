@@ -57,8 +57,8 @@ def export_goal_relevance_dataset(
     if dimensions is None:
         dimensions = ["knowledge", "clarity", "grounding", "overall"]
     
-    _logger.info(f"Exporting goal-relevance dataset to {output_path}")
-    _logger.info(f"Dimensions: {dimensions}, Min score: {min_score}, Limit: {limit}")
+    _logger.debug(f"Exporting goal-relevance dataset to {output_path}")
+    _logger.debug(f"Dimensions: {dimensions}, Min score: {min_score}, Limit: {limit}")
     
     # Build query
     query = text("""
@@ -84,7 +84,7 @@ def export_goal_relevance_dataset(
         result = conn.execute(query)
         rows = result.fetchall()
     
-    _logger.info(f"Fetched {len(rows)} raw evaluation records")
+    _logger.debug(f"Fetched {len(rows)} raw evaluation records")
     
     # Process rows into training examples
     examples = []
@@ -164,7 +164,7 @@ def export_goal_relevance_dataset(
             
             examples.append(example)
     
-    _logger.info(f"Processed {len(examples)} training examples ({skipped} skipped)")
+    _logger.debug(f"Processed {len(examples)} training examples ({skipped} skipped)")
     
     # Save dataset
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -185,7 +185,7 @@ def export_goal_relevance_dataset(
     stats["rows_skipped"] = skipped
     stats["export_timestamp"] = datetime.now().isoformat()
     
-    _logger.info(f"Export complete. Statistics: {json.dumps(stats, indent=2)}")
+    _logger.debug(f"Export complete. Statistics: {json.dumps(stats, indent=2)}")
     
     return stats
 
@@ -211,7 +211,7 @@ def _save_as_csv(examples: List[Dict[str, Any]], output_path: str) -> None:
             row = {col: example.get(col, "") for col in columns}
             writer.writerow(row)
     
-    _logger.info(f"Saved {len(examples)} examples to {output_path}")
+    _logger.debug(f"Saved {len(examples)} examples to {output_path}")
 
 def _save_as_jsonl(examples: List[Dict[str, Any]], output_path: str) -> None:
     """Save examples as JSONL file"""
@@ -219,7 +219,7 @@ def _save_as_jsonl(examples: List[Dict[str, Any]], output_path: str) -> None:
         for example in examples:
             f.write(json.dumps(example, ensure_ascii=False) + "\n")
     
-    _logger.info(f"Saved {len(examples)} examples to {output_path}")
+    _logger.debug(f"Saved {len(examples)} examples to {output_path}")
 
 def _generate_statistics(examples: List[Dict[str, Any]], dimensions: List[str]) -> Dict[str, Any]:
     """Generate dataset statistics"""

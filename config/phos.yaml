@@ -9,6 +9,7 @@ defaults:
   - services/default
   - scorer: all  
 
+  - agents/embedding_normalizer
   - agents/scorable_embedding_backfill
   - agents/phos
 
@@ -45,6 +46,10 @@ pipeline:
   name: phos
   description: "Visual AI experiment: compare similar, unrelated, and opposite prompts to reveal and enhance knowledge patterns using ZeroModel visual policy maps."
   stages:
+     - name: embedding_normalizer
+       cls: stephanie.agents.maintenance.embedding_normalizer.EmbeddingNormalizerAgent
+       enabled: false
+       iterations: 1
      - name: scorable_embedding_backfill
        cls: stephanie.agents.maintenance.scorable_embedding_backfill.ScorableEmbeddingBackfillAgent
        enabled: false
