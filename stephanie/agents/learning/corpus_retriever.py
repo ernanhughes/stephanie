@@ -201,6 +201,6 @@ class CorpusRetriever:
             if self.analyze:
                 await self.analyze.run(context={"chats": items})
         except Exception as e:
-            _logger.warning(f"Corpus annotate/analyze skipped: {e}")
+            _logger.warning("Corpus annotate/analyze skipped: %s", e)
 
         return items

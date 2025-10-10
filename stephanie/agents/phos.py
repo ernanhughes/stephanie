@@ -4,6 +4,7 @@ import numpy as np
 import re
 from datetime import datetime
 import json
+from pathlib import Path
 from typing import List, Dict, Any
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.zeromodel_service import ZeroModelService
@@ -55,9 +56,19 @@ class PhosAgent(BaseAgent):
         self._goal_text = ""
         self._published_nodes = set()  # to avoid duplicates
 
-        self.emit_cb = EmitBroadcaster(self._emit_to_logger, self._timeline_sink)
+        self.emit_cb = EmitBroadcaster(
+            self._emit_to_logger, self._timeline_sink
+        )
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Flow:
+        1. Load scorables (good/mixed/opposite)
+        2. Ensure embeddings exist
+        3. Generate timelines for each band
+        4. Run differential analysis (epistemic field)
+        5. Return structured results in context
+        I"""
         asyncio.create_task(self.metrics_worker.start())
         asyncio.create_task(self.vpm_worker.start())
 
@@ -81,8 +92,8 @@ class PhosAgent(BaseAgent):
             self.memory.embedding.search_scorables_in_similarity_band(
                 goal_text,
                 ScorableType.RESPONSE,
-                lower=0.45,
-                upper=0.65,
+                lower=-9,
+                upper=-50,
                 top_k=300,
             )
         )
@@ -191,7 +202,7 @@ class PhosAgent(BaseAgent):
             score = {}
             for i, row in enumerate(data):  # sample limit
                 score = self.scorer.score(row["goal"], row["response"])
-                
+
                 metrics.append([i] + list(score.values()))
             matrix = np.array(metrics)
             self.zm.render_timeline_from_matrix(
@@ -202,20 +213,52 @@ class PhosAgent(BaseAgent):
             vpms[label] = matrix
         return vpms
 
-    def _analyze_vpms(self, vpms: Dict[str, np.ndarray]):
-        """Run VPMDifferentialAnalyzer on good/mixed/bad combinations."""
-        good = vpms.get("good")
-        mixed = vpms.get("mixed")
-        bad = vpms.get("opposite")
+    def _analyze_vpms(self, vpms: Dict[str, Any]):
+        """Run contrastive analysis on actual matrices returned by timeline_finalize."""
+        good = vpms.get("good", {})
+        mixed = vpms.get("medium", {})
+        bad = vpms.get("opposite", {})
+
+        # Safely extract matrices only if the entry is a dict
+        good_mat = good.get("matrix") if isinstance(good, dict) else None
+        mixed_mat = mixed.get("matrix") if isinstance(mixed, dict) else None
+        bad_mat = bad.get("matrix") if isinstance(bad, dict) else None
+
         results = {}
-        # if good is not None and bad is not None:
-        #     results["good_vs_bad"] = self.analyzer.analyze(
-        #         good, bad, "phos_good_bad"
-        #     )
-        # if good is not None and mixed is not None:
-        #     results["good_vs_mixed"] = self.analyzer.analyze(
-        #         good, mixed, "phos_good_mixed"
-        #     )
+        output_dir = Path(f"data/vpms/phos_diffs/run_{self.run_id}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        if good_mat is not None and bad_mat is not None:
+            meta = self.zm.generate_epistemic_field(
+                pos_matrices=[good_mat],
+                neg_matrices=[bad_mat],
+                output_dir=str(output_dir / "good_vs_bad"),
+                aggregate=True,
+            )
+            results["good_vs_bad"] = meta
+            _logger.info(
+                f"ΔMass={meta['delta_mass']:.4f}, Overlap={meta['overlap_score']:.4f}"
+            )
+            # 🧠 Analyze the differential field
+            diff_matrix = meta.get("diff_matrix")
+            metric_names = meta.get("metric_names", [])
+            ranked_metrics = self.zm.analyze_differential_field(
+                diff_matrix, metric_names, output_dir / "good_vs_bad"
+            )
+            self.logger.log("metrics", ranked_metrics)
+
+        if good_mat is not None and mixed_mat is not None:
+            meta = self.zm.generate_epistemic_field(
+                pos_matrices=[good_mat],
+                neg_matrices=[mixed_mat],
+                output_dir=str(output_dir / "good_vs_mixed"),
+                aggregate=True,
+            )
+            results["good_vs_mixed"] = meta
+            _logger.info(
+                f"ΔMass={meta['delta_mass']:.4f}, Overlap={meta['overlap_score']:.4f}"
+            )
+
         return results
 
     def _strip_think_blocks(self, text: str) -> str:
@@ -260,10 +303,10 @@ class PhosAgent(BaseAgent):
 
         # 2. Create a minimal SolutionNode-like dict for emission
         node_id = self._make_numeric_id(self.run_id, label, index)
-        _logger.info(f"[PhosAgent] Processing plan {node_id} ({label}): {plan[:60]}...")
+        _logger.debug(f"Processing plan {node_id} ({label}): {plan[:60]}...")
         node = {
             "id": node_id,
-            "plan": plan, 
+            "plan": plan,
             "summary": plan[:75],
             "output": plan,
             "timestamp": ts,
@@ -276,7 +319,7 @@ class PhosAgent(BaseAgent):
         try:
             await self._timeline_sink("node", node)
         except Exception as e:
-            self.logger.warning(f"[PhosAgent] Emit failed ({label}): {e}")
+            _logger.warning("[PhosAgent] Emit failed (%s): %s", label, e)
 
         return node
 
@@ -292,35 +335,38 @@ class PhosAgent(BaseAgent):
         results = {}
         for label, scorables in datasets.items():
             run_id = self.run_id
-            # inside the for loop
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            safe_run = str(self.run_id)[:8]  # shorten if UUID
+            safe_run = str(self.run_id)[:8]
             out_path = f"vpm_phos_{timestamp}_run{safe_run}_{label}.gif"
+
+            # ✅ Guard against empty or invalid bands early
+            if not scorables:
+                _logger.warning(
+                    "[PhosAgent] ⚠️ No scorables found for %s, skipping band.", label
+                )
+                continue
 
             total = len(scorables)
 
             if total == 0:
-                _logger.warning(f"[PhosAgent] ⚠️ No scorables found for {label}")
+                _logger.warning(
+                    "[PhosAgent] ⚠️ No scorables found for %s", label
+                )
                 continue
 
             # 1️⃣ Open a fresh timeline stream
             try:
-                self.zm.timeline_open(
-                    run_id=run_id,
-                    metrics=[
-                        "metric",
-                        "value",
-                        "visits",
-                        "bug",
-                        "action_draft",
-                    ],
+                self.zm.timeline_open(run_id=run_id)
+                _logger.info(
+                    f"Timeline opened for {label} ({total} scorables)"
                 )
-                _logger.info(f"Timeline opened for {label} ({total} scorables)")
             except Exception as e:
-                _logger.warning(f" Hello Timeline open failed ({label}): {e}")
+                _logger.warning("[PhosAgent] Timeline open failed (%s): %s", label, e)
 
             # 2️⃣ Process each scorable with visible progress bar
-            with tqdm(total=total, desc=f"[PhosAgent] {label} band", unit="node") as pbar:
+            with tqdm(
+                total=total, desc=f"[PhosAgent] {label} band", unit="node"
+            ) as pbar:
                 for idx, scorable in enumerate(scorables):
                     await self._process_plan_for_phos(
                         index=idx,
@@ -335,26 +381,45 @@ class PhosAgent(BaseAgent):
                     if idx % 10 == 0 or idx == total - 1:
                         progress_ratio = (idx + 1) / total
                         _logger.info(
-                            json.dumps({
-                                "event": "PhosProgress",
-                                "label": label,
-                                "run_id": self.run_id,
-                                "completed": idx + 1,
-                                "total": total,
-                                "percent": round(progress_ratio * 100, 1)
-                            })
+                            json.dumps(
+                                {
+                                    "event": "PhosProgress",
+                                    "label": label,
+                                    "run_id": self.run_id,
+                                    "completed": idx + 1,
+                                    "total": total,
+                                    "percent": round(progress_ratio * 100, 1),
+                                }
+                            )
                         )
-                    await asyncio.sleep(0.01)  # small delay for event sequencing
+                    await asyncio.sleep(
+                        0.01
+                    )  # small delay for event sequencing
 
             # 3️⃣ Close the stream and render to GIF
             try:
-                await self.zm.timeline_finalize(run_id=run_id, out_path=out_path)
-                _logger.info(
-                    f"[PhosAgent] ✅ Timeline closed for {label} → {out_path}"
+                final_res = await self.zm.timeline_finalize(
+                    run_id=run_id, out_path=out_path
                 )
-                results[label] = out_path
+
+                # ✅ Only store valid results that actually contain a matrix
+                if (
+                    final_res
+                    and isinstance(final_res, dict)
+                    and final_res.get("matrix") is not None
+                ): 
+                    results[label] = final_res
+                    _logger.info(
+                        "[PhosAgent] ✅ Timeline closed for %s → %s", label, out_path
+                    )
+                else:
+                    _logger.warning(
+                        "[PhosAgent] ⚠️ No valid matrix for %s, skipping analysis.", label
+                    )
             except Exception as e:
-                _logger.warning(f"[PhosAgent] Timeline close failed ({label}): {e}")
+                _logger.warning(
+                    "[PhosAgent] Timeline close failed (%s): %s", label, e
+                )
 
         return results
 
@@ -376,12 +441,18 @@ class PhosAgent(BaseAgent):
                 vector = payload.get("vector", {})
                 metrics_columns = list(vector.keys())
                 metrics_values = list(vector.values())
-                self.zm.timeline_append_row(run_id=run_id, 
-                                        metrics_columns=metrics_columns, metrics_values=metrics_values)
+                if len(metrics_columns):
+                    self.zm.timeline_append_row(
+                        run_id=run_id,
+                        metrics_columns=metrics_columns,
+                        metrics_values=metrics_values,
+                    )
             elif event == "report":
                 await self.zm.timeline_finalize(run_id)
         except Exception as e:
-            self.logger.warning(f"[PhosAgent] ZeroModel timeline emit failed: {e}")
+            self.logger.warning(
+                f"[PhosAgent] ZeroModel timeline emit failed: {e}"
+            )
 
         # 2. Notify EmitBroadcaster
         if self.emit_cb:
@@ -390,7 +461,9 @@ class PhosAgent(BaseAgent):
             except Exception as e:
                 self.logger.debug(f"[PhosAgent] EmitBroadcaster failed: {e}")
 
-    async def _timeline_sink(self, event: str, payload: Dict[str, Any]) -> None:
+    async def _timeline_sink(
+        self, event: str, payload: Dict[str, Any]
+    ) -> None:
         """Centralized event sink for ZeroModel + metrics bus."""
         if not self.run_id:
             return
@@ -402,10 +475,14 @@ class PhosAgent(BaseAgent):
                 try:
                     await self._emit("node", node)
                 except Exception as e:
-                    self.logger.warning(f"[PhosAgent] ZeroModel emit failed: {e}")
+                    self.logger.warning(
+                        f"[PhosAgent] ZeroModel emit failed: {e}"
+                    )
 
                 # publish metrics job for async worker
-                _logger.debug(f"[PhosAgent] -> 'arena.metrics.request' job for node={node}")
+                _logger.debug(
+                    f"[PhosAgent] -> 'arena.metrics.request' job for node={node}"
+                )
 
                 await self.memory.bus.publish(
                     subject="arena.metrics.request",
@@ -429,7 +506,7 @@ class PhosAgent(BaseAgent):
                 )
 
         except Exception as e:
-            self.logger.warning(f"[PhosAgent] Timeline sink error: {e}")
+            _logger.warning("[PhosAgent] Timeline sink error: %s", e)
 
     def _make_numeric_id(self, run_id: Any, label: str, index: int) -> int:
         """
@@ -449,6 +526,6 @@ class PhosAgent(BaseAgent):
         # 3️⃣ combine into a single sortable integer
         numeric_id = int(f"{run_hash:04d}{label_code}{index:04d}")
         return numeric_id
-    
+
     def _emit_to_logger(self, event: str, payload: Dict[str, Any]) -> None:
         _logger.debug(f"Phos::{event} --> {payload}")

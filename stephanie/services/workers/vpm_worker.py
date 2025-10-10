@@ -68,7 +68,7 @@ class VPMWorker:
             if self._subscription_retry_count <= self._max_retries:
                 delay = self._retry_delay * (2 ** (self._subscription_retry_count - 1))
                 _logger.warning(
-                    f"Subscription failed for {subject} (retry {self._subscription_retry_count}/{self._max_retries}): {e}"
+                    "Subscription failed for %s (retry %d/%d): %r", subject, self._subscription_retry_count, self._max_retries, e
                 )
                 await asyncio.sleep(delay)
                 await self._subscribe_with_retry(subject, handler)
@@ -185,10 +185,10 @@ class VPMWorker:
                 
                 # Log with color-coded status
                 if status :
-                    _logger.debug(f"BUS HEALTH: 🟢 {bus_type} - {status} | {details_str}")
+                    _logger.debug("BUS HEALTH: 🟢 %s - %s | %s", bus_type, status, details_str)
                 elif status == "disconnected":
-                    _logger.warning(f"BUS HEALTH: 🔴 {bus_type} - {status} | {details_str}")
+                    _logger.warning("BUS HEALTH: 🔴 %s - %s | %s", bus_type, status, details_str)
                 await asyncio.sleep(30)
             except Exception as e:
-                _logger.error(f"BUS HEALTH CHECK FAILED: {str(e)}")
+                _logger.error("BUS HEALTH CHECK FAILED: %s", str(e))
                 await asyncio.sleep(10)

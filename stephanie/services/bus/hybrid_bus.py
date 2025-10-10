@@ -101,7 +101,7 @@ class HybridKnowledgeBus(BusProtocol):
                     _logger.info("Connected to NATS JetStream bus")
                     return True
             except asyncio.TimeoutError:
-                _logger.warning(f"NATS connection timed out (<= {timeout}s).")
+                _logger.warning("NATS connection timed out (<= %ds).", timeout)
             except Exception as e:
                 _logger.warning("NATS connection failed: %r", e)
             if cfg["required"]:
@@ -119,9 +119,9 @@ class HybridKnowledgeBus(BusProtocol):
                     _logger.info("Connected to in-process event bus (fallback).")
                     return True
             except asyncio.TimeoutError:
-                _logger.warning(f"InProcessBus connect timed out (<= {timeout}s).")
+                _logger.warning("InProcessBus connect timed out (<= %ds).", timeout)
             except Exception as e:
-                _logger.error(f"InProcessBus connect error: {e}")
+                _logger.error("InProcessBus connect error: %s", e)
 
         self._bus = None
         self._backend = "none"

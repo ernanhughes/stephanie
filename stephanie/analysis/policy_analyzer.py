@@ -282,12 +282,12 @@ class PolicyAnalyzer:
         ref_scores = [d[1]["score"] for d in matched_data]
         
         if len(sicql_scores) < 5:
-            _logger.warning("Low sample count for correlation"
-                f"source: {label}"
-                f"sample_count: {len(sicql_scores)}"
-                f"dimension: {sicql_data[0].get("dimension", "unknown")}"
-            )
-        
+            _logger.warning("""Low sample count for correlation
+                source: %s
+                sample_count: %d
+                dimension: %s
+            """, label, len(sicql_scores), sicql_data[0].get("dimension", "unknown"))
+
         if len(sicql_scores) < 2:
             score_correlation = None
         else:

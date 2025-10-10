@@ -86,7 +86,7 @@ class ScorableAnnotateAgent(BaseAgent):
             _logger.info(f"Filtered {original_count} → {len(scorables)} scorables by role='{self.scorable_role}'")
             
             if not scorables:
-                _logger.warning(f"No scorables with role='{self.scorable_role}' found in context")
+                _logger.warning("No scorables with role='%s' found in context", self.scorable_role)
                 return context
 
         # Pre-count scorables that need processing
@@ -271,7 +271,7 @@ class ScorableAnnotateAgent(BaseAgent):
                     "role": "assistant"  # Default role for scorables
                 } for e in entities]
             except Exception as e:
-                _logger.warning(f"Knowledge Graph NER failed: {str(e)}")
+                _logger.warning("Knowledge Graph NER failed: %s", str(e))
         
         # Fallback to simple entity extraction if KG not available
         # This is a simplified version - in production you'd use a proper NER model

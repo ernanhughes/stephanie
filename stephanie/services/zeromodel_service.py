@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from stephanie.utils.json_sanitize import dumps_safe
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -15,6 +16,7 @@ from stephanie.services.service_protocol import Service
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.pipeline.executor import PipelineExecutor
+from pathlib import Path
 
 import matplotlib
 if matplotlib.get_backend().lower() != "agg":
@@ -41,10 +43,19 @@ class _TimelineSession:
     out_dir: str = "data/vpms"
 
     def as_matrix(self) -> np.ndarray:
-        """Return a numpy matrix for all stored rows."""
+        """Return a well-formed float32 matrix, padding/truncating rows if necessary."""
         if not self.rows:
             return np.zeros((0, len(self.metrics_order)), dtype=np.float32)
-        return np.asarray(self.rows, dtype=np.float32)
+
+        max_len = len(self.metrics_order)
+        clean_rows = []
+        for row in self.rows:
+            if len(row) < max_len:
+                row = list(row) + [0.0] * (max_len - len(row))
+            elif len(row) > max_len:
+                row = list(row)[:max_len]
+            clean_rows.append(row)
+        return np.asarray(clean_rows, dtype=np.float32)
 
 
 # --------------------------------------------------------------------------- #
@@ -131,13 +142,16 @@ class ZeroModelService(Service):
             raise ValueError("timeline_open requires run_id")
         if run_id in self._sessions:
             return
-        order = metrics or [
-            "metric", "value", "visits", "bug",
-            "action_draft", "action_improve", "action_debug",
-        ]
+
         odir = out_dir or self._out_dir
         os.makedirs(odir, exist_ok=True)
-        self._sessions[run_id] = _TimelineSession(run_id=run_id, metrics_order=order, out_dir=odir)
+
+        # ✅ Leave metrics_order empty — will be set on first append
+        self._sessions[run_id] = _TimelineSession(
+            run_id=run_id,
+            metrics_order=list(metrics) if metrics else [],  # store if caller passed explicit order
+            out_dir=odir,
+        )
         _logger.info(f"Timeline opened for run_id={run_id}")
 
     def timeline_append_row(
@@ -147,20 +161,11 @@ class ZeroModelService(Service):
         metrics_columns: List[str],
         metrics_values: List[Any],
     ) -> None:
-        """
-        Append a single prompt's metrics vector to the session timeline.
-
-        - Each row corresponds to metrics_columns (the same order every time).
-        - Values are normalized per scalar:
-            0–1 stays as-is, 1–100 → /100, >100 → 1.0, <0 → 0.0.
-        - If columns differ or expand, we pad existing rows with zeros.
-        - Never fails, never logs errors.
-        """
         sess = self._sessions.get(run_id)
         if not sess:
             return
 
-        # 1️⃣ Normalize all incoming values (per your rule)
+        # Normalize
         normalized = []
         for v in metrics_values:
             try:
@@ -173,22 +178,34 @@ class ZeroModelService(Service):
                 f = min(f / 100.0, 1.0)
             normalized.append(f)
 
-        # 2️⃣ Initialize metrics_order if first row
-        if not sess.metrics_order:
+        # ✅ Initialize metric order from first true data row
+        # 2️⃣ Initialize metrics_order if missing or dummy
+        if not sess.metrics_order or sess.metrics_order == []:
             sess.metrics_order = list(metrics_columns)
+            _logger.info(f"[ZeroModelService] Metric order initialized → {sess.metrics_order}")
+        if len(metrics_columns) != len(sess.metrics_order):
+            _logger.warning(
+                """[ZeroModelService] Mismatched metrics length for run_id=%s: 
+                expected %d but got %d""",
+                run_id,
+                len(sess.metrics_order),
+                len(metrics_columns)
+            )
 
-        # 3️⃣ Handle expanded metric sets gracefully
+        # ✅ Expand gracefully if new metrics appear later
         if len(metrics_columns) > len(sess.metrics_order):
             for name in metrics_columns:
                 if name not in sess.metrics_order:
                     sess.metrics_order.append(name)
+            # pad older rows
             for i in range(len(sess.rows)):
                 sess.rows[i] += [0.0] * (len(sess.metrics_order) - len(sess.rows[i]))
 
-        # Align
+        # Map columns to aligned row
         name_to_val = dict(zip(metrics_columns, normalized))
         row = [float(name_to_val.get(name, 0.0)) for name in sess.metrics_order]
         sess.rows.append(row)
+
 
     # ------------------------------------------------------------------ #
     # FINALIZE & RENDER
@@ -255,6 +272,37 @@ class ZeroModelService(Service):
         )
         _logger.info(f"ZeroModelService: summary image saved → {summary_path}")
 
+
+        # ------------------------------------------------------------------
+        #  🌌 Auto-generate epistemic field (optional)
+        # ------------------------------------------------------------------
+        try:
+            # Build small contrastive populations from the current matrix
+            # Here we treat the first half as "positive" and second half as "negative"
+            if mat.shape[0] > 2:
+                midpoint = mat.shape[0] // 2
+                pos_mats = [mat[:midpoint, :]]
+                neg_mats = [mat[midpoint:, :]]
+
+                metric_names = (
+                    sess.metrics_order
+                    if sess and getattr(sess, "metrics_order", None)
+                    else [f"metric_{i}" for i in range(mat.shape[1])]
+                )
+                field_meta = self.generate_epistemic_field(
+                    pos_matrices=pos_mats,
+                    neg_matrices=neg_mats,
+                    output_dir=os.path.join(run_dir, "epistemic_fields"),
+                    metric_names=metric_names,
+                )
+                _logger.info(
+                    f"[ZeroModelService] 🧠 Epistemic field auto-generated "
+                    f"(ΔMass={field_meta['delta_mass']:.4f}) → {field_meta['png']}"
+                )
+        except Exception as e:
+            _logger.warning("[ZeroModelService] Epistemic field generation failed: %s", e)
+
+
         # Publish event
         if self._evt:
             await self._evt.publish(
@@ -269,7 +317,11 @@ class ZeroModelService(Service):
                 },
             )
 
-        return {"status": "ok", **res, "meta_path": meta_path, "summary_path": summary_path}
+        return {"status": "ok", 
+                "matrix": mat, 
+                **res, 
+                "meta_path": meta_path, 
+                "summary_path": summary_path}
 
     # ------------------------------------------------------------------ #
     # RENDER HELPERS
@@ -390,13 +442,13 @@ class ZeroModelService(Service):
             return sorted_matrix
 
         except Exception as e:
-            _logger.warning(f"sort_on_first_index failed: {e}")
+            _logger.warning("[ZeroModelService] sort_on_first_index failed: %s", e)
             return matrix
 
 
 
     def generate_epistemic_field(
-        self,    
+        self,
         pos_matrices: list[np.ndarray],
         neg_matrices: list[np.ndarray],
         output_dir: str = "data/epistemic_field",
@@ -405,54 +457,257 @@ class ZeroModelService(Service):
         Kr: int = 100,
         fps: int = 8,
         cmap: str = "seismic",
+        aggregate: bool = False,
+        metric_names: Optional[List[str]] = None, 
+
     ) -> dict:
         """
         Generate the ZeroModel Epistemic Field — a contrastive visual intelligence map.
 
+        Features:
         - Learns canonical spatial layout from positive samples
         - Projects negative samples into same layout
         - Combines them into a single differential VPM
+        - Computes epistemic field overlap (coherence)
         - Renders static + animated representations
         """
+        metric_names = list(metric_names or [])
         os.makedirs(output_dir, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         base = os.path.join(output_dir, f"epistemic_field_{ts}")
 
-        # 1️⃣ Stack population matrices
-        X_pos = np.vstack(pos_matrices)
-        X_neg = np.vstack(neg_matrices)
+        # -------------------------------
+        # 1️⃣ Aggregate or stack matrices
+        # -------------------------------
+        def _normalize_field(matrix: np.ndarray) -> np.ndarray:
+            matrix = np.nan_to_num(matrix)
+            max_val = np.max(np.abs(matrix)) + 1e-8
+            return matrix / max_val
 
-        # 2️⃣ Learn canonical layout from positives
+        def _align_shapes(A: np.ndarray, B: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            """Crop or pad matrices to smallest common shape."""
+            rows = min(A.shape[0], B.shape[0])
+            cols = min(A.shape[1], B.shape[1])
+            return A[:rows, :cols], B[:rows, :cols]
+
+        if aggregate:
+            # Mean over multiple samples (population field)
+            X_pos = np.mean(np.stack(pos_matrices, axis=0), axis=0)
+            X_neg = np.mean(np.stack(neg_matrices, axis=0), axis=0)
+        else:
+            # Simple vertical stack
+            X_pos = np.vstack(pos_matrices)
+            X_neg = np.vstack(neg_matrices)
+
+        # -------------------------------
+        # 2️⃣ Learn canonical layout
+        # -------------------------------
         opt = SpatialOptimizer(Kc=Kc, Kr=Kr, alpha=alpha)
         opt.apply_optimization([X_pos])
         w = opt.metric_weights
         layout = opt.canonical_layout
+        
+        # Build index mapping: old_index -> new_position (based on canonical layout)
+        if layout is not None:
+            flat_layout = np.ravel(layout)
+            order = np.argsort(flat_layout)[: len(metric_names)] if metric_names else np.arange(len(flat_layout))
+            index_mapping = {orig_idx: int(new_idx) for new_idx, orig_idx in enumerate(order)}
+        else:
+            index_mapping = {i: i for i in range(len(metric_names or []))}
 
-        # 3️⃣ Apply canonical transform to both
+
+
+        # -------------------------------
+        # 3️⃣ Apply canonical transform
+        # -------------------------------
         Y_pos, _, _ = opt.phi_transform(X_pos, w, w)
         Y_neg, _, _ = opt.phi_transform(X_neg, w, w)
 
-        # 4️⃣ Compute epistemic field (differential)
+        # Normalize & align
+        Y_pos = _normalize_field(Y_pos)
+        Y_neg = _normalize_field(Y_neg)
+        Y_pos, Y_neg = _align_shapes(Y_pos, Y_neg)
+
+        # -------------------------------
+        # 4️⃣ Differential & metrics
+        # -------------------------------
         diff = Y_pos - Y_neg
         mass_pos = opt.top_left_mass(Y_pos)
         mass_neg = opt.top_left_mass(Y_neg)
         delta_mass = mass_pos - mass_neg
 
+        # Epistemic overlap (structural coherence)
+        overlap = float(np.sum(np.minimum(Y_pos, Y_neg)) / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8))
+
         _logger.info(
-            f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, Δ={delta_mass:.4f}"
+            f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, "
+            f"Δ={delta_mass:.4f}, overlap={overlap:.4f}"
         )
 
+        # ================================================================
+        # 5️⃣ Visualization — side-by-side comparison of transformation steps
+        # ================================================================
+
+        def _make_visual_grid(images: List[np.ndarray], titles: List[str], base_path: str):
+            """Render and save a static grid comparison image."""
+            fig, axes = plt.subplots(1, len(images), figsize=(5 * len(images), 5))
+            for ax, img, title in zip(axes, images, titles):
+                im = ax.imshow(img, cmap=cmap, aspect="auto")
+                ax.set_title(title, fontsize=10)
+                fig.colorbar(im, ax=ax, fraction=0.035, pad=0.04)
+                ax.axis("off")
+            plt.tight_layout()
+            comp_path = base_path + "_comparison.png"
+            plt.savefig(comp_path, dpi=150)
+            plt.close(fig)
+            return comp_path
+
+
+        def _make_transition_gif(stages: List[np.ndarray], titles: List[str], gif_path: str):
+            """Create animated GIF showing step-by-step transformation (fully in-memory)."""
+            gif_logger = GifLogger(max_frames=100)
+
+            for i, (img, title) in enumerate(zip(stages, titles)):
+                # Create a matplotlib figure for the current stage
+                fig, ax = plt.subplots(figsize=(6, 4))
+                im = ax.imshow(img, cmap=cmap, aspect="auto")
+                ax.set_title(title, fontsize=12)
+                fig.colorbar(im, ax=ax, fraction=0.03, pad=0.04)
+                plt.tight_layout()
+
+                # 🧠 Convert the rendered plot to an RGB NumPy array (backend-safe)
+                fig.canvas.draw()
+
+                try:
+                    # Modern Matplotlib (>=3.8)
+                    buf = np.asarray(fig.canvas.buffer_rgba())
+                except AttributeError:
+                    # Older Matplotlib (<3.8)
+                    buf = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+                    buf = buf.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+                # Ensure 3D RGB array
+                frame = np.array(buf, copy=True)
+                gif_logger.add_frame(frame, metrics={"stage": title})
+                plt.close(fig)
+
+            gif_logger.save_gif(gif_path, fps=1)
+            _logger.info(f"Transformation GIF saved → {gif_path}")
+
+        reordered_metric_names = []
+        if metric_names:
+            for old_idx in range(len(metric_names)):
+                new_idx = index_mapping.get(old_idx, old_idx)
+                if new_idx < len(metric_names):
+                    reordered_metric_names.append(metric_names[new_idx])
+                else:
+                    reordered_metric_names.append(metric_names[old_idx])
+        else:
+            reordered_metric_names = [f"metric_{i}" for i in range(diff.shape[1])]
+
+        _logger.info(f"[ZeroModelService] Metric reordering preserved {len(reordered_metric_names)} names")
+
+        # ================================================================
+        # 8️⃣ Subfield Extraction — Q-field, Energy-field, Overlay
+        # ================================================================
+        try:
+            # Helper normalization
+            def _normalize(mat):
+                mat = np.nan_to_num(mat)
+                return mat / (np.max(np.abs(mat)) + 1e-8) if mat.size else mat
+
+            # Helper to extract column subset by keyword
+            def _subset_field(names: List[str], keywords: List[str]) -> np.ndarray:
+                if not names:
+                    return np.zeros_like(diff)
+                cols = [i for i, n in enumerate(names)
+                        if any(k in n.lower() for k in keywords)]
+                if not cols:
+                    return np.zeros_like(diff)
+                return diff[:, cols]
+
+            # --- Extract Q-value and Energy subfields ---
+            q_field = _subset_field(reordered_metric_names, ["q_value"])
+            e_field = _subset_field(reordered_metric_names, ["energy"])
+
+            q_field_norm = _normalize(q_field)
+            e_field_norm = _normalize(e_field)
+
+            # --- Compute overlay ---
+            overlay = q_field_norm - e_field_norm
+
+            # --- Visualization helper ---
+            def _save_field_image(mat, title, suffix):
+                if mat.size == 0:
+                    return None
+                fig, ax = plt.subplots(figsize=(8, 5))
+                im = ax.imshow(mat, cmap="coolwarm", aspect="auto")
+                ax.set_title(title, fontsize=10)
+                fig.colorbar(im, ax=ax, label="Δ Intensity")
+                plt.tight_layout()
+                out_path = f"{base}_{suffix}.png"
+                plt.savefig(out_path, dpi=150)
+                plt.close(fig)
+                return out_path
+
+            q_path = _save_field_image(q_field_norm, "Q-Field (Value Surface)", "q_field")
+            e_path = _save_field_image(e_field_norm, "Energy Field (Uncertainty Surface)", "energy_field")
+            o_path = _save_field_image(overlay, "Q–Energy Overlay (Value−Uncertainty)", "overlay")
+
+            # --- Simple quantitative correlation between Q and Energy ---
+            corr = float(np.corrcoef(
+                q_field_norm.flatten(), e_field_norm.flatten()
+            )[0, 1]) if q_field_norm.size and e_field_norm.size else None
+
+            _logger.info(
+                f"[ZeroModelService] Subfields saved → Q:{bool(q_path)} | E:{bool(e_path)} | "
+                f"Overlay:{bool(o_path)} | Corr(Q,E)={corr}"
+            )
+
+        except Exception as e:
+            _logger.warning("[ZeroModelService] Subfield extraction failed: %s", e)
+
+
+        # ------------------------------- 
+        # Prepare visual stages
+        # -------------------------------
+        raw_good = _normalize_field(X_pos)
+        raw_bad  = _normalize_field(X_neg)
+        opt_good = Y_pos
+        opt_bad  = Y_neg
+        combined = diff
+
+        titles = [
+            "Raw Good (Before Optimization)",
+            "Optimized Good (Spatial Calculus)",
+            "Raw Bad (Before Optimization)",
+            "Optimized Bad (Spatial Calculus)",
+            "Differential Field (Good − Bad)",
+        ]
+        images = [raw_good, opt_good, raw_bad, opt_bad, combined]
+
+        # Render comparison grid + GIF
+        comparison_path = _make_visual_grid(images, titles, base)
+        transition_gif_path = base + "_transform.gif"
+        _make_transition_gif(images, titles, transition_gif_path)
+        _logger.info(f"Epistemic field visual comparison saved → {comparison_path}")
+
+
+        # -------------------------------
         # 5️⃣ Render static field image
+        # -------------------------------
         fig, ax = plt.subplots(figsize=(10, 6))
         im = ax.imshow(diff, cmap=cmap, aspect="auto")
-        ax.set_title(f"ZeroModel Epistemic Field — ΔMass={delta_mass:.4f}")
+        ax.set_title(f"ZeroModel Epistemic Field — ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}")
         fig.colorbar(im, ax=ax, label="Δ Intensity (Pos−Neg)")
         plt.tight_layout()
         png_path = base + ".png"
         plt.savefig(png_path, dpi=150)
         plt.close(fig)
 
-        # 6️⃣ Optional animated timeline view
+        # -------------------------------
+        # 6️⃣ Optional animated timeline
+        # -------------------------------
         gif_logger = GifLogger(max_frames=300)
         pipeline = PipelineExecutor([
             {"stage": "normalize", "params": {}},
@@ -467,21 +722,80 @@ class ZeroModelService(Service):
         gif_path = base + ".gif"
         gif_logger.save_gif(gif_path, fps=fps)
 
+        # -------------------------------
         # 7️⃣ Persist metadata
+        # -------------------------------
         meta = {
             "timestamp": ts,
             "mass_pos": mass_pos,
             "mass_neg": mass_neg,
             "delta_mass": delta_mass,
+            "overlap_score": overlap,
+            "comparison_png": comparison_path,
+            "transform_gif": transition_gif_path,
             "metric_weights": w.tolist(),
             "canonical_layout": layout.tolist(),
-            "shape": diff.shape,
+            "metric_index_mapping": index_mapping,
+            "metric_names_original": metric_names,
+            "metric_names_reordered": reordered_metric_names,
             "png": png_path,
             "gif": gif_path,
+            "diff_matrix": diff.tolist(),
+            "metric_names": reordered_metric_names,
         }
-        meta_path = base + ".json"
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2)
 
-        _logger.info(f"Epistemic field saved to {output_dir}")
+        meta_path = base + ".json"
+        text=dumps_safe(meta)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            f.write(text)
+
+        _logger.info(f"Epistemic field saved → {meta_path}")
         return meta
+
+
+    def analyze_differential_field(self, diff_matrix: np.ndarray, metric_names: list[str], output_dir: str):
+        """
+        Analyze the differential field (Good - Bad) to identify surviving high-intensity metrics.
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1️⃣ Compute mean absolute intensity per metric (column)
+        intensities = np.mean(np.abs(diff_matrix), axis=0)
+
+        # 2️⃣ Normalize to [0, 1]
+        norm_intensities = intensities / np.max(intensities)
+
+        # 3️⃣ Rank descending
+        sorted_idx = np.argsort(norm_intensities)[::-1]
+        ranked_metrics = [
+            {
+                "metric": metric_names[i] if i < len(metric_names) else f"metric_{i}",
+                "mean_intensity": float(intensities[i]),
+                "norm_intensity": float(norm_intensities[i]),
+                "rank": int(rank),
+            }
+            for rank, i in enumerate(sorted_idx, start=1)
+        ]
+
+        # 4️⃣ Save results
+        json_path = output_dir / "metric_intensity_summary.json"
+        with open(json_path, "w") as f:
+            json.dump(ranked_metrics, f, indent=2)
+        print(f"[PhosAnalyzer] Saved metric intensity summary → {json_path}")
+
+        # 5️⃣ Plot top metrics
+        top_k = 20
+        plt.figure(figsize=(10, 3))
+        plt.bar(
+            [r["metric"] for r in ranked_metrics[:top_k]],
+            [r["mean_intensity"] for r in ranked_metrics[:top_k]],
+            color="crimson",
+        )
+        plt.xticks(rotation=90, fontsize=8)
+        plt.title("Top surviving metrics by differential intensity")
+        plt.tight_layout()
+        plt.savefig(output_dir / "metric_intensity_plot.png", dpi=200)
+        plt.close()
+
+        return ranked_metrics

@@ -189,11 +189,11 @@ class MetricsWorker:
                 
                 # Log with color-coded status
                 if status:
-                    _logger.debug(f"BUS HEALTH: 🟢 {bus_type} - {status} | {details_str}")
+                    _logger.debug("BUS HEALTH: 🟢 %s - %s | %s", bus_type, status, details_str)
                 elif status == "disconnected":
-                    _logger.warning(f"BUS HEALTH: 🔴 {bus_type} - {status} | {details_str}")
+                    _logger.warning("BUS HEALTH: 🔴 %s - %s | %s", bus_type, status, details_str)
                 
                 await asyncio.sleep(30)
             except Exception as e:
-                _logger.error(f"BUS HEALTH CHECK FAILED: {str(e)}")
+                _logger.error("BUS HEALTH CHECK FAILED: %s", str(e))
                 await asyncio.sleep(10)

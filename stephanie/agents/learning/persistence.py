@@ -518,7 +518,7 @@ class Persistence:
                             ),
                         )
             except Exception as e:
-                _logger.warning(f"auto-citation skipped: {e}")
+                _logger.warning("auto-citation skipped: %s", e)
 
             w_score = w.get("score") or {}
             self.memory.casebooks.add_scorable(
@@ -707,7 +707,7 @@ class Persistence:
                     },
                 )
             except Exception:
-                _logger.warning(f"_persist_arena failed: {e}")
+                _logger.warning("_persist_arena failed: %s", e)
 
     @staticmethod
     def _extract_claim_sentences(text: str) -> List[str]:

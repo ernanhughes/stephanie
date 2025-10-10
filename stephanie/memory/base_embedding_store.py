@@ -869,7 +869,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
         Useful for "middle" or neutral contrast sets in PhosAgent.
 
         Similarity is computed as 1 - (embedding <-> query_vector).
-        """
+        """ 
         sql = f"""
             SELECT se.scorable_id, se.scorable_type, e.text,
                 1 - (e.embedding <-> %s::vector) AS score
