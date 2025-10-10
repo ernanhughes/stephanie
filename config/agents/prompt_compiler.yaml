@@ -1,21 +1,21 @@
 # config/agents/prompt_compiler.yaml
-
 prompt_compiler:
   name: prompt_compiler
   enabled: true
   save_context: false
   skip_if_completed: false
 
-  # Number of sample prompts to use in tuning
-  sample_size: 20
-  # How many prompts to generate once tuned
-  generate_count: 5
+  ats_N_init: 6            # parallel initial drafts
+  ats_max_iter: 120        # total iterations
+  ats_time_limit: 1200     # 20 minutes wallclock
+  ats_patience: 30         # early stop if no improvement
+  ats_H_greedy: 0.55       # exploit best node sometimes
+  ats_C_ucb: 1.3           # explore/exploit balance
+  random_seed: 123
 
-  use_memory_for_fast_prompts: false
-  use_strategy_mutation: true
 
   model:
-    name: ollama_chat/qwen3
+    name: ollama_chat/qwen3:0.6b
     api_base: http://localhost:11434
     api_key: null
 

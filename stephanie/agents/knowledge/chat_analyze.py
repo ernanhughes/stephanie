@@ -39,7 +39,7 @@ class ChatAnalyzeAgent(BaseAgent):
 
             self.memory.chats.set_turn_ai_eval(turn_id=turn_id, score=parsed["score"], rationale=parsed["rationale"])
 
-            _logger.info(f"ChatAnalyzeAgent: Upserted turn analysis for turn_id: {turn_id} with score: {parsed['score']}")
+            _logger.debug(f"ChatAnalyzeAgent: Upserted turn analysis for turn_id: {turn_id} with score: {parsed['score']}")
             out.append(turn_id)
         context["analyzed_turn_ids"] = out
         return context

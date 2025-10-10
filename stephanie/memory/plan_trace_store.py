@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import List, Optional
+
 from sqlalchemy import desc
 from sqlalchemy.orm import joinedload
 

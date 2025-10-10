@@ -1,38 +1,34 @@
-# config/config.yaml
+# config/compiler.yaml
 defaults:
   - _self_
   - db: postgres
-  - agents/compiler
-  - agents/pipeline_judge
+  - plan_monitor: disabled
+  - bus: nats   
   - logging/json_logger
+  - mars/default
+  - services/default
+  - scorer: all  
+
+  - agents/related
+  - agents/prompt_compiler
+
 
 goal:
-  goal_text: Break down the question "How can AI systems become better at asking questions?" into a step-by-step reasoning plan using symbolic prompts that reflect dimensions like curiosity, relevance, and generalization. Each step should be explainable, reusable, and scored individually.
-  goal_type: "tactical"
-  goal_category: "meta_reasoning"
-  focus_area: "question_generation"
-  strategy: "stepwise_decomposition"
-  difficulty: "medium"
+  goal_text: >
+    Break down the question "How can AI systems become better at asking questions?"
+    into a step-by-step reasoning plan using symbolic prompts that reflect dimensions
+    like curiosity, relevance, and generalization. Each step should be explainable,
+    reusable, and scored individually.
+  goal_type: tactical
+  goal_category: meta_reasoning
+  focus_area: question_generation
+  strategy: stepwise_decomposition
+  difficulty: medium
   expected_formats:
-    - "symbolic_prompt_plan"
-    - "stepwise_reasoning_trace"
-    - "annotated_score_vector"
+    - symbolic_prompt_plan
+    - stepwise_reasoning_trace
+    - annotated_score_vector
 
-symbolic:
-  enabled: false
-  rules_file: "config/rules/rules.yaml"
-  enable_db_rules: true # load rules from the database
-  match_priority:
-    - goal_id
-    - pipeline_run_id
-    - metadata
-  metadata_match_mode: partial   # options: exact, partial, off
-  allow_fallback: true           # if no ID matches, allow metadata fallback
-
-post_judgment:
-  name: pipeline_judge
-  enabled: true
-  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
@@ -41,21 +37,19 @@ report:
   generate_report: true
   path: ${hydra:runtime.cwd}/reports
 
-web_search:
-  engine: "searxng"
-  instance_url: "http://localhost:8080"
-
 
 embeddings:
-  model: "mxbai-embed-large"
-  dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
+  backend: hnet
 
 pipeline:
-  name: compiler_pipeline
-  description: "Compile generate good answers in one domain to build reusable reasoning structures that can transfer to new, unfamiliar tasks"
+  name: prompt_compiler
+  description: "Compile a prompt and generate the best possible solution using Agenting tree Search"
   stages:
-     - name: compiler
-       cls: stephanie.agents.compiler.compiler.CompilerAgent
+     - name: related
+       cls: stephanie.agents.related.RelatedAgent
+       enabled: true
+       iterations: 1
+     - name: prompt_compiler
+       cls: stephanie.agents.prompt_compiler.PromptCompilerAgent
        enabled: true
        iterations: 1

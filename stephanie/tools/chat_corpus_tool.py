@@ -77,7 +77,7 @@ def build_chat_corpus_tool(
                     {_norm(e.get("text")) for e in ents if e.get("text")}
                 )
         except Exception as e:
-            _logger.warning(f"Entity detection failed: {e}")
+            _logger.warning("Entity detection failed: %s", e)
         toks = re.findall(r"\b[A-Z][A-Za-z0-9\-\_]{2,}\b", text or "")
         return sorted({_norm(t) for t in toks})
 
@@ -111,7 +111,7 @@ def build_chat_corpus_tool(
                     if isinstance(name, str)
                 ]
         except Exception as e:
-            _logger.warning(f"domain classify failed: {e}")
+            _logger.warning("domain classify failed: %s", e)
 
         # Fallback: very conservative heuristics -> empty (or add your own simple rules)
         return []
@@ -129,7 +129,7 @@ def build_chat_corpus_tool(
                 top_k=int(k),
             )
         except Exception as e:
-            _logger.warning(f"Embedding search failed: {e}")
+            _logger.warning("Embedding search failed: %s", e)
             return []
         out = []
         for c in cands or []:

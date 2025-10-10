@@ -10,6 +10,7 @@ Features:
 - Auto re-subscribe on reconnect (durables)
 - Proper timedelta types for ack_wait
 - Optional DLQ writer for final failures
+- Truthy connect() only after JetStream is fully ready (stream ensured + health ping)
 """
 
 from __future__ import annotations
@@ -26,27 +27,26 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from nats.aio import errors as nats_errors
+from nats import errors as nats_errors
 from nats.aio.client import Client as NATS
-from nats.errors import TimeoutError
 from nats.errors import TimeoutError as NatsTimeoutError
-from nats.js.api import ConsumerConfig, DeliverPolicy
+from nats.js.api import (ConsumerConfig, DeliverPolicy, RetentionPolicy,
+                         StreamConfig)
 
 from .bus_protocol import BusProtocol
 from .errors import BusRequestError
 from .idempotency import InMemoryIdempotencyStore
 
+_logger = logging.getLogger(__name__)
 
 def _sanitize_durable(stream: str, subject: str) -> str:
     name = f"durable_{stream}_{subject}".replace(".", "_").replace(">", "all")
-    # JetStream durable name limits are generous, but keep it sane:
     return name[:240]
-
-_logger = logging.getLogger(__name__)
 
 class NatsKnowledgeBus(BusProtocol):
     """
     Production-grade NATS JetStream bus with resilience + good DX while debugging.
+    All logs use structured `logger.<level>(event, data)` (compatible with JSONLogger).
     """
 
     def __init__(
@@ -66,6 +66,7 @@ class NatsKnowledgeBus(BusProtocol):
     ):
         self.servers = servers
         self.stream = stream
+        self.logger = logger
 
         if not debug:
             debug = self._is_debugger_attached()
@@ -75,7 +76,6 @@ class NatsKnowledgeBus(BusProtocol):
         self.max_retries = 50 if debug else max_retries
         self.retry_base_delay = retry_base_delay
         self.health_check_interval = health_check_interval
-        self.debug = debug
 
         self._nc: Optional[NATS] = None
         self._js = None
@@ -86,7 +86,7 @@ class NatsKnowledgeBus(BusProtocol):
         self._health_task: Optional[asyncio.Task] = None
         self._keepalive_task: Optional[asyncio.Task] = None
 
-        self._subscriptions: Dict[str, Dict[str, Any]] = {}  # subject -> intent (handler, durable_name)
+        self._subscriptions: Dict[str, Dict[str, Any]] = {}  # subject -> intent (handler, durable, cb, sub)
         self._last_publish_time = 0.0
         self._publish_failures = 0
         self._dlq_writer = dlq_writer
@@ -95,112 +95,258 @@ class NatsKnowledgeBus(BusProtocol):
         self._faf_subjects: Set[str] = fire_and_forget_subjects or set()
         self._tasks: Set[asyncio.Task] = set()
 
+        # Connection guards (defensive, even though Hybrid bus does single-flight)
+        self._conn_lock = asyncio.Lock()
+        self._conn_task: Optional[asyncio.Task] = None
+
+        # Stream subjects we ensure; default to "<stream>.>"
+        self._stream_subjects: List[str] = [f"{self.stream}.>"]
 
     # ---------- Connection management ----------
 
     async def connect(self, force: bool = False) -> bool:
-        if self._nc and not self._nc.is_closed and not force:
+        """
+        Connects to NATS and ensures JetStream stream is present.
+        Returns True only after:
+          1) TCP connected
+          2) JetStream context acquired
+          3) Stream exists or is created with subjects
+          4) Health publish succeeds
+        On failure, closes the temp connection and returns False.
+        """
+        # Fast-path when already connected and not forcing
+        if self._connected and self._nc and not self._nc.is_closed and not force:
             return True
-        if self._nc and not self._nc.is_closed and force:
+
+        async with self._conn_lock:
+            if self._connected and self._nc and not self._nc.is_closed and not force:
+                return True
+
+            # If forcing, drain old connection
+            if self._nc and not self._nc.is_closed and force:
+                with contextlib.suppress(Exception):
+                    await self._nc.drain()
+
+            # Establish a fresh connection and only commit on full readiness
+            import nats
+
+            async def _err_cb(e):
+                # nats InvalidStateError on pong is harmless; low-level
+                _logger.debug(f"NATSLowLevelError error: {repr(e)}")
+
+            async def _disc_cb():
+                _logger.error("NATSDisconnected")
+
+            async def _reconn_cb():
+                _logger.debug("NATSReconnected")
+                await self._on_reconnected()
+
+            async def _closed_cb():
+                _logger.error("NATSClosed")
+
+            nc = None
             try:
-                await self._nc.drain()
-            except Exception:
-                pass
+                nc = await nats.connect(
+                    servers=self.servers,
+                    name=self.stream,
+                    allow_reconnect=True,
+                    max_reconnect_attempts=-1,
+                    reconnect_time_wait=0.5,     # quicker retries
+                    ping_interval=5,              # more frequent pings
+                    max_outstanding_pings=2,      # fail fast if peer unresponsive
+                    error_cb=_err_cb,
+                    disconnected_cb=_disc_cb,
+                    reconnected_cb=_reconn_cb,
+                    closed_cb=_closed_cb,
+                )
+                js = nc.jetstream()
 
-        import nats
-        async def _err_cb(e):
-            # nats InvalidStateError on pong is harmless; just log at low level
-            _logger.debug(f"NATS error_cb: {e!r}")
+                # Ensure stream exists; create if missing with "<stream>.>" subjects
+                try:
+                    await js.stream_info(self.stream)
+                except Exception:
+                    cfg = StreamConfig(
+                        name=self.stream,
+                        subjects=self._stream_subjects,
+                        retention=RetentionPolicy.Limits,
+                    )
+                    await js.add_stream(cfg)
 
-        async def _disc_cb():
-            _logger.warning("NATS disconnected")
+                # Health publish to confirm JS perms
+                health_subject = f"{self.stream}.health"
+                try:
+                    await js.publish(health_subject, b"ping")
+                except Exception as e:
+                    _logger.error("NATSHealthPublishFailed subject: %s, error: %r", health_subject, e)
+                    with contextlib.suppress(Exception):
+                        await nc.close()
+                    return False
 
-        async def _reconn_cb():
-            _logger.info("NATS reconnected")
+                # Commit only now
+                self._nc = nc
+                self._js = js
+                self._connected = True
+                _logger.debug(f"NATSReady servers: {self.servers}, stream: {self.stream}, subjects: {self._stream_subjects}")
 
-        async def _closed_cb():
-            _logger.warning("NATS connection closed")
+                # Start monitors (idempotent)
+                self._start_keepalive()
+                self._start_health_monitoring()
+                return True
 
-        self._nc = await nats.connect(
-            servers=self.servers,
-            name=self.stream,
-            allow_reconnect=True,
-            max_reconnect_attempts=-1,
-            reconnect_time_wait=0.5,     # quicker retries
-            ping_interval=5,              # more frequent pings
-            max_outstanding_pings=2,      # fail fast if peer unresponsive
-            error_cb=_err_cb,
-            disconnected_cb=_disc_cb,
-            reconnected_cb=_reconn_cb,
-            closed_cb=_closed_cb,
-        )
-        self._js = self._nc.jetstream()
-        self._connected = True
-        _logger.info("Connected to NATS")
+            except Exception as e:
+                _logger.error("NATSClientConnectFailed error: %r", e)
+                with contextlib.suppress(Exception):
+                    if nc and not nc.is_closed:
+                        await nc.close()
+                return False
 
     async def _on_reconnected(self):
-        # Refresh JS context (defensive: cheap call)
-        self._js = self._nc.jetstream()
-        _logger.info("NATS reconnected; refreshing subscriptions.")
+        # Refresh JS context and re-subscribe
+        try:
+            if self._nc:
+                self._js = self._nc.jetstream()
+        except Exception as e:
+            _logger.error("NATSRefreshJSOnReconnectFailed error: %r", e)
         await self._resubscribe_all()
-
-    async def _resubscribe_all(self):
-        # Rebind every stored subscription intent
-        for subject, intent in list(self._subscriptions.items()):
-            handler = intent["handler"]
-            durable = intent["durable"]
-            try:
-                await self._do_subscribe(subject, handler, durable)
-                _logger.debug("Re-subscribed to %s", subject)
-            except Exception:
-                _logger.exception("Failed to re-subscribe to %s", subject)
+        _logger.debug("NATSReconnectedSubscriptionsRefreshed")
 
     async def _ensure_connected(self) -> None:
-        # If already connected, don’t flush here — it races with reconnect/pongs.
-        if self._nc and not self._nc.is_closed:
+        if self._connected and self._nc and not self._nc.is_closed:
             return
-        await self.connect()  # no flu
+        ok = await self.connect()
+        if not ok:
+            # Let caller handle; do not raise here to keep behavior consistent
+            _logger.error("NATSEnsureConnectFailed")
 
     # ---------- Publish / Subscribe / Request ----------
 
     async def publish(self, subject: str, payload: dict) -> None:
+        """
+        Publish to JetStream as <stream>.<subject> so JS consumers receive it.
+        FAF subjects (telemetry) still use core publish without the stream prefix.
+        """
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        await self._ensure_connected()
+        if not (self._nc and not self._nc.is_closed):
+            self._publish_failures += 1
+            _logger.error("NATSPublishSkippedNotConnected subject: %s", subject)
+            return
+
         try:
-            await self._ensure_connected()
-            await self._nc.publish(subject, data)
+            if subject in self._faf_subjects:
+                # Fire-and-forget: plain NATS, no prefix
+                await self._nc.publish(subject, data)
+            else:
+                # JetStream: publish under the stream namespace
+                full_subject = f"{self.stream}.{subject}"
+                await self._js.publish(full_subject, data)
+            self._last_publish_time = time.time()
         except (nats_errors.TimeoutError,
                 nats_errors.FlushTimeoutError,
                 nats_errors.ConnectionClosedError,
                 nats_errors.NoServersError,
                 ConnectionResetError) as e:
-            _logger.warning(f"NATS publish error, retrying once: {e!r}")
-            await self.connect(force=True)
-            await self._nc.publish(subject, data)
+            _logger.error("NATSPublishErrorRetrying subject: %s, error: %r", subject, e)
+            ok = await self.connect(force=True)
+            if not ok:
+                self._publish_failures += 1
+                self._write_dlq("publish_connect_failed", subject, payload)
+                return
+            if subject in self._faf_subjects:
+                await self._nc.publish(subject, data)
+            else:
+                await self._js.publish(f"{self.stream}.{subject}", data)
+            self._last_publish_time = time.time()
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+        """
+        Request/Reply over a namespaced RPC subject: "<stream>.rpc.<subject>"
+        Retries with jittered backoff.
+        """
         await self._ensure_connected()
-        request_timeout = min(timeout, self.timeout)
+        if not (self._nc and not self._nc.is_closed):
+            _logger.error("NATSRequestSkippedNotConnected subject: %s", subject)
+            return None
 
+        request_timeout = min(timeout, self.timeout)
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         last_exc = None
+        rpc_subject = f"{self.stream}.rpc.{subject}"
+
         for attempt in range(self.max_retries + 1):
             try:
-                resp = await self._nc.request(f"{self.stream}.rpc.{subject}", data, timeout=request_timeout)
+                resp = await self._nc.request(rpc_subject, data, timeout=request_timeout)
                 return json.loads(resp.data.decode())
-            except TimeoutError as e:
-                last_exc = e
+            except NatsTimeoutError as e:
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt))
                     continue
+                _logger.error("NATSRequestTimeout subject: %s, attempts: %d", subject, attempt + 1)
                 return None
             except Exception as e:
-                last_exc = e
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt))
                     continue
+                _logger.error(f"NATSRequestFailed subject: {subject}, error: {repr(e)}")
                 raise BusRequestError(f"Request failed for {subject}") from e
 
+    async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], Any]) -> None:
+        """
+        Public subscribe: ensures connection, builds the wrapped cb,
+        stores intent for auto re-subscribe, then binds the consumer on JetStream.
+        """
+        await self._ensure_connected()
+        if not (self._js and self._nc and not self._nc.is_closed):
+            _logger.error("NATSSubscribeSkippedNotConnected subject: %s", subject)
+            return
+
+        durable_name = _sanitize_durable(self.stream, subject)
+        wrapped_cb = self._build_wrapped(subject, handler)
+
+        # Remember intent for reconnects
+        self._subscriptions[subject] = {
+            "handler": handler,
+            "durable": durable_name,
+            "cb": wrapped_cb,
+        }
+
+        await self._do_subscribe(subject, durable_name, wrapped_cb)
+
+
+    async def _do_subscribe(self, subject: str, durable_name: str, cb) -> None:
+        # ack_wait: plain SECONDS; nats-py will convert to ns on the wire.
+        ack_wait_seconds = int(max(1, self.timeout * 5))
+
+        cfg = ConsumerConfig(
+            deliver_policy=DeliverPolicy.ALL,
+            ack_wait=ack_wait_seconds,              # <-- seconds, not ns
+            max_deliver=self.max_retries + 1,
+        )
+        full_subject = f"{self.stream}.{subject}"
+
+        sub = await self._js.subscribe(
+            full_subject,
+            durable=durable_name,
+            cb=cb,
+            config=cfg,
+        )
+
+        self._subscriptions[subject]["sub"] = sub
+        self.logger.info("NATSSubscribed", {"subject": subject, "durable": durable_name})
+
+    async def _resubscribe_all(self):
+        for subject, meta in list(self._subscriptions.items()):
+            handler = meta["handler"]
+            durable = meta["durable"]
+            cb = meta.get("cb") or self._build_wrapped(subject, handler)
+            try:
+                await self._do_subscribe(subject, durable, cb)
+                _logger.debug(f"NATSResubscribed subject: {subject}")
+            except Exception as e:
+                _logger.error(f"NATSResubscribeFailed subject: {subject}, error: {repr(e)}")
+
     # ---------- Shutdown ----------
+
     async def close(self) -> None:
         await self._stop_tasks()
         if self._nc:
@@ -218,7 +364,7 @@ class NatsKnowledgeBus(BusProtocol):
                     await self._nc.close()
             finally:
                 self._connected = False
-                _logger.info("NATS connection closed")
+                _logger.debug("NATSClosedCleanly")
 
     # ---------- Helpers ----------
 
@@ -229,7 +375,6 @@ class NatsKnowledgeBus(BusProtocol):
     def idempotency_store(self) -> Any:
         return self._idem_store or InMemoryIdempotencyStore()
 
-
     def debug_connection_status(self) -> Dict[str, Any]:
         """Return detailed connection status for debugging"""
         return {
@@ -237,124 +382,139 @@ class NatsKnowledgeBus(BusProtocol):
             "last_publish": self._last_publish_time,
             "publish_failures": self._publish_failures,
             "connection_uptime": (
-                time.time() - self._last_publish_time 
-                if self._last_publish_time else 0
+                time.time() - self._last_publish_time if self._last_publish_time else 0
             ),
             "debug_mode": self.debug,
             "timeout": self.timeout,
             "reconnect_attempts": self.max_retries,
             "keepalive_interval": 10.0 if self.debug else 20.0,
             "health_check_interval": self.health_check_interval,
-            "subscriptions": list(self._subscriptions.keys())
+            "subscriptions": list(self._subscriptions.keys()),
         }
 
-
     def _build_wrapped(self, subject: str, handler: Callable[[Dict[str, Any]], Any]):
-        """
-        Build the coroutine callback that JetStream requires.
-        Handles idempotency and always acks safely.
-        """
         async def wrapped(msg):
             try:
                 envelope = json.loads(msg.data.decode())
+
+                # Idempotency (best-effort if event_id exists)
                 event_id = envelope.get("event_id")
-                # Idempotency: skip duplicates
-                if event_id and await self._idem_store.seen(event_id):
+                if event_id and await self.idempotency_store.seen(event_id):
                     await msg.ack()
-                    _logger.debug("Skipping duplicate event: %s", event_id)
+                    self.logger.debug("NATSDuplicateEventSkipped", {"event_id": event_id})
                     return
                 if event_id:
-                    await self._idem_store.mark(event_id)
+                    await self.idempotency_store.mark(event_id)
 
-                # Invoke user handler with the payload only
-                await handler(envelope["payload"])
-            except Exception:
-                # Avoid redelivery storms: log and still ack in finally.
-                _logger.exception("Error handling event %s", subject)
+                # Support both styles: raw dict, or {"payload": {...}}
+                payload = envelope.get("payload", envelope)
+
+                await handler(payload)
+            except Exception as e:
+                self.logger.error("NATSHandlerError", {"subject": subject, "error": repr(e)})
             finally:
                 with contextlib.suppress(Exception):
                     await msg.ack()
         return wrapped
 
-
-    async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], Any]) -> None:
-        """
-        Public subscribe: ensures connection, builds the wrapped cb,
-        stores intent for auto re-subscribe, then binds the consumer.
-        """
-        await self._ensure_connected()
-
-        durable_name = _sanitize_durable(self.stream, subject)
-        wrapped_cb = self._build_wrapped(subject, handler)
-
-        # Remember intent (for auto re-subscribe on reconnect)
-        self._subscriptions[subject] = {
-            "handler": handler,
-            "durable": durable_name,
-            # store the built callback so we reuse the exact same closure on reconnects
-            "cb": wrapped_cb,
-        }
-
-        await self._do_subscribe(subject, durable_name, wrapped_cb)
-
-
-    async def _do_subscribe(self, subject: str, durable_name: str, cb) -> None:
-        """
-        Internal binder: actually calls js.subscribe with a coroutine callback.
-        """
-        cfg = ConsumerConfig(
-            deliver_policy=DeliverPolicy.ALL,
-            ack_wait=timedelta(seconds=max(1, int(self.timeout * 5))),  # > publish timeout
-            max_deliver=self.max_retries + 1,
-        )
-        full_subject = f"{self.stream}.{subject}"
-
-        # IMPORTANT: cb MUST be a coroutine function, not a lambda
-        sub = await self._js.subscribe(
-            full_subject,
-            durable=durable_name,
-            cb=cb,
-            config=cfg,
-        )
-
-        # Keep the subscription object for graceful unsubscribe on close
-        self._subscriptions[subject]["sub"] = sub
-        _logger.info("Subscribed to %s (durable=%s)", subject, durable_name)
-
-
-    # If you have a re-subscribe path, make sure it reuses the stored 'cb':
-    async def _resubscribe_all(self):
-        for subject, meta in list(self._subscriptions.items()):
-            handler = meta["handler"]
-            durable = meta["durable"]
-            cb = meta.get("cb") or self._build_wrapped(subject, handler)
-            try:
-                await self._do_subscribe(subject, durable, cb)
-                _logger.debug("Re-subscribed to %s", subject)
-            except Exception:
-                _logger.exception("Failed to re-subscribe to %s", subject)
-
-
-    # at class scope
+    # Low-level NATS callbacks (not used directly; we bind lambdas in connect)
     async def _on_disconnected_cb(self, *args, **kwargs):
-        _logger.warning("NATS disconnected")
+        _logger.error("NATSDisconnected")
 
     async def _on_reconnected_cb(self, *args, **kwargs):
-        # Refresh JS and re-subscribe after reconnect
         try:
             self._js = self._nc.jetstream()
-        except Exception:
-            _logger.exception("Failed to refresh JetStream context on reconnect")
+        except Exception as e:
+            _logger.error(f"NATSRefreshJSOnReconnectFailed error: {repr(e)}")
         await self._resubscribe_all()
-        _logger.info("NATS reconnected; subscriptions refreshed")
+        _logger.debug("NATSReconnectedSubscriptionsRefreshed")
 
     async def _on_closed_cb(self, *args, **kwargs):
-        _logger.warning("NATS connection closed")
+        _logger.error("NATSClosed")
 
     async def _on_error_cb(self, e):
-        # Note: signature is (Exception)
-        _logger.error("NATS error: %r", e)
+        _logger.error(f"NATSLowLevelError error: {repr(e)}")
 
+    # Monitors
+
+    def _start_keepalive(self):
+        if self._keepalive_task and not self._keepalive_task.done():
+            return
+
+        async def _loop():
+            try:
+                while True:
+                    try:
+                        if not self._connected or not self._nc or self._nc.is_closed:
+                            await asyncio.sleep(3.0)
+                            continue
+                        # Use NATS' own timeout; no external wait_for
+                        await self._nc.flush(timeout=1.0)
+                        await asyncio.sleep(10.0 if self.debug else 20.0)
+
+                    except (NatsTimeoutError, asyncio.TimeoutError):
+                        # soft mark as unhealthy; next op will reconnect
+                        self._connected = False
+                        await asyncio.sleep(2.0)
+
+                    except asyncio.CancelledError:
+                        break
+
+                    except Exception:
+                        self._connected = False
+                        await asyncio.sleep(2.0)
+            finally:
+                pass
+
+        keepalive_task = asyncio.create_task(_loop())
+        self._tasks.add(keepalive_task)
+        keepalive_task.add_done_callback(lambda f: self._tasks.discard(keepalive_task))
+        self._keepalive_task = keepalive_task
+        _logger.debug("NATSKeepaliveStarted")
+
+    def _start_health_monitoring(self):
+        if self._health_task and not self._health_task.done():
+            return
+
+        async def _health():
+            try:
+                while True:
+                    try:
+                        await asyncio.sleep(self.health_check_interval)
+                        if not self._connected or not self._nc or self._nc.is_closed:
+                            continue
+                        await self._nc.flush(timeout=1.0)
+                    except (NatsTimeoutError, asyncio.TimeoutError):
+                        self._connected = False
+                    except asyncio.CancelledError:
+                        break
+                    except Exception:
+                        self._connected = False
+            finally:
+                pass
+
+        health_task = asyncio.create_task(_health())
+        self._tasks.add(health_task)
+        health_task.add_done_callback(lambda f: self._tasks.discard(health_task))
+        self._health_task = health_task
+        _logger.debug("NATSHealthMonitorStarted")
+
+    async def _stop_tasks(self):
+        for t in list(self._tasks):
+            if not t.done():
+                t.cancel()
+                try:
+                    await asyncio.shield(t)
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+        self._tasks.clear()
+
+    def health_check(self) -> Dict[str, Any]:
+        details = self.debug_connection_status()
+        status = "connected" if (self._connected and self._nc and not self._nc.is_closed) else "disconnected"
+        return {"bus_type": "nats", "status": status, "details": details}
 
     def _backoff(self, attempt: int) -> float:
         # jittered exponential backoff
@@ -373,97 +533,8 @@ class NatsKnowledgeBus(BusProtocol):
                     "envelope": envelope,
                 }
             )
-        except Exception:
-            _logger.exception("DLQ writer failed for subject %s", subject)
-
-    def _start_keepalive(self):
-        if self._keepalive_task and not self._keepalive_task.done():
-            return
-
-        async def _loop():
-            try:
-                while True:
-                    try:
-                        # not connected – give connect() a chance on next op
-                        if not self._connected or not self._nc or self._nc.is_closed:
-                            await asyncio.sleep(3.0)
-                            continue
-
-                        # Use NATS' own timeout; do NOT wrap with wait_for
-                        await self._nc.flush(timeout=1.0)
-                        await asyncio.sleep(10.0 if self.debug else 20.0)
-
-                    except (NatsTimeoutError, asyncio.TimeoutError):
-                        # soft mark as unhealthy; next op will reconnect
-                        self._connected = False
-                        await asyncio.sleep(2.0)
-
-                    except asyncio.CancelledError:
-                        # graceful task shutdown
-                        break
-
-                    except Exception:
-                        # any other error → mark unhealthy and back off a bit
-                        self._connected = False
-                        await asyncio.sleep(2.0)
-            finally:
-                # optional: any cleanup here
-                pass
-
-        keepalive_task = asyncio.create_task(_loop())
-        self._tasks.add(keepalive_task)
-        keepalive_task.add_done_callback(lambda f: self._tasks.discard(keepalive_task))
-        self._keepalive_task = keepalive_task
-        _logger.debug("Keepalive started")
-
-    def _start_health_monitoring(self):
-        if self._health_task and not self._health_task.done():
-            return
-
-        async def _health():
-            try:
-                while True:
-                    try:
-                        await asyncio.sleep(self.health_check_interval)
-
-                        if not self._connected or not self._nc or self._nc.is_closed:
-                            # Let normal ops trigger reconnect; don't spam here
-                            continue
-
-                        # Ping only; do NOT wrap with wait_for
-                        await self._nc.flush(timeout=1.0)
-
-                    except (NatsTimeoutError, asyncio.TimeoutError):
-                        # mark unhealthy; next bus op will reconnect
-                        self._connected = False
-
-                    except asyncio.CancelledError:
-                        break
-
-                    except Exception:
-                        # conservative: mark unhealthy but don't crash task
-                        self._connected = False
-            finally:
-                pass
-
-        health_task = asyncio.create_task(_health())
-        self._tasks.add(health_task)
-        health_task.add_done_callback(lambda f: self._tasks.discard(health_task))
-        self._health_task = health_task
-
-        _logger.debug("Health monitor started")
-
-    async def _stop_tasks(self):
-        for t in list(self._tasks):
-            if not t.done():
-                t.cancel()
-                try:
-                    await asyncio.shield(t)
-                except asyncio.CancelledError:
-                    pass
-                except Exception:
-                    pass
-        self._tasks.clear()
+        except Exception as e:
+            _logger.error(f"DLQWriterFailed subject: {subject}, error: {repr(e)}")
 
     async def _safe_flush(self, timeout: float = 1.0) -> bool:
         """
@@ -482,20 +553,19 @@ class NatsKnowledgeBus(BusProtocol):
         except Exception:
             return False
 
-
     @staticmethod
     def _is_debugger_attached() -> bool:
         """Detect if a debugger is attached (PyCharm, VSCode, etc.)"""
         try:
-            # Common debugger detection methods
             return (
-                hasattr(sys, 'gettrace') and sys.gettrace() is not None or
-                'pydevd' in sys.modules or
-                'pdb' in sys.modules or
-                os.getenv('DEBUG', '0') == '1'
+                hasattr(sys, "gettrace") and sys.gettrace() is not None
+                or "pydevd" in sys.modules
+                or "pdb" in sys.modules
+                or os.getenv("DEBUG", "0") == "1"
             )
-        except:
+        except Exception:
             return False
+
 
 def jsonl_dlq_writer_factory(path: str):
     p = Path(path)
@@ -504,4 +574,3 @@ def jsonl_dlq_writer_factory(path: str):
         with p.open("a", encoding="utf-8") as f:
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
     return write
-

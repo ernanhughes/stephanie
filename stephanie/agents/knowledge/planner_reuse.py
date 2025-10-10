@@ -1,4 +1,5 @@
 # stephanie/agents/planning/planner_reuse.py
+import logging
 import re
 
 from tqdm import tqdm
@@ -9,7 +10,6 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
-import logging
 
 _logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ class PlannerReuseAgent(BaseAgent):
             candidate_text = "\n".join([t for t in trace_text_parts if t])
             candidates.append(
                 Scorable(
-                    id=pt.trace_id,
+                    id=str(pt.id),
                     text=candidate_text,
                     target_type="plan_trace",
                 )
@@ -144,11 +144,11 @@ class PlannerReuseAgent(BaseAgent):
         for bundle, cand in pbar:
             # Match bundles back to the original candidate
             # (since rank() processed them in the same order)
-            pt = self.memory.plan_traces.get_by_trace_id(cand.id)
+            pt = self.memory.plan_traces.get_by_id(int(cand.id))
             goal_text = self.memory.plan_traces.get_goal_text(cand.id)
             if pt:
                 score = bundle.get("results", {}).get("rank_score", {}).get("score", 0)
-                _logger.info(f"Selected example trace {pt.trace_id} with rank score {score}")
+                _logger.debug(f"Selected example trace {pt.trace_id} with rank score {score}")
                 example = {
                     "trace_id": pt.trace_id,
                     "goal": goal_text,

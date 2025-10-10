@@ -76,17 +76,17 @@ class ScorableAnnotateAgent(BaseAgent):
         # Get scorables from context
         scorables = context.get("scorables", [])
         if not scorables:
-            _logger.info("No scorables found in context to annotate")
+            _logger.debug("No scorables found in context to annotate")
             return context
         
         # Filter scorables by role if specified
         if self.scorable_role and self.filter_role:
             original_count = len(scorables)
             scorables = [s for s in scorables if s.get("role") == self.scorable_role]
-            _logger.info(f"Filtered {original_count} → {len(scorables)} scorables by role='{self.scorable_role}'")
+            _logger.debug(f"Filtered {original_count} → {len(scorables)} scorables by role='{self.scorable_role}'")
             
             if not scorables:
-                _logger.warning(f"No scorables with role='{self.scorable_role}' found in context")
+                _logger.warning("No scorables with role='%s' found in context", self.scorable_role)
                 return context
 
         # Pre-count scorables that need processing
@@ -152,7 +152,7 @@ class ScorableAnnotateAgent(BaseAgent):
             # Check if already annotated (if only_missing is True)
             domains = self.memory.scorable_domains.get_domains(scorable_id, scorable_type)
             if self.only_missing and not self.force and domains:
-                _logger.info(f"Skipping scorable {scorable_id} - domains already annotated")
+                _logger.debug(f"Skipping scorable {scorable_id} - domains already annotated")
                 stats["skipped"] += 1
             else:
                 # Annotate domains
@@ -271,7 +271,7 @@ class ScorableAnnotateAgent(BaseAgent):
                     "role": "assistant"  # Default role for scorables
                 } for e in entities]
             except Exception as e:
-                _logger.warning(f"Knowledge Graph NER failed: {str(e)}")
+                _logger.warning("Knowledge Graph NER failed: %s", str(e))
         
         # Fallback to simple entity extraction if KG not available
         # This is a simplified version - in production you'd use a proper NER model

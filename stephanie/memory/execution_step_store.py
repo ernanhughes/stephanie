@@ -1,6 +1,8 @@
 # stephanie/memory/execution_step_store.py
 from __future__ import annotations
+
 from typing import List, Optional
+
 from sqlalchemy import asc
 
 from stephanie.data.plan_trace import ExecutionStep

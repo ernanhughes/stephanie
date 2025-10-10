@@ -95,4 +95,4 @@ def classify_and_store_domains(self, text: str, scorable_id: int, scorable_type:
                 "score": score,
             }
         )
-        _logger.info(f"DomainAssigned: domain={domain}, score={score}")
+        _logger.debug(f"DomainAssigned: domain={domain}, score={score}")

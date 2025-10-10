@@ -110,12 +110,8 @@ def save_json_result(log_path: str, result: dict):
 
 if __name__ == "__main__":
     # Suppress HTTPX logs
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    # Suppress LiteLLM logs
-    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
-    logging.getLogger("transformers").setLevel(logging.WARNING)
-    logging.getLogger("zeromodel").setLevel(logging.WARNING)
-    logging.getLogger("zeromodel.config").setLevel(logging.WARNING)
-    logging.getLogger("hnswlib").setLevel(logging.WARNING)
-
+    logging.getLogger().addFilter(lambda record: len(record.getMessage().strip()) > 10)
+    for name in ("httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "hnswlib", "matplotlib", "urllib3"):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+        logging.getLogger(name).propagate = False
     run()

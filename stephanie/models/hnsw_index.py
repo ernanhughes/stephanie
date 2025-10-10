@@ -46,7 +46,7 @@ class HNSWIndex:
         self.meta_file = f"{self.index_prefix}_metadata.json"
         self.keymap_file = f"{self.index_prefix}_keymap.json"
         Path(self.index_prefix).parent.mkdir(parents=True, exist_ok=True)
-        _logger.info(f"HNSWIndex prefix resolved to: {self.index_prefix}")
+        _logger.debug(f"HNSWIndex prefix resolved to: {self.index_prefix}")
 
         # Core state
         self.index: Optional[hnswlib.Index] = None
@@ -121,7 +121,7 @@ class HNSWIndex:
                     self.entity_key_to_idx = {}
                     _logger.warning("Started a NEW empty index due to mismatch.")
                 else:
-                    _logger.info(f"Loaded HNSW index with {len(self.metadata)} items (max={self.index.get_max_elements()})")
+                    _logger.debug(f"Loaded HNSW index with {len(self.metadata)} items (max={self.index.get_max_elements()})")
 
                 self.initiated = True
                 return
@@ -133,7 +133,7 @@ class HNSWIndex:
         self.initiated = True
         self.metadata = []
         self.entity_key_to_idx = {}
-        _logger.info("Created new HNSW index (no existing data found)")
+        _logger.debug("Created new HNSW index (no existing data found)")
 
     def _rebuild_keymap(self) -> None:
         self.entity_key_to_idx = {}
@@ -221,7 +221,7 @@ class HNSWIndex:
             new_max = int(max(self.index.get_max_elements() * 1.2, cur + needed * 2))
             try:
                 self.index.resize_index(new_max)
-                _logger.info(f"Resized HNSW index to {new_max} elements")
+                _logger.debug(f"Resized HNSW index to {new_max} elements")
             except Exception as e:
                 _logger.error(f"Failed to resize index: {e}")
 
@@ -241,7 +241,7 @@ class HNSWIndex:
         if save and self.persistent:
             self._save_index()
 
-        _logger.info(
+        _logger.debug(
             f"HNSW index updated with {needed} new items "
             f"({dups} duplicates skipped) (total={len(self.metadata)})"
         )
@@ -318,7 +318,7 @@ class HNSWIndex:
             self._atomic_json_dump(self.keymap_file, {k: int(v) for k, v in self.entity_key_to_idx.items()})
             self.stats["last_save_time"] = now
             self.stats["save_count"] += 1
-            _logger.info(f"Saved HNSW index to {self.index_bin} ({len(self.metadata)} items, saves={self.stats['save_count']})")
+            _logger.debug(f"Saved HNSW index to {self.index_bin} ({len(self.metadata)} items, saves={self.stats['save_count']})")
             return True
         except Exception as e:
             _logger.exception(f"Failed to save HNSW index: {e}")
@@ -348,7 +348,7 @@ class HNSWIndex:
         if self.initiated and len(self.metadata) > 0:
             try:
                 self.index.reorder()
-                _logger.info("HNSW index optimized")
+                _logger.debug("HNSW index optimized")
             except Exception as e:
                 _logger.exception(f"Failed to optimize index: {e}")
 
@@ -357,7 +357,7 @@ class HNSWIndex:
         self.metadata = []
         self.entity_key_to_idx = {}
         self.stats.update({"total_adds": 0, "duplicates_skipped": 0, "updates": 0, "last_save_time": 0.0, "save_count": 0})
-        _logger.info("HNSW index completely reset")
+        _logger.debug("HNSW index completely reset")
         for f in (self.index_bin, self.meta_file, self.keymap_file):
             try:
                 if os.path.exists(f):

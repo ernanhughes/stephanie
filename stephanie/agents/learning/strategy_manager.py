@@ -12,7 +12,7 @@ from stephanie.utils.json_sanitize import dumps_safe
 _logger = logging.getLogger(__name__)
 
 def _log_state(prefix: str, state: Strategy):
-    _logger.info("[%s] Strategy v%s | skeptic=%.2f editor=%.2f risk=%.2f threshold=%.2f",
+    _logger.debug("[%s] Strategy v%s | skeptic=%.2f editor=%.2f risk=%.2f threshold=%.2f",
         prefix, state.version, state.skeptic_weight, state.editor_weight,
         state.risk_weight, state.verification_threshold)
 
@@ -65,7 +65,7 @@ class StrategyManager:
                 domain=self.domain,
             )
             if not snap or not snap.get("payload"):
-                _logger.info("[StrategyManager] No snapshot found, using defaults")
+                _logger.debug("[StrategyManager] No snapshot found, using defaults")
                 return Strategy()
             s = Strategy.from_dict(snap["payload"])
             _log_state("Loaded snapshot", s)
@@ -100,7 +100,7 @@ class StrategyManager:
         """
         Create the next proposed Strategy based on avg gain; clamp/normalize via Strategy.normalize().
         """
-        _logger.info("[StrategyManager] Proposing new strategy (avg_gain=%.4f)", avg_gain)
+        _logger.debug("[StrategyManager] Proposing new strategy (avg_gain=%.4f)", avg_gain)
         s = self.state
         if avg_gain < self.min_gain:
             # shift attention to skeptic; gently trim editor/risk
@@ -162,7 +162,7 @@ class StrategyManager:
         # save enrollment breadcrumb
         self._record_ab_enrollment(context, group=chosen.name, avg_gain=avg_gain, proposed=prop)
 
-        _logger.info("[StrategyManager] Assigned variant=%s case_id=%s exp_id=%s",
+        _logger.debug("[StrategyManager] Assigned variant=%s case_id=%s exp_id=%s",
                  chosen.name, case_id, exp.id)
         # update in-memory state if we’re assigned to B (use its payload as new knobs for NEXT unit)
         if chosen.name.upper() == "B":
@@ -234,7 +234,7 @@ class StrategyManager:
             step_secs = sum(float(it.get("elapsed_sec", 0.0)) for it in iterations)
             verify_wall = float(iterations[-1].get("verify_wall_sec", step_secs))
 
-            _logger.info("[StrategyManager] track_section case_id=%s run_id=%s "
+            _logger.debug("[StrategyManager] track_section case_id=%s run_id=%s "
              "final_score=%.3f avg_gain=%.3f k_lift=%.3f iters=%d",
              getattr(case, "id", None),
              (context or {}).get("pipeline_run_id"),
@@ -335,7 +335,7 @@ class StrategyManager:
                 window_seconds=self.window_seconds,
                 min_per_group=self.min_per_arm,
             )
-            _logger.info("[StrategyManager] validate_ab exp_id=%s stats=%s", exp.id, stats)
+            _logger.debug("[StrategyManager] validate_ab exp_id=%s stats=%s", exp.id, stats)
 
             if not stats:
                 return None
@@ -397,7 +397,7 @@ class StrategyManager:
         rel = delta / max(1e-6, validation["groups"][best[0].split("_minus_")[0]]["mean"])
         min_rel = float(self.cfg.get("min_strategy_improvement", 0.02))
 
-        _logger.info("[StrategyManager] maybe_commit_strategy called delta=%.4f rel=%.4f p_ok=%s",
+        _logger.debug("[StrategyManager] maybe_commit_strategy called delta=%.4f rel=%.4f p_ok=%s",
              delta, rel, p_ok)
         
         if not (delta > 0.0 and p_ok and rel >= min_rel):

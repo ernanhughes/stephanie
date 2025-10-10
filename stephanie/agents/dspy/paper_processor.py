@@ -310,7 +310,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             structured_data = self.memory.document_sections.get_by_document(doc_id)
             if not structured_data:
                 self.report({"event": "doc.skip", "agent": self.name, "reason": "no_structured_sections", "doc_id": doc_id, "elapsed_ms": self._ms_since(dt0)})
-                _logger.warning(f"No structured data for document {doc_id}")
+                _logger.warning("No structured data for document %s", doc_id)
                 continue
 
             self.report({"event": "doc.sections", "agent": self.name, "doc_id": doc_id, "sections_count": len(structured_data)})

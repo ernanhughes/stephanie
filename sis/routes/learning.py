@@ -26,7 +26,7 @@ def learning_page(request: Request):
     """
     Main learning visualization page showing knowledge transfer evidence.
     """
-    _logger.info("GET /arena/learning requested")
+    _logger.debug("GET /arena/learning requested")
     templates = request.app.state.templates
     return templates.TemplateResponse("/arena/learning.html", {"request": request})
 
@@ -35,7 +35,7 @@ def learning_run_detail(request: Request, run_id: str):
     """
     Dedicated learning view for a specific pipeline run.
     """
-    _logger.info(f"GET /arena/learning/run/{run_id} requested")
+    _logger.debug(f"GET /arena/learning/run/{run_id} requested")
     
     # Get run details
     run_store = _run_store(request)

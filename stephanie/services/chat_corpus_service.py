@@ -41,7 +41,7 @@ class ChatCorpusService(Service):
     # --- lifecycle ---------------------------------------------------------
     def initialize(self, **kwargs) -> None:
         self._ok = True
-        _logger.info("ChatCorpusServiceInit", {"ts": _now_ms()})
+        _logger.debug("ChatCorpusServiceInit", {"ts": _now_ms()})
 
     def shutdown(self) -> None:
         self._ok = False

@@ -1,7 +1,8 @@
 # stephanie/scoring/scorer/knowledge_relevance_scorer.py
-from stephanie.data.score_result import ScoreResult
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable, ScorableFactory
+
 
 class KnowledgeRelevanceAgent(BaseAgent):
     """Verifies if knowledge is RELEVANT to the current task (not just topically similar)"""

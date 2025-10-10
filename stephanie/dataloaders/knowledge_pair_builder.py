@@ -137,7 +137,7 @@ class KnowledgePairBuilder:
         Returns:
             List of contrastive pairs with metadata
         """
-        _logger.info(
+        _logger.debug(
             f"Building knowledge pairs: pos≥{min_star_pos} (human) or ≥{ai_score_threshold} (AI), "
             f"neg≤{max_star_neg} (human) or ≤{100-ai_score_threshold} (AI), limit={limit}"
         )
@@ -162,7 +162,7 @@ class KnowledgePairBuilder:
             key = (neg["conversation_id"], _primary_domain_from_row(neg))
             neg_buckets.setdefault(key, []).append(neg)
 
-        _logger.info(
+        _logger.debug(
             f"Pos={len(pos_turns)} ({self._count_human_pos(pos_turns)}/human, {self._count_ai_pos(pos_turns)}/AI) | "
             f"Neg={len(neg_turns)} ({self._count_human_neg(neg_turns)}/human, {self._count_ai_neg(neg_turns)}/AI) | "
             f"Buckets={len(neg_buckets)}"
@@ -231,9 +231,9 @@ class KnowledgePairBuilder:
 
             # Logging
             if (pi + 1) % 1000 == 0:
-                _logger.info(f"Processed {pi+1} positives → pairs={len(pairs)}")
+                _logger.debug(f"Processed {pi+1} positives → pairs={len(pairs)}")
 
-        _logger.info(f"✅ Built {len(pairs)} contrastive pairs.")
+        _logger.debug(f"✅ Built {len(pairs)} contrastive pairs.")
         return pairs
 
     # ---------------- internal helpers ----------------

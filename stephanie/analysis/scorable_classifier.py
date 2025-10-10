@@ -76,7 +76,7 @@ class ScorableClassifier:
         self.idempotency_store = None
         
         # Log initialization with configuration details
-        _logger.info("DomainClassifierInit"
+        _logger.debug("DomainClassifierInit"
             f"config_path: {config_path}"
             f"metric {metric}"
             f"bus_available: {bool(bus)}"

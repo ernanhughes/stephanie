@@ -1,7 +1,8 @@
+from stephanie.services.registry_loader import _load_object
+from stephanie.services.reporting_service import ReportingService
 from stephanie.services.self_validation_service import SelfValidationService
 from stephanie.services.training_service import TrainingService
-from stephanie.services.reporting_service import ReportingService
-from stephanie.services.registry_loader import _load_object
+
 
 def make_reporting_service(sinks, enabled: bool, sample_rate: float):
     built = []

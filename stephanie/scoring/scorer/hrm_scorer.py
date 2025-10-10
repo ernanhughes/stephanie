@@ -1,5 +1,6 @@
 # stephanie/scoring/hrm/hrm_scorer.py
 
+import logging
 import os
 
 import torch
@@ -12,6 +13,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.utils.file_utils import load_json  # To load meta file
 
+_logger = logging.getLogger(__name__)
 
 class HRMScorer(BaseScorer):
     """
@@ -193,14 +195,14 @@ class HRMScorer(BaseScorer):
 
                 results[dimension] = result
 
-                self.logger.log("HRMScorerEvaluated", {
-                    "dimension": dimension,
-                    "goal_id": goal.get("id", "unknown"),
-                    "scorable_id": scorable.id,
-                    "raw_score": raw_score,
-                    "zL_magnitude": zL_mag,
-                    "zH_magnitude": zH_mag,
-                })
+                _logger.debug("HRMScorerEvaluated "
+                    f"dimension: {dimension}"
+                    f" goal_id: {goal.get('id', 'unknown')}"
+                    f"scorable_id: {scorable.id}"
+                    f"raw_score: {raw_score}"
+                    f"zL_magnitude: {zL_mag}"
+                    f"zH_magnitude: {zH_mag}"
+                )
 
             except Exception as e:
                 self.logger.log("HRMScorerError", {

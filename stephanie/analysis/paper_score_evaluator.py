@@ -3,10 +3,9 @@ from textwrap import wrap
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
-from stephanie.scoring.scoring_manager import ScoringManager
 
 
-class PaperScoreEvaluator(ScoringManager):
+class PaperScoreEvaluator:
     def evaluate(
         self,
         context: dict,

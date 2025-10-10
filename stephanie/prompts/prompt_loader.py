@@ -1,7 +1,7 @@
 # stephanie/prompts/prompt_loader.py
+import logging
 import os
 
-import logging
 from jinja2 import Template
 
 from stephanie.constants import (DEFAULT, FILE, NAME, PROMPT_DIR, PROMPT_FILE,
@@ -11,7 +11,7 @@ _logger = logging.getLogger(__name__)
 
 def get_text_from_file(file_path: str) -> str:
     """Reads and returns stripped text from a file."""
-    _logger.info(f"Loading prompt from file: {file_path}")
+    _logger.debug(f"Loading prompt from file: {file_path}")
     with open(file_path, "r", encoding="utf-8") as f:
         return f.read().strip()
 
@@ -91,7 +91,7 @@ class PromptLoader:
         """Builds full prompt file path."""
         prompts_dir = context.get(PROMPT_DIR, "prompts")
         filename = file_name if file_name.endswith(".txt") else f"{file_name}.txt"
-        _logger.info(f"PromptLoader.get_file_path: prompts_dir={prompts_dir}, cfg={cfg}, filename={filename}")
+        _logger.debug(f"PromptLoader.get_file_path: prompts_dir={prompts_dir}, cfg={cfg}, filename={filename}")
         return os.path.join(prompts_dir, cfg.get("name", "default"), filename)
 
     @staticmethod
@@ -99,7 +99,7 @@ class PromptLoader:
         """Builds full prompt file path."""
         prompts_dir = context.get(PROMPT_DIR, "prompts")
         filename = file_name if file_name.endswith(".txt") else f"{file_name}.txt"
-        _logger.info(f"PromptLoader.get_score_path: prompts_dir={prompts_dir}, cfg={cfg}, filename={filename}")
+        _logger.debug(f"PromptLoader.get_score_path: prompts_dir={prompts_dir}, cfg={cfg}, filename={filename}")
         return os.path.join(prompts_dir, "scoring", filename)
 
 
@@ -110,7 +110,7 @@ class PromptLoader:
         file_name = f"{file_key}.txt" if not file_key.endswith(".txt") else file_key
         path = os.path.join(prompt_dir, config.get(NAME, "default"), file_name)
 
-        _logger.info(
+        _logger.debug(
             f"PromptFileLoading file_key={file_key}, resolved_file={file_name}, path={path}"
         )
 
@@ -121,7 +121,7 @@ class PromptLoader:
         try:
             prompt_text = get_text_from_file(path)
             rendered = Template(prompt_text).render(**self._merge_context(config, {}))
-            _logger.info(f"PromptFileLoaded: path={path}, rendered_preview={rendered[:100]}")
+            _logger.debug(f"PromptFileLoaded: path={path}, rendered_preview={rendered[:100]}")
             return rendered
         except KeyError as e:
             _logger.error(f"❌ PromptFormattingError: missing_key={e}, path={path}")
@@ -135,7 +135,7 @@ class PromptLoader:
         if best_prompt:
             return best_prompt["prompt_text"]
 
-        _logger.info(f"PromptLoader.get_best_version: agent_name={agent_name}, goal={goal}, config={config}")   
+        _logger.debug(f"PromptLoader.get_best_version: agent_name={agent_name}, goal={goal}, config={config}")   
         return self._load_from_file(config)
 
     def _fallback_prompt(self, goal: str = "") -> str:

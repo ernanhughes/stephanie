@@ -1,7 +1,7 @@
 # stephanie/scoring/score_bundle.py
 import json
 from dataclasses import dataclass, field
-from statistics import stdev
+from statistics import pvariance, stdev
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -240,3 +240,254 @@ class ScoreBundle:
             "dimension_count": len(scores),
             "explanation": f"Cross-dimension agreement score: {agreement_score:.3f}",
         }
+
+
+    # ---------- rewards vector helpers ----------
+    @staticmethod
+    def _safe(v: float, lo: float = -1.0, hi: float = 1.0) -> float:
+        try:
+            x = float(v)
+            if x != x:  # NaN
+                return 0.0
+            return max(lo, min(hi, x))
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _norm01(v: float) -> float:
+        try:
+            x = float(v)
+        except Exception:
+            return 0.0
+        if x != x:
+            return 0.0
+        return 0.0 if x < 0 else (1.0 if x > 1 else x)
+
+    @staticmethod
+    def _var(values: List[float]) -> float:
+        if not values:
+            return 0.0
+        try:
+            return float(pvariance(values))
+        except Exception:
+            return 0.0
+
+    def to_rewards_vector(
+        self,
+        *,
+        prefix: str = "sicql_",                 # prefix for per-dimension keys
+        q_key: str = "q_value",                 # metric names in ScoreResult.attributes
+        v_key: str = "state_value",
+        energy_key: str = "energy",
+        include_overall: bool = True,
+        advantage_sigmoid_scale: float = 10.0,  # scale for adv -> [0,1] squash
+    ) -> Dict[str, float]:
+        """
+        Build a normalized rewards vector directly from this bundle.
+
+        Outputs include:
+          - per-dimension scores in 0..1 (e.g., sicql_alignment, sicql_clarity, ...)
+          - aggregates: sicql_mean, sicql_var, sicql_min, sicql_max
+          - cross-dim metrics: sicql_q_mean, sicql_v_mean, sicql_adv, sicql_adv_norm
+          - energy: sicql_energy_mean, ebt_energy_inv (0..1 where higher is better)
+          - overall_norm (aggregate()/100) if include_overall is True
+        """
+        rewards: Dict[str, float] = {}
+        per_dim_norms: List[float] = []
+        q_vals: List[float] = []
+        v_vals: List[float] = []
+        energies: List[float] = []
+
+        # per-dimension normalized scores & metric harvest
+        for dim, res in self.results.items():
+            # score 0..100 -> 0..1
+            try:
+                dim_norm = max(0.0, min(1.0, float(res.score or 0.0) / 100.0))
+            except Exception:
+                dim_norm = 0.0
+            key = f"{prefix}{str(dim).lower()}"
+            rewards[key] = dim_norm
+            per_dim_norms.append(dim_norm)
+
+            # collect metrics from attributes (and optional .metrics if you use it)
+            attrs = {}
+            if hasattr(res, "attributes") and isinstance(res.attributes, dict):
+                attrs.update(res.attributes)
+            if hasattr(res, "metrics") and isinstance(res.metrics, dict):
+                # don't overwrite if both exist; attributes win
+                for k, v in res.metrics.items():
+                    attrs.setdefault(k, v)
+
+            if q_key in attrs:
+                try: q_vals.append(float(attrs[q_key]))
+                except Exception: pass
+            if v_key in attrs:
+                try: v_vals.append(float(attrs[v_key]))
+                except Exception: pass
+            if energy_key in attrs:
+                try: energies.append(float(attrs[energy_key]))
+                except Exception: pass
+
+        # aggregates of per-dimension normalized scores
+        if per_dim_norms:
+            rewards[f"{prefix}mean"] = float(sum(per_dim_norms) / len(per_dim_norms))
+            rewards[f"{prefix}var"]  = self._var(per_dim_norms)
+            rewards[f"{prefix}min"]  = float(min(per_dim_norms))
+            rewards[f"{prefix}max"]  = float(max(per_dim_norms))
+
+        # cross-dimension metric aggregates
+        if q_vals:
+            rewards[f"{prefix}q_mean"] = float(sum(q_vals) / len(q_vals))
+        if v_vals:
+            rewards[f"{prefix}v_mean"] = float(sum(v_vals) / len(v_vals))
+        if q_vals and v_vals:
+            adv = rewards.get(f"{prefix}q_mean", 0.0) - rewards.get(f"{prefix}v_mean", 0.0)
+            rewards[f"{prefix}adv"] = float(adv)
+            # squash to [0,1]
+            try:
+                import math
+                rewards[f"{prefix}adv_norm"] = 1.0 / (1.0 + math.exp(-adv / max(1e-6, advantage_sigmoid_scale)))
+            except Exception:
+                rewards[f"{prefix}adv_norm"] = 0.5
+
+        # energy → mean and inverse goodness in [0,1]
+        if energies:
+            mean_energy = float(sum(energies) / len(energies))
+            rewards[f"{prefix}energy_mean"] = mean_energy
+            # map "lower is better" to [0,1]; scale by magnitude for stability
+            scale = max(1.0, abs(mean_energy))
+            inv = 1.0 / (1.0 + max(0.0, mean_energy) / scale)
+            rewards["ebt_energy_inv"] = max(0.0, min(1.0, inv))
+
+        if include_overall:
+            try:
+                overall = float(self.aggregate() or 0.0) / 100.0
+            except Exception:
+                overall = 0.0
+            rewards["overall_norm"] = max(0.0, min(1.0, overall))
+
+        return rewards
+
+    def flatten(
+        self,
+        *,
+        include_scores: bool = True,
+        include_weights: bool = False,
+        include_sources: bool = False,
+        include_rationales: bool = False,
+        include_attributes: bool = True,
+        include_meta: bool = False,
+        numeric_only: bool = True,
+        sep: str = ".",
+        attr_prefix: str = "attr",
+        meta_prefix: str = "meta",
+        list_policy: str = "index",   # "index" | "sum" | "mean" | "len" | "first"
+        max_list_len: int = 16,
+    ) -> Dict[str, float]:
+        """
+        Flatten bundle into a single-level dict {name: value}.
+        Keys look like:
+          - "<dimension>.score"
+          - "<dimension>.weight" (opt)
+          - "<dimension>.source" / ".rationale" (opt; numeric_only=False to include)
+          - "<dimension>.attr.<key>" (attributes), lists become indices: ".attr.foo[0]"
+          - "meta.<key>" (opt)
+
+        Args:
+            include_*: toggles for emitted fields.
+            numeric_only: if True, only numeric outputs are included; otherwise strings
+                          are included (useful for logging/export).
+            sep: key separator.
+            attr_prefix: path segment for attributes.
+            meta_prefix: path segment for meta fields.
+            list_policy: how to handle list/tuple attributes when numeric_only=True.
+                         - "index": emit up to max_list_len as [...][i]
+                         - "sum"/"mean"/"len"/"first": aggregate into a single value
+            max_list_len: cap for "index" expansion.
+
+        Returns:
+            Dict[str, float|str] (if numeric_only=False, may include strings)
+        """
+        out: Dict[str, Any] = {}
+
+        def _emit(key: str, val: Any):
+            # normalize keys a bit
+            k = key.replace(" ", "_")
+            if numeric_only:
+                try:
+                    if isinstance(val, (list, tuple)):
+                        for i, subval in enumerate(val):
+                            try:
+                                x = float(subval)
+                                if x != x:  # NaN
+                                    return
+                                out[f"{key}[{i}]"] = x
+                            except Exception:
+                                out[f"{key}[{i}]"] = str(subval)
+                    else:
+                        try:
+                            x = float(val)
+                            if x != x:  # NaN
+                                return
+                            out[key] = x
+                        except Exception:
+                            out[key] = str(val)
+                    out.setdefault(k, x)
+                except Exception:
+                    # allow some safe aggregates for lists even in numeric_only
+                    if isinstance(val, (list, tuple)) and val:
+                        nums = []
+                        for v in val:
+                            try:
+                                vv = float(v)
+                                if vv == vv:
+                                    nums.append(vv)
+                            except Exception:
+                                pass
+                        if not nums:
+                            return
+                        if list_policy == "sum":
+                            out.setdefault(k, float(sum(nums)))
+                        elif list_policy == "mean":
+                            out.setdefault(k, float(sum(nums) / len(nums)))
+                        elif list_policy == "len":
+                            out.setdefault(k, float(len(nums)))
+                        elif list_policy == "first":
+                            out.setdefault(k, float(nums[0]))
+                        elif list_policy == "index":
+                            for i, vv in enumerate(nums[:max_list_len]):
+                                out.setdefault(f"{k}[{i}]", float(vv))
+                    # else drop
+            else:
+                out.setdefault(k, val)
+
+        # Per-dimension fields
+        for dim, res in self.results.items():
+            base = f"{dim}"
+            if include_scores:
+                _emit(f"{base}{sep}score", res.score)
+            if include_weights:
+                _emit(f"{base}{sep}weight", res.weight)
+            if include_sources:
+                _emit(f"{base}{sep}source", getattr(res, "source", None))
+            if include_rationales:
+                _emit(f"{base}{sep}rationale", getattr(res, "rationale", None))
+
+            if include_attributes and getattr(res, "attributes", None):
+                for k, v in res.attributes.items():
+                    _emit(f"{base}{sep}{attr_prefix}{sep}{k}", v)
+
+            # If your ScoreResult sometimes carries `metrics` separate from `attributes`
+            if include_attributes and getattr(res, "metrics", None):
+                for k, v in res.metrics.items():
+                    # don't overwrite attr key if both exist
+                    key = f"{base}{sep}{attr_prefix}{sep}{k}"
+                    if key not in out:
+                        _emit(key, v)
+
+        # Meta block (optional)
+        if include_meta and self.meta:
+            for k, v in self.meta.items():
+                _emit(f"{meta_prefix}{sep}{k}", v)
+
+        return out

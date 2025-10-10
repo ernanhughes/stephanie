@@ -24,6 +24,7 @@ Design Principles:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -31,8 +32,12 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Core types
+from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable, ScorableFactory
+from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.services.service_protocol import Service
+
+_logger = logging.getLogger(__name__)
 
 
 class ScoringService(Service):
@@ -72,9 +77,9 @@ class ScoringService(Service):
         self.container = container
         self.logger = logger
         self.embedding_type = self.memory.embedding.name
-        self._scorers: Dict[str, Any] = {}   # name -> scorer instance
+        self._scorers: Dict[str, BaseScorer] = {}   # name -> scorer instance
 
-        # Determine which scorers to enable:
+        # Deter Hello That's Hey Cortana mine which scorers to enable:
         # 1) explicit list in cfg.enabled_scorers
         # 2) else all keys present under cfg.scorer.*
         self.enabled_scorer_names: List[str] = self._resolve_scorer_names()
@@ -82,7 +87,9 @@ class ScoringService(Service):
         # Auto-register scorers from configuration
         self.register_from_cfg(self.enabled_scorer_names)
 
-        self._log_init()
+        _logger.debug("ScoringServiceInitialized: enabled=%s registered=%s",
+            self.enabled_scorer_names, list(self._scorers.keys()))
+
 
     @property
     def name(self) -> str:
@@ -273,7 +280,7 @@ class ScoringService(Service):
         scorable: Scorable,
         context: Dict[str, Any],
         dimensions: Optional[List[str]] = None,
-    ):
+    ) -> ScoreBundle:
         """
         Call the underlying scorer and return its ScoreBundle.
         
@@ -309,7 +316,7 @@ class ScoringService(Service):
         source: Optional[str] = None,
         evaluator: Optional[str] = None,
         model_name: Optional[str] = None,
-    ):
+    ) -> ScoreBundle:
         """
         Compute and persist scores using EvaluationStore.save_bundle.
         

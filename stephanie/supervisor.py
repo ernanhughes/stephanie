@@ -16,28 +16,12 @@ from stephanie.engine.context_manager import ContextManager
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.reporting import ReportFormatter
-from stephanie.services.cbr_service import CBRService
-from stephanie.services.chat_corpus_service import ChatCorpusService
-from stephanie.services.cycle_watcher_service import CycleWatcherService
-from stephanie.services.event_service import EventService
-from stephanie.services.knowledge_base_service import KnowledgeBaseService
-from stephanie.services.knowledge_graph_service import KnowledgeGraphService
-from stephanie.services.llm_service import LLMService
-from stephanie.services.meta_confidence_service import MetaConfidenceService
 from stephanie.services.plan_trace_service import PlanTraceService
-from stephanie.services.prompt_service import PromptService
-from stephanie.services.reporting_service import (JsonlSink, LoggerSink,
-                                                  ReportingService)
+from stephanie.services.registry_loader import load_services_profile
 from stephanie.services.rules_service import RulesService
 from stephanie.services.scoring_service import ScoringService
-from stephanie.services.self_validation_service import SelfValidationService
 from stephanie.services.service_container import ServiceContainer
-from stephanie.services.state_tracker_service import StateTrackerService
-from stephanie.services.strategy_profile_service import StrategyProfileService
-from stephanie.services.training_service import TrainingService
-from stephanie.services.zeromodel import ZeroModelService
 from stephanie.utils.report_utils import get_stage_details
-from stephanie.services.registry_loader import load_services_profile
 
 
 class PipelineStage:
@@ -85,16 +69,10 @@ class Supervisor:
         })
 
     def _resolve_services_profile_path(self, cfg) -> str:
-        # Prefer hydra knob: services.profile (e.g., "services/default")
-        prof = None
-        try:
-            prof = cfg.services.profile
-        except Exception:
-            pass
+        prof = OmegaConf.select(cfg, "services.profile", default=None)
         if not prof:
-            # Fallback path
             prof = "services/default"
-        # Allow both "services/default" and "config/services/default.yaml"
+
         if prof.endswith(".yaml"):
             return prof
         return f"config/{prof}.yaml"
@@ -623,7 +601,7 @@ class Supervisor:
         context = await self._run_pipeline_stages(context)
 
         # Step 5: Generate report (optional)
-        self.generate_report(context, pipeline_run.id)
+        self.generate_report(context)
 
         self.logger.log("PipelineRerunComplete", {"run_id": run_id})
         return context

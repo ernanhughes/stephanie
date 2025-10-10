@@ -58,7 +58,12 @@ class InProcessKnowledgeBus(BusProtocol):
         self._idem_store = InMemoryIdempotencyStore()
         self._connected = False
         self._loop = asyncio.get_event_loop()
-        
+        self._qgroups: Dict[tuple, Dict[str, Any]] = {}             # (subject, group) -> {"handlers":[...], "rr":0}
+        self._groups_by_subject: Dict[str, List[str]] = {}           # subject -> [group,...]
+        self._idem_store = InMemoryIdempotencyStore()
+        self._connected = False
+        self._loop = asyncio.get_event_loop()
+
     async def connect(self) -> bool:
         """
         Connect to the in-process bus.
@@ -67,7 +72,7 @@ class InProcessKnowledgeBus(BusProtocol):
             bool: Always returns True (in-process bus is always available)
         """
         self._connected = True
-        _logger.info("Connected to in-process event bus (development mode)")
+        _logger.debug("Connected to in-process event bus (development mode)")
         return True
         
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
@@ -90,22 +95,36 @@ class InProcessKnowledgeBus(BusProtocol):
             "event_id": f"{subject}-{uuid.uuid4().hex}",
             "timestamp": time.time(),
             "subject": subject,
-            "payload": payload
+            "payload": payload,
         }
-        
-        # Deliver to all subscribers (fire and forget)
-        if subject in self._subscribers:
-            for handler in self._subscribers[subject]:
-                # Handle both async and sync handlers
-                if asyncio.iscoroutinefunction(handler):
-                    asyncio.create_task(handler(envelope["payload"]))
-                else:
-                    # Run sync handlers in thread pool
-                    asyncio.create_task(
-                        self._loop.run_in_executor(None, handler, envelope["payload"])
-                    )
+
+        # 1) broadcast to non-group subscribers
+        for handler in self._subscribers.get(subject, []):
+            if asyncio.iscoroutinefunction(handler):
+                asyncio.create_task(handler(envelope["payload"]))
+            else:
+                asyncio.create_task(self._loop.run_in_executor(None, handler, envelope["payload"]))
+
+        # 2) queue-group delivery: one handler per group (round-robin)
+        for group in self._groups_by_subject.get(subject, []):
+            key = (subject, group)
+            meta = self._qgroups.get(key)
+            if not meta or not meta["handlers"]:
+                continue
+            idx = meta["rr"] % len(meta["handlers"])
+            meta["rr"] = (meta["rr"] + 1) % max(1, len(meta["handlers"]))
+            handler = meta["handlers"][idx]
+            if asyncio.iscoroutinefunction(handler):
+                asyncio.create_task(handler(envelope["payload"]))
+            else:
+                asyncio.create_task(self._loop.run_in_executor(None, handler, envelope["payload"]))
                 
-    async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], None]) -> None:
+    async def subscribe(
+        self,
+        subject: str,
+        handler: Callable[[Dict[str, Any]], None],
+        queue_group: Optional[str] = None,      # ← add
+    ) -> None:
         """
         Subscribe to events on a subject.
         
@@ -116,12 +135,21 @@ class InProcessKnowledgeBus(BusProtocol):
         if not self._connected:
             if not await self.connect():
                 return
-                
-        if subject not in self._subscribers:
-            self._subscribers[subject] = []
-        self._subscribers[subject].append(handler)
-        _logger.debug(f"Subscribed to {subject} with {len(self._subscribers[subject])} total handlers")
-        
+
+        if queue_group:
+            key = (subject, queue_group)
+            meta = self._qgroups.setdefault(key, {"handlers": [], "rr": 0})
+            meta["handlers"].append(handler)
+            self._groups_by_subject.setdefault(subject, []).append(queue_group) \
+                if queue_group not in self._groups_by_subject.get(subject, []) else None
+            _logger.debug(f"[inproc] Subscribed to {subject} in group '{queue_group}' "
+                          f"({len(meta['handlers'])} handlers in group)")
+            return
+
+        self._subscribers.setdefault(subject, []).append(handler)
+        _logger.debug(f"[inproc] Subscribed to {subject} "
+                      f"({len(self._subscribers[subject])} non-group handlers)")
+
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         """
         Send a request and wait for a reply.
@@ -144,7 +172,7 @@ class InProcessKnowledgeBus(BusProtocol):
         """Gracefully shut down the connection."""
         self._subscribers.clear()
         self._connected = False
-        _logger.info("In-process bus disconnected")
+        _logger.debug("In-process bus disconnected")
         
     def get_backend(self) -> str:
         """Return the active backend name."""

@@ -223,7 +223,7 @@ class BeliefCartridgeBuilder(BaseAgent):
             cartridge_id=cartridge_id
         )
 
-    def _create_score_orm(self, evaluation_id, dimension, score, scorer_type, prompt_hash):
+    def _create_score_orm(self, evaluation_id, dimension, score, scorer_type, prompt_hash=None):
         """Create score ORM object with metadata"""
         return ScoreORM(
             evaluation_id=evaluation_id,

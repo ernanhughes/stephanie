@@ -1,10 +1,12 @@
 # stephanie/tools/evidence_extractor.py
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Tuple
-from collections import defaultdict, Counter
-from dataclasses import dataclass
+
 import math
 import time
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
 
 @dataclass
 class TransferEdge:

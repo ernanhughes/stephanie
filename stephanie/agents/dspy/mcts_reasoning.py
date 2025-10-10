@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 import uuid
 from collections import OrderedDict, defaultdict
 
@@ -182,6 +183,15 @@ class MCTSReasoningAgent(BaseAgent):
         self._best_so_far = (float("-inf"), None)  # (score, node)
         self.top_k = int(cfg.get("top_k_leaves", 3))
 
+        self.search_strategy_name = cfg.get("strategy_name", "mcts_v1")
+        self.domain = cfg.get("domain", "general")
+
+        self.light_cfg = None
+        self._first_emit_done = False
+        self._best_emitted = None   # (score, fragment_id)
+        self._t0 = None             # start time per run
+
+
         _logger.debug(
             "MCTSInitialized depth=%s bf=%s sims=%s ucb=%s dims=%s max_lm_calls=%s eval_at=%s stride=%s",
             self.max_depth,
@@ -214,6 +224,23 @@ class MCTSReasoningAgent(BaseAgent):
         if len(self._cache) > self.cache_size:
             self._cache.popitem(last=False)
 
+    def _ms_since_start(self):
+        import time
+        return int((time.time() - (self._t0 or time.time())) * 1000)
+
+    def _should_emit_now(self, sim_idx: int) -> bool:
+        lc = self.light_cfg
+        if not lc or not lc.enabled:
+            return False
+        # first emit condition
+        if not self._first_emit_done and sim_idx + 1 >= lc.first_emit_after_sims:
+            return True
+        # cadence
+        if (sim_idx + 1) % lc.emit_every_sims == 0:
+            return True
+        # hard deadline: if deadline approaching, force emit once
+        return (not self._first_emit_done) and (self._ms_since_start() >= lc.hard_deadline_ms)
+
     # ---------------- LM step (budget + cache) ----------------
     def _predict_next(self, state: str, trace: list[str]) -> str:
         if self.calls_used >= self.max_lm_calls:
@@ -238,6 +265,8 @@ class MCTSReasoningAgent(BaseAgent):
 
     # ---------------- main entry ----------------
     async def run(self, context: dict) -> dict:
+
+        self._t0 = time.time()
         goal_text = (context.get("goal") or {}).get("goal_text", "") or ""
         root = self._create_node(state=goal_text, trace=[], parent=None)
         self.logger.log("MCTSReasoningAgentStart", {"goal": goal_text})
@@ -252,6 +281,14 @@ class MCTSReasoningAgent(BaseAgent):
                 node = await self._expand(node, context)
 
             reward = self._evaluate(node, context)
+            # after scoring/backprop
+            if self._should_emit_now(sim):
+                # pick current best leaf
+                leaves = self._collect_leaves(root)
+                if leaves:
+                    best_leaf = max(leaves, key=lambda n: (n.score or 0.0))
+                    self._emit_lightning(context, best_leaf)
+
             # make robust if _evaluate returns None
             reward = 0.0 if reward is None else float(reward)
 
@@ -265,7 +302,7 @@ class MCTSReasoningAgent(BaseAgent):
                 self._log_progress(sim, root)
 
             # early stopping if we hit an acceptable score
-            if getattr(self, "early_stop_threshold", None) is not None and self._best_so_far[0] >= float(self.early_stop_threshold):
+            if self.early_stop_threshold is not None and self._best_so_far[0] >= float(self.early_stop_threshold):
                 self.logger.log(
                     "MCTSEarlyStop",
                     {
@@ -276,8 +313,53 @@ class MCTSReasoningAgent(BaseAgent):
                 )
                 break
 
+            if (self.light_cfg and self.light_cfg.enabled and self._first_emit_done
+                and self.calls_used >= self.light_cfg.soft_budget_calls):
+                break
+
+
         # choose best node if loop ended without updating best
         best_node = self._best_so_far[1] or (self._best_child(root, 0) if self.children[root.id] else root)
+
+        best_score = float(best_node.score or 0.0)
+        best_text  = "\n".join(best_node.trace)
+
+        promoted = False
+        if self._best_emitted:
+            emitted_score, emitted_id = self._best_emitted
+            margin = float(self.light_cfg.promote_margin if self.light_cfg else 0.0)
+            if best_score >= emitted_score + margin:
+                # write refined fragment
+                rewards_vec = getattr(best_node, "dimension_scores", {}) or {"overall_norm": best_score}
+                attrs = {
+                    "role": "refined",
+                    "strategy": self.search_strategy_name,
+                    "run_id": context.get("run_id"),
+                    "latency_ms": self._ms_since_start(),
+                    "lm_calls_used": int(self.calls_used),
+                    "score_overall": best_score,
+                    "improves_on_fragment_id": emitted_id,
+                    "improvement": best_score - emitted_score,
+                }
+                self.container["trajectory_store"].add_fragment(
+                    case_id=context.get("case_id"),
+                    source_type="paper",
+                    section=context.get("section") or "unknown",
+                    text=best_text,
+                    attrs=attrs,
+                    scores=rewards_vec,
+                    uncertainty=None,
+                )
+                promoted = True
+
+        # Log final
+        self.logger.log("LightningSummary", {
+            "first_emit_done": bool(self._first_emit_done),
+            "best_emitted": self._best_emitted,
+            "final_score": round(best_score, 3),
+            "promoted": promoted
+        })
+
 
         # Optional LM value estimator (for best node only; multi-candidate handled below)
         ve_score = None
@@ -292,14 +374,13 @@ class MCTSReasoningAgent(BaseAgent):
                 self.logger.log("MCTSValueEstimatorError", {"error": str(e)})
 
         # ---- MULTI-CANDIDATE EMISSION (top-K leaves) ----
-        top_k = int(getattr(self, "top_k", getattr(self, "top_k_leaves", 3)) or 3)
 
         leaves = self._collect_leaves(root)
         for n in leaves:
             self._ensure_scored(n, context)
 
         leaves_sorted = sorted(leaves, key=lambda n: (n.score or 0.0), reverse=True)
-        picked = leaves_sorted[: max(1, top_k)]
+        picked = leaves_sorted[: max(1, self.top_k)]
 
         scorables_out = []
         for rank, n in enumerate(picked, start=1):
@@ -424,6 +505,9 @@ class MCTSReasoningAgent(BaseAgent):
                 "completions": completions,
             },
         )
+
+
+
         return children[0] if children else node
 
     def _should_eval(self, node: MCTSReasoningNode) -> bool:
@@ -438,6 +522,7 @@ class MCTSReasoningAgent(BaseAgent):
             return 0.0
 
         text = "\n".join(node.trace)
+        rewards_vec = {}
         try:
             if text in self.score_cache:
                 score = float(self.score_cache[text] or 0.0)
@@ -453,10 +538,39 @@ class MCTSReasoningAgent(BaseAgent):
                 agg = bundle.aggregate()
                 score = float(agg if agg is not None else 0.0) / 100.0
                 self.score_cache[text] = score
+                rewards_vec = bundle.to_rewards_vector(prefix="sicql_")
         except Exception as e:
             self.logger.log("MCTSEvaluateError", {"error": str(e)})
             score = 0.0
 
+        air = 0.0
+        children = self.children.get(node.id, [])
+        if children:
+            air = sum((c.score or 0.0) for c in children) / len(children)
+        else:
+            air = node.score or 0.0
+
+        # Transition: evaluation at this node
+        self.memory.trajectory.emit_transition(
+                run_id=context.get("pipeline_run_id"),
+                step_idx=len(self.nodes),
+                agent=self.name,
+                state={
+                    "goal_preview": node.state[:200],
+                    "trace_len": len(node.trace),
+                    "strategy": self.search_strategy_name,
+                    "node_id": node.id,
+                    "event": "evaluate",
+                },
+                action={
+                    "type": "score",
+                    "name": self.scorer_name,
+                    "strategy": self.search_strategy_name,
+                    "output": {"text_len": len(text)},
+                },
+                reward_air=0.0,
+                rewards_vec=rewards_vec,
+            )
         node.score = score
         node.reward += score
         self.logger.log(
@@ -538,3 +652,51 @@ class MCTSReasoningAgent(BaseAgent):
             self.score_cache[text] = score
         node.score = score
         return score
+
+    def _emit_lightning(self, context, best_node):
+        text = "\n".join(best_node.trace)
+        # score is already on node; recompute rewards_vec from bundle if you prefer
+        rewards_vec = getattr(best_node, "dimension_scores", {}) or {"overall_norm": float(best_node.score or 0.0)}
+
+        # guard by min score
+        if self.light_cfg and rewards_vec.get("overall_norm", 0.0) < float(self.light_cfg.min_score):
+            return None
+
+        attrs = {
+            "role": "lightning",
+            "strategy": self.search_strategy_name,
+            "run_id": context.get("run_id"),
+            "latency_ms": self._ms_since_start(),
+            "lm_calls_used": int(self.calls_used),
+            "score_overall": float(rewards_vec.get("overall_norm", best_node.score or 0.0)),
+        }
+        frag = self.memory.trajectory.add_fragment(
+            case_id=context.get("case_id"),
+            source_type="paper",
+            section=context.get("section") or "unknown",
+            text=text,
+            attrs=attrs,
+            scores=rewards_vec,
+            uncertainty=None,
+        )
+
+        # transition
+        self._step_idx += 1
+        self.container["trajectory_store"].emit_transition(
+            run_id=context.get("run_id"),
+            step_idx=self._step_idx,
+            agent=self.__class__.__name__,
+            state={"event": "emit_lightning", "node_id": best_node.id, "trace_len": len(best_node.trace)},
+            action={"type": "emit", "name": "lightning", "strategy": self.search_strategy_name, "output": {"fragment_id": frag.id}},
+            reward_air=0.0,
+            rewards_vec=rewards_vec,
+        )
+
+        # track best emitted
+        score = float(rewards_vec.get("overall_norm", 0.0))
+        if not self._first_emit_done:
+            self._first_emit_done = True
+            self._best_emitted = (score, frag.id)
+        elif self._best_emitted and score > self._best_emitted[0]:
+            self._best_emitted = (score, frag.id)
+        return frag.id

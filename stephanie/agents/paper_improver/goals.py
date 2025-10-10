@@ -378,7 +378,7 @@ class GoalScorer:
             )
 
             if self.logger:
-                _logger.info("GoalTemplateCreated"
+                _logger.debug("GoalTemplateCreated"
                     f"kind: {kind}"
                     f"goal: {goal}"
                     f"dims: {dims}"
@@ -401,7 +401,7 @@ class GoalScorer:
                     if isinstance(v, (int, float)) and not isinstance(v, bool):
                         dims[k] = v
                     else:
-                        _logger.info("JudgeReturnedNonNumeric"
+                        _logger.debug("JudgeReturnedNonNumeric"
                             f"metric: {k}"
                             f"value: {v}"
                             f"type: {type(v).__name__}"
@@ -410,7 +410,7 @@ class GoalScorer:
             except Exception as e:
                 _logger.error(f"Judge execution failed: {e}")
 
-        _logger.info(
+        _logger.debug(
             "ScoringInputDims | "
             f"numeric_dims={list(dims.keys())} | "
             f"ignored_keys={[k for k in vpm_row.keys() if k not in dims]} | "
@@ -421,7 +421,7 @@ class GoalScorer:
 
         expl = tpl.explain(dims)
 
-        _logger.info("ScoringOutput "
+        _logger.debug("ScoringOutput "
             f"score={round(float(score),4)} "
             f"normalized={{{', '.join(f'{k}: {round(float(v),4)}' for k,v in expl['normalized'].items())}}} "
             f"contrib={{{', '.join(f'{k}: {round(float(v),4)}' for k,v in expl['contrib'].items())}}}"

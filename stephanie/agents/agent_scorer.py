@@ -145,7 +145,7 @@ class AgentScorerAgent(BaseAgent):
                 },
             )
 
-            _logger.info(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
+            _logger.debug(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
             return context
 
         except Exception as e:

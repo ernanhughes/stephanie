@@ -140,7 +140,7 @@ class SharpeningAgent(BaseAgent):
                     "template": entry["template"],
                     "score_improvement": entry["score_diff"],
                 },
-            )
+            ).id
 
             self.logger.log(
                 "SharpenedGoalSaved",

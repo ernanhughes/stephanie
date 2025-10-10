@@ -126,22 +126,34 @@ def _sanitize_any(obj: Any, *, max_depth: int = 100) -> Any:
         return str(obj)
 
 
-def _json_default(o: Any):
+def _json_default(obj: Any):
     """
     Default hook for json.dumps that mirrors _to_native_scalar behavior and
     gracefully stringifies unknown objects.
     """
-    converted, val = _to_native_scalar(o)
+    converted, val = _to_native_scalar(obj)
     if converted:
         return val
     # NumPy arrays to list
-    if HAS_NP and isinstance(o, np.ndarray):  # type: ignore
-        return o.tolist()
+    if HAS_NP and isinstance(obj, np.ndarray):  # type: ignore
+        return obj.tolist()
     # Dataclasses to dict
-    if dataclasses.is_dataclass(o):
-        return dataclasses.asdict(o)
+    if dataclasses.is_dataclass(obj):
+        return dataclasses.asdict(obj)
     # Fallback
-    return str(o)
+    # Ensure all keys are JSON-serializable
+    if isinstance(obj, dict):
+        return {str(k): _json_default(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_json_default(x) for x in obj]
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return str(obj)
 
 
 # -----------------------------------------------------------------------------
@@ -149,8 +161,16 @@ def _json_default(o: Any):
 # -----------------------------------------------------------------------------
 
 def dumps_safe(obj: Any, **kwargs) -> str:
-    """json.dumps with broad support (NumPy, Decimal, Enum, UUID, datetime, bytes)."""
-    return json.dumps(obj, ensure_ascii=False, default=_json_default, **kwargs)
+    """
+    json.dumps with full recursive sanitization for NumPy, Decimal, Enum, UUID,
+    datetime, and dataclasses. Handles numpy.int64 keys correctly.
+    """
+    try:
+        sanitized = _sanitize_any(obj)
+        return json.dumps(sanitized, ensure_ascii=False, default=_json_default, **kwargs)
+    except Exception as e:
+        # last-resort fallback (never crash serialization)
+        return json.dumps(str(obj), ensure_ascii=False)
 
 
 def sanitize(obj: Any) -> Any:

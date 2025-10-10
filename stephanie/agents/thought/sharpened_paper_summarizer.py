@@ -364,7 +364,7 @@ Rewrite now (one paragraph, {min_sents}-{max_sents} sentences):
         )
 
         # pairwise enhanced vs baseline
-        self.memory.training_events.add_pairwise(
+        self.memory.training_events.insert_pairwise(
             model_key=self.model_key_ranker,
             dimension="alignment",
             query_text=title,
@@ -392,7 +392,7 @@ Rewrite now (one paragraph, {min_sents}-{max_sents} sentences):
             pos = enhanced_summary if prefer_enhanced else arxiv_summary
             neg = arxiv_summary if prefer_enhanced else enhanced_summary
 
-            self.memory.training_events.add_pairwise(
+            self.memory.training_events.insert_pairwise(
                 model_key=self.model_key_ranker,
                 dimension="alignment",
                 query_text=title,

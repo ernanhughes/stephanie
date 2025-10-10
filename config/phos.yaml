@@ -1,0 +1,60 @@
+# config/compiler.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: disabled
+  - bus: nats   
+  - logging/json_logger
+  - mars/default
+  - services/default
+  - scorer: all  
+
+  - agents/embedding_normalizer
+  - agents/scorable_embedding_backfill
+  - agents/phos
+
+
+goal:
+  goal_text: >
+    Break down the question "How can AI systems become better at asking questions?"
+    into a step-by-step reasoning plan using symbolic prompts that reflect dimensions
+    like curiosity, relevance, and generalization. Each step should be explainable,
+    reusable, and scored individually.
+  goal_type: tactical
+  goal_category: meta_reasoning
+  focus_area: question_generation
+  strategy: stepwise_decomposition
+  difficulty: medium
+  expected_formats:
+    - symbolic_prompt_plan
+    - stepwise_reasoning_trace
+    - annotated_score_vector
+
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+
+embeddings:
+  backend: hnet
+
+pipeline:
+  name: phos
+  description: "Visual AI experiment: compare similar, unrelated, and opposite prompts to reveal and enhance knowledge patterns using ZeroModel visual policy maps."
+  stages:
+     - name: embedding_normalizer
+       cls: stephanie.agents.maintenance.embedding_normalizer.EmbeddingNormalizerAgent
+       enabled: false
+       iterations: 1
+     - name: scorable_embedding_backfill
+       cls: stephanie.agents.maintenance.scorable_embedding_backfill.ScorableEmbeddingBackfillAgent
+       enabled: false
+       iterations: 1
+     - name: phos
+       cls: stephanie.agents.phos.PhosAgent
+       enabled: true
+       iterations: 1

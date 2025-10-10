@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 import traceback
 import uuid
 from typing import Any, Dict
-import re
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent

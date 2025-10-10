@@ -101,7 +101,7 @@ class Domain2VecNERIntegrator:
         """
         # Find relevant domains
         relevant_domains = self.find_relevant_domains(query)
-        _logger.info("DomainEntitiesRetrieval"
+        _logger.debug("DomainEntitiesRetrieval"
             f"query: {query}"
             f"relevant_domains: {[d[0] for d in relevant_domains]}"
         )

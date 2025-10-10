@@ -1,4 +1,5 @@
 # stephanie/scoring/scorable_factory.py
+import re
 from typing import Any, Dict, List, Optional
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
@@ -203,8 +204,8 @@ class ScorableFactory:
     @staticmethod
     def from_prompt_pair(obj: PromptORM, mode: str = "prompt+response") -> Scorable:
         """Handles PromptORM with different modes (prompt_only, response_only, prompt+response, summary)."""
-        prompt = obj.prompt or ""
-        response = obj.response or ""
+        prompt = obj.prompt_text or ""
+        response = ScorableFactory._strip_think_blocks(obj.response_text) or ""
         target_type = ScorableType.PROMPT
 
         if mode == "prompt_only":
@@ -252,9 +253,9 @@ class ScorableFactory:
         return Scorable(id=str(data.get("id", "")), text=text, target_type=target_type)
 
     @staticmethod
-    def from_text(text: str, target_type: ScorableType) -> Scorable:
+    def from_text(text: str, target_type: ScorableType, meta: dict = {}) -> Scorable:
         """Convert plain text to Scorable. Supports summary truncation."""
-        return Scorable(id="", text=text, target_type=target_type)
+        return Scorable(id="", text=text, target_type=target_type, meta=meta)
 
     @staticmethod
     def from_plan_trace(trace: PlanTrace, goal_text: str, mode: str = "default", step: Optional[ExecutionStep] = None) -> Scorable:
@@ -364,3 +365,10 @@ class ScorableFactory:
             raise ValueError(f"No object found for {scorable_type} id={scorable_id}")
 
         return ScorableFactory.from_orm(orm)
+
+    @staticmethod
+    def _strip_think_blocks(text: str) -> str:
+        if not text:
+            return text
+        """Remove <think>...</think> sections from text."""
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()

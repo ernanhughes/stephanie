@@ -5,7 +5,6 @@ from string import Template
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 
@@ -41,7 +40,6 @@ class LLMScorer(BaseScorer):
 
         for dim in dimensions:
             prompt = self._render_prompt(context, scorable, dim)
-            prompt_hash = ScoreORM.compute_prompt_hash(prompt, scorable)
 
             if not self.force_rescore:
                 cached_result = self.memory.scores.get_score_by_prompt_hash(prompt_hash)

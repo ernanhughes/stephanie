@@ -78,16 +78,22 @@ class PromptStore(BaseSQLAlchemyStore):
         version: int = 1,
     ) -> int:
         def op(s):
-            
             goal_text = goal.get("goal_text", "")
             goal_type = goal.get("goal_type")
             goal_orm = self.get_or_create_goal(goal_text=goal_text, goal_type=goal_type)
 
-            # deactivate previous
-            s.query(PromptORM).filter_by(
-                agent_name=agent_name, prompt_key=prompt_key
-            ).update({"is_current": False})
+            # ---- 1️⃣ Lock existing "current" rows deterministically ----
+            existing_rows = (
+                s.query(PromptORM)
+                .filter_by(agent_name=agent_name, prompt_key=prompt_key, is_current=True)
+                .order_by(PromptORM.id)  # lock in stable order
+                .with_for_update()        # prevents concurrent modifications
+                .all()
+            )
+            for row in existing_rows:
+                row.is_current = False
 
+            # ---- 2️⃣ Insert the new record ----
             db_prompt = PromptORM(
                 goal_id=goal_orm.id,
                 pipeline_run_id=pipeline_run_id,
@@ -97,19 +103,23 @@ class PromptStore(BaseSQLAlchemyStore):
                 response_text=response,
                 strategy=strategy,
                 version=version,
+                is_current=True,
                 extra_data=json.dumps(extra_data or {}),
             )
             s.add(db_prompt)
             s.flush()
 
             if self.logger:
-                self.logger.log("PromptStored", {
-                    "id": db_prompt.id,
-                    "text": prompt_text[:30],
-                    "agent": agent_name,
-                    "length": len(prompt_text),
-                })
-            return db_prompt.id
+                self.logger.log(
+                    "PromptStored",
+                    {
+                        "id": db_prompt.id,
+                        "text": prompt_text[:30],
+                        "agent": agent_name,
+                        "length": len(prompt_text),
+                    },
+                )
+            return db_prompt
         return self._run(op)
 
     # --------------------

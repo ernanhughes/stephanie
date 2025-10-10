@@ -13,7 +13,7 @@ class RelatedAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
         self.document_type = cfg.get("document_type", "document")
         self.embedding_type = self.memory.embedding.name  # e.g., "hnet"
-        self.top_k = cfg.get("top_k", 50)
+        self.top_k = cfg.get("top_k", 10)
 
     async def run(self, context: dict) -> dict:
         goal = context.get(GOAL)
@@ -23,7 +23,7 @@ class RelatedAgent(BaseAgent):
         results = self.memory.embedding.search_related_scorables(
             query=goal_text,
             top_k=self.top_k,
-            document_type=self.document_type,
+            target_type=self.document_type,
         )
 
         # Step 2: Store results in context

@@ -6,7 +6,8 @@ import json
 import time
 from typing import Any, Dict, Iterable, List, Optional, Union
 
-from sqlalchemy import cast, func, Integer   
+from sqlalchemy import Integer, cast, func
+
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.bus_event import BusEventORM
 from stephanie.models.casebook import CaseORM
