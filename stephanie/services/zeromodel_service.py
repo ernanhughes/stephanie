@@ -223,6 +223,10 @@ class ZeroModelService(Service):
             return {"status": "noop", "reason": "no_session"}
 
         mat = sess.as_matrix()
+        if mat.size == 0 or mat.shape[0] < 2:
+            _logger.warning(f"[ZeroModelService] Empty or too small matrix for run_id={run_id}, skipping render.")
+            return {"status": "empty", "matrix": mat}
+
         _logger.debug(
             f"ZeroModelService: finalizing timeline for run_id={run_id} "
             f"with {mat.shape[0]} steps and {mat.shape[1]} metrics"
@@ -274,12 +278,12 @@ class ZeroModelService(Service):
 
 
         # ------------------------------------------------------------------
-        #  🌌 Auto-generate epistemic field (optional)
+        # 🌌 Auto-generate epistemic field (optional)
         # ------------------------------------------------------------------
         try:
             # Build small contrastive populations from the current matrix
             # Here we treat the first half as "positive" and second half as "negative"
-            if mat.shape[0] > 2:
+            if mat.size >= 4 and mat.shape[0] > 2:
                 midpoint = mat.shape[0] // 2
                 pos_mats = [mat[:midpoint, :]]
                 neg_mats = [mat[midpoint:, :]]
@@ -299,6 +303,8 @@ class ZeroModelService(Service):
                     f"[ZeroModelService] 🧠 Epistemic field auto-generated "
                     f"(ΔMass={field_meta['delta_mass']:.4f}) → {field_meta['png']}"
                 )
+            else:
+                _logger.warning(f"[ZeroModelService] Matrix too small for epistemic field generation.")
         except Exception as e:
             _logger.warning("[ZeroModelService] Epistemic field generation failed: %s", e)
 
@@ -317,12 +323,14 @@ class ZeroModelService(Service):
                 },
             )
 
-        return {"status": "ok", 
-                "matrix": mat,
-                "metric_names": sess.metrics_order,
-                **res, 
-                "meta_path": meta_path, 
-                "summary_path": summary_path}
+        return {
+            "status": "ok",
+            "matrix": mat,
+            "metric_names": sess.metrics_order,
+            **res,
+            "meta_path": meta_path,
+            "summary_path": summary_path,
+        }
 
     # ------------------------------------------------------------------ #
     # RENDER HELPERS
@@ -459,8 +467,7 @@ class ZeroModelService(Service):
         fps: int = 8,
         cmap: str = "seismic",
         aggregate: bool = False,
-        metric_names: Optional[List[str]] = None, 
-
+        metric_names: Optional[List[str]] = None,
     ) -> dict:
         """
         Generate the ZeroModel Epistemic Field — a contrastive visual intelligence map.
@@ -472,6 +479,7 @@ class ZeroModelService(Service):
         - Computes epistemic field overlap (coherence)
         - Renders static + animated representations
         """
+
         metric_names = list(metric_names or [])
         os.makedirs(output_dir, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -491,6 +499,7 @@ class ZeroModelService(Service):
             cols = min(A.shape[1], B.shape[1])
             return A[:rows, :cols], B[:rows, :cols]
 
+        # 1️⃣ Aggregate or stack
         if aggregate:
             # Mean over multiple samples (population field)
             X_pos = np.mean(np.stack(pos_matrices, axis=0), axis=0)
@@ -499,6 +508,20 @@ class ZeroModelService(Service):
             # Simple vertical stack
             X_pos = np.vstack(pos_matrices)
             X_neg = np.vstack(neg_matrices)
+
+        # --- early exit for empty or degenerate matrices ---
+        if X_pos.size == 0 or X_neg.size == 0 or X_pos.shape[0] < 2 or X_neg.shape[0] < 2:
+            _logger.warning("[ZeroModelService] Skipping epistemic field generation — insufficient data.")
+            return {
+                "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
+                "mass_pos": 0.0,
+                "mass_neg": 0.0,
+                "delta_mass": 0.0,
+                "overlap_score": 0.0,
+                "metric_names": metric_names,
+                "png": None,
+                "gif": None,
+            }
 
         # -------------------------------
         # 2️⃣ Learn canonical layout
@@ -511,7 +534,9 @@ class ZeroModelService(Service):
         # Build index mapping: old_index -> new_position (based on canonical layout)
         if layout is not None:
             flat_layout = np.ravel(layout)
-            order = np.argsort(flat_layout)[: len(metric_names)] if metric_names else np.arange(len(flat_layout))
+            order = np.argsort(flat_layout)
+            if metric_names and len(order) > len(metric_names):
+                order = order[: len(metric_names)]
             index_mapping = {orig_idx: int(new_idx) for new_idx, orig_idx in enumerate(order)}
         else:
             index_mapping = {i: i for i in range(len(metric_names or []))}
@@ -540,10 +565,7 @@ class ZeroModelService(Service):
         # Epistemic overlap (structural coherence)
         overlap = float(np.sum(np.minimum(Y_pos, Y_neg)) / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8))
 
-        _logger.debug(
-            f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, "
-            f"Δ={delta_mass:.4f}, overlap={overlap:.4f}"
-        )
+        _logger.debug(f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, Δ={delta_mass:.4f}, overlap={overlap:.4f}")
 
         # ================================================================
         # 5️⃣ Visualization — side-by-side comparison of transformation steps
@@ -739,7 +761,7 @@ class ZeroModelService(Service):
             "metric_index_mapping": index_mapping,
             "metric_names_original": metric_names,
             "metric_names_reordered": reordered_metric_names,
-            "png": png_path,
+            "png": base + ".png",
             "gif": gif_path,
             "diff_matrix": diff.tolist(),
             "metric_names": reordered_metric_names,
@@ -761,8 +783,23 @@ class ZeroModelService(Service):
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        if diff_matrix is None:
+            _logger.warning("[PhosAnalyzer] Empty diff_matrix — skipping analysis.")
+            return {"ranked_metrics": [], "top_indices": [], "top_rows": []}
+
+        # Ensure NumPy array
+        if not isinstance(diff_matrix, np.ndarray):
+            diff_matrix = np.asarray(diff_matrix, dtype=np.float32)
+
+        # Defensive shape
+        if diff_matrix.ndim < 2:
+            diff_matrix = np.expand_dims(diff_matrix, axis=0)
+
         # 1️⃣ Compute mean absolute intensity per metric (column)
         intensities = np.mean(np.abs(diff_matrix), axis=0)
+        if np.max(intensities) == 0:
+            _logger.warning("[PhosAnalyzer] Zero-intensity field — skipping plot.")
+            return {"ranked_metrics": [], "top_indices": [], "top_rows": []}
 
         # 2️⃣ Normalize to [0, 1]
         norm_intensities = intensities / np.max(intensities)
@@ -779,11 +816,11 @@ class ZeroModelService(Service):
             for rank, i in enumerate(sorted_idx, start=1)
         ]
 
-        # 4️⃣ Save results
+        # 4️⃣ Save ranked summary
         json_path = output_dir / "metric_intensity_summary.json"
         with open(json_path, "w") as f:
             json.dump(ranked_metrics, f, indent=2)
-        print(f"[PhosAnalyzer] Saved metric intensity summary → {json_path}")
+        _logger.debug(f"[PhosAnalyzer] Saved metric intensity summary → {json_path}")
 
         # 5️⃣ Plot top metrics
         top_k = 20
@@ -802,11 +839,12 @@ class ZeroModelService(Service):
 
         def extract_top_intensity_indices(diff_matrix, k: int = 5) -> list[int]:
             """
-            Return indices of top-K rows by mean absolute intensity.
+            Return indices of the top-K rows by mean absolute intensity.
 
-            Works even if diff_matrix is a Python list instead of np.ndarray.
+            Robust to both NumPy arrays and Python lists.
+            Handles empty, 1D, or malformed inputs gracefully.
             """
-            # Ensure NumPy array
+            # ✅ Ensure NumPy array
             if diff_matrix is None:
                 return []
             if not isinstance(diff_matrix, np.ndarray):
@@ -815,18 +853,24 @@ class ZeroModelService(Service):
                 except Exception:
                     return []
 
-            # Handle empty / degenerate input
-            if diff_matrix.size == 0 or diff_matrix.ndim < 2:
+            # ✅ Defensive: ensure 2D
+            if diff_matrix.size == 0:
                 return []
+            if diff_matrix.ndim < 2:
+                diff_matrix = np.expand_dims(diff_matrix, axis=0)
 
-            # Compute mean absolute intensity per row
+            # ✅ Compute mean absolute intensity per row
             intensities = np.mean(np.abs(diff_matrix), axis=1)
 
-            # Defensive handling if fewer rows than K
+            # ✅ Handle fewer rows than K
             k = min(k, len(intensities))
+            if k == 0:
+                return []
 
-            # Sort descending
+            # ✅ Sort descending by intensity
             top_idx = np.argsort(intensities)[::-1][:k]
+
+            # ✅ Return as plain list of ints
             return top_idx.tolist()
 
         # --- 🔦 NEW: capture top-intensity rows
@@ -848,14 +892,12 @@ class ZeroModelService(Service):
         # Optional: quick-dump to JSON for inspection
         top_path = output_dir / "top_intensity_rows.json"
         with open(top_path, "w") as f:
-            json.dump({"top_indices": top_idx, "top_rows": top_rows}, f, indent=2)
+            json.dump({"top_indices": top_idx.tolist(), "top_rows": top_rows}, f, indent=2)
+        _logger.debug(f"[PhosAnalyzer] Extracted top-{k} intensity rows → {top_path}")
 
-        _logger.debug(f"[PhosAnalyzer] Extracted top-{top_k} intensity rows → {top_path}")
-
-        # Return both ranked metrics and top rows
         return {
             "ranked_metrics": ranked_metrics,
-            "top_indices": top_idx,
+            "top_indices": top_idx.tolist(),
             "top_rows": top_rows,
         }
 
