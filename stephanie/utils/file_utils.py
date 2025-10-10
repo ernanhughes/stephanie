@@ -15,7 +15,7 @@ def save_to_timestamped_file(data, file_prefix:str = "config", file_extension: s
     filepath = os.path.join(output_dir, timestamped_name)
     with open(filepath, "w", encoding="utf-8") as f:  
         f.write(data)
-    _logger.info(f"🔧 Saved config to {filepath}")
+    _logger.debug(f"🔧 Saved config to {filepath}")
     return filepath
 
 
@@ -34,9 +34,9 @@ def write_text_to_file(path: str, text: str):
     try:
         with open(path, "w", encoding="utf-8") as file:
             file.write(text)
-        print(f"✅ Successfully wrote to {path}")
+        _logger.debug(f"✅ Successfully wrote to {path}")
     except Exception as e:
-        print(f"❌ Failed to write to {path}: {e}")
+        _logger.error(f"❌ Failed to write to {path}: {e}")
 
 
 def save_json(data, path: str):
@@ -46,9 +46,9 @@ def save_json(data, path: str):
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-        print(f"✅ Successfully saved JSON to {path}")
+        _logger.debug(f"✅ Successfully saved JSON to {path}")
     except Exception as e:
-        print(f"❌ Failed to save JSON to {path}: {e}")
+        _logger.error(f"❌ Failed to save JSON to {path}: {e}")
 
 
 def load_json(path: str):
@@ -58,13 +58,13 @@ def load_json(path: str):
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        print(f"✅ Successfully loaded JSON from {path}")
+        _logger.debug(f"✅ Successfully loaded JSON from {path}")
         return data
     except FileNotFoundError:
-        print(f"❌ File not found: {path}")
+        _logger.error(f"❌ File not found: {path}")
         return None
     except json.JSONDecodeError as e:
-        print(f"❌ Failed to decode JSON from {path}: {e}")
+        _logger.error(f"❌ Failed to decode JSON from {path}: {e}")
         return None
 
 

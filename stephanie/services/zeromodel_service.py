@@ -103,7 +103,7 @@ class ZeroModelService(Service):
         self._evt = EventService(self.cfg, self.memory, self.logger)
         self._evt.initialize()
         self._initialized = True
-        _logger.info("ZeroModelService initialized")
+        _logger.debug("ZeroModelService initialized")
 
     def health_check(self) -> Dict[str, Any]:
         return {
@@ -122,7 +122,7 @@ class ZeroModelService(Service):
         self._bus_bindings.clear()
         self._pipeline = None
         self._initialized = False
-        _logger.info("ZeroModelService shutdown")
+        _logger.debug("ZeroModelService shutdown")
 
     @property
     def name(self) -> str:
@@ -152,7 +152,7 @@ class ZeroModelService(Service):
             metrics_order=list(metrics) if metrics else [],  # store if caller passed explicit order
             out_dir=odir,
         )
-        _logger.info(f"Timeline opened for run_id={run_id}")
+        _logger.debug(f"Timeline opened for run_id={run_id}")
 
     def timeline_append_row(
         self,
@@ -182,7 +182,7 @@ class ZeroModelService(Service):
         # 2️⃣ Initialize metrics_order if missing or dummy
         if not sess.metrics_order or sess.metrics_order == []:
             sess.metrics_order = list(metrics_columns)
-            _logger.info(f"[ZeroModelService] Metric order initialized → {sess.metrics_order}")
+            _logger.debug(f"[ZeroModelService] Metric order initialized → {sess.metrics_order}")
         if len(metrics_columns) != len(sess.metrics_order):
             _logger.warning(
                 """[ZeroModelService] Mismatched metrics length for run_id=%s: 
@@ -223,7 +223,7 @@ class ZeroModelService(Service):
             return {"status": "noop", "reason": "no_session"}
 
         mat = sess.as_matrix()
-        _logger.info(
+        _logger.debug(
             f"ZeroModelService: finalizing timeline for run_id={run_id} "
             f"with {mat.shape[0]} steps and {mat.shape[1]} metrics"
         )
@@ -270,7 +270,7 @@ class ZeroModelService(Service):
             label="timeline",
             timestamp=timestamp,
         )
-        _logger.info(f"ZeroModelService: summary image saved → {summary_path}")
+        _logger.debug(f"ZeroModelService: summary image saved → {summary_path}")
 
 
         # ------------------------------------------------------------------
@@ -295,7 +295,7 @@ class ZeroModelService(Service):
                     output_dir=os.path.join(run_dir, "epistemic_fields"),
                     metric_names=metric_names,
                 )
-                _logger.info(
+                _logger.debug(
                     f"[ZeroModelService] 🧠 Epistemic field auto-generated "
                     f"(ΔMass={field_meta['delta_mass']:.4f}) → {field_meta['png']}"
                 )
@@ -318,7 +318,8 @@ class ZeroModelService(Service):
             )
 
         return {"status": "ok", 
-                "matrix": mat, 
+                "matrix": mat,
+                "metric_names": sess.metrics_order,
                 **res, 
                 "meta_path": meta_path, 
                 "summary_path": summary_path}
@@ -360,7 +361,7 @@ class ZeroModelService(Service):
             )
 
         gif.save_gif(out_path, fps=fps)
-        _logger.info(f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}")
+        _logger.debug(f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}")
 
         return {"output_path": out_path, "frames": len(gif.frames), "shape": list(matrix.shape)}
 
@@ -401,7 +402,7 @@ class ZeroModelService(Service):
             plt.savefig(png_path, dpi=150)
             plt.close(fig)
 
-            _logger.info(f"ZeroModelService: static VPM summary saved → {png_path}")
+            _logger.debug(f"ZeroModelService: static VPM summary saved → {png_path}")
             return png_path
         except Exception as e:
             _logger.error(f"render_static_summary failed: {e}")
@@ -435,7 +436,7 @@ class ZeroModelService(Service):
                 order = order[::-1]
 
             sorted_matrix = matrix[order]
-            _logger.info(
+            _logger.debug(
                 f"Matrix sorted by first index "
                 f"(min={col0.min():.4f}, max={col0.max():.4f}, rows={matrix.shape[0]})"
             )
@@ -539,7 +540,7 @@ class ZeroModelService(Service):
         # Epistemic overlap (structural coherence)
         overlap = float(np.sum(np.minimum(Y_pos, Y_neg)) / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8))
 
-        _logger.info(
+        _logger.debug(
             f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, "
             f"Δ={delta_mass:.4f}, overlap={overlap:.4f}"
         )
@@ -592,7 +593,7 @@ class ZeroModelService(Service):
                 plt.close(fig)
 
             gif_logger.save_gif(gif_path, fps=1)
-            _logger.info(f"Transformation GIF saved → {gif_path}")
+            _logger.debug(f"Transformation GIF saved → {gif_path}")
 
         reordered_metric_names = []
         if metric_names:
@@ -605,7 +606,7 @@ class ZeroModelService(Service):
         else:
             reordered_metric_names = [f"metric_{i}" for i in range(diff.shape[1])]
 
-        _logger.info(f"[ZeroModelService] Metric reordering preserved {len(reordered_metric_names)} names")
+        _logger.debug(f"[ZeroModelService] Metric reordering preserved {len(reordered_metric_names)} names")
 
         # ================================================================
         # 8️⃣ Subfield Extraction — Q-field, Energy-field, Overlay
@@ -659,7 +660,7 @@ class ZeroModelService(Service):
                 q_field_norm.flatten(), e_field_norm.flatten()
             )[0, 1]) if q_field_norm.size and e_field_norm.size else None
 
-            _logger.info(
+            _logger.debug(
                 f"[ZeroModelService] Subfields saved → Q:{bool(q_path)} | E:{bool(e_path)} | "
                 f"Overlay:{bool(o_path)} | Corr(Q,E)={corr}"
             )
@@ -690,7 +691,7 @@ class ZeroModelService(Service):
         comparison_path = _make_visual_grid(images, titles, base)
         transition_gif_path = base + "_transform.gif"
         _make_transition_gif(images, titles, transition_gif_path)
-        _logger.info(f"Epistemic field visual comparison saved → {comparison_path}")
+        _logger.debug(f"Epistemic field visual comparison saved → {comparison_path}")
 
 
         # -------------------------------
@@ -749,7 +750,7 @@ class ZeroModelService(Service):
         with open(meta_path, "w", encoding="utf-8") as f:
             f.write(text)
 
-        _logger.info(f"Epistemic field saved → {meta_path}")
+        _logger.debug(f"Epistemic field saved → {meta_path}")
         return meta
 
 
@@ -798,4 +799,64 @@ class ZeroModelService(Service):
         plt.savefig(output_dir / "metric_intensity_plot.png", dpi=200)
         plt.close()
 
-        return ranked_metrics
+
+        def extract_top_intensity_indices(diff_matrix, k: int = 5) -> list[int]:
+            """
+            Return indices of top-K rows by mean absolute intensity.
+
+            Works even if diff_matrix is a Python list instead of np.ndarray.
+            """
+            # Ensure NumPy array
+            if diff_matrix is None:
+                return []
+            if not isinstance(diff_matrix, np.ndarray):
+                try:
+                    diff_matrix = np.asarray(diff_matrix, dtype=np.float32)
+                except Exception:
+                    return []
+
+            # Handle empty / degenerate input
+            if diff_matrix.size == 0 or diff_matrix.ndim < 2:
+                return []
+
+            # Compute mean absolute intensity per row
+            intensities = np.mean(np.abs(diff_matrix), axis=1)
+
+            # Defensive handling if fewer rows than K
+            k = min(k, len(intensities))
+
+            # Sort descending
+            top_idx = np.argsort(intensities)[::-1][:k]
+            return top_idx.tolist()
+
+        # --- 🔦 NEW: capture top-intensity rows
+        top_k = 5
+        top_idx = extract_top_intensity_indices(diff_matrix, k=top_k)
+
+        # Ensure it's a NumPy array
+        if not isinstance(diff_matrix, np.ndarray):
+            diff_matrix = np.asarray(diff_matrix, dtype=np.float32)
+
+        # Defensive: ensure 2D shape
+        if diff_matrix.ndim < 2:
+            diff_matrix = np.expand_dims(diff_matrix, axis=0)
+
+        # Use fancy indexing safely
+        top_rows = diff_matrix[top_idx, :].tolist() if len(top_idx) > 0 else []
+
+
+        # Optional: quick-dump to JSON for inspection
+        top_path = output_dir / "top_intensity_rows.json"
+        with open(top_path, "w") as f:
+            json.dump({"top_indices": top_idx, "top_rows": top_rows}, f, indent=2)
+
+        _logger.debug(f"[PhosAnalyzer] Extracted top-{top_k} intensity rows → {top_path}")
+
+        # Return both ranked metrics and top rows
+        return {
+            "ranked_metrics": ranked_metrics,
+            "top_indices": top_idx,
+            "top_rows": top_rows,
+        }
+
+

@@ -85,7 +85,7 @@ class PromptService(Service):
         async with self._semaphore:
             self._active_requests += 1
             try:
-                _logger.info(f"Running direct prompt (active={self._active_requests})")
+                _logger.debug(f"Running direct prompt (active={self._active_requests})")
                 result_ctx = await asyncio.wait_for(
                     self.prompt_runner.run(context),
                     timeout=request_timeout,
@@ -112,11 +112,11 @@ class PromptService(Service):
     def shutdown(self) -> None:
         if hasattr(self.prompt_runner, "executor"):
             self.prompt_runner.executor.shutdown(wait=False)
-        _logger.info("PromptServiceDirect shutdown complete")
+        _logger.debug("PromptServiceDirect shutdown complete")
 
     # === Service Protocol ===
     def initialize(self, **kwargs) -> None:
-        _logger.info("PromptService initialized and subscribed to bus")
+        _logger.debug("PromptService initialized and subscribed to bus")
 
 
     @property

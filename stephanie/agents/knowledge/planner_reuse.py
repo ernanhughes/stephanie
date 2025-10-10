@@ -148,7 +148,7 @@ class PlannerReuseAgent(BaseAgent):
             goal_text = self.memory.plan_traces.get_goal_text(cand.id)
             if pt:
                 score = bundle.get("results", {}).get("rank_score", {}).get("score", 0)
-                _logger.info(f"Selected example trace {pt.trace_id} with rank score {score}")
+                _logger.debug(f"Selected example trace {pt.trace_id} with rank score {score}")
                 example = {
                     "trace_id": pt.trace_id,
                     "goal": goal_text,

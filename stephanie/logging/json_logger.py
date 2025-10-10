@@ -103,19 +103,25 @@ class JSONLogger:
 
     # ---------- Back-compat structured event API ----------
 
-    def log(self, event_type: str, data: dict):
+    def log(self, event_type: str, data: dict | None = None):
         """
         Structured event (default INFO).
         Keeps your existing call sites intact: self.logger.log("PlannerReuseGenerated", {...})
         """
-        self._logger.info("", extra={"event_type": event_type, "data": data})
-
-    # ---------- Level helpers (message + optional structured extra) ----------
+        # 🚫 Skip empty logs
+        if not data:
+            return
+        self._logger.debug("", extra={"event_type": event_type, "data": data})
 
     def info(self, message: str, extra: dict | None = None):
-        self._logger.info(message, extra={"event_type": "info", "data": extra or {}})
+        # 🚫 Skip empty info calls
+        if not message and not extra:
+            return
+        self._logger.debug(message, extra={"event_type": "info", "data": extra or {}})
 
     def warning(self, message: str, extra: dict | None = None):
+        if not message and not extra:
+            return
         self._logger.warning(message, extra={"event_type": "warning", "data": extra or {}})
 
     def error(self, message: str, extra: dict | None = None):

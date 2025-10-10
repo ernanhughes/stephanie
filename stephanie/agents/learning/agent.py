@@ -81,7 +81,7 @@ class LearningFromLearningAgent(BaseAgent):
                     if hasattr(self.summarizer, 'health_status'):
                         health = self.summarizer.health_status()
                         if health.get("in_flight", 0) > 0:
-                            _logger.info(f"Prompt service status: {health}")
+                            _logger.debug(f"Prompt service status: {health}")
                 except Exception as e:
                     _logger.error(f"Health monitoring error: {str(e)}", exc_info=True)
                 

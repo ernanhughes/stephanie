@@ -55,6 +55,7 @@ class PhosAgent(BaseAgent):
         self.run_id = 0
         self._goal_text = ""
         self._published_nodes = set()  # to avoid duplicates
+        self.metric_names = []
 
         self.emit_cb = EmitBroadcaster(
             self._emit_to_logger, self._timeline_sink
@@ -92,8 +93,8 @@ class PhosAgent(BaseAgent):
             self.memory.embedding.search_scorables_in_similarity_band(
                 goal_text,
                 ScorableType.RESPONSE,
-                lower=-9,
-                upper=-50,
+                lower=0.25,
+                upper=0.75,
                 top_k=300,
             )
         )
@@ -168,8 +169,10 @@ class PhosAgent(BaseAgent):
             )
             updated += 1
             ids.append(embedding_id)
-        _logger.info(
-            f"Embedding backfill complete: {skipped} skipped, {updated} added."
+        _logger.debug(
+            "Embedding backfill complete: %s skipped, %s added.",
+            skipped,
+            updated,
         )
         return ids
 
@@ -193,26 +196,6 @@ class PhosAgent(BaseAgent):
             for r in rows
         ]
 
-    async def _render_vpms(
-        self, datasets: Dict[str, List[Dict]]
-    ) -> Dict[str, np.ndarray]:
-        vpms = {}
-        for label, data in datasets.items():
-            metrics = []
-            score = {}
-            for i, row in enumerate(data):  # sample limit
-                score = self.scorer.score(row["goal"], row["response"])
-
-                metrics.append([i] + list(score.values()))
-            matrix = np.array(metrics)
-            self.zm.render_timeline_from_matrix(
-                matrix=matrix,
-                out_path=f"vpm_phos_{label}.gif",
-                metric_names=["id"] + list(score.keys()),
-            )
-            vpms[label] = matrix
-        return vpms
-
     def _analyze_vpms(self, vpms: Dict[str, Any]):
         """Run contrastive analysis on actual matrices returned by timeline_finalize."""
         good = vpms.get("good", {})
@@ -234,14 +217,17 @@ class PhosAgent(BaseAgent):
                 neg_matrices=[bad_mat],
                 output_dir=str(output_dir / "good_vs_bad"),
                 aggregate=True,
+                metric_names=self.metric_names,
             )
             results["good_vs_bad"] = meta
-            _logger.info(
-                f"ΔMass={meta['delta_mass']:.4f}, Overlap={meta['overlap_score']:.4f}"
+            _logger.debug(
+                "ΔMass=%s, Overlap=%s",
+                meta["delta_mass"],
+                meta["overlap_score"],
             )
             # 🧠 Analyze the differential field
             diff_matrix = meta.get("diff_matrix")
-            metric_names = meta.get("metric_names", [])
+            metric_names = meta.get("metric_names_reordered", [])
             ranked_metrics = self.zm.analyze_differential_field(
                 diff_matrix, metric_names, output_dir / "good_vs_bad"
             )
@@ -255,8 +241,10 @@ class PhosAgent(BaseAgent):
                 aggregate=True,
             )
             results["good_vs_mixed"] = meta
-            _logger.info(
-                f"ΔMass={meta['delta_mass']:.4f}, Overlap={meta['overlap_score']:.4f}"
+            _logger.debug(
+                "ΔMass=%s, Overlap=%s",
+                meta["delta_mass"],
+                meta["overlap_score"],
             )
 
         return results
@@ -319,7 +307,7 @@ class PhosAgent(BaseAgent):
         try:
             await self._timeline_sink("node", node)
         except Exception as e:
-            _logger.warning("[PhosAgent] Emit failed (%s): %s", label, e)
+            _logger.error("[PhosAgent] Emit failed (%s): %s", label, e)
 
         return node
 
@@ -342,7 +330,8 @@ class PhosAgent(BaseAgent):
             # ✅ Guard against empty or invalid bands early
             if not scorables:
                 _logger.warning(
-                    "[PhosAgent] ⚠️ No scorables found for %s, skipping band.", label
+                    "[PhosAgent] ⚠️ No scorables found for %s, skipping band.",
+                    label
                 )
                 continue
 
@@ -357,11 +346,13 @@ class PhosAgent(BaseAgent):
             # 1️⃣ Open a fresh timeline stream
             try:
                 self.zm.timeline_open(run_id=run_id)
-                _logger.info(
-                    f"Timeline opened for {label} ({total} scorables)"
+                _logger.debug(
+                    "Timeline opened for %s (%s scorables)", label, total
                 )
             except Exception as e:
-                _logger.warning("[PhosAgent] Timeline open failed (%s): %s", label, e)
+                _logger.warning(
+                    "[PhosAgent] Timeline open failed (%s): %s", label, e
+                )
 
             # 2️⃣ Process each scorable with visible progress bar
             with tqdm(
@@ -380,18 +371,20 @@ class PhosAgent(BaseAgent):
                     # Structured progress event for dashboards / metrics
                     if idx % 10 == 0 or idx == total - 1:
                         progress_ratio = (idx + 1) / total
-                        _logger.info(
-                            json.dumps(
-                                {
-                                    "event": "PhosProgress",
-                                    "label": label,
-                                    "run_id": self.run_id,
-                                    "completed": idx + 1,
-                                    "total": total,
-                                    "percent": round(progress_ratio * 100, 1),
-                                }
-                            )
+                        info = json.dumps(
+                            {
+                                "event": "PhosProgress",
+                                "label": label,
+                                "run_id": self.run_id,
+                                "completed": idx + 1,
+                                "total": total,
+                                "percent": round(progress_ratio * 100, 1),
+                            }
                         )
+                        if info:
+                            _logger.debug(
+                                "[PhosAgent] Progress update: %s", info
+                            )
                     await asyncio.sleep(
                         0.01
                     )  # small delay for event sequencing
@@ -407,14 +400,18 @@ class PhosAgent(BaseAgent):
                     final_res
                     and isinstance(final_res, dict)
                     and final_res.get("matrix") is not None
-                ): 
+                ):
                     results[label] = final_res
-                    _logger.info(
-                        "[PhosAgent] ✅ Timeline closed for %s → %s", label, out_path
+                    self.metric_names = final_res.get("metric_names", [])
+                    _logger.debug(
+                        "[PhosAgent] ✅ Timeline closed for %s → %s",
+                        label,
+                        out_path,
                     )
                 else:
                     _logger.warning(
-                        "[PhosAgent] ⚠️ No valid matrix for %s, skipping analysis.", label
+                        "[PhosAgent] ⚠️ No valid matrix for %s, skipping analysis.",
+                        label,
                     )
             except Exception as e:
                 _logger.warning(
@@ -440,8 +437,8 @@ class PhosAgent(BaseAgent):
 
                 vector = payload.get("vector", {})
                 metrics_columns = list(vector.keys())
-                metrics_values = list(vector.values())
                 if len(metrics_columns):
+                    metrics_values = list(vector.values())
                     self.zm.timeline_append_row(
                         run_id=run_id,
                         metrics_columns=metrics_columns,

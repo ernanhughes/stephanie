@@ -78,7 +78,7 @@ class EpistemicMetrics:
     
     def _log_significant_gap(self, gap_info: dict) -> None:
         """Handle logging for significant epistemic gaps"""
-        _logger.info(
+        _logger.debug(
             f"High epistemic uncertainty detected in {gap_info['dimension']} "
             f"(ID: {gap_info['document_id']}): {gap_info['uncertainty']:.2f}\n"
             f"LLM score: {gap_info['llm_score']:.2f}, "

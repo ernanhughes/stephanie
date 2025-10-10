@@ -1297,7 +1297,7 @@ Verified summary:
         rels = knowledge_tree.get("relationships", []) or []
         if self.strategy:
             threshold = self.strategy.verification_threshold
-            _logger.info(f"Using strategy threshold: {threshold}")
+            _logger.debug(f"Using strategy threshold: {threshold}")
         else:
             threshold = self.verification_threshold
         strong = [

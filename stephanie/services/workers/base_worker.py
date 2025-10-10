@@ -81,14 +81,14 @@ class BaseWorker:
         try:
             await self.memory.ensure_bus_connected()
         except Exception as e:
-            _logger.info("WorkerBusConnectFailed: name=%s, error=%s", self.name, str(e))
+            _logger.debug("WorkerBusConnectFailed: name=%s, error=%s", self.name, str(e))
 
         # 2) subclass registers subjects
         await self.register_subjects()
 
         # 3) start health loop
         self._health_task = asyncio.create_task(self._health_loop())
-        _logger.info("WorkerStarted: name=%s, subs=%s", self.name, list(self._subscriptions.keys()))
+        _logger.debug("WorkerStarted: name=%s, subs=%s", self.name, list(self._subscriptions.keys()))
 
     async def stop(self) -> None:
         if not self._started:
@@ -99,7 +99,7 @@ class BaseWorker:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._health_task
         self._started = False
-        _logger.info("WorkerStopped: name=%s", self.name)
+        _logger.debug("WorkerStopped: name=%s", self.name)
 
     # ---------------------- subclass extension points ---------------------- #
 
@@ -146,7 +146,7 @@ class BaseWorker:
         try:
             await self.memory.bus.publish(subject=subject, payload=payload)
         except Exception as e:
-            _logger.info("WorkerPublishError: name=%s, subject=%s, error=%s", self.name, subject, str(e))
+            _logger.debug("WorkerPublishError: name=%s, subject=%s, error=%s", self.name, subject, str(e))
             raise
 
     # --------------------------- internals --------------------------- #
@@ -157,17 +157,17 @@ class BaseWorker:
             await self.memory.bus.subscribe(subject, self._wrap_handler(handler))
             self._sub_retry_counts[subject] = 0
             self._stats["subscriptions"] += 1
-            _logger.info("WorkerSubscribed: name=%s, subject=%s", self.name, subject)
+            _logger.debug("WorkerSubscribed: name=%s, subject=%s", self.name, subject)
         except Exception as e:
             i += 1
             self._sub_retry_counts[subject] = i
             if i <= self.max_retries:
                 delay = self.retry_base * (2 ** (i - 1))
-                _logger.info("WorkerSubscribeRetry: name=%s, subject=%s, retry=%d, delay_sec=%d, error=%s", self.name, subject, i, delay, str(e))
+                _logger.debug("WorkerSubscribeRetry: name=%s, subject=%s, retry=%d, delay_sec=%d, error=%s", self.name, subject, i, delay, str(e))
                 await asyncio.sleep(delay)
                 await self._subscribe_with_retry(subject, handler)
             else:
-                _logger.info("WorkerSubscribeFailed: name=%s, subject=%s, error=%s", self.name, subject, str(e))
+                _logger.debug("WorkerSubscribeFailed: name=%s, subject=%s, error=%s", self.name, subject, str(e))
 
     def _wrap_handler(self, handler: Handler) -> Handler:
         async def wrapped(payload: Dict[str, Any]):
@@ -176,7 +176,7 @@ class BaseWorker:
                 await handler(payload)
             except Exception as e:
                 self._stats["messages_err"] += 1
-                _logger.info("WorkerHandlerError name=%s, error=%s", self.name, str(e))
+                _logger.debug("WorkerHandlerError name=%s, error=%s", self.name, str(e))
         return wrapped
 
     async def _health_loop(self):
@@ -196,10 +196,10 @@ class BaseWorker:
                     "stats": dict(self._stats),
                     "ts": time.time(),
                 }
-                _logger.info("WorkerHealth: name=%s", self.name)
+                _logger.debug("WorkerHealth: name=%s", self.name)
                 self._stats["last_health_ok"] = time.time()
             except Exception as e:
-                _logger.info("WorkerHealthError: name=%s, error=%s", self.name, str(e))
+                _logger.debug("WorkerHealthError: name=%s, error=%s", self.name, str(e))
             await asyncio.sleep(self.health_interval)
 
     def _log(self, event: str, data: Dict[str, Any]):

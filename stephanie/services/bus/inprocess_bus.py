@@ -72,7 +72,7 @@ class InProcessKnowledgeBus(BusProtocol):
             bool: Always returns True (in-process bus is always available)
         """
         self._connected = True
-        _logger.info("Connected to in-process event bus (development mode)")
+        _logger.debug("Connected to in-process event bus (development mode)")
         return True
         
     async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
@@ -172,7 +172,7 @@ class InProcessKnowledgeBus(BusProtocol):
         """Gracefully shut down the connection."""
         self._subscribers.clear()
         self._connected = False
-        _logger.info("In-process bus disconnected")
+        _logger.debug("In-process bus disconnected")
         
     def get_backend(self) -> str:
         """Return the active backend name."""

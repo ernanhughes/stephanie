@@ -135,7 +135,7 @@ class CorpusRetriever:
             res = self.chat_corpus(section_text, **tool_kwargs)
         except TypeError:
             # Old tool signature, retry without unsupported kwargs
-            _logger.info("chat_corpus tool does not support filters/corpus_id; falling back to local filtering.")
+            _logger.debug("chat_corpus tool does not support filters/corpus_id; falling back to local filtering.")
             tool_kwargs.pop("filters", None)
             tool_kwargs.pop("corpus_id", None)
             res = self.chat_corpus(section_text, **tool_kwargs)

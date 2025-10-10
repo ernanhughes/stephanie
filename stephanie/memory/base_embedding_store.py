@@ -131,6 +131,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
 
         # Not found → create
         embedding = self.embed_fn(text, self.cfg)
+        embedding = _normalize_vector(embedding)
         embedding_id = None
         try:
             with self.conn.cursor() as cur:
@@ -591,7 +592,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
             r["score"] = r["combined_score"]
             all_results.append(r)
 
-        _logger.info(f"Combined {len(semantic)} semantic + {len(ner)} NER results → {len(all_results)} total")
+        _logger.debug(f"Combined {len(semantic)} semantic + {len(ner)} NER results → {len(all_results)} total")
         self.logger.log("CombinedSearchResults", {"event": "combine_sizes", "sem_raw": len(semantic), "ner_raw": len(ner)})
         return sorted(all_results, key=lambda x: x["combined_score"], reverse=True)
 
@@ -910,3 +911,13 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                 "upper": upper
             })
             return []
+
+def _normalize_vector(vec):
+    """Return a safely normalized numpy vector without mutating DB storage."""
+    if vec is None:
+        return vec
+    arr = np.asarray(vec, dtype=np.float32)
+    norm = np.linalg.norm(arr)
+    if norm > 2.0 or norm < 0.5:  # only normalize if clearly off-scale
+        arr = arr / (norm + 1e-8)
+    return arr.tolist()

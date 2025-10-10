@@ -100,7 +100,7 @@ class EntityDetector:
                 aggregation_strategy="simple",
                 device=0 if device == "cuda" else -1,
             )
-            _logger.info("Initialized NER pipeline with dslim/bert-base-NER")
+            _logger.debug("Initialized NER pipeline with dslim/bert-base-NER")
         except Exception as e:
             _logger.error(f"Failed to init NER pipeline: {e}")
             self.ner_pipeline = None
@@ -230,7 +230,7 @@ class NERRetrieverEmbedder:
         self._kv = self._attach_kv_cache()
         self._kv_ttl_sec = self.cfg.get("ner_kv_ttl_sec", 3600)  # default 1h
 
-        _logger.info(
+        _logger.debug(
             f"NER Retriever initialized with {model_name} "
             f"layer {layer}, projection_enabled={projection_enabled}"
         )
@@ -335,7 +335,7 @@ class NERRetrieverEmbedder:
 
             # Validate/adjust layer index
             if self.layer >= available_layers:
-                _logger.info(
+                _logger.debug(
                     f"NERLayerAdjusted requested: {self.layer}"
                     f" available: {available_layers - 1}, "
                     f" using: {available_layers - 1}"
@@ -1448,7 +1448,7 @@ class NERRetrieverEmbedder:
             self.logger.info(f"Epoch {epoch + 1}: avg loss {avg_loss:.4f}")
 
         self.projection.eval()
-        _logger.info("Projection network training completed")
+        _logger.debug("Projection network training completed")
 
     def _embed_text_for_training(self, text: str) -> torch.Tensor:
         """Embed text using mid-layer representation for training"""
@@ -1508,7 +1508,7 @@ class NERRetrieverEmbedder:
             if self.layer is None:
                 self.layer = available_layers // 2  # middle layer default
             elif self.layer >= available_layers:
-                _logger.info(
+                _logger.debug(
                     "NERLayerAdjusted"
                     f"requested: {self.layer}"
                     f"available: {available_layers - 1}"

@@ -29,7 +29,7 @@ class DPOPairGeneratorAgent(BaseAgent):
         self.output_dir = Path(cfg.get("dpo_output_dir", "data/dpo_pairs"))
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        _logger.info(
+        _logger.debug(
             "DPOPairGeneratorAgent initialized | "
             f"output_dir={self.output_dir} | "
             f"min_improvement_score={self.min_improvement_score} | "

@@ -77,7 +77,7 @@ class HybridKnowledgeBus(BusProtocol):
             self._bus = None
             self._backend = "none"
             self._idem_store = None
-            _logger.info("Hybrid bus disabled by config; continuing without bus.")
+            _logger.debug("Hybrid bus disabled by config; continuing without bus.")
             return True  # disabled is not an error
 
         if self._bus is not None:
@@ -98,7 +98,7 @@ class HybridKnowledgeBus(BusProtocol):
                     self._bus = nats_bus
                     self._backend = "nats"
                     self._idem_store = getattr(nats_bus, "idempotency_store", None)
-                    _logger.info("Connected to NATS JetStream bus")
+                    _logger.debug("Connected to NATS JetStream bus")
                     return True
             except asyncio.TimeoutError:
                 _logger.warning("NATS connection timed out (<= %ds).", timeout)
@@ -116,7 +116,7 @@ class HybridKnowledgeBus(BusProtocol):
                     self._bus = inproc
                     self._backend = "inproc"
                     self._idem_store = getattr(inproc, "idempotency_store", None)
-                    _logger.info("Connected to in-process event bus (fallback).")
+                    _logger.debug("Connected to in-process event bus (fallback).")
                     return True
             except asyncio.TimeoutError:
                 _logger.warning("InProcessBus connect timed out (<= %ds).", timeout)
@@ -265,7 +265,7 @@ class HybridKnowledgeBus(BusProtocol):
         if self._bus:
             try:
                 await self._bus.close()
-                _logger.info("Bus connection closed")
+                _logger.debug("Bus connection closed")
             except Exception as e:
                 _logger.error(f"Error during bus shutdown: {e}")
         self._bus = None
