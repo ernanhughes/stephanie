@@ -225,6 +225,82 @@ class AgenticTreeSearch:
     # Core processing
     # ---------------------------------------------------------------------- #
 
+    async def _process_plan(
+        self,
+        plan: str,
+        parent_node: Optional[SolutionNode],
+        node_type: str,
+        task_description: str,
+        context: dict,
+    ) -> SolutionNode:
+        """
+        Process a plan through the appropriate task handler.
+        
+        Delegates execution based on task type and creates a SolutionNode
+        with execution results. Uses caching to avoid duplicate processing.
+        
+        Args:
+            plan: The plan string to execute
+            parent_node: Parent node in search tree (None for root)
+            node_type: Type of node ('draft', 'improve', 'debug')
+            task_description: Description of the overall task
+            context: Execution context dictionary
+            
+        Returns:
+            SolutionNode containing execution results
+        """
+        plan_hash = self._hash_or_none(plan)
+        if plan_hash in self.result_cache:
+            return self.result_cache[plan_hash]
+            
+        task = context.get("task") or {"type": context.get("task_type", "code_compile")}
+        v = await self.task_handler.handle(task.get("type"), plan, context)
+        parent = parent_node
+        sibling_idx = self._next_child_index(parent.id if parent else None)
+        node_depth = 0 if parent is None else (parent.depth + 1)
+        node_path = self._make_path(parent, sibling_idx)
+
+        origin = {
+            "action": node_type,
+            "task_type": task.get("type"),
+            "source_id": parent.id if parent else None,
+            "reason": (parent.summary or "") if parent else "initial draft",
+        }
+
+        plan_h = self._hash_or_none(plan)
+        out_h = self._hash_or_none(v.get("merged_output", ""))
+        tree_id = context.get("pipeline_run_id")
+        root_id = parent.root_id if parent else None
+
+        id = self._make_numeric_id(tree_id, node_depth, sibling_idx)
+        node = SolutionNode(
+            tree_id=tree_id,
+            id=id,
+            plan=plan,
+            code=None,
+            task_description=task_description,
+            timestamp=time.time(), 
+            metric=v.get("metric"),
+            output=v.get("merged_output"),
+            summary=v.get("summary"),
+            parent_id=parent.id if parent else None,
+            is_buggy=v.get("is_bug", False),
+            node_type=node_type,
+            root_id=root_id,
+            depth=node_depth,
+            sibling_index=sibling_idx,
+            path=node_path,
+            origin=origin,
+            lineage=((parent.lineage + [parent.id]) if parent else []),
+            plan_sha256=plan_h,
+            code_sha256=None,
+            output_sha256=out_h,
+        )
+        self.result_cache[plan_hash] = node
+        await self._emit("node", node.to_dict())
+        return node
+
+    # ---------------------------------------------------------------------- #
     # MCTS policy
     # ---------------------------------------------------------------------- #
 

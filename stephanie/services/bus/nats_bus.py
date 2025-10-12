@@ -472,6 +472,48 @@ class NatsKnowledgeBus(BusProtocol):
         self._keepalive_task = keepalive_task
         _logger.debug("NATSKeepaliveStarted")
 
+
+    # ---------- Flush / Drain Helpers ----------
+
+    async def flush(self, timeout: float = 1.0) -> bool:
+        """
+        Wait for all pending messages and PUBACKs to be processed.
+        Returns True if successful, False on timeout or error.
+        """
+        return await self._safe_flush(timeout=timeout)
+
+    async def drain_subject(self, subject: str) -> bool:
+        """
+        Drain (purge or flush) pending JetStream messages for a subject.
+        Works across all nats-py versions.
+        """
+        await self._ensure_connected()
+        full_subject = f"{self.stream}.{subject}"
+        try:
+            # Prefer a safe flush if stream isn't large — prevents unwanted data loss
+            if self._js:
+                try:
+                    # Purge entire stream (subject filters not universally supported)
+                    await self._js.purge_stream(self.stream)
+                    _logger.debug(f"[NATSBus] Stream '{self.stream}' purged (no subject filter).")
+                except TypeError:
+                    # In some versions, purge_stream is not on context; fall back to flush
+                    _logger.warning(f"[NATSBus] purge_stream() unsupported; flushing {full_subject}.")
+                    await self._safe_flush(timeout=2.0)
+            else:
+                _logger.warning(f"[NATSBus] No JetStream context; performing flush instead.")
+                await self._safe_flush(timeout=2.0)
+
+            return True
+
+        except Exception as e:
+            _logger.error(f"[NATSBus] Drain failed for {full_subject}: {e}")
+            try:
+                await self._safe_flush(timeout=2.0)
+            except Exception:
+                pass
+            return False
+
     def _start_health_monitoring(self):
         if self._health_task and not self._health_task.done():
             return

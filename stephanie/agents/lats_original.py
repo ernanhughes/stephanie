@@ -157,10 +157,8 @@ class LATSAgent(BaseAgent):
 
         # Ensure trace is always a list
         if isinstance(trace, str):
-            print("Trace is not right")
             trace = trace.split("\n")  # Convert string to list
         elif not isinstance(trace, list):
-            print("Trace is not right")
             trace = [str(trace)]  # Fallback
 
         node = {

@@ -10,6 +10,26 @@ from stephanie.services.zeromodel_service import ZeroModelService
 
 _logger = logging.getLogger(__name__)
 
+class VPMWorkerInline:
+    """Simplified in-process timeline writer (no bus)."""
+    def __init__(self, zm: ZeroModelService, logger=None):
+        self.zm = zm
+        self.logger = logger or _logger
+
+    async def append(self, run_id: str, node_id: str, metrics: dict):
+        self.zm.timeline_append_row(
+            run_id=run_id,
+            metrics_columns=metrics["columns"],
+            metrics_values=metrics["values"],
+        )
+        _logger.debug(f"[VPMWorkerInline] Row appended for node {node_id}")
+
+    async def finalize(self, run_id: str, out_path: str):
+        res = await self.zm.timeline_finalize(run_id, out_path=out_path)
+        self.logger.info(f"[VPMWorkerInline] Timeline finalized for run {run_id}")
+        return res
+
+
 class VPMWorker:
     """
     Usage:
@@ -102,11 +122,11 @@ class VPMWorker:
                         if "aggregate" in result:
                             names.append(f"{scorer}.aggregate")
                             values.append(result["aggregate"])
-                    self.logger.info(
+                    _logger.info(
                         f"[VPMWorker] 🧩 Fallback metrics built for node {node_id} ({len(names)} metrics)"
                     )
                 else:
-                    self.logger.warning(
+                    _logger.warning(
                         f"[VPMWorker] ⚠️ No metrics found for node {node_id}, skipping."
                     )
                     return  # nothing to append
@@ -117,10 +137,10 @@ class VPMWorker:
                 metrics_columns=names,
                 metrics_values=values,
             )
-            self.logger.info(f"[VPMWorker] ✅ Row appended for node {node_id}")
+            _logger.info(f"[VPMWorker] ✅ Row appended for node {node_id}")
 
         except Exception as e:
-            self.logger.error(
+            _logger.error(
                 f"[VPMWorker] ❌ handle_metrics_ready failed: {e} | payload={payload}"
             )
 
@@ -149,13 +169,12 @@ class VPMWorker:
                 await self.zm.initialize()
 
             res = await self.zm.timeline_finalize(run_id)
-            self.logger.log("VPMFinalized", {"run_id": run_id, **res})
+            _logger.info("VPMFinalized run_id %s %s", run_id, str(res))
             self._open_runs.discard(run_id)
 
         except Exception as e:
-            self.logger.log(
-                "VPMFinalizeError",
-                {"error": str(e), "trace": traceback.format_exc(), "run_id": run_id},
+            _logger.error(
+                "VPMFinalizeError error %s | trace:%s | run_id: %s", str(e),  traceback.format_exc(), run_id
             )
 
     async def _monitor_bus_health(self):

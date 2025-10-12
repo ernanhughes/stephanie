@@ -27,8 +27,6 @@ from stephanie.agents.agentic_tree_search import (
     SolutionNode,
 )  # assuming you have this
 from stephanie.scoring.scorable import Scorable, ScorableFactory
-from stephanie.services.workers.metrics_worker import MetricsWorkerInline
-from stephanie.services.workers.vpm_worker import VPMWorkerInline
 
 
 _logger = logging.getLogger(__name__)
@@ -37,62 +35,153 @@ _logger = logging.getLogger(__name__)
 class PhosAgent(BaseAgent):
     """
     PhōsAgent — Illuminates semantic structure by generating contrastive VPMs.
-    Inline version (no NATS/inproc bus).
+
+    It:
+    - Retrieves ATS outputs for a given goal.
+    - Clusters them into good/mixed/bad using embedding similarity.
+    - Scores and visualizes them using ZeroModel.
+    - Performs differential analysis between categories.
     """
 
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.embedding_store = memory.embedding
+        self.zm: ZeroModelService = container.get("zeromodel")
+        self.scorer: ScoringService = container.get("scoring")
+        self.analyzer = VPMDifferentialAnalyzer(output_dir="vpm_phos")
+        self.ref_goal_id = cfg.get("reference_goal_id", 83)
+        self.metrics_worker = MetricsWorker(cfg, memory, container, logger)
+        self.vpm_worker = VPMWorker(cfg, memory, container, logger)
+        self.run_id = 0
+        self._goal_text = ""
+        self._published_nodes = set()  # to avoid duplicates
+        self.metric_names = []
+
+        self.emit_cb = EmitBroadcaster(
+            self._emit_to_logger, self._timeline_sink
+        )
+
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Flow:
+        1. Load scorables (good/mixed/opposite)
+        2. Ensure embeddings exist
+        3. Generate timelines for each band
+        4. Run differential analysis (epistemic field)
+        5. Return structured results in context
+        """
+        await self.memory.bus.flush()
+        await self.memory.bus.drain_subject("arena.metrics.request")
+        await self.memory.bus.drain_subject("arena.metrics.ready")
+        await self.memory.bus.drain_subject("arena.vpm.ready")
+        asyncio.create_task(self.metrics_worker.start())
+        asyncio.create_task(self.vpm_worker.start())
+        await self._wait_for_workers_ready()
+
+
+        # give the bus time to register subscriptions
+        await asyncio.sleep(0.5)
+
         self.run_id = context.get(PIPELINE_RUN_ID)
+
+        # Open timeline session (direct, in-process)
         goal_text = context["goal"]["goal_text"]
         self._goal_text = goal_text
-        self.ref_goal_id = context["goal"].get("id", 0)
-
-        # --- inline workers ---
-        scoring_cfg = self.cfg.get("metrics", {})
-        scorers = scoring_cfg.get("scorers", ["sicql", "mrq", "ebt"])
-        dims = scoring_cfg.get("dimensions", ["alignment", "clarity", "implementability", "novelty", "relevance"])
-        self.scorer: ScoringService = self.container.get("scoring")
-        self.zm: ZeroModelService = self.container.get("zeromodel")
-        metrics_worker = MetricsWorkerInline(self.scorer, scorers, dims)
-        self.metric_names = []
-        vpm_worker = VPMWorkerInline(self.zm, self.logger)
-
-        # --- load bands ---
+        # 1 get gols standard runs
         good_rows = await self._gather_runs(self.ref_goal_id)
-        good = [self._make_scorable(r["response"], 1.0, "good") for r in good_rows]
-        medium_rows = self.memory.embedding.search_scorables_in_similarity_band(goal_text, ScorableType.RESPONSE, 0.15, 0.80, 300)
-        medium = [self._make_scorable(r["text"], r["similarity"], "medium") for r in medium_rows]
-        opposite_rows = self.memory.embedding.search_unrelated_scorables(goal_text, ScorableType.RESPONSE, top_k=300)
-        opposite = [self._make_scorable(r["text"], r["score"], "opposite") for r in opposite_rows]
+        good = [
+            self._make_scorable(r["response"], similarity=1.0, label="good")
+            for r in good_rows
+        ]
+        self.ensure_embedding(good)
 
-        datasets = {"good": good, "medium": medium, "opposite": opposite}
+        # 2 get unrelated runs for contrast
+        medium_rows = (
+            self.memory.embedding.search_scorables_in_similarity_band(
+                goal_text,
+                ScorableType.RESPONSE,
+                lower=0.15,
+                upper=0.80,
+                top_k=300,
+            )
+        )
+        medium = [
+            self._make_scorable(
+                r["text"], similarity=r["similarity"], label="medium"
+            )
+            for r in medium_rows
+        ]
+        self.ensure_embedding(medium)
+        # --- 3. OPPOSITE: inverse semantic
+        opposite_rows = self.memory.embedding.search_unrelated_scorables(
+            goal_text, ScorableType.RESPONSE, top_k=300
+        )
+        opposite = [
+            self._make_scorable(
+                r["text"], similarity=r["score"], label="opposite"
+            )
+            for r in opposite_rows
+        ]
+        self.ensure_embedding(opposite)
 
-        # --- generate timelines inline ---
-        results = {}
-        for label, scorables in datasets.items():
-            if not scorables:
-                _logger.warning(f"[PhosAgent] ⚠️ Empty band: {label}")
-                continue
+        datasets = {
+            "good": good,
+            "mixed": medium,
+            "opposite": opposite,
+        }
 
-            out_path = f"vpm_phos_run{self.run_id}_{label}.gif"
-            self.zm.timeline_open(run_id=self.run_id)
-            with tqdm(total=len(scorables), desc=f"[PhosAgent] {label} band") as pbar:
-                for idx, scorable in enumerate(scorables):
-                    node_id = self._make_numeric_id(self.run_id, label, idx)
-                    metrics = await metrics_worker.score(scorable, goal_text, self.run_id)
-                    self.metric_names = metrics["columns"]
-                    await vpm_worker.append(self.run_id, node_id, metrics)
-                    pbar.update(1)
-                    await asyncio.sleep(0)  # yield loop
+        timeline_gifs = await self._simulate_band_processing(datasets, context)
 
-            final = await vpm_worker.finalize(self.run_id, out_path)
-            results[label] = final
-            _logger.info(f"[PhosAgent] ✅ Timeline closed for {label} → {out_path}")
 
-        # --- differential analysis ---
-        diffs = self._analyze_vpms(results)
+        diffs = self._analyze_vpms(
+            {
+                "good": timeline_gifs.get("good"),
+                "medium": timeline_gifs.get("medium"),
+                "opposite": timeline_gifs.get("opposite"),
+            }
+        )
+
         context["phos_outputs"] = diffs
+        await self._wait_for_bus_drain(timeout=20.0)
         return context
 
+    # -------------------------------------
+
+    def ensure_embedding(self, scorables: List[Scorable]) -> List[int]:
+        """Ensure that the embedding for the given items is available."""
+        ids = []
+        skipped, updated = 0, 0
+        for scorable in tqdm(
+            scorables,
+            desc="Backfilling prompt response embeddings",
+            unit="responses",
+        ):
+            # Step 2: Check if embedding already exists in the embedding store
+            exists = self.memory.scorable_embeddings.get_by_scorable(
+                scorable_id=str(scorable.id),
+                scorable_type=scorable.target_type,
+                embedding_type=self.memory.embedding.name,
+            )
+            if exists:
+                ids.append(exists.id)
+                skipped += 1
+                continue
+
+            # Step 3: Choose text for embedding
+            scorable = ScorableFactory.from_orm(scorable, mode="response_only")
+
+            # Step 4: Generate embedding
+
+            # Step 5: Insert into store
+            embedding_id = self.memory.scorable_embeddings.get_or_create(
+                scorable
+            )
+            updated += 1
+            ids.append(embedding_id)
+        _logger.info(
+            f"Embedding backfill complete: {skipped} skipped, {updated} added."
+        )
+        return ids
 
     async def _gather_runs(self, goal_id: int) -> List[Dict]:
         """Pull ATS runs matching or near the goal."""
@@ -250,7 +339,7 @@ class PhosAgent(BaseAgent):
     async def _simulate_band_processing(
         self,
         datasets: Dict[str, List[Dict[str, Any]]],
-        context: Dict[str, Any], Hey
+        context: Dict[str, Any],
     ) -> Dict[str, str]:
         """
         Simulate AgenticTreeSearch execution for each contrastive dataset

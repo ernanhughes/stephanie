@@ -11,6 +11,36 @@ from stephanie.services.scoring_service import ScoringService
 import logging
 _logger = logging.getLogger(__name__)
 
+
+class MetricsWorkerInline:
+    """Simplified in-process scorer (no bus)."""
+    def __init__(self, scoring: ScoringService, scorers: list[str], dimensions: list[str], persist=False):
+        self.scoring = scoring
+        self.scorers = scorers
+        self.dimensions = dimensions
+        self.persist = persist
+
+    async def score(self, scorable: Scorable, goal_text: str, run_id: str) -> dict:
+        ctx = {"goal": {"goal_text": goal_text}, "pipeline_run_id": run_id}
+        vector, results = {}, {}
+        for name in self.scorers:
+            bundle = (self.scoring.score_and_persist if self.persist else self.scoring.score)(
+                scorer_name=name, scorable=scorable, context=ctx, dimensions=self.dimensions
+            )
+            agg = float(bundle.aggregate())
+            per = {d: float(sr.score) for d, sr in bundle.results.items()}
+            results[name] = {"aggregate": agg, "per_dimension": per}
+            flat = bundle.flatten(include_scores=True, include_attributes=True, numeric_only=True)
+            for k, v in flat.items():
+                vector[f"{name}.{k}"] = float(v)
+            vector[f"{name}.aggregate"] = agg
+        columns = sorted(vector.keys())
+        values = [vector[c] for c in columns]
+        return {"columns": columns, "values": values, "vector": vector, "scores": results}
+
+
+
+
 class MetricsWorker:
     """
     Consumes 'metrics.request', scores with configured scorers,

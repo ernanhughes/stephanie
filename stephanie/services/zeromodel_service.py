@@ -1,6 +1,7 @@
 # stephanie/services/zero_model_service.py
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -163,7 +164,12 @@ class ZeroModelService(Service):
     ) -> None:
         sess = self._sessions.get(run_id)
         if not sess:
-            return
+            self._sessions[run_id] = _TimelineSession(
+            run_id=run_id,
+            metrics_order=list(metrics_columns),
+            out_dir=self._out_dir,
+            )
+            sess = self._sessions.get(run_id)
 
         # Normalize
         normalized = []
@@ -178,7 +184,6 @@ class ZeroModelService(Service):
                 f = min(f / 100.0, 1.0)
             normalized.append(f)
 
-        # ✅ Initialize metric order from first true data row
         # 2️⃣ Initialize metrics_order if missing or dummy
         if not sess.metrics_order or sess.metrics_order == []:
             sess.metrics_order = list(metrics_columns)
@@ -190,6 +195,27 @@ class ZeroModelService(Service):
                 run_id,
                 len(sess.metrics_order),
                 len(metrics_columns)
+            )
+            # Find the specific differences
+            expected_set = set(sess.metrics_order)
+            received_set = set(metrics_columns)
+            missing_columns = expected_set - received_set
+            extra_columns = received_set - expected_set
+            # a lot of work but we need to understand why the metrics are out of shape
+            _logger.warning(
+                """[ZeroModelService] Mismatched metrics length for run_id=%s: 
+                expected %d but got %d
+                Missing columns: %s
+                Extra columns: %s
+                Expected: %s
+                Received: %s""",
+                run_id,
+                len(sess.metrics_order),
+                len(metrics_columns),
+                list(missing_columns) if missing_columns else "None",
+                list(extra_columns) if extra_columns else "None",
+                sess.metrics_order,
+                metrics_columns
             )
 
         # ✅ Expand gracefully if new metrics appear later
@@ -223,6 +249,13 @@ class ZeroModelService(Service):
             return {"status": "noop", "reason": "no_session"}
 
         mat = sess.as_matrix()
+        if mat.shape[0] < 3 or mat.shape[1] < 2:
+            _logger.warning(f"[ZeroModelService] Too few rows ({mat.shape}) for run_id={run_id}, deferring finalize.")
+            # Keep session alive for a few more seconds
+            self._sessions[run_id] = sess
+            await asyncio.sleep(4.0)
+            mat = sess.as_matrix()
+
         if mat.size == 0 or mat.shape[0] < 2:
             _logger.warning(f"[ZeroModelService] Empty or too small matrix for run_id={run_id}, skipping render.")
             return {"status": "empty", "matrix": mat}
@@ -304,7 +337,7 @@ class ZeroModelService(Service):
                     f"(ΔMass={field_meta['delta_mass']:.4f}) → {field_meta['png']}"
                 )
             else:
-                _logger.warning(f"[ZeroModelService] Matrix too small for epistemic field generation.")
+                _logger.warning("[ZeroModelService] Matrix too small for epistemic field generation.")
         except Exception as e:
             _logger.warning("[ZeroModelService] Epistemic field generation failed: %s", e)
 
@@ -891,13 +924,19 @@ class ZeroModelService(Service):
 
         # Optional: quick-dump to JSON for inspection
         top_path = output_dir / "top_intensity_rows.json"
+        # handle both numpy arrays and Python lists safely
+
         with open(top_path, "w") as f:
-            json.dump({"top_indices": top_idx.tolist(), "top_rows": top_rows}, f, indent=2)
-        _logger.debug(f"[PhosAnalyzer] Extracted top-{k} intensity rows → {top_path}")
+            if hasattr(top_idx, "tolist"):
+                top_idx_list = top_idx.tolist()
+            else:
+                top_idx_list = list(top_idx)
+            json.dump({"top_indices": top_idx_list, "top_rows": top_rows}, f, indent=2)
+        _logger.debug(f"[PhosAnalyzer] Extracted top-{top_k} intensity rows → {top_path}")
 
         return {
             "ranked_metrics": ranked_metrics,
-            "top_indices": top_idx.tolist(),
+            "top_indices": top_idx,
             "top_rows": top_rows,
         }
 

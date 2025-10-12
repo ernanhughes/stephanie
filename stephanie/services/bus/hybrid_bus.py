@@ -275,6 +275,36 @@ class HybridKnowledgeBus(BusProtocol):
     def get_backend(self) -> str:
         return self._backend
 
+
+    # --------------------- Flush / Drain passthrough ---------------------
+
+    async def flush(self, timeout: float = 1.0) -> bool:
+        """
+        Wait for all pending messages across active backend.
+        Returns True if successful, False if unsupported or disconnected.
+        """
+        if not self._bus:
+            return False
+        try:
+            if hasattr(self._bus, "flush"):
+                return await self._bus.flush(timeout=timeout)
+        except Exception as e:
+            _logger.warning(f"Hybrid bus flush failed: {e}")
+        return False
+
+    async def drain_subject(self, subject: str) -> bool:
+        """
+        Purge messages for a given subject (if supported by backend).
+        """
+        if not self._bus:
+            return False
+        try:
+            if hasattr(self._bus, "drain_subject"):
+                return await self._bus.drain_subject(subject)
+        except Exception as e:
+            _logger.warning(f"Hybrid bus drain_subject failed: {e}")
+        return False
+
     @property
     def idempotency_store(self):
         return self._idem_store or InMemoryIdempotencyStore()
