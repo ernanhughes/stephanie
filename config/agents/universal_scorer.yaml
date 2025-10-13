@@ -7,12 +7,13 @@ universal_scorer:
 
   include_mars: true
   enabled_scorers:
-    - hrm
-    - sicql
-    - svm
-    - mrq
-    - ebt
-    - contrastive_ranker
+    - llm
+    # - hrm
+    # - sicql
+    # - svm
+    # - mrq
+    # - ebt
+    # - contrastive_ranker
 
   include_ranking: true
   rank_top_k: 5

@@ -25,6 +25,7 @@ from stephanie.memory.embedding_store import EmbeddingStore
 from stephanie.memory.entity_cache_store import EntityCacheStore
 from stephanie.memory.evaluation_attribute_store import \
     EvaluationAttributeStore
+from stephanie.memory.reasoning_sample_store import ReasoningSampleStore
 from stephanie.memory.evaluation_store import EvaluationStore
 from stephanie.memory.execution_step_store import ExecutionStepStore
 from stephanie.memory.experiment_store import ExperimentStore
@@ -195,6 +196,7 @@ class MemoryTool:
         self.register_store(ExperimentStore(self.session_maker, logger))
         self.register_store(SisCardStore(self.session_maker, logger))
         self.register_store(AgentTrajectoryStore(self.session_maker, logger))
+        self.register_store(ReasoningSampleStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

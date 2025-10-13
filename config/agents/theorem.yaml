@@ -1,3 +1,5 @@
+# stephanie/config/agents/theorem.yaml
+# Configuration for the theorem agent
 theorem:
   name: theorem
   enabled: true

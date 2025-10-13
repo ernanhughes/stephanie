@@ -1,7 +1,7 @@
-# stepanies/agent/trainer.yaml
-# Configuration for the trainer agent
-trainer:
-  name: trainer
+# stephanie/config/agents/tiny.yaml
+# Configuration for the tiny agent
+tiny:
+  name: tiny
   enabled: true
   save_prompt: true
   save_context: false
@@ -11,6 +11,7 @@ trainer:
     api_base: http://localhost:11434
     api_key: null
   input_keys: ["goal", "hypotheses"]
-  output_key: trainer
+  input_key: documents
+  output_key: tiny
   prompt_mode: file
-  prompt_file: trainer.txt
+  prompt_file: tiny.txt

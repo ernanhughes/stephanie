@@ -1050,8 +1050,8 @@ class ChatStore(BaseSQLAlchemyStore):
         *,
         min_star: Optional[int] = None,
         max_star: Optional[int] = None,
-        min_ai_score: Optional[float] = None,  
-        max_ai_score: Optional[float] = None,  
+        min_ai_score: Optional[float] = None,
+        max_ai_score: Optional[float] = None,
         require_assistant_text: bool = True,
         require_nonempty_ner: bool = True,
         min_assistant_len: int = 1,
@@ -1060,7 +1060,7 @@ class ChatStore(BaseSQLAlchemyStore):
     ) -> List[Dict[str, Any]]:
         """
         Get turns with pre-fetched text content and metadata.
-        
+
         Args:
             min_star: Minimum star rating
             max_star: Maximum star rating
@@ -1071,10 +1071,11 @@ class ChatStore(BaseSQLAlchemyStore):
             min_assistant_len: Minimum assistant text length
             limit: Maximum number of turns to return
             order_desc: Order by ID descending if True
-            
+
         Returns:
             List of dictionaries with turn data including texts and metadata
         """
+
         def op(s):
             U = aliased(ChatMessageORM)
             A = aliased(ChatMessageORM)
@@ -1088,17 +1089,17 @@ class ChatStore(BaseSQLAlchemyStore):
                     ChatTurnORM.star.label("star"),
                     ChatTurnORM.ner.label("ner"),
                     ChatTurnORM.domains.label("domains"),
-                    ChatTurnORM.ai_knowledge_score.label("ai_score"),        
+                    ChatTurnORM.ai_knowledge_score.label("ai_score"),
                     ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),
-                    ChatTurnORM.ai_knowledge_score.label("ai_score"),        
-                    ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),
+                    ChatTurnORM.user_message_id.label("user_message_id"),   
+                    ChatTurnORM.assistant_message_id.label("assistant_message_id"), 
                     U.text.label("user_text"),
                     A.text.label("assistant_text"),
-                    C.title.label("goal_text"),   # ← conversation title as goal text
+                    C.title.label("goal_text"),  # ← conversation title as goal text
                 )
                 .join(U, ChatTurnORM.user_message_id == U.id)
                 .join(A, ChatTurnORM.assistant_message_id == A.id)
-                .join(C, ChatTurnORM.conversation_id == C.id)  # ← join conversation
+                .join(C, ChatTurnORM.conversation_id == C.id)
             )
 
             if min_star is not None:
@@ -1132,13 +1133,15 @@ class ChatStore(BaseSQLAlchemyStore):
                     "conversation_id": r.conversation_id,
                     "order_index": int(r.order_index or 0),
                     "star": int(r.star or 0),
+                    "user_message_id": r.user_message_id,           # ✅ added
+                    "assistant_message_id": r.assistant_message_id, # ✅ added
                     "user_text": r.user_text or "",
                     "assistant_text": r.assistant_text or "",
                     "ner": r.ner or [],
                     "domains": r.domains or [],
-                    "goal_text": r.goal_text or "",   # ← expose goal text
-                    "ai_score": r.ai_score,                 
-                    "ai_rationale": r.ai_rationale or "",   
+                    "goal_text": r.goal_text or "",
+                    "ai_score": r.ai_score,
+                    "ai_rationale": r.ai_rationale or "",
                 })
             return out
 

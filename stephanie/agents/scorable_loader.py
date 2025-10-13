@@ -117,7 +117,7 @@ class TextItem:
     # ---------- factories ----------
 
     @classmethod
-    def from_chat_turn(cls, row: Dict[str, Any]) -> "TextItem":
+    def from_chat_turn(cls, row: Dict[str, Any]) -> TextItem:
         """
         Map directly from memory.chats.list_turns_with_texts() row.
         Fields expected (per your SQL): id, conversation_id, order_index, star,

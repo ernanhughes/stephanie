@@ -8,7 +8,6 @@ from typing import Any, Dict, List
 import numpy as np
 import torch
 import yaml
-from sqlalchemy.orm import Session
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.memory.base_store import BaseSQLAlchemyStore
