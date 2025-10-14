@@ -5,8 +5,8 @@ chat_sicql_trainer:
   target_type: conversation_turn
   use_sicql_style: true
   dimensions: 
-  - reasoning
-  - knowledge
-  - clarity
-  - faithfulness
-  - coverage
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage

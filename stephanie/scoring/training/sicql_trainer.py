@@ -222,7 +222,8 @@ class SICQLTrainer(BaseTrainer):
             device=self.device,
         )
 
-    def _train_epoch(self, model, dataloader):
+    
+    def _train_epoch(self, model, dataloader, epoch_idx=None):
         """Train for one epoch with all heads"""
         model.train()
         total_q_loss = 0.0
@@ -230,7 +231,7 @@ class SICQLTrainer(BaseTrainer):
         total_pi_loss = 0.0
         count = 0
 
-        for ctx_emb, doc_emb, scores in tqdm(dataloader, desc="Training"):
+        for ctx_emb, doc_emb, scores in tqdm(dataloader, desc=f"Training index {epoch_idx}"):
             ctx_emb = ctx_emb.to(self.device)
             doc_emb = doc_emb.to(self.device)
             scores = scores.to(self.device)
@@ -438,7 +439,6 @@ class SICQLTrainer(BaseTrainer):
 
         # Training stats
         stats = {
-            "dimension": dim,
             "q_losses": [],
             "v_losses": [],
             "pi_losses": [],
@@ -451,28 +451,82 @@ class SICQLTrainer(BaseTrainer):
         }
 
         # Training loop
-        for epoch in range(self.epochs):
-            epoch_stats = self._train_epoch(model, dataloader)
-            stats["q_losses"].append(epoch_stats["q"])
-            stats["v_losses"].append(epoch_stats["v"])
-            stats["pi_losses"].append(epoch_stats["pi"])
+        losses = []
+        best = float("inf"); wait = 0
 
-            # Calculate policy entropy
-            policy_logits = self._calculate_policy_logits(model)
-            policy_entropy = self._calculate_policy_entropy(policy_logits)
-            stats["policy_entropies"].append(policy_entropy)
+        epoch_iter = self.progress(range(1, self.epochs + 1), desc=f"SICQL[{dim}] epochs", leave=False)
+        for epoch in epoch_iter:
+            epoch_stats = self._train_epoch(model, dataloader, epoch_idx=epoch)
+            q_avg = float(epoch_stats["q"])
+            v_avg = float(epoch_stats["v"])
+            pi_avg = float(epoch_stats["pi"])
+            losses.append(q_avg)
 
-            # Early stopping check
-            if self._should_stop_early(stats["q_losses"][-1]):
-                self.logger.log(
-                    "EarlyStopping",
-                    {
-                        "dimension": dim,
-                        "epoch": epoch + 1,
-                        "best_loss": self.best_loss,
-                    },
-                )
-                break
+            # record per-epoch stats
+            stats["q_losses"].append(q_avg)
+            stats["v_losses"].append(v_avg)
+            stats["pi_losses"].append(pi_avg)
+
+            # policy entropy snapshot (optional but helpful)
+            try:
+                with torch.no_grad():
+                    w = model.pi_head.get_policy_weights()
+                    p = F.softmax(w, dim=-1)
+                    entropy = float(-(p * torch.log(p + 1e-8)).sum())
+                stats["policy_entropies"].append(entropy)
+            except Exception:
+                pass
+
+            # update epoch bar
+            self.progress_postfix(
+                epoch_iter, q=q_avg, v=v_avg, pi=pi_avg,
+                best=(best if best < float("inf") else q_avg)
+            )
+
+            # (optional) step schedulers on epoch metrics
+            try:
+                self.scheduler["q"].step(q_avg)
+                self.scheduler["v"].step(v_avg)
+                self.scheduler["pi"].step(pi_avg)
+            except Exception:
+                pass
+
+            # single early-stopper
+            if q_avg < best - self.early_stopping_min_delta:
+                best, wait = q_avg, 0
+            else:
+                wait += 1
+                if self.use_early_stopping and wait >= self.early_stopping_patience:
+                    self.logger.log("SICQLEarlyStopping", {"epoch": epoch, "best_loss": best})
+                    break
+
+            # per-epoch log
+            self.logger.log("SICQLTrainingEpoch", {
+                "epoch": epoch, "q_loss": q_avg, "v_loss": v_avg, "pi_loss": pi_avg
+            })
+
+        # Final stats (guard against empty lists)
+        stats["avg_q_loss"] = float(np.mean(stats["q_losses"])) if stats["q_losses"] else float("nan")
+        stats["avg_v_loss"] = float(np.mean(stats["v_losses"])) if stats["v_losses"] else float("nan")
+        stats["avg_pi_loss"] = float(np.mean(stats["pi_losses"])) if stats["pi_losses"] else float("nan")
+        stats["policy_entropy"] = float(np.mean(stats["policy_entropies"])) if stats["policy_entropies"] else float("nan")
+        stats["policy_stability"] = (
+            max(stats["policy_entropies"]) if stats["policy_entropies"] else float("nan")
+        )
+
+        # Save model
+        meta = self._save_model(model, dim, stats)
+        stats.update(meta)
+
+        # Log to database (match your method's signature)
+        self._log_training_stats(dim, meta)
+
+        self.logger.log("DimensionTrainingComplete", {
+            "dimension": dim,
+            "final_q_loss": stats["avg_q_loss"],
+            "final_v_loss": stats["avg_v_loss"],
+            "final_pi_loss": stats["avg_pi_loss"],
+        })
 
         # Final stats
         stats["avg_q_loss"] = np.mean(stats["q_losses"])

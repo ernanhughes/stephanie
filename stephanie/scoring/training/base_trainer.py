@@ -112,6 +112,7 @@ class BaseTrainer:
 
         # for early stopping (shared)
         self.early_stopping_patience = int(cfg.get("patience", 3))
+        self.use_early_stopping = bool(cfg.get("use_early_stopping", True))
         self.early_stopping_min_delta = float(cfg.get("min_delta", 1e-4))
 
     def get_locator(self, dimension: str) -> "BaseTrainer.Locator":

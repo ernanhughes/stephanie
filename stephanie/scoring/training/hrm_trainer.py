@@ -43,14 +43,13 @@ class HRMTrainer(BaseTrainer):
         
         # Initialize the HRM model
         hrm_cfg = {
-            "hrm.input_dim": self.input_dim,
-            "hrm.h_dim": self.h_dim,
-            "hrm.l_dim": self.l_dim,
-            "hrm.output_dim": self.output_dim,
-            "hrm.n_cycles": self.n_cycles,
-            "hrm.t_steps": self.t_steps,
+            "input_dim": self.input_dim,
+            "h_dim": self.h_dim,
+            "l_dim": self.l_dim,
+            "output_dim": self.output_dim,
+            "n_cycles": self.n_cycles,
+            "t_steps": self.t_steps,
         }
-        # Assuming HRMModel is correctly imported
         self.hrm_model = HRMModel(hrm_cfg, logger=self.logger).to(self.device)
         
         # Optimizer (AdamW as recommended)
@@ -59,6 +58,9 @@ class HRMTrainer(BaseTrainer):
         # Loss function (MSE for regression, e.g., predicting a score)
         # Can be made configurable (e.g., CrossEntropy for classification)
         self.criterion = nn.MSELoss() 
+        self.show_progress = self.cfg.get("show_progress", True)   # enables tqdm
+        self.log_interval  = self.cfg.get("log_interval", 25)      # batch logging freq
+
 
         self.logger.log("HRMTrainerInitialized", {
             "model_type": self.model_type,
@@ -72,124 +74,295 @@ class HRMTrainer(BaseTrainer):
             "device": str(self.device)
         })
 
-    def train (self, samples, dimension) -> dict:
-        """
-        Main training loop.
-        Expects 'training_data' in context, or loads it via _create_dataloader.
-        """
+    def train(self, samples, dimension) -> dict:
         self.logger.log("HRMTrainingStarted", {"epochs": self.epochs})
 
         dataloader = self._create_dataloader(samples, dimension)
         if dataloader is None:
-             self.logger.log("HRMTrainingError", {"message": "Dataloader creation failed or insufficient samples."})
-             return {"status": "failed", "message": "Dataloader creation failed."}
+            self.logger.log("HRMTrainingError", {
+                "message": "Dataloader creation failed or insufficient samples."
+            })
+            return {"status": "failed", "message": "Dataloader creation failed."}
 
-        # 2. Training Loop
-        for epoch in range(self.epochs):
+        losses = []
+        best = float("inf"); wait = 0
+
+        # epoch progress bar
+        epoch_iter = self.progress(range(self.epochs), desc=f"HRM[{dimension}] epochs", leave=False)
+        for epoch in epoch_iter:
             epoch_loss, num_batches = 0.0, 0
-            for _, (x_batch, y_batch) in enumerate(dataloader):
-                # Move data to device
+
+            # batch progress bar
+            batch_iter = self.progress(enumerate(dataloader), desc=f"epoch {epoch+1}", leave=False)
+            for bidx, (x_batch, y_batch) in batch_iter:
                 x_batch = x_batch.to(self.device)
                 y_batch = y_batch.to(self.device)
-                # Zero gradients
+
                 self.optimizer.zero_grad()
+                y_pred, _ = self.hrm_model(x_batch)
+                if self.apply_sigmoid:
+                    y_pred = torch.sigmoid(y_pred)
 
-                # Forward pass
-                y_pred, _ = self.hrm_model(x_batch)  # (B,1) expected
-                if self.apply_sigmoid:               # NEW
-                    y_pred = torch.sigmoid(y_pred)   # keep outputs in [0,1]
-
-                                # Compute loss
-                # Ensure y_batch has the correct shape for the loss function
-                # e.g., if output_dim=1, y_batch should be (B, 1) or (B,)
-                # MSELoss expects same shape for pred and target
                 loss = self.criterion(y_pred, y_batch)
-                # Backward pass (One-step gradient approximation)
-                # PyTorch's autograd handles this naturally for the looped architecture
-                # as long as we don't unroll the entire N*T steps explicitly in the graph
-                # and use the final loss.
                 loss.backward()
 
-                # Update parameters
+                # (optional) clip to keep HRM stable
+                torch.nn.utils.clip_grad_norm_(self.hrm_model.parameters(), max_norm=1.0)
+
                 self.optimizer.step()
 
-                epoch_loss += loss.item()
-                num_batches += 1                
-                
-                self.logger.log("HRMTrainingBatch", {"epoch": epoch, "loss": loss.item()})
+                epoch_loss += float(loss.item())
+                num_batches += 1
 
-            # Log average epoch loss
-            avg_epoch_loss = epoch_loss / num_batches if num_batches > 0 else 0.0
-            self.logger.log("HRMTrainingEpoch", {"epoch": epoch, "avg_loss": avg_epoch_loss})
+                # live progress feedback
+                if self.show_progress:
+                    self.progress_postfix(
+                        batch_iter,
+                        loss=float(loss.item()),
+                        gnorm=self._grad_global_norm(),
+                        lr=float(self.optimizer.param_groups[0]["lr"]),
+                    )
 
-        # 3. Save Model
+                # periodic logs
+                if (bidx + 1) % max(1, self.log_interval) == 0:
+                    self.logger.log("HRMTrainingBatch", {
+                        "epoch": epoch,
+                        "batch": bidx + 1,
+                        "loss": float(loss.item()),
+                        "lr": float(self.optimizer.param_groups[0]["lr"])
+                    })
+
+            avg_epoch_loss = epoch_loss / max(1, num_batches)
+            losses.append(avg_epoch_loss)
+
+            # update epoch bar postfix
+            if self.show_progress:
+                self.progress_postfix(
+                    epoch_iter,
+                    avg_loss=avg_epoch_loss,
+                    best=best if best < float("inf") else avg_epoch_loss
+                )
+
+            self.logger.log("HRMTrainingEpoch", {
+                "epoch": epoch,
+                "avg_loss": avg_epoch_loss,
+                "best_so_far": min(best, avg_epoch_loss)
+            })
+
+            # early stopping
+            if avg_epoch_loss < best - self.early_stopping_min_delta:
+                best, wait = avg_epoch_loss, 0
+            else:
+                wait += 1
+                if self.use_early_stopping and wait >= self.early_stopping_patience:
+                    self.logger.log("HRMEarlyStopping", {
+                        "epoch": epoch,
+                        "reason": "patience_reached",
+                        "best_loss": best
+                    })
+                    break
+
+        # --- save model ---
         self._save_model(dimension)
-        
-        self.logger.log("HRMTrainingCompleted", {"final_avg_loss": avg_epoch_loss})
-        return {"status": "trained", "final_loss": avg_epoch_loss}
 
-    def _create_dataloader(self, samples, dimension):  # CHANGED signature
+        # --- log scaler + training stats summary ---
+        scaler_meta = {
+            "method": "robust_minmax",
+            "p_lo": self.scaler_p_lo, "p_hi": self.scaler_p_hi,
+            "lo": self._scaler_stats[dimension]["lo"],
+            "hi": self._scaler_stats[dimension]["hi"],
+        }
+        final_avg = float(losses[-1]) if losses else float("nan")
+
+        # lightweight snapshot (on-train predictions vs targets)
+        try:
+            with torch.no_grad():
+                preds, acts = [], []
+                for xb, yb in dataloader:
+                    yp, _ = self.hrm_model(xb.to(self.device))
+                    if self.apply_sigmoid:
+                        yp = torch.sigmoid(yp)
+                    preds.append(yp.detach().cpu().view(-1))
+                    acts.append(yb.detach().cpu().view(-1))
+                if preds:
+                    P = torch.cat(preds).numpy()
+                    Y = torch.cat(acts).numpy()
+                    diff = P - Y
+                    mae  = float(np.mean(np.abs(diff)))
+                    rmse = float(np.sqrt(np.mean(diff * diff)))
+                    self.logger.log("HRMTrainingSnapshot", {
+                        "dimension": dimension,
+                        "train_mae": mae,
+                        "train_rmse": rmse,
+                        "pred_mean": float(np.mean(P)),
+                        "target_mean": float(np.mean(Y)),
+                        "count": int(P.size)
+                    })
+        except Exception as e:
+            self.logger.log("HRMSnapshotError", {"error": str(e)})
+
+        self._log_training_stats(
+            dimension,
+            avg_loss=final_avg,
+            sample_count=len(samples),
+            valid_samples=len(dataloader.dataset),
+            scaler_meta=scaler_meta,
+        )
+
+        self.logger.log("HRMTrainingCompleted", {"final_avg_loss": final_avg, "best_loss": best})
+        return {"status": "trained", "final_loss": final_avg, "best_loss": best}
+
+    def _create_dataloader(self, samples, dimension):
         """
-        Build tensors and scale targets to [0,1] using robust percentiles (p10..p90).
+        Accepts either:
+        • singleton: {"title": str, "output": str, "score": float}
+        • pairwise : {"title": str, "output_a": str, "output_b": str,
+                        "value_a": float, "value_b": float}
+        • HRM/raw  : {"goal_text": str, "scorable_text": str, "target_score" or "score": float}
+
+        Builds a TensorDataset of (x_concat, y_norm) where:
+        x_concat = concat([ctx_emb, doc_emb])  # shape [2*D]
+        y_norm   = normalized target in [0,1], shape [1]
+        Uses robust percentiles (p_lo..p_hi) for stability.
         """
-        # 1) Collect and fit scaler on raw target scores
-        raw_targets = []
-        pre_filtered = []
-        for s in samples:
-            goal_text = s.get("goal_text", "")
-            scorable_text = s.get("scorable_text", "")
-            target_value = s.get("target_score", s.get("score", None))
-            if not goal_text or not scorable_text or target_value is None:
+        # ---- collect raw (goal, doc, value) triples ----
+        triples = []      # (goal_text, doc_text, value)
+        kept, skipped = 0, 0
+
+        def _maybe_push(title, out, val):
+            nonlocal kept, skipped
+            if title and out and (val is not None):
+                try:
+                    triples.append((title, out, float(val)))
+                    kept += 1
+                except Exception:
+                    skipped += 1
+            else:
+                skipped += 1
+
+        for s in self.progress(samples, desc="Packing HRM triples"):
+            # normalize keys across MRQ/SICQL/HRM shapes
+            title = (s.get("goal_text") or s.get("title") or "").strip()
+            # singleton path
+            if "output" in s and ("score" in s or "target_score" in s):
+                out = (s.get("scorable_text") or s.get("output") or "").strip()
+                val = s.get("target_score", s.get("score", None))
+                _maybe_push(title, out, val)
                 continue
-            pre_filtered.append((goal_text, scorable_text, float(target_value)))
-            raw_targets.append(float(target_value))
+            # pairwise path
+            if all(k in s for k in ("output_a", "output_b", "value_a", "value_b")):
+                a_out = (s.get("output_a") or "").strip()
+                b_out = (s.get("output_b") or "").strip()
+                a_val = s.get("value_a", None)
+                b_val = s.get("value_b", None)
+                if a_out or b_out:
+                    if a_out and (a_val is not None): _maybe_push(title, a_out, a_val)
+                    if b_out and (b_val is not None): _maybe_push(title, b_out, b_val)
+                else:
+                    skipped += 1
+                continue
+            # explicit HRM/raw path
+            if ("goal_text" in s and "scorable_text" in s and
+                ("target_score" in s or "score" in s)):
+                out = (s.get("scorable_text") or "").strip()
+                val = s.get("target_score", s.get("score"))
+                _maybe_push(title, out, val)
+                continue
+            # otherwise unrecognized
+            skipped += 1
 
-        if len(pre_filtered) < self.min_samples:
-            self.logger.log("HRMDataError", {"message": f"Insufficient raw samples: {len(pre_filtered)} < {self.min_samples}"})
+        if kept < self.min_samples:
+            self.logger.log("HRMDataError", {
+                "message": f"Insufficient samples after parsing: kept={kept}, skipped={skipped}",
+                "kept": kept, "skipped": skipped, "threshold": self.min_samples
+            })
             return None
 
-        # Robust percentiles for stability
-        lo = float(np.percentile(raw_targets, self.scaler_p_lo)) if raw_targets else 0.0
-        hi = float(np.percentile(raw_targets, self.scaler_p_hi)) if raw_targets else 1.0
+        # ---- robust scaling over raw targets ----
+        raw_vals = [v for _, _, v in triples]
+        lo = float(np.percentile(raw_vals, self.scaler_p_lo)) if raw_vals else 0.0
+        hi = float(np.percentile(raw_vals, self.scaler_p_hi)) if raw_vals else 1.0
         if hi - lo < 1e-9:
             hi = lo + 1.0
 
-        self._scaler_stats[dimension] = {"lo": lo, "hi": hi}  # store for meta/logs
+        self._scaler_stats[dimension] = {"lo": lo, "hi": hi}
         self.logger.log("HRMTargetScaling", {
             "dimension": dimension, "p_lo": self.scaler_p_lo, "p_hi": self.scaler_p_hi,
-            "lo": lo, "hi": hi, "n": len(raw_targets)
+            "lo": lo, "hi": hi, "n": len(raw_vals)
         })
 
         def _norm(v: float) -> float:
             x = (v - lo) / (hi - lo)
             return 0.0 if x < 0.0 else 1.0 if x > 1.0 else float(x)
 
-        # 2) Encode inputs and normalized targets
-        valid_samples = []
-        for goal_text, scorable_text, target_value in pre_filtered:
+        # ---- encode & pack tensors ----
+        xs, ys = [], []
+        for goal_text, doc_text, value in triples:
             try:
-                ctx_emb = torch.tensor(self.memory.embedding.get_or_create(goal_text), dtype=torch.float32)
-                doc_emb = torch.tensor(self.memory.embedding.get_or_create(scorable_text), dtype=torch.float32)
-                input_tensor = torch.cat([ctx_emb, doc_emb], dim=-1)
-                target_tensor = torch.tensor([_norm(target_value)], dtype=torch.float32)  # normalized → [0,1]
-                valid_samples.append((input_tensor, target_tensor))
+                ctx = torch.tensor(self.memory.embedding.get_or_create(goal_text),
+                                dtype=torch.float32, device=self.device)
+                doc = torch.tensor(self.memory.embedding.get_or_create(doc_text),
+                                dtype=torch.float32, device=self.device)
+                x = torch.cat([ctx, doc], dim=-1)                 # [2*D]
+                y = torch.tensor([_norm(value)], dtype=torch.float32, device=self.device)  # [1]
+                xs.append(x); ys.append(y)
             except Exception as e:
+                skipped += 1
                 self.logger.log("HRMDataError", {"error": str(e), "sample_goal_preview": goal_text[:80]})
-                continue
 
-        if len(valid_samples) < self.min_samples:
-            self.logger.log("HRMDataError", {"message": f"Insufficient valid samples: {len(valid_samples)} < {self.min_samples}"})
+        if len(xs) < self.min_samples:
+            self.logger.log("HRMDataError", {
+                "message": f"Insufficient valid encoded samples: {len(xs)} < {self.min_samples}",
+                "after_encoding_kept": len(xs), "skipped_total": skipped
+            })
             return None
 
-        inputs, targets = zip(*valid_samples)
-        dataset = TensorDataset(torch.stack(inputs), torch.stack(targets))
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        X = torch.stack(xs)      # [N, 2*D]
+        Y = torch.stack(ys)      # [N, 1]
+        dataset = TensorDataset(X, Y)
+        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
         self.logger.log("HRMDataLoaderCreated", {
             "dimension": dimension,
-            "num_samples": len(valid_samples),
-            "num_batches": len(dataloader)
+            "num_samples": len(dataset),
+            "num_batches": len(loader),
+            "kept": kept, "skipped": skipped
         })
-        return dataloader
+        return loader
+
+    def _log_training_stats(self, dimension, *, avg_loss, sample_count, valid_samples, scaler_meta):
+        self.memory.training_stats.add_from_result(
+            stats={
+                "avg_loss": avg_loss,
+                "policy_entropy": None,
+                "policy_stability": None,
+                "policy_logits": None,
+            },
+            model_type="hrm",
+            target_type=self.target_type,
+            dimension=dimension,
+            version=self.version,
+            embedding_type=self.embedding_type,
+            config={
+                "lr": self.lr, "epochs": self.epochs, "batch_size": self.batch_size,
+                "dim": self.dim, "hdim": self.hdim,
+                "h_dim": self.h_dim, "l_dim": self.l_dim,
+                "n_cycles": self.n_cycles, "t_steps": self.t_steps,
+                "apply_sigmoid": self.apply_sigmoid,
+                "target_scale": scaler_meta,
+            },
+            sample_count=sample_count,
+            valid_samples=valid_samples,
+        )
+
+    def _grad_global_norm(self) -> float:
+        num, den = 0.0, 0.0
+        for p in self.hrm_model.parameters():
+            if p.grad is not None:
+                g = p.grad.detach()
+                num += float(torch.sum(g * g))
+        return float(np.sqrt(num)) if num > 0 else 0.0
+
 
     def _save_model(self, dimension: str):
         locator = self.get_locator(dimension)

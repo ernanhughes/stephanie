@@ -11,6 +11,7 @@ defaults:
 
   - agents/chat_mrq_trainer
   - agents/chat_sicql_trainer
+  - agents/chat_hrm_trainer
 
 embeddings:
   backend: hnet
@@ -52,6 +53,11 @@ pipeline:
        enabled: true
        iterations: 1
 
+     - name: chat_hrm_trainer
+       description: "Train a HRM model to predict values usin chat conversation_turns"
+       cls: stephanie.agents.maintenance.hrm_trainer.HRMTrainerAgent
+       enabled: false
+       iterations: 1
 
      - name: document_ebt_trainer
        description: "Train a model to predict document values based on EBT" 
@@ -62,12 +68,6 @@ pipeline:
      - name: rank_trainer
        description: "Train a ranker model using SICQL"
        cls: stephanie.agents.maintenance.rank_trainer.ContrastiveRankerTrainerAgent
-       enabled: false
-       iterations: 1
-
-     - name: hrm_trainer
-       description: "Train a model to predict document values based on HRM"
-       cls: stephanie.agents.maintenance.hrm_trainer.HRMTrainerAgent
        enabled: false
        iterations: 1
 
