@@ -1,4 +1,4 @@
-# stephanie/scoring/hrm/hrm_scorer.py
+# stephanie/scoring/hrm_scorer.py
 
 import logging
 import os

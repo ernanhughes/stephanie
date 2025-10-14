@@ -1,4 +1,5 @@
 # stephanie/scoring/meta_review_scorer.py
+from __future__ import annotations
 
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.scorer.llm_scorer import LLMScorer
@@ -13,14 +14,14 @@ class MetaReviewScorer(BaseScorer):
     Tries MRQ first. If it's missing dimensions or returns low-confidence scores, falls back to LLM.
     """
 
-    def __init__(self, memory, logger, cfg=None, fallback_to_llm=True):
+    def __init__(self, cfg, memory, logger, container, fallback_to_llm=True):
         self.memory = memory
         self.logger = logger
         self.cfg = cfg or {}
         self.use_llm_fallback = fallback_to_llm
 
         self.mrq_scorer = MRQScorer(cfg, memory, container, logger)
-        self.llm_scorer = LLMScorer(memory, logger, cfg)
+        self.llm_scorer = LLMScorer(cfg, memory, container, logger)
 
     def score(self, goal, hypothesis, dimensions):
         mrq_scores = self.mrq_scorer.score(goal, hypothesis, dimensions)

@@ -1,5 +1,5 @@
 # stephanie/scoring/svm/svm_scorer.py
-
+from __future__ import annotations
 
 import numpy as np
 from joblib import load

@@ -18,6 +18,8 @@ class ChatAnalyzeAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.limit = cfg.get("limit", 10000)
+        self.dimensions = cfg.get("dimensions", ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"])
+        self.force_rescore = cfg.get("force_rescore", True) # Test initially with force rescore
 
     async def run(self, context: dict) -> dict:
         """
@@ -33,13 +35,15 @@ class ChatAnalyzeAgent(BaseAgent):
                 order_desc=False,
             )
 
-        out = []
         scoring = self.container.get("scoring")  # ScoringService
+        prompt_service = self.container.get("prompt")  # PromptService
         pipeline_run_id = context.get("pipeline_run_id")
+        
+        out = []
         for row in batch:
             turn_id = row.get("id")
             assistant_message_id = row.get("assistant_message_id")
-            if row.get("ai_knowledge_score") is not None:
+            if row.get("ai_knowledge_score") is not None and not self.cfg.get("force_rescore", False):
                 _logger.debug(
                     f"[ChatAnalyzeAgent] Skipping already analyzed turn {turn_id}"
                 )
@@ -65,38 +69,45 @@ class ChatAnalyzeAgent(BaseAgent):
 
             # 2️⃣ Call LLM to get knowledge score + rationale
             merged_context = {**row, **context}
-            prompt = self.prompt_loader.load_prompt(self.cfg, merged_context)
-            response = self.call_llm(prompt, merged_context)
 
-            # 3️⃣ Parse the response
-            score = 0.0
-            rationale = ""
-            try:
-                parsed = parse_knowledge_judge_text(response)
-                score = parsed["score"]
-                rationale = parsed["rationale"]
-            except ParseError as e:
-                _logger.error(
-                    f"[ChatAnalyzeAgent] Parse error for turn {assistant_message_id}: {e}"
+
+            results = {}
+            for dim in self.dimensions:
+                prompt = self.prompt_loader.from_file(f"{dim}.txt", self.cfg, merged_context)
+                response = await prompt_service.run_prompt(prompt, merged_context)
+                # 3️⃣ Parse the response
+                score = 0.0
+                rationale = ""
+                try:
+                    parsed = parse_knowledge_judge_text(response)
+                    score = parsed["score"]
+                    rationale = parsed["rationale"]
+                except ParseError as e:
+                    _logger.error(
+                        f"[ChatAnalyzeAgent] Parse error for turn {assistant_message_id}: {e}"
+                    )
+                    continue
+
+                # 3️⃣ Save the scores on the chat turn object ... we do this for the gui  
+                if dim == "knowledge":
+                    self.memory.chats.set_turn_ai_eval(
+                        turn_id=turn_id,
+                        score=score,
+                        rationale=rationale,
+                    )
+
+
+                # 2️⃣ Create the EvaluationORM object
+                score_result = ScoreResult(
+                    dimension="knowledge_value",
+                    score=score,
+                    source="knowledge_llm",
+                    rationale=rationale,
+                    attributes={"raw_response": response},
                 )
-                continue
+                results[dim] = score_result
 
-            # 3️⃣ Save the scores on the chat turn object ... we do this for the gui  
-            self.memory.chats.set_turn_ai_eval(
-                turn_id=turn_id,
-                score=score,
-                rationale=rationale,
-            )
-
-            # 2️⃣ Create the EvaluationORM object
-            score_result = ScoreResult(
-                dimension="knowledge_value",
-                score=score,
-                source="knowledge_llm",
-                rationale=rationale,
-                attributes={"raw_response": response},
-            )
-            bundle = ScoreBundle(results={"knowledge_value": score_result})
+            bundle = ScoreBundle(results=results)
 
             #3️⃣ Wrap as Scorable and persist via standard save_bundle
             scorable = Scorable(

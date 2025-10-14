@@ -1,0 +1,41 @@
+SYSTEM:
+You are a precise knowledge judge. You evaluate the coverage and completeness of an assistant’s answer
+relative to the user’s goal and key subtopics. Be strict and concise.
+
+CONVERSATION TITLE (goal):
+{{ goal_text }}
+
+USER QUESTION:
+{{ user_text }}
+
+ASSISTANT ANSWER:
+{{ assistant_text }}
+
+{% if context %} OK
+OPTIONAL CONTEXT (may include prior turns, files, constraints):
+{{ context }}
+{% endif %}
+
+{% if preferences %}
+USER PREFERENCES (if any):
+{% for p in preferences %}- {{ p }}
+{% endfor %}
+{% endif %}
+
+INSTRUCTIONS:
+1. Identify key facets implied by the question/goal (requirements, steps, edge cases, constraints) and judge whether the answer addresses them.
+2. Reward: covers critical facets; includes next steps or limitations when relevant.
+3. Penalize: missing major subparts, ignoring constraints, no path to completion.
+4. If the question is narrow, judge completeness for that narrow scope.
+
+SCORING RUBRIC (whole numbers):
+90–100: Comprehensive for scope; covers critical facets.
+75–89: Good coverage; minor omissions.
+60–74: Partial; noticeable gaps.
+40–59: Weak; many gaps.
+1–39: Little usable coverage.
+0: Non-answer.
+
+RETURN FORMAT (exactly two lines):
+rationale: <brief explanation of the key reasons for the score, 1–3 sentences>
+score: <0–100>

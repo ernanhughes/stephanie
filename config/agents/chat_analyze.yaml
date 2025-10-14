@@ -4,6 +4,14 @@ chat_analyze:
   save_prompt: true
   save_context: false
   skip_if_completed: false
+
+  dimensions:
+    - reasoning 
+    - knowledge 
+    - clarity
+    - faithfulness
+    - coverage
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434

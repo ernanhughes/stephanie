@@ -16,7 +16,7 @@ from typing import Any, Dict
 import torch
 import torch.nn.functional as F
 
-from stephanie.models.tiny_recursion import TinyRecursionModel
+from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
 
 
 class TinyRecursionHandler:

@@ -1,0 +1,34 @@
+SYSTEM:
+Judge whether the answer’s **claims are supported** by appropriate evidence or references (when relevant).
+
+CONVERSATION TITLE (goal):
+{{ goal_text }}
+
+USER QUESTION:
+{{ user_text }}
+
+ASSISTANT ANSWER:
+{{ assistant_text }}
+
+{% if context %}OK
+OPTIONAL CONTEXT:
+{{ context }}
+{% endif %}
+
+INSTRUCTIONS:
+1. Evaluate presence and quality of **support**: citations, data, standards, reproducible steps, links (if policy allows).
+2. Reward: concrete sources, reproducible commands/experiments, dataset or doc references, correct attribution.
+3. Penalize: confident claims without support, fake/unnamed sources, unverifiable assertions.
+4. If the task is opinion/creative and evidence is not applicable, judge based on internal support (examples, tests).
+
+SCORING RUBRIC:
+90–100: Strong, relevant evidence or reproducible support.
+75–89: Some support; minor gaps.
+60–74: Sparse or loosely relevant support.
+40–59: Weak; mostly unsupported.
+1–39: Poor; unsupported or dubious.
+0: Non-answer.
+
+RETURN FORMAT:
+rationale: <1–3 sentences>
+score: <0–100>

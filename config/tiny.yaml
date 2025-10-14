@@ -46,7 +46,7 @@ pipeline:
      - name: chat_analyze
        description: "Analyze chat history for relevant information"
        cls: stephanie.agents.knowledge.chat_analyze.ChatAnalyzeAgent
-       enabled: false
+       enabled: true
        iterations: 1
      - name: universal_scorer
        cls: stephanie.agents.universal_scorer.UniversalScorerAgent

@@ -1,7 +1,8 @@
-# stephanie/scoring/scorable_knowledge.py (your file name)
+# stephanie/scoring/scorer/knowledge_scorer.py
+from __future__ import annotations
+
 import os
 
-import torch
 
 from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle

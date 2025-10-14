@@ -1,4 +1,5 @@
 # stephanie/scoring/llm_scorer.py
+from __future__ import annotations
 
 import re
 from string import Template

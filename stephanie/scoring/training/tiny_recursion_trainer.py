@@ -1,15 +1,22 @@
 # stephanie/scoring/training/tiny_recursion_trainer.py
 from __future__ import annotations
 from datetime import datetime
+from collections import Counter
+from typing import Tuple, List, Dict, Any
 
 import torch
 import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.models.tiny_recursion import TinyRecursionModel
-from stephanie.models.training_stats import TrainingStatsORM
+from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
 from stephanie.scoring.training.base_trainer import BaseTrainer
+
+# make tqdm optional
+try:
+    from tqdm.auto import tqdm  # optional
+except Exception:
+    tqdm = None
 
 
 class TinyRecursionTrainer(BaseTrainer):
@@ -20,17 +27,38 @@ class TinyRecursionTrainer(BaseTrainer):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.epochs = cfg.get("epochs", 50)
-        self.lr = cfg.get("lr", 1e-4)
-        self.batch_size = cfg.get("batch_size", 4)
-        self.dropout = cfg.get("dropout", 0.1)
-        self.use_attention = cfg.get("use_attention", False)
-        self.n_recursions = cfg.get("n_recursions", 6)
-        self.vocab_size = cfg.get("vocab_size", 1024)
 
+        # core knobs
+        self.epochs        = cfg.get("epochs", 20)
+        self.lr            = cfg.get("lr", 1e-4)
+        self.batch_size    = cfg.get("batch_size", 4)
+        self.dropout       = cfg.get("dropout", 0.1)
+        self.use_attention = cfg.get("use_attention", False)
+        self.n_recursions  = cfg.get("n_recursions", 6)
+        self.vocab_size    = cfg.get("vocab_size", 1024)  # must cover 0..100 classes (>=101)
+        self.halt_lambda   = cfg.get("halt_lambda", 0.1)
+
+        # progress/telemetry
+        self.show_progress     = cfg.get("show_progress", True)
+        self.progress_every    = max(1, int(cfg.get("progress_every", 500)))
+        self.log_every_steps   = max(1, int(cfg.get("log_every_steps", 50)))
+        self.label_hist_bucket = int(cfg.get("label_hist_bucket", 10))  # 10 → deciles
+        self.log_label_histogram = bool(cfg.get("log_label_histogram", True))
+
+        # validation split + reproducibility
+        self.validation_ratio = float(cfg.get("validation_ratio", 0.1))
+        self.seed             = int(cfg.get("seed", 42))
+        torch.manual_seed(self.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(self.seed)
+
+        # optional label bucketing (0 disables)
+        self.bucket_size = int(cfg.get("bucket_size", 0))
+
+        # model
         self.model = TinyRecursionModel(
             d_model=self.dim,
-            n_layers=2,
+            n_layers=cfg.get("n_layers", 2),
             n_recursions=self.n_recursions,
             vocab_size=self.vocab_size,
             use_attention=self.use_attention,
@@ -38,183 +66,332 @@ class TinyRecursionTrainer(BaseTrainer):
         ).to(self.device)
 
     # ------------------------------
-    # Data prep: each sample = (x, y, z, target)
+    # Data prep: each sample = (x, y, z, target_class[0..100 or binned], halt_target)
+    # returns: (DataLoader|None, kept, dropped)
     # ------------------------------
-    def _create_dataloader(self, samples):
-        xs, ys, zs, labels = [], [], [], []
-        dropped = 0
-        for s in samples:
-            try:
-                x = torch.tensor(
-                    self.memory.embedding.get_or_create(s["x"]),
-                    dtype=torch.float,
-                )
-                y = torch.tensor(
-                    self.memory.embedding.get_or_create(s["y"]),
-                    dtype=torch.float,
-                )
-                z = torch.tensor(
-                    self.memory.embedding.get_or_create(s["z"]),
-                    dtype=torch.float,
-                )
+    def _create_dataloader(self, samples: List[Dict[str, Any]]) -> Tuple[Any, int, int]:
+        xs: List[torch.Tensor] = []
+        ys: List[torch.Tensor] = []
+        zs: List[torch.Tensor] = []
+        targets: List[int] = []
+        halt_targets: List[float] = []
 
-                t = s.get("target", None)
-                if t is None:
+        kept = 0
+        dropped = 0
+        label_counts = Counter()
+
+        use_tqdm = bool(self.show_progress and tqdm is not None)
+        pbar = tqdm(samples, desc="Packing TinyRecursion samples", unit="samp") if use_tqdm else None
+        iterator = enumerate(pbar if pbar is not None else samples, start=1)
+
+        for idx, s in iterator:
+            try:
+                x = torch.tensor(self.memory.embedding.get_or_create(s["x"]), dtype=torch.float, device=self.device)
+                y = torch.tensor(self.memory.embedding.get_or_create(s["y"]), dtype=torch.float, device=self.device)
+                z = torch.tensor(self.memory.embedding.get_or_create(s["z"]), dtype=torch.float, device=self.device)
+
+                raw_t = s.get("target")
+                if raw_t is None:
                     dropped += 1
+                    if (not use_tqdm) and self.show_progress and (idx % self.progress_every == 0) and self.logger:
+                        self.logger.log("TinyRecursionPackProgress", {"kept": kept, "dropped": dropped})
                     continue
+
                 try:
-                    t = int(t)
-                    if not (0 <= t <= 100):
-                        dropped += 1
-                        continue
+                    t_int = int(float(raw_t))
                 except Exception:
                     dropped += 1
+                    if (not use_tqdm) and self.show_progress and (idx % self.progress_every == 0) and self.logger:
+                        self.logger.log("TinyRecursionPackProgress", {"kept": kept, "dropped": dropped})
                     continue
+
+                # optional bucketing
+                t_int = self._bucketize_label(t_int)
+
+                # ensure class id fits vocab
+                if not (0 <= t_int < self.vocab_size):
+                    dropped += 1
+                    if (not use_tqdm) and self.show_progress and (idx % self.progress_every == 0) and self.logger:
+                        self.logger.log("TinyRecursionPackProgress", {"kept": kept, "dropped": dropped})
+                    continue
+
+                halt_t = float(s.get("halt_target", 1.0))
 
                 xs.append(x)
                 ys.append(y)
                 zs.append(z)
-                labels.append(torch.tensor(t, dtype=torch.long))
+                targets.append(t_int)
+                halt_targets.append(halt_t)
+                label_counts[t_int] += 1
+                kept += 1
+
+                if pbar is not None:
+                    pbar.set_postfix(kept=kept, drop=dropped)
+
             except Exception as e:
                 dropped += 1
                 if self.logger:
-                    self.logger.log(
-                        "TinyRecursionSampleError", {"error": str(e)}
-                    )
-                continue
+                    self.logger.log("TinyRecursionSampleError", {"error": str(e)})
 
-        if len(xs) < 2:
-            return None
+        if pbar is not None:
+            pbar.close()
+
+        # label histogram logging
+        if self.logger and self.log_label_histogram:
+            exact = {int(k): int(v) for k, v in sorted(label_counts.items())}
+            bucketed = self._bucketize_counts(label_counts, self.label_hist_bucket)
+            self.logger.log("TinyRecursionLabelHistogram", {
+                "kept": int(kept),
+                "dropped": int(dropped),
+                "exact": exact,
+                "bucket_size": int(self.label_hist_bucket),
+                "bucketed": bucketed
+            })
+
+        if kept < 2:
+            return None, kept, dropped
 
         dataset = TensorDataset(
-            torch.stack(xs).to(self.device),
-            torch.stack(ys).to(self.device),
-            torch.stack(zs).to(self.device),
-            torch.stack(labels).to(self.device),
+            torch.stack(xs),
+            torch.stack(ys),
+            torch.stack(zs),
+            torch.tensor(targets, dtype=torch.long, device=self.device),
+            torch.tensor(halt_targets, dtype=torch.float, device=self.device),
         )
-        return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        return loader, kept, dropped
 
     # ------------------------------
-    # Train one epoch
+    # Epoch training (with progress)
     # ------------------------------
-    def _train_epoch(self, model, dataloader):
+    def _train_epoch(self, model, dataloader, epoch_idx: int) -> float:
         model.train()
         total_loss = 0.0
         count = 0
 
-        for x, y, z, targets in dataloader:
+        use_tqdm = bool(self.show_progress and tqdm is not None)
+        pbar = tqdm(dataloader, desc=f"Epoch {epoch_idx}", unit="batch", leave=False) if use_tqdm else None
+        iterator = enumerate(pbar if pbar is not None else dataloader, start=1)
+
+        for step, batch in iterator:
+            x, y, z, targets, halt_targets = batch
             logits, halt_p, _ = model(x, y, z)
+
             ce_loss = F.cross_entropy(logits, targets)
-            halt_loss = (
-                torch.mean((halt_p - 1.0) ** 2) * 0.1
-            )  # optional stabilization
-            loss = ce_loss + halt_loss
+            halt_loss = F.binary_cross_entropy_with_logits(halt_p, halt_targets)
+            loss = ce_loss + self.halt_lambda * halt_loss
 
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             self.optimizer.step()
 
-            total_loss += loss.item() * x.size(0)
-            count += x.size(0)
+            bsz = x.size(0)
+            total_loss += loss.item() * bsz
+            count += bsz
 
-        return total_loss / count
+            if pbar is not None:
+                pbar.set_postfix(loss=f"{loss.item():.4f}")
+            elif self.logger and (step % self.log_every_steps == 0):
+                self.logger.log("TinyRecursionBatch", {"epoch": epoch_idx, "step": step, "batch_loss": float(loss.item())})
+
+        if pbar is not None:
+            pbar.close()
+
+        return total_loss / max(1, count)
 
     # ------------------------------
-    # Main train loop
+    # Validation pass (MAE, within±5, top1, halt BCE)
+    # ------------------------------
+    def _validate(self, model, dataloader) -> Dict[str, float]:
+        if not dataloader:
+            return {}
+
+        model.eval()
+        preds, targs, halt_preds, halt_targs = [], [], [], []
+        with torch.no_grad():
+            for x, y, z, targets, halt_targets in dataloader:
+                logits, halt_p, _ = model(x, y, z)
+                preds.extend(logits.argmax(dim=-1).detach().cpu().tolist())
+                targs.extend(targets.detach().cpu().tolist())
+                halt_preds.extend(torch.sigmoid(halt_p).detach().cpu().tolist())
+                halt_targs.extend(halt_targets.detach().cpu().tolist())
+
+        if not targs:
+            return {}
+
+        pt = torch.tensor(preds, dtype=torch.float32)
+        tt = torch.tensor(targs, dtype=torch.float32)
+        hp = torch.tensor(halt_preds, dtype=torch.float32).clamp(1e-6, 1 - 1e-6)
+        ht = torch.tensor(halt_targs, dtype=torch.float32)
+
+        mae = F.l1_loss(pt, tt).item()
+        within5 = (pt.sub(tt).abs() <= 5).float().mean().item()
+        top1 = (pt == tt).float().mean().item()
+        halt_bce = F.binary_cross_entropy(hp, ht).item()
+
+        return {"mae": mae, "within_delta_5": within5, "top1_accuracy": top1, "halt_bce": halt_bce}
+
+    # ------------------------------
+    # Train/val split
+    # ------------------------------
+    def _create_train_val_split(self, samples: List[Dict[str, Any]]):
+        if not samples:
+            return [], []
+        if self.validation_ratio <= 0 or len(samples) < 10:
+            return samples, []
+        g = torch.Generator().manual_seed(self.seed)
+        idx = torch.randperm(len(samples), generator=g).tolist()
+        split = int(len(samples) * (1 - self.validation_ratio))
+        return [samples[i] for i in idx[:split]], [samples[i] for i in idx[split:]]
+
+    # ------------------------------
+    # Main train loop (with validation & early stopping)
     # ------------------------------
     def train(self, samples, dimension):
-        dataloader = self._create_dataloader(samples)
+        # split
+        train_samples, val_samples = self._create_train_val_split(samples)
+
+        # build loaders
+        dataloader, kept, dropped = self._create_dataloader(train_samples)
+        val_loader, val_kept, val_dropped = (None, 0, 0)
+        if val_samples:
+            val_loader, val_kept, val_dropped = self._create_dataloader(val_samples)
+
         if not dataloader:
-            return {"error": "insufficient_data"}
+            return {"error": "insufficient_data", "kept": kept, "dropped": dropped}
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
-        best_loss = float("inf")
+        best_metric = float("inf")
         patience, wait = 3, 0
+        train_losses = []
 
-        for epoch in range(self.epochs):
-            avg_loss = self._train_epoch(self.model, dataloader)
-            self.logger.log(
-                "TinyRecursionEpoch", {"epoch": epoch + 1, "loss": avg_loss}
-            )
-            if avg_loss < best_loss - 1e-4:
-                best_loss = avg_loss
+        for epoch in range(1, self.epochs + 1):
+            avg_loss = self._train_epoch(self.model, dataloader, epoch_idx=epoch)
+            train_losses.append(avg_loss)
+
+            val_metrics = self._validate(self.model, val_loader) if val_loader else {}
+            if self.logger:
+                self.logger.log("TinyRecursionEpoch", {
+                    "epoch": epoch,
+                    "train_loss": float(avg_loss),
+                    **({f"val_{k}": v for k, v in val_metrics.items()})
+                })
+
+            # early-stop on validation MAE when available; else training loss
+            stop_metric = val_metrics.get("mae", avg_loss) if val_metrics else avg_loss
+
+            if stop_metric < best_metric - 1e-4:
+                best_metric = stop_metric
                 wait = 0
+                locator = self.get_locator(dimension)
+                torch.save(self.model.state_dict(), locator.model_file())
             else:
                 wait += 1
                 if wait >= patience:
+                    if self.logger:
+                        self.logger.log("TinyRecursionEarlyStopping", {"epoch": epoch})
                     break
 
-        locator = self.get_locator(dimension)
-        torch.save(self.model.state_dict(), locator.model_file())
+        # persist meta + stats
+        safe_config = {
+            "lr": self.lr,
+            "epochs": self.epochs,
+            "batch_size": self.batch_size,
+            "halt_lambda": self.halt_lambda,
+            "n_layers": self.cfg.get("n_layers", 2),
+            "n_recursions": self.n_recursions,
+            "use_attention": self.use_attention,
+            "dropout": self.dropout,
+            "seed": self.seed,
+            "bucket_size": self.bucket_size,
+        }
+        # include optional fields only if present
+        if hasattr(self, "beta"):          safe_config["beta"] = self.beta
+        if hasattr(self, "margin"):        safe_config["margin"] = self.margin
+        if hasattr(self, "ai_pair_weight"): safe_config["ai_pair_weight"] = self.ai_pair_weight
+        if hasattr(self, "align_lambda"):   safe_config["align_lambda"] = self.align_lambda
 
         meta = {
             "dimension": dimension,
             "model_type": "tiny_recursion",
-            "target_type": self.target_type,
             "embedding_type": self.embedding_type,
             "version": self.version,
             "epochs": self.epochs,
-            "avg_loss": best_loss,
+            "avg_loss": float(min(train_losses or [best_metric])),
             "timestamp": datetime.now().isoformat(),
+            "cfg": dict(self.cfg),
+            "kept": int(kept),
+            "dropped": int(dropped),
+            "val_kept": int(val_kept),
+            "val_dropped": int(val_dropped),
         }
         self._save_meta_file(meta, dimension)
 
-        training_stat = TrainingStatsORM(
-            model_type="tiny_recursion",
-            target_type=self.target_type,
+        # TrainingStatsStore integration
+        self.memory.training_stats.add_from_result(
+            stats={"avg_q_loss": float(min(train_losses or [best_metric]))},
+            model_type=getattr(self, "model_type", "tiny_recursion"),
+            target_type=getattr(self, "target_type", "classification_0_100"),
             dimension=dimension,
             version=self.version,
-            embedding_type=self.embedding_type,
-            avg_q_loss=best_loss,
+            embedding_type=self.embedding_type,  # or self.memory.embedding.name
+            config=safe_config,
+            sample_count=len(samples),
+            valid_samples=int(kept),
+            invalid_samples=int(dropped),
+            start_time=datetime.now(),
         )
-        self.memory.session.add(training_stat)
-        self.memory.session.commit()
-        return meta
 
-    def _extract_target_0_100(
-        self, sample, dimension: str | None
-    ) -> int | None:
+        # final small report
+        return {
+            "best_metric": float(best_metric),
+            "train_loss_curve": [float(x) for x in train_losses],
+            "kept": int(kept),
+            "dropped": int(dropped),
+            "val_kept": int(val_kept),
+            "val_dropped": int(val_dropped),
+        }
+
+    # ------------------------------
+    # Helpers
+    # ------------------------------
+    def _bucketize_label(self, y: int) -> int:
         """
-        Priority:
-        1) ai_knowledge_score   (gold)
-        2) sample['target']     (explicit)
-        3) scores[dimension].score (derived)
-        Returns int in [0, 100] or None.
+        If bucket_size > 0, map 0..100 → 0..num_bins-1 using fixed-width bins.
+        Otherwise return y unchanged.
         """
-        # 1) gold: ai_knowledge_score
-        aks = sample.get("ai_knowledge_score", None)
-        if aks is not None:
+        b = int(self.bucket_size)
+        if b <= 0:
+            return y
+        num_bins = (101 + b - 1) // b
+        return min(max(y, 0) // b, num_bins - 1)
+
+    def _bucketize_counts(self, counts: Counter, bucket: int) -> dict:
+        """
+        Turn per-label counts (0..100 or binned ids) into buckets of given size.
+        Example: bucket=10 -> "0-9", "10-19", ..., "100-100"
+        """
+        if bucket <= 1:
+            return {str(k): int(v) for k, v in sorted(counts.items())}
+
+        buckets = {}
+        for label, c in counts.items():
             try:
-                v = float(aks)
-                return int(max(0.0, min(100.0, v)))
+                l = int(label)
             except Exception:
-                pass
+                continue
+            start = (l // bucket) * bucket
+            end = min(100, start + bucket - 1)
+            key = f"{start}-{end}"
+            buckets[key] = buckets.get(key, 0) + int(c)
 
-        # 2) explicit target
-        raw = sample.get("target", None)
-        if raw is not None:
-            try:
-                v = float(raw)
-                return int(max(0.0, min(100.0, v)))
-            except Exception:
-                try:
-                    v = float(str(raw).strip())
-                    return int(max(0.0, min(100.0, v)))
-                except Exception:
-                    pass
+        # ensure all expected ranges exist
+        start = 0
+        while start <= 100:
+            end = min(100, start + bucket - 1)
+            key = f"{start}-{end}"
+            buckets.setdefault(key, 0)
+            start += bucket
 
-        # 3) derived from scores[] for requested dimension
-        if dimension:
-            for sc in sample.get("scores") or []:
-                if (sc.get("dimension") or "").lower() == dimension.lower():
-                    v = sc.get("score")
-                    if v is None:
-                        continue
-                    try:
-                        vf = float(v)
-                        return int(max(0.0, min(100.0, vf)))
-                    except Exception:
-                        continue
-
-        return None
+        return dict(sorted(buckets.items(), key=lambda kv: int(kv[0].split('-')[0])))
