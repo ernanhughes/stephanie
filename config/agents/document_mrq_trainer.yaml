@@ -5,8 +5,13 @@ document_mrq_trainer:
   target_type: document
   use_sicql_style: false
   dimensions: 
-    - alignment
+    # - alignment
+    # - clarity
+    # - implementability
+    # - novelty
+    # - relevance
+    - reasoning
+    - knowledge
     - clarity
-    - implementability
-    - novelty
-    - relevance
+    - faithfulness
+    - coverage

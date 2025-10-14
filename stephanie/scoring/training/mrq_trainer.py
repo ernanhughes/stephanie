@@ -176,16 +176,15 @@ class MRQTrainer(BaseTrainer):
         }
         self._save_meta_file(meta, dimension)
 
-        training_stat = TrainingStatsORM(
+        self.memory.training_stats.add_from_result(
             model_type="mrq",
             target_type=self.target_type,
             dimension=dimension,
             version=self.version,
             embedding_type=self.embedding_type,
-            
-            avg_q_loss=best_loss
+            avg_q_loss=best_loss, 
+            sample_count=len(samples),
+            start_time=datetime.now(),
         )
-        self.memory.session.add(training_stat)
-        self.memory.session.commit()
 
         return meta

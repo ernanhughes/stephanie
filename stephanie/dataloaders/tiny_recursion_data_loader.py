@@ -7,7 +7,6 @@ import json
 
 from stephanie.scoring.scorable import ScorableType
 
-# optional tqdm
 try:
     from tqdm.auto import tqdm
 except Exception:
@@ -25,12 +24,22 @@ class TinyRecursionDataLoader:
         "z": reflection (str),
         "target": int in [0, 100],
         "halt_target": float in {0.0, 1.0},
-        ... plus metadata (goal_id, evaluation_id, scorable_id, source, model_name)
+        "dimension": <requested dimension>,
+        ...meta
       }
     """
 
-    # defaults prioritize knowledge judgment first, reasoning second
-    DEFAULT_PREFERRED_DIMS = ("knowledge_value", "reasoning")
+    # canonical dimension names in your panel
+    CANONICAL_DIMS = ("reasoning", "knowledge", "clarity", "faithfulness", "coverage")
+
+    # legacy → canonical map
+    DIM_ALIASES = {
+        "knowledge_value": "knowledge",
+        "knowledge_score": "knowledge",
+        "reason": "reasoning",
+        "accuracy": "faithfulness",  # chat “accuracy” == faithfulness-to-context
+    }
+
     DEFAULT_PREFERRED_SOURCES = ("knowledge_llm", "llm", "sicql", "mrq", "ebt", "svm")
 
     def __init__(
@@ -38,17 +47,15 @@ class TinyRecursionDataLoader:
         memory,
         logger=None,
         *,
-        preferred_dims: Tuple[str, ...] = DEFAULT_PREFERRED_DIMS,
         preferred_sources: Tuple[str, ...] = DEFAULT_PREFERRED_SOURCES,
         use_calibrated_score: bool = False,
         show_progress: bool = True,
         label_hist_bucket: int = 10,
-        min_score: Optional[float] = None,   # drop if chosen target < min_score (after 0..100 scaling)
+        min_score: Optional[float] = None,      # drop if chosen target < min_score
         drop_missing_reflection: bool = False,  # if True, drop when we cannot build any reflection
     ):
         self.memory = memory
         self.logger = logger
-        self.PREFERRED_DIMS = tuple(preferred_dims or self.DEFAULT_PREFERRED_DIMS)
         self.PREFERRED_SOURCES = tuple(preferred_sources or self.DEFAULT_PREFERRED_SOURCES)
         self.use_calibrated_score = bool(use_calibrated_score)
         self.show_progress = bool(show_progress)
@@ -59,23 +66,26 @@ class TinyRecursionDataLoader:
     # ---------------------------------------------------------------------
     # Public API
     # ---------------------------------------------------------------------
-    def fetch_samples(self, limit: int = 5000) -> List[Dict[str, Any]]:
+    def fetch_samples_for_dimension(self, dimension: str, limit: int = 5000) -> List[Dict[str, Any]]:
         """
-        Pull structured reasoning samples from reasoning_samples_view
-        for CONVERSATION_TURN target type and convert them into trainer samples.
+        Pull rows for CONVERSATION_TURN, select the **requested dimension** score per row,
+        and convert into TinyRecursion trainer samples.
         """
+        dim = self._norm_dim(dimension)
+        if dim not in self.CANONICAL_DIMS:
+            raise ValueError(f"Unknown dimension '{dimension}'. Allowed: {self.CANONICAL_DIMS}")
+
         rows = self.memory.reasoning_samples.get_by_target_type(
             ScorableType.CONVERSATION_TURN,
             limit=int(limit),
         )
 
         samples: List[Dict[str, Any]] = []
-        kept = 0
-        dropped = 0
+        kept = dropped = 0
         label_counts = Counter()
 
         use_tqdm = bool(self.show_progress and tqdm is not None)
-        pbar = tqdm(rows, desc="Fetching TinyRecursion samples", unit="row") if use_tqdm else None
+        pbar = tqdm(rows, desc=f"Fetching TinyRecursion samples [{dim}]", unit="row") if use_tqdm else None
         iterator = pbar if pbar is not None else rows
 
         for r in iterator:
@@ -83,57 +93,57 @@ class TinyRecursionDataLoader:
                 rec = r.to_dict() if hasattr(r, "to_dict") else dict(r)
                 goal_text = (rec.get("goal_text") or "").strip()
                 scorable_text = (rec.get("scorable_text") or "").strip()
-
                 if not goal_text or not scorable_text:
                     dropped += 1
                     self._log_drop("missing_text", rec)
                     continue
 
-                scores = self._get_scores(rec)
-                attributes = self._get_attributes(rec)
+                # collect only scores/attrs for this dimension
+                scores_all = self._get_scores(rec)
+                attrs_all = self._get_attributes(rec)
+                scores_dim = [s for s in scores_all if self._norm_dim(s.get("dimension")) == dim]
+                attrs_dim  = [a for a in attrs_all  if self._norm_dim(a.get("dimension")) == dim]
 
-                # choose best score as target (0..100 int)
-                choose = self._choose_score(scores)
-                if not choose:
+                choice = self._choose_score_for_dim(scores_dim)
+                if not choice:
                     dropped += 1
-                    self._log_drop("no_usable_score", rec)
+                    self._log_drop(f"no_score_for_dim[{dim}]", rec)
                     continue
 
-                dim, src, score_val, rationale = choose
+                src, score_val, rationale = choice
                 target = self._to_int_0_100(score_val)
                 if target is None:
                     dropped += 1
                     self._log_drop("target_cast_failed", rec)
                     continue
-
                 if self.min_score is not None and target < self.min_score:
                     dropped += 1
                     self._log_drop("below_min_score", rec)
                     continue
 
-                # reflection text z
-                z_text = self._build_reflection_text_from_choice(dim, src, score_val, rationale, attributes)
+                # reflection built only from this dimension’s info
+                z_text = self._build_reflection_text_for_dim(dim, src, score_val, rationale, attrs_dim)
                 if not z_text and self.drop_missing_reflection:
                     dropped += 1
                     self._log_drop("no_reflection", rec)
                     continue
 
-                halt_target = self._derive_halt_target(scores, attributes)
+                halt_target = self._derive_halt_target(scores_dim, attrs_dim)
 
-                sample = {
+                samples.append({
                     "x": goal_text,
                     "y": scorable_text,
                     "z": z_text or "Reflection: assess alignment.",
                     "target": target,
                     "halt_target": float(halt_target),
+                    "dimension": dim,
                     # meta
                     "goal_id": rec.get("goal_id"),
                     "evaluation_id": rec.get("evaluation_id"),
                     "scorable_id": rec.get("scorable_id"),
                     "source": rec.get("source"),
                     "model_name": rec.get("model_name"),
-                }
-                samples.append(sample)
+                })
                 kept += 1
                 label_counts[target] += 1
 
@@ -148,26 +158,33 @@ class TinyRecursionDataLoader:
         if pbar is not None:
             pbar.close()
 
-        # histograms + summary
         self._log_label_histogram(kept, dropped, label_counts)
         if self.logger:
-            self.logger.log("TinyRecursionDataLoaded", {"count": len(samples), "kept": kept, "dropped": dropped})
+            self.logger.log("TinyRecursionDataLoaded", {
+                "dimension": dim, "count": len(samples), "kept": kept, "dropped": dropped
+            })
 
         return samples
+
+    # Backward-compat wrapper (keeps old callers working). Defaults to 'knowledge'.
+    def fetch_samples(self, limit: int = 5000, dimension: str = "knowledge") -> List[Dict[str, Any]]:
+        return self.fetch_samples_for_dimension(dimension=dimension, limit=limit)
 
     # ---------------------------------------------------------------------
     # Internals
     # ---------------------------------------------------------------------
+    def _norm_dim(self, name: Optional[str]) -> str:
+        n = (name or "").strip().lower()
+        if not n:
+            return ""
+        return self.DIM_ALIASES.get(n, n)
+
     def _get_scores(self, rec: Dict[str, Any]) -> List[Dict[str, Any]]:
-        v = rec.get("scores")
-        if not v:
-            v = rec.get("scores_json")
+        v = rec.get("scores") or rec.get("scores_json")
         return self._safe_json_list(v)
 
     def _get_attributes(self, rec: Dict[str, Any]) -> List[Dict[str, Any]]:
-        v = rec.get("attributes")
-        if not v:
-            v = rec.get("attributes_json")
+        v = rec.get("attributes") or rec.get("attributes_json")
         return self._safe_json_list(v)
 
     def _safe_json_list(self, val) -> List[Dict[str, Any]]:
@@ -181,27 +198,15 @@ class TinyRecursionDataLoader:
         except (json.JSONDecodeError, TypeError):
             return []
 
-    def _choose_score(self, scores: List[Dict[str, Any]]) -> Optional[Tuple[str, str, float, str]]:
+    def _choose_score_for_dim(self, scores_dim: List[Dict[str, Any]]) -> Optional[Tuple[str, float, str]]:
         """
-        Pick best score by (dimension preference, source preference, score desc).
-        Returns tuple: (dimension, source, score_value_float, rationale_str)
+        Pick best score **within the requested dimension** by (source preference, score desc).
+        Returns: (source, score_value_float, rationale)
         """
-        if not scores:
+        if not scores_dim:
             return None
 
-        dim_pref = [d.lower() for d in self.PREFERRED_DIMS]
         src_pref = [s.lower() for s in self.PREFERRED_SOURCES]
-
-        def dim_rank(d: Optional[str]) -> int:
-            d = (d or "").lower()
-            try:
-                return dim_pref.index(d)  # exact match priority
-            except ValueError:
-                # allow partial match as a fallback
-                for i, pref in enumerate(dim_pref):
-                    if pref in d and pref:
-                        return i + len(dim_pref)
-                return 1_000_000  # deprioritize
 
         def src_rank(s: Optional[str]) -> int:
             s = (s or "").lower()
@@ -209,28 +214,25 @@ class TinyRecursionDataLoader:
                 return src_pref.index(s)
             except ValueError:
                 for i, pref in enumerate(src_pref):
-                    if pref in s and pref:
+                    if pref and pref in s:
                         return i + len(src_pref)
                 return 1_000_000
 
         best = None
         best_key = None
-        for s in scores:
-            raw_score = s.get("calibrated_score") if self.use_calibrated_score and s.get("calibrated_score") is not None else s.get("score")
-            if raw_score is None:
+        for s in scores_dim:
+            raw = s.get("calibrated_score") if self.use_calibrated_score and s.get("calibrated_score") is not None else s.get("score")
+            if raw is None:
                 continue
             try:
-                val = float(raw_score)
+                val = float(raw)
             except Exception:
                 continue
-
-            # normalize if in 0..1 range
             if 0.0 <= val <= 1.0:
                 val *= 100.0
-
-            key = (dim_rank(s.get("dimension")), src_rank(s.get("source")), -val)
+            key = (src_rank(s.get("source")), -val)
             if best is None or key < best_key:
-                best = (s.get("dimension"), s.get("source"), val, (s.get("rationale") or "").strip())
+                best = (s.get("source") or "", val, (s.get("rationale") or "").strip())
                 best_key = key
 
         return best
@@ -244,34 +246,29 @@ class TinyRecursionDataLoader:
         except Exception:
             return None
 
-    def _build_reflection_text_from_choice(
-        self, dim: Optional[str], src: Optional[str], score: float, rationale: str, attributes: List[Dict[str, Any]]
+    def _build_reflection_text_for_dim(
+        self, dim: str, src: str, score: float, rationale: str, attrs_dim: List[Dict[str, Any]]
     ) -> str:
         lines = []
         if rationale:
-            lines.append(f"{dim or 'score'} ({src or 'source'}={int(round(score))}): {rationale}")
+            lines.append(f"{dim} ({src or 'source'}={int(round(score))}): {rationale}")
 
-        # Attach a few attribute diagnostics, if any
-        for a in (attributes or [])[:8]:
-            d = a.get("dimension")
+        # include a few per-dimension attribute diagnostics if present
+        for a in (attrs_dim or [])[:8]:
             e = a.get("energy")
             u = a.get("uncertainty")
             if e is not None or u is not None:
-                lines.append(f"{d}: energy={e}, unc={u}")
+                lines.append(f"attr: energy={e}, unc={u}")
 
         return "\n".join(lines[:10])
 
-    def _derive_halt_target(self, scores: List[Dict[str, Any]], attributes: List[Dict[str, Any]]) -> float:
+    def _derive_halt_target(self, scores_dim: List[Dict[str, Any]], attrs_dim: List[Dict[str, Any]]) -> float:
         """
-        Heuristic: halt=1.0 if avg(score)>80 and avg_uncertainty<0.2, else 0.0
-        Accepts scores either in 0..100 or 0..1; auto-normalizes.
+        Heuristic per-dimension: halt=1.0 if avg(score)>80 and avg_uncertainty<0.2, else 0.0
         """
-        if not scores and not attributes:
-            return 0.0
-
         # avg score
         sv = []
-        for s in scores:
+        for s in scores_dim:
             v = s.get("score")
             if v is None:
                 continue
@@ -286,7 +283,7 @@ class TinyRecursionDataLoader:
 
         # avg uncertainty
         uv = []
-        for a in attributes or []:
+        for a in attrs_dim or []:
             u = a.get("uncertainty")
             if u is None:
                 continue
@@ -337,7 +334,6 @@ class TinyRecursionDataLoader:
             end = min(100, start + bucket - 1)
             key = f"{start}-{end}"
             buckets[key] = buckets.get(key, 0) + int(c)
-        # make ranges dense for nicer plots
         start = 0
         while start <= 100:
             end = min(100, start + bucket - 1)

@@ -23,39 +23,46 @@ class TinyRecursionTrainer(BaseTrainer):
     """
     Trainer for TinyRecursionModel — aligns with MRQTrainer pattern
     but trains recursive reasoning dynamics instead of value predictors.
+    Produces ONE MODEL PER DIMENSION.
     """
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
 
-        # core knobs
+        # --- Identity / paths -------------------------------------------------
+        self.model_type   = "tiny"                                     # <<< ensures locator picks models/tiny/...
+        self.target_type  = cfg.get("target_type", "document")         # <<< consistency with your scorers
+        self.version      = cfg.get("model_version", "v1")             # <<< folder versioning
+
+        # --- Core knobs -------------------------------------------------------
         self.epochs        = cfg.get("epochs", 20)
         self.lr            = cfg.get("lr", 1e-4)
         self.batch_size    = cfg.get("batch_size", 4)
         self.dropout       = cfg.get("dropout", 0.1)
         self.use_attention = cfg.get("use_attention", False)
         self.n_recursions  = cfg.get("n_recursions", 6)
-        self.vocab_size    = cfg.get("vocab_size", 1024)  # must cover 0..100 classes (>=101)
+        self.vocab_size    = cfg.get("vocab_size", 101)                # <<< 0..100 by default
         self.halt_lambda   = cfg.get("halt_lambda", 0.1)
 
-        # progress/telemetry
-        self.show_progress     = cfg.get("show_progress", True)
-        self.progress_every    = max(1, int(cfg.get("progress_every", 500)))
-        self.log_every_steps   = max(1, int(cfg.get("log_every_steps", 50)))
-        self.label_hist_bucket = int(cfg.get("label_hist_bucket", 10))  # 10 → deciles
+        # --- Telemetry --------------------------------------------------------
+        self.show_progress       = cfg.get("show_progress", True)
+        self.progress_every      = max(1, int(cfg.get("progress_every", 500)))
+        self.log_every_steps     = max(1, int(cfg.get("log_every_steps", 50)))
+        self.label_hist_bucket   = int(cfg.get("label_hist_bucket", 10))
         self.log_label_histogram = bool(cfg.get("log_label_histogram", True))
 
-        # validation split + reproducibility
+        # --- Validation / reproducibility ------------------------------------
         self.validation_ratio = float(cfg.get("validation_ratio", 0.1))
         self.seed             = int(cfg.get("seed", 42))
         torch.manual_seed(self.seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed)
 
-        # optional label bucketing (0 disables)
-        self.bucket_size = int(cfg.get("bucket_size", 0))
+        # --- Optional label bucketing ----------------------------------------
+        self.bucket_size = int(cfg.get("bucket_size", 0))  # 0 disables
 
-        # model
+        # --- Model ------------------------------------------------------------
+        # self.dim comes from BaseTrainer (embedding dim). We pass that as d_model.
         self.model = TinyRecursionModel(
             d_model=self.dim,
             n_layers=cfg.get("n_layers", 2),
@@ -67,7 +74,6 @@ class TinyRecursionTrainer(BaseTrainer):
 
     # ------------------------------
     # Data prep: each sample = (x, y, z, target_class[0..100 or binned], halt_target)
-    # returns: (DataLoader|None, kept, dropped)
     # ------------------------------
     def _create_dataloader(self, samples: List[Dict[str, Any]]) -> Tuple[Any, int, int]:
         xs: List[torch.Tensor] = []
@@ -162,7 +168,7 @@ class TinyRecursionTrainer(BaseTrainer):
         return loader, kept, dropped
 
     # ------------------------------
-    # Epoch training (with progress)
+    # Epoch training
     # ------------------------------
     def _train_epoch(self, model, dataloader, epoch_idx: int) -> float:
         model.train()
@@ -175,10 +181,9 @@ class TinyRecursionTrainer(BaseTrainer):
 
         for step, batch in iterator:
             x, y, z, targets, halt_targets = batch
-            logits, halt_p, _ = model(x, y, z)
-
+            logits, halt_logits, _ = model(x, y, z)                # <<< treat halt head as logits
             ce_loss = F.cross_entropy(logits, targets)
-            halt_loss = F.binary_cross_entropy_with_logits(halt_p, halt_targets)
+            halt_loss = F.binary_cross_entropy_with_logits(halt_logits, halt_targets)
             loss = ce_loss + self.halt_lambda * halt_loss
 
             self.optimizer.zero_grad()
@@ -201,7 +206,7 @@ class TinyRecursionTrainer(BaseTrainer):
         return total_loss / max(1, count)
 
     # ------------------------------
-    # Validation pass (MAE, within±5, top1, halt BCE)
+    # Validation
     # ------------------------------
     def _validate(self, model, dataloader) -> Dict[str, float]:
         if not dataloader:
@@ -211,10 +216,10 @@ class TinyRecursionTrainer(BaseTrainer):
         preds, targs, halt_preds, halt_targs = [], [], [], []
         with torch.no_grad():
             for x, y, z, targets, halt_targets in dataloader:
-                logits, halt_p, _ = model(x, y, z)
+                logits, halt_logits, _ = model(x, y, z)           # <<<
                 preds.extend(logits.argmax(dim=-1).detach().cpu().tolist())
                 targs.extend(targets.detach().cpu().tolist())
-                halt_preds.extend(torch.sigmoid(halt_p).detach().cpu().tolist())
+                halt_preds.extend(torch.sigmoid(halt_logits).detach().cpu().tolist())  # <<<
                 halt_targs.extend(halt_targets.detach().cpu().tolist())
 
         if not targs:
@@ -246,13 +251,13 @@ class TinyRecursionTrainer(BaseTrainer):
         return [samples[i] for i in idx[:split]], [samples[i] for i in idx[split:]]
 
     # ------------------------------
-    # Main train loop (with validation & early stopping)
+    # Main train loop (per dimension)
     # ------------------------------
     def train(self, samples, dimension):
         # split
         train_samples, val_samples = self._create_train_val_split(samples)
 
-        # build loaders
+        # loaders
         dataloader, kept, dropped = self._create_dataloader(train_samples)
         val_loader, val_kept, val_dropped = (None, 0, 0)
         if val_samples:
@@ -272,20 +277,18 @@ class TinyRecursionTrainer(BaseTrainer):
 
             val_metrics = self._validate(self.model, val_loader) if val_loader else {}
             if self.logger:
-                self.logger.log("TinyRecursionEpoch", {
-                    "epoch": epoch,
-                    "train_loss": float(avg_loss),
-                    **({f"val_{k}": v for k, v in val_metrics.items()})
-                })
+                payload = {"epoch": epoch, "train_loss": float(avg_loss)}
+                payload.update({f"val_{k}": v for k, v in val_metrics.items()})
+                self.logger.log("TinyRecursionEpoch", payload)
 
-            # early-stop on validation MAE when available; else training loss
+            # early-stop on validation MAE (or train loss if no val)
             stop_metric = val_metrics.get("mae", avg_loss) if val_metrics else avg_loss
 
             if stop_metric < best_metric - 1e-4:
                 best_metric = stop_metric
                 wait = 0
                 locator = self.get_locator(dimension)
-                torch.save(self.model.state_dict(), locator.model_file())
+                torch.save(self.model.state_dict(), locator.model_file(suffix="_tiny.pt"))  # <<< save per-dim, tiny suffix
             else:
                 wait += 1
                 if wait >= patience:
@@ -293,7 +296,7 @@ class TinyRecursionTrainer(BaseTrainer):
                         self.logger.log("TinyRecursionEarlyStopping", {"epoch": epoch})
                     break
 
-        # persist meta + stats
+        # --- meta -------------------------------------------------------------
         safe_config = {
             "lr": self.lr,
             "epochs": self.epochs,
@@ -305,17 +308,16 @@ class TinyRecursionTrainer(BaseTrainer):
             "dropout": self.dropout,
             "seed": self.seed,
             "bucket_size": self.bucket_size,
+            "vocab_size": self.vocab_size,                           # <<<
         }
-        # include optional fields only if present
-        if hasattr(self, "beta"):          safe_config["beta"] = self.beta
-        if hasattr(self, "margin"):        safe_config["margin"] = self.margin
-        if hasattr(self, "ai_pair_weight"): safe_config["ai_pair_weight"] = self.ai_pair_weight
-        if hasattr(self, "align_lambda"):   safe_config["align_lambda"] = self.align_lambda
 
         meta = {
             "dimension": dimension,
             "model_type": "tiny_recursion",
+            "expects_triplet": True,                                  # <<< tells scorer interface is (x,y,z)
             "embedding_type": self.embedding_type,
+            "input_dim": self.dim,                                    # each of x,y,z length
+            "concat_input_dim": self.dim * 2,                         # useful if a scorer builds x=[ctx,doc]
             "version": self.version,
             "epochs": self.epochs,
             "avg_loss": float(min(train_losses or [best_metric])),
@@ -326,16 +328,16 @@ class TinyRecursionTrainer(BaseTrainer):
             "val_kept": int(val_kept),
             "val_dropped": int(val_dropped),
         }
-        self._save_meta_file(meta, dimension)
+        self._save_meta_file(meta, dimension)                         # <<< will write next to the model file
 
         # TrainingStatsStore integration
         self.memory.training_stats.add_from_result(
             stats={"avg_q_loss": float(min(train_losses or [best_metric]))},
-            model_type=getattr(self, "model_type", "tiny_recursion"),
-            target_type=getattr(self, "target_type", "classification_0_100"),
+            model_type=self.model_type,                               # <<<
+            target_type=self.target_type,                             # <<<
             dimension=dimension,
             version=self.version,
-            embedding_type=self.embedding_type,  # or self.memory.embedding.name
+            embedding_type=self.embedding_type,
             config=safe_config,
             sample_count=len(samples),
             valid_samples=int(kept),
@@ -343,7 +345,6 @@ class TinyRecursionTrainer(BaseTrainer):
             start_time=datetime.now(),
         )
 
-        # final small report
         return {
             "best_metric": float(best_metric),
             "train_loss_curve": [float(x) for x in train_losses],
@@ -359,19 +360,16 @@ class TinyRecursionTrainer(BaseTrainer):
     def _bucketize_label(self, y: int) -> int:
         """
         If bucket_size > 0, map 0..100 → 0..num_bins-1 using fixed-width bins.
-        Otherwise return y unchanged.
+        Ensure vocab_size >= num_bins when you enable bucketing.
         """
         b = int(self.bucket_size)
         if b <= 0:
-            return y
-        num_bins = (101 + b - 1) // b
-        return min(max(y, 0) // b, num_bins - 1)
+            return max(0, min(100, y))              # <<< clamp to 0..100
+        num_bins = (101 + b - 1) // b               # e.g., b=10 -> 11 bins (0..10)
+        yb = min(max(y, 0) // b, num_bins - 1)
+        return yb
 
     def _bucketize_counts(self, counts: Counter, bucket: int) -> dict:
-        """
-        Turn per-label counts (0..100 or binned ids) into buckets of given size.
-        Example: bucket=10 -> "0-9", "10-19", ..., "100-100"
-        """
         if bucket <= 1:
             return {str(k): int(v) for k, v in sorted(counts.items())}
 
@@ -386,7 +384,6 @@ class TinyRecursionTrainer(BaseTrainer):
             key = f"{start}-{end}"
             buckets[key] = buckets.get(key, 0) + int(c)
 
-        # ensure all expected ranges exist
         start = 0
         while start <= 100:
             end = min(100, start + bucket - 1)
