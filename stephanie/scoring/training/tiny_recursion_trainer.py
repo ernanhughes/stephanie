@@ -4,14 +4,15 @@ from datetime import datetime
 from collections import Counter
 from typing import Tuple, List, Dict, Any, Optional
 
-import math
+import os
+import math 
 import torch
 import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
 
 # NOTE: import from models.* (not scoring.model.*)
-from stephanie.models.tiny_recursion import TinyRecursionModel
+from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
 try:
@@ -27,7 +28,7 @@ def _bucket3(y01: torch.Tensor) -> torch.Tensor:
     return (y01 >= edges[0]).long() + (y01 >= edges[1]).long()
 
 
-class TinyRecursionTrainer(BaseTrainer):
+class TinyTrainer(BaseTrainer):
     """
     Trainer for TinyRecursionModel (Tiny+).
     - Main objective: heteroscedastic regression on y∈[0,1]
@@ -99,75 +100,90 @@ class TinyRecursionTrainer(BaseTrainer):
     def _create_dataloader(self, samples: List[Dict[str, Any]]) -> Tuple[Optional[DataLoader], int, int]:
         xs, ys, zs = [], [], []
         y01, halt_targets, seq_lens = [], [], []
-
         kept = dropped = 0
         label_counts = Counter()
 
         use_tqdm = bool(self.show_progress and tqdm is not None)
         it = tqdm(samples, desc="Packing Tiny+ samples", unit="samp") if use_tqdm else samples
 
-        for s in it:
+        def _push(goal: str, doc: str, target: float, *, z_text: Optional[str] = None, halt_t: float = 1.0, slen: int = 0):
+            nonlocal kept, dropped
             try:
-                x = torch.tensor(self.memory.embedding.get_or_create(s["x"]), dtype=torch.float32, device=self.device)
-                y = torch.tensor(self.memory.embedding.get_or_create(s["y"]), dtype=torch.float32, device=self.device)
-                z = torch.tensor(self.memory.embedding.get_or_create(s["z"]), dtype=torch.float32, device=self.device)
-
-                raw_t = s.get("target", None)
-                if raw_t is None:
-                    dropped += 1
-                    continue
-
-                try:
-                    t = float(raw_t)
-                except Exception:
-                    dropped += 1
-                    continue
-
-                # normalize to [0,1] if looks like 0..100
-                if t > 1.0:
-                    t = max(0.0, min(100.0, t)) / 100.0
-                else:
-                    t = max(0.0, min(1.0, t))
-
-                halt_t = float(s.get("halt_target", 1.0))
-                seq_len = int(s.get("seq_len", 0))
+                x = torch.tensor(self.memory.embedding.get_or_create(goal), dtype=torch.float32, device=self.device)
+                y = torch.tensor(self.memory.embedding.get_or_create(doc),  dtype=torch.float32, device=self.device)
+                z = torch.tensor(self.memory.embedding.get_or_create(z_text if z_text is not None else goal),
+                                dtype=torch.float32, device=self.device)
+                # normalize target → [0,1]
+                t = float(target)
+                t = (max(0.0, min(100.0, t)) / 100.0) if t > 1.0 else max(0.0, min(1.0, t))
 
                 xs.append(x); ys.append(y); zs.append(z)
-                y01.append(t); halt_targets.append(halt_t); seq_lens.append(seq_len)
+                y01.append(t); halt_targets.append(float(halt_t)); seq_lens.append(int(slen))
                 label_counts[int(round(t * 100))] += 1
                 kept += 1
-
-                if use_tqdm:
-                    it.set_postfix(kept=kept, drop=dropped)
             except Exception as e:
                 dropped += 1
-                if self.logger:
-                    self.logger.log("TinyRecursionSampleError", {"error": str(e)})
+                if self.logger: self.logger.log("TinyRecursionSampleError", {"error": str(e)})
 
-        if use_tqdm and hasattr(it, "close"):
-            it.close()
+        for s in it:
+            # Native Tiny+ schema
+            if "x" in s and "y" in s and "z" in s and "target" in s:
+                _push(s["x"], s["y"], s["target"], z_text=s.get("z"), halt_t=s.get("halt_target", 1.0), slen=s.get("seq_len", 0))
+                continue
+
+            # Singleton (SICQL/MRQ style)
+            title = (s.get("goal_text") or s.get("title") or "").strip()
+            if "output" in s and ("score" in s or "target_score" in s):
+                out = (s.get("scorable_text") or s.get("output") or "").strip()
+                val = s.get("target_score", s.get("score"))
+                if title and out and (val is not None):
+                    _push(title, out, val, z_text=title)
+                else:
+                    dropped += 1
+                continue
+
+            # Pairwise
+            if all(k in s for k in ("output_a","output_b","value_a","value_b")):
+                a_out = (s.get("output_a") or "").strip()
+                b_out = (s.get("output_b") or "").strip()
+                a_val = s.get("value_a"); b_val = s.get("value_b")
+                if title:
+                    if a_out and a_val is not None: _push(title, a_out, a_val, z_text=title)
+                    if b_out and b_val is not None: _push(title, b_out, b_val, z_text=title)
+                else:
+                    dropped += 1
+                continue
+
+            # HRM/raw
+            if ("goal_text" in s and "scorable_text" in s and ("target_score" in s or "score" in s)):
+                out = (s.get("scorable_text") or "").strip()
+                val = s.get("target_score", s.get("score"))
+                _push(title, out, val, z_text=title)
+                continue
+
+            dropped += 1
+
+            if use_tqdm: it.set_postfix(kept=kept, drop=dropped)
+
+        if use_tqdm and hasattr(it, "close"): it.close()
 
         if self.logger and self.log_label_histogram:
             exact = {int(k): int(v) for k, v in sorted(label_counts.items())}
             bucketed = self._bucketize_counts(label_counts, self.label_hist_bucket)
             self.logger.log("TinyPlusLabelHistogram", {
-                "kept": int(kept),
-                "dropped": int(dropped),
-                "exact": exact,
-                "bucket_size": int(self.label_hist_bucket),
+                "kept": int(kept), "dropped": int(dropped),
+                "exact": exact, "bucket_size": int(self.label_hist_bucket),
                 "bucketed": bucketed
             })
 
-        if kept < 2:
+        if kept < self.min_samples:
             return None, kept, dropped
 
         dataset = TensorDataset(
-            torch.stack(xs),                          # x [B,D]
-            torch.stack(ys),                          # y [B,D]
-            torch.stack(zs),                          # z [B,D]
-            torch.tensor(y01, dtype=torch.float32, device=self.device).unsqueeze(-1),   # target [B,1]
-            torch.tensor(halt_targets, dtype=torch.float32, device=self.device).unsqueeze(-1),  # [B,1]
-            torch.tensor(seq_lens, dtype=torch.int32, device=self.device),              # [B]
+            torch.stack(xs), torch.stack(ys), torch.stack(zs),
+            torch.tensor(y01, dtype=torch.float32, device=self.device).unsqueeze(-1),
+            torch.tensor(halt_targets, dtype=torch.float32, device=self.device).unsqueeze(-1),
+            torch.tensor(seq_lens, dtype=torch.int32, device=self.device),
         )
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         return loader, kept, dropped
@@ -294,7 +310,10 @@ class TinyRecursionTrainer(BaseTrainer):
 
         model.eval()
         scores, targets = [], []
-        entropies, uncerts, disagree, recon_sim, cons_hat, temp01, jac, spars, ood, len_eff = ([] for _ in range(11))
+        # 10 metric lists (not 11)
+        entropies, uncerts, disagree, recon_sim, cons_hat, temp01, jac, spars, ood, len_eff = (
+            [] for _ in range(10)
+        )
 
         for x, y, z, target01, _, seq_len in dataloader:
             _, _, _, aux = model(x, y, z, seq_len=seq_len, return_aux=True)
@@ -318,22 +337,22 @@ class TinyRecursionTrainer(BaseTrainer):
         mae = F.l1_loss(s, t).item()
         rmse = torch.sqrt(F.mse_loss(s, t)).item()
 
-        def mean_cat(arrs): 
+        def mean_cat(arrs):
             return float(torch.cat(arrs).mean().item()) if arrs else 0.0
 
         return {
             "mae": mae,
             "rmse": rmse,
-            "entropy_aux_mean": mean_cat(entropies),
-            "uncertainty_mean": mean_cat(uncerts),
-            "disagree_hat_mean": mean_cat(disagree),
-            "recon_sim_mean": mean_cat(recon_sim),
+            "entropy_aux_mean":     mean_cat(entropies),
+            "uncertainty_mean":     mean_cat(uncerts),
+            "disagree_hat_mean":    mean_cat(disagree),
+            "recon_sim_mean":       mean_cat(recon_sim),
             "consistency_hat_mean": mean_cat(cons_hat),
-            "temp01_mean": mean_cat(temp01),
-            "jacobian_fd_mean": mean_cat(jac),
-            "concept_sparsity_mean": mean_cat(spars),
-            "ood_hat_mean": mean_cat(ood),
-            "len_effect_mean": mean_cat(len_eff),
+            "temp01_mean":          mean_cat(temp01),
+            "jacobian_fd_mean":     mean_cat(jac),
+            "concept_sparsity_mean":mean_cat(spars),
+            "ood_hat_mean":         mean_cat(ood),
+            "len_effect_mean":      mean_cat(len_eff),
         }
 
     # ------------------------------
@@ -369,6 +388,9 @@ class TinyRecursionTrainer(BaseTrainer):
         best_metric = float("inf")
         patience, wait = int(self.cfg.get("patience", 3)), 0
         train_losses = []
+        saved_best = False
+
+        locator = self.get_locator(dimension)  # create once; base_path will be ensured
 
         for epoch in range(1, self.epochs + 1):
             avg_loss = self._train_epoch(self.model, dataloader, epoch_idx=epoch)
@@ -380,20 +402,54 @@ class TinyRecursionTrainer(BaseTrainer):
                 payload.update({f"val_{k}": v for k, v in val_metrics.items()})
                 self.logger.log("TinyPlusEpoch", payload)
 
-            # early-stop on validation MAE (or train loss if no val)
+            # pick metric: val MAE if available, else train loss
             stop_metric = val_metrics.get("mae", avg_loss) if val_metrics else avg_loss
+            if not math.isfinite(stop_metric):
+                # Treat as +inf so we don’t “improve”; but keep training
+                if self.logger:
+                    self.logger.log("TinyPlusNonFiniteMetric", {"epoch": epoch, "stop_metric": float('nan')})
+                stop_metric = float("inf")
 
-            if stop_metric < best_metric - 1e-6:
+            improved = (not math.isfinite(best_metric)) or (stop_metric < best_metric - 1e-6)
+            if improved:
                 best_metric = stop_metric
                 wait = 0
-                locator = self.get_locator(dimension)
-                torch.save(self.model.state_dict(), locator.model_file(suffix="_tiny.pt"))
+                best_path = locator.model_file(suffix="_tiny.pt")
+                try:
+                    torch.save(self.model.state_dict(), best_path)
+                    saved_best = True
+                    if self.logger:
+                        self.logger.log("TinyPlusSaveCheckpoint", {"epoch": epoch, "path": best_path, "metric": float(best_metric)})
+                except Exception as e:
+                    if self.logger:
+                        self.logger.log("TinyPlusSaveError", {"epoch": epoch, "path": best_path, "error": str(e)})
             else:
                 wait += 1
                 if wait >= patience:
                     if self.logger:
-                        self.logger.log("TinyPlusEarlyStopping", {"epoch": epoch})
+                        self.logger.log("TinyPlusEarlyStopping", {"epoch": epoch, "best_metric": float(best_metric)})
                     break
+
+        # ---- ALWAYS save a 'last' checkpoint ----
+        last_path = locator.model_file(suffix="_tiny_last.pt")
+        try:
+            torch.save(self.model.state_dict(), last_path)
+            if self.logger:
+                self.logger.log("TinyPlusSaveLast", {"path": last_path})
+        except Exception as e:
+            if self.logger:
+                self.logger.log("TinyPlusSaveLastError", {"path": last_path, "error": str(e)})
+
+        # If no 'best' was saved during training, backfill it now:
+        best_path = locator.model_file(suffix="_tiny.pt")
+        if not saved_best or not os.path.exists(best_path):
+            try:
+                torch.save(self.model.state_dict(), best_path)
+                if self.logger:
+                    self.logger.log("TinyPlusBackfillBest", {"path": best_path})
+            except Exception as e:
+                if self.logger:
+                    self.logger.log("TinyPlusBackfillBestError", {"path": best_path, "error": str(e)})
 
         # --- meta -------------------------------------------------------------
         safe_config = {
@@ -428,6 +484,8 @@ class TinyRecursionTrainer(BaseTrainer):
             "timestamp": datetime.now().isoformat(),
             "cfg": dict(self.cfg),
             "kept": int(kept),
+            "best_metric": float(best_metric),
+            "train_loss_curve": [float(x) for x in train_losses],
             "dropped": int(dropped),
             "val_kept": int(val_kept),
             "val_dropped": int(val_dropped),
@@ -436,7 +494,8 @@ class TinyRecursionTrainer(BaseTrainer):
 
         # TrainingStatsStore integration
         self.memory.training_stats.add_from_result(
-            stats={"avg_q_loss": float(min(train_losses or [best_metric]))},
+            stats={"avg_q_loss": float(min(train_losses or [best_metric])),
+                "avg_loss":   float(min(train_losses or [best_metric]))},
             model_type=self.model_type,
             target_type=self.target_type,
             dimension=dimension,

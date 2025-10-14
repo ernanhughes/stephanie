@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Dict, Any, List
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.training.tiny_recursion_trainer import TinyRecursionTrainer
+from stephanie.scoring.training.tiny_recursion_trainer import TinyTrainer
 # NOTE: module path matches the file you shared earlier
 from stephanie.dataloaders.tiny_recursion_data_loader import TinyRecursionDataLoader
 
@@ -32,7 +32,7 @@ class TinyRecursionTrainerAgent(BaseAgent):
         self.use_calibrated: bool = bool(cfg.get("use_calibrated_score", True))
         self.min_score = cfg.get("min_score", None)  # e.g., 10 to drop very-low labels
 
-        self.trainer = TinyRecursionTrainer(cfg, memory=memory, container=container, logger=logger)
+        self.trainer = TinyTrainer(cfg, memory=memory, container=container, logger=logger)
         self.data_loader = TinyRecursionDataLoader(
             memory=memory,
             logger=logger,

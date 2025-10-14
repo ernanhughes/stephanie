@@ -52,75 +52,60 @@ class TinyScorer(BaseScorer):
     # Loading
     # -------------------------
     def _load_models(self, dimensions):
-        """
-        Loads TRM models/metadata per dimension using the same locator pattern as HRMScorer.
-        Expects weights saved with suffix `_tiny.pt` and a companion meta.json.
-        """
-        for dimension in dimensions:
-            try:
-                locator = self.get_locator(dimension)
+        for dim in dimensions:
+            locator = self.get_locator(dim)
 
-                model_file_path = locator.model_file(suffix="_tiny.pt")  # mirror HRM's "_hrm.pt"
-                meta_file_path = locator.meta_file()
+            # Resolve files
+            model_path = locator.model_file(suffix="_tiny.pt")
+            meta_path  = locator.meta_file()
 
-                if not os.path.exists(model_file_path):
-                    self.logger.log("TinyScorerModelError", {
-                        "message": "Tiny model file not found.",
-                        "path": model_file_path,
-                        "dimension": dimension,
-                    })
-                    continue
+            if not os.path.exists(model_path):
+                self.logger.log("TinyScorerModelMissing", {"dimension": dim, "path": model_path})
+                continue
 
-                # Load meta if present
-                if os.path.exists(meta_file_path):
-                    self.model_meta[dimension] = load_json(meta_file_path)
-                    self.logger.log("TinyScorerMetaLoaded", {
-                        "dimension": dimension,
-                        "meta": {k: self.model_meta[dimension].get(k) for k in (
-                            "input_dim","d_model","dz","steps","n_blocks","dropout"
-                        )}
-                    })
-                else:
-                    self.model_meta[dimension] = {}
-                    self.logger.log("TinyScorerWarning", {
-                        "message": "Tiny meta file not found. Using defaults.",
-                        "path": meta_file_path,
-                        "dimension": dimension,
-                    })
+            # Pull hyperparams from meta (prefer the “safe” ones if you saved them)
+            meta = {}
+            if os.path.exists(meta_path):
+                try:
+                    meta = load_json(meta_path) or {}
+                except Exception as e:
+                    self.logger.log("TinyScorerMetaLoadError", {"dimension": dim, "error": str(e)})
 
-                # Reconstruct tiny model config from meta (defaults are safe)
-                tm_cfg = {
-                    # Tiny model consumes concatenated (ctx_emb, doc_emb)
-                    "input_dim": self.model_meta[dimension].get("input_dim", self.dim * 2),
-                    "d_model":   self.model_meta[dimension].get("d_model", 256),
-                    "dz":        self.model_meta[dimension].get("dz", 256),
-                    "steps":     self.model_meta[dimension].get("steps", 6),
-                    "n_blocks":  self.model_meta[dimension].get("n_blocks", 2),
-                    "dropout":   self.model_meta[dimension].get("dropout", 0.1),
-                    "use_halting": self.model_meta[dimension].get("use_halting", True),
-                    "out_dim":   self.model_meta[dimension].get("out_dim", 1),  # scalar quality
-                }
+            # Defaults aligned with trainer
+            n_layers     = int(meta.get("cfg", {}).get("n_layers",        2))
+            n_recursions = int(meta.get("cfg", {}).get("n_recursions",    6))
+            use_attn     = bool(meta.get("cfg", {}).get("use_attention",  False))
+            dropout      = float(meta.get("cfg", {}).get("dropout",       0.1))
+            attn_heads   = int(meta.get("cfg", {}).get("attn_heads",      4))
+            step_scale   = float(meta.get("cfg", {}).get("step_scale",    0.1))
+            cons_mask_p  = float(meta.get("cfg", {}).get("consistency_mask_p", 0.10))
+            len_norm_L   = float(meta.get("cfg", {}).get("len_norm_L",    512.0))
+            vocab_size   = int(meta.get("cfg", {}).get("vocab_size",      101))
 
-                model = TinyRecursionModel(tm_cfg, logger=self.logger)
-                model.to(self.device)
-                state = torch.load(model_file_path, map_location=self.device)
-                model.load_state_dict(state)
-                model.eval()
+            # Instantiate exactly like trainer did
+            model = TinyRecursionModel(
+                d_model=self.dim,
+                n_layers=n_layers,
+                n_recursions=n_recursions,
+                vocab_size=vocab_size,
+                use_attention=use_attn,
+                dropout=dropout,
+                attn_heads=attn_heads,
+                step_scale=step_scale,
+                consistency_mask_p=cons_mask_p,
+                len_norm_L=len_norm_L,
+            ).to(self.device)
 
-                self.models[dimension] = model
+            # Load weights
+            state = torch.load(model_path, map_location=self.device)
+            model.load_state_dict(state)
+            model.eval()
 
-                self.logger.log("TinyScorerModelLoaded", {
-                    "dimension": dimension,
-                    "model_path": model_file_path,
-                    "device": str(self.device),
-                })
-
-            except Exception as e:
-                self.logger.log("TinyScorerInitError", {
-                    "message": "Failed to load tiny model.",
-                    "dimension": dimension,
-                    "error": str(e),
-                })
+            self.models[dim] = model
+            self.model_meta[dim] = meta
+            self.logger.log("TinyScorerModelLoaded", {
+                "dimension": dim, "model_path": model_path, "device": str(self.device)
+            })
 
     # -------------------------
     # Scoring

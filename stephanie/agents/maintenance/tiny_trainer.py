@@ -4,7 +4,7 @@ from __future__ import annotations
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
-from stephanie.scoring.training.tiny_recursion_trainer import TinyRecursionTrainer
+from stephanie.scoring.training.tiny_recursion_trainer import TinyTrainer
 
 class TinyTrainerAgent(BaseAgent):
     """
@@ -15,7 +15,7 @@ class TinyTrainerAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])  # e.g., ["alignment", "relevance"]
         self.pair_builder = PreferencePairBuilder(memory, logger)
-        self.trainer = TinyRecursionTrainer(full_cfg.scorer.hrm, memory, container=container, logger=logger)
+        self.trainer = TinyTrainer(full_cfg.scorer.hrm, memory, container=container, logger=logger)
         self.target_type = cfg.get("target_type", ScorableType.CONVERSATION_TURN)
         self.limit = cfg.get("limit", 1000)
         self.max_documents = cfg.get("max_documents", 500)

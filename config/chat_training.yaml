@@ -12,6 +12,7 @@ defaults:
   - agents/chat_mrq_trainer
   - agents/chat_sicql_trainer
   - agents/chat_hrm_trainer
+  - agents/chat_tiny_trainer
   - agents/chat_scorer
 
 embeddings:
@@ -63,7 +64,7 @@ pipeline:
      - name: chat_tiny_trainer
        description: "Train a Tiny model to predict values using chat conversation_turns"
        cls: stephanie.agents.maintenance.tiny_trainer.TinyTrainerAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: chat_scorer

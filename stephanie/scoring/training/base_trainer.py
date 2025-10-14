@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from stephanie.utils.json_sanitize import dumps_safe
 
 # Optional tqdm (pretty progress if available)
 try:
@@ -160,10 +161,11 @@ class BaseTrainer:
         return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
     # ----------------------------- Meta / Logging -----------------------------
+
     def _save_meta_file(self, meta: dict, dimension: str):
         locator = self.get_locator(dimension)
         with open(locator.meta_file(), "w", encoding="utf-8") as f:
-            json.dump(meta, f)
+            f.write(dumps_safe(meta, indent=2))
 
     def _calculate_policy_metrics(self, logits: List[float]) -> Tuple[float, float]:
         probs = F.softmax(torch.tensor(logits, dtype=torch.float32), dim=-1)
