@@ -14,23 +14,25 @@ class SVMTrainerAgent(BaseAgent):
         builder = PreferencePairBuilder(self.memory, logger=self.logger)
         results = {}
 
-        for dim in self.dimensions:
-            pairs = builder.get_training_pairs_by_dimension(dim=[dim])
-            examples = pairs.get(dim, [])
+        for dimension in self.dimensions:
+            pairs = builder.get_training_pairs_by_dimension(
+                dimension=dimension,
+            )
+            examples = pairs.get(dimension, [])
 
             if not examples:
-                self.logger.log("SVMNoTrainingPairs", {"dimension": dim})
+                self.logger.log("SVMNoTrainingPairs", {"dimension": dimension})
                 continue
 
-            self.logger.log("SVMTrainerInvoked", {"dimension": dim, "count": len(examples)})
-            stats = self.trainer.train(examples, dimension=dim)
+            self.logger.log("SVMTrainerInvoked", {"dimension": dimension, "count": len(examples)})
+            stats = self.trainer.train(examples, dimension=dimension)
 
             if "error" in stats:
-                self.logger.log("SVMTrainingError", {"dimension": dim, **stats})
+                self.logger.log("SVMTrainingError", {"dimension": dimension, **stats})
             else:
                 self.logger.log("SVMTrainingCompleted", stats)
 
-            results[dim] = stats
+            results[dimension] = stats
 
         context[self.output_key] = {
             "training_stats": results

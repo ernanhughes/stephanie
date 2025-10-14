@@ -1,4 +1,6 @@
 # stephanie/scoring/model/policy_head.py
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 from torch.nn import Linear, ReLU

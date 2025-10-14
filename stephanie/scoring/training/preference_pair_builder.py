@@ -1,83 +1,63 @@
 # stephanie/scoring/mrq/preference_pair_builder.py
+from __future__ import annotations
 
-from collections import defaultdict
-from typing import Dict, List, Iterable, Optional, Tuple
-from stephanie.models.reasoning_sample import ReasoningSampleORM
+from typing import Dict, List, Any
 
-def _iter_dimension_scores(sample: ReasoningSampleORM) -> Iterable[Tuple[str, float]]:
-    items = getattr(sample, "scores", None) or []
-    for it in items:
-        dim = it.get("dimension")
-        val = it.get("score")
-        if not dim:
-            continue
-        try:
-            yield dim, float(val)
-        except Exception:
-            continue
+from stephanie.scoring.scorable import ScorableType
+
 
 class PreferencePairBuilder:
+    """
+    Builds preference training pairs: (high-score sample, low-score sample) per dimension.
+
+    Usage:
+        builder = PreferencePairBuilder(memory)
+        pairs = builder.get_training_pairs_by_dimension(
+            limit=1000,
+            dim=["reasoning", "clarity"],
+            target_type="conversation_turn"
+        )
+
+    Output:
+        Dict[dim] → List[{
+            "title": str,
+            "output_a": str (better),
+            "output_b": str (worse),
+            "value_a": float,
+            "value_b": float
+        }]
+    """
+
     def __init__(self, memory, logger=None):
         self.memory = memory
         self.logger = logger
 
     def get_training_pairs_by_dimension(
         self,
+        dimension: str = "knowledge",
+        target_type: str = ScorableType.CONVERSATION_TURN,
         limit: int = 1000,
-        dim: Optional[List[str]] = None,
-        target_type: Optional[str] = None,
-    ) -> Dict[str, List[Dict[str, object]]]:
-        results: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Build top-vs-bottom preference pairs from reasoning samples.
 
+        Args:
+            limit: Approximate max number of total pairs across all dimensions.
+            dim: Optional filter to specific dimensions (e.g., ['reasoning']).
+            target_type: Filter by scorable_type (e.g., 'conversation_turn').
+
+        Returns:
+            {dimension: [pair_dicts]}
+        """
+        # 1. Fetch raw samples
         try:
-            fetch_n = max(int(limit) * 4, 500)
-
-            # ✅ Don’t call get_by_target_type with None
-            if target_type:
-                samples: List[ReasoningSampleORM] = self.memory.reasoning_samples.get_by_target_type(
-                    target_type, limit=fetch_n
-                )
-            else:
-                samples = self.memory.reasoning_samples.get_all(limit=fetch_n)
-
-            by_dim: Dict[str, List[Tuple[float, str, str]]] = defaultdict(list)
-            for s in samples or []:
-                text = (getattr(s, "scorable_text", "") or "").strip()
-                if not text:
-                    continue
-                title = getattr(s, "goal_text", "") or ""
-                for dname, score in _iter_dimension_scores(s):
-                    if dim and dname not in dim:
-                        continue
-                    by_dim[dname].append((score, text, title))
-
-            remaining = int(limit)
-            for dname, rows in by_dim.items():
-                if not rows or remaining <= 0:
-                    continue
-                rows.sort(key=lambda r: r[0])                # asc
-                k = max(1, min(len(rows) // 10, remaining))  # ~decile
-                lows  = rows[:k]
-                highs = rows[-k:][::-1]
-                for (s_hi, text_hi, title_hi), (s_lo, text_lo, title_lo) in zip(highs, lows):
-                    if not text_hi or text_hi == text_lo:
-                        continue
-                    results[dname].append({
-                        "title": title_hi or title_lo or dname,
-                        "output_a": text_hi,
-                        "output_b": text_lo,
-                        "value_a": float(s_hi),
-                        "value_b": float(s_lo),
-                    })
-                    remaining -= 1
-                    if remaining <= 0:
-                        break
-                if remaining <= 0:
-                    break
-
+            samples = self.memory.reasoning_samples.get_eval_pairs_by_dimension(
+                target_type=target_type,
+                dimension=dimension,
+                limit=limit  # Overfetch slightly to ensure good pairing
+            )
+            return samples
         except Exception as e:
             if self.logger:
-                self.logger.log("PreferencePairBuilderError", {"error": str(e)})
-            # fall through with whatever we accumulated (likely empty)
-
-        return dict(results)  # ✅ always a dict
+                self.logger.log("PreferencePairFetchFailed", {"error": str(e)})
+            return {}

@@ -1,4 +1,6 @@
-# stephanie/agents/maintenance/sicql_trainer.py
+# stephanie/scoring/training/sicql_trainer.py
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime
@@ -6,8 +8,9 @@ from datetime import datetime
 import numpy as np
 import torch
 import torch.optim as optim
-from torch.nn import functional as F
+import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
@@ -24,7 +27,6 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 
 
 class SICQLTrainer(BaseTrainer):
-
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.cfg = cfg
@@ -35,38 +37,29 @@ class SICQLTrainer(BaseTrainer):
         self.hdim = self.memory.embedding.hdim
         self.root_dir = cfg.get("model_path", "models")
         self.dimension = cfg.get("dimension", "alignment")
-        self.embedding_type = cfg.get("embedding_type", "hnet")
         self.model_type = "sicql"
         self.target_type = cfg.get("target_type", "document")
-        self.version = cfg.get("mode I l_version", "v1")
+        self.version = cfg.get("model_version", "v1")
 
-        # Device management
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Training configuration
         self._init_config(cfg)
 
-        # Track training state
         self.best_loss = float("inf")
         self.early_stop_counter = 0
         self.models = {}
         self.tuners = {}
         self._load_tuners()
 
-        # Log initialization
-        self.logger.log(
-            "SICQLTrainerInitialized",
-            {
+        if self.logger:
+            self.logger.log("SICQLTrainerInitialized", {
                 "dimension": self.cfg.get("dimension", "alignment"),
-                "embedding_type": self.cfg.get("embedding_type", "hnet"),
+                "embedding_type": self.embedding_type,
                 "use_gild": self.use_gild,
                 "use_qmax": self.use_qmax,
                 "device": str(self.device),
             },
         )
- 
 
     def _init_config(self, cfg):
         """Initialize training parameters from config"""
@@ -86,6 +79,78 @@ class SICQLTrainer(BaseTrainer):
         self.use_gild = cfg.get("use_gild", True)
         self.use_qmax = cfg.get("use_qmax", True)
         self.scorer_map = ["ebt", "svm", "mrq"]  # Policy head mapping
+
+    def _create_sicql_dataloader(self, samples):
+        """
+        Accepts either:
+        • singleton: {"title": str, "output": str, "score": float}
+        • pairwise : {"title": str, "output_a": str, "output_b": str,
+                        "value_a": float, "value_b": float}
+
+        Builds a TensorDataset of (ctx_emb, doc_emb, score) on self.device.
+        """
+        from torch.utils.data import TensorDataset, DataLoader
+        import torch
+
+        ctxs, docs, ys = [], [], []
+        kept, skipped = 0, 0
+
+        def _push(title, out, val):
+            nonlocal kept
+            g = torch.tensor(self.memory.embedding.get_or_create(title), dtype=torch.float32, device=self.device)
+            d = torch.tensor(self.memory.embedding.get_or_create(out),   dtype=torch.float32, device=self.device)
+            y = torch.tensor(float(val), dtype=torch.float32, device=self.device)
+            ctxs.append(g); docs.append(d); ys.append(y); kept += 1
+
+        for s in self.progress(samples, desc="Packing SICQL triples"):
+            try:
+                title = (s.get("title") or "").strip()
+                if not title:
+                    skipped += 1; continue
+
+                if "output" in s and "score" in s:
+                    out = (s.get("output") or "").strip()
+                    val = s.get("score")
+                    if out and val is not None:
+                        _push(title, out, val)
+                    else:
+                        skipped += 1
+
+                elif all(k in s for k in ("output_a", "output_b", "value_a", "value_b")):
+                    a_out = (s.get("output_a") or "").strip()
+                    b_out = (s.get("output_b") or "").strip()
+                    a_val = s.get("value_a")
+                    b_val = s.get("value_b")
+
+                    # skip if both missing
+                    if not a_out and not b_out:
+                        skipped += 1; continue
+
+                    # push A and/or B if present
+                    if a_out and a_val is not None:
+                        _push(title, a_out, a_val)
+                    if b_out and b_val is not None:
+                        _push(title, b_out, b_val)
+                else:
+                    skipped += 1
+
+            except Exception as e:
+                skipped += 1
+                if self.logger:
+                    self.logger.log("SICQLSampleError", {"error": str(e)})
+
+        if kept < self.min_samples:
+            if self.logger:
+                self.logger.log("InsufficientSamples", {"kept": kept, "threshold": self.min_samples})
+            return None
+
+        X_ctx = torch.stack(ctxs)   # [N, D]
+        X_doc = torch.stack(docs)   # [N, D]
+        y     = torch.stack(ys)     # [N]
+
+        dataset = TensorDataset(X_ctx, X_doc, y)
+        return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
 
     def _load_tuners(self):
         """Load regression tuners for each dimension"""
@@ -295,23 +360,6 @@ class SICQLTrainer(BaseTrainer):
 
         return meta
 
-    def _log_training_stats(self, dim, meta):
-        """Log training stats to database"""
-        training_stats = TrainingStatsORM(
-            model_type="sicql",
-            target_type=self.cfg.get("target_type", "document"),
-            dimension=dim,
-            version=meta["version"],
-            avg_q_loss=meta["avg_q_loss"],
-            avg_v_loss=meta["avg_v_loss"],
-            avg_pi_loss=meta["avg_pi_loss"],
-            policy_entropy=meta["policy_entropy"],
-            policy_stability=meta["policy_stability"],
-            performance=meta["avg_q_loss"],
-        )
-        self.memory.session.add(training_stats)
-        self.memory.session.commit()
-
     def _validate_tensor(self, tensor, name):
         """Validate tensor before use"""
         if tensor is None:
@@ -366,7 +414,7 @@ class SICQLTrainer(BaseTrainer):
         self.logger.log("DimensionTrainingStarted", {"dimension": dim})
 
         # Prepare data
-        dataloader = super()._create_dataloader(samples)
+        dataloader = self._create_sicql_dataloader(samples)
         if not dataloader:
             return {"error": "insufficient_data", "dimension": dim}
 
@@ -442,7 +490,7 @@ class SICQLTrainer(BaseTrainer):
         stats.update(meta)
 
         # Log to database
-        self._log_training_stats(dim, meta)
+        self._log_training_stats(dim, meta, samples=samples, dataloader=dataloader)
 
         self.logger.log(
             "DimensionTrainingComplete",
@@ -458,22 +506,83 @@ class SICQLTrainer(BaseTrainer):
         self.models[dim] = model
         return stats
 
-    def _log_training_stats(self, dim, meta):
-        """Log training stats to database"""
-        training_stats = TrainingStatsORM(
+    def _log_training_stats(
+        self,
+        dim: str,
+        meta: dict,
+        *,
+        samples: list | None = None,
+        dataloader=None,
+        pipeline_run_id: int | None = None,
+        goal_id: int | None = None,
+        model_version_id: int | None = None,
+    ):
+        """
+        Log SICQL training stats using TrainingStats.add_from_result schema.
+
+        Expects in `meta` (already computed in `train`):
+        - avg_q_loss, avg_v_loss, avg_pi_loss
+        - policy_entropy, policy_stability, policy_logits
+        - (optionally) last_q_loss, last_v_loss, last_pi_loss
+        - version (required)
+        """
+
+        # Derive counts
+        sample_count = len(samples) if samples is not None else 0
+        valid_samples = 0
+        if dataloader is not None and getattr(dataloader, "dataset", None) is not None:
+            try:
+                valid_samples = len(dataloader.dataset)
+            except Exception:
+                valid_samples = 0
+        invalid_samples = max(sample_count - valid_samples, 0) if sample_count else 0
+
+        # Per-epoch “last” losses are optional—fall back to averages
+        stats_payload = {
+            "q_loss":      meta.get("last_q_loss", meta.get("avg_q_loss")),
+            "v_loss":      meta.get("last_v_loss", meta.get("avg_v_loss")),
+            "pi_loss":     meta.get("last_pi_loss", meta.get("avg_pi_loss")),
+            "avg_q_loss":  meta.get("avg_q_loss"),
+            "avg_v_loss":  meta.get("avg_v_loss"),
+            "avg_pi_loss": meta.get("avg_pi_loss"),
+            "policy_entropy":   meta.get("policy_entropy"),
+            "policy_stability": meta.get("policy_stability"),
+            "policy_logits":    meta.get("policy_logits"),
+        }
+
+        self.memory.training_stats.add_from_result(
+            stats=stats_payload,
             model_type="sicql",
-            target_type=self.cfg.get("target_type", "document"),
+            target_type=self.target_type,
             dimension=dim,
             version=meta["version"],
             embedding_type=self.embedding_type,
-            avg_q_loss=meta["avg_q_loss"],
-            avg_v_loss=meta["avg_v_loss"],
-            avg_pi_loss=meta["avg_pi_loss"],
-            policy_entropy=meta.get("policy_entropy", 0.0),
-            policy_stability=meta.get("policy_stability", 0.0),
+            config={
+                "lr": self.lr,
+                "epochs": self.epochs,
+                "batch_size": self.batch_size,
+                "use_tuner": self.use_tuner,
+                "use_early_stopping": self.use_early_stopping,
+                "patience": self.early_stopping_patience,
+                "min_delta": self.early_stopping_min_delta,
+                "dim": self.dim,
+                "hdim": self.hdim,
+                "expectile_tau": getattr(self, "expectile_tau", 0.7),
+                "use_gild": getattr(self, "use_gild", True),
+                "beta": getattr(self, "beta", 1.0),
+                "entropy_weight": getattr(self, "entropy_weight", 0.01),
+                "use_qmax": getattr(self, "use_qmax", True),
+            },
+            sample_count=sample_count,
+            valid_samples=valid_samples,
+            invalid_samples=invalid_samples,
+            goal_id=goal_id,
+            model_version_id=model_version_id,
+            start_time=meta.get("start_time"),      # if you stored it
+            end_time=meta.get("end_time"),          # if you stored it
+            pipeline_run_id=pipeline_run_id,
         )
-        self.memory.session.add(training_stats)
-        self.memory.session.commit()
+
 
     def _train_sicql(self, model, dataloader, output_dir):
         """Train SICQL model with all heads"""

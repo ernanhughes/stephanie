@@ -1,0 +1,12 @@
+chat_sicql_trainer:
+  name: chat_sicql_trainer
+  model_path: "${hydra:runtime.cwd}/models"
+  model_type: sicql
+  target_type: conversation_turn
+  use_sicql_style: true
+  dimensions: 
+  - reasoning
+  - knowledge
+  - clarity
+  - faithfulness
+  - coverage

@@ -66,9 +66,7 @@ class ContrastiveRankerTrainerAgent(BaseAgent):
             
             # Get pairwise preference data for this dimension
             pairs_by_dim = self.pair_builder.get_training_pairs_by_dimension(
-                dim=[dimension],
-                goal=goal_text,
-                limit=self.cfg.get("pair_limit", 200)
+                dimension=dimension,
             )
             
             samples = pairs_by_dim.get(dimension, [])

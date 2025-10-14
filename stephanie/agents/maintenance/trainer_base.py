@@ -34,7 +34,6 @@ class TrainerAgent(BaseAgent):
         )
 
     async def run(self, context: dict) -> dict:
-        goal_text = context.get("goal", {}).get("goal_text")
 
 
         # Build contrastive training pairs grouped by scoring dimension

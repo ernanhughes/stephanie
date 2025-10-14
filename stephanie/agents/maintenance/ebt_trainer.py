@@ -19,9 +19,7 @@ class EBTTrainerAgent(BaseAgent):
 
         for dimension in self.dimensions:
             pairs_by_dim = self.pair_builder.get_training_pairs_by_dimension(
-                dim=[dimension],
-                goal=goal.get("goal_text"),
-                limit=100
+                dimension=dimension,
             )
             pairs = pairs_by_dim.get(dimension, [])
             samples = [
