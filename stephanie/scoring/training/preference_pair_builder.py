@@ -1,114 +1,83 @@
 # stephanie/scoring/mrq/preference_pair_builder.py
-from __future__ import annotations
 
 from collections import defaultdict
+from typing import Dict, List, Iterable, Optional, Tuple
+from stephanie.models.reasoning_sample import ReasoningSampleORM
 
-from sqlalchemy.sql import text
-
+def _iter_dimension_scores(sample: ReasoningSampleORM) -> Iterable[Tuple[str, float]]:
+    items = getattr(sample, "scores", None) or []
+    for it in items:
+        dim = it.get("dimension")
+        val = it.get("score")
+        if not dim:
+            continue
+        try:
+            yield dim, float(val)
+        except Exception:
+            continue
 
 class PreferencePairBuilder:
-    """
-    Builds preference training pairs from scored documents per dimension.
-    Designed for MR.Q or reward model training to rank research/document quality.
-    """
-
-    def __init__(self, db, logger=None):
-        self.db = db
+    def __init__(self, memory, logger=None):
+        self.memory = memory
         self.logger = logger
 
-    def get_training_pairs_by_dimension(self, goal=None, limit=100, dim=None):
-        query = text(f"""
-            WITH scored_docs AS (
-                SELECT
-                    s.dimension,
-                    s.score,
-                    d.id AS doc_id,
-                    d.title,
-                    d.text,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY s.dimension, d.id ORDER BY s.score DESC
-                    ) AS rank_high,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY s.dimension, d.id ORDER BY s.score ASC
-                    ) AS rank_low
-                FROM scores s
-                JOIN evaluations e ON s.evaluation_id = e.id
-                JOIN documents d ON e.document_id = d.id
-                WHERE s.score IS NOT NULL
-                {"AND s.dimension IN :dims" if dim else ""}
-            )
-            SELECT
-                dimension,
-                title,
-                text,
-                score,
-                rank_type,
-                doc_id
-            FROM (
-                SELECT
-                    dimension,
-                    title,
-                    text,
-                    score,
-                    'top' AS rank_type,
-                    doc_id
-                FROM scored_docs
-                WHERE rank_high = 1
-                AND text IS NOT NULL
-                AND text <> ''
+    def get_training_pairs_by_dimension(
+        self,
+        limit: int = 1000,
+        dim: Optional[List[str]] = None,
+        target_type: Optional[str] = None,
+    ) -> Dict[str, List[Dict[str, object]]]:
+        results: Dict[str, List[Dict[str, object]]] = defaultdict(list)
 
-                UNION ALL
-
-                SELECT
-                    dimension,
-                    title,
-                    text,
-                    score,
-                    'bottom' AS rank_type,
-                    doc_id
-                FROM scored_docs
-                WHERE rank_low = 1
-            ) AS ranked_pairs
-            ORDER BY dimension, doc_id
-            LIMIT :limit
-        """)
-
-        params = {
-            "limit": limit or 100
-        }
-        if dim:
-            params["dims"] = tuple(dim)
-        if goal:
-            params["goal"] = goal  # Currently unused unless you add it to the query.
-
-        # Optional: print full SQL for debugging
-        # compiled = query.compile(self.db.bind, compile_kwargs={"literal_binds": True})
-        # self.logger.log("SQLQuery", {"query": str(compiled)})
         try:
-            rows = self.db.execute(query, params).fetchall()
+            fetch_n = max(int(limit) * 4, 500)
+
+            # ✅ Don’t call get_by_target_type with None
+            if target_type:
+                samples: List[ReasoningSampleORM] = self.memory.reasoning_samples.get_by_target_type(
+                    target_type, limit=fetch_n
+                )
+            else:
+                samples = self.memory.reasoning_samples.get_all(limit=fetch_n)
+
+            by_dim: Dict[str, List[Tuple[float, str, str]]] = defaultdict(list)
+            for s in samples or []:
+                text = (getattr(s, "scorable_text", "") or "").strip()
+                if not text:
+                    continue
+                title = getattr(s, "goal_text", "") or ""
+                for dname, score in _iter_dimension_scores(s):
+                    if dim and dname not in dim:
+                        continue
+                    by_dim[dname].append((score, text, title))
+
+            remaining = int(limit)
+            for dname, rows in by_dim.items():
+                if not rows or remaining <= 0:
+                    continue
+                rows.sort(key=lambda r: r[0])                # asc
+                k = max(1, min(len(rows) // 10, remaining))  # ~decile
+                lows  = rows[:k]
+                highs = rows[-k:][::-1]
+                for (s_hi, text_hi, title_hi), (s_lo, text_lo, title_lo) in zip(highs, lows):
+                    if not text_hi or text_hi == text_lo:
+                        continue
+                    results[dname].append({
+                        "title": title_hi or title_lo or dname,
+                        "output_a": text_hi,
+                        "output_b": text_lo,
+                        "value_a": float(s_hi),
+                        "value_b": float(s_lo),
+                    })
+                    remaining -= 1
+                    if remaining <= 0:
+                        break
+                if remaining <= 0:
+                    break
+
         except Exception as e:
             if self.logger:
-                self.logger.log("DocumentPairBuilderError", {"error": str(e)})
-            self.db.rollback()
-            return {}
+                self.logger.log("PreferencePairBuilderError", {"error": str(e)})
+            # fall through with whatever we accumulated (likely empty)
 
-        grouped = defaultdict(dict)
-        results_by_dimension = defaultdict(list)
-
-        for row in rows:
-            key = (row.dimension, row.doc_id)
-            grouped[key][row.rank_type] = row
-
-        for (dimension, _), data in grouped.items():
-            if "top" in data and "bottom" in data:
-                results_by_dimension[dimension].append(
-                    {
-                        "title": data["top"].title,
-                        "output_a": data["top"].text,
-                        "output_b": data["bottom"].text,
-                        "value_a": float(data["top"].score),
-                        "value_b": float(data["bottom"].score),
-                    }
-                )
-
-        return dict(results_by_dimension)
+        return dict(results)  # ✅ always a dict

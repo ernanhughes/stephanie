@@ -1,0 +1,12 @@
+chat_mrq_trainer:
+  name: chat_mrq_trainer
+  model_path: "${hydra:runtime.cwd}/models"
+  model_type: mrq
+  target_type: conversation_turn
+  use_sicql_style: false
+  dimensions: 
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage

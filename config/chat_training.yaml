@@ -1,41 +1,19 @@
 defaults:
   - _self_
   - db: postgres
-
-  - scorer/sicql/default
-  - scorer/contrastive_ranker/default
-  - scorer/hrm/default
-  - scorer/epistemic_hrm/default
-
-  - agents/arxiv_search
-  - agents/document_loader
-  - agents/document_profiler
-  - agents/paper_score
-  - agents/knowledge_loader
-  - agents/document_mrq_inference
-  - agents/sicql_mrq_inference
-  - agents/document_mrq_trainer
-  - agents/rank_trainer
-  - agents/sicql_mrq_trainer
-  - agents/document_ebt_trainer
-  - agents/document_ebt_inference
-  - agents/document_reward_scorer
-  - agents/document_svm_trainer
-  - agents/document_svm_inference
-  - agents/scorable_embedding_backfill
-  - agents/document_llm_inference
-  - agents/knowledge_db_loader
-  - agents/ethics
-  - agents/pipeline_judge
-  - agents/hrm_trainer
-  - agents/scorer
+  - plan_monitor: disabled
+  - bus: nats   
   - logging/json_logger
+  - mars/default
+  - services/default
+  - scorer: all  
+
+
+  - agents/chat_mrq_trainer
 
 embeddings:
   backend: hnet
 
-plan_monitor:
-  enabled: false
 
 goal:
   goal_text: I want to build an AI that can teach itself to solve complex problems better over time.
@@ -49,12 +27,6 @@ goal:
     - "stepwise_reasoning_trace"
     - "annotated_score_vector"
 
-
-post_judgment:
-  name: pipeline_judge
-  enabled: true
-  cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
-
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
@@ -62,14 +34,10 @@ report:
   generate_report: true
   path: ${hydra:runtime.cwd}/reports
 
-web_search:
-  engine: "searxng"
-  instance_url: "http://localhost:8080"
-
 pipeline:
-  name: training
-  tag: training
-  description: "This trains model types then perfomrs inferrence opperations loads and scores documents"
+  name: chat training
+  tag: chat_training
+  description: "Uses chat history to train models. Different dynamics than traditional training."
   stages:
      - name: chat_mrq_trainer
        description: "Build document pairs for training and evaluation" 
@@ -81,7 +49,7 @@ pipeline:
        description: "Build document pairs for training and evaluation"
        cls: stephanie.agents.maintenance.sicql_trainer.SICQLTrainerAgent
        enabled: false
-       iterations: 1 I
+       iterations: 1
 
      - name: document_svm_trainer
        description: "Train a model to predict document values using SVM" 

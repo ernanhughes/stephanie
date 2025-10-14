@@ -19,7 +19,7 @@ class ChatAnalyzeAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
         self.limit = cfg.get("limit", 10000)
         self.dimensions = cfg.get("dimensions", ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"])
-        self.force_rescore = cfg.get("force_rescore", True) # Test initially with force rescore
+        self.force_rescore = cfg.get("force_rescore", False) # Test initially with force rescore
 
     async def run(self, context: dict) -> dict:
         """
@@ -43,7 +43,7 @@ class ChatAnalyzeAgent(BaseAgent):
         for row in batch:
             turn_id = row.get("id")
             assistant_message_id = row.get("assistant_message_id")
-            if row.get("ai_knowledge_score") is not None and not self.cfg.get("force_rescore", False):
+            if row.get("ai_score") is not None:
                 _logger.debug(
                     f"[ChatAnalyzeAgent] Skipping already analyzed turn {turn_id}"
                 )
@@ -52,7 +52,7 @@ class ChatAnalyzeAgent(BaseAgent):
             user_text = row.get("user_text", "").strip()
             assistant_text = row.get("assistant_text", "").strip()
             if not user_text or not assistant_text:
-                _logger.debug(
+                _logger.info(
                     f"[ChatAnalyzeAgent] Skipping incomplete turn {turn_id}"
                 )
                 continue
@@ -99,7 +99,7 @@ class ChatAnalyzeAgent(BaseAgent):
 
                 # 2️⃣ Create the EvaluationORM object
                 score_result = ScoreResult(
-                    dimension="knowledge_value",
+                    dimension=dim,
                     score=score,
                     source="knowledge_llm",
                     rationale=rationale,

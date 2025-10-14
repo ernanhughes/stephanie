@@ -2,27 +2,36 @@
 from __future__ import annotations
 from datetime import datetime
 from collections import Counter
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 
+import math
 import torch
 import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
+# NOTE: import from models.* (not scoring.model.*)
+from stephanie.models.tiny_recursion import TinyRecursionModel
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
-# make tqdm optional
 try:
-    from tqdm.auto import tqdm  # optional
-except Exception:
+    from tqdm.auto import tqdm
+except Exception:  # pragma: no cover
     tqdm = None
+
+
+def _bucket3(y01: torch.Tensor) -> torch.Tensor:
+    """Map y∈[0,1] → 3-class bucket tensor (0,1,2)."""
+    # <1/3 => 0, [1/3,2/3) => 1, >=2/3 => 2
+    edges = torch.tensor([1/3, 2/3], device=y01.device, dtype=y01.dtype)
+    return (y01 >= edges[0]).long() + (y01 >= edges[1]).long()
 
 
 class TinyRecursionTrainer(BaseTrainer):
     """
-    Trainer for TinyRecursionModel — aligns with MRQTrainer pattern
-    but trains recursive reasoning dynamics instead of value predictors.
+    Trainer for TinyRecursionModel (Tiny+).
+    - Main objective: heteroscedastic regression on y∈[0,1]
+    - Aux objectives: tri-bucket CE, disagreement, recon (cos), consistency, optional SAE recon, OOD
     Produces ONE MODEL PER DIMENSION.
     """
 
@@ -30,22 +39,29 @@ class TinyRecursionTrainer(BaseTrainer):
         super().__init__(cfg, memory, container, logger)
 
         # --- Identity / paths -------------------------------------------------
-        self.model_type   = "tiny"                                     # <<< ensures locator picks models/tiny/...
-        self.target_type  = cfg.get("target_type", "document")         # <<< consistency with your scorers
-        self.version      = cfg.get("model_version", "v1")             # <<< folder versioning
+        self.model_type   = "tiny"
+        self.target_type  = cfg.get("target_type", "document")
+        self.version      = cfg.get("model_version", "v1")
 
         # --- Core knobs -------------------------------------------------------
-        self.epochs        = cfg.get("epochs", 20)
-        self.lr            = cfg.get("lr", 1e-4)
-        self.batch_size    = cfg.get("batch_size", 4)
-        self.dropout       = cfg.get("dropout", 0.1)
-        self.use_attention = cfg.get("use_attention", False)
-        self.n_recursions  = cfg.get("n_recursions", 6)
-        self.vocab_size    = cfg.get("vocab_size", 101)                # <<< 0..100 by default
-        self.halt_lambda   = cfg.get("halt_lambda", 0.1)
+        self.epochs        = int(cfg.get("epochs", 20))
+        self.lr            = float(cfg.get("lr", 1e-4))
+        self.batch_size    = int(cfg.get("batch_size", 16))
+        self.dropout       = float(cfg.get("dropout", 0.1))
+        self.use_attention = bool(cfg.get("use_attention", False))
+        self.n_recursions  = int(cfg.get("n_recursions", 6))
+        self.halt_lambda   = float(cfg.get("halt_lambda", 0.05))  # halting is a light regularizer
+
+        # Aux loss weights
+        self.w_aux3        = float(cfg.get("w_aux3", 0.3))
+        self.w_disagree    = float(cfg.get("w_disagree", 0.3))
+        self.w_recon       = float(cfg.get("w_recon", 0.2))
+        self.w_cons        = float(cfg.get("w_consistency", 0.2))
+        self.w_sae_recon   = float(cfg.get("w_sae_recon", 0.0))   # 0 = off by default
+        self.w_ood         = float(cfg.get("w_ood", 0.0))         # 0 = off by default
 
         # --- Telemetry --------------------------------------------------------
-        self.show_progress       = cfg.get("show_progress", True)
+        self.show_progress       = bool(cfg.get("show_progress", True))
         self.progress_every      = max(1, int(cfg.get("progress_every", 500)))
         self.log_every_steps     = max(1, int(cfg.get("log_every_steps", 50)))
         self.label_hist_bucket   = int(cfg.get("label_hist_bucket", 10))
@@ -58,95 +74,83 @@ class TinyRecursionTrainer(BaseTrainer):
         if torch.cuda.is_available():
             torch.cuda.manual_seed(self.seed)
 
-        # --- Optional label bucketing ----------------------------------------
-        self.bucket_size = int(cfg.get("bucket_size", 0))  # 0 disables
-
         # --- Model ------------------------------------------------------------
-        # self.dim comes from BaseTrainer (embedding dim). We pass that as d_model.
         self.model = TinyRecursionModel(
             d_model=self.dim,
-            n_layers=cfg.get("n_layers", 2),
+            n_layers=int(cfg.get("n_layers", 2)),
             n_recursions=self.n_recursions,
-            vocab_size=self.vocab_size,
+            vocab_size=int(cfg.get("vocab_size", 101)),   # kept for classifier compatibility
             use_attention=self.use_attention,
             dropout=self.dropout,
+            attn_heads=int(cfg.get("attn_heads", 4)),
+            step_scale=float(cfg.get("step_scale", 0.1)),
+            consistency_mask_p=float(cfg.get("consistency_mask_p", 0.10)),
+            len_norm_L=float(cfg.get("len_norm_L", 512.0)),
         ).to(self.device)
 
     # ------------------------------
-    # Data prep: each sample = (x, y, z, target_class[0..100 or binned], halt_target)
+    # Data prep
+    # Expect each sample dict to include:
+    #   x, y, z  -> texts (to be embedded via memory.embedding.get_or_create)
+    #   target   -> numeric (0..1) or 0..100; we'll normalize to [0,1]
+    # Optional:
+    #   halt_target (float), seq_len (int)
     # ------------------------------
-    def _create_dataloader(self, samples: List[Dict[str, Any]]) -> Tuple[Any, int, int]:
-        xs: List[torch.Tensor] = []
-        ys: List[torch.Tensor] = []
-        zs: List[torch.Tensor] = []
-        targets: List[int] = []
-        halt_targets: List[float] = []
+    def _create_dataloader(self, samples: List[Dict[str, Any]]) -> Tuple[Optional[DataLoader], int, int]:
+        xs, ys, zs = [], [], []
+        y01, halt_targets, seq_lens = [], [], []
 
-        kept = 0
-        dropped = 0
+        kept = dropped = 0
         label_counts = Counter()
 
         use_tqdm = bool(self.show_progress and tqdm is not None)
-        pbar = tqdm(samples, desc="Packing TinyRecursion samples", unit="samp") if use_tqdm else None
-        iterator = enumerate(pbar if pbar is not None else samples, start=1)
+        it = tqdm(samples, desc="Packing Tiny+ samples", unit="samp") if use_tqdm else samples
 
-        for idx, s in iterator:
+        for s in it:
             try:
-                x = torch.tensor(self.memory.embedding.get_or_create(s["x"]), dtype=torch.float, device=self.device)
-                y = torch.tensor(self.memory.embedding.get_or_create(s["y"]), dtype=torch.float, device=self.device)
-                z = torch.tensor(self.memory.embedding.get_or_create(s["z"]), dtype=torch.float, device=self.device)
+                x = torch.tensor(self.memory.embedding.get_or_create(s["x"]), dtype=torch.float32, device=self.device)
+                y = torch.tensor(self.memory.embedding.get_or_create(s["y"]), dtype=torch.float32, device=self.device)
+                z = torch.tensor(self.memory.embedding.get_or_create(s["z"]), dtype=torch.float32, device=self.device)
 
-                raw_t = s.get("target")
+                raw_t = s.get("target", None)
                 if raw_t is None:
                     dropped += 1
-                    if (not use_tqdm) and self.show_progress and (idx % self.progress_every == 0) and self.logger:
-                        self.logger.log("TinyRecursionPackProgress", {"kept": kept, "dropped": dropped})
                     continue
 
                 try:
-                    t_int = int(float(raw_t))
+                    t = float(raw_t)
                 except Exception:
                     dropped += 1
-                    if (not use_tqdm) and self.show_progress and (idx % self.progress_every == 0) and self.logger:
-                        self.logger.log("TinyRecursionPackProgress", {"kept": kept, "dropped": dropped})
                     continue
 
-                # optional bucketing
-                t_int = self._bucketize_label(t_int)
-
-                # ensure class id fits vocab
-                if not (0 <= t_int < self.vocab_size):
-                    dropped += 1
-                    if (not use_tqdm) and self.show_progress and (idx % self.progress_every == 0) and self.logger:
-                        self.logger.log("TinyRecursionPackProgress", {"kept": kept, "dropped": dropped})
-                    continue
+                # normalize to [0,1] if looks like 0..100
+                if t > 1.0:
+                    t = max(0.0, min(100.0, t)) / 100.0
+                else:
+                    t = max(0.0, min(1.0, t))
 
                 halt_t = float(s.get("halt_target", 1.0))
+                seq_len = int(s.get("seq_len", 0))
 
-                xs.append(x)
-                ys.append(y)
-                zs.append(z)
-                targets.append(t_int)
-                halt_targets.append(halt_t)
-                label_counts[t_int] += 1
+                xs.append(x); ys.append(y); zs.append(z)
+                y01.append(t); halt_targets.append(halt_t); seq_lens.append(seq_len)
+                label_counts[int(round(t * 100))] += 1
                 kept += 1
 
-                if pbar is not None:
-                    pbar.set_postfix(kept=kept, drop=dropped)
-
+                if use_tqdm:
+                    it.set_postfix(kept=kept, drop=dropped)
             except Exception as e:
                 dropped += 1
                 if self.logger:
                     self.logger.log("TinyRecursionSampleError", {"error": str(e)})
 
-        if pbar is not None:
-            pbar.close()
+        if use_tqdm and hasattr(it, "close"):
+            it.close()
 
-        # label histogram logging
         if self.logger and self.log_label_histogram:
             exact = {int(k): int(v) for k, v in sorted(label_counts.items())}
             bucketed = self._bucketize_counts(label_counts, self.label_hist_bucket)
-            self.logger.log("TinyRecursionLabelHistogram", {
+            self.logger.log("TinyPlusLabelHistogram", {
                 "kept": int(kept),
                 "dropped": int(dropped),
                 "exact": exact,
@@ -158,33 +162,96 @@ class TinyRecursionTrainer(BaseTrainer):
             return None, kept, dropped
 
         dataset = TensorDataset(
-            torch.stack(xs),
-            torch.stack(ys),
-            torch.stack(zs),
-            torch.tensor(targets, dtype=torch.long, device=self.device),
-            torch.tensor(halt_targets, dtype=torch.float, device=self.device),
+            torch.stack(xs),                          # x [B,D]
+            torch.stack(ys),                          # y [B,D]
+            torch.stack(zs),                          # z [B,D]
+            torch.tensor(y01, dtype=torch.float32, device=self.device).unsqueeze(-1),   # target [B,1]
+            torch.tensor(halt_targets, dtype=torch.float32, device=self.device).unsqueeze(-1),  # [B,1]
+            torch.tensor(seq_lens, dtype=torch.int32, device=self.device),              # [B]
         )
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         return loader, kept, dropped
 
     # ------------------------------
+    # Losses
+    # ------------------------------
+    @staticmethod
+    def _heteroscedastic_regression_loss(score: torch.Tensor, target01: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
+        """
+        score, target01, log_var: [B,1]
+        Returns scalar loss.
+        """
+        # L = (e^(-log_var) * (s - y)^2 + log_var)
+        diff2 = (score - target01).pow(2)
+        inv_var = torch.exp(-log_var)
+        return (inv_var * diff2 + log_var).mean()
+
+    @staticmethod
+    def _cosine_recon_loss(y_recon: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        # 1 - cosine in [0,2] → clamp to [0,1]
+        cos = F.cosine_similarity(y_recon, y_true, dim=-1).unsqueeze(-1)
+        return (1 - cos).clamp(0, 1).mean()
+
+    # ------------------------------
     # Epoch training
     # ------------------------------
-    def _train_epoch(self, model, dataloader, epoch_idx: int) -> float:
+    def _train_epoch(self, model: TinyRecursionModel, dataloader: DataLoader, epoch_idx: int) -> float:
         model.train()
         total_loss = 0.0
         count = 0
 
         use_tqdm = bool(self.show_progress and tqdm is not None)
-        pbar = tqdm(dataloader, desc=f"Epoch {epoch_idx}", unit="batch", leave=False) if use_tqdm else None
-        iterator = enumerate(pbar if pbar is not None else dataloader, start=1)
+        it = tqdm(dataloader, desc=f"Epoch {epoch_idx}", unit="batch", leave=False) if use_tqdm else dataloader
 
-        for step, batch in iterator:
-            x, y, z, targets, halt_targets = batch
-            logits, halt_logits, _ = model(x, y, z)                # <<< treat halt head as logits
-            ce_loss = F.cross_entropy(logits, targets)
-            halt_loss = F.binary_cross_entropy_with_logits(halt_logits, halt_targets)
-            loss = ce_loss + self.halt_lambda * halt_loss
+        for step, batch in enumerate(it, start=1):
+            x, y, z, target01, halt_target, seq_len = batch
+
+            logits, halt_logits, _, aux = model(x, y, z, seq_len=seq_len, return_aux=True)
+
+            # Main loss: heteroscedastic regression on score/log_var
+            L_main = self._heteroscedastic_regression_loss(aux["score"], target01, aux["log_var"])
+
+            # Aux losses
+            # 1) tri-bucket CE
+            buckets = _bucket3(target01.squeeze(-1))
+            L_aux3 = F.cross_entropy(aux["aux3_logits"], buckets)
+
+            # 2) disagreement SmoothL1: label is |HRM - Tiny target| if provided at sample time
+            #    If you don't have hrm_score per-sample, use |target01 - detach(score)| as a proxy (self-consistency).
+            #    Here we use proxy to keep trainer self-contained.
+            L_dis = F.smooth_l1_loss(aux["disagree_hat"], (target01 - aux["score"].detach()).abs())
+
+            # 3) reconstruction cosine loss
+            L_recon = self._cosine_recon_loss(aux["y_recon"], y)
+
+            # 4) consistency loss
+            L_cons = F.mse_loss(aux["consistency_hat"], aux["consistency_target"])
+
+            # 5) optional SAE recon (z_final ≈ sae_dec(sae_enc(z_final))) — we approximated inside the model as residual.
+            L_sae = torch.zeros((), device=self.device)
+            if self.w_sae_recon > 0.0 and "concept_vec" in aux:
+                # No direct target; encourage sparsity via L1 on concepts (acts like SAE regularizer)
+                L_sae = aux["concept_vec"].abs().mean()
+
+            # 6) optional OOD detection (no labels provided → use weak prior: encourage ood_hat≈1 on in-dist)
+            L_ood = torch.zeros((), device=self.device)
+            if self.w_ood > 0.0 and "ood_hat" in aux:
+                # Encourage in-dist confidence; you can add synthetic OOD in the dataloader for stronger signal.
+                L_ood = F.binary_cross_entropy(aux["ood_hat"], torch.ones_like(aux["ood_hat"]))
+
+            # 7) halting loss (light BCE)
+            L_halt = F.binary_cross_entropy_with_logits(halt_logits.unsqueeze(-1), halt_target)
+
+            loss = (
+                L_main
+                + self.w_aux3 * L_aux3
+                + self.w_disagree * L_dis
+                + self.w_recon * L_recon
+                + self.w_cons * L_cons
+                + self.w_sae_recon * L_sae
+                + self.w_ood * L_ood
+                + self.halt_lambda * L_halt
+            )
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -195,47 +262,79 @@ class TinyRecursionTrainer(BaseTrainer):
             total_loss += loss.item() * bsz
             count += bsz
 
-            if pbar is not None:
-                pbar.set_postfix(loss=f"{loss.item():.4f}")
+            if use_tqdm:
+                it.set_postfix(loss=f"{loss.item():.4f}")
             elif self.logger and (step % self.log_every_steps == 0):
-                self.logger.log("TinyRecursionBatch", {"epoch": epoch_idx, "step": step, "batch_loss": float(loss.item())})
+                self.logger.log("TinyPlusBatch", {
+                    "epoch": epoch_idx,
+                    "step": step,
+                    "loss": float(loss.item()),
+                    "L_main": float(L_main.item()),
+                    "L_aux3": float(L_aux3.item()),
+                    "L_dis": float(L_dis.item()),
+                    "L_recon": float(L_recon.item()),
+                    "L_cons": float(L_cons.item()),
+                    "L_sae": float(L_sae.item()),
+                    "L_ood": float(L_ood.item()),
+                    "L_halt": float(L_halt.item()),
+                })
 
-        if pbar is not None:
-            pbar.close()
+        if use_tqdm and hasattr(it, "close"):
+            it.close()
 
         return total_loss / max(1, count)
 
     # ------------------------------
     # Validation
     # ------------------------------
-    def _validate(self, model, dataloader) -> Dict[str, float]:
+    @torch.no_grad()
+    def _validate(self, model: TinyRecursionModel, dataloader: Optional[DataLoader]) -> Dict[str, float]:
         if not dataloader:
             return {}
 
         model.eval()
-        preds, targs, halt_preds, halt_targs = [], [], [], []
-        with torch.no_grad():
-            for x, y, z, targets, halt_targets in dataloader:
-                logits, halt_logits, _ = model(x, y, z)           # <<<
-                preds.extend(logits.argmax(dim=-1).detach().cpu().tolist())
-                targs.extend(targets.detach().cpu().tolist())
-                halt_preds.extend(torch.sigmoid(halt_logits).detach().cpu().tolist())  # <<<
-                halt_targs.extend(halt_targets.detach().cpu().tolist())
+        scores, targets = [], []
+        entropies, uncerts, disagree, recon_sim, cons_hat, temp01, jac, spars, ood, len_eff = ([] for _ in range(11))
 
-        if not targs:
-            return {}
+        for x, y, z, target01, _, seq_len in dataloader:
+            _, _, _, aux = model(x, y, z, seq_len=seq_len, return_aux=True)
+            s = aux["score"].detach().cpu().view(-1)
+            t = target01.detach().cpu().view(-1)
 
-        pt = torch.tensor(preds, dtype=torch.float32)
-        tt = torch.tensor(targs, dtype=torch.float32)
-        hp = torch.tensor(halt_preds, dtype=torch.float32).clamp(1e-6, 1 - 1e-6)
-        ht = torch.tensor(halt_targs, dtype=torch.float32)
+            scores.append(s)
+            targets.append(t)
+            entropies.append(aux["entropy_aux"].detach().cpu().view(-1))
+            uncerts.append(aux["uncertainty"].detach().cpu().view(-1))
+            disagree.append(aux["disagree_hat"].detach().cpu().view(-1))
+            recon_sim.append(aux["recon_sim"].detach().cpu().view(-1))
+            cons_hat.append(aux["consistency_hat"].detach().cpu().view(-1))
+            temp01.append(aux["temp01"].detach().cpu().view(-1))
+            jac.append(aux["jacobian_fd"].detach().cpu().view(-1))
+            spars.append(aux["concept_sparsity"].detach().cpu().view(-1))
+            ood.append(aux["ood_hat"].detach().cpu().view(-1))
+            len_eff.append(aux["len_effect"].detach().cpu().view(-1))
 
-        mae = F.l1_loss(pt, tt).item()
-        within5 = (pt.sub(tt).abs() <= 5).float().mean().item()
-        top1 = (pt == tt).float().mean().item()
-        halt_bce = F.binary_cross_entropy(hp, ht).item()
+        s = torch.cat(scores); t = torch.cat(targets)
+        mae = F.l1_loss(s, t).item()
+        rmse = torch.sqrt(F.mse_loss(s, t)).item()
 
-        return {"mae": mae, "within_delta_5": within5, "top1_accuracy": top1, "halt_bce": halt_bce}
+        def mean_cat(arrs): 
+            return float(torch.cat(arrs).mean().item()) if arrs else 0.0
+
+        return {
+            "mae": mae,
+            "rmse": rmse,
+            "entropy_aux_mean": mean_cat(entropies),
+            "uncertainty_mean": mean_cat(uncerts),
+            "disagree_hat_mean": mean_cat(disagree),
+            "recon_sim_mean": mean_cat(recon_sim),
+            "consistency_hat_mean": mean_cat(cons_hat),
+            "temp01_mean": mean_cat(temp01),
+            "jacobian_fd_mean": mean_cat(jac),
+            "concept_sparsity_mean": mean_cat(spars),
+            "ood_hat_mean": mean_cat(ood),
+            "len_effect_mean": mean_cat(len_eff),
+        }
 
     # ------------------------------
     # Train/val split
@@ -268,7 +367,7 @@ class TinyRecursionTrainer(BaseTrainer):
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         best_metric = float("inf")
-        patience, wait = 3, 0
+        patience, wait = int(self.cfg.get("patience", 3)), 0
         train_losses = []
 
         for epoch in range(1, self.epochs + 1):
@@ -279,21 +378,21 @@ class TinyRecursionTrainer(BaseTrainer):
             if self.logger:
                 payload = {"epoch": epoch, "train_loss": float(avg_loss)}
                 payload.update({f"val_{k}": v for k, v in val_metrics.items()})
-                self.logger.log("TinyRecursionEpoch", payload)
+                self.logger.log("TinyPlusEpoch", payload)
 
             # early-stop on validation MAE (or train loss if no val)
             stop_metric = val_metrics.get("mae", avg_loss) if val_metrics else avg_loss
 
-            if stop_metric < best_metric - 1e-4:
+            if stop_metric < best_metric - 1e-6:
                 best_metric = stop_metric
                 wait = 0
                 locator = self.get_locator(dimension)
-                torch.save(self.model.state_dict(), locator.model_file(suffix="_tiny.pt"))  # <<< save per-dim, tiny suffix
+                torch.save(self.model.state_dict(), locator.model_file(suffix="_tiny.pt"))
             else:
                 wait += 1
                 if wait >= patience:
                     if self.logger:
-                        self.logger.log("TinyRecursionEarlyStopping", {"epoch": epoch})
+                        self.logger.log("TinyPlusEarlyStopping", {"epoch": epoch})
                     break
 
         # --- meta -------------------------------------------------------------
@@ -307,17 +406,22 @@ class TinyRecursionTrainer(BaseTrainer):
             "use_attention": self.use_attention,
             "dropout": self.dropout,
             "seed": self.seed,
-            "bucket_size": self.bucket_size,
-            "vocab_size": self.vocab_size,                           # <<<
+            "vocab_size": int(self.cfg.get("vocab_size", 101)),
+            "w_aux3": self.w_aux3,
+            "w_disagree": self.w_disagree,
+            "w_recon": self.w_recon,
+            "w_consistency": self.w_cons,
+            "w_sae_recon": self.w_sae_recon,
+            "w_ood": self.w_ood,
         }
 
         meta = {
             "dimension": dimension,
             "model_type": "tiny_recursion",
-            "expects_triplet": True,                                  # <<< tells scorer interface is (x,y,z)
+            "expects_triplet": True,
             "embedding_type": self.embedding_type,
-            "input_dim": self.dim,                                    # each of x,y,z length
-            "concat_input_dim": self.dim * 2,                         # useful if a scorer builds x=[ctx,doc]
+            "input_dim": self.dim,
+            "concat_input_dim": self.dim * 2,
             "version": self.version,
             "epochs": self.epochs,
             "avg_loss": float(min(train_losses or [best_metric])),
@@ -328,13 +432,13 @@ class TinyRecursionTrainer(BaseTrainer):
             "val_kept": int(val_kept),
             "val_dropped": int(val_dropped),
         }
-        self._save_meta_file(meta, dimension)                         # <<< will write next to the model file
+        self._save_meta_file(meta, dimension)
 
         # TrainingStatsStore integration
         self.memory.training_stats.add_from_result(
             stats={"avg_q_loss": float(min(train_losses or [best_metric]))},
-            model_type=self.model_type,                               # <<<
-            target_type=self.target_type,                             # <<<
+            model_type=self.model_type,
+            target_type=self.target_type,
             dimension=dimension,
             version=self.version,
             embedding_type=self.embedding_type,

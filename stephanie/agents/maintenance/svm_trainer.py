@@ -11,14 +11,11 @@ class SVMTrainerAgent(BaseAgent):
         self.dimensions = cfg.get("dimensions", [])
 
     async def run(self, context: dict) -> dict:
-        goal_text = context.get("goal", {}).get("goal_text")
-        builder = PreferencePairBuilder(db=self.memory.session, logger=self.logger)
-        training_pairs = {}
-
+        builder = PreferencePairBuilder(self.memory, logger=self.logger)
         results = {}
 
         for dim in self.dimensions:
-            pairs = builder.get_training_pairs_by_dimension(goal=goal_text, dim=[dim])
+            pairs = builder.get_training_pairs_by_dimension(dim=[dim])
             examples = pairs.get(dim, [])
 
             if not examples:

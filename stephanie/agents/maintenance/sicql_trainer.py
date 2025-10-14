@@ -11,7 +11,7 @@ class SICQLTrainerAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
         self.trainer = SICQLTrainer(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])
-        self.pair_builder = PreferencePairBuilder(memory.session, logger)
+        self.pair_builder = PreferencePairBuilder(memory, logger)
 
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {})
