@@ -1,3 +1,6 @@
+# stephanie/agents/maintenance/svm_trainer.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.training.preference_pair_builder import \
     PreferencePairBuilder

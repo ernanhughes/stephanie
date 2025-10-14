@@ -237,6 +237,9 @@ class ScoringService(Service):
             if name == "ebt":
                 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
                 return EBTScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
+            if name == "tiny":
+                from stephanie.scoring.scorer.tiny_scorer import TinyScorer
+                return TinyScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name == "knowledge":
                 from stephanie.scoring.scorer.knowledge_scorer import \
                     KnowledgeScorer

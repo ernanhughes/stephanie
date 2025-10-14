@@ -11,4 +11,5 @@ defaults:
   - mrq/default
   - sicql/default
   - svm/default
+  - tiny/default
   - contrastive_ranker/default

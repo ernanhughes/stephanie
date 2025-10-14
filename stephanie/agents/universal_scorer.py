@@ -3,6 +3,7 @@ import logging
 
 from tqdm import tqdm
 
+from stephanie import memory
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.cartridge_triple import CartridgeTripleORM
@@ -13,7 +14,9 @@ from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
+from stephanie.scoring.score_display import ScoreDisplay
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+from stephanie.utils.db_scope import session_scope
 
 _logger = logging.getLogger(__name__)
 
@@ -39,6 +42,7 @@ class UniversalScorerAgent(BaseAgent):
         self.enabled_scorers = cfg.get("enabled_scorers", ["sicql"])
         self.progress = cfg.get("progress", True)
         self.force_rescore = cfg.get("force_rescore", False)
+        self.save_results = cfg.get("save_results", False)
         self.target_types = cfg.get(
             "target_types",
             [
@@ -47,6 +51,7 @@ class UniversalScorerAgent(BaseAgent):
                 ScorableType.THEOREM,
                 ScorableType.TRIPLE,
                 ScorableType.CASE_SCORABLE,
+                ScorableType.CONVERSATION_TURN
             ],
         )
         self.dimensions = self.cfg.get(
@@ -65,9 +70,9 @@ class UniversalScorerAgent(BaseAgent):
         dimension_config = self.cfg.get("dimension_config", {})
         # Components
         self.mars_calculator = MARSCalculator(
-            dimension_config, self.memory, self.logger
+            dimension_config, memory=self.memory, container=self.container, logger=self.logger
         )
-        self.ranker = ScorableRanker(cfg, memory, container, logger)
+        self.ranker = ScorableRanker(cfg, memory=self.memory, container=self.container, logger=self.logger)
 
         _logger.debug(
             f"AgentScorerInitialized: "
@@ -90,7 +95,9 @@ class UniversalScorerAgent(BaseAgent):
 
             if not objs and ttype in self.ORM_MAP:
                 orm_cls = self.ORM_MAP[ttype]
-                objs = self.memory.session.query(orm_cls).all()
+                sessionmaker = self.memory.session  # now a sessionmaker, not a live session
+                with session_scope(sessionmaker) as session:
+                    objs = session.query(orm_cls).all()
                 objs = [o.to_dict() for o in objs]
 
             for obj in objs:
@@ -169,20 +176,23 @@ class UniversalScorerAgent(BaseAgent):
                 continue
 
         bundle = ScoreBundle(results=dict(score_results))
+        weighted_score = bundle.aggregate()
+        ScoreDisplay.show(scorable, bundle.to_dict(), weighted_score)
 
-        # Save to memory
-        for key, result in score_results.items():
-            eval_id = self.memory.evaluations.save_bundle(
-                bundle=bundle,
-                scorable=scorable,
-                context=context,
-                cfg=self.cfg,
-                agent_name=self.name,
-                source=result.source, 
-                model_name=result.source,
-                evaluator_name=self.name,
-            )
-            self.logger.log("EvaluationSaved", {"id": eval_id})
+        # Save to 
+        if self.save_results:
+            for key, result in score_results.items():
+                eval_id = self.memory.evaluations.save_bundle(
+                    bundle=bundle,
+                    scorable=scorable,
+                    context=context,
+                    cfg=self.cfg,
+                    agent_name=self.name,
+                    source=result.source, 
+                    model_name=result.source,
+                    evaluator_name=self.name,
+                )
+                self.logger.log("EvaluationSaved", {"id": eval_id})
 
         report_scores = {
             key: {"score": result.score,

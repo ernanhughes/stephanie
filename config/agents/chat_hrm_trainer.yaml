@@ -1,5 +1,5 @@
 chat_hrm_trainer:
-  name: chat_hrm_trainer She's a disgrace
+  name: chat_hrm_trainer
   enabled: true
   save_prompt: true
   save_context: false

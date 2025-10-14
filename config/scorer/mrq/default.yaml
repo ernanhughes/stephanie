@@ -3,10 +3,10 @@ name: mrq
 model_type: mrq
 model_version: v1
 evaluator: mrq
-target_type: document
+target_type: conversation_turn
 dimensions: 
-  - alignment
+  - reasoning
+  - knowledge
   - clarity
-  - implementability
-  - novelty
-  - relevance
+  - faithfulness
+  - coverage

@@ -3,6 +3,6 @@ name: tiny
 model_type: tiny
 model_version: v1
 evaluator: tiny
-target_type: document
+target_type: conversation_turn
 dimensions: 
   - reasoning

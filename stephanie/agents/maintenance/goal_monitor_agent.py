@@ -1,4 +1,6 @@
 # stephanie/agents/monitor/goal_monitor_agent.py
+from __future__ import annotations
+
 from stephanie.registry.registry import get
 
 

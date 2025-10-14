@@ -551,7 +551,8 @@ class NatsKnowledgeBus(BusProtocol):
             try:
                 while not self._stopping:
                     try:
-                        await asyncio.sleep(self.health_check_interval)
+                        if not self._stopping:
+                            await asyncio.sleep(self.health_check_interval)
                         if not self._connected or not self._nc or self._nc.is_closed:
                             continue
                         await self._nc.flush(timeout=1.0)

@@ -1,4 +1,6 @@
 # stephanie/agents/maintenance/trainer_base.py
+from __future__ import annotations
+
 import os
 
 import torch

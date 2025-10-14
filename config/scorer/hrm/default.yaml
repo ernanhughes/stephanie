@@ -3,10 +3,10 @@ name: hrm
 model_type: hrm
 model_version: v1
 evaluator: hrm
-target_type: document
+target_type: conversation_turn
 dimensions: 
-  - alignment
+  - reasoning
+  - knowledge
   - clarity
-  - implementability
-  - novelty
-  - relevance
+  - faithfulness
+  - coverage

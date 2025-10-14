@@ -1,4 +1,5 @@
 # stephanie/scoring/ebt/srft_refinement_trainer.py
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Dict, List, Optional

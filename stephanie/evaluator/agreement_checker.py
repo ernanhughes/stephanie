@@ -1,5 +1,4 @@
 # stephanie/evaluator/agreement_checker.py
-# evaluators/agreement_checker.py
 
 
 class EvaluatorAgreementChecker:

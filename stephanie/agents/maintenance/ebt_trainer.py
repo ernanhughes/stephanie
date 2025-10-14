@@ -1,4 +1,5 @@
-# stephanie/agents/maintenance/ebt_trainer_agent.py
+# stephanie/agents/maintenance/ebt_trainer.py
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.training.ebt_trainer import EBTTrainer
