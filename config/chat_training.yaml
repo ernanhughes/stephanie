@@ -65,7 +65,7 @@ pipeline:
      - name: chat_tiny_trainer
        description: "Train a Tiny model to predict values using chat conversation_turns"
        cls: stephanie.agents.maintenance.tiny_trainer.TinyTrainerAgent
-       enabled: false music
+       enabled: true
        iterations: 1
 
      - name: chat_scorer
@@ -75,6 +75,6 @@ pipeline:
 
      - name: phoshrm
        description: "Train a PhosHRM model to predict values using chat conversation_turns"
-       cls: stephanie.agents.phoshrm.PhosHRMAgent
+       cls: stephanie.agents.phoshrm.PhoshrmAgent
        enabled: false
        iterations: 1

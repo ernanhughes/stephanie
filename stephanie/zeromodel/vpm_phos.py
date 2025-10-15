@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from stephanie.scoring.scorable import ScorableType
+
 # ---------------------------
 # Low-level utils
 # ---------------------------
@@ -336,6 +338,59 @@ def _load_scores_csv(path: str) -> pd.DataFrame:
     return df
 
 
+def _collect_texts(self, goal_text: str, *, top_k: int) -> List[str]:
+    """
+    Pull a blend of 'good', 'medium', 'opposite' responses using your embedding store.
+    """
+    texts: List[str] = []
+
+    # Good: previously scored on the same goal
+    try:
+        good_rows = self._gather_runs_by_goal(goal_text, limit=top_k // 3)
+        texts.extend(good_rows)
+    except Exception as e:
+        self.logger.log("PHOSGoodGatherError", {"error": str(e)})
+
+    # Medium: similarity band
+    try:
+        med_rows = self.memory.embedding.search_scorables_in_similarity_band(
+            goal_text, ScorableType.RESPONSE, 0.15, 0.80, top_k // 3
+        )
+        texts.extend([r["text"] for r in med_rows])
+    except Exception as e:
+        self.logger.log("PHOSMediumGatherError", {"error": str(e)})
+
+    # Opposite: unrelated
+    try:
+        opp_rows = self.memory.embedding.search_unrelated_scorables(
+            goal_text, ScorableType.RESPONSE, top_k=top_k // 3
+        )
+        texts.extend([r["text"] for r in opp_rows])
+    except Exception as e:
+        self.logger.log("PHOSOppositeGatherError", {"error": str(e)})
+
+    # Dedup & cap
+    seen = set()
+    uniq = []
+    for t in texts:
+        if t and t not in seen:
+            seen.add(t); uniq.append(t)
+            if len(uniq) >= top_k: break
+    return uniq
+
+def _gather_runs_by_goal(self, goal_text: str, limit: int) -> List[str]:
+    """
+    Heuristic: pull responses that were previously linked to goals similar to goal_text.
+    If you have a DB table for successful runs, you can query it here. For now, use
+    nearest neighbors from embedding store tagged as RESPONSE with a higher band.
+    """
+    rows = self.memory.embedding.search_scorables_in_similarity_band(
+        goal_text, ScorableType.RESPONSE, 0.70, 1.00, limit
+    )
+    return [r["text"] for r in rows]
+
+    # ---------------- Private: VPM build & compare ------------------------
+
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser(description="Build guarded PHOS VPMs for HRM vs Tiny.")
@@ -357,3 +412,5 @@ if __name__ == "__main__":
         interleave=bool(args.interleave),
     )
     print(json.dumps({"ok": True, "out_prefix": args.out_prefix, "summary_keys": list(out.keys())}, indent=2))
+
+
