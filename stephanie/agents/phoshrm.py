@@ -1,14 +1,21 @@
-# stephanie/agents/phoshrm.py
+# stephanie/agents/phoshrm.py  (patched)
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import numpy as np
+import pandas as pd
+import json
+import hashlib
+from typing import DefaultDict
+from collections import defaultdict
+
 import matplotlib
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 
-from tqdm import tqdm  # <-- NEW
+from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable, ScorableType
@@ -17,10 +24,12 @@ from stephanie.utils.id_utils import make_numeric_id
 import asyncio
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
+from stephanie.zeromodel.vpm_phos import build_hrm_vs_tiny_guarded
 
 import logging
 _logger = logging.getLogger(__name__)
 
+CAND_SUFFIXES = ["", ".score", ".aggregate", ".raw", ".value"]
 
 class PhoshrmAgent(BaseAgent):
     """
@@ -40,7 +49,7 @@ class PhoshrmAgent(BaseAgent):
                 ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"],
             )
         )
-        self.hrm_scorers = list(cfg.get("hrm_scorers", ["hrm", "sicql", "mrq"]))
+        self.hrm_scorers = list(cfg.get("hrm_scorers", ["hrm"]))
         self.tiny_scorers = list(cfg.get("tiny_scorers", ["tiny"]))
         self.out_dir = Path(cfg.get("out_dir", "data/vpm"))
         self.interleave = bool(cfg.get("interleave", False))
@@ -50,7 +59,7 @@ class PhoshrmAgent(BaseAgent):
         eval_stats: Dict[str, Any] = {}
 
         # 1) Prepare tools
-        scoring_service = self.container.get("scoring")  # ScoringService
+        scoring_service = self.container.get("scoring")
         zm = self.container.get("zeromodel")
         hrm_worker = MetricsWorkerInline(scoring_service, self.hrm_scorers, self.dimensions)
         tiny_worker = MetricsWorkerInline(scoring_service, self.tiny_scorers, self.dimensions)
@@ -62,52 +71,75 @@ class PhoshrmAgent(BaseAgent):
         zm.timeline_open(run_id=hrm_run_id)
         zm.timeline_open(run_id=tiny_run_id)
 
-        # 2) Gather all samples so we know totals (for tqdm bars)
+        # For PHOS guarded compare: accumulate rows per sample
+        rows_for_df: List[Dict[str, float]] = []  # <-- NEW
+
+        # 2) Gather all samples per dimension, then dedupe globally
         pair_builder = PreferencePairBuilder(self.memory, self.logger)
         triples_by_dim: Dict[str, List[Tuple[str, str, float]]] = {}
-        total_triples = 0
+        total_raw = 0
 
-        dimension = self.dimensions[0]
-        pairs_by_dim = pair_builder.get_training_pairs_by_dimension(dimension=dimension)
-        triples = _flatten_samples_for_eval(pairs_by_dim.get(dimension, []))
-        triples_by_dim[dimension] = triples
-        total_triples += len(triples)
+        for dimension in self.dimensions:
+            pairs_by_dim = pair_builder.get_training_pairs_by_dimension(dimension=dimension)
+            samples_full = pairs_by_dim.get(dimension, [])
+            if not samples_full:
+                self.logger.log("NoSamplesFound", {"dimension": dimension})
+                triples_by_dim[dimension] = []
+                continue
 
-        # Guard (nothing to do)
+            triples = _flatten_samples_for_eval(samples_full)
+            triples_by_dim[dimension] = triples
+            total_raw += len(triples)
+
+        # 🔒 dedupe across dimensions (choose policy and optional caps)
+        deduped = _dedupe_triples_by_dimension(
+            triples_by_dim,
+            policy=self.cfg.get("dedupe_policy", "first_wins"),
+            per_dim_cap=self.cfg.get("per_dim_cap")  # e.g., 400
+        )
+        # Update totals post-dedupe and proceed
+        total_triples = sum(len(v) for v in deduped.values())
         if total_triples == 0:
             self.logger.log("PhosHRMNoSamples", {"dimensions": self.dimensions})
             context[self.output_key] = {"msg": "no samples"}
             return context
 
-        # 3) Main scoring loop with tqdm (overall + per-dimension)
+        self.logger.log("PhosHRMDedupeSummary", {
+            "total_raw": total_raw,
+            "total_unique": total_triples,
+            "per_dim_counts": {d: len(deduped[d]) for d in self.dimensions}
+        })
+
+        # 3) Main scoring loop now uses deduped per-dimension lists
         processed = 0
+        rows_for_df = []
         with tqdm(total=total_triples, desc="[PhosHRM] overall", unit="sample") as pbar_all:
             for d in self.dimensions:
-                triples = triples_by_dim.get(d, [])
+                triples = deduped.get(d, [])
                 if not triples:
-                    tqdm.write(f"[PhosHRM] ⚠️ No samples for dimension: {d}")
+                    tqdm.write(f"[PhosHRM] ⚠️ No (unique) samples for dimension: {d}")
                     continue
 
                 with tqdm(total=len(triples), desc=f"[PhosHRM] {d}", unit="node", leave=False) as pbar_dim:
                     for idx, (goal_text, output_text, target_val) in enumerate(triples):
                         node_id = make_numeric_id(pipeline_run_id, d, idx)
                         scorable = Scorable(output_text, ScorableType.CONVERSATION_TURN)
-
-                        # score (HRM & Tiny)
                         hrm_metrics = await hrm_worker.score(scorable, goal_text, hrm_run_id)
+
                         tiny_metrics = await tiny_worker.score(scorable, goal_text, tiny_run_id)
 
-                        # append to VPM timelines
+                        row = {"node_id": node_id}
+                        row.update({k: float(v) for k, v in hrm_metrics.get("vector", {}).items()})
+                        row.update({k: float(v) for k, v in tiny_metrics.get("vector", {}).items()})
+                        rows_for_df.append(row)
+
                         await vpm_worker.append(hrm_run_id, node_id, hrm_metrics)
                         await vpm_worker.append(tiny_run_id, node_id, tiny_metrics)
 
-                        # progress
                         processed += 1
                         pbar_dim.update(1)
                         pbar_all.update(1)
-
                         if (processed % self.progress_log_every) == 0 or processed == total_triples:
-                            # structured progress for logs/dashboards
                             self.logger.log("PhosHRMProgress", {
                                 "run_id": pipeline_run_id,
                                 "dimension": d,
@@ -115,17 +147,110 @@ class PhoshrmAgent(BaseAgent):
                                 "total": total_triples,
                                 "percent": round(100.0 * processed / total_triples, 2),
                             })
-
-                        # give the event loop a breath (keeps UI responsive)
-                        # and avoids starving any in-process workers
                         await asyncio.sleep(0)
-
-        # 4) Finalize timelines (renders GIFs)
+        # 4) Finalize timelines (unchanged)
         hrm_gif = f"vpm_phos_run_{hrm_run_id}.gif"
         tiny_gif = f"vpm_phos_run_{tiny_run_id}.gif"
-        await vpm_worker.finalize(hrm_run_id, hrm_gif)
-        await vpm_worker.finalize(tiny_run_id, tiny_gif)
+        hrm_final = await vpm_worker.finalize(hrm_run_id, hrm_gif)
+        tiny_final = await vpm_worker.finalize(tiny_run_id, tiny_gif)
+        # Build per-model intensity JSON + cross-model comparison
+        intensity = zm.build_intensity_report(
+            hrm_matrix=hrm_final["matrix"],
+            tiny_matrix=tiny_final["matrix"],
+            hrm_metric_names=hrm_final.get("metric_names", []),
+            tiny_metric_names=tiny_final.get("metric_names", []),
+            out_dir=str(Path(self.out_dir) / f"phos_reports/run_{pipeline_run_id}"),
+            top_k=20,
+        )
+        eval_stats["intensity_report"] = {"path": intensity["path"]}
+
         tqdm.write(f"[PhosHRM] ✅ Timelines closed → {hrm_gif} / {tiny_gif}")
+
+
+        def _pick_metric_column(df: pd.DataFrame, base: str) -> str | None:
+            # Try exact base first, then candidate suffixes, then a loose fallback
+            if base in df.columns:
+                return base
+            for suf in CAND_SUFFIXES:
+                cand = f"{base}{suf}"
+                if cand in df.columns:
+                    return cand
+            pref = f"{base}."
+            for c in df.columns:
+                if isinstance(c, str) and c.startswith(pref):
+                    return c
+            return None
+
+        def _project_dimensions(df_in: pd.DataFrame, dims: list[str], logger) -> pd.DataFrame:
+            out = {"node_id": df_in["node_id"].values}
+            missing = {"hrm": [], "tiny": []}
+
+            for d in dims:
+                h_col = _pick_metric_column(df_in, f"hrm.{d}")
+                t_col = _pick_metric_column(df_in, f"tiny.{d}")
+
+                if h_col is None:
+                    missing["hrm"].append(d)
+                    out[f"hrm.{d}"] = 0.0
+                else:
+                    out[f"hrm.{d}"] = pd.to_numeric(df_in[h_col], errors="coerce").fillna(0.0).astype(float)
+
+                if t_col is None:
+                    missing["tiny"].append(d)
+                    out[f"tiny.{d}"] = 0.0
+                else:
+                    out[f"tiny.{d}"] = pd.to_numeric(df_in[t_col], errors="coerce").fillna(0.0).astype(float)
+
+            logger.log("PHOSColumnDiscovery", {
+                "rows": int(df_in.shape[0]),
+                "dims": dims,
+                "present_hrm": [c for c in df_in.columns if isinstance(c, str) and c.startswith("hrm.")],
+                "present_tiny": [c for c in df_in.columns if isinstance(c, str) and c.startswith("tiny.")],
+                "missing_hrm_dims": missing["hrm"],
+                "missing_tiny_dims": missing["tiny"],
+            })
+            return pd.DataFrame(out)
+
+        # 5) Build DataFrame and run PHOS guarded comparison
+        if rows_for_df:
+            df_raw = pd.DataFrame(rows_for_df)
+            # Keep only model columns + node_id (defensive)
+            keep = ["node_id"] + [c for c in df_raw.columns
+                                if isinstance(c, str) and (c.startswith("hrm.") or c.startswith("tiny."))]
+            df_raw = df_raw[keep]
+
+            # 🔧 Project to canonical columns hrm.{dim} / tiny.{dim}
+            df_proj = _project_dimensions(df_raw, self.dimensions, self.logger)
+
+            out_prefix = str(Path(self.out_dir) / f"phos_guard/run_{pipeline_run_id}")
+            Path(self.out_dir, "phos_guard").mkdir(parents=True, exist_ok=True)
+
+            phos_res = build_hrm_vs_tiny_guarded(
+                df_proj,                                # ← use projected DF
+                dimensions=self.dimensions,
+                out_prefix=out_prefix,
+                tl_fracs=(0.25, 0.16, 0.36, 0.09),
+                delta=0.02,
+                interleave=bool(self.interleave),
+                weights=None,
+            )
+        else:
+            phos_res = {"status": "no_rows_for_df"}
+
+        # 6) Return enriched context
+        eval_stats.update({
+            "hrm": {"gif": hrm_final.get("output_path"), "shape": hrm_final.get("shape")},
+            "tiny": {"gif": tiny_final.get("output_path"), "shape": tiny_final.get("shape")},
+            "phos_guarded": phos_res,
+        })
+
+        # Persist manifest
+        manifest_dir = Path(self.out_dir) / "phoshrm_manifests"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = manifest_dir / f"phoshrm_manifest_{pipeline_run_id}.json"
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(eval_stats, f, indent=2)
+        _logger.info(f"[PhosHRM] Manifest saved → {manifest_path}")
 
         context[self.output_key] = eval_stats
         return context
@@ -147,7 +272,7 @@ class PhoshrmAgent(BaseAgent):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if good_mat is not None and bad_mat is not None:
-            meta = self.zm.generate_epistemic_field(
+            meta = self.zm.generate_epistemic_field_phos_ordered(
                 pos_matrices=[good_mat],
                 neg_matrices=[bad_mat],
                 output_dir=str(output_dir / "good_vs_bad"),
@@ -169,11 +294,10 @@ class PhoshrmAgent(BaseAgent):
             self.logger.log("metrics", ranked_metrics)
 
         if good_mat is not None and mixed_mat is not None:
-            meta = self.zm.generate_epistemic_field(
-                pos_matrices=[good_mat],
+            meta = self.generate_epistemic_field_phos_ordered(
+                pos_matrices=[good_mat], 
                 neg_matrices=[mixed_mat],
                 output_dir=str(output_dir / "good_vs_mixed"),
-                aggregate=True,
             )
             results["good_vs_mixed"] = meta
             _logger.info(
@@ -181,7 +305,6 @@ class PhoshrmAgent(BaseAgent):
             )
 
         return results
-
 
 
 def _flatten_samples_for_eval(samples: List[dict]) -> List[Tuple[str, str, float]]:
@@ -218,3 +341,116 @@ def _flatten_samples_for_eval(samples: List[dict]) -> List[Tuple[str, str, float
             if title and out and val is not None:
                 triples.append((title, out, float(val)))
     return triples
+
+def _fill_from_columns(row: Dict[str, float], cols: List[str], vals: List[float], model_name: str, dims: List[str]) -> None:
+    """
+    Extract per-dimension score for keys like:
+      - '{model}.{dim}'
+      - '{model}.{dim}.score'
+      - '{model}.{dim}.aggregate'
+    Prefers a strict match in that order; falls back gracefully.
+    """
+    name2val = {str(c): float(v) for c, v in zip(cols, vals)}
+    for dim in dims:
+        preferred = [
+            f"{model_name}.{dim}",
+            f"{model_name}.{dim}.score",
+            f"{model_name}.{dim}.aggregate",
+        ]
+        val = None
+        for key in preferred:
+            if key in name2val:
+                val = name2val[key]
+                break
+        # If still missing, try a loose search (any column that endswith dim or contains f".{dim}.")
+        if val is None:
+            for k in name2val.keys():
+                if k.endswith(f".{dim}") or f".{dim}." in k:
+                    val = name2val[k]
+                    break
+        if val is not None:
+            row[f"{model_name}.{dim}"] = float(val)
+
+# -------------------------
+# Helpers for PHOS compare
+# -------------------------
+def _harvest_model_dim_scores(row: Dict[str, float], metrics: Dict[str, Any], *, model_name: str, dims: List[str]) -> None:
+    """
+    Populate `row` with best-effort per-dimension scores under keys like
+    '{model}.{dimension}' from a metrics payload that can be either:
+      - ScoreBundle-like: {'bundle': <ScoreBundle>}  (uses flatten())
+      - Flat: {'columns': [...], 'values': [...]}    (aligns by name)
+    It tolerates variants like '{model}.{dim}', '{model}.{dim}.score'.
+    """
+    # Case A: ScoreBundle present and has flatten()
+    bundle = metrics.get("bundle")
+    if bundle is not None and hasattr(bundle, "flatten"):
+        cols, vals = bundle.flatten()  # expected to return (List[str], List[float])
+        _fill_from_columns(row, cols, vals, model_name, dims)
+        return
+
+    # Case B: columns/values dict (as in your example)
+    cols = metrics.get("columns")
+    vals = metrics.get("values")
+    if isinstance(cols, list) and isinstance(vals, (list, tuple)) and len(cols) == len(vals):
+        _fill_from_columns(row, cols, vals, model_name, dims)
+        return
+
+    # Fallback: nothing we can do
+    return
+
+
+def _fingerprint(goal_text: str, output_text: str) -> str:
+    h = hashlib.sha1()
+    h.update((goal_text.strip() + "\n␟\n" + output_text.strip()).encode("utf-8"))
+    return h.hexdigest()
+
+def _dedupe_triples_by_dimension(
+    triples_by_dim: Dict[str, List[Tuple[str, str, float]]],
+    policy: str = "first_wins",            # or "round_robin"
+    per_dim_cap: int | None = None         # optional cap per dimension
+) -> Dict[str, List[Tuple[str, str, float]]]:
+    """
+    Ensure no (goal, output) pair appears in more than one dimension.
+
+    policy:
+      - "first_wins": keep the first dimension (by iteration order) that sees a sample
+      - "round_robin": build a global pool and assign unique items evenly across dims
+    """
+    dims = list(triples_by_dim.keys())
+    if policy == "first_wins":
+        seen: set[str] = set()
+        deduped: Dict[str, List[Tuple[str, str, float]]] = {d: [] for d in dims}
+        for d in dims:
+            for (g, o, v) in triples_by_dim[d]:
+                key = _fingerprint(g, o)
+                if key in seen:
+                    continue
+                deduped[d].append((g, o, v))
+                seen.add(key)
+            if per_dim_cap is not None and len(deduped[d]) > per_dim_cap:
+                deduped[d] = deduped[d][:per_dim_cap]
+        return deduped
+
+    elif policy == "round_robin":
+        # 1) global unique pool preserving first occurrence value
+        pool: Dict[str, Tuple[str, str, float]] = {}
+        for d in dims:
+            for (g, o, v) in triples_by_dim[d]:
+                key = _fingerprint(g, o)
+                if key not in pool:
+                    pool[key] = (g, o, v)
+
+        # 2) assign evenly across dimensions
+        keys = list(pool.keys())
+        deduped = {d: [] for d in dims}
+        i = 0
+        for k in keys:
+            d = dims[i % len(dims)]
+            if per_dim_cap is None or len(deduped[d]) < per_dim_cap:
+                deduped[d].append(pool[k])
+                i += 1
+        return deduped
+
+    else:
+        raise ValueError(f"Unknown policy: {policy}")

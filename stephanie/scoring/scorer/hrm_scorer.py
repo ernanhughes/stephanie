@@ -32,7 +32,7 @@ class HRMScorer(BaseScorer):
         # h_dim, l_dim, etc. are loaded from the model's meta file or config
         
         # Get target type and version from config, with defaults
-        self.target_type = cfg.get("target_type", "document")
+        self.target_type = cfg.get("target_type", "conversation_turn")
         self.model_path = cfg.get("model_path", "models")
         self.version = cfg.get("model_version", "v1")
         self.dimensions = cfg.get("dimensions", [])

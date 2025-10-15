@@ -7,7 +7,7 @@ defaults:
   - ebt/default
   - hrm/default
   - knowledge/default
-  - epistemic_hrm/default
+  # - epistemic_hrm/default
   - mrq/default
   - sicql/default
   - svm/default

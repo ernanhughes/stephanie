@@ -1,4 +1,27 @@
-# stephanie/zeromodel/vpm_phos_guard.py
+# stephanie/zeromodel/vpm_phos.py
+"""
+VPM (Vectorized Performance Map) and PHOS (Packed High-Order Structure) Visualization Module
+
+This module provides functionality for creating and analyzing visual performance representations
+of AI model outputs across multiple evaluation dimensions. It implements the VPM/PHOS methodology
+for model comparison and quality assessment.
+
+Key Features:
+- Robust vector normalization and scaling
+- PHOS packing algorithms for visual pattern recognition
+- Multi-dimensional performance visualization
+- Automated artifact selection with improvement guards
+- HRM vs Tiny model comparison framework
+
+The PHOS algorithm sorts performance vectors and packs them into 2D representations
+that highlight performance concentration patterns, making model strengths/weaknesses
+visually apparent.
+
+Author: Stephanie AI Team
+Version: 1.0
+Date: 2024
+"""
+
 from __future__ import annotations
 
 import json
@@ -11,12 +34,23 @@ import pandas as pd
 
 from stephanie.scoring.scorable import ScorableType
 
+
 # ---------------------------
 # Low-level utils
 # ---------------------------
 
 def robust01(x: np.ndarray, p_lo: float = 10.0, p_hi: float = 90.0) -> np.ndarray:
-    """Robust [0,1] scaling using percentiles to damp outliers."""
+    """
+    Robust [0,1] scaling using percentiles to damp outliers.
+    
+    Args:
+        x: Input array to normalize
+        p_lo: Lower percentile for scaling (default: 10th percentile)
+        p_hi: Upper percentile for scaling (default: 90th percentile)
+    
+    Returns:
+        Array scaled to [0,1] range based on percentile bounds
+    """
     x = np.asarray(x, dtype=np.float64).reshape(-1)
     if x.size == 0:
         return x
@@ -31,7 +65,12 @@ def robust01(x: np.ndarray, p_lo: float = 10.0, p_hi: float = 90.0) -> np.ndarra
 def to_square(vec: np.ndarray) -> Tuple[np.ndarray, int]:
     """
     Pad a 1D vector to the next square length and reshape to (s, s).
-    Returns (img, s).
+    
+    Args:
+        vec: Input 1D vector
+        
+    Returns:
+        Tuple of (square_image, side_length)
     """
     v = np.asarray(vec, dtype=np.float64).reshape(-1)
     n = v.size
@@ -43,39 +82,77 @@ def to_square(vec: np.ndarray) -> Tuple[np.ndarray, int]:
         v = np.pad(v, (0, pad), mode="constant")
     return v.reshape(s, s), s
 
+
 def phos_sort_pack(v: np.ndarray, *, tl_frac: float = 0.25) -> np.ndarray:
+    """
+    PHOS (Packed High-Order Structure) algorithm.
+    
+    Sorts values in descending order and packs them into a square image with
+    top values concentrated in the top-left region.
+    
+    Args:
+        v: Input performance vector
+        tl_frac: Fraction of area to allocate for top-left concentration
+    
+    Returns:
+        Square image with sorted and packed values
+    """
     v = np.asarray(v, dtype=np.float64).ravel()
-    if v.size == 0: return np.zeros((1, 1), dtype=np.float64)
+    if v.size == 0: 
+        return np.zeros((1, 1), dtype=np.float64)
+    
+    # Normalize and prepare for packing
     v01 = robust01(v)
     n = v01.size
     s = int(np.ceil(np.sqrt(n)))
     pad = s * s - n
-    if pad > 0: v01 = np.concatenate([v01, np.zeros(pad)])
+    if pad > 0: 
+        v01 = np.concatenate([v01, np.zeros(pad)])
+    
+    # Sort values in descending order
     order = np.argsort(v01)[::-1]
     sorted_vals = v01[order]
     img = sorted_vals.reshape(s, s)
+    
+    # Calculate top-left block size
     k = max(1, int(round(s * s * tl_frac)))
     packed = np.zeros_like(img)
     packed[:][:] = 0.0
+    
     r = int(np.floor(np.sqrt(k)))
-    if r <= 0: r = 1
+    if r <= 0: 
+        r = 1
     rr = r
-    if rr*rr > k:
+    if rr * r * r > k:
         rr = int(np.floor(np.sqrt(k)))
-    # fill TL with top-k
+    
+    # Fill top-left with highest values
     top = sorted_vals[:k]
     tl = np.zeros_like(img)
-    tl[:rr, :rr] = top[:rr*rr].reshape(rr, rr)
-    rest = sorted_vals[rr*rr:]
-    # lay the rest row-wise after TL block
+    tl[:rr, :rr] = top[:rr * rr].reshape(rr, rr)
+    rest = sorted_vals[rr * rr:]
+    
+    # Pack remaining values
     packed[:rr, :rr] = tl[:rr, :rr]
     flat = packed.ravel()
-    flat[rr*rr:rr*rr+rest.size] = rest
+    flat[rr * rr:rr * rr + rest.size] = rest
+    
     return flat.reshape(s, s)
 
 
 def image_entropy(img: np.ndarray) -> float:
-    """Shannon entropy over normalized pixel mass (not a 256-bin histogram)."""
+    """
+    Calculate Shannon entropy over normalized pixel mass.
+    
+    Measures the information content/distribution uniformity in the image.
+    Higher entropy = more uniform distribution, lower entropy = more concentrated.
+    
+    Args:
+        img: Input image array
+        
+    Returns:
+        Shannon entropy value
+    """
     x = np.asarray(img, dtype=np.float64)
     mass = x.sum()
     if mass <= 0:
@@ -87,8 +164,17 @@ def image_entropy(img: np.ndarray) -> float:
 
 def brightness_concentration(img: np.ndarray, tl_frac: float = 0.25) -> float:
     """
-    Fraction of total mass that sits in the top-left ‘tl_frac’ area.
-    tl_frac is an area fraction (0..1). The top-left block side is ~ sqrt(tl_frac).
+    Calculate fraction of total mass in the top-left region.
+    
+    Measures how concentrated the high values are in the designated area.
+    Used as a key metric for PHOS effectiveness.
+    
+    Args:
+        img: Input image array
+        tl_frac: Area fraction for top-left region
+        
+    Returns:
+        Concentration ratio (0-1)
     """
     x = np.asarray(img, dtype=np.float64)
     s = x.shape[0]
@@ -102,7 +188,14 @@ def brightness_concentration(img: np.ndarray, tl_frac: float = 0.25) -> float:
 
 
 def save_img(img: np.ndarray, path: str, title: str = "") -> None:
-    """Save a grayscale image (0..1)."""
+    """
+    Save grayscale image to disk.
+    
+    Args:
+        img: Image array (values 0-1)
+        path: Output file path
+        title: Image title
+    """
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     plt.figure(figsize=(6, 6))
     plt.imshow(np.clip(img, 0.0, 1.0), cmap="gray", vmin=0.0, vmax=1.0)
@@ -128,10 +221,22 @@ def vpm_vector_from_df(
     p_hi: float = 90.0,
 ) -> np.ndarray:
     """
-    Build a single 1D VPM vector for a model by stitching per-dimension,
-    robustly scaled columns. Supports both MultiIndex and flat "model.dimension" columns.
-    - interleave=False → [all dim0 | all dim1 | ...]
-    - interleave=True  → row-wise interleave across dimensions
+    Build a single 1D VPM vector from DataFrame columns.
+    
+    Supports both MultiIndex and flat column naming conventions.
+    Can concatenate or interleave dimensions.
+    
+    Args:
+        df: DataFrame containing model performance scores
+        model: Model identifier (e.g., 'hrm', 'tiny')
+        dimensions: List of dimension names to include
+        interleave: If True, interleave dimensions; if False, concatenate
+        weights: Optional dimension weights for weighted combination
+        p_lo: Lower percentile for robust scaling
+        p_hi: Upper percentile for robust scaling
+        
+    Returns:
+        1D VPM vector combining all specified dimensions
     """
     cols = []
     for dim in dimensions:
@@ -176,20 +281,33 @@ def build_vpm_phos_artifacts(
     weights: Dict[str, float] | None = None,
 ) -> Dict:
     """
+    Build both raw VPM and PHOS-packed artifacts for a single model.
+    
     Produces:
-      - raw VPM (row-major square of the un-sorted vector)
-      - PHOS VPM (sorted/packed)
-      - metrics for both
-      - saves PNGs to disk
-    Returns a dict with metrics, paths, and tl_frac used.
+      - Raw VPM image (simple reshaping)
+      - PHOS VPM image (sorted packing)
+      - Comprehensive metrics for both
+      - PNG files saved to disk
+    
+    Args:
+        df: Input DataFrame with performance scores
+        model: Target model name
+        dimensions: Evaluation dimensions to include
+        out_prefix: Output path prefix
+        tl_frac: Top-left area fraction for PHOS packing
+        interleave: Whether to interleave dimensions
+        weights: Optional dimension weights
+        
+    Returns:
+        Dictionary containing paths, metrics, and configuration
     """
     vec = vpm_vector_from_df(df, model, dimensions, interleave=interleave, weights=weights)
-    # raw image: row-major reshape (no sorting)
+    
+    # Generate raw and PHOS images
     raw_img, _ = to_square(vec)
-    # phos image: sorted packing
     phos_img = phos_sort_pack(vec)
 
-    # metrics
+    # Calculate comparison metrics
     raw_metrics = {
         "brightness_top_left": brightness_concentration(raw_img, tl_frac=tl_frac),
         "mean": float(raw_img.mean()),
@@ -203,7 +321,7 @@ def build_vpm_phos_artifacts(
         "entropy": image_entropy(phos_img),
     }
 
-    # save
+    # Save visualization files
     raw_path = f"{out_prefix}_vpm_raw.png"
     phos_path = f"{out_prefix}_vpm_phos.png"
     save_img(raw_img, raw_path, title=f"{model.upper()} VPM (raw)")
@@ -219,11 +337,19 @@ def build_vpm_phos_artifacts(
 
 def _chosen_from_sweep(sweep: List[Dict], delta: float) -> Dict:
     """
-    Choose the best PHOS candidate:
-      - Prefer first that improves top-left brightness > (1+delta) over raw
-      - Fallback to the highest phos brightness
+    Select best PHOS candidate from parameter sweep.
+    
+    Selection strategy:
+    1. Prefer first candidate that shows significant improvement over raw
+    2. Fallback to candidate with highest PHOS concentration
+    
+    Args:
+        sweep: List of sweep results
+        delta: Minimum improvement threshold
+        
+    Returns:
+        Selected candidate configuration
     """
-    # sort by phos_conc descending
     cand = sorted(sweep, key=lambda r: r["phos_conc"], reverse=True)
     for r in cand:
         if r.get("improved"):
@@ -242,16 +368,30 @@ def build_hrm_vs_tiny_guarded(
     weights: Dict[str, float] | None = None,
 ) -> Dict:
     """
-    For each model (hrm, tiny):
-      - sweep tl_fracs
-      - build raw & PHOS artifacts
-      - compute improvement guard
-      - select a 'chosen' PHOS image
-    Also writes JSON metrics and a diff image on chosen pair (if shapes match).
+    Main comparison function: HRM vs Tiny model analysis with guard conditions.
+    
+    Performs comprehensive comparison:
+      - Sweeps multiple tl_frac parameters for both models
+      - Applies improvement guard to select optimal PHOS configurations
+      - Generates comparison metrics and visualizations
+      - Produces difference map between selected PHOS images
+    
+    Args:
+        df: Input DataFrame with both model scores
+        dimensions: Evaluation dimensions to compare
+        out_prefix: Output path prefix
+        tl_fracs: TL fraction values to test
+        delta: Improvement threshold for guard condition
+        interleave: Whether to interleave dimensions
+        weights: Optional dimension weights
+        
+    Returns:
+        Comprehensive results dictionary with sweep data and selected artifacts
     """
     results: Dict[str, Dict] = {"sweep": {}}
     models = ["hrm", "tiny"]
 
+    # Process each model with parameter sweep
     for model in models:
         model_sweep = []
         for tl in tl_fracs:
@@ -273,17 +413,17 @@ def build_hrm_vs_tiny_guarded(
                 "phos_path": res["paths"]["phos"],
             })
 
+        # Select optimal configuration
         chosen = _chosen_from_sweep(model_sweep, delta=delta)
         results["sweep"][model] = model_sweep
         results[f"{model}_chosen"] = chosen
 
-        # Persist guard metrics per model
+        # Save detailed metrics
         with open(f"{out_prefix}_{model}_vpm_guard_metrics.json", "w", encoding="utf-8") as f:
             json.dump({"model": model, "delta": float(delta), "sweep": model_sweep, "chosen": chosen}, f, indent=2)
 
-        # Convenience copy for consistent name
+        # Create convenience copy of chosen image
         if chosen:
-            # Make a simple copy (symlink portability varies by OS)
             import shutil
             dst = f"{out_prefix}_{model}_vpm_chosen.png"
             try:
@@ -291,7 +431,7 @@ def build_hrm_vs_tiny_guarded(
             except Exception:
                 pass
 
-    # Diff on chosen pair (only if they have same side)
+    # Generate difference visualization if shapes match
     try:
         hrm_vec = vpm_vector_from_df(df, "hrm", dimensions, interleave=interleave, weights=weights)
         tiny_vec = vpm_vector_from_df(df, "tiny", dimensions, interleave=interleave, weights=weights)
@@ -300,15 +440,14 @@ def build_hrm_vs_tiny_guarded(
         if hrm_img.shape == tiny_img.shape:
             diff = hrm_img - tiny_img
             dmin, dmax = float(diff.min()), float(diff.max())
-            # Normalize to [0,1] for visualization
             diff_vis = (diff - dmin) / (dmax - dmin + 1e-12)
             save_img(diff_vis, f"{out_prefix}_vpm_chosen_diff.png", title="PHOS(HRM) − PHOS(Tiny)")
             results["diff_range"] = [dmin, dmax]
     except Exception:
-        # non-fatal
+        # Difference generation is non-critical
         pass
 
-    # Comparison JSON
+    # Save comparison summary
     with open(f"{out_prefix}_guard_compare.json", "w", encoding="utf-8") as f:
         json.dump({
             "delta": float(delta),
@@ -318,99 +457,29 @@ def build_hrm_vs_tiny_guarded(
 
     return results
 
+def pick_metric_column(df: pd.DataFrame, base: str) -> str | None:
+    for suf in CAND_SUFFIXES:
+        cand = f"{base}{suf}"
+        if cand in df.columns:
+            return cand
+    pref = f"{base}."
+    for c in df.columns:
+        if isinstance(c, str) and c.startswith(pref):
+            return c
+    return None
 
-# ---------------------------
-# Minimal CLI (optional)
-# ---------------------------
+def project_dimensions(df_in: pd.DataFrame, dims: list[str]) -> pd.DataFrame:
+    out = {"node_id": df_in["node_id"].values}
+    missing = {"hrm": [], "tiny": []}
+    for d in dims:
+        h = pick_metric_column(df_in, f"hrm.{d}")
+        t = pick_metric_column(df_in, f"tiny.{d}")
 
-def _load_scores_csv(path: str) -> pd.DataFrame:
-    """
-    Load a CSV produced by your score-matrix step.
-    Accepts either MultiIndex columns (model,dimension) or flat 'model.dimension'.
-    """
-    df = pd.read_csv(path)
-    # Try to detect flat columns like 'hrm.reasoning'
-    flat = [c for c in df.columns if isinstance(c, str) and c.count(".") == 1]
-    if flat:
-        # leave as-is; vpm_vector_from_df handles it
-        return df
-    # If someone saved MultiIndex via CSV with unnamed levels, try to fix
-    return df
-
-
-def _collect_texts(self, goal_text: str, *, top_k: int) -> List[str]:
-    """
-    Pull a blend of 'good', 'medium', 'opposite' responses using your embedding store.
-    """
-    texts: List[str] = []
-
-    # Good: previously scored on the same goal
-    try:
-        good_rows = self._gather_runs_by_goal(goal_text, limit=top_k // 3)
-        texts.extend(good_rows)
-    except Exception as e:
-        self.logger.log("PHOSGoodGatherError", {"error": str(e)})
-
-    # Medium: similarity band
-    try:
-        med_rows = self.memory.embedding.search_scorables_in_similarity_band(
-            goal_text, ScorableType.RESPONSE, 0.15, 0.80, top_k // 3
-        )
-        texts.extend([r["text"] for r in med_rows])
-    except Exception as e:
-        self.logger.log("PHOSMediumGatherError", {"error": str(e)})
-
-    # Opposite: unrelated
-    try:
-        opp_rows = self.memory.embedding.search_unrelated_scorables(
-            goal_text, ScorableType.RESPONSE, top_k=top_k // 3
-        )
-        texts.extend([r["text"] for r in opp_rows])
-    except Exception as e:
-        self.logger.log("PHOSOppositeGatherError", {"error": str(e)})
-
-    # Dedup & cap
-    seen = set()
-    uniq = []
-    for t in texts:
-        if t and t not in seen:
-            seen.add(t); uniq.append(t)
-            if len(uniq) >= top_k: break
-    return uniq
-
-def _gather_runs_by_goal(self, goal_text: str, limit: int) -> List[str]:
-    """
-    Heuristic: pull responses that were previously linked to goals similar to goal_text.
-    If you have a DB table for successful runs, you can query it here. For now, use
-    nearest neighbors from embedding store tagged as RESPONSE with a higher band.
-    """
-    rows = self.memory.embedding.search_scorables_in_similarity_band(
-        goal_text, ScorableType.RESPONSE, 0.70, 1.00, limit
-    )
-    return [r["text"] for r in rows]
-
-    # ---------------- Private: VPM build & compare ------------------------
-
-if __name__ == "__main__":
-    import argparse
-    p = argparse.ArgumentParser(description="Build guarded PHOS VPMs for HRM vs Tiny.")
-    p.add_argument("--scores", required=True, help="Path to CSV with columns like 'hrm.reasoning', 'tiny.reasoning', ...")
-    p.add_argument("--out_prefix", default="artifacts/hrm_vs_tiny", help="Output path prefix for images/metrics.")
-    p.add_argument("--dimensions", nargs="+", required=True, help="Dimensions in order, e.g. reasoning knowledge clarity faithfulness coverage")
-    p.add_argument("--tl_fracs", nargs="+", type=float, default=[0.25, 0.16, 0.36, 0.09], help="Area fractions to sweep.")
-    p.add_argument("--delta", type=float, default=0.02, help="Guard threshold: require > (1+delta) improvement in TL brightness.")
-    p.add_argument("--interleave", action="store_true", help="Interleave dims across rows instead of concatenating by blocks.")
-    args = p.parse_args()
-
-    df = _load_scores_csv(args.scores)
-    out = build_hrm_vs_tiny_guarded(
-        df,
-        dimensions=args.dimensions,
-        out_prefix=args.out_prefix,
-        tl_fracs=args.tl_fracs,
-        delta=args.delta,
-        interleave=bool(args.interleave),
-    )
-    print(json.dumps({"ok": True, "out_prefix": args.out_prefix, "summary_keys": list(out.keys())}, indent=2))
-
-
+        if h is None:
+            missing["hrm"].append(d); out[f"hrm.{d}"] = 0.0
+        else:
+            out[f"hrm.{d}"] = df_in[h].astype(float).fillna(0.0)
+        if t is None:
+            missing["tiny"].append(d); out[f"tiny.{d}"] = 0.0
+        else:
+            out[f"tiny.{d}"] = df_in[t].astype(float).fillna(0.0)

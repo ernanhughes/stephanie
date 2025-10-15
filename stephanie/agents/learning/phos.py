@@ -243,6 +243,9 @@ class PhosAgent(BaseAgent):
                 output_dir=str(output_dir / "good_vs_bad"),
                 aggregate=True,
                 metric_names=self.metric_names,
+                pos_label="HRM", 
+                neg_label="Tiny",
+                iters=4  # tweak for more/less compaction
             )
             results["good_vs_bad"] = meta
             _logger.debug(

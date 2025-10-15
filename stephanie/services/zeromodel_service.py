@@ -21,6 +21,9 @@ from zeromodel.tools.spatial_optimizer import SpatialOptimizer
 from stephanie.services.event_service import EventService
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
+import scipy.stats as spstats  # optional, but nice if available
+
+from collections import defaultdict
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
@@ -60,6 +63,35 @@ class _TimelineSession:
             clean_rows.append(row)
         return np.asarray(clean_rows, dtype=np.float32)
 
+def _rank_intensity(vec: np.ndarray, names: list[str] | None = None):
+    """Return sorted indices by mean |intensity| (desc) plus a labeled list."""
+    idx = np.argsort(-vec)  # desc
+    if names:
+        labeled = [{"metric": names[i], "mean_abs": float(vec[i]), "rank": r+1}
+                   for r, i in enumerate(idx)]
+    else:
+        labeled = [{"metric": f"metric_{i}", "mean_abs": float(vec[i]), "rank": r+1}
+                   for r, i in enumerate(idx)]
+    return idx.tolist(), labeled
+
+def _column_intensity(M: np.ndarray) -> np.ndarray:
+    M = np.asarray(M, dtype=np.float64)
+    if M.ndim < 2: M = M.reshape(1, -1)
+    return np.mean(np.abs(M), axis=0)
+
+def _row_intensity(M: np.ndarray) -> np.ndarray:
+    M = np.asarray(M, dtype=np.float64)
+    if M.ndim < 2: M = M.reshape(1, -1)
+    return np.mean(np.abs(M), axis=1)
+
+def _canonical_key(colname: str) -> str:
+    """
+    Map 'hrm.reasoning.score' -> 'reasoning', 'tiny.clarity' -> 'clarity'.
+    Keeps only the segment after the first '.' and before the next '.' if present.
+    """
+    if not isinstance(colname, str): return ""
+    parts = colname.split(".", 2)
+    return parts[1] if len(parts) >= 2 else colname
 
 # --------------------------------------------------------------------------- #
 # MAIN SERVICE
@@ -367,6 +399,107 @@ class ZeroModelService(Service):
             "summary_path": summary_path,
         }
 
+
+    def build_intensity_report(
+        self,
+        *,
+        hrm_matrix: np.ndarray,
+        tiny_matrix: np.ndarray,
+        hrm_metric_names: list[str],
+        tiny_metric_names: list[str],
+        out_dir: str,
+        top_k: int = 20,
+    ) -> dict:
+        """
+        Create JSON summaries for HRM, Tiny, and Diff (HRM−Tiny):
+        - top columns (by mean |intensity|)
+        - top rows (by mean |intensity|)
+        - cross-model comparison on common canonical dims
+        """
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+        # 1) Per-model intensity
+        col_h = _column_intensity(hrm_matrix)
+        col_t = _column_intensity(tiny_matrix)
+        row_h = _row_intensity(hrm_matrix)
+        row_t = _row_intensity(tiny_matrix)
+
+        h_idx, h_ranked = _rank_intensity(col_h, hrm_metric_names)
+        t_idx, t_ranked = _rank_intensity(col_t, tiny_metric_names)
+
+        top_cols_hrm = h_ranked[:top_k]
+        top_cols_tiny = t_ranked[:top_k]
+
+        top_rows_hrm = np.argsort(-row_h)[:top_k].tolist()
+        top_rows_tiny = np.argsort(-row_t)[:top_k].tolist()
+
+        # 2) Diff field aligned on shared shape (rows already aligned by build)
+        r = min(hrm_matrix.shape[0], tiny_matrix.shape[0])
+        c = min(hrm_matrix.shape[1], tiny_matrix.shape[1])
+        D = np.asarray(hrm_matrix[:r, :c] - tiny_matrix[:r, :c], dtype=np.float64)
+        col_d = _column_intensity(D)
+        d_idx, d_ranked = _rank_intensity(col_d, hrm_metric_names[:c])  # use HRM names slice
+        top_cols_diff = d_ranked[:top_k]
+        top_rows_diff = np.argsort(-_row_intensity(D))[:top_k].tolist()
+
+        # 3) Cross-model comparison on canonical dimension keys
+        canon_h = [_canonical_key(n) for n in hrm_metric_names]
+        canon_t = [_canonical_key(n) for n in tiny_metric_names]
+        common = sorted(set(canon_h) & set(canon_t))
+        # Build per-dimension aggregates (mean intensity for all columns mapping to that dim)
+        def _agg_by_dim(names, intensities):
+            grp = defaultdict(list)
+            for n, v in zip(names, intensities):
+                grp[_canonical_key(n)].append(float(v))
+            return {k: float(np.mean(vs)) for k, vs in grp.items()}
+        agg_h = _agg_by_dim(hrm_metric_names, col_h)
+        agg_t = _agg_by_dim(tiny_metric_names, col_t)
+
+        comp = []
+        for d in common:
+            comp.append({
+                "dimension": d,
+                "hrm_mean_abs": agg_h.get(d, 0.0),
+                "tiny_mean_abs": agg_t.get(d, 0.0),
+                "delta": float(agg_h.get(d, 0.0) - agg_t.get(d, 0.0)),
+                "ratio": float((agg_h.get(d, 1e-12)) / (agg_t.get(d, 1e-12))),
+            })
+        # rank-based similarity (optional)
+        try:
+            # ranks over common dims
+            rh = np.array([agg_h[d] for d in common])
+            rt = np.array([agg_t[d] for d in common])
+            kendall = float(spstats.kendalltau(rh, rt).correlation) if len(common) >= 2 else None
+            spearman = float(spstats.spearmanr(rh, rt).correlation) if len(common) >= 2 else None
+        except Exception:
+            kendall = spearman = None
+
+        report = {
+            "summary": {
+                "rows": r, "hrm_cols": len(hrm_metric_names), "tiny_cols": len(tiny_metric_names),
+                "top_k": top_k,
+                "rank_corr": {"kendall_tau": kendall, "spearman_rho": spearman},
+            },
+            "hrm": {
+                "top_columns": top_cols_hrm,
+                "top_rows": top_rows_hrm,
+            },
+            "tiny": {
+                "top_columns": top_cols_tiny,
+                "top_rows": top_rows_tiny,
+            },
+            "diff": {
+                "top_columns": top_cols_diff,
+                "top_rows": top_rows_diff,
+            },
+            "by_dimension_common": sorted(comp, key=lambda x: -abs(x["delta"])),
+        }
+
+        out_path = Path(out_dir) / "intensity_report.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        return {"path": str(out_path), **report}
+
     # ------------------------------------------------------------------ #
     # RENDER HELPERS
     # ------------------------------------------------------------------ #
@@ -497,6 +630,8 @@ class ZeroModelService(Service):
         neg_matrices: list[np.ndarray],
         output_dir: str = "data/epistemic_field",
         alpha: float = 0.97,
+        pos_label: str = "HRM",
+        neg_label: str = "Tiny",
         Kc: int = 40,
         Kr: int = 100,
         fps: int = 8,
@@ -736,11 +871,11 @@ class ZeroModelService(Service):
         combined = diff
 
         titles = [
-            "Raw Good (Before Optimization)",
-            "Optimized Good (Spatial Calculus)",
-            "Raw Bad (Before Optimization)",
-            "Optimized Bad (Spatial Calculus)",
-            "Differential Field (Good − Bad)",
+            f"Raw {pos_label} (Before Optimization)",
+            f"Optimized {pos_label} (Spatial Calculus)",
+            f"Raw {neg_label} (Before Optimization)",
+            f"Optimized {neg_label} (Spatial Calculus)",
+            f"Differential Field ({pos_label} − {neg_label})",
         ]
         images = [raw_good, opt_good, raw_bad, opt_bad, combined]
 
@@ -810,6 +945,155 @@ class ZeroModelService(Service):
         _logger.debug(f"Epistemic field saved → {meta_path}")
         return meta
 
+
+    def generate_epistemic_field_phos_ordered(
+        self,
+        pos_matrices: list[np.ndarray],
+        neg_matrices: list[np.ndarray],
+        output_dir: str = "data/epistemic_field",
+        *,
+        alpha: float = 0.97,
+        pos_label: str = "HRM",
+        neg_label: str = "Tiny",
+        iters: int = 4,                 # number of row/col reorder passes
+        cmap: str = "seismic",
+        aggregate: bool = False,
+        metric_names: Optional[List[str]] = None,
+    ) -> dict:
+        """
+        PHOS-style 2D ordering: reorder columns and rows to concentrate intensity
+        in the top-left, then compare pos vs neg using the *same* order.
+
+        This removes the vertical striping look by destroying raw column identity
+        in favor of a canonical, high-mass-first layout.
+        """
+        metric_names = list(metric_names or [])
+        os.makedirs(output_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = os.path.join(output_dir, f"epistemic_field_phos_{ts}")
+
+        def _robust(X: np.ndarray) -> np.ndarray:
+            X = np.nan_to_num(np.asarray(X, dtype=np.float64))
+            if X.size == 0:
+                return X
+            # robust scale per-matrix
+            lo = np.percentile(X, 10)
+            hi = np.percentile(X, 90)
+            if hi <= lo:
+                hi = lo + 1.0
+            Y = (X - lo) / (hi - lo)
+            return np.clip(Y, 0.0, 1.0)
+
+        def _stack(mats: list[np.ndarray]) -> np.ndarray:
+            return np.mean(np.stack(mats, axis=0), axis=0) if aggregate else np.vstack(mats)
+
+        # 1) Build matrices
+        X_pos = _stack(pos_matrices)
+        X_neg = _stack(neg_matrices)
+        if X_pos.size == 0 or X_neg.size == 0 or X_pos.ndim != 2 or X_neg.ndim != 2:
+            _logger.warning("[ZeroModelService] PHOS-ordered: insufficient data.")
+            return {"status": "empty"}
+
+        # Align shapes conservatively
+        r = min(X_pos.shape[0], X_neg.shape[0])
+        c = min(X_pos.shape[1], X_neg.shape[1])
+        X_pos = X_pos[:r, :c]
+        X_neg = X_neg[:r, :c]
+
+        # 2) Normalize
+        A = _robust(X_pos)  # use POS to learn the ordering
+        B = _robust(X_neg)
+
+        # 3) Iterative TL ordering (columns then rows by mean |value|)
+        row_order = np.arange(A.shape[0])
+        col_order = np.arange(A.shape[1])
+
+        for _ in range(max(1, iters)):
+            # columns: sort by mean abs down (more mass first)
+            col_scores = np.mean(np.abs(A), axis=0)
+            col_order = np.argsort(-col_scores)
+            A = A[:, col_order]
+            B = B[:, col_order]
+
+            # rows: sort by mean abs down
+            row_scores = np.mean(np.abs(A), axis=1)
+            row_order = np.argsort(-row_scores)
+            A = A[row_order, :]
+            B = B[row_order, :]
+
+        Y_pos = A
+        Y_neg = B
+        diff = Y_pos - Y_neg
+
+        # 4) Quantities
+        def _top_left_mass(M: np.ndarray, frac: float = 0.25) -> float:
+            s = M.shape[0]
+            k = max(1, int(round(np.sqrt(max(frac, 1e-9)) * s)))
+            k = min(k, s)
+            return float(M[:k, :k].sum()) / (float(M.sum()) + 1e-8)
+
+        mass_pos = _top_left_mass(Y_pos)
+        mass_neg = _top_left_mass(Y_neg)
+        delta_mass = mass_pos - mass_neg
+        overlap = float(np.sum(np.minimum(Y_pos, Y_neg)) / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8))
+
+        # 5) Visuals
+        def _grid(images, titles, path_base):
+            fig, axes = plt.subplots(1, len(images), figsize=(5 * len(images), 5))
+            for ax, img, title in zip(axes, images, titles):
+                im = ax.imshow(img, cmap=cmap, aspect="auto")
+                ax.set_title(title, fontsize=10)
+                fig.colorbar(im, ax=ax, fraction=0.035, pad=0.04)
+                ax.axis("off")
+            plt.tight_layout()
+            p = path_base + "_comparison.png"
+            plt.savefig(p, dpi=150)
+            plt.close(fig)
+            return p
+
+        comp_titles = [
+            f"{pos_label} (PHOS-ordered)",
+            f"{neg_label} (PHOS-ordered)",
+            f"Differential Field ({pos_label} − {neg_label})",
+        ]
+        comp_images = [Y_pos, Y_neg, diff]
+        comparison_path = _grid(comp_images, comp_titles, base)
+
+        # standalone diff
+        fig, ax = plt.subplots(figsize=(8, 5))
+        im = ax.imshow(diff, cmap=cmap, aspect="auto")
+        ax.set_title(f"PHOS-Ordered Field — ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}")
+        fig.colorbar(im, ax=ax, label="Δ Intensity (Pos−Neg)")
+        plt.tight_layout()
+        png_path = base + ".png"
+        plt.savefig(png_path, dpi=150)
+        plt.close(fig)
+
+        # 6) Names after column reorder (rows are turns; only columns map to metrics)
+        if metric_names and len(metric_names) == c:
+            metric_names_reordered = [metric_names[j] for j in col_order]
+        else:
+            metric_names_reordered = [f"metric_{j}" for j in range(c)]
+
+        meta = {
+            "timestamp": ts,
+            "mass_pos": float(mass_pos),
+            "mass_neg": float(mass_neg),
+            "delta_mass": float(delta_mass),
+            "overlap_score": float(overlap),
+            "png": png_path,
+            "comparison_png": comparison_path,
+            "diff_matrix": diff.tolist(),
+            "metric_names": metric_names_reordered,
+            "row_order": row_order.tolist(),
+            "col_order": col_order.tolist(),
+            "pos_label": pos_label,
+            "neg_label": neg_label,
+        }
+        meta_path = base + ".json"
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        return meta
 
     def analyze_differential_field(self, diff_matrix: np.ndarray, metric_names: list[str], output_dir: str):
         """
