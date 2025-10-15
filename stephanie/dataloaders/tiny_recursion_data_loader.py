@@ -1,9 +1,9 @@
 # stephanie/scoring/dataloader/tiny_recursion_dataloader.py
 from __future__ import annotations
 
-from typing import List, Dict, Any, Tuple, Optional
-from collections import Counter
 import json
+from collections import Counter
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.scoring.scorable import ScorableType
 

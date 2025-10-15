@@ -1,7 +1,10 @@
 # stephanie/models/reasoning_sample.py
 from __future__ import annotations
-from sqlalchemy import Column, Integer, String, DateTime, Text, JSON
+
+from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
+
 from stephanie.models.base import Base
+
 
 class ReasoningSampleORM(Base):
     """

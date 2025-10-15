@@ -1,22 +1,20 @@
 # stephanie/memory/reasoning_sample_store.py
 from __future__ import annotations
+
 import random
-from typing import List
+from collections import defaultdict
+from typing import Dict, Iterable, List, Literal, Optional, Tuple
+
+from sqlalchemy import desc, select
+from sqlalchemy.orm import aliased
+
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.chat import ChatMessageORM, ChatTurnORM
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.goal import GoalORM
 from stephanie.models.reasoning_sample import ReasoningSampleORM
-from typing import Dict, Iterable, Tuple, Optional
-from collections import defaultdict
-from sqlalchemy import select, desc
-from sqlalchemy.orm import aliased
-from typing import Literal
-
 from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import ScorableType
-
-
 
 
 def _iter_dimension_scores(

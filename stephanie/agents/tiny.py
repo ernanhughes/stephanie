@@ -7,12 +7,14 @@ Follows the same conventions as other maintenance trainers (MRQ, SVM, etc.).
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List
+
+from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.training.tiny_recursion_trainer import TinyTrainer
 # NOTE: module path matches the file you shared earlier
-from stephanie.dataloaders.tiny_recursion_data_loader import TinyRecursionDataLoader
+from stephanie.dataloaders.tiny_recursion_data_loader import \
+    TinyRecursionDataLoader
+from stephanie.scoring.training.tiny_recursion_trainer import TinyTrainer
 
 
 class TinyRecursionTrainerAgent(BaseAgent):

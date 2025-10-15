@@ -1,16 +1,16 @@
 # stephanie/analysis/vpm_differential_analyzer.py
-from tkinter import Image
-import numpy as np
-from zeromodel.vpm.logic import vpm_add, vpm_subtract, vpm_and, vpm_xor
-from pathlib import Path
 import os
+from pathlib import Path
+from tkinter import Image
+
 import matplotlib
+import numpy as np
+from zeromodel.vpm.logic import vpm_add, vpm_and, vpm_subtract, vpm_xor
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
-
 
 
 class VPMDifferentialAnalyzer:

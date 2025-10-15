@@ -1,10 +1,9 @@
 # stephanie/scoring/tiny_scorer.py
 from __future__ import annotations
 
-
 import logging
 import os
-from typing import Dict, Any
+from typing import Any, Dict
 
 import torch
 

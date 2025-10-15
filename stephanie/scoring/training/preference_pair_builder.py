@@ -1,7 +1,7 @@
 # stephanie/scoring/mrq/preference_pair_builder.py
 from __future__ import annotations
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from stephanie.scoring.scorable import ScorableType
 

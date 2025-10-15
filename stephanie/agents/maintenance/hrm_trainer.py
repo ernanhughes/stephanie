@@ -5,7 +5,8 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.training.hrm_trainer import HRMTrainer
-from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 
 
 class HRMTrainerAgent(BaseAgent):

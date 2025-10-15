@@ -1,6 +1,8 @@
 # stephanie/scoring/utils/pair_builders.py
 from __future__ import annotations
+
 import torch
+
 
 def make_balanced_pair(zA, zB, vA: float, vB: float, flip_p: float = 0.5, w_scale=0.05, w_cap=3.0, device="cpu"):
     delta = float(vA) - float(vB)

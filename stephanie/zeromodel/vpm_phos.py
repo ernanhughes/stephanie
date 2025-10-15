@@ -5,10 +5,9 @@ import json
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
 
 # ---------------------------
 # Low-level utils
@@ -42,19 +41,35 @@ def to_square(vec: np.ndarray) -> Tuple[np.ndarray, int]:
         v = np.pad(v, (0, pad), mode="constant")
     return v.reshape(s, s), s
 
-
-def phos_sort_pack(vec: np.ndarray) -> np.ndarray:
-    """
-    PHOS: sort descending by intensity and pack row-major into a square.
-    Brightest flows to the top-left.
-    """
-    v = np.asarray(vec, dtype=np.float64).reshape(-1)
-    if v.size == 0:
-        return np.zeros((1, 1), dtype=np.float64)
-    order = np.argsort(-v)                 # descending
-    sorted_v = v[order]
-    img, s = to_square(sorted_v)
-    return img
+def phos_sort_pack(v: np.ndarray, *, tl_frac: float = 0.25) -> np.ndarray:
+    v = np.asarray(v, dtype=np.float64).ravel()
+    if v.size == 0: return np.zeros((1, 1), dtype=np.float64)
+    v01 = robust01(v)
+    n = v01.size
+    s = int(np.ceil(np.sqrt(n)))
+    pad = s * s - n
+    if pad > 0: v01 = np.concatenate([v01, np.zeros(pad)])
+    order = np.argsort(v01)[::-1]
+    sorted_vals = v01[order]
+    img = sorted_vals.reshape(s, s)
+    k = max(1, int(round(s * s * tl_frac)))
+    packed = np.zeros_like(img)
+    packed[:][:] = 0.0
+    r = int(np.floor(np.sqrt(k)))
+    if r <= 0: r = 1
+    rr = r
+    if rr*rr > k:
+        rr = int(np.floor(np.sqrt(k)))
+    # fill TL with top-k
+    top = sorted_vals[:k]
+    tl = np.zeros_like(img)
+    tl[:rr, :rr] = top[:rr*rr].reshape(rr, rr)
+    rest = sorted_vals[rr*rr:]
+    # lay the rest row-wise after TL block
+    packed[:rr, :rr] = tl[:rr, :rr]
+    flat = packed.ravel()
+    flat[rr*rr:rr*rr+rest.size] = rest
+    return flat.reshape(s, s)
 
 
 def image_entropy(img: np.ndarray) -> float:

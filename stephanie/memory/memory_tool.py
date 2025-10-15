@@ -25,7 +25,6 @@ from stephanie.memory.embedding_store import EmbeddingStore
 from stephanie.memory.entity_cache_store import EntityCacheStore
 from stephanie.memory.evaluation_attribute_store import \
     EvaluationAttributeStore
-from stephanie.memory.reasoning_sample_store import ReasoningSampleStore
 from stephanie.memory.evaluation_store import EvaluationStore
 from stephanie.memory.execution_step_store import ExecutionStepStore
 from stephanie.memory.experiment_store import ExperimentStore
@@ -49,6 +48,7 @@ from stephanie.memory.pipeline_stage_store import PipelineStageStore
 from stephanie.memory.plan_trace_store import PlanTraceStore
 from stephanie.memory.prompt_program_store import PromptProgramStore
 from stephanie.memory.prompt_store import PromptStore
+from stephanie.memory.reasoning_sample_store import ReasoningSampleStore
 from stephanie.memory.reflection_delta_store import ReflectionDeltaStore
 from stephanie.memory.report_store import ReportStore
 from stephanie.memory.rule_application_store import RuleApplicationStore

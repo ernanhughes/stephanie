@@ -11,7 +11,8 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.model.mrq_model import MRQModel
 from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.model.value_predictor import ValuePredictor  # <-- matches trainer
+from stephanie.scoring.model.value_predictor import \
+    ValuePredictor  # <-- matches trainer
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json

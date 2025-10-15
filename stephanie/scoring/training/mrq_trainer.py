@@ -1,8 +1,8 @@
 # stephanie/scoring/training/mrq_trainer.py
 from __future__ import annotations
 
-from datetime import datetime
 import math
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -16,6 +16,7 @@ from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.model.value_predictor import ValuePredictor
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
+
 # tqdm (progress bars)
 try:
     from tqdm.auto import tqdm

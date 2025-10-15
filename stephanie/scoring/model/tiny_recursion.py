@@ -1,13 +1,13 @@
 # stephanie/models/tiny_recursion.py
 
 from __future__ import annotations
-from typing import Tuple, Dict, Any, Optional
 
 import math
+from typing import Any, Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 # ---------------------------
 # Core Blocks

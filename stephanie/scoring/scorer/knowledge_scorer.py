@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 
-
 from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult

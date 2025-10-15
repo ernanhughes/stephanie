@@ -6,20 +6,22 @@ import json
 import logging
 import os
 import time
-from stephanie.utils.json_sanitize import dumps_safe
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime
-from stephanie.services.event_service import EventService
-from stephanie.services.service_protocol import Service
-from zeromodel.tools.spatial_optimizer import SpatialOptimizer
-from zeromodel.tools.gif_logger import GifLogger
-from zeromodel.pipeline.executor import PipelineExecutor
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+from zeromodel.pipeline.executor import PipelineExecutor
+from zeromodel.tools.gif_logger import GifLogger
+from zeromodel.tools.spatial_optimizer import SpatialOptimizer
+
+from stephanie.services.event_service import EventService
+from stephanie.services.service_protocol import Service
+from stephanie.utils.json_sanitize import dumps_safe
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 

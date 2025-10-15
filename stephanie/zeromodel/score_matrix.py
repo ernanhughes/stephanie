@@ -1,10 +1,10 @@
 # stephanie/eval/score_matrix.py
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Tuple, Iterable
-import math
 import json
+import math
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,8 @@ except Exception:
     GOAL, GOAL_TEXT = "goal", "goal_text"
 
 try:
-    from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
+    from stephanie.scoring.scorable import (Scorable, ScorableFactory,
+                                            ScorableType)
 except Exception:
     Scorable, ScorableFactory, ScorableType = None, None, None
 

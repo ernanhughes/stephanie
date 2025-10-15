@@ -7,8 +7,8 @@ from datetime import datetime
 
 import numpy as np
 import torch
-import torch.optim as optim
 import torch.nn.functional as F
+import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
@@ -89,8 +89,8 @@ class SICQLTrainer(BaseTrainer):
 
         Builds a TensorDataset of (ctx_emb, doc_emb, score) on self.device.
         """
-        from torch.utils.data import TensorDataset, DataLoader
         import torch
+        from torch.utils.data import DataLoader, TensorDataset
 
         ctxs, docs, ys = [], [], []
         kept, skipped = 0, 0

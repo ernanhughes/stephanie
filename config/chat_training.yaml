@@ -14,6 +14,7 @@ defaults:
   - agents/chat_hrm_trainer
   - agents/chat_tiny_trainer
   - agents/chat_scorer
+  - agents/phoshrm
 
 embeddings:
   backend: hnet
@@ -64,10 +65,16 @@ pipeline:
      - name: chat_tiny_trainer
        description: "Train a Tiny model to predict values using chat conversation_turns"
        cls: stephanie.agents.maintenance.tiny_trainer.TinyTrainerAgent
-       enabled: true
+       enabled: false music
        iterations: 1
 
      - name: chat_scorer
        cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false
+       iterations: 1
+
+     - name: phoshrm
+       description: "Train a PhosHRM model to predict values using chat conversation_turns"
+       cls: stephanie.agents.phoshrm.PhosHRMAgent
        enabled: false
        iterations: 1
