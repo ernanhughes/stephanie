@@ -6,3 +6,7 @@ evaluator: tiny
 target_type: conversation_turn
 dimensions: 
   - reasoning
+  - knowledge
+  - clarity
+  - faithfulness
+  - coverage

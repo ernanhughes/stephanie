@@ -12,6 +12,8 @@ from typing import DefaultDict
 from collections import defaultdict
 
 import matplotlib
+
+from stephanie.utils.json_sanitize import dumps_safe
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 
@@ -153,6 +155,39 @@ class PhoshrmAgent(BaseAgent):
         tiny_gif = f"vpm_phos_run_{tiny_run_id}.gif"
         hrm_final = await vpm_worker.finalize(hrm_run_id, hrm_gif)
         tiny_final = await vpm_worker.finalize(tiny_run_id, tiny_gif)
+
+        # hrm_final and tiny_final came from vpm_worker.finalize(...)
+        # in PhoshrmAgent.run after hrm_final / tiny_final are ready
+        hrm_mat = np.asarray(hrm_final["matrix"])
+        tiny_mat = np.asarray(tiny_final["matrix"])
+        hrm_names = hrm_final.get("metric_names", [])
+        tiny_names = tiny_final.get("metric_names", [])
+
+        frontier_dir = Path(self.out_dir) / "frontier" / f"run_{pipeline_run_id}"
+
+        frontier_meta = zm.render_frontier_map(
+            hrm_mat, tiny_mat,
+            out_dir=str(frontier_dir),
+            pos_label="HRM",
+            neg_label="Tiny",
+            k_latent=20
+        )
+
+        eval_stats["frontier"] = frontier_meta
+
+
+        delta_meta = zm.render_intermodel_delta(
+            hrm_mat, tiny_mat,
+            names_A=hrm_names,
+            names_B=tiny_names,
+            output_dir=str(Path(self.out_dir, "intermodel_delta", f"run_{pipeline_run_id}")),
+            pos_label="HRM",
+            neg_label="Tiny",
+        )
+
+        # Include in manifest
+        eval_stats["intermodel_delta"] = delta_meta
+
         # Build per-model intensity JSON + cross-model comparison
         intensity = zm.build_intensity_report(
             hrm_matrix=hrm_final["matrix"],
@@ -249,7 +284,8 @@ class PhoshrmAgent(BaseAgent):
         manifest_dir.mkdir(parents=True, exist_ok=True)
         manifest_path = manifest_dir / f"phoshrm_manifest_{pipeline_run_id}.json"
         with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(eval_stats, f, indent=2)
+            f.write(dumps_safe(eval_stats, indent=2))
+
         _logger.info(f"[PhosHRM] Manifest saved → {manifest_path}")
 
         context[self.output_key] = eval_stats

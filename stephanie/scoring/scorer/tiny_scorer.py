@@ -143,7 +143,7 @@ class TinyScorer(BaseScorer):
             model = self.models.get(dim)
             if model is None:
                 self.logger.log("TinyModelMissing", {"dimension": dim})
-                continue
+                continue 
 
             try:
                 with torch.no_grad():

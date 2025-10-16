@@ -1,4 +1,29 @@
-# stephanie/models/tiny_recursion.py
+"""
+Tiny Recursion Model (Tiny+) - Parameter-Efficient Recursive Neural Architecture
+
+This module implements a compact, recursive neural network for multi-task evaluation
+of AI model responses. The architecture combines recursive state updates with
+multi-head output predictions, enabling efficient quality assessment across
+multiple dimensions from embedding inputs.
+
+Key Innovations:
+- Recursive latent state updates with halting mechanisms
+- Sparse Autoencoder (SAE) bottleneck for interpretable concepts
+- Multi-head prediction for comprehensive quality assessment
+- Heteroscedastic uncertainty estimation
+- In-graph consistency regularization
+
+Architecture Overview:
+1. Recursive fusion of goal (x), response (y), and latent (z) states
+2. Core processing blocks (attention or MLP-based)
+3. SAE bottleneck for sparse concept representation
+4. Multi-head prediction for scores, uncertainty, and auxiliary tasks
+
+Author: Stephanie AI Team
+Version: 2.0
+Date: 2024
+"""
+
 from __future__ import annotations
 
 import math
@@ -10,50 +35,70 @@ import torch.nn.functional as F
 
 
 # ---------------------------
-# Core Blocks
+# Core Building Blocks
 # ---------------------------
 
 class TinyBlock(nn.Module):
-    """LN → MLP → residual; works with [B, D] or [B, L, D]."""
+    """
+    Basic residual block: LayerNorm → MLP → residual connection.
+
+    Supports both 2D [batch, features] and 3D [batch, sequence, features] inputs.
+    Uses GELU activation and dropout for regularization.
+    """
     def __init__(self, d_model: int, dropout: float = 0.1):
         super().__init__()
         self.ln = nn.LayerNorm(d_model)
         self.mlp = nn.Sequential(
-            nn.Linear(d_model, d_model * 4),
+            nn.Linear(d_model, d_model * 4),  # Expansion factor 4
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(d_model * 4, d_model),
+            nn.Linear(d_model * 4, d_model),  # Projection back
             nn.Dropout(dropout),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply residual block: x + MLP(LayerNorm(x))"""
         return x + self.mlp(self.ln(x))
 
 
 class TinyBlockAttn(nn.Module):
     """
-    LN → MHA → residual, then TinyBlock.
-    Accepts [B, D] or [B, L, D]; returns same rank as input.
+    Attention-enhanced residual block with Multi-Head Self-Attention.
+
+    Architecture: LN → MHA → residual → TinyBlock → residual
+    Automatically handles 2D/3D inputs and returns same dimensionality.
     """
     def __init__(self, d_model: int, n_heads: int = 4, dropout: float = 0.1):
         super().__init__()
         self.ln_attn = nn.LayerNorm(d_model)
         self.attn = nn.MultiheadAttention(
-            embed_dim=d_model, num_heads=n_heads, dropout=dropout, batch_first=True
+            embed_dim=d_model,
+            num_heads=n_heads,
+            dropout=dropout,
+            batch_first=True  # [batch, seq, features]
         )
         self.drop = nn.Dropout(dropout)
         self.ff = TinyBlock(d_model, dropout=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass with automatic shape handling.
+
+        Args:
+            x: Input tensor of shape [B, D] or [B, L, D]
+
+        Returns:
+            Output tensor with same shape as input
+        """
         squeeze_back = False
-        if x.dim() == 2:  # [B, D] → [B, 1, D] for attention
-            x = x.unsqueeze(1)
+        if x.dim() == 2:
+            x = x.unsqueeze(1)  # [B, D] → [B, 1, D]
             squeeze_back = True
 
         q = k = v = self.ln_attn(x)
         h, _ = self.attn(q, k, v, need_weights=False)
-        x = x + self.drop(h)  # residual
-        x = self.ff(x)        # LN-MLP residual
+        x = x + self.drop(h)  # Residual connection
+        x = self.ff(x)        # Feed-forward with residual
 
         if squeeze_back:
             x = x.squeeze(1)  # [B, 1, D] → [B, D]
@@ -61,35 +106,35 @@ class TinyBlockAttn(nn.Module):
 
 
 # ---------------------------
-# Tiny Recursion (Tiny+)
+# Tiny Recursion Model (Tiny+)
 # ---------------------------
 
 class TinyRecursionModel(nn.Module):
     """
-    Parameter-efficient recursive model over embeddings.
-    Recurrently updates latent state z using (x=goal, y=response) for n_recursions.
+    Parameter-efficient recursive model for multi-task evaluation.
 
-    Heads:
-      - classifier: optional token/vocab head (unchanged)
-      - halt_head:  halting LOGIT across steps (take sigmoid at use time)
-      - score_head: regression score in [0,1] (via sigmoid/temperature)
-      - logvar_head: aleatoric log-variance for heteroscedastic loss
-      - aux3_head:  3-way logits (bad/mid/good) → entropy/confidence
-      - disagree_head: predicts |HRM - Tiny| in [0,1] (via sigmoid) using HRM label only at train
-      - recon_head: reconstruct y embedding (cos/MSE loss) for comprehension signal
-      - consistency_head: predicts cos(z, z_masked) ∈ [0,1] (robustness/invariance)
-      - ood_head: in-/out-of-distribution score
-      - temp_head: temperature for score calibration
-      - agree_head: predicts cross-model agreement ∈ [0,1] (new)
-      - causal_sens_head: predicts perturbation sensitivity ∈ [0,1] (new)
-      - SAE (sae_enc/sae_dec): sparse concept bottleneck before heads
+    Recursively updates latent state z using goal (x) and response (y) embeddings
+    over multiple steps. Features comprehensive multi-head prediction and
+    sparse autoencoder bottleneck for interpretable representations.
 
-    Returns:
-      logits:        [B, vocab_size] (class logits; compat)
-      halt_logits:   [B] (max over steps)
-      z_final:       [B, D] final latent after recursion and LN
-      aux:           dict of raw head outputs + derived metrics
+    Core Components:
+    - Recursive state fusion: [x, y, z] → z'
+    - Core processing stack: Attention or MLP blocks
+    - SAE bottleneck: Sparse concept encoding
+    - Multi-head prediction: 12 specialized output heads
+
+    Inputs:
+        x: Goal/condition embedding [B, D]
+        y: Response embedding [B, D]
+        z: Initial latent state [B, D] (typically zeros)
+
+    Outputs:
+        logits: Classification logits [B, vocab_size] (legacy compatibility)
+        halt_logits: Halting signal logits [B]
+        z_final: Final latent state after recursion [B, D]
+        aux: Dictionary of auxiliary predictions and metrics
     """
+
     def __init__(
         self,
         d_model: int = 256,
@@ -99,13 +144,15 @@ class TinyRecursionModel(nn.Module):
         use_attention: bool = False,
         dropout: float = 0.1,
         attn_heads: int = 4,
-        step_scale: float = 0.1,          # residual step factor for z updates
-        consistency_mask_p: float = 0.10, # in-graph mask prob for consistency target
-        len_norm_L: float = 512.0,        # length normalization constant for len_effect
-        enable_agree_head: bool = True,          # predict cross-model agreement
-        enable_causal_sens_head: bool = True,    # predict causal sensitivity (|Δscore|)
+        step_scale: float = 0.1,           # Residual scaling for state updates
+        consistency_mask_p: float = 0.10,  # Mask probability for consistency regularization
+        len_norm_L: float = 512.0,         # Length normalization constant
+        enable_agree_head: bool = True,    # Enable agreement prediction head
+        enable_causal_sens_head: bool = True,  # Enable sensitivity prediction head
     ):
         super().__init__()
+
+        # Model configuration
         self.d_model = d_model
         self.n_layers = n_layers
         self.n_recursions = n_recursions
@@ -117,50 +164,61 @@ class TinyRecursionModel(nn.Module):
         self.enable_agree_head = enable_agree_head
         self.enable_causal_sens_head = enable_causal_sens_head
 
-        # Core block stack
+        # Core processing stack
         if use_attention:
-            blocks = [TinyBlockAttn(d_model, n_heads=attn_heads, dropout=dropout) for _ in range(n_layers)]
+            blocks = [TinyBlockAttn(d_model, n_heads=attn_heads, dropout=dropout)
+                      for _ in range(n_layers)]
         else:
             blocks = [TinyBlock(d_model, dropout=dropout) for _ in range(n_layers)]
         self.core = nn.Sequential(*blocks)
 
-        # Fusion
-        self.z_proj = nn.Linear(d_model * 3, d_model)  # fuse [x, y, z] → z'
+        # State fusion: combine goal, response, and latent states
+        self.z_proj = nn.Linear(d_model * 3, d_model)  # [x, y, z] → z'
         self.final_ln = nn.LayerNorm(d_model)
 
-        # Halting + classifier (legacy / optional)
-        self.halt_head   = nn.Linear(d_model, 1)         # returns LOGITS
-        self.classifier  = nn.Linear(d_model, vocab_size)
+        # Core prediction heads
+        self.halt_head = nn.Linear(d_model, 1)            # Halting signal logits
+        self.classifier = nn.Linear(d_model, vocab_size)  # Legacy classification
 
-        # Tiny+ heads
-        self.score_head       = nn.Linear(d_model, 1)        # sigmoid → [0,1] (with temperature)
-        self.logvar_head      = nn.Linear(d_model, 1)        # aleatoric log-variance
-        self.aux3_head        = nn.Linear(d_model, 3)        # bad/mid/good logits
-        self.disagree_head    = nn.Linear(d_model, 1)        # sigmoid → [0,1]
-        self.recon_head       = nn.Linear(d_model, d_model)  # y reconstruction in embedding space
-        self.consistency_head = nn.Linear(d_model, 1)        # predict cos(z, z_masked) ∈ [0,1]
-        self.ood_head         = nn.Linear(d_model, 1)        # OOD probability
-        self.temp_head        = nn.Linear(d_model, 1)        # temperature
+        # Extended prediction heads
+        self.score_head = nn.Linear(d_model, 1)        # Quality score ∈ [0,1]
+        self.logvar_head = nn.Linear(d_model, 1)       # Aleatoric uncertainty (log-variance)
+        self.aux3_head = nn.Linear(d_model, 3)         # 3-way classification
+        self.disagree_head = nn.Linear(d_model, 1)     # Disagreement prediction
+        self.recon_head = nn.Linear(d_model, d_model)  # Embedding reconstruction
+        self.consistency_head = nn.Linear(d_model, 1)  # Robustness prediction
+        self.ood_head = nn.Linear(d_model, 1)          # OOD detection
+        self.temp_head = nn.Linear(d_model, 1)         # Temperature calibration
 
-        # New bridge heads
-        self.agree_head       = nn.Linear(d_model, 1)        # cross-model agreement ∈ [0,1]
-        self.causal_sens_head = nn.Linear(d_model, 1)        # perturbation sensitivity ∈ [0,1]
+        # Bridge heads
+        self.agree_head = nn.Linear(d_model, 1)        # Cross-model agreement
+        self.causal_sens_head = nn.Linear(d_model, 1)  # Perturbation sensitivity
 
-        # SAE bottleneck
+        # Sparse Autoencoder (SAE) bottleneck
         self.sae_enc = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),
+            nn.Linear(d_model, d_model // 2),  # Compression
             nn.ReLU(),
             nn.LayerNorm(d_model // 2),
         )
-        self.sae_dec = nn.Linear(d_model // 2, d_model)
-        self.sae_alpha = 0.05  # if you add recon loss for SAE
+        self.sae_dec = nn.Linear(d_model // 2, d_model)  # Reconstruction
+        self.sae_alpha = 0.05  # SAE reconstruction loss weight
 
-        # Head dropout
+        # Regularization
         self.head_drop = nn.Dropout(dropout)
 
     @staticmethod
     def _cos01(a: torch.Tensor, b: torch.Tensor, dim: int = -1, eps: float = 1e-6) -> torch.Tensor:
-        """Cosine similarity mapped from [-1,1] to [0,1]."""
+        """
+        Compute cosine similarity mapped from [-1, 1] to [0, 1].
+
+        Args:
+            a, b: Input tensors to compare
+            dim: Dimension for cosine computation
+            eps: Numerical stability term
+
+        Returns:
+            Cosine similarity in range [0, 1] where 1 = identical
+        """
         sim = F.cosine_similarity(a, b, dim=dim, eps=eps)
         return (sim + 1.0) * 0.5
 
@@ -171,124 +229,160 @@ class TinyRecursionModel(nn.Module):
         z: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Run the same n_recursions loop and return (z_final, z_head, halt_logits, tau, c).
+        Execute recursive state updates over n_recursions steps.
+
+        Process:
+          1. Fuse [x, y, z] → z_next via projection and activation
+          2. Process through core network stack
+          3. Update halting signals
+          4. Apply residual state update: z = z + step_scale * z_next
+          5. Apply SAE bottleneck to final state
+
+        Args:
+            x: Goal embedding [B, D]
+            y: Response embedding [B, D]
+            z: Initial latent state [B, D]
+
+        Returns:
+            z_final: Final latent state after recursion [B, D]
+            z_head: SAE-processed state for prediction heads [B, D]
+            halt_logits: Maximum halting logits across steps [B, 1]
+            tau: Temperature parameter for score calibration [B, 1]
+            c: Sparse concept codes from SAE bottleneck [B, D//2]
         """
         B = x.size(0)
         device = x.device
-        halt_logits = torch.full((B, 1), -1e9, device=device)
-        z_cur = z
 
+        # Initialize halting signals to very negative values
+        halt_logits = torch.full((B, 1), -1e9, device=device)
+        z_cur = z  # Current latent state
+
+        # Recursive state updates
         for _ in range(self.n_recursions):
-            fused = torch.cat([x, y, z_cur], dim=-1)   # [B, 3D]
-            z_next = torch.tanh(self.z_proj(fused))    # [B, D]
-            z_next = self.core(z_next)                 # [B, D]
+            fused = torch.cat([x, y, z_cur], dim=-1)   # [B, 3 * D]
+            z_next = torch.tanh(self.z_proj(fused))    # [B, D] with saturation
+            z_next = self.core(z_next)                 # [B, D] core processing
+
+            # Update halting signal (track maximum across steps)
             step_halt = self.halt_head(self.final_ln(z_next))  # [B, 1]
             halt_logits = torch.maximum(halt_logits, step_halt)
+
+            # Residual state update with step scaling
             z_cur = z_cur + self.step_scale * z_next
 
-        z_final = self.final_ln(z_cur)                 # [B, D]
+        # Final normalization
+        z_final = self.final_ln(z_cur)  # [B, D]
 
-        # SAE bottleneck → z_head used for all heads
-        c = self.sae_enc(z_final)                      # [B, C]
-        z_head = z_final + self.sae_dec(c)             # [B, D]
-        z_head = self.head_drop(z_head)
+        # Sparse Autoencoder bottleneck
+        c = self.sae_enc(z_final)                  # [B, D//2] concept codes
+        z_head = z_final + self.sae_dec(c)         # [B, D] with SAE reconstruction
+        z_head = self.head_drop(z_head)            # Regularization
 
-        # Temperature (calibration)
-        tau = 0.5 + 0.5 * F.softplus(self.temp_head(z_head))  # τ ∈ (0.5, ∞)
+        # Temperature calibration parameter (τ ∈ (0.5, ∞))
+        tau_raw = self.temp_head(z_head)
+        tau = 0.5 + 0.5 * F.softplus(tau_raw)  # Lower bound at 0.5
+
         return z_final, z_head, halt_logits, tau, c
 
     def forward(
         self,
-        x: torch.Tensor,            # [B, D] goal/condition embedding
-        y: torch.Tensor,            # [B, D] response embedding
-        z: torch.Tensor,            # [B, D] latent (can start at zeros)
+        x: torch.Tensor,                    # Goal embedding [B, D]
+        y: torch.Tensor,                    # Response embedding [B, D]
+        z: torch.Tensor,                    # Initial latent state [B, D]
         *,
-        seq_len: Optional[torch.Tensor] = None,  # [B] token counts (optional)
-        return_aux: bool = True,
-        with_consistency_target: bool = True,
+        seq_len: Optional[torch.Tensor] = None,  # Response length [B] (optional)
+        return_aux: bool = True,                 # Whether to return auxiliary outputs
+        with_consistency_target: bool = True,    # Compute consistency regularization
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, Any]]:
         """
-        Forward recursion.
+        Complete forward pass with recursive processing and multi-head prediction.
         """
-        # Main recurrence
-        z = z.clone()
+        # Main recursive processing
+        z = z.clone()  # Ensure we don't modify input
         z_final, z_head, halt_logits, tau, c = self._recur(x, y, z)
 
-        # Heads from z_head
-        logits         = self.classifier(z_head)                   # [B, vocab]
-        score_logit    = self.score_head(z_head)                   # [B,1]
-        s              = torch.sigmoid(score_logit / tau)          # calibrated score in [0,1]
-        log_var        = self.logvar_head(z_head)                  # [B,1]
-        aux3_logits    = self.aux3_head(z_head)                    # [B,3]
-        aux3_probs     = F.softmax(aux3_logits, dim=-1)            # [B,3]
-        disagree_logit = self.disagree_head(z_head)                # [B,1]
-        y_recon        = self.recon_head(z_head)                   # [B,D]
-        ood_logit      = self.ood_head(z_head)                     # [B,1]
+        # Core prediction heads
+        logits = self.classifier(z_head)                    # [B, vocab_size]
+        score_logit = self.score_head(z_head)               # [B, 1]
+        log_var = self.logvar_head(z_head)                  # [B, 1] uncertainty
 
-        # New bridge heads
-        if self.enable_agree_head:
-            agree01 = torch.sigmoid(self.agree_head(z_head))       # [B,1]
-        else:
-            agree01 = None
-        if self.enable_causal_sens_head:
-            sens01  = torch.sigmoid(self.causal_sens_head(z_head)) # [B,1]
-        else:
-            sens01 = None
+        # ----- NUMERICAL SAFETY -----
+        LOGVAR_MIN = -5.0   # variance upper bound ~ e^5
+        LOGVAR_MAX =  5.0   # variance lower bound ~ e^-5
+        log_var = log_var.clamp(min=LOGVAR_MIN, max=LOGVAR_MAX)
 
-        # Cheap, in-graph consistency target (no extra forward)
+        # Temperature already lower-bounded via softplus; still make division safe:
+        tau_safe = torch.clamp(tau, min=1e-2)
+        s = torch.sigmoid(score_logit / tau_safe)
+
+        aux3_logits = self.aux3_head(z_head)                # [B, 3] bad/medium/good
+        aux3_probs = F.softmax(aux3_logits, dim=-1)         # [B, 3] probabilities
+        disagree_logit = self.disagree_head(z_head)         # [B, 1]
+        y_recon = self.recon_head(z_head)                   # [B, D] reconstruction
+        ood_logit = self.ood_head(z_head)                   # [B, 1] OOD detection
+
+        # Bridge heads (conditional)
+        agree01 = torch.sigmoid(self.agree_head(z_head)) if self.enable_agree_head else None
+        sens01  = torch.sigmoid(self.causal_sens_head(z_head)) if self.enable_causal_sens_head else None
+
+        # In-graph consistency target computation
         if with_consistency_target:
+            # Random masking for robustness evaluation
             mask = (torch.rand_like(z_head) < self.consistency_mask_p).float()
             z_masked = z_head * (1.0 - mask)
-            cos_consistency = self._cos01(z_head, z_masked).unsqueeze(-1)  # [B,1]
+            cos_consistency = self._cos01(z_head, z_masked).unsqueeze(-1)  # [B, 1]
         else:
-            cos_consistency = torch.ones_like(s)  # [B,1]
-        consistency_logit = self.consistency_head(z_head)          # [B,1]
+            cos_consistency = torch.ones_like(s)  # Default target
 
-        # Finite-difference sensitivity wrt y (full recurrence path)
+        consistency_logit = self.consistency_head(z_head)  # [B, 1]
+
+        # Finite-difference sensitivity analysis (with safe temperature)
         eps = 1e-3
-        y_eps = y + eps * F.normalize(torch.randn_like(y), dim=-1)
+        y_eps = y + eps * F.normalize(torch.randn_like(y), dim=-1)  # Perturbed input
         with torch.no_grad():
             _, z_head_eps, _, tau_eps, _ = self._recur(x, y_eps, z)
-        score_eps = torch.sigmoid(self.score_head(z_head_eps) / tau_eps)
-        jac_fd = ((score_eps - s).abs() / eps).clamp(0, 10.0) / 10.0  # [B,1] ∈ [0,1]
+        tau_eps_safe = torch.clamp(tau_eps, min=1e-2)
+        score_eps = torch.sigmoid(self.score_head(z_head_eps) / tau_eps_safe)
+        jac_fd = ((score_eps - s).abs() / eps).clamp(0, 10.0) / 10.0  # [B, 1] ∈ [0,1]
 
-        # Optional len_effect
+        # Length effect normalization (optional)
         if seq_len is not None:
-            len_effect = torch.tanh((seq_len.float() / self.len_norm_L)).unsqueeze(-1)  # [B,1]
+            len_effect = torch.tanh((seq_len.float() / self.len_norm_L)).unsqueeze(-1)  # [B, 1]
         else:
             len_effect = torch.zeros_like(s)
 
-        # Aux dict
+        # Comprehensive auxiliary outputs dictionary
         aux: Dict[str, Any] = {
-            # raw outputs
-            "score_logit":       score_logit,                  # [B,1]
-            "log_var":           log_var,                      # [B,1]
-            "aux3_logits":       aux3_logits,                  # [B,3]
-            "disagree_logit":    disagree_logit,               # [B,1]
-            "y_recon":           y_recon,                      # [B,D]
-            "consistency_logit": consistency_logit,            # [B,1]
-            "consistency_target": cos_consistency.detach(),  # [B,1]
-            # derived, heat-mappable (0..1 where sensible)
-            "score":             s,                                        # [B,1]
-            # NOTE: for historical compatibility we keep key "uncertainty" but it actually carries certainty.
-            "certainty01":       torch.sigmoid(-log_var),                  # higher = more certain
-            "uncertainty":       torch.sigmoid(-log_var),                  # alias of certainty01 (back-compat)
-            "aux3_probs":        aux3_probs,                               # [B,3]
-            "entropy_aux":       (-(aux3_probs * F.log_softmax(aux3_logits, -1)).sum(-1)
-                                   / math.log(3.0)).unsqueeze(-1),         # [B,1] ∈ [0,1]
-            "disagree_hat":      torch.sigmoid(disagree_logit),            # [B,1]
-            "recon_sim":         self._cos01(y_recon, y).unsqueeze(-1),    # [B,1]
-            "consistency_hat":   torch.sigmoid(consistency_logit),         # [B,1]
-            "concept_vec":       c,                                        # [B,C]
-            "concept_sparsity":  (c > 0).float().mean(dim=-1, keepdim=True),  # [B,1]
-            "ood_hat":           torch.sigmoid(ood_logit),                 # [B,1]
-            "temp01":            (torch.tanh(tau) + 1) / 2,                # [B,1] proxy in 0..1
-            "jacobian_fd":       jac_fd,                                   # [B,1]
-            "len_effect":        len_effect,                               # [B,1]
+            # Raw head outputs
+            "score_logit": score_logit,               # [B, 1]
+            "log_var": log_var,                       # [B, 1]
+            "aux3_logits": aux3_logits,               # [B, 3]
+            "disagree_logit": disagree_logit,         # [B, 1]
+            "y_recon": y_recon,                       # [B, D]
+            "consistency_logit": consistency_logit,   # [B, 1]
+            "consistency_target": cos_consistency.detach(),  # [B, 1]
+
+            # Derived metrics (normalized to [0,1] where applicable)
+            "score": s,                                   # [B, 1] calibrated score
+            "certainty01": torch.sigmoid(-log_var),       # [B, 1] certainty measure
+            "uncertainty": torch.sigmoid(-log_var),       # [B, 1] alias for certainty
+            "aux3_probs": aux3_probs,                     # [B, 3] probability distribution
+            "entropy_aux": (-(aux3_probs * F.log_softmax(aux3_logits, -1)).sum(-1)
+                            / math.log(3.0)).unsqueeze(-1),  # [B, 1] normalized entropy
+            "disagree_hat": torch.sigmoid(disagree_logit),   # [B, 1] predicted disagreement
+            "recon_sim": self._cos01(y_recon, y).unsqueeze(-1),  # [B, 1] reconstruction quality
+            "consistency_hat": torch.sigmoid(consistency_logit), # [B, 1] robustness prediction
+            "concept_vec": c,                               # [B, D//2] sparse concepts
+            "concept_sparsity": (c > 0).float().mean(dim=-1, keepdim=True),  # [B, 1]
+            "ood_hat": torch.sigmoid(ood_logit),            # [B, 1] OOD probability
+            "temp01": (torch.tanh(tau) + 1) / 2,            # [B, 1] temperature proxy
+            "jacobian_fd": jac_fd,                          # [B, 1] sensitivity measure
+            "len_effect": len_effect,                       # [B, 1] length normalization
         }
+
         if agree01 is not None:
-            aux["agree01"] = agree01
+            aux["agree01"] = agree01  # [B, 1]
         if sens01 is not None:
-            aux["sens01"] = sens01
+            aux["sens01"] = sens01    # [B, 1]
 
         return logits, halt_logits.squeeze(-1), z_final, (aux if return_aux else {})

@@ -7,9 +7,6 @@ chat_scorer:
 
   include_mars: true
   enabled_scorers:
-    - hrm
-    - sicql
-    - mrq
     - tiny
 
   include_ranking: true
@@ -23,7 +20,7 @@ chat_scorer:
     - coverage
 
   target_types:
-    - case_scorable
+    - conversation_turn
 
   dimension_config:
     reasoning:

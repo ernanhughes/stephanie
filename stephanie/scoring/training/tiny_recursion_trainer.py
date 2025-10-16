@@ -12,7 +12,6 @@ import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
 
-# NOTE: import from models.* (not scoring.model.*)
 from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
@@ -47,12 +46,13 @@ class TinyTrainer(BaseTrainer):
 
         # --- Core knobs -------------------------------------------------------
         self.epochs        = int(cfg.get("epochs", 20))
-        self.lr            = float(cfg.get("lr", 1e-4))
+        self.lr            = float(cfg.get("lr", 3e-5))           # conservative default
         self.batch_size    = int(cfg.get("batch_size", 16))
         self.dropout       = float(cfg.get("dropout", 0.1))
         self.use_attention = bool(cfg.get("use_attention", False))
         self.n_recursions  = int(cfg.get("n_recursions", 6))
         self.halt_lambda   = float(cfg.get("halt_lambda", 0.05))  # halting is a light regularizer
+        self.grad_clip     = float(cfg.get("grad_clip", 0.5))
 
         # Aux loss weights
         self.w_aux3        = float(cfg.get("w_aux3", 0.3))
@@ -114,6 +114,18 @@ class TinyTrainer(BaseTrainer):
                 y = torch.tensor(self.memory.embedding.get_or_create(doc),  dtype=torch.float32, device=self.device)
                 z = torch.tensor(self.memory.embedding.get_or_create(z_text if z_text is not None else goal),
                                 dtype=torch.float32, device=self.device)
+
+                # ---- Normalize & sanitize inputs (prevents recursion amplification / NaNs)
+                def _safe_vec(t):
+                    t = torch.nan_to_num(t, nan=0.0, posinf=0.0, neginf=0.0)
+                    norm = t.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+                    return t / norm
+
+                x = _safe_vec(x); y = _safe_vec(y); z = _safe_vec(z)
+                if not torch.isfinite(x).all() or not torch.isfinite(y).all() or not torch.isfinite(z).all():
+                    dropped += 1
+                    return
+
                 # normalize target → [0,1]
                 t = float(target)
                 t = (max(0.0, min(100.0, t)) / 100.0) if t > 1.0 else max(0.0, min(1.0, t))
@@ -198,15 +210,15 @@ class TinyTrainer(BaseTrainer):
         score, target01, log_var: [B,1]
         Returns scalar loss.
         """
-        # L = (e^(-log_var) * (s - y)^2 + log_var)
-        diff2 = (score - target01).pow(2)
+        log_var = log_var.clamp(-5.0, 5.0)  # defensive clamp to avoid precision explosion
         inv_var = torch.exp(-log_var)
+        diff2   = (score - target01).pow(2)
         return (inv_var * diff2 + log_var).mean()
 
     @staticmethod
     def _cosine_recon_loss(y_recon: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         # 1 - cosine in [0,2] → clamp to [0,1]
-        cos = F.cosine_similarity(y_recon, y_true, dim=-1).unsqueeze(-1)
+        cos = F.cosine_similarity(y_recon, y_true, dim=-1, eps=1e-8).unsqueeze(-1)
         return (1 - cos).clamp(0, 1).mean()
 
     # ------------------------------
@@ -223,41 +235,50 @@ class TinyTrainer(BaseTrainer):
         for step, batch in enumerate(it, start=1):
             x, y, z, target01, halt_target, seq_len = batch
 
+            # Forward
             logits, halt_logits, _, aux = model(x, y, z, seq_len=seq_len, return_aux=True)
 
             # Main loss: heteroscedastic regression on score/log_var
             L_main = self._heteroscedastic_regression_loss(aux["score"], target01, aux["log_var"])
 
             # Aux losses
-            # 1) tri-bucket CE
             buckets = _bucket3(target01.squeeze(-1))
-            L_aux3 = F.cross_entropy(aux["aux3_logits"], buckets)
-
-            # 2) disagreement SmoothL1: label is |HRM - Tiny target| if provided at sample time
-            #    If you don't have hrm_score per-sample, use |target01 - detach(score)| as a proxy (self-consistency).
-            #    Here we use proxy to keep trainer self-contained.
-            L_dis = F.smooth_l1_loss(aux["disagree_hat"], (target01 - aux["score"].detach()).abs())
-
-            # 3) reconstruction cosine loss
+            L_aux3  = F.cross_entropy(aux["aux3_logits"], buckets)
+            L_dis   = F.smooth_l1_loss(aux["disagree_hat"], (target01 - aux["score"].detach()).abs())
             L_recon = self._cosine_recon_loss(aux["y_recon"], y)
+            L_cons  = F.mse_loss(aux["consistency_hat"], aux["consistency_target"])
 
-            # 4) consistency loss
-            L_cons = F.mse_loss(aux["consistency_hat"], aux["consistency_target"])
-
-            # 5) optional SAE recon (z_final ≈ sae_dec(sae_enc(z_final))) — we approximated inside the model as residual.
             L_sae = torch.zeros((), device=self.device)
             if self.w_sae_recon > 0.0 and "concept_vec" in aux:
-                # No direct target; encourage sparsity via L1 on concepts (acts like SAE regularizer)
                 L_sae = aux["concept_vec"].abs().mean()
 
-            # 6) optional OOD detection (no labels provided → use weak prior: encourage ood_hat≈1 on in-dist)
             L_ood = torch.zeros((), device=self.device)
             if self.w_ood > 0.0 and "ood_hat" in aux:
-                # Encourage in-dist confidence; you can add synthetic OOD in the dataloader for stronger signal.
                 L_ood = F.binary_cross_entropy(aux["ood_hat"], torch.ones_like(aux["ood_hat"]))
 
-            # 7) halting loss (light BCE)
             L_halt = F.binary_cross_entropy_with_logits(halt_logits.unsqueeze(-1), halt_target)
+
+            # Check components for finiteness & sanity
+            all_terms = torch.stack([
+                L_main.detach(),
+                L_aux3.detach(),
+                L_dis.detach(),
+                L_recon.detach(),
+                L_cons.detach(),
+                L_sae.detach(),
+                L_ood.detach(),
+                L_halt.detach()
+            ])
+            if (not torch.isfinite(all_terms).all()) or (all_terms.abs().max() > 1e6):
+                if self.logger:
+                    self.logger.log("TinyPlusNaNBatch", {
+                        "epoch": epoch_idx,
+                        "step": step,
+                        "any_nan": bool(not torch.isfinite(all_terms).all()),
+                        "max_abs": float(all_terms.abs().max().item())
+                    })
+                self.optimizer.zero_grad(set_to_none=True)
+                continue  # skip this batch
 
             loss = (
                 L_main
@@ -270,9 +291,20 @@ class TinyTrainer(BaseTrainer):
                 + self.halt_lambda * L_halt
             )
 
+            if (not torch.isfinite(loss)) or (abs(loss.item()) > 1e7):
+                if self.logger:
+                    self.logger.log("TinyPlusUnstableLoss", {
+                        "epoch": epoch_idx,
+                        "step": step,
+                        "loss": float(loss.item()) if torch.isfinite(loss) else float('nan')
+                    })
+                self.optimizer.zero_grad(set_to_none=True)
+                continue
+
+            # Backward
             self.optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), self.grad_clip)
             self.optimizer.step()
 
             bsz = x.size(0)
@@ -311,7 +343,7 @@ class TinyTrainer(BaseTrainer):
 
         model.eval()
         scores, targets = [], []
-        # 10 metric lists (not 11)
+        # 10 metric lists
         entropies, uncerts, disagree, recon_sim, cons_hat, temp01, jac, spars, ood, len_eff = (
             [] for _ in range(10)
         )
@@ -385,16 +417,24 @@ class TinyTrainer(BaseTrainer):
         if not dataloader:
             return {"error": "insufficient_data", "kept": kept, "dropped": dropped}
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        # Optimizer
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=1e-2)
+
         best_metric = float("inf")
         patience, wait = int(self.cfg.get("patience", 3)), 0
-        train_losses = []
+        train_losses: List[float] = []
         saved_best = False
 
         locator = self.get_locator(dimension)  # create once; base_path will be ensured
 
         for epoch in range(1, self.epochs + 1):
             avg_loss = self._train_epoch(self.model, dataloader, epoch_idx=epoch)
+            avg_loss = float(avg_loss)
+            # Ensure epoch loss is finite for serialization/meta
+            if not math.isfinite(avg_loss):
+                avg_loss = float(train_losses[-1]) if train_losses else 0.0
+                if self.logger:
+                    self.logger.log("TinyPlusNaNEpoch", {"epoch": epoch})
             train_losses.append(avg_loss)
 
             val_metrics = self._validate(self.model, val_loader) if val_loader else {}
@@ -403,12 +443,11 @@ class TinyTrainer(BaseTrainer):
                 payload.update({f"val_{k}": v for k, v in val_metrics.items()})
                 self.logger.log("TinyPlusEpoch", payload)
 
-            # pick metric: val MAE if available, else train loss
+            # Early stopping metric: prefer val MAE, fallback to train loss
             stop_metric = val_metrics.get("mae", avg_loss) if val_metrics else avg_loss
             if not math.isfinite(stop_metric):
-                # Treat as +inf so we don’t “improve”; but keep training
                 if self.logger:
-                    self.logger.log("TinyPlusNonFiniteMetric", {"epoch": epoch, "stop_metric": float('nan')})
+                    self.logger.log("TinyPlusNonFiniteMetric", {"epoch": epoch})
                 stop_metric = float("inf")
 
             improved = (not math.isfinite(best_metric)) or (stop_metric < best_metric - 1e-6)
@@ -470,7 +509,16 @@ class TinyTrainer(BaseTrainer):
             "w_consistency": self.w_cons,
             "w_sae_recon": self.w_sae_recon,
             "w_ood": self.w_ood,
+            "grad_clip": self.grad_clip,
         }
+
+        # Ensure train_loss_curve is finite-only floats
+        finite_curve = []
+        last_finite = 0.0
+        for v in train_losses:
+            if math.isfinite(v):
+                last_finite = float(v)
+            finite_curve.append(float(last_finite))
 
         meta = {
             "dimension": dimension,
@@ -481,12 +529,12 @@ class TinyTrainer(BaseTrainer):
             "concat_input_dim": self.dim * 2,
             "version": self.version,
             "epochs": self.epochs,
-            "avg_loss": float(min(train_losses or [best_metric])),
+            "avg_loss": float(min(finite_curve or [best_metric])),
             "timestamp": datetime.now().isoformat(),
             "cfg": dict(self.cfg),
             "kept": int(kept),
             "best_metric": float(best_metric),
-            "train_loss_curve": [float(x) for x in train_losses],
+            "train_loss_curve": [float(x) for x in finite_curve],
             "dropped": int(dropped),
             "val_kept": int(val_kept),
             "val_dropped": int(val_dropped),
@@ -495,8 +543,10 @@ class TinyTrainer(BaseTrainer):
 
         # TrainingStatsStore integration
         self.memory.training_stats.add_from_result(
-            stats={"avg_q_loss": float(min(train_losses or [best_metric])),
-                "avg_loss":   float(min(train_losses or [best_metric]))},
+            stats={
+                "avg_q_loss": float(min(finite_curve or [best_metric])),
+                "avg_loss":   float(min(finite_curve or [best_metric])),
+            },
             model_type=self.model_type,
             target_type=self.target_type,
             dimension=dimension,
@@ -511,7 +561,7 @@ class TinyTrainer(BaseTrainer):
 
         return {
             "best_metric": float(best_metric),
-            "train_loss_curve": [float(x) for x in train_losses],
+            "train_loss_curve": [float(x) for x in finite_curve],
             "kept": int(kept),
             "dropped": int(dropped),
             "val_kept": int(val_kept),

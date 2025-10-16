@@ -3,13 +3,13 @@ import logging
 
 from tqdm import tqdm
 
-from stephanie import memory
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseScorableORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
+from stephanie.models.chat import ChatTurnORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
@@ -30,6 +30,7 @@ class UniversalScorerAgent(BaseAgent):
         "theorem": TheoremORM,
         "triple": CartridgeTripleORM,
         "case_scorable": CaseScorableORM,
+        "conversation_turn": ChatTurnORM,
     }
 
     """
@@ -39,7 +40,7 @@ class UniversalScorerAgent(BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.enabled_scorers = cfg.get("enabled_scorers", ["sicql"])
+        self.enabled_scorers = cfg.get("enabled_scorers", ["tiny"])
         self.progress = cfg.get("progress", True)
         self.force_rescore = cfg.get("force_rescore", False)
         self.save_results = cfg.get("save_results", False)
@@ -91,17 +92,23 @@ class UniversalScorerAgent(BaseAgent):
         candidates = []
 
         for ttype in self.target_types:
-            objs = context.get(ttype.lower() + "s", [])
-
-            if not objs and ttype in self.ORM_MAP:
-                orm_cls = self.ORM_MAP[ttype]
-                sessionmaker = self.memory.session  # now a sessionmaker, not a live session
-                with session_scope(sessionmaker) as session:
-                    objs = session.query(orm_cls).all()
+            if ttype == ScorableType.CONVERSATION_TURN:
+                objs = self.memory.chats.list_turns()
                 objs = [o.to_dict() for o in objs]
+                for obj in objs:
+                    candidates.append((obj, ttype))
+            else:
+                objs = context.get(ttype.lower() + "s", [])
 
-            for obj in objs:
-                candidates.append((obj, ttype))
+                if not objs and ttype in self.ORM_MAP:
+                    orm_cls = self.ORM_MAP[ttype]
+                    sessionmaker = self.memory.session  # now a sessionmaker, not a live session
+                    with session_scope(sessionmaker) as session:
+                        objs = session.query(orm_cls).all()
+                    objs = [o.to_dict() for o in objs]
+
+                for obj in objs:
+                    candidates.append((obj, ttype))
 
         total_candidates = len(candidates)
 

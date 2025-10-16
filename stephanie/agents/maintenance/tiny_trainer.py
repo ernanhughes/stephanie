@@ -15,7 +15,8 @@ class TinyTrainerAgent(BaseAgent):
     """
     def __init__(self, cfg, memory, container, logger, full_cfg):
         super().__init__(cfg, memory, container, logger)
-        self.dimensions = cfg.get("dimensions", [])  # e.g., ["alignment", "relevance"]
+        self.dimensions = ["faithfulness"]
+        self.dimensions2 = ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"]
         self.pair_builder = PreferencePairBuilder(memory, logger)
         self.trainer = TinyTrainer(full_cfg.scorer.hrm, memory, container=container, logger=logger)
         self.target_type = cfg.get("target_type", ScorableType.CONVERSATION_TURN)
@@ -27,6 +28,8 @@ class TinyTrainerAgent(BaseAgent):
         for dimension in self.dimensions:
             pairs_by_dim = self.pair_builder.get_training_pairs_by_dimension(
                 dimension=dimension,
+                target_type=self.target_type,
+                limit=self.limit
             )
             samples = pairs_by_dim.get(dimension, [])
             if not samples:
