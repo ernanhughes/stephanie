@@ -1,5 +1,6 @@
 # stephanie/components/gap/io/storage.py
 from __future__ import annotations
+
 import json
 import shutil
 from pathlib import Path
@@ -8,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from stephanie.utils.json_sanitize import dumps_safe
-from ..models import GapRunManifest, TripleSample
+from stephanie.components.gap.models import GapRunManifest, TripleSample
 
 
 class GapStorage:

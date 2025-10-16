@@ -1,10 +1,11 @@
 # stephanie/components/gap/processors/visualization.py
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict
 import numpy as np
 
-from ..models import GapConfig
+from stephanie.components.gap.models import GapConfig
 
 
 logger = logging.getLogger(__name__)
@@ -99,14 +100,19 @@ class VisualizationProcessor:
             if isinstance(gif_result, dict):
                 return gif_result.get("output_path")
             return gif_result
-        
-        hrm_gif_path = storage.copy_visual_artifact(
-            extract_gif_path(hrm_gif_source), run_id, "hrm_timeline.gif"
-        )
-        tiny_gif_path = storage.copy_visual_artifact(
-            extract_gif_path(tiny_gif_source), run_id, "tiny_timeline.gif"
-        )
-        
+
+        src = extract_gif_path(hrm_gif_source)
+        if src:
+            hrm_gif_path = storage.copy_visual_artifact(src, run_id, "hrm_timeline.gif")
+        else:
+            hrm_gif_path = storage.base_dir / run_id / "visuals" / "hrm_timeline.gif"  # placeholder
+
+        src = extract_gif_path(tiny_gif_source)
+        if src:
+            tiny_gif_path = storage.copy_visual_artifact(src, run_id, "tiny_timeline.gif")
+        else:
+            tiny_gif_path = storage.base_dir / run_id / "visuals" / "tiny_timeline.gif"  # placeholder
+
         return {
             "hrm_gif": str(hrm_gif_path),
             "tiny_gif": str(tiny_gif_path)

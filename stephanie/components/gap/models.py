@@ -35,6 +35,8 @@ class GapConfig:
     progress_log_every: int = 25
     dedupe_policy: str = "first_wins"
     per_dim_cap: Optional[int] = None
+    route_threshold_uncertainty: float = 0.6
+    route_threshold_ood: float = 0.7
 
 @dataclass
 class TripleSample:

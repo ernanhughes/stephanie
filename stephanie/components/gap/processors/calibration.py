@@ -1,10 +1,11 @@
 # stephanie/components/gap/processors/calibration.py
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
-from ..models import GapConfig
+from stephanie.components.gap.models import GapConfig
 
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,8 @@ class CalibrationProcessor:
         # Load aligned matrices
         hrm_matrix, hrm_names = storage.load_matrix(run_id, "hrm")
         tiny_matrix, tiny_names = storage.load_matrix(run_id, "tiny")
-        
+
+        # keep these around and pass to _simulate_routing:
         results = {}
         
         # Dimension calibration
@@ -37,9 +39,10 @@ class CalibrationProcessor:
         
         # Routing simulation
         routing_results = await self._simulate_routing(
-            hrm_matrix, tiny_matrix, tiny_names, 
+            hrm_matrix, tiny_matrix, hrm_names, tiny_names, 
             calibration_results, run_id
         )
+        
         results["routing"] = routing_results
         
         return results
@@ -98,16 +101,16 @@ class CalibrationProcessor:
         }
     
     async def _simulate_routing(self, hrm_matrix: np.ndarray, tiny_matrix: np.ndarray,
-                              tiny_names: List[str], calibration_results: Dict[str, Any],
-                              run_id: str) -> Dict[str, Any]:
+                            hrm_names: List[str], tiny_names: List[str],
+                            calibration_results: Dict[str, Any], run_id: str) -> Dict[str, Any]:
         """Simulate routing based on Tiny diagnostics and calibration."""
         # Extract diagnostic signals
         uncertainty_scores = self._extract_diagnostic_signal(tiny_matrix, tiny_names, ("uncertainty",))
         ood_scores = self._extract_diagnostic_signal(tiny_matrix, tiny_names, ("ood_hat",))
-        
+
         # Create routing mask
-        uncertainty_threshold = self.config.get("route_threshold_uncertainty", 0.6)
-        ood_threshold = self.config.get("route_threshold_ood", 0.7)
+        uncertainty_threshold = self.config.route_threshold_uncertainty
+        ood_threshold = self.config.route_threshold_ood
         
         use_hrm_mask = (uncertainty_scores > uncertainty_threshold) | (ood_scores > ood_threshold)
         usage_rate = float(np.mean(use_hrm_mask))
@@ -120,19 +123,18 @@ class CalibrationProcessor:
             if dim not in calib_params:
                 per_dim_results.append({"dimension": dim, "status": "skipped"})
                 continue
-            
-            hrm_col = self._find_dimension_column(tiny_names, "hrm", dim)  # Note: using tiny_names for HRM
+
+            hrm_col = self._find_dimension_column(hrm_names, "hrm", dim)
             tiny_col = self._find_dimension_column(tiny_names, "tiny", dim)
-            
+
             if hrm_col is None or tiny_col is None:
                 per_dim_results.append({"dimension": dim, "status": "missing_columns"})
                 continue
-            
+
             hrm_scores = self._safe_clip(hrm_matrix[:, hrm_col])
             tiny_scores = self._safe_clip(tiny_matrix[:, tiny_col])
             tiny_calibrated = self._apply_calibration(tiny_scores, calib_params[dim])
-            
-            # Apply routing
+
             final_scores = np.where(use_hrm_mask, hrm_scores, tiny_calibrated)
             
             # Compute metrics
@@ -189,11 +191,10 @@ class CalibrationProcessor:
         
         return None
     
-    def _extract_diagnostic_signal(self, matrix: np.ndarray, names: List[str], 
-                                 key_parts: Tuple[str, ...]) -> np.ndarray:
-        """Extract diagnostic signal from matrix."""
+    def _extract_diagnostic_signal(self, matrix, names, key_parts):
         for i, name in enumerate(names):
             if name.startswith("tiny.") and all(part in name for part in key_parts):
                 return self._safe_clip(matrix[:, i])
-        
-        return
+        # fallback: zeros (same length as rows)
+        return np.zeros(matrix.shape[0], dtype=np.float64)
+

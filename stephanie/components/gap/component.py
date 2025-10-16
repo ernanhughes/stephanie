@@ -1,12 +1,13 @@
 # stephanie/components/gap/component.py
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict
 from pathlib import Path
 
 from stephanie.agents.base_agent import BaseAgent
-from .models import GapConfig
-from .orchestrator import GapAnalysisOrchestrator
+from stephanie.components.gap.models import GapConfig
+from stephanie.components.gap.orchestrator import GapAnalysisOrchestrator
 
 _logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class GapAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self._config = self._load_config(cfg)
-        self._orchestrator = GapAnalysisOrchestrator(self._config, container, logger)
+        self._orchestrator = GapAnalysisOrchestrator(self._config, container, logger, memory=memory)
     
     def _load_config(self, raw_config: Dict[str, Any]) -> GapConfig:
         """Convert raw config to typed GapConfig."""

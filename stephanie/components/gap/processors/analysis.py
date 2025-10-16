@@ -1,10 +1,11 @@
 # stephanie/components/gap/processors/analysis.py
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict
 import numpy as np
 
-from ..models import GapConfig
+from stephanie.components.gap.models import GapConfig
 
 
 logger = logging.getLogger(__name__)
@@ -112,10 +113,21 @@ class AnalysisProcessor:
             return {"error": str(e)}
     
     def _prepare_phos_data(self, scoring_results: Dict[str, Any], run_id: str):
-        """Prepare data for PHOS analysis."""
-        # Implementation would convert scoring results to the expected DataFrame format
-        # This is simplified - you'd need to adapt based on your actual data structure
         import pandas as pd
-        
-        # Placeholder - implement based on your _project_dimensions logic
-        return pd.DataFrame()
+        storage = self.container.get("storage")
+        raw_dir = storage.base_dir / run_id / "raw"
+
+        # prefer parquet, fallback csv
+        df = None
+        pq = raw_dir / "rows_for_df.parquet"
+        csv = raw_dir / "rows_for_df.csv"
+        if pq.exists():
+            df = pd.read_parquet(pq)
+        elif csv.exists():
+            df = pd.read_csv(csv)
+        else:
+            return pd.DataFrame()
+
+        # keep canonical columns only
+        keep = ["node_id"] + [c for c in df.columns if isinstance(c, str) and (c.startswith("hrm.") or c.startswith("tiny."))]
+        return df[keep]

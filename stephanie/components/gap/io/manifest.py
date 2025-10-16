@@ -1,11 +1,12 @@
 # stephanie/components/gap/io/manifest.py
 from __future__ import annotations
+
 import json
 from typing import Any, Dict
 from pathlib import Path
 
-from ..models import GapRunManifest
-from .storage import GapStorage
+from stephanie.components.gap.models import GapRunManifest
+from stephanie.components.gap.io.storage import GapStorage
 
 
 class ManifestManager:
