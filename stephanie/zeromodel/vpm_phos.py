@@ -24,6 +24,9 @@ Date: 2024
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone  
+
 import json
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
@@ -32,8 +35,41 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from stephanie.scoring.scorable import ScorableType
+import time
 
+from stephanie.utils.json_sanitize import dumps_safe
+
+CAND_SUFFIXES = ["", ".score", ".aggregate", ".raw", ".value"]
+
+# --- fix: dataclass decorator + types ---
+@dataclass
+class RunManifest:
+    run_id: str
+    dataset: str
+    models: dict
+    preproc_version: str = "v1"
+    created_at: float = time.time()
+
+
+def build_vpm(scores: dict, metric_whitelist=None):
+    # scores: dict[str] -> np.array[T] or [T,K]
+    cols, mats = [], []
+    for k, v in scores.items():
+        if metric_whitelist and k not in metric_whitelist: continue
+        v = np.asarray(v)
+        if v.ndim == 1:
+            cols.append(k); mats.append(v[:,None])
+        elif v.ndim == 2:
+            for j in range(v.shape[1]):
+                cols.append(f"{k}[{j}]"); mats.append(v[:,j:j+1])
+    X = np.concatenate(mats, axis=1) if mats else np.zeros((0,0))
+    return X, cols
+
+def robust_normalize(X, eps=1e-9):
+    med = np.nanmedian(X, axis=0, keepdims=True)
+    mad = np.nanmedian(np.abs(X - med), axis=0, keepdims=True) + eps
+    Z = (X - med) / mad
+    return np.clip(Z, -5, 5)  # squash extremes
 
 # ---------------------------
 # Low-level utils
@@ -62,6 +98,49 @@ def robust01(x: np.ndarray, p_lo: float = 10.0, p_hi: float = 90.0) -> np.ndarra
     return np.clip(y, 0.0, 1.0)
 
 
+def learn_layout(*vpm_lists):
+    # stack absolute activations to emphasize structure
+    U = np.concatenate([np.abs(X) for (X, _) in vpm_lists], axis=1)
+    # simple heuristic: order by decreasing L2 norm then by correlation structure
+    col_energy = np.linalg.norm(U, axis=0)
+    order = np.argsort(-col_energy)
+    return order.tolist()
+
+def save_layout(order, names, path):
+    with open(path, "w") as f: 
+        f.write(dumps_safe({"columns":[names[i] for i in order], "index":order}, indent=2))
+
+
+def project(X, order):
+    keep = [i for i in order if i < X.shape[1]]
+    return X[:, keep]
+
+def guess_diag_cols(names):
+    DIAG_SUFFIX = ("uncertainty","ood","ood_hat","temp01","entropy","jacobian","consistency","halt_prob")
+    return [i for i,n in enumerate(names) if any(s in n for s in DIAG_SUFFIX)]
+
+def correlate_abs_delta_with_diags(Delta, X_diag):
+    y = np.abs(Delta).mean(axis=1)  # per-turn intensity
+    R = np.corrcoef(X_diag.T, y)[-1,:-1]  # quick/dirty
+    return R
+
+def delta_metrics(XA, XB):
+    Delta = XA - XB
+    absA, absB = np.abs(XA).ravel(), np.abs(XB).ravel()
+    overlap = (absA @ absB) / (np.linalg.norm(absA)+1e-9) / (np.linalg.norm(absB)+1e-9)
+    dmass = np.mean(np.abs(Delta))  # whole-field mass; optional TL window
+    col_scores = np.mean(np.abs(Delta), axis=0)
+    row_scores = np.mean(np.abs(Delta), axis=1)
+    top_cols = np.argsort(-col_scores)[:25].tolist()
+    top_rows = np.argsort(-row_scores)[:25].tolist()
+    return Delta, {"delta_mass": float(dmass), "overlap": float(overlap),
+                   "top_cols": top_cols, "top_rows": top_rows}
+
+def save_delta(meta, names, path_json):
+    meta["column_names"] = names
+    with open(path_json, "w") as f:
+        f.write(dumps_safe(meta, indent=2))
+
 def to_square(vec: np.ndarray) -> Tuple[np.ndarray, int]:
     """
     Pad a 1D vector to the next square length and reshape to (s, s).
@@ -82,6 +161,9 @@ def to_square(vec: np.ndarray) -> Tuple[np.ndarray, int]:
         v = np.pad(v, (0, pad), mode="constant")
     return v.reshape(s, s), s
 
+def route(use_A_cond, A_agg, B_agg):
+    # use A (expensive) when diagnostics say so, else B
+    return np.where(use_A_cond, A_agg, B_agg)
 
 def phos_sort_pack(v: np.ndarray, *, tl_frac: float = 0.25) -> np.ndarray:
     """
