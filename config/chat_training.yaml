@@ -76,5 +76,5 @@ pipeline:
      - name: phoshrm
        description: "Train a PhosHRM model to predict values using chat conversation_turns"
        cls: stephanie.agents.phoshrm.PhoshrmAgent
-       enabled: false
+       enabled: true
        iterations: 1

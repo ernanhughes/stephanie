@@ -15,7 +15,7 @@ class TinyTrainerAgent(BaseAgent):
     """
     def __init__(self, cfg, memory, container, logger, full_cfg):
         super().__init__(cfg, memory, container, logger)
-        self.dimensions = ["faithfulness"]
+        self.dimensions = ["coverage"]
         self.dimensions2 = ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"]
         self.pair_builder = PreferencePairBuilder(memory, logger)
         self.trainer = TinyTrainer(full_cfg.scorer.hrm, memory, container=container, logger=logger)

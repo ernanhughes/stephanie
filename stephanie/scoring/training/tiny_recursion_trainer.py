@@ -1,3 +1,22 @@
+"""
+TinyRecursionModel Trainer (Tiny+)
+
+A specialized trainer for the TinyRecursionModel that implements multi-objective
+training with heteroscedastic regression and auxiliary losses. This trainer handles
+multiple data schemas and produces dimension-specific models with comprehensive
+training telemetry.
+
+Key Features:
+- Heteroscedastic regression for score prediction with uncertainty estimation
+- Multiple auxiliary objectives: bucket classification, disagreement, reconstruction
+- Support for various input schemas (native, singleton, pairwise, HRM)
+- Comprehensive training monitoring and validation
+- Early stopping and model checkpointing
+
+Author: Stephanie AI Team
+Version: 1.0
+"""
+
 # stephanie/scoring/training/tiny_recursion_trainer.py
 from __future__ import annotations
 
@@ -22,7 +41,18 @@ except Exception:  # pragma: no cover
 
 
 def _bucket3(y01: torch.Tensor) -> torch.Tensor:
-    """Map y∈[0,1] → 3-class bucket tensor (0,1,2)."""
+    """
+    Convert continuous scores to 3-class bucket labels.
+    
+    Args:
+        y01: Tensor of scores in range [0, 1]
+        
+    Returns:
+        Long tensor with bucket indices:
+        - 0: scores < 1/3
+        - 1: scores in [1/3, 2/3)
+        - 2: scores >= 2/3
+    """
     # <1/3 => 0, [1/3,2/3) => 1, >=2/3 => 2
     edges = torch.tensor([1/3, 2/3], device=y01.device, dtype=y01.dtype)
     return (y01 >= edges[0]).long() + (y01 >= edges[1]).long()
@@ -30,13 +60,38 @@ def _bucket3(y01: torch.Tensor) -> torch.Tensor:
 
 class TinyTrainer(BaseTrainer):
     """
-    Trainer for TinyRecursionModel (Tiny+).
-    - Main objective: heteroscedastic regression on y∈[0,1]
-    - Aux objectives: tri-bucket CE, disagreement, recon (cos), consistency, optional SAE recon, OOD
-    Produces ONE MODEL PER DIMENSION.
+    Trainer for TinyRecursionModel (Tiny+) with multi-objective optimization.
+    
+    This trainer implements a comprehensive training regimen that combines:
+    - Main heteroscedastic regression objective
+    - Multiple auxiliary objectives for regularization and feature learning
+    - Support for various input data formats
+    - Extensive monitoring and validation
+    
+    The model produces separate instances for each quality dimension.
+    
+    Attributes:
+        model_type: Identifier for model architecture ("tiny")
+        target_type: Type of scoring target ("document", "sentence", etc.)
+        version: Model version identifier
+        epochs: Number of training epochs
+        lr: Learning rate for optimizer
+        batch_size: Training batch size
+        dropout: Dropout rate for model regularization
+        use_attention: Whether to use attention mechanisms
+        n_recursions: Number of recursion steps in model
+        halt_lambda: Weight for halting regularization loss
+        grad_clip: Gradient clipping value
+        w_aux3: Weight for 3-class auxiliary classification
+        w_disagree: Weight for disagreement prediction
+        w_recon: Weight for reconstruction loss
+        w_cons: Weight for consistency regularization
+        w_sae_recon: Weight for sparse autoencoder reconstruction
+        w_ood: Weight for out-of-distribution detection
     """
 
     def __init__(self, cfg, memory, container, logger):
+        """Initialize TinyTrainer with configuration and dependencies."""
         super().__init__(cfg, memory, container, logger)
 
         # --- Identity / paths -------------------------------------------------
@@ -92,13 +147,24 @@ class TinyTrainer(BaseTrainer):
 
     # ------------------------------
     # Data prep
-    # Expect each sample dict to include:
-    #   x, y, z  -> texts (to be embedded via memory.embedding.get_or_create)
-    #   target   -> numeric (0..1) or 0..100; we'll normalize to [0,1]
-    # Optional:
-    #   halt_target (float), seq_len (int)
     # ------------------------------
+
     def _create_dataloader(self, samples: List[Dict[str, Any]]) -> Tuple[Optional[DataLoader], int, int]:
+        """
+        Create DataLoader from sample dictionaries with multiple schema support.
+        
+        Supports multiple input formats:
+        - Native Tiny+ schema: x, y, z, target
+        - Singleton format: goal_text/output with score
+        - Pairwise format: output_a/output_b with comparative scores
+        - HRM format: goal_text/scorable_text with target_score
+        
+        Args:
+            samples: List of sample dictionaries with various possible schemas
+            
+        Returns:
+            Tuple of (DataLoader, kept_count, dropped_count) or (None, kept, dropped) if insufficient data
+        """
         xs, ys, zs = [], [], []
         y01, halt_targets, seq_lens = [], [], []
         kept = dropped = 0
@@ -108,8 +174,10 @@ class TinyTrainer(BaseTrainer):
         it = tqdm(samples, desc="Packing Tiny+ samples", unit="samp") if use_tqdm else samples
 
         def _push(goal: str, doc: str, target: float, *, z_text: Optional[str] = None, halt_t: float = 1.0, slen: int = 0):
+            """Internal helper to process and validate a single sample."""
             nonlocal kept, dropped
             try:
+                # Get embeddings for text inputs
                 x = torch.tensor(self.memory.embedding.get_or_create(goal), dtype=torch.float32, device=self.device)
                 y = torch.tensor(self.memory.embedding.get_or_create(doc),  dtype=torch.float32, device=self.device)
                 z = torch.tensor(self.memory.embedding.get_or_create(z_text if z_text is not None else goal),
@@ -117,6 +185,7 @@ class TinyTrainer(BaseTrainer):
 
                 # ---- Normalize & sanitize inputs (prevents recursion amplification / NaNs)
                 def _safe_vec(t):
+                    """Safely normalize vector, handling NaN/inf values."""
                     t = torch.nan_to_num(t, nan=0.0, posinf=0.0, neginf=0.0)
                     norm = t.norm(dim=-1, keepdim=True).clamp_min(1e-6)
                     return t / norm
@@ -138,6 +207,7 @@ class TinyTrainer(BaseTrainer):
                 dropped += 1
                 if self.logger: self.logger.log("TinyRecursionSampleError", {"error": str(e)})
 
+        # Process all samples with schema detection
         for s in it:
             # Native Tiny+ schema
             if "x" in s and "y" in s and "z" in s and "target" in s:
@@ -180,6 +250,7 @@ class TinyTrainer(BaseTrainer):
 
         if use_tqdm and hasattr(it, "close"): it.close()
 
+        # Log label distribution for analysis
         if self.logger and self.log_label_histogram:
             exact = {int(k): int(v) for k, v in sorted(label_counts.items())}
             bucketed = self._bucketize_counts(label_counts, self.label_hist_bucket)
@@ -192,6 +263,7 @@ class TinyTrainer(BaseTrainer):
         if kept < self.min_samples:
             return None, kept, dropped
 
+        # Create TensorDataset and DataLoader
         dataset = TensorDataset(
             torch.stack(xs), torch.stack(ys), torch.stack(zs),
             torch.tensor(y01, dtype=torch.float32, device=self.device).unsqueeze(-1),
@@ -202,13 +274,24 @@ class TinyTrainer(BaseTrainer):
         return loader, kept, dropped
 
     # ------------------------------
-    # Losses
+    # Loss Functions
     # ------------------------------
+
     @staticmethod
     def _heteroscedastic_regression_loss(score: torch.Tensor, target01: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
         """
-        score, target01, log_var: [B,1]
-        Returns scalar loss.
+        Compute heteroscedastic regression loss with uncertainty estimation.
+        
+        This loss adapts to the uncertainty in predictions by learning
+        a variance term that scales the regression loss.
+        
+        Args:
+            score: Predicted scores [B, 1]
+            target01: Ground truth scores in [0, 1] [B, 1]
+            log_var: Learned log variance [B, 1]
+            
+        Returns:
+            Scalar loss value
         """
         log_var = log_var.clamp(-5.0, 5.0)  # defensive clamp to avoid precision explosion
         inv_var = torch.exp(-log_var)
@@ -217,6 +300,19 @@ class TinyTrainer(BaseTrainer):
 
     @staticmethod
     def _cosine_recon_loss(y_recon: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        """
+        Compute cosine reconstruction loss.
+        
+        Measures how well the model can reconstruct the input embedding,
+        encouraging meaningful internal representations.
+        
+        Args:
+            y_recon: Reconstructed embedding
+            y_true: Original embedding
+            
+        Returns:
+            Cosine distance loss in range [0, 1]
+        """
         # 1 - cosine in [0,2] → clamp to [0,1]
         cos = F.cosine_similarity(y_recon, y_true, dim=-1, eps=1e-8).unsqueeze(-1)
         return (1 - cos).clamp(0, 1).mean()
@@ -224,7 +320,19 @@ class TinyTrainer(BaseTrainer):
     # ------------------------------
     # Epoch training
     # ------------------------------
+
     def _train_epoch(self, model: TinyRecursionModel, dataloader: DataLoader, epoch_idx: int) -> float:
+        """
+        Train model for one epoch.
+        
+        Args:
+            model: TinyRecursionModel instance
+            dataloader: Training data loader
+            epoch_idx: Current epoch index
+            
+        Returns:
+            Average training loss for the epoch
+        """
         model.train()
         total_loss = 0.0
         count = 0
@@ -235,28 +343,29 @@ class TinyTrainer(BaseTrainer):
         for step, batch in enumerate(it, start=1):
             x, y, z, target01, halt_target, seq_len = batch
 
-            # Forward
+            # Forward pass with auxiliary outputs
             logits, halt_logits, _, aux = model(x, y, z, seq_len=seq_len, return_aux=True)
 
             # Main loss: heteroscedastic regression on score/log_var
             L_main = self._heteroscedastic_regression_loss(aux["score"], target01, aux["log_var"])
 
-            # Aux losses
+            # Auxiliary losses for multi-objective training
             buckets = _bucket3(target01.squeeze(-1))
-            L_aux3  = F.cross_entropy(aux["aux3_logits"], buckets)
-            L_dis   = F.smooth_l1_loss(aux["disagree_hat"], (target01 - aux["score"].detach()).abs())
-            L_recon = self._cosine_recon_loss(aux["y_recon"], y)
-            L_cons  = F.mse_loss(aux["consistency_hat"], aux["consistency_target"])
+            L_aux3  = F.cross_entropy(aux["aux3_logits"], buckets)  # 3-class classification
+            L_dis   = F.smooth_l1_loss(aux["disagree_hat"], (target01 - aux["score"].detach()).abs())  # Disagreement prediction
+            L_recon = self._cosine_recon_loss(aux["y_recon"], y)  # Reconstruction quality
+            L_cons  = F.mse_loss(aux["consistency_hat"], aux["consistency_target"])  # Consistency regularization
 
+            # Optional losses (weight=0 means disabled)
             L_sae = torch.zeros((), device=self.device)
             if self.w_sae_recon > 0.0 and "concept_vec" in aux:
-                L_sae = aux["concept_vec"].abs().mean()
+                L_sae = aux["concept_vec"].abs().mean()  # Sparse autoencoder reconstruction
 
             L_ood = torch.zeros((), device=self.device)
             if self.w_ood > 0.0 and "ood_hat" in aux:
-                L_ood = F.binary_cross_entropy(aux["ood_hat"], torch.ones_like(aux["ood_hat"]))
+                L_ood = F.binary_cross_entropy(aux["ood_hat"], torch.ones_like(aux["ood_hat"]))  # OOD detection
 
-            L_halt = F.binary_cross_entropy_with_logits(halt_logits.unsqueeze(-1), halt_target)
+            L_halt = F.binary_cross_entropy_with_logits(halt_logits.unsqueeze(-1), halt_target)  # Halting regularization
 
             # Check components for finiteness & sanity
             all_terms = torch.stack([
@@ -280,6 +389,7 @@ class TinyTrainer(BaseTrainer):
                 self.optimizer.zero_grad(set_to_none=True)
                 continue  # skip this batch
 
+            # Combined loss with weighting
             loss = (
                 L_main
                 + self.w_aux3 * L_aux3
@@ -301,7 +411,7 @@ class TinyTrainer(BaseTrainer):
                 self.optimizer.zero_grad(set_to_none=True)
                 continue
 
-            # Backward
+            # Backward pass with gradient clipping
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), self.grad_clip)
@@ -311,6 +421,7 @@ class TinyTrainer(BaseTrainer):
             total_loss += loss.item() * bsz
             count += bsz
 
+            # Progress reporting
             if use_tqdm:
                 it.set_postfix(loss=f"{loss.item():.4f}")
             elif self.logger and (step % self.log_every_steps == 0):
@@ -336,14 +447,25 @@ class TinyTrainer(BaseTrainer):
     # ------------------------------
     # Validation
     # ------------------------------
+
     @torch.no_grad()
     def _validate(self, model: TinyRecursionModel, dataloader: Optional[DataLoader]) -> Dict[str, float]:
+        """
+        Run validation and compute comprehensive metrics.
+        
+        Args:
+            model: Model to validate
+            dataloader: Validation data loader
+            
+        Returns:
+            Dictionary of validation metrics
+        """
         if not dataloader:
             return {}
 
         model.eval()
         scores, targets = [], []
-        # 10 metric lists
+        # 10 metric lists for comprehensive validation
         entropies, uncerts, disagree, recon_sim, cons_hat, temp01, jac, spars, ood, len_eff = (
             [] for _ in range(10)
         )
@@ -355,6 +477,7 @@ class TinyTrainer(BaseTrainer):
 
             scores.append(s)
             targets.append(t)
+            # Collect various auxiliary metrics for analysis
             entropies.append(aux["entropy_aux"].detach().cpu().view(-1))
             uncerts.append(aux["uncertainty"].detach().cpu().view(-1))
             disagree.append(aux["disagree_hat"].detach().cpu().view(-1))
@@ -371,6 +494,7 @@ class TinyTrainer(BaseTrainer):
         rmse = torch.sqrt(F.mse_loss(s, t)).item()
 
         def mean_cat(arrs):
+            """Helper to compute mean of concatenated tensor list."""
             return float(torch.cat(arrs).mean().item()) if arrs else 0.0
 
         return {
@@ -391,7 +515,17 @@ class TinyTrainer(BaseTrainer):
     # ------------------------------
     # Train/val split
     # ------------------------------
+
     def _create_train_val_split(self, samples: List[Dict[str, Any]]):
+        """
+        Split samples into training and validation sets.
+        
+        Args:
+            samples: List of sample dictionaries
+            
+        Returns:
+            Tuple of (train_samples, val_samples)
+        """
         if not samples:
             return [], []
         if self.validation_ratio <= 0 or len(samples) < 10:
@@ -404,11 +538,22 @@ class TinyTrainer(BaseTrainer):
     # ------------------------------
     # Main train loop (per dimension)
     # ------------------------------
+
     def train(self, samples, dimension):
-        # split
+        """
+        Main training loop for a specific quality dimension.
+        
+        Args:
+            samples: Training samples for the dimension
+            dimension: Quality dimension name
+            
+        Returns:
+            Training results dictionary
+        """
+        # Split data
         train_samples, val_samples = self._create_train_val_split(samples)
 
-        # loaders
+        # Create data loaders
         dataloader, kept, dropped = self._create_dataloader(train_samples)
         val_loader, val_kept, val_dropped = (None, 0, 0)
         if val_samples:
@@ -427,6 +572,7 @@ class TinyTrainer(BaseTrainer):
 
         locator = self.get_locator(dimension)  # create once; base_path will be ensured
 
+        # Training loop with early stopping
         for epoch in range(1, self.epochs + 1):
             avg_loss = self._train_epoch(self.model, dataloader, epoch_idx=epoch)
             avg_loss = float(avg_loss)
@@ -437,6 +583,7 @@ class TinyTrainer(BaseTrainer):
                     self.logger.log("TinyPlusNaNEpoch", {"epoch": epoch})
             train_losses.append(avg_loss)
 
+            # Validation
             val_metrics = self._validate(self.model, val_loader) if val_loader else {}
             if self.logger:
                 payload = {"epoch": epoch, "train_loss": float(avg_loss)}
@@ -491,7 +638,7 @@ class TinyTrainer(BaseTrainer):
                 if self.logger:
                     self.logger.log("TinyPlusBackfillBestError", {"path": best_path, "error": str(e)})
 
-        # --- meta -------------------------------------------------------------
+        # --- Save training metadata -------------------------------------------
         safe_config = {
             "lr": self.lr,
             "epochs": self.epochs,
@@ -569,12 +716,21 @@ class TinyTrainer(BaseTrainer):
         }
 
     # ------------------------------
-    # Helpers
+    # Helper Methods
     # ------------------------------
+
     def _bucketize_label(self, y: int) -> int:
         """
+        Bucketize label for histogram analysis.
+        
         If bucket_size > 0, map 0..100 → 0..num_bins-1 using fixed-width bins.
         Ensure vocab_size >= num_bins when you enable bucketing.
+        
+        Args:
+            y: Original label value
+            
+        Returns:
+            Bucket index
         """
         b = int(self.bucket_size)
         if b <= 0:
@@ -584,6 +740,16 @@ class TinyTrainer(BaseTrainer):
         return yb
 
     def _bucketize_counts(self, counts: Counter, bucket: int) -> dict:
+        """
+        Convert exact label counts to bucketized counts for visualization.
+        
+        Args:
+            counts: Counter of exact label values
+            bucket: Bucket size
+            
+        Returns:
+            Dictionary mapping bucket ranges to counts
+        """
         if bucket <= 1:
             return {str(k): int(v) for k, v in sorted(counts.items())}
 
@@ -598,6 +764,7 @@ class TinyTrainer(BaseTrainer):
             key = f"{start}-{end}"
             buckets[key] = buckets.get(key, 0) + int(c)
 
+        # Ensure all possible buckets are represented
         start = 0
         while start <= 100:
             end = min(100, start + bucket - 1)
