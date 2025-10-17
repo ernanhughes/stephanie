@@ -1,6 +1,7 @@
 # stephanie/components/gap/component.py
 from __future__ import annotations
 
+from dataclasses import asdict
 import logging
 from typing import Any, Dict
 from pathlib import Path
@@ -31,7 +32,7 @@ class GapAgent(BaseAgent):
             )),
             hrm_scorers=list(raw_config.get("hrm_scorers", ["hrm"])),
             tiny_scorers=list(raw_config.get("tiny_scorers", ["tiny"])),
-            out_dir=Path(raw_config.get("out_dir", "data/vpm")),
+            out_dir=Path(raw_config.get("out_dir", "data/gap_runs/vpm")),
             base_dir=Path(raw_config.get("gap_base_dir", "data/gap_runs")),
             interleave=bool(raw_config.get("interleave", False)),
             progress_log_every=int(raw_config.get("progress_log_every", 25)),

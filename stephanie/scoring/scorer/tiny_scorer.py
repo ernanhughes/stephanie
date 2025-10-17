@@ -22,6 +22,8 @@ class TinyScorer(BaseScorer):
     Scorer that uses a trained TinyRecursionModel (TRM) to evaluate goal/document pairs.
     Tiny runs a few recursive refinement steps in embedding space and predicts a quality score,
     plus rich auxiliary diagnostics (entropy, certainty/uncertainty, sensitivity, agreement, etc).
+
+    ### SCM: this scorer now also emits a fixed, aligned set of Shared Core Metrics under `scm.*`.
     """
 
     def __init__(self, cfg, memory, container, logger):
@@ -143,7 +145,7 @@ class TinyScorer(BaseScorer):
             model = self.models.get(dim)
             if model is None:
                 self.logger.log("TinyModelMissing", {"dimension": dim})
-                continue 
+                continue
 
             try:
                 with torch.no_grad():
@@ -177,7 +179,6 @@ class TinyScorer(BaseScorer):
                 # Standard / Full diagnostics
                 if self.attr_level in ("standard", "full"):
                     attrs.update(_extract_standard_aux(aux))
-
                     # Include bridge heads if present
                     if "agree01" in aux and isinstance(aux["agree01"], torch.Tensor):
                         attrs["agree01"] = float(_tf(aux["agree01"]))
@@ -192,6 +193,17 @@ class TinyScorer(BaseScorer):
                     if "aux3_logits" in aux and isinstance(aux["aux3_logits"], torch.Tensor):
                         al = aux["aux3_logits"]
                         attrs["aux3_logits_l1_mean"] = float(al.abs().mean().item())
+
+                # === SCM: build shared-core metrics (fixed, aligned columns) ===
+                scm = _build_scm_from_tiny_attrs(attrs)
+                attrs.update(scm)
+
+                # Optional: duplicate Tier-1 dimension scores under tiny.* for PHOS
+                # (This guarantees rows_for_df has hrm./tiny. columns even if native metrics differ.)
+                for dname in ("reasoning", "knowledge", "clarity", "faithfulness", "coverage"):
+                    key = f"scm.{dname}.score01"
+                    if key in scm:
+                        attrs[f"tiny.{dname}"] = float(scm[key])
 
                 rationale = (
                     f"tiny[{dim}] raw01={float(raw01):.4f}, "
@@ -315,5 +327,68 @@ def _extract_full_aux(aux: Dict[str, Any]) -> Dict[str, float]:
     if "concept_vec" in aux and isinstance(aux["concept_vec"], torch.Tensor):
         c = aux["concept_vec"].detach()
         out["concept_vec_l2_mean"] = float((c.pow(2).sum(-1).sqrt()).mean().item())
-
     return out
+
+
+# === SCM mapping from Tiny aux → aligned scm.* columns =======================
+
+_SCM_DIMS = ("reasoning", "knowledge", "clarity", "faithfulness", "coverage")
+_SCM_COLUMNS = [
+    "scm.reasoning.score01",
+    "scm.knowledge.score01",
+    "scm.clarity.score01",
+    "scm.faithfulness.score01",
+    "scm.coverage.score01",
+    "scm.aggregate01",
+    "scm.uncertainty01",
+    "scm.ood_hat01",
+    "scm.consistency01",
+    "scm.length_norm01",
+    "scm.temp01",
+    "scm.agree_hat01",
+]
+
+def _build_scm_from_tiny_attrs(attrs: Dict[str, Any]) -> Dict[str, float]:
+    """Dimension-specific SCM mapping for Tiny using model dynamics only."""
+    # Core signals (clamped)
+    certainty = float(attrs.get("certainty01", 0.5))
+    unc01     = 1.0 - max(0.0, min(1.0, certainty))
+    cons01    = max(0.0, min(1.0, float(attrs.get("consistency_hat", 0.5))))
+    ood01     = max(0.0, min(1.0, float(attrs.get("ood_hat", 0.0))))
+    len01     = max(0.0, min(1.0, float(attrs.get("len_effect", 0.0))))
+    temp01    = max(0.0, min(1.0, float(attrs.get("temp01", 0.0))))
+    agree01   = max(0.0, min(1.0, float(attrs.get("agree01", 0.5))))
+
+    # Extra signals
+    recon_sim      = max(0.0, min(1.0, float(attrs.get("recon_sim", 0.5))))
+    concept_sparse = max(0.0, min(1.0, float(attrs.get("concept_sparsity", 0.5))))
+    p_bad          = max(0.0, min(1.0, float(attrs.get("aux3_p_bad", 0.5))))
+    token_ok       = 1.0 - p_bad  # “clarity-ish” proxy: lower bad prob → clearer
+
+    dim_scores: Dict[str, float] = {}
+    # Reasoning: stability/consistency + low uncertainty + agreement
+    dim_scores["reasoning"] = 0.60*cons01 + 0.30*(1.0-unc01) + 0.10*agree01
+    # Knowledge: in-distribution + reconstruction + low uncertainty
+    dim_scores["knowledge"] = 0.50*(1.0-ood01) + 0.30*recon_sim + 0.20*(1.0-unc01)
+    # Clarity: token “goodness” + shorter/normalized length + consistency
+    dim_scores["clarity"] = 0.50*token_ok + 0.30*(1.0-len01) + 0.20*cons01
+    # Faithfulness: reconstruction + consistency + low uncertainty
+    dim_scores["faithfulness"] = 0.50*recon_sim + 0.30*cons01 + 0.20*(1.0-unc01)
+    # Coverage: concept activity + low uncertainty + in-distribution
+    dim_scores["coverage"] = 0.40*concept_sparse + 0.40*(1.0-unc01) + 0.20*(1.0-ood01)
+
+    # Clamp to [0,1]
+    for k in dim_scores:
+        v = dim_scores[k]
+        dim_scores[k] = float(min(1.0, max(0.0, v)))
+
+    scm: Dict[str, float] = {f"scm.{k}.score01": dim_scores[k]
+                             for k in ("reasoning","knowledge","clarity","faithfulness","coverage")}
+    scm["scm.aggregate01"]   = float(sum(dim_scores.values())/5.0)
+    scm["scm.uncertainty01"] = float(unc01)
+    scm["scm.ood_hat01"]     = float(ood01)
+    scm["scm.consistency01"] = float(cons01)
+    scm["scm.length_norm01"] = float(len01)
+    scm["scm.temp01"]        = float(temp01)
+    scm["scm.agree_hat01"]   = float(agree01)
+    return scm

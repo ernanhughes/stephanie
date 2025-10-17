@@ -655,7 +655,7 @@ class Supervisor:
                 self._trigger_ebt_retraining(r.dimension)
 
     def _print_pipeline_summary(self):
-        print("\n🖇️ Pipeline Execution Summary:\n")
+        print(f"\n🖇️ Pipeline {self.context().get('pipeline_run_id')} Execution Summary:\n")
         summary = self.context().get("STAGE_DETAILS", [])
         print(tabulate(summary, headers="keys", tablefmt="fancy_grid"))
         self.logger.log("PipelineSummaryPrinted", {"summary": summary})

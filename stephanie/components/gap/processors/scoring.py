@@ -13,6 +13,8 @@ from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.components.gap.models import GapConfig, TripleSample, GapRunManifest
+from stephanie.components.gap.shared_scm import scm_from_vector, scm_row, SCM_COLUMNS
+
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +198,9 @@ class ScoringProcessor:
         hrm_names: List[str] = []
         tiny_names: List[str] = []
         rows_for_df: List[Dict[str, Any]] = []
+        hrm_scm_rows: List[List[float]] = []
+        tiny_scm_rows: List[List[float]] = []
+
 
         log_every = max(1, self.config.progress_log_every)
 
@@ -207,6 +212,12 @@ class ScoringProcessor:
                 hrm_metrics = await hrm_worker.score(scorable, triple.goal_text, hrm_timeline_id)
                 tiny_metrics = await tiny_worker.score(scorable, triple.goal_text, tiny_timeline_id)
                 
+                # Ensure PHOS gets canonical per-dimension columns independent of shared names
+                row_for_df = {"node_id": triple.node_id}
+                self._harvest_model_dim_scores(row_for_df, hrm_metrics, model_name="hrm", dims=self.config.dimensions)
+                self._harvest_model_dim_scores(row_for_df, tiny_metrics, model_name="tiny", dims=self.config.dimensions)
+                rows_for_df.append(row_for_df)
+
                 # Append to timelines
                 await vpm_worker.append(hrm_timeline_id, triple.node_id, hrm_metrics)
                 await vpm_worker.append(tiny_timeline_id, triple.node_id, tiny_metrics)
@@ -215,6 +226,28 @@ class ScoringProcessor:
                 h_vec = self._extract_metrics_vector(hrm_metrics)
                 t_vec = self._extract_metrics_vector(tiny_metrics)
                 
+                # Build SCM rows (guaranteed aligned)
+                hrm_scm = scm_from_vector(h_vec, model_prefix="hrm")
+                tiny_scm = scm_from_vector(t_vec, model_prefix="tiny")
+                hrm_scm_rows.append(scm_row(hrm_scm))
+                tiny_scm_rows.append(scm_row(tiny_scm))
+                if self.container and self.container._factories.get("scm_term_head"):
+                    scm_service = self.container.get("scm_term_head")
+                    scm_hrm  = scm_service.infer("hrm",  hrm_metrics)   # -> dict of SCM keys
+                    scm_tiny = scm_service.infer("tiny", tiny_metrics)
+
+                    # persist SCM alongside native vectors for alignment:
+                    # 1) ensure SCM names are identical across models
+                    scm_names = sorted(scm_hrm.keys())                 # same for tiny
+                    if i == 0:
+                        shared_scm_names = scm_names                   # lock order
+                    hrm_scm_row  = [scm_hrm[k]  for k in shared_scm_names]
+                    tiny_scm_row = [scm_tiny[k] for k in shared_scm_names]
+                    hrm_scm_rows.append(hrm_scm_row)
+                    tiny_scm_rows.append(tiny_scm_row)
+
+
+
                 # Lock names on first example; align subsequent rows
                 if i == 0:
                     hrm_names = list(h_vec.keys())
@@ -343,6 +376,25 @@ class ScoringProcessor:
         storage.save_matrix(hrm_matrix, shared_names, run_id, tag="hrm")
         storage.save_matrix(tiny_matrix, shared_names, run_id, tag="tiny")
 
+        # Persist SCM aligned matrices (always same names/order)
+        hrm_scm_matrix = np.array(hrm_scm_rows, dtype=np.float32)
+        tiny_scm_matrix = np.array(tiny_scm_rows, dtype=np.float32)
+        storage.save_matrix(hrm_scm_matrix, SCM_COLUMNS, run_id, tag="hrm_scm")
+        storage.save_matrix(tiny_scm_matrix, SCM_COLUMNS, run_id, tag="tiny_scm")
+
+        storage.save_matrix(np.array(hrm_scm_rows, dtype=np.float32), shared_scm_names, run_id, tag="hrm_scm")
+        storage.save_matrix(np.array(tiny_scm_rows, dtype=np.float32), shared_scm_names, run_id, tag="tiny_scm")
+
+        diag = {
+            "shared_count": len(shared_names),
+            "hrm_total": len(hrm_names),
+            "tiny_total": len(tiny_names),
+            "shared_names_sample": shared_names[:25],
+            "hrm_only": [n for n in hrm_names if n not in shared_names][:25],
+            "tiny_only": [n for n in tiny_names if n not in shared_names][:25],
+        }
+        storage.save_json(run_id, "metrics", "name_alignment_debug.json", diag)
+
         # Build rows_for_df as a DataFrame with canonical columns
         # Normalize: create hrm.<suffix> / tiny.<suffix> pairs from shared_names
         rows_for_df = []
@@ -356,6 +408,13 @@ class ScoringProcessor:
                 else:
                     row[f"hrm.{suffix}.score"]  = float(hrm_matrix[row_i, j])
                     row[f"tiny.{suffix}.score"] = float(tiny_matrix[row_i, j])
+                    # Also add SCM 5 dims for PHOS (stable)
+            row_scm = {"node_id": triple.node_id}
+            for j, d in enumerate(["reasoning","knowledge","clarity","faithfulness","coverage"]):
+                row_scm[f"hrm.{d}"]  = float(hrm_scm_rows[row_i][j])
+                row_scm[f"tiny.{d}"] = float(tiny_scm_rows[row_i][j])
+            # You can append these to rows_for_df OR write a separate file if you prefer
+
             rows_for_df.append(row)
 
         df_rows = pd.DataFrame(rows_for_df)
@@ -374,6 +433,9 @@ class ScoringProcessor:
             "tiny_vectors": tiny_matrix,
             "hrm_names": shared_names,
             "tiny_names": shared_names,
+            "hrm_scm_matrix": hrm_scm_matrix,
+            "tiny_scm_matrix": tiny_scm_matrix,
+            "scm_names": SCM_COLUMNS,
             "hrm_gif": hrm_gif,
             "tiny_gif": tiny_gif,
             "triples_count": total,
@@ -397,3 +459,47 @@ class ScoringProcessor:
     def _align_vector(self, vector: Dict[str, float], target_names: List[str]) -> List[float]:
         """Align vector to target names, filling missing values with 0.0."""
         return [float(vector.get(name, 0.0)) for name in target_names]
+
+    def _harvest_model_dim_scores(self, row: Dict[str, float], metrics: Dict[str, Any], *, model_name: str, dims: List[str]) -> None:
+        vec = metrics.get("vector")
+        if isinstance(vec, dict) and vec:
+            name2val = {str(k): float(v) for k, v in vec.items()}
+            # Prefer exact names; fallback to suffix matches
+            for dim in dims:
+                preferred = [
+                    f"{model_name}.{dim}",
+                    f"{model_name}.{dim}.score",
+                    f"{model_name}.{dim}.aggregate",
+                ]
+                val = None
+                for key in preferred:
+                    if key in name2val:
+                        val = name2val[key]; break
+                if val is None:
+                    for k in name2val.keys():
+                        if k.endswith(f".{dim}") or f".{dim}." in k:
+                            val = name2val[k]; break
+                if val is not None:
+                    row[f"{model_name}.{dim}"] = float(val)
+            return
+
+        cols = metrics.get("columns")
+        vals = metrics.get("values")
+        if isinstance(cols, list) and isinstance(vals, list) and len(cols) == len(vals):
+            name2val = {str(c): float(v) for c, v in zip(cols, vals)}
+            for dim in dims:
+                preferred = [
+                    f"{model_name}.{dim}",
+                    f"{model_name}.{dim}.score",
+                    f"{model_name}.{dim}.aggregate",
+                ]
+                val = None
+                for key in preferred:
+                    if key in name2val:
+                        val = name2val[key]; break
+                if val is None:
+                    for k in name2val.keys():
+                        if k.endswith(f".{dim}") or f".{dim}." in k:
+                            val = name2val[k]; break
+                if val is not None:
+                    row[f"{model_name}.{dim}"] = float(val)

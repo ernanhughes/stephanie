@@ -4,6 +4,17 @@ gap:
   save_prompt: true
   save_context: false
   skip_if_completed: false
+
+
+
+  enable_scm_head: true
+  scm:
+    version: v1
+    dims: [reasoning, knowledge, clarity, faithfulness, coverage]
+    latent_dim: 128
+    use_native_scores_as_inputs: false   # << default OFF
+
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434

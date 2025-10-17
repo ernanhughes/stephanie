@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 import time
 
@@ -29,7 +29,7 @@ class GapConfig:
     ])
     hrm_scorers: List[str] = field(default_factory=lambda: ["hrm"])
     tiny_scorers: List[str] = field(default_factory=lambda: ["tiny"])
-    out_dir: Path = field(default_factory=lambda: Path("data/vpm"))
+    out_dir: Path = field(default_factory=lambda: Path("data/gap_runs/vpm"))
     base_dir: Path = field(default_factory=lambda: Path("data/gap_runs"))
     interleave: bool = False
     progress_log_every: int = 25
@@ -37,6 +37,11 @@ class GapConfig:
     per_dim_cap: int = 100
     route_threshold_uncertainty: float = 0.6
     route_threshold_ood: float = 0.7
+    enable_scm_head: bool = True
+    scm: Dict[str, Any] = field(default_factory=lambda: {
+        "reasoning_dimensions": ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"],
+        "latent_dim": 128,
+    })
 
 @dataclass
 class TripleSample:

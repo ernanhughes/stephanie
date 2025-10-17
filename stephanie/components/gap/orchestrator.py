@@ -11,6 +11,10 @@ from stephanie.components.gap.io.data_retriever import DataRetriever, RetrieverC
 from stephanie.components.gap.processors.scoring import ScoringProcessor
 from stephanie.components.gap.processors.analysis import AnalysisProcessor
 from stephanie.components.gap.processors.calibration import CalibrationProcessor
+from stephanie.components.gap.services.scm_term_head import SCMTermHeadService
+from stephanie.components.gap.processors.report import ReportBuilder
+
+_logger = logging.getLogger(__name__)
 
 
 class GapAnalysisOrchestrator:
@@ -31,6 +35,18 @@ class GapAnalysisOrchestrator:
         except ValueError:
             # already registered
             pass
+
+        if config.enable_scm_head:
+            try:
+                container.register(
+                    name="scm_term_head",
+                    factory=lambda: SCMTermHeadService(),
+                    dependencies=[],
+                    init_args={"config": config.scm, "logger": logger},
+                )
+            except ValueError:
+                pass
+
 
         # Ensure it's initialized and available
         self.storage = self.container.get("gap_storage")
@@ -106,11 +122,16 @@ class GapAnalysisOrchestrator:
         # 4) Calibration (uses analysis outputs)
         calib_out = await self.calibration_processor.execute_calibration(analysis_out, run_id)
 
+        # 5) Report (Markdown quicklook)
+        reporter = ReportBuilder(self.config, self.container, self.logger)
+        report_out = await reporter.build(run_id, analysis_out, score_out)
+
         result = {
             "run_id": run_id,
             "score": score_out,
             "analysis": analysis_out,
             "calibration": calib_out,
+            "report": report_out,
         }
         self.manifest_manager.finish_run(run_id, result)
         return result
