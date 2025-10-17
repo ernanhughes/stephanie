@@ -1,3 +1,5 @@
+# stephanie/config/agents/text_improver.yaml
+# Configuration for the text improver agent
 text_improver:
   name: text_improver
   enabled: true

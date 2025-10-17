@@ -41,7 +41,7 @@ def export_goal_relevance_dataset(
     format: str = "csv"  # "csv" or "jsonl"
 ) -> Dict[str, Any]:
     """
-    Export goal-relevance dataset from evaluation_export_view.
+    Export goal-relevance dataset from document_evaluation_export_view.
     
     Args:
         output_path: Path to save exported dataset
@@ -69,7 +69,7 @@ def export_goal_relevance_dataset(
             e.scores,
             e.attributes,
             e.created_at
-        FROM evaluation_export_view e
+        FROM document_evaluation_export_view e
         WHERE e.goal_text IS NOT NULL 
           AND (e.document_text IS NOT NULL OR e.section_text IS NOT NULL)
           AND LENGTH(COALESCE(e.document_text, e.section_text)) > 50

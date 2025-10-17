@@ -46,7 +46,7 @@ class GILDTrainerAgent(BaseAgent):
         self.optimizer = None  # Will be initialized when model is loaded
 
         self.dimensions = cfg.get("dimensions", [])
-        self.pair_builder = PreferencePairBuilder(memory.session, logger)
+        self.pair_builder = PreferencePairBuilder(memory, logger)
 
         self.hrm_scorer = HRMScorer(cfg.get("hrm", {}), memory, logger)
         self.sicql_scorer = SICQLScorer(cfg.get("sicql", {}), memory, logger)

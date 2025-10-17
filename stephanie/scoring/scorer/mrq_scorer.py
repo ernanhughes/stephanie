@@ -1,16 +1,18 @@
 # stephanie/scoring/mrq/mrq_scorer.py
+from __future__ import annotations
 
 import os
+from typing import Dict, List, Union
 
 import torch
 
-from stephanie.constants import GOAL
+from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.evaluator.hypothesis_value_predictor import \
-    HypothesisValuePredictor
 from stephanie.scoring.model.mrq_model import MRQModel
 from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.scoring.model.value_predictor import \
+    ValuePredictor  # <-- matches trainer
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
@@ -18,90 +20,134 @@ from stephanie.utils.model_locator import ModelLocator
 
 
 class MRQScorer(BaseScorer):
+    """
+    MRQ scorer: computes a pairwise logit for (goal, output) via encoder→predictor,
+    then scales to the dimension's range using either a RegressionTuner (on prob) or sigmoid.
+    """
+
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.model_type = "mrq"
         self.embedding_type = self.memory.embedding.name
         self.dim = memory.embedding.dim
         self.hdim = memory.embedding.hdim
+
         self.target_type = cfg.get("target_type", "document")
         self.model_path = cfg.get("model_path", "models")
         self.version = cfg.get("model_version", "v1")
 
-        self.models = {}
-        self.model_meta = {}
-        self.tuners = {}
+        self.models: Dict[str, MRQModel] = {}
+        self.model_meta: Dict[str, dict] = {}
+        self.tuners: Dict[str, RegressionTuner] = {}
 
-        self.dimensions = cfg.get("dimensions", [])
+        self.dimensions: List[str] = cfg.get("dimensions", [])
         self._load_models(self.dimensions)
 
-    def _load_models(self, dimensions):
-        for dim in dimensions:
-            locator = ModelLocator(
-                root_dir=self.model_path,
-                embedding_type=self.embedding_type,
-                model_type=self.model_type,
-                target_type=self.target_type,
-                dimension=dim,
-                version=self.version,
-            )
+    # ---------- loading ----------
 
-            encoder = TextEncoder(self.dim, self.hdim)
-            predictor = HypothesisValuePredictor(self.dim, self.hdim)
-            model = MRQModel(encoder, predictor, self.memory.embedding, device=self.device)
-            model.load_weights(locator.encoder_file(), locator.model_file())
+    def _locator(self, dim: str) -> ModelLocator:
+        return ModelLocator(
+            root_dir=self.model_path,
+            embedding_type=self.embedding_type,
+            model_type=self.model_type,
+            target_type=self.target_type,
+            dimension=dim,
+            version=self.version,
+        )
+
+    def _load_models(self, dimensions: List[str]) -> None:
+        for dim in dimensions:
+            loc = self._locator(dim)
+
+            # build modules consistent with trainer
+            encoder = TextEncoder(dim=self.dim, hdim=self.hdim).to(self.device)
+            predictor = ValuePredictor(zsa_dim=self.dim, hdim=self.hdim).to(self.device)
+
+            # load weights saved by trainer
+            encoder.load_state_dict(torch.load(loc.encoder_file(), map_location=self.device))
+            predictor.load_state_dict(torch.load(loc.model_file(), map_location=self.device))
+
+            model = MRQModel(
+                encoder=encoder,
+                predictor=predictor,
+                embedding_store=self.memory.embedding,
+                device=self.device,
+            )
             self.models[dim] = model
 
-            meta = load_json(locator.meta_file()) if os.path.exists(locator.meta_file()) else {"min_value": 0, "max_value": 100}
+            # meta + tuner
+            meta = load_json(loc.meta_file()) if os.path.exists(loc.meta_file()) else {"min_value": 0.0, "max_value": 100.0}
             self.model_meta[dim] = meta
 
-            tuner_path = locator.tuner_file()
+            tuner_path = loc.tuner_file()
             if os.path.exists(tuner_path):
-                tuner = RegressionTuner(dimension=dim)
-                tuner.load(tuner_path)
-                self.tuners[dim] = tuner
+                t = RegressionTuner(dimension=dim)
+                t.load(tuner_path)
+                self.tuners[dim] = t
 
-    def score(self, context: dict, scorable, dimensions: list[str]) -> ScoreBundle:
+    # ---------- scoring ----------
+
+    def _scale(self, dim: str, logit: float, meta: dict) -> float:
+        """
+        Trainer fed the tuner with probabilities (sigmoid), not logits.
+        Respect that here: tuner.transform(prob) if present, else sigmoid→[min,max].
+        """
+        min_v = float(meta.get("min_value", 0.0))
+        max_v = float(meta.get("max_value", 100.0))
+        prob = torch.sigmoid(torch.tensor(logit, dtype=torch.float32)).item()
+
+        if dim in self.tuners:
+            val = float(self.tuners[dim].transform(prob))
+        else:
+            val = prob * (max_v - min_v) + min_v
+
+        # clamp into the declared domain
+        return max(min(val, max_v), min_v)
+
+    def score(self, context: dict, scorable, dimensions: List[Union[str, dict]]) -> ScoreBundle:
         goal = context.get(GOAL, {})
-        goal_text = goal.get("goal_text")
-        results = {}
+        goal_text = goal.get(GOAL_TEXT, "") or ""
+
+        # precompute embeddings once per call
+        g_np = self.memory.embedding.get_or_create(goal_text)
+        o_np = self.memory.embedding.get_or_create(scorable.text)
+        g = torch.tensor(g_np, dtype=torch.float32, device=self.device).unsqueeze(0)
+        o = torch.tensor(o_np, dtype=torch.float32, device=self.device).unsqueeze(0)
+
+        results: Dict[str, ScoreResult] = {}
 
         for dim in dimensions:
-            if isinstance(dim, dict):
-                dimension_name = dim.get("name")
-            else:
-                dimension_name = dim
-            model = self.models.get(dimension_name)
-            if not model:
+            dim_name = dim.get("name") if isinstance(dim, dict) else dim
+            model = self.models.get(dim_name)
+            if model is None:
                 continue
 
-            q_value = model.predict(goal_text, scorable.text)
+            with torch.no_grad():
+                # encoder(project goal, output) → z; predictor(z) → logit (scalar)
+                z = model.encoder(g, o)                # [1, D]
+                logit = float(model.predictor(z).view(-1)[0].item())
+                prob = float(torch.sigmoid(torch.tensor(logit)).item())
 
-            meta = self.model_meta.get(dimension_name, {"min_value": 0, "max_value": 100})
-            tuner = self.tuners.get(dimension_name)
+            meta = self.model_meta.get(dim_name, {"min_value": 0.0, "max_value": 100.0})
+            scaled = self._scale(dim_name, logit, meta)
+            final_score = round(scaled, 4)
 
-            if tuner:
-                scaled = tuner.transform(q_value)
-            else:
-                norm = torch.sigmoid(torch.tensor(q_value)).item()
-                if norm < 0.01 or norm > 0.99:
-                    self.logger.log("QValueOutlier", {"dimension": dim, "q_value": q_value})
-                scaled = norm * (meta["max_value"] - meta["min_value"]) + meta["min_value"]
-
-            final_score = round(max(min(scaled, meta["max_value"]), meta["min_value"]), 4)
-
+            # attributes for diagnostics
             attributes = {
-                "q_value": round(q_value, 4),
-                "normalized_score": round(scaled, 4),
-                "energy": q_value,
+                "q_value": round(logit, 6),        # raw logit
+                "prob": round(prob, 6),             # sigmoid(logit)
+                "energy": logit,                    # alias kept for continuity
+                "min_value": meta.get("min_value", 0.0),
+                "max_value": meta.get("max_value", 100.0),
             }
 
-            results[dimension_name] = ScoreResult(
-                dimension=dimension_name,
+            results[dim_name] = ScoreResult(
+                dimension=dim_name,
                 score=final_score,
                 source=self.model_type,
-                rationale=f"Q={round(q_value, 4)}",
+                rationale=f"logit={logit:.4f}, prob={prob:.4f}",
                 weight=1.0,
-                attributes=attributes,)
+                attributes=attributes,
+            )
 
         return ScoreBundle(results=results)

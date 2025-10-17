@@ -48,6 +48,7 @@ from stephanie.memory.pipeline_stage_store import PipelineStageStore
 from stephanie.memory.plan_trace_store import PlanTraceStore
 from stephanie.memory.prompt_program_store import PromptProgramStore
 from stephanie.memory.prompt_store import PromptStore
+from stephanie.memory.reasoning_sample_store import ReasoningSampleStore
 from stephanie.memory.reflection_delta_store import ReflectionDeltaStore
 from stephanie.memory.report_store import ReportStore
 from stephanie.memory.rule_application_store import RuleApplicationStore
@@ -195,6 +196,7 @@ class MemoryTool:
         self.register_store(ExperimentStore(self.session_maker, logger))
         self.register_store(SisCardStore(self.session_maker, logger))
         self.register_store(AgentTrajectoryStore(self.session_maker, logger))
+        self.register_store(ReasoningSampleStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

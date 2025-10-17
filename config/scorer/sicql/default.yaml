@@ -3,10 +3,10 @@ name: sicql
 model_type: sicql
 model_version: v1
 evaluator: sicql
-target_type: document
+target_type: conversation_turn
 dimensions: 
-  - alignment
+  - reasoning
+  - knowledge
   - clarity
-  - implementability
-  - novelty
-  - relevance
+  - faithfulness
+  - coverage

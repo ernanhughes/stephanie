@@ -1,3 +1,5 @@
+# config/demo.yaml
+# Configuration for the demo pipeline in Stephanie
 defaults:
   - _self_
   - db: postgres

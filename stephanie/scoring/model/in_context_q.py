@@ -1,5 +1,6 @@
-# stephanie/scoring/mrq/model.py
-import torch
+# stephanie/scoring/model/in_context_q.py
+from __future__ import annotations
+
 from torch import nn
 
 from stephanie.scoring.model.policy_head import PolicyHead

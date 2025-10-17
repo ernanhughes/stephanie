@@ -1,4 +1,6 @@
 # stephanie/scoring/proximity_scorer.py
+from __future__ import annotations
+
 import numpy as np
 from scipy.spatial.distance import cityblock, cosine, euclidean
 from sklearn.feature_extraction.text import TfidfVectorizer

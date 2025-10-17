@@ -6,20 +6,27 @@ import json
 import logging
 import os
 import time
-from stephanie.utils.json_sanitize import dumps_safe
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime
-from stephanie.services.event_service import EventService
-from stephanie.services.service_protocol import Service
-from zeromodel.tools.spatial_optimizer import SpatialOptimizer
-from zeromodel.tools.gif_logger import GifLogger
-from zeromodel.pipeline.executor import PipelineExecutor
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+from zeromodel.pipeline.executor import PipelineExecutor
+from zeromodel.tools.gif_logger import GifLogger
+from zeromodel.tools.spatial_optimizer import SpatialOptimizer
+from stephanie.utils.json_sanitize import dumps_safe
+
+from stephanie.services.event_service import EventService
+from stephanie.services.service_protocol import Service
+from stephanie.utils.json_sanitize import dumps_safe
+import scipy.stats as spstats  # optional, but nice if available
+
+from collections import defaultdict
+from datetime import datetime
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 
@@ -58,6 +65,94 @@ class _TimelineSession:
             clean_rows.append(row)
         return np.asarray(clean_rows, dtype=np.float32)
 
+def _rank_intensity(vec: np.ndarray, names: list[str] | None = None):
+    """Return sorted indices by mean |intensity| (desc) plus a labeled list."""
+    idx = np.argsort(-vec)  # desc
+    if names:
+        labeled = [{"metric": names[i], "mean_abs": float(vec[i]), "rank": r+1}
+                   for r, i in enumerate(idx)]
+    else:
+        labeled = [{"metric": f"metric_{i}", "mean_abs": float(vec[i]), "rank": r+1}
+                   for r, i in enumerate(idx)]
+    return idx.tolist(), labeled
+
+def _column_intensity(M: np.ndarray) -> np.ndarray:
+    M = np.asarray(M, dtype=np.float64)
+    if M.ndim < 2: M = M.reshape(1, -1)
+    return np.mean(np.abs(M), axis=0)
+
+def _row_intensity(M: np.ndarray) -> np.ndarray:
+    M = np.asarray(M, dtype=np.float64)
+    if M.ndim < 2: M = M.reshape(1, -1)
+    return np.mean(np.abs(M), axis=1)
+
+def _canonical_key(colname: str) -> str:
+    """
+    Map 'hrm.reasoning.score' -> 'reasoning', 'tiny.clarity' -> 'clarity'.
+    Keeps only the segment after the first '.' and before the next '.' if present.
+    """
+    if not isinstance(colname, str): return ""
+    parts = colname.split(".", 2)
+    return parts[1] if len(parts) >= 2 else colname
+
+def _center_and_whiten(X, eps=1e-6):
+    X = np.asarray(X, dtype=np.float32)
+    X = X - X.mean(axis=0, keepdims=True)
+    U, S, Vt = np.linalg.svd(X, full_matrices=False)
+    Xw = U @ np.diag(1.0 / (S + eps))  # whitened rows
+    return Xw, Vt, S
+
+def _cca_shared_projections(A, B, k=20):
+    # Whiten both views over the same rows
+    A0, Va, Sa = _center_and_whiten(A)
+    B0, Vb, Sb = _center_and_whiten(B)
+    # Cross-covariance in whitened space
+    C = A0.T @ B0
+    U, S, Vt = np.linalg.svd(C, full_matrices=False)  # canonical directions
+    k = int(min(k, U.shape[1], Vt.shape[0]))
+    Wa = Va.T @ U[:, :k]         # map A->shared latent
+    Wb = Vb.T @ Vt[:k, :].T      # map B->shared latent
+    return Wa, Wb, S[:k]
+
+def _normalize01(X):
+    X = np.nan_to_num(np.asarray(X, dtype=np.float32))
+    if X.size == 0:
+        return X
+    mx = np.max(np.abs(X)) + 1e-8
+    return X / mx
+
+def _phos_pack_row(row):
+    # sort-desc + square-pack (simple version)
+    v = np.asarray(row, dtype=np.float32).ravel()
+    v = v - np.percentile(v, 10)
+    v = np.clip(v / (np.percentile(v, 90) - np.percentile(v, 10) + 1e-6), 0, 1)
+    order = np.argsort(v)[::-1]
+    v = v[order]
+    s = int(np.ceil(np.sqrt(v.size)))
+    pad = s*s - v.size
+    if pad > 0: v = np.pad(v, (0, pad))
+    return v.reshape(s, s)
+
+def _phos_mean_image(M):
+    # Average PHOS of rows to show model “energy” distribution
+    imgs = [_phos_pack_row(r) for r in M]
+    s = imgs[0].shape[0]
+    imgs = [im if im.shape==(s,s) else np.zeros((s,s), dtype=np.float32) for im in imgs]
+    return np.mean(np.stack(imgs, axis=0), axis=0)
+
+
+# --- helper (put near other helpers in ZeroModelService) ---
+def _pad_square_top_left(img: np.ndarray, side: int) -> np.ndarray:
+    h, w = img.shape
+    out = np.zeros((side, side), dtype=img.dtype)
+    out[:h, :w] = img  # keep TL structure; pad BR
+    return out
+
+def _align_square_phos(A: np.ndarray, B: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    s = max(A.shape[0], B.shape[0])
+    if A.shape != (s, s): A = _pad_square_top_left(A, s)
+    if B.shape != (s, s): B = _pad_square_top_left(B, s)
+    return A, B
 
 # --------------------------------------------------------------------------- #
 # MAIN SERVICE
@@ -287,17 +382,15 @@ class ZeroModelService(Service):
         # Write meta JSON
         meta_path = os.path.join(run_dir, base_name + ".json")
         with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(
+            f.write(dumps_safe(
                 {
                     "run_id": run_id,
                     "timestamp": timestamp,
                     "metrics": sess.metrics_order,
                     "shape": res["shape"],
                 },
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
+                indent=2
+            ))
 
         # Render static summary PNG
         summary_path = self.render_static_summary(
@@ -364,6 +457,108 @@ class ZeroModelService(Service):
             "meta_path": meta_path,
             "summary_path": summary_path,
         }
+
+
+    def build_intensity_report(
+        self,
+        *,
+        hrm_matrix: np.ndarray,
+        tiny_matrix: np.ndarray,
+        hrm_metric_names: list[str],
+        tiny_metric_names: list[str],
+        out_dir: str,
+        top_k: int = 20,
+    ) -> dict:
+        """
+        Create JSON summaries for HRM, Tiny, and Diff (HRM−Tiny):
+        - top columns (by mean |intensity|)
+        - top rows (by mean |intensity|)
+        - cross-model comparison on common canonical dims
+        """
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+        # 1) Per-model intensity
+        col_h = _column_intensity(hrm_matrix)
+        col_t = _column_intensity(tiny_matrix)
+        row_h = _row_intensity(hrm_matrix)
+        row_t = _row_intensity(tiny_matrix)
+
+        h_idx, h_ranked = _rank_intensity(col_h, hrm_metric_names)
+        t_idx, t_ranked = _rank_intensity(col_t, tiny_metric_names)
+
+        top_cols_hrm = h_ranked[:top_k]
+        top_cols_tiny = t_ranked[:top_k]
+
+        top_rows_hrm = np.argsort(-row_h)[:top_k].tolist()
+        top_rows_tiny = np.argsort(-row_t)[:top_k].tolist()
+
+        # 2) Diff field aligned on shared shape (rows already aligned by build)
+        r = min(hrm_matrix.shape[0], tiny_matrix.shape[0])
+        c = min(hrm_matrix.shape[1], tiny_matrix.shape[1])
+        D = np.asarray(hrm_matrix[:r, :c] - tiny_matrix[:r, :c], dtype=np.float64)
+        col_d = _column_intensity(D)
+        d_idx, d_ranked = _rank_intensity(col_d, hrm_metric_names[:c])  # use HRM names slice
+        top_cols_diff = d_ranked[:top_k]
+        top_rows_diff = np.argsort(-_row_intensity(D))[:top_k].tolist()
+
+        # 3) Cross-model comparison on canonical dimension keys
+        canon_h = [_canonical_key(n) for n in hrm_metric_names]
+        canon_t = [_canonical_key(n) for n in tiny_metric_names]
+        common = sorted(set(canon_h) & set(canon_t))
+        # Build per-dimension aggregates (mean intensity for all columns mapping to that dim)
+        def _agg_by_dim(names, intensities):
+            grp = defaultdict(list)
+            for n, v in zip(names, intensities):
+                grp[_canonical_key(n)].append(float(v))
+            return {k: float(np.mean(vs)) for k, vs in grp.items()}
+        agg_h = _agg_by_dim(hrm_metric_names, col_h)
+        agg_t = _agg_by_dim(tiny_metric_names, col_t)
+
+        comp = []
+        for d in common:
+            comp.append({
+                "dimension": d,
+                "hrm_mean_abs": agg_h.get(d, 0.0),
+                "tiny_mean_abs": agg_t.get(d, 0.0),
+                "delta": float(agg_h.get(d, 0.0) - agg_t.get(d, 0.0)),
+                "ratio": float((agg_h.get(d, 1e-12)) / (agg_t.get(d, 1e-12))),
+            })
+        # rank-based similarity (optional)
+        try:
+            # ranks over common dims
+            rh = np.array([agg_h[d] for d in common])
+            rt = np.array([agg_t[d] for d in common])
+            kendall = float(spstats.kendalltau(rh, rt).correlation) if len(common) >= 2 else None
+            spearman = float(spstats.spearmanr(rh, rt).correlation) if len(common) >= 2 else None
+        except Exception:
+            kendall = spearman = None
+
+        report = {
+            "summary": {
+                "rows": r, "hrm_cols": len(hrm_metric_names), "tiny_cols": len(tiny_metric_names),
+                "top_k": top_k,
+                "rank_corr": {"kendall_tau": kendall, "spearman_rho": spearman},
+            },
+            "hrm": {
+                "top_columns": top_cols_hrm,
+                "top_rows": top_rows_hrm,
+            },
+            "tiny": {
+                "top_columns": top_cols_tiny,
+                "top_rows": top_rows_tiny,
+            },
+            "diff": {
+                "top_columns": top_cols_diff,
+                "top_rows": top_rows_diff,
+            },
+            "by_dimension_common": sorted(comp, key=lambda x: -abs(x["delta"])),
+        }
+
+        out_path = Path(out_dir) / "intensity_report.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(dumps_safe(report, indent=2))
+
+        return {"path": str(out_path), **report}
 
     # ------------------------------------------------------------------ #
     # RENDER HELPERS
@@ -495,12 +690,15 @@ class ZeroModelService(Service):
         neg_matrices: list[np.ndarray],
         output_dir: str = "data/epistemic_field",
         alpha: float = 0.97,
+        pos_label: str = "HRM",
+        neg_label: str = "Tiny",
         Kc: int = 40,
         Kr: int = 100,
         fps: int = 8,
         cmap: str = "seismic",
         aggregate: bool = False,
         metric_names: Optional[List[str]] = None,
+        save_individual: bool = True, 
     ) -> dict:
         """
         Generate the ZeroModel Epistemic Field — a contrastive visual intelligence map.
@@ -650,6 +848,18 @@ class ZeroModelService(Service):
             gif_logger.save_gif(gif_path, fps=1)
             _logger.debug(f"Transformation GIF saved → {gif_path}")
 
+        def _save_single(img: np.ndarray, title: str, base_path: str) -> str:
+            fig, ax = plt.subplots(figsize=(6, 5))
+            im = ax.imshow(img, cmap=cmap, aspect="auto")
+            ax.set_title(title, fontsize=11)
+            fig.colorbar(im, ax=ax, fraction=0.035, pad=0.04)
+            ax.axis("off")
+            plt.tight_layout()
+            out_path = f"{base_path}.png"
+            plt.savefig(out_path, dpi=150)
+            plt.close(fig)
+            return out_path
+
         reordered_metric_names = []
         if metric_names:
             for old_idx in range(len(metric_names)):
@@ -734,11 +944,11 @@ class ZeroModelService(Service):
         combined = diff
 
         titles = [
-            "Raw Good (Before Optimization)",
-            "Optimized Good (Spatial Calculus)",
-            "Raw Bad (Before Optimization)",
-            "Optimized Bad (Spatial Calculus)",
-            "Differential Field (Good − Bad)",
+            f"Raw {pos_label} (Before Optimization)",
+            f"Optimized {pos_label} (Spatial Calculus)",
+            f"Raw {neg_label} (Before Optimization)",
+            f"Optimized {neg_label} (Spatial Calculus)",
+            f"Differential Field ({pos_label} − {neg_label})",
         ]
         images = [raw_good, opt_good, raw_bad, opt_bad, combined]
 
@@ -747,6 +957,15 @@ class ZeroModelService(Service):
         transition_gif_path = base + "_transform.gif"
         _make_transition_gif(images, titles, transition_gif_path)
         _logger.debug(f"Epistemic field visual comparison saved → {comparison_path}")
+
+
+        single_paths = {}
+        if save_individual:
+            single_paths["raw_pos_png"] = _save_single(raw_good,  f"Raw {pos_label}",              base + "_raw_pos")
+            single_paths["opt_pos_png"] = _save_single(opt_good,  f"Optimized {pos_label}",         base + "_opt_pos")
+            single_paths["raw_neg_png"] = _save_single(raw_bad,   f"Raw {neg_label}",               base + "_raw_neg")
+            single_paths["opt_neg_png"] = _save_single(opt_bad,   f"Optimized {neg_label}",         base + "_opt_neg")
+            single_paths["diff_png"]    = _save_single(combined,  f"Differential ({pos_label}−{neg_label})", base + "_diff")
 
 
         # -------------------------------
@@ -798,6 +1017,7 @@ class ZeroModelService(Service):
             "gif": gif_path,
             "diff_matrix": diff.tolist(),
             "metric_names": reordered_metric_names,
+            **single_paths,  
         }
 
         meta_path = base + ".json"
@@ -807,6 +1027,280 @@ class ZeroModelService(Service):
 
         _logger.debug(f"Epistemic field saved → {meta_path}")
         return meta
+
+
+    def generate_epistemic_field_phos_ordered(
+        self,
+        pos_matrices: list[np.ndarray],
+        neg_matrices: list[np.ndarray],
+        output_dir: str = "data/epistemic_field",
+        *,
+        alpha: float = 0.97,
+        pos_label: str = "HRM",
+        neg_label: str = "Tiny",
+        iters: int = 4,                 # number of row/col reorder passes
+        cmap: str = "seismic",
+        aggregate: bool = False,
+        metric_names: Optional[List[str]] = None,
+    ) -> dict:
+        """
+        PHOS-style 2D ordering: reorder columns and rows to concentrate intensity
+        in the top-left, then compare pos vs neg using the *same* order.
+
+        This removes the vertical striping look by destroying raw column identity
+        in favor of a canonical, high-mass-first layout.
+        """
+        metric_names = list(metric_names or [])
+        os.makedirs(output_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = os.path.join(output_dir, f"epistemic_field_phos_{ts}")
+
+        def _robust(X: np.ndarray) -> np.ndarray:
+            X = np.nan_to_num(np.asarray(X, dtype=np.float64))
+            if X.size == 0:
+                return X
+            # robust scale per-matrix
+            lo = np.percentile(X, 10)
+            hi = np.percentile(X, 90)
+            if hi <= lo:
+                hi = lo + 1.0
+            Y = (X - lo) / (hi - lo)
+            return np.clip(Y, 0.0, 1.0)
+
+        def _stack(mats: list[np.ndarray]) -> np.ndarray:
+            return np.mean(np.stack(mats, axis=0), axis=0) if aggregate else np.vstack(mats)
+
+        # 1) Build matrices
+        X_pos = _stack(pos_matrices)
+        X_neg = _stack(neg_matrices)
+        if X_pos.size == 0 or X_neg.size == 0 or X_pos.ndim != 2 or X_neg.ndim != 2:
+            _logger.warning("[ZeroModelService] PHOS-ordered: insufficient data.")
+            return {"status": "empty"}
+
+        # Align shapes conservatively
+        r = min(X_pos.shape[0], X_neg.shape[0])
+        c = min(X_pos.shape[1], X_neg.shape[1])
+        X_pos = X_pos[:r, :c]
+        X_neg = X_neg[:r, :c]
+
+        # 2) Normalize
+        A = _robust(X_pos)  # use POS to learn the ordering
+        B = _robust(X_neg)
+
+        # 3) Iterative TL ordering (columns then rows by mean |value|)
+        row_order = np.arange(A.shape[0])
+        col_order = np.arange(A.shape[1])
+
+        for _ in range(max(1, iters)):
+            # columns: sort by mean abs down (more mass first)
+            col_scores = np.mean(np.abs(A), axis=0)
+            col_order = np.argsort(-col_scores)
+            A = A[:, col_order]
+            B = B[:, col_order]
+
+            # rows: sort by mean abs down
+            row_scores = np.mean(np.abs(A), axis=1)
+            row_order = np.argsort(-row_scores)
+            A = A[row_order, :]
+            B = B[row_order, :]
+
+        Y_pos = A
+        Y_neg = B
+        diff = Y_pos - Y_neg
+
+        # 4) Quantities
+        def _top_left_mass(M: np.ndarray, frac: float = 0.25) -> float:
+            s = M.shape[0]
+            k = max(1, int(round(np.sqrt(max(frac, 1e-9)) * s)))
+            k = min(k, s)
+            return float(M[:k, :k].sum()) / (float(M.sum()) + 1e-8)
+
+        mass_pos = _top_left_mass(Y_pos)
+        mass_neg = _top_left_mass(Y_neg)
+        delta_mass = mass_pos - mass_neg
+        overlap = float(np.sum(np.minimum(Y_pos, Y_neg)) / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8))
+
+        # 5) Visuals
+        def _grid(images, titles, path_base):
+            fig, axes = plt.subplots(1, len(images), figsize=(5 * len(images), 5))
+            for ax, img, title in zip(axes, images, titles):
+                im = ax.imshow(img, cmap=cmap, aspect="auto")
+                ax.set_title(title, fontsize=10)
+                fig.colorbar(im, ax=ax, fraction=0.035, pad=0.04)
+                ax.axis("off")
+            plt.tight_layout()
+            p = path_base + "_comparison.png"
+            plt.savefig(p, dpi=150)
+            plt.close(fig)
+            return p
+
+        comp_titles = [
+            f"{pos_label} (PHOS-ordered)",
+            f"{neg_label} (PHOS-ordered)",
+            f"Differential Field ({pos_label} − {neg_label})",
+        ]
+        comp_images = [Y_pos, Y_neg, diff]
+        comparison_path = _grid(comp_images, comp_titles, base)
+
+        # standalone diff
+        fig, ax = plt.subplots(figsize=(8, 5))
+        im = ax.imshow(diff, cmap=cmap, aspect="auto")
+        ax.set_title(f"PHOS-Ordered Field — ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}")
+        fig.colorbar(im, ax=ax, label="Δ Intensity (Pos−Neg)")
+        plt.tight_layout()
+        png_path = base + ".png"
+        plt.savefig(png_path, dpi=150)
+        plt.close(fig)
+
+        # 6) Names after column reorder (rows are turns; only columns map to metrics)
+        if metric_names and len(metric_names) == c:
+            metric_names_reordered = [metric_names[j] for j in col_order]
+        else:
+            metric_names_reordered = [f"metric_{j}" for j in range(c)]
+
+        meta = {
+            "timestamp": ts,
+            "mass_pos": float(mass_pos),
+            "mass_neg": float(mass_neg),
+            "delta_mass": float(delta_mass),
+            "overlap_score": float(overlap),
+            "png": png_path,
+            "comparison_png": comparison_path,
+            "diff_matrix": diff.tolist(),
+            "metric_names": metric_names_reordered,
+            "row_order": row_order.tolist(),
+            "col_order": col_order.tolist(),
+            "pos_label": pos_label,
+            "neg_label": neg_label,
+        }
+        meta_path = base + ".json"
+        with open(meta_path, "w", encoding="utf-8") as f:
+            f.write(dumps_safe(meta, indent=2))
+        return meta
+
+    def render_frontier_map(
+        self,
+        A, B,
+        out_dir,
+        *,
+        pos_label="HRM",
+        neg_label="Tiny",
+        k_latent=20,
+        cmap_main="magma",
+        cmap_delta="seismic",
+    ):
+        """
+        Frontier Map: a single composite figure showing the 'layer between models'.
+        Inputs:
+        A: [n, dA] HRM timeline matrix
+        B: [n, dB] Tiny timeline matrix
+        Returns:
+        dict with file paths + summary stats
+        """
+        os.makedirs(out_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = os.path.join(out_dir, f"frontier_{ts}")
+
+        # --- 1) Trim to overlapping rows
+        A = np.asarray(A, dtype=np.float32)
+        B = np.asarray(B, dtype=np.float32)
+        n = min(A.shape[0], B.shape[0])
+        if n < 3:
+            return {"status":"too_few_rows", "n": int(n)}
+        A, B = A[:n], B[:n]
+
+        # --- 2) Shared latent space via CCA-lite
+        Wa, Wb, can_corr = _cca_shared_projections(A, B, k=k_latent)
+        A_lat = A @ Wa        # [n, k]
+        B_lat = B @ Wb        # [n, k]
+
+        # --- 3) “Unexplained” layer (residuals) in the shared space
+        # We compute both directions; the 'frontier' is what survives in either.
+        resid_A = A_lat - B_lat             # what HRM encodes beyond Tiny
+        resid_B = B_lat - A_lat             # what Tiny encodes beyond HRM
+        # Per-sample magnitude (row-wise)
+        mag_A = np.linalg.norm(resid_A, axis=1, ord=2)  # [n]
+        mag_B = np.linalg.norm(resid_B, axis=1, ord=2)  # [n]
+        # Per-latent magnitude (column-wise)
+        col_A = np.linalg.norm(resid_A, axis=0, ord=2)  # [k]
+        col_B = np.linalg.norm(resid_B, axis=0, ord=2)  # [k]
+
+        # --- 4) Normalize for visualization
+        A_lat_n = _normalize01(A_lat)
+        B_lat_n = _normalize01(B_lat)
+        resid_n = _normalize01(A_lat - B_lat)
+
+        # --- 5) PHOS mean images (distributional context)
+        A_phos = _phos_mean_image(A)
+        B_phos = _phos_mean_image(B)
+        A_phos_n = _normalize01(A_phos)
+        B_phos_n = _normalize01(B_phos)
+        A_phos_n, B_phos_n = _align_square_phos(A_phos_n, B_phos_n)
+        diff_phos = A_phos_n - B_phos_n
+
+
+        # --- 6) Composite figure
+        fig = plt.figure(figsize=(16, 9))
+        gs = fig.add_gridspec(2, 3, width_ratios=[1.0, 1.0, 1.1], height_ratios=[1.0, 1.0], wspace=0.2, hspace=0.28)
+
+        # (a) PHOS energy maps
+        ax1 = fig.add_subplot(gs[0,0]); im1 = ax1.imshow(A_phos_n, cmap=cmap_main, aspect="auto"); ax1.set_title(f"{pos_label} PHOS Energy"); ax1.axis("off"); fig.colorbar(im1, ax=ax1, fraction=0.035, pad=0.04)
+        ax2 = fig.add_subplot(gs[0,1]); im2 = ax2.imshow(B_phos_n, cmap=cmap_main, aspect="auto"); ax2.set_title(f"{neg_label} PHOS Energy"); ax2.axis("off"); fig.colorbar(im2, ax=ax2, fraction=0.035, pad=0.04)
+        ax3 = fig.add_subplot(gs[0,2]); im3 = ax3.imshow(diff_phos, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1); ax3.set_title("PHOS Δ (HRM − Tiny)"); ax3.axis("off"); fig.colorbar(im3, ax=ax3, fraction=0.035, pad=0.04)
+
+        # (b) Latent residual heatmap (the frontier)
+        ax4 = fig.add_subplot(gs[1,0]); im4 = ax4.imshow(resid_n, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1)
+        ax4.set_title("Shared-Latent Residuals (HRM − Tiny)")
+        ax4.set_xlabel("Latent dimension"); ax4.set_ylabel("Sample (row)")
+        fig.colorbar(im4, ax=ax4, fraction=0.035, pad=0.04)
+
+        # (c) Per-sample frontier strength
+        ax5 = fig.add_subplot(gs[1,1])
+        ax5.plot(mag_A, label=f"{pos_label} unexplained", linewidth=1.0)
+        ax5.plot(mag_B, label=f"{neg_label} unexplained", linewidth=1.0)
+        ax5.set_title("Frontier Strength per Sample")
+        ax5.set_xlabel("Sample index"); ax5.set_ylabel("||residual||₂")
+        ax5.legend(loc="upper right", fontsize=8)
+
+        # (d) Per-latent frontier strength + canonical corr
+        ax6 = fig.add_subplot(gs[1,2])
+        idx = np.arange(resid_n.shape[1])
+        ax6.bar(idx - 0.2, col_A / (col_A.max()+1e-8), width=0.4, label=f"{pos_label} resid", alpha=0.8)
+        ax6.bar(idx + 0.2, col_B / (col_B.max()+1e-8), width=0.4, label=f"{neg_label} resid", alpha=0.8)
+        ax6.set_title("Frontier by Latent Axis")
+        ax6.set_xlabel("Latent dimension"); ax6.set_ylabel("Normalized magnitude")
+        ax6.legend(loc="upper right", fontsize=8)
+        # annotate top CCA correlations for context
+        if can_corr is not None and can_corr.size:
+            text = "Top canonical corr: " + ", ".join([f"{c:.2f}" for c in can_corr[:5]])
+            ax6.text(0.02, 0.98, text, transform=ax6.transAxes, va="top", ha="left", fontsize=8)
+
+        png_path = base + ".png"
+        plt.tight_layout()
+        plt.savefig(png_path, dpi=160)
+        plt.close(fig)
+
+        # --- 7) Emit summary JSON
+        meta = {
+            "timestamp": ts,
+            "rows_used": int(n),
+            "k_latent": int(min(k_latent, A_lat.shape[1])),
+            "canonical_corr_top5": (can_corr[:5].tolist() if can_corr is not None and can_corr.size else []),
+            "residual_sample_stats": {
+                f"{pos_label}_mean": float(np.mean(mag_A)),
+                f"{pos_label}_max": float(np.max(mag_A)),
+                f"{neg_label}_mean": float(np.mean(mag_B)),
+                f"{neg_label}_max": float(np.max(mag_B)),
+            },
+            "paths": {"png": png_path},
+            "notes": "Residuals are A_lat - B_lat; larger magnitude = stronger frontier (unexplained layer).",
+        }
+        meta_path = base + ".json"
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+
+        return {"status":"ok", **meta}
+
 
 
     def analyze_differential_field(self, diff_matrix: np.ndarray, metric_names: list[str], output_dir: str):
@@ -852,7 +1346,7 @@ class ZeroModelService(Service):
         # 4️⃣ Save ranked summary
         json_path = output_dir / "metric_intensity_summary.json"
         with open(json_path, "w") as f:
-            json.dump(ranked_metrics, f, indent=2)
+            f.write(dumps_safe(ranked_metrics, indent=2))
         _logger.debug(f"[PhosAnalyzer] Saved metric intensity summary → {json_path}")
 
         # 5️⃣ Plot top metrics
@@ -940,4 +1434,217 @@ class ZeroModelService(Service):
             "top_rows": top_rows,
         }
 
+
+    def render_intermodel_delta(
+        self,
+        A: np.ndarray,                      # HRM matrix (rows=turns, cols=metrics)
+        B: np.ndarray,                      # Tiny matrix
+        *,
+        names_A: Optional[List[str]] = None,
+        names_B: Optional[List[str]] = None,
+        output_dir: str,
+        pos_label: str = "HRM",
+        neg_label: str = "Tiny",
+        align: str = "canonical",           # "canonical" or "direct"
+        alpha: float = 0.97,
+        Kc: int = 40,
+        Kr: int = 100,
+        cmap: str = "seismic",
+        metric_names: list[str] | None = None,
+        datestamp: bool = True,
+    ) -> dict:
+        """
+        Produce side-by-side grid + Δ (pos−neg) heatmap + JSON summary.
+        Returns a meta dict with file paths and intensity rankings.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = os.path.join(output_dir, f"intermodel_delta_{ts}")
+
+        # 1) Align
+        # if align == "canonical":
+        #     Y_pos, Y_neg, align_meta = self._canonical_align(A, B, alpha=alpha, Kc=Kc, Kr=Kr)
+        # else:
+        #     Y_pos, Y_neg = self._direct_align(A, B)
+        #     align_meta = {"metric_weights": None, "canonical_layout": None}
+
+        YA, YB, align_meta = self._canonical_align(
+                A, B,
+                names_A=names_A, names_B=names_B,
+                alpha=alpha, Kc=Kc, Kr=Kr
+            )
+
+        # 2) Δ
+        D = YA - YB
+        delta_mass = float(np.mean(D))  # simple summary; keep consistent with other metrics
+        overlap = float(np.sum(np.minimum(YA, YB)) / (np.sum(np.maximum(YA, YB)) + 1e-8))
+
+        # 3) Grid figure (Raw/Optimized naming aligned with your EF API style)
+        def _save_grid(images, titles, path):
+            fig, axes = plt.subplots(1, len(images), figsize=(5*len(images), 5))
+            for ax, img, title in zip(axes, images, titles):
+                im = ax.imshow(img, cmap=cmap, aspect="auto")
+                ax.set_title(title, fontsize=10)
+                fig.colorbar(im, ax=ax, fraction=0.035, pad=0.04)
+                ax.axis("off")
+            plt.tight_layout()
+            plt.savefig(path, dpi=150)
+            plt.close(fig)
+
+        comp_path = base + "_comparison.png"
+        _save_grid(
+            [YA, YB, D],
+            [f"Aligned {pos_label}", f"Aligned {neg_label}", f"Δ Field ({pos_label} − {neg_label})"],
+            comp_path
+        )
+
+        # 4) Standalone Δ heatmap
+        fig, ax = plt.subplots(figsize=(10, 6))
+        im = ax.imshow(D, cmap=cmap, aspect="auto")
+        ax.set_title(f"Inter-Model Δ Field — {pos_label} − {neg_label} | ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}")
+        fig.colorbar(im, ax=ax, label="Δ intensity")
+        plt.tight_layout()
+        delta_png = base + "_delta.png"
+        plt.savefig(delta_png, dpi=170)
+        plt.close(fig)
+
+        # 5) Intensity ranking
+        ranks = self._rank_intensity(D, metric_names=metric_names, k_rows=20, k_cols=20)
+
+        # 6) Write JSON
+        meta = {
+            "timestamp": ts,
+            "align": align,
+            "pos_label": pos_label,
+            "neg_label": neg_label,
+            "delta_mass": delta_mass,
+            "overlap": overlap,
+            "comparison_png": comp_path,
+            "delta_png": delta_png,
+            "metric_names": metric_names or [],
+            "intensity": ranks,
+            "alignment": align_meta,
+            "shape_pos": list(YA.shape),
+            "shape_neg": list(YB.shape),
+            "shape_delta": list(D.shape),
+            "common_metric_names": align_meta["common_metric_names"],
+            "excluded_in_A": [n for n in (names_A or []) if n not in align_meta["common_metric_names"]],
+            "excluded_in_B": [n for n in (names_B or []) if n not in align_meta["common_metric_names"]],
+        }
+        meta_path = base + ".json"
+        with open(meta_path, "w", encoding="utf-8") as f:
+            f.write(dumps_safe(meta, indent=2))
+
+
+        return meta
+
+
+    def _canonical_align(
+        self,
+        A: np.ndarray,
+        B: np.ndarray,
+        *,
+        names_A: Optional[List[str]] = None,
+        names_B: Optional[List[str]] = None,
+        alpha: float = 0.97,
+        Kc: int = 40,
+        Kr: int = 100,
+    ):
+        """Align A and B into a common feature space safely.
+
+        - If metric names are provided, restrict to their intersection (preserving A order).
+        - Otherwise, truncate both to min(n_cols).
+        - Then learn spatial layout on A and project both with same weights.
+        """
+        A = np.asarray(A, dtype=np.float32)
+        B = np.asarray(B, dtype=np.float32)
+        if A.ndim != 2 or B.ndim != 2:
+            raise ValueError("A and B must be 2D matrices")
+
+        nA, dA = A.shape
+        nB, dB = B.shape
+
+        # 1) choose common columns
+        if names_A and names_B:
+            name_to_idx_B = {n: i for i, n in enumerate(names_B)}
+            common_names = [n for n in names_A if n in name_to_idx_B]
+            if not common_names:
+                # fallback: truncate to min width
+                d = min(dA, dB)
+                A2, B2 = A[:, :d], B[:, :d]
+                common_names = [f"metric_{i}" for i in range(d)]
+            else:
+                idx_A = [i for i, n in enumerate(names_A) if n in name_to_idx_B]
+                idx_B = [name_to_idx_B[n] for n in common_names]
+                A2 = A[:, idx_A]
+                B2 = B[:, idx_B]
+        else:
+            d = min(dA, dB)
+            A2, B2 = A[:, :d], B[:, :d]
+            common_names = [f"metric_{i}" for i in range(d)]
+
+        # 2) optimize on A, reuse for B
+        from zeromodel.tools.spatial_optimizer import SpatialOptimizer
+        opt = SpatialOptimizer(Kc=Kc, Kr=Kr, alpha=alpha)
+        opt.apply_optimization([A2])
+        w = opt.metric_weights
+
+        YA, _, _ = opt.phi_transform(A2, w, w)
+        YB, _, _ = opt.phi_transform(B2, w, w)
+
+        # normalize (defensive)
+        def _norm(m):
+            m = np.nan_to_num(m)
+            maxv = np.max(np.abs(m)) + 1e-8
+            return m / maxv
+
+        return _norm(YA), _norm(YB), {
+            "common_metric_names": common_names,
+            "w": w,
+            "width": len(common_names),
+            "shape_A": A2.shape,
+            "shape_B": B2.shape,
+        }
+
+    # --- NEW: direct (no optimizer) alignment helper ----------------------
+    def _direct_align(self, A: np.ndarray, B: np.ndarray):
+        A = np.asarray(A, dtype=np.float32)
+        B = np.asarray(B, dtype=np.float32)
+
+        def _norm01(M):
+            M = np.nan_to_num(M.astype(np.float32))
+            rng = M.max() - M.min()
+            return (M - M.min()) / (rng + 1e-8)
+
+        A = _norm01(A)
+        B = _norm01(B)
+
+        r = min(A.shape[0], B.shape[0])
+        c = min(A.shape[1], B.shape[1])
+        return A[:r, :c], B[:r, :c]
+
+    # --- NEW: intensity ranking helper -----------------------------------
+    def _rank_intensity(self, D: np.ndarray, *, metric_names: list[str] | None = None, k_rows: int = 20, k_cols: int = 20):
+        D = np.asarray(D, dtype=np.float32)
+        if D.ndim < 2:  # safety
+            D = np.expand_dims(D, 0)
+
+        row_int = np.mean(np.abs(D), axis=1)
+        col_int = np.mean(np.abs(D), axis=0)
+
+        r_idx = np.argsort(row_int)[::-1][:k_rows].tolist()
+        c_idx = np.argsort(col_int)[::-1][:k_cols].tolist()
+
+        cols_named = [
+            (metric_names[i] if metric_names and i < len(metric_names) else f"metric_{i}")
+            for i in c_idx
+        ]
+
+        return {
+            "top_rows": r_idx,
+            "top_cols": c_idx,
+            "top_cols_named": cols_named,
+            "row_intensities": row_int.tolist(),
+            "col_intensities": col_int.tolist(),
+        }
 

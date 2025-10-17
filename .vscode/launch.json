@@ -26,7 +26,7 @@
             }
         },
         {
-            "name": "chat",
+            "name": "gap",
             "type": "debugpy",
             "request": "launch",
             "console": "integratedTerminal",
@@ -34,7 +34,43 @@
             "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
             "args": [
                 "--config-name",
-                "chat",
+                "gap",
+            ]
+        },
+        {
+            "name": "chat_training",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "chat_training",
+            ]
+        },
+        {
+            "name": "training",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "training",
+            ]
+        },
+        {
+            "name": "tiny",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "tiny",
             ]
         },
         {

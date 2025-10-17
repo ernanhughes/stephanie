@@ -1,3 +1,5 @@
+# stepanies/agent/trainer.yaml
+# Configuration for the trainer agent
 trainer:
   name: trainer
   enabled: true

@@ -1,4 +1,4 @@
-# config/compiler.yaml
+# config/phos.yaml
 defaults:
   - _self_
   - db: postgres

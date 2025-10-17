@@ -1,3 +1,6 @@
+# stephanie/agents/maintenance/rank_trainer.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.training.preference_pair_builder import \
     PreferencePairBuilder
@@ -7,7 +10,7 @@ from stephanie.scoring.training.rank_trainer import ContrastiveRankerTrainer
 class ContrastiveRankerTrainerAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.pair_builder = PreferencePairBuilder(memory.session, logger)
+        self.pair_builder = PreferencePairBuilder(memory, logger)
         self.model_type = "contrastive_ranker"
         self.min_pairs = cfg.get("min_pairs", 100)
         self.dimensions = cfg.get("dimensions", [])
@@ -66,9 +69,7 @@ class ContrastiveRankerTrainerAgent(BaseAgent):
             
             # Get pairwise preference data for this dimension
             pairs_by_dim = self.pair_builder.get_training_pairs_by_dimension(
-                dim=[dimension],
-                goal=goal_text,
-                limit=self.cfg.get("pair_limit", 200)
+                dimension=dimension,
             )
             
             samples = pairs_by_dim.get(dimension, [])

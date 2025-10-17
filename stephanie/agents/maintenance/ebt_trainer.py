@@ -1,4 +1,5 @@
-# stephanie/agents/maintenance/ebt_trainer_agent.py
+# stephanie/agents/maintenance/ebt_trainer.py
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.training.ebt_trainer import EBTTrainer
@@ -11,7 +12,7 @@ class EBTTrainerAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
         self.trainer = EBTTrainer(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])
-        self.pair_builder = PreferencePairBuilder(memory.session, logger)
+        self.pair_builder = PreferencePairBuilder(memory, logger)
 
     async def run(self, context: dict) -> dict:
         goal = context.get("goal", {})
@@ -19,9 +20,7 @@ class EBTTrainerAgent(BaseAgent):
 
         for dimension in self.dimensions:
             pairs_by_dim = self.pair_builder.get_training_pairs_by_dimension(
-                dim=[dimension],
-                goal=goal.get("goal_text"),
-                limit=100
+                dimension=dimension,
             )
             pairs = pairs_by_dim.get(dimension, [])
             samples = [

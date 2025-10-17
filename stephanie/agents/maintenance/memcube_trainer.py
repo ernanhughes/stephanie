@@ -1,4 +1,5 @@
 # stephanie/agents/maintenance/memcube_trainer_agent.py
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.maintenance.srft_refinement_trainer import \

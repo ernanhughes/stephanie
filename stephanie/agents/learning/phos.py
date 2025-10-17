@@ -1,33 +1,31 @@
 # stephanie/agents/phos.py
 from __future__ import annotations
-import numpy as np
-import re
-from datetime import datetime
+
+import asyncio
 import json
+import logging
+import re
+import time
+from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+from sqlalchemy import text
+from tqdm import tqdm
+
+from stephanie.agents.agentic_tree_search import \
+    SolutionNode  # assuming you have this
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.services.zeromodel_service import ZeroModelService
-from stephanie.analysis.vpm_differential_analyzer import (
-    VPMDifferentialAnalyzer,
-)
-from stephanie.services.scoring_service import ScoringService
+from stephanie.analysis.vpm_differential_analyzer import \
+    VPMDifferentialAnalyzer
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.scoring.scorable import ScorableType
+from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
+from stephanie.services.scoring_service import ScoringService
 from stephanie.services.workers.metrics_worker import MetricsWorker
 from stephanie.services.workers.vpm_worker import VPMWorker
+from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.emit_broadcaster import EmitBroadcaster
-import time
-from sqlalchemy import text
-import logging
-from tqdm import tqdm
-import asyncio
-from typing import Optional
-from stephanie.agents.agentic_tree_search import (
-    SolutionNode,
-)  # assuming you have this
-from stephanie.scoring.scorable import Scorable, ScorableFactory
-
 
 _logger = logging.getLogger(__name__)
 
@@ -245,6 +243,9 @@ class PhosAgent(BaseAgent):
                 output_dir=str(output_dir / "good_vs_bad"),
                 aggregate=True,
                 metric_names=self.metric_names,
+                pos_label="HRM", 
+                neg_label="Tiny",
+                iters=4  # tweak for more/less compaction
             )
             results["good_vs_bad"] = meta
             _logger.debug(

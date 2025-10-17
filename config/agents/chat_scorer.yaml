@@ -1,0 +1,56 @@
+chat_scorer:
+  name: chat_scorer
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  include_mars: true
+  enabled_scorers:
+    - tiny
+
+  include_ranking: true
+  rank_top_k: 5
+
+  dimensions: 
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage
+
+  target_types:
+    - conversation_turn
+
+  dimension_config:
+    reasoning:
+      scale: "0-100"
+      trust_references: ["llm"]
+      expected_variance: 0.15
+    knowledge:
+      scale: "0-100"
+      trust_references: ["llm"]
+      expected_variance: 0.15
+    clarity:
+      scale: "0-100"
+      trust_references: ["llm"]
+      expected_variance: 0.15
+    faithfulness:
+      scale: "0-100"
+      trust_references: ["llm"]
+      expected_variance: 0.15
+    coverage:
+      scale: "0-100"
+      trust_references: ["llm"]
+      expected_variance: 0.15
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: universal_scorer
+  prompt_mode: file
+  prompt_file: universal_scorer.txt
+

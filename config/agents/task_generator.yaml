@@ -1,5 +1,5 @@
 # config/agents/task_generator.yaml
-
+# Configuration for the task generator agent
 task_generator:
   name: task_generator
   save_prompt: true

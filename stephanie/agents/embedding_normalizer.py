@@ -53,8 +53,11 @@ Version History
 """
 
 from __future__ import annotations
-import numpy as np
+
 import logging
+
+import numpy as np
+
 from stephanie.agents.base_agent import BaseAgent
 
 _logger = logging.getLogger(__name__)

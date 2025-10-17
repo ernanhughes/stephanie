@@ -45,6 +45,57 @@ END;
 $$;
 
 --
+-- Name: agent_lightning; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_lightning (id bigint NOT NULL,
+                                               run_id text NOT NULL,
+                                                           step_idx integer NOT NULL,
+                                                                            kind text NOT NULL,
+                                                                                      agent text NOT NULL,
+                                                                                                 payload JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                   created_at timestamp WITH TIME ZONE DEFAULT now() NOT NULL);
+
+--
+-- Name: agent_lightning_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.agent_lightning_id_seq
+START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+--
+-- Name: agent_lightning_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.agent_lightning_id_seq OWNED BY public.agent_lightning.id;
+
+--
+-- Name: agent_transitions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_transitions (id bigint NOT NULL,
+                                                 run_id CHARACTER varying(64) NOT NULL,
+                                                                              step_idx integer NOT NULL,
+                                                                                               agent CHARACTER varying(128),
+                                                                                                               state JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                               action JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                                                                reward_air double precision, reward_final double precision, rewards_vec JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                                                                                                                                                                  created_at timestamp WITH TIME ZONE DEFAULT now() NOT NULL);
+
+--
+-- Name: agent_transitions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.agent_transitions_id_seq
+START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+--
+-- Name: agent_transitions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.agent_transitions_id_seq OWNED BY public.agent_transitions.id;
+
+--
 -- Name: belief_cartridges; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -87,6 +138,32 @@ START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 ALTER SEQUENCE public.belief_graph_versions_id_seq OWNED BY public.belief_graph_versions.id;
 
 --
+-- Name: blog_drafts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blog_drafts (id integer NOT NULL,
+                                            topic CHARACTER varying(512) NOT NULL,
+                                                                         source_snippet_ids JSONB DEFAULT '[]'::JSONB NOT NULL,
+                                                                                                                      draft_md text, arena_passes integer DEFAULT 0 NOT NULL,
+                                                                                                                                                                    readability double precision, local_coherence double precision, repetition_penalty double precision DEFAULT 0.0 NOT NULL,
+                                                                                                                                                                                                                                                                                    kept boolean DEFAULT FALSE NOT NULL,
+                                                                                                                                                                                                                                                                                                               created_at timestamp WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+                                                                                                                                                                                                                                                                                                                                                                    CONSTRAINT blog_drafts_source_snippet_ids_is_array CHECK ((jsonb_typeof(source_snippet_ids) = 'array'::text)));
+
+--
+-- Name: blog_drafts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.blog_drafts_id_seq AS integer
+START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+--
+-- Name: blog_drafts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.blog_drafts_id_seq OWNED BY public.blog_drafts.id;
+
+--
 -- Name: bus_events; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -94,7 +171,7 @@ CREATE TABLE public.bus_events (id integer NOT NULL,
                                            event_id text, subject text NOT NULL,
                                                                        event text, ts real NOT NULL,
                                                                                            run_id text, case_id text, paper_id text, section_name text, agent text, payload_json text NOT NULL,
-                                                                                                                                                                                      extras_json text, HASH text);
+                                                                                                                                                                                      extras_json text, HASH text, guid UUID DEFAULT gen_random_uuid());
 
 --
 -- Name: bus_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -626,6 +703,38 @@ START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 ALTER SEQUENCE public.document_embeddings_id_seq OWNED BY public.scorable_embeddings.id;
 
 --
+-- Name: document_evaluation_export_view; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.document_evaluation_export_view AS
+SELECT NULL::integer AS evaluation_id,
+       NULL::text AS scorable_type,
+       NULL::text AS scorable_id,
+       NULL::text AS agent_name,
+       NULL::text AS model_name,
+       NULL::text AS evaluator_name,
+       NULL::text AS strategy,
+       NULL::text AS reasoning_strategy,
+       NULL::text AS embedding_type,
+       NULL::text AS SOURCE,
+       NULL::integer AS pipeline_run_id,
+       NULL::integer AS symbolic_rule_id,
+       NULL::JSONB AS extra_data,
+       NULL::timestamp WITHOUT TIME ZONE AS created_at,
+                                            NULL::text AS goal_text,
+                                            NULL::text AS document_title,
+                                            NULL::text AS document_text,
+                                            NULL::text AS document_summary,
+                                            NULL::text AS document_url,
+                                            NULL::text[] AS document_domains,
+                                            NULL::text AS section_name,
+                                            NULL::text AS section_text,
+                                            NULL::text AS section_summary,
+                                            NULL::JSON AS section_extra,
+                                            NULL::JSONB AS scores,
+                                            NULL::JSONB AS attributes;
+
+--
 -- Name: document_evaluations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -898,6 +1007,38 @@ START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 ALTER SEQUENCE public.evaluation_attributes_id_seq OWNED BY public.evaluation_attributes.id;
 
 --
+-- Name: evaluation_export_view; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.evaluation_export_view AS
+SELECT NULL::integer AS evaluation_id,
+       NULL::text AS scorable_id,
+       NULL::text AS scorable_type,
+       NULL::text AS agent_name,
+       NULL::text AS model_name,
+       NULL::text AS evaluator_name,
+       NULL::text AS strategy,
+       NULL::text AS reasoning_strategy,
+       NULL::text AS embedding_type,
+       NULL::text AS SOURCE,
+       NULL::integer AS pipeline_run_id,
+       NULL::integer AS symbolic_rule_id,
+       NULL::JSONB AS extra_data,
+       NULL::timestamp WITHOUT TIME ZONE AS created_at,
+                                            NULL::text AS goal_text,
+                                            NULL::text AS document_title,
+                                            NULL::text AS document_text,
+                                            NULL::text AS document_summary,
+                                            NULL::text AS document_url,
+                                            NULL::text[] AS document_domains,
+                                            NULL::text AS section_name,
+                                            NULL::text AS section_text,
+                                            NULL::text AS section_summary,
+                                            NULL::JSON AS section_extra,
+                                            NULL::JSONB AS scores,
+                                            NULL::JSONB AS attributes;
+
+--
 -- Name: evaluation_rule_links; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1071,6 +1212,81 @@ CREATE TABLE public.experiments (id integer NOT NULL,
 ALTER TABLE public.experiments
 ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY
   (SEQUENCE NAME public.experiments_id_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1);
+
+--
+-- Name: expository_buffers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.expository_buffers (id integer NOT NULL,
+                                                   topic CHARACTER varying(512) NOT NULL,
+                                                                                snippet_ids JSONB DEFAULT '[]'::JSONB NOT NULL,
+                                                                                                                      meta JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                                     created_at timestamp WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+                                                                                                                                                                                                          CONSTRAINT expository_buffers_meta_is_object CHECK ((jsonb_typeof(meta) = 'object'::text)), CONSTRAINT expository_buffers_snippet_ids_is_array CHECK ((jsonb_typeof(snippet_ids) = 'array'::text)));
+
+--
+-- Name: expository_buffers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.expository_buffers_id_seq AS integer
+START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+--
+-- Name: expository_buffers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.expository_buffers_id_seq OWNED BY public.expository_buffers.id;
+
+--
+-- Name: expository_snippets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.expository_snippets (id integer NOT NULL,
+                                                    doc_id integer NOT NULL,
+                                                                   SECTION CHARACTER varying(256) NOT NULL,
+                                                                                                  order_idx integer DEFAULT 0 NOT NULL, text text NOT NULL,
+                                                                                                                                                  features JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                                                                     expository_score double precision, bloggability_score double precision, picked boolean DEFAULT FALSE NOT NULL,
+                                                                                                                                                                                                                                                                                          created_at timestamp WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+                                                                                                                                                                                                                                                                                                                                               CONSTRAINT expository_snippets_features_is_object CHECK ((jsonb_typeof(features) = 'object'::text)));
+
+--
+-- Name: expository_snippets_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.expository_snippets_id_seq AS integer
+START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+--
+-- Name: expository_snippets_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.expository_snippets_id_seq OWNED BY public.expository_snippets.id;
+
+--
+-- Name: fragments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.fragments (id bigint NOT NULL,
+                                         case_id bigint NOT NULL,
+                                                        source_type CHARACTER varying(32) NOT NULL,
+                                                                                          SECTION CHARACTER varying(128), text text NOT NULL,
+                                                                                                                                    attrs JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                                                    scores JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                                                                                     uncertainty double precision, created_at timestamp WITH TIME ZONE DEFAULT now() NOT NULL);
+
+--
+-- Name: fragments_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.fragments_id_seq
+START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+--
+-- Name: fragments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.fragments_id_seq OWNED BY public.fragments.id;
 
 --
 -- Name: goal_dimensions; Type: TABLE; Schema: public; Owner: -
@@ -1640,6 +1856,32 @@ START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 ALTER SEQUENCE public.nodes_id_seq OWNED BY public.nodes.id;
 
 --
+-- Name: paper_source_queue; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_source_queue (id integer NOT NULL,
+                                                   topic CHARACTER varying(256) NOT NULL,
+                                                                                url text NOT NULL,
+                                                                                         SOURCE CHARACTER varying(128) DEFAULT 'manual'::CHARACTER varying NOT NULL,
+                                                                                                                                                           status CHARACTER varying(32) DEFAULT 'pending'::CHARACTER varying NOT NULL,
+                                                                                                                                                                                                                             meta JSONB DEFAULT '{}'::JSONB NOT NULL,
+                                                                                                                                                                                                                                                            created_at timestamp WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+                                                                                                                                                                                                                                                                                                                 updated_at timestamp WITHOUT TIME ZONE DEFAULT now() NOT NULL);
+
+--
+-- Name: paper_source_queue_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.paper_source_queue_id_seq AS integer
+START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
+
+--
+-- Name: paper_source_queue_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.paper_source_queue_id_seq OWNED BY public.paper_source_queue.id;
+
+--
 -- Name: pipeline_references; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1804,7 +2046,7 @@ CREATE TABLE public.plan_traces (id integer NOT NULL,
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  strategy_used text, reward_signal JSONB DEFAULT '{}'::JSONB,
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  skills_used JSONB DEFAULT '[]'::JSONB,
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            repair_links JSONB DEFAULT '[]'::JSONB,
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      domains text[] DEFAULT '{}'::text[]);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      domains text[] DEFAULT '{}'::text[], extra_data JSONB);
 
 --
 -- Name: plan_traces_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -2673,12 +2915,36 @@ START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 ALTER SEQUENCE public.worldviews_id_seq OWNED BY public.worldviews.id;
 
 --
+-- Name: agent_lightning id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_lightning
+ALTER COLUMN id
+SET DEFAULT nextval('public.agent_lightning_id_seq'::regclass);
+
+--
+-- Name: agent_transitions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_transitions
+ALTER COLUMN id
+SET DEFAULT nextval('public.agent_transitions_id_seq'::regclass);
+
+--
 -- Name: belief_graph_versions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.belief_graph_versions
 ALTER COLUMN id
 SET DEFAULT nextval('public.belief_graph_versions_id_seq'::regclass);
+
+--
+-- Name: blog_drafts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blog_drafts
+ALTER COLUMN id
+SET DEFAULT nextval('public.blog_drafts_id_seq'::regclass);
 
 --
 -- Name: bus_events id; Type: DEFAULT; Schema: public; Owner: -
@@ -2921,6 +3187,30 @@ ALTER COLUMN id
 SET DEFAULT nextval('public.execution_steps_id_seq'::regclass);
 
 --
+-- Name: expository_buffers id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.expository_buffers
+ALTER COLUMN id
+SET DEFAULT nextval('public.expository_buffers_id_seq'::regclass);
+
+--
+-- Name: expository_snippets id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.expository_snippets
+ALTER COLUMN id
+SET DEFAULT nextval('public.expository_snippets_id_seq'::regclass);
+
+--
+-- Name: fragments id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fragments
+ALTER COLUMN id
+SET DEFAULT nextval('public.fragments_id_seq'::regclass);
+
+--
 -- Name: goal_dimensions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3087,6 +3377,14 @@ SET DEFAULT nextval('public.mrq_preference_pairs_id_seq'::regclass);
 ALTER TABLE ONLY public.nodes
 ALTER COLUMN id
 SET DEFAULT nextval('public.nodes_id_seq'::regclass);
+
+--
+-- Name: paper_source_queue id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_source_queue
+ALTER COLUMN id
+SET DEFAULT nextval('public.paper_source_queue_id_seq'::regclass);
 
 --
 -- Name: pipeline_references id; Type: DEFAULT; Schema: public; Owner: -
@@ -3385,6 +3683,18 @@ ALTER COLUMN id
 SET DEFAULT nextval('public.worldviews_id_seq'::regclass);
 
 --
+-- Name: agent_lightning agent_lightning_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_lightning ADD CONSTRAINT agent_lightning_pkey PRIMARY KEY (id);
+
+--
+-- Name: agent_transitions agent_transitions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_transitions ADD CONSTRAINT agent_transitions_pkey PRIMARY KEY (id);
+
+--
 -- Name: belief_cartridges belief_cartridges_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3395,6 +3705,12 @@ ALTER TABLE ONLY public.belief_cartridges ADD CONSTRAINT belief_cartridges_pkey 
 --
 
 ALTER TABLE ONLY public.belief_graph_versions ADD CONSTRAINT belief_graph_versions_pkey PRIMARY KEY (id);
+
+--
+-- Name: blog_drafts blog_drafts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blog_drafts ADD CONSTRAINT blog_drafts_pkey PRIMARY KEY (id);
 
 --
 -- Name: bus_events bus_events_subject_event_id_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3647,6 +3963,24 @@ ALTER TABLE ONLY public.experiment_variants ADD CONSTRAINT experiment_variants_p
 ALTER TABLE ONLY public.experiments ADD CONSTRAINT experiments_pkey PRIMARY KEY (id);
 
 --
+-- Name: expository_buffers expository_buffers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.expository_buffers ADD CONSTRAINT expository_buffers_pkey PRIMARY KEY (id);
+
+--
+-- Name: expository_snippets expository_snippets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.expository_snippets ADD CONSTRAINT expository_snippets_pkey PRIMARY KEY (id);
+
+--
+-- Name: fragments fragments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fragments ADD CONSTRAINT fragments_pkey PRIMARY KEY (id);
+
+--
 -- Name: goal_dimensions goal_dimensions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3798,6 +4132,18 @@ ALTER TABLE ONLY public.mrq_preference_pairs ADD CONSTRAINT mrq_preference_pairs
 --
 
 ALTER TABLE ONLY public.nodes ADD CONSTRAINT nodes_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_source_queue paper_source_queue_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_source_queue ADD CONSTRAINT paper_source_queue_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_source_queue paper_source_queue_url_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_source_queue ADD CONSTRAINT paper_source_queue_url_key UNIQUE (url);
 
 --
 -- Name: pipeline_references pipeline_references_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -4226,6 +4572,24 @@ CREATE INDEX chat_messages_role_idx ON public.chat_messages USING btree (ROLE);
 CREATE INDEX chat_messages_tsv_gin ON public.chat_messages USING gin (tsv);
 
 --
+-- Name: gin_blog_source_snippet_ids; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX gin_blog_source_snippet_ids ON public.blog_drafts USING gin (source_snippet_ids);
+
+--
+-- Name: gin_expo_buf_meta; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX gin_expo_buf_meta ON public.expository_buffers USING gin (meta);
+
+--
+-- Name: gin_expo_buf_snippet_ids; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX gin_expo_buf_snippet_ids ON public.expository_buffers USING gin (snippet_ids);
+
+--
 -- Name: idx_bus_events_case; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4648,6 +5012,36 @@ CREATE INDEX idx_trials_experiment_group ON public.experiment_trials USING btree
 CREATE INDEX idx_trials_tags_used ON public.experiment_trials USING gin (tags_used);
 
 --
+-- Name: ix_blog_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blog_created_at ON public.blog_drafts USING btree (created_at DESC);
+
+--
+-- Name: ix_blog_kept; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blog_kept ON public.blog_drafts USING btree (kept);
+
+--
+-- Name: ix_blog_local_coherence; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blog_local_coherence ON public.blog_drafts USING btree (local_coherence);
+
+--
+-- Name: ix_blog_readability; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blog_readability ON public.blog_drafts USING btree (readability);
+
+--
+-- Name: ix_blog_topic; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blog_topic ON public.blog_drafts USING btree (topic);
+
+--
 -- Name: ix_case_goal; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4684,6 +5078,48 @@ CREATE INDEX ix_evaluations_plan_trace_id ON public.evaluations USING btree (pla
 CREATE INDEX ix_experiments_name ON public.experiments USING btree (name);
 
 --
+-- Name: ix_expo_blogs_score; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_expo_blogs_score ON public.expository_snippets USING btree (bloggability_score DESC);
+
+--
+-- Name: ix_expo_buf_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_expo_buf_created_at ON public.expository_buffers USING btree (created_at DESC);
+
+--
+-- Name: ix_expo_buf_topic; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_expo_buf_topic ON public.expository_buffers USING btree (topic);
+
+--
+-- Name: ix_expo_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_expo_created_at ON public.expository_snippets USING btree (created_at DESC);
+
+--
+-- Name: ix_expo_doc_section; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_expo_doc_section ON public.expository_snippets USING btree (doc_id, SECTION);
+
+--
+-- Name: ix_expo_expository_score; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_expo_expository_score ON public.expository_snippets USING btree (expository_score DESC);
+
+--
+-- Name: ix_lightning_run_step; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_lightning_run_step ON public.agent_lightning USING btree (run_id, step_idx);
+
+--
 -- Name: ix_model_artifacts_name; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4718,6 +5154,12 @@ CREATE INDEX ix_model_snapshots_name ON public.experiment_model_snapshots USING 
 --
 
 CREATE INDEX ix_model_snapshots_version ON public.experiment_model_snapshots USING btree (VERSION);
+
+--
+-- Name: ix_psq_topic_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_psq_topic_status ON public.paper_source_queue USING btree (topic, status);
 
 --
 -- Name: ix_te_recent; Type: INDEX; Schema: public; Owner: -
@@ -4775,6 +5217,30 @@ CREATE INDEX ix_tka_score_desc ON public.turn_knowledge_analysis USING btree (kn
 CREATE INDEX ix_tka_verdict ON public.turn_knowledge_analysis USING btree (verdict);
 
 --
+-- Name: ix_transitions_action_gin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_transitions_action_gin ON public.agent_transitions USING gin (action);
+
+--
+-- Name: ix_transitions_rewards_gin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_transitions_rewards_gin ON public.agent_transitions USING gin (rewards_vec);
+
+--
+-- Name: ix_transitions_run_step; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_transitions_run_step ON public.agent_transitions USING btree (run_id, step_idx);
+
+--
+-- Name: ix_transitions_state_gin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_transitions_state_gin ON public.agent_transitions USING gin (state);
+
+--
 -- Name: ix_trial_metric_key; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4827,6 +5293,118 @@ CREATE UNIQUE INDEX uq_plan_trace_reuse ON public.plan_trace_reuse_links USING b
 --
 
 CREATE UNIQUE INDEX uq_tka_turn_id ON public.turn_knowledge_analysis USING btree (turn_id);
+
+--
+-- Name: ux_expo_doc_section_text; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ux_expo_doc_section_text ON public.expository_snippets USING btree (doc_id, SECTION, text);
+
+--
+-- Name: document_evaluation_export_view _RETURN; Type: RULE; Schema: public; Owner: -
+--
+
+CREATE OR REPLACE VIEW public.document_evaluation_export_view AS
+SELECT e.id AS evaluation_id,
+       e.scorable_type,
+       e.scorable_id,
+       e.agent_name,
+       e.model_name,
+       e.evaluator_name,
+       e.strategy,
+       e.reasoning_strategy,
+       e.embedding_type,
+       e.source,
+       e.pipeline_run_id,
+       e.symbolic_rule_id,
+       e.extra_data,
+       e.created_at,
+       g.goal_text,
+       d.title AS document_title,
+       d.text AS document_text,
+       d.summary AS document_summary,
+       d.url AS document_url,
+       d.domains AS document_domains,
+       ds.section_name,
+       ds.section_text,
+       ds.summary AS section_summary,
+       ds.extra_data AS section_extra,
+       COALESCE(jsonb_agg(jsonb_build_object('dimension', s.dimension, 'score', s.score, 'weight', s.weight, 'rationale', s.rationale, 'source', s.source, 'prompt_hash', s.prompt_hash)) FILTER (
+                                                                                                                                                                                                  WHERE (s.id IS NOT NULL)), '[]'::JSONB) AS scores,
+       COALESCE(jsonb_agg(jsonb_build_object('dimension', a.dimension, 'source', a.source, 'raw_score', a.raw_score, 'energy', a.energy, 'q', a.q_value, 'v', a.v_value, 'advantage', a.advantage, 'pi', a.pi_value, 'entropy', a.entropy, 'uncertainty', a.uncertainty, 'td_error', a.td_error, 'expected_return', a.expected_return, 'policy_logits', a.policy_logits, 'extra', a.extra)) FILTER (
+                                                                                                                                                                                                                                                                                                                                                                                                    WHERE (a.id IS NOT NULL)), '[]'::JSONB) AS attributes
+FROM (((((public.evaluations e
+          LEFT JOIN public.goals g ON ((e.goal_id = g.id)))
+         LEFT JOIN public.documents d ON (((e.scorable_type = 'document'::text)
+                                           AND (d.id = (NULLIF(e.scorable_id, ''::text))::integer))))
+        LEFT JOIN public.document_sections ds ON (((e.scorable_type = 'document_section'::text)
+                                                   AND (ds.id = (NULLIF(e.scorable_id, ''::text))::integer))))
+       LEFT JOIN public.scores s ON ((e.id = s.evaluation_id)))
+      LEFT JOIN public.evaluation_attributes a ON ((e.id = a.evaluation_id)))
+GROUP BY e.id,
+         g.goal_text,
+         d.id,
+         d.title,
+         d.text,
+         d.summary,
+         d.url,
+         ds.id,
+         ds.section_name,
+         ds.section_text,
+         ds.summary;
+
+--
+-- Name: evaluation_export_view _RETURN; Type: RULE; Schema: public; Owner: -
+--
+
+CREATE OR REPLACE VIEW public.evaluation_export_view AS
+SELECT e.id AS evaluation_id,
+       e.scorable_id,
+       e.scorable_type,
+       e.agent_name,
+       e.model_name,
+       e.evaluator_name,
+       e.strategy,
+       e.reasoning_strategy,
+       e.embedding_type,
+       e.source,
+       e.pipeline_run_id,
+       e.symbolic_rule_id,
+       e.extra_data,
+       e.created_at,
+       g.goal_text,
+       d.title AS document_title,
+       d.text AS document_text,
+       d.summary AS document_summary,
+       d.url AS document_url,
+       d.domains AS document_domains,
+       ds.section_name,
+       ds.section_text,
+       ds.summary AS section_summary,
+       ds.extra_data AS section_extra,
+       COALESCE(jsonb_agg(jsonb_build_object('dimension', s.dimension, 'score', s.score, 'weight', s.weight, 'rationale', s.rationale, 'source', s.source, 'prompt_hash', s.prompt_hash)) FILTER (
+                                                                                                                                                                                                  WHERE (s.id IS NOT NULL)), '[]'::JSONB) AS scores,
+       COALESCE(jsonb_agg(jsonb_build_object('dimension', a.dimension, 'source', a.source, 'raw_score', a.raw_score, 'energy', a.energy, 'q', a.q_value, 'v', a.v_value, 'advantage', a.advantage, 'pi', a.pi_value, 'entropy', a.entropy, 'uncertainty', a.uncertainty, 'td_error', a.td_error, 'expected_return', a.expected_return, 'policy_logits', a.policy_logits, 'extra', a.extra)) FILTER (
+                                                                                                                                                                                                                                                                                                                                                                                                    WHERE (a.id IS NOT NULL)), '[]'::JSONB) AS attributes
+FROM (((((public.evaluations e
+          LEFT JOIN public.goals g ON ((e.goal_id = g.id)))
+         LEFT JOIN public.documents d ON (((e.scorable_type = 'document'::text)
+                                           AND (d.id = (NULLIF(e.scorable_id, ''::text))::integer))))
+        LEFT JOIN public.document_sections ds ON (((e.scorable_type = 'document_section'::text)
+                                                   AND (ds.id = (NULLIF(e.scorable_id, ''::text))::integer))))
+       LEFT JOIN public.scores s ON ((e.id = s.evaluation_id)))
+      LEFT JOIN public.evaluation_attributes a ON ((e.id = a.evaluation_id)))
+GROUP BY e.id,
+         g.goal_text,
+         d.id,
+         d.title,
+         d.text,
+         d.summary,
+         d.url,
+         ds.id,
+         ds.section_name,
+         ds.section_text,
+         ds.summary;
 
 --
 -- Name: case_goal_state trg_case_goal_state_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
@@ -5242,6 +5820,14 @@ ALTER TABLE ONLY public.evaluations ADD CONSTRAINT fk_scores_pipeline_run
 FOREIGN KEY (pipeline_run_id) REFERENCES public.pipeline_runs(id) ON
 DELETE
 SET NULL;
+
+--
+-- Name: fragments fragments_case_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.fragments ADD CONSTRAINT fragments_case_id_fkey
+FOREIGN KEY (case_id) REFERENCES public.cases(id) ON
+DELETE CASCADE;
 
 --
 -- Name: goal_dimensions goal_dimensions_goal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

@@ -1,12 +1,12 @@
-# config/config.yaml
+# config/cot.yaml
 defaults:
   - _self_
   - db: postgres
   - plan_monitor: disabled
-  - scoring/service/default
+  - bus: nats   
   - logging/json_logger
   - mars/default
-
+  - services/default
   - scorer: all  
 
   - agents/plan_trace_scorer

@@ -1,4 +1,5 @@
-# stephanie/agents/maintenance/pacs_trainer_agent.py
+# stephanie/agents/maintenance/pacs_trainer.py
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.dataloaders.casebook_to_rlvr import CaseBookToRLVRDataset

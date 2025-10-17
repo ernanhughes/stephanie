@@ -1,4 +1,6 @@
 # stephanie/agents/maintenance/trainer_base.py
+from __future__ import annotations
+
 import os
 
 import torch
@@ -34,12 +36,11 @@ class TrainerAgent(BaseAgent):
         )
 
     async def run(self, context: dict) -> dict:
-        goal_text = context.get("goal", {}).get("goal_text")
 
 
         # Build contrastive training pairs grouped by scoring dimension
-        builder = PreferencePairBuilder(db=self.memory.session, logger=self.logger)
-        training_pairs = builder.get_training_pairs_by_dimension(goal=goal_text)
+        builder = PreferencePairBuilder(self.memory, logger=self.logger)
+        training_pairs = builder.get_training_pairs_by_dimension()
 
         # Train one model per scoring dimension (e.g. clarity, novelty, etc.)
         for dim, pairs in training_pairs.items():

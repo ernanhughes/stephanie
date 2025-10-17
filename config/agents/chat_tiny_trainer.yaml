@@ -1,0 +1,11 @@
+chat_tiny_trainer:
+  name: chat_tiny_trainer
+  model_path: "${hydra:runtime.cwd}/models"
+  model_type: tiny
+  target_type: conversation_turn
+  dimensions: 
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage

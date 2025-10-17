@@ -1,4 +1,5 @@
 # stephanie/agents/maintenance/scorable_embedding_backfill.py
+from __future__ import annotations
 
 from tqdm import tqdm
 

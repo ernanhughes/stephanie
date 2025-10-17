@@ -1,6 +1,8 @@
 # stephanie/services/workers/metrics_worker.py
 from __future__ import annotations
+
 import asyncio
+import logging
 import time
 import traceback
 from typing import Any, Dict, Optional
@@ -8,7 +10,6 @@ from typing import Any, Dict, Optional
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.scoring_service import ScoringService
 
-import logging
 _logger = logging.getLogger(__name__)
 
 

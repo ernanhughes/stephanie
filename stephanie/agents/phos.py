@@ -8,15 +8,9 @@ from pathlib import Path
 from typing import List, Dict, Any
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.zeromodel_service import ZeroModelService
-from stephanie.analysis.vpm_differential_analyzer import (
-    VPMDifferentialAnalyzer,
-)
 from stephanie.services.scoring_service import ScoringService
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import ScorableType
-from stephanie.services.workers.metrics_worker import MetricsWorker
-from stephanie.services.workers.vpm_worker import VPMWorker
-from stephanie.utils.emit_broadcaster import EmitBroadcaster
 import time
 from sqlalchemy import text
 import logging
@@ -250,7 +244,7 @@ class PhosAgent(BaseAgent):
     async def _simulate_band_processing(
         self,
         datasets: Dict[str, List[Dict[str, Any]]],
-        context: Dict[str, Any], Hey
+        context: Dict[str, Any], 
     ) -> Dict[str, str]:
         """
         Simulate AgenticTreeSearch execution for each contrastive dataset

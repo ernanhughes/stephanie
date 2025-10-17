@@ -237,6 +237,9 @@ class ScoringService(Service):
             if name == "ebt":
                 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
                 return EBTScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
+            if name == "tiny":
+                from stephanie.scoring.scorer.tiny_scorer import TinyScorer
+                return TinyScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name == "knowledge":
                 from stephanie.scoring.scorer.knowledge_scorer import \
                     KnowledgeScorer
@@ -348,6 +351,60 @@ class ScoringService(Service):
                 evaluator=evaluator or scorer_name,
                 model_name=model_name or (self._cfg_get("model", "name", default="unknown")),
                 agent_name=self.name,
+            )
+        except Exception as e: 
+            if self.logger:
+                self.logger.log("ScoringServicePersistError", {
+                    "scorer": scorer_name,
+                    "scorable_id": scorable.id,
+                    "scorable_type": scorable.target_type,
+                    "error": str(e)
+                })
+        return bundle
+
+    def save_bundle(
+        self,
+        scorer_name: str,
+        bundle: ScoreBundle,
+        scorable: Scorable,
+        context: Dict[str, Any],
+        cfg: Dict[str, Any],
+        *,
+        source: Optional[str] = None,
+        evaluator: Optional[str] = None,
+        model_name: Optional[str] = None,
+        agent_name: Optional[str] = None,
+    ) -> ScoreBundle:
+        """
+        Compute and persist scores using EvaluationStore.save_bundle.
+        
+        Args:
+            scorer_name: Name of the registered scorer to use
+            scorable: The scorable object to score
+            context: Context dictionary containing goal and other information
+            dimensions: Optional list of dimensions to score against
+            source: Optional source identifier for the evaluation
+            evaluator: Optional evaluator identifier
+            model_name: Optional model name identifier
+            
+        Returns:
+            ScoreBundle containing scoring results
+            
+        Note:
+            Persists scores using EvaluationStore.save_bundle to ensure consistent
+            storage of ScoreORM and EvalAttributes.
+        """
+        try:
+            self.memory.evaluations.save_bundle(
+                bundle=bundle,
+                scorable=scorable,
+                context=context,
+                cfg=cfg,
+                source=source or scorer_name,
+                embedding_type=self.embedding_type,
+                evaluator=evaluator or scorer_name,
+                model_name=model_name or (cfg.get("model", "name", default="unknown")),
+                agent_name=agent_name or self.name,
             )
         except Exception as e: 
             if self.logger:

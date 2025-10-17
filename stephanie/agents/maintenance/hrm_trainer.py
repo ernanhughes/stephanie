@@ -1,10 +1,12 @@
-# stephanie/agents/maintenance/hrm_trainer_agent.py
-from tqdm import tqdm
+# stephanie/agents/maintenance/hrm_trainer.py
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable import ScorableFactory, ScorableType
+from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.training.hrm_trainer import HRMTrainer
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 
 
 class HRMTrainerAgent(BaseAgent):
@@ -15,110 +17,26 @@ class HRMTrainerAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger, full_cfg):
         super().__init__(cfg, memory, container, logger)
         self.dimensions = cfg.get("dimensions", [])  # e.g., ["alignment", "relevance"]
-
+        self.pair_builder = PreferencePairBuilder(memory, logger)
         self.trainer = HRMTrainer(full_cfg.scorer.hrm, memory, container=container, logger=logger)
         self.scorer = SICQLScorer(full_cfg.scorer.sicql, memory, container=container, logger=logger)
-        self.use_context_for_training = cfg.get("use_context_for_training", False)
+        self.target_type = cfg.get("target_type", ScorableType.CONVERSATION_TURN)
+        self.limit = cfg.get("limit", 1000)
         self.max_documents = cfg.get("max_documents", 500)
 
     async def run(self, context: dict) -> dict:
-        goal = context.get("goal", {})
-        goal_text = goal.get("goal_text", "")
-        if self.use_context_for_training:
-            documents = context.get(self.input_key, [])
-            if documents:
-                self.logger.log("HRMTrainingAgentInfo", {
-                    "message": "Using context for training.",
-                    "input_key": self.input_key,
-                    "num_documents": len(documents)
-                })
-        else:
-            documents = self.memory.documents.get_all(limit=self.max_documents)
+        results = {}
+        for dimension in self.dimensions:
+            pairs_by_dim = self.pair_builder.get_training_pairs_by_dimension(
+                dimension=dimension,
+            )
+            samples = pairs_by_dim.get(dimension, [])
+            if not samples:
+                self.logger.log("NoSamplesFound", {"dimension": dimension})
+                continue
+            stats = self.trainer.train(samples, dimension)
+            if "error" not in stats:
+                results[dimension] = stats
 
-        if not documents:
-            self.logger.log("HRMTrainingAgentError", {
-                "message": "No documents provided for training.",
-                "input_key": self.input_key
-            })
-
-        documents = [d.to_dict() for d in self.memory.documents.get_all(limit=self.max_documents)]
-        self.logger.log("HRMTrainingAgentInfo", {
-            "message": "Retrieved documents for training.",
-            "input_key": self.input_key,
-            "num_documents": len(documents)
-        })
-
-        dimensional_training_samples = {dim: [] for dim in self.dimensions}
-
-        for doc in tqdm(documents, desc="HRM Training: Processing documents", unit="doc"):
-            try:
-                scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
-                score_bundle = self.scorer.score(
-                    context=context,
-                    scorable=scorable,
-                    dimensions=self.dimensions
-                )
-
-                for dimension in self.dimensions:
-                    score_result = score_bundle.results.get(dimension)
-                    if not score_result:
-                        self.logger.log("HRMTrainingAgentWarning", {
-                            "message": f"Missing q_value for dimension '{dimension}'",
-                            "doc_id": scorable.id
-                        })
-                        continue
-
-                    dimensional_training_samples[dimension].append({
-                        "goal_text": goal_text,
-                        "scorable_text": scorable.text,
-                        "target_score": score_result.attributes.get("q_value")
-                    })
-
-            except Exception as e:
-                self.logger.log("HRMTrainingAgentDataError", {
-                    "message": "Error processing document.",
-                    "doc_id": doc.get("id", "unknown"),
-                    "error": str(e)
-                })
-
-        # Log how many samples were prepared
-        for dim, samples in dimensional_training_samples.items():
-            self.logger.log("HRMTrainingDataPrepared", {
-                "dimension": dim,
-                "num_samples": len(samples)
-            })
-
-        # Train the HRM per dimension
-        training_results = {}
-        try:
-            for dimension, samples in dimensional_training_samples.items():
-                if not samples:
-                    training_results[dimension] = {"status": "skipped", "reason": "no samples"}
-                    continue
-
-                result = self.trainer.train(samples=samples, dimension=dimension)
-                training_results[dimension] = result
-
-                self.logger.log("HRMTrainingAgentCompleted", {
-                    "dimension": dimension,
-                    "result": result
-                })
-
-            # Update context with structured results
-            context[self.output_key] = {
-                "status": "completed",
-                "dimensions": self.dimensions,
-                "results": training_results,
-            }
-
-        except Exception as e:
-            self.logger.log("HRMTrainingAgentError", {
-                "message": "Error during HRM training execution.",
-                "error": str(e)
-            })
-            context[self.output_key] = {
-                "status": "failed",
-                "message": str(e)
-            }
-
+        context["training_stats"] = results
         return context

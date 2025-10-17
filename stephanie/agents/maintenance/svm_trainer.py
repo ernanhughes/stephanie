@@ -1,3 +1,6 @@
+# stephanie/agents/maintenance/svm_trainer.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.training.preference_pair_builder import \
     PreferencePairBuilder
@@ -11,29 +14,28 @@ class SVMTrainerAgent(BaseAgent):
         self.dimensions = cfg.get("dimensions", [])
 
     async def run(self, context: dict) -> dict:
-        goal_text = context.get("goal", {}).get("goal_text")
-        builder = PreferencePairBuilder(db=self.memory.session, logger=self.logger)
-        training_pairs = {}
-
+        builder = PreferencePairBuilder(self.memory, logger=self.logger)
         results = {}
 
-        for dim in self.dimensions:
-            pairs = builder.get_training_pairs_by_dimension(goal=goal_text, dim=[dim])
-            examples = pairs.get(dim, [])
+        for dimension in self.dimensions:
+            pairs = builder.get_training_pairs_by_dimension(
+                dimension=dimension,
+            )
+            examples = pairs.get(dimension, [])
 
             if not examples:
-                self.logger.log("SVMNoTrainingPairs", {"dimension": dim})
+                self.logger.log("SVMNoTrainingPairs", {"dimension": dimension})
                 continue
 
-            self.logger.log("SVMTrainerInvoked", {"dimension": dim, "count": len(examples)})
-            stats = self.trainer.train(examples, dimension=dim)
+            self.logger.log("SVMTrainerInvoked", {"dimension": dimension, "count": len(examples)})
+            stats = self.trainer.train(examples, dimension=dimension)
 
             if "error" in stats:
-                self.logger.log("SVMTrainingError", {"dimension": dim, **stats})
+                self.logger.log("SVMTrainingError", {"dimension": dimension, **stats})
             else:
                 self.logger.log("SVMTrainingCompleted", stats)
 
-            results[dim] = stats
+            results[dimension] = stats
 
         context[self.output_key] = {
             "training_stats": results

@@ -1,0 +1,58 @@
+# config/tiny.yaml
+# Paper: 2510.04871 Less is More: Recursive Reasoning with Tiny Networks
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: disabled
+  - bus: nats   
+  - logging/json_logger
+  - mars/default
+  - services/default
+  - scorer: all  
+
+  - agents/chat_analyze
+  - agents/universal_scorer
+  - agents/tiny
+
+
+goal:
+  goal_text: >
+    recursive reasoning enhancement
+  goal_type: tactical
+  goal_category: meta_reasoning
+  focus_area: question_generation
+  strategy: stepwise_decomposition
+  difficulty: medium
+  expected_formats:
+    - symbolic_prompt_plan
+    - stepwise_reasoning_trace
+    - annotated_score_vector
+
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+embeddings:
+  backend: hnet
+
+pipeline:
+  name: tiny
+  description: "Will generate and test the tiny models"
+  stages:
+     - name: chat_analyze
+       description: "Analyze chat history for relevant information"
+       cls: stephanie.agents.knowledge.chat_analyze.ChatAnalyzeAgent
+       enabled: true
+       iterations: 1
+     - name: universal_scorer
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false 
+       iterations: 1
+     - name: tiny
+       cls: stephanie.agents.tiny.TinyRecursionTrainerAgent
+       enabled: true
+       iterations: 1

@@ -101,6 +101,8 @@ class NatsKnowledgeBus(BusProtocol):
 
         # Stream subjects we ensure; default to "<stream>.>"
         self._stream_subjects: List[str] = [f"{self.stream}.>"]
+        self._stopping: bool = False    
+
 
     # ---------- Connection management ----------
 
@@ -199,7 +201,7 @@ class NatsKnowledgeBus(BusProtocol):
                     if nc and not nc.is_closed:
                         await nc.close()
                 return False
-
+            
     async def _on_reconnected(self):
         # Refresh JS context and re-subscribe
         try:
@@ -347,7 +349,32 @@ class NatsKnowledgeBus(BusProtocol):
 
     # ---------- Shutdown ----------
 
+
+    async def stop(self) -> None:
+        """Cooperative shutdown: stop loops first, then drain/close NATS."""
+        self._stopping = True
+        await self._stop_tasks()          # cancels keepalive/health tasks
+        # Unsubscribe + drain/close like close(), but protected for shutdown races
+        if self._nc:
+            try:
+                for subject, meta in list(self._subscriptions.items()):
+                    sub = meta.get("sub")
+                    if sub:
+                        with contextlib.suppress(Exception):
+                            await sub.unsubscribe()
+                self._subscriptions.clear()
+                with contextlib.suppress(Exception):
+                    await self._nc.drain()
+            finally:
+                with contextlib.suppress(Exception):
+                    await self._nc.close()
+                self._connected = False
+                self._nc = None
+                self._js = None
+
+
     async def close(self) -> None:
+        self._stopping = True
         await self._stop_tasks()
         if self._nc:
             try:
@@ -364,6 +391,8 @@ class NatsKnowledgeBus(BusProtocol):
                     await self._nc.close()
             finally:
                 self._connected = False
+                self._nc = None
+                self._js = None
                 _logger.debug("NATSClosedCleanly")
 
     # ---------- Helpers ----------
@@ -443,7 +472,7 @@ class NatsKnowledgeBus(BusProtocol):
 
         async def _loop():
             try:
-                while True:
+                while not self._stopping:
                     try:
                         if not self._connected or not self._nc or self._nc.is_closed:
                             await asyncio.sleep(3.0)
@@ -520,9 +549,10 @@ class NatsKnowledgeBus(BusProtocol):
 
         async def _health():
             try:
-                while True:
+                while not self._stopping:
                     try:
-                        await asyncio.sleep(self.health_check_interval)
+                        if not self._stopping:
+                            await asyncio.sleep(self.health_check_interval)
                         if not self._connected or not self._nc or self._nc.is_closed:
                             continue
                         await self._nc.flush(timeout=1.0)
@@ -583,7 +613,7 @@ class NatsKnowledgeBus(BusProtocol):
         Try to flush with NATS' own timeout; never raises CancelledError to callers.
         Returns True if OK, False if it timed out or errored.
         """
-        if not self._nc or self._nc.is_closed:
+        if self._stopping or not self._nc or self._nc.is_closed:
             return False
         try:
             await self._nc.flush(timeout=timeout)

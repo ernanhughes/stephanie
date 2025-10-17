@@ -51,7 +51,7 @@ class KnowledgeCAREAgent:
         self,
         llm: LLMAdapter,
         knowledge_scorer: KnowledgeScorer,
-        *, no I'm fine It's going to work
+        *, 
         min_keep: int = 3,
         max_keep: int = 8,
         score_floor: float = 0.55,         # drop weak steps
