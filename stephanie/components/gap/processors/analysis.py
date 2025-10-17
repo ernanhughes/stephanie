@@ -10,7 +10,7 @@ from stephanie.components.gap.models import GapConfig
 from stephanie.components.gap.processors.topology import TopologyProcessor, TopologyConfig
 from stephanie.components.gap.processors.visuals import render_scm_images
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class AnalysisProcessor:
