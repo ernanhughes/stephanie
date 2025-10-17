@@ -23,7 +23,7 @@ class VisualizationProcessor:
                                    run_id: str, manifest) -> Dict[str, Any]:
         """Generate all visual artifacts."""
         zm = self.container.get("zeromodel")
-        storage = self.container.get("storage")  # Assuming storage is available
+        storage = self.container.get("gap_storage")  # Assuming storage is available
         
         results = {}
         

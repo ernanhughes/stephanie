@@ -36,7 +36,7 @@ class GapAgent(BaseAgent):
             interleave=bool(raw_config.get("interleave", False)),
             progress_log_every=int(raw_config.get("progress_log_every", 25)),
             dedupe_policy=raw_config.get("dedupe_policy", "first_wins"),
-            per_dim_cap=raw_config.get("per_dim_cap"),
+            per_dim_cap=raw_config.get("per_dim_cap", 100),
         )
     
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:

@@ -1,200 +1,291 @@
 # stephanie/components/gap/processors/calibration.py
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import numpy as np
 
 from stephanie.components.gap.models import GapConfig
-
 
 logger = logging.getLogger(__name__)
 
 
 class CalibrationProcessor:
-    """Handles calibration and routing analysis between HRM and Tiny models."""
-    
+    """
+    Fits a monotone piecewise-linear calibration Tiny->HRM per dimension and
+    simulates a routing policy using Tiny diagnostics (uncertainty / OOD).
+    Persists:
+      - metrics/calibration_params.json
+      - metrics/routing_detail.json
+      - metrics/routing_summary.json
+    """
+
     def __init__(self, config: GapConfig, container, logger):
         self.config = config
         self.container = container
         self.logger = logger
-    
-    async def analyze_calibration(self, scoring_results: Dict[str, Any],
-                                run_id: str, manifest) -> Dict[str, Any]:
-        """Perform calibration analysis and routing simulation."""
-        storage = self.container.get("storage")
-        
-        # Load aligned matrices
-        hrm_matrix, hrm_names = storage.load_matrix(run_id, "hrm")
-        tiny_matrix, tiny_names = storage.load_matrix(run_id, "tiny")
 
-        # keep these around and pass to _simulate_routing:
-        results = {}
-        
-        # Dimension calibration
-        calibration_results = await self._calibrate_dimensions(
-            hrm_matrix, tiny_matrix, hrm_names, tiny_names, run_id
-        )
-        results["calibration"] = calibration_results
-        
-        # Routing simulation
-        routing_results = await self._simulate_routing(
-            hrm_matrix, tiny_matrix, hrm_names, tiny_names, 
-            calibration_results, run_id
-        )
-        
-        results["routing"] = routing_results
-        
-        return results
-    
-    async def _calibrate_dimensions(self, hrm_matrix: np.ndarray, tiny_matrix: np.ndarray,
-                                  hrm_names: List[str], tiny_names: List[str],
-                                  run_id: str) -> Dict[str, Any]:
-        """Calibrate Tiny scores to HRM reference for each dimension."""
-        calib_params = {}
-        dim_stats = []
-        
-        for dim in self.config.dimensions:
-            hrm_col = self._find_dimension_column(hrm_names, "hrm", dim)
-            tiny_col = self._find_dimension_column(tiny_names, "tiny", dim)
-            
-            if hrm_col is None or tiny_col is None:
+    # ---------- Public API ----------------------------------------------------
+    async def execute_calibration(
+        self,
+        analysis_results: Dict[str, Any],   # currently not required; kept for API symmetry
+        run_id: str,
+        progress_cb=None,
+    ) -> Dict[str, Any]:
+        """
+        Load aligned matrices (saved in scoring), fit per-dimension monotone calibration,
+        build a Tiny-diagnostics routing mask, and compute MAE deltas vs HRM.
+
+        Returns:
+            {
+              "params_path": "<.../calibration_params.json>",
+              "routing_summary_path": "<.../routing_summary.json>",
+              "routing_detail_path": "<.../routing_detail.json>",
+              "usage_rate": <float>,
+              "avg_mae_vs_hrm": <float>
+            }
+        """
+        storage = self.container.get("gap_storage")
+        base_dir = Path(storage.base_dir) / run_id
+        aligned_dir = base_dir / "aligned"
+        metrics_dir = base_dir / "metrics"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+
+        # 0) Progress
+        if progress_cb:
+            progress_cb(0, 100, {"stage": "calibration"})
+
+        # 1) Load aligned matrices + names (as produced by ScoringProcessor)
+        hrm_mat = np.load(aligned_dir / "hrm_matrix.npy")
+        tiny_mat = np.load(aligned_dir / "tiny_matrix.npy")
+
+        with open(aligned_dir / "hrm_metric_names.json", "r", encoding="utf-8") as f:
+            hrm_names: List[str] = json.load(f)
+        with open(aligned_dir / "tiny_metric_names.json", "r", encoding="utf-8") as f:
+            tiny_names: List[str] = json.load(f)
+
+        dims = list(self.config.dimensions)
+
+        # 2) Per-dimension monotone PL calibration Tiny->HRM
+        calib_params: Dict[str, Dict[str, List[float]]] = {}
+        dim_stats: List[Dict[str, Any]] = []
+
+        for dim in dims:
+            i_hrm = _col_for_dim(hrm_names, "hrm", dim)
+            i_tny = _col_for_dim(tiny_names, "tiny", dim)
+            if i_hrm is None or i_tny is None:
                 dim_stats.append({
-                    "dimension": dim, "status": "missing_columns",
-                    "hrm_col": hrm_col, "tiny_col": tiny_col
+                    "dimension": dim,
+                    "status": "missing",
+                    "hrm_col": i_hrm,
+                    "tiny_col": i_tny,
                 })
                 continue
-            
-            hrm_scores = self._safe_clip(hrm_matrix[:, hrm_col])
-            tiny_scores = self._safe_clip(tiny_matrix[:, tiny_col])
-            
-            # Fit calibration
-            calib = self._monotone_calibration(tiny_scores, hrm_scores)
+
+            hrm_scores = _safe01(hrm_mat[:, i_hrm])
+            tiny_scores = _safe01(tiny_mat[:, i_tny])
+
+            calib = _monotone_pl_calibration(tiny_scores, hrm_scores, n_knots=21)
             calib_params[dim] = calib
-            
-            # Evaluate calibration
-            mae_pre = self._mean_absolute_error(tiny_scores, hrm_scores)
-            tiny_calibrated = self._apply_calibration(tiny_scores, calib)
-            mae_post = self._mean_absolute_error(tiny_calibrated, hrm_scores)
-            
+
+            mae_pre = _mae(tiny_scores, hrm_scores)
+            tiny_cal = _apply_monotone_pl(tiny_scores, calib)
+            mae_post = _mae(tiny_cal, hrm_scores)
+
             dim_stats.append({
                 "dimension": dim,
-                "status": "calibrated",
-                "mae_pre": float(mae_pre),
-                "mae_post": float(mae_post),
-                "improvement": float(mae_pre - mae_post),
-                "hrm_col": hrm_col,
-                "tiny_col": tiny_col
+                "status": "ok",
+                "mae_pre": round(mae_pre, 6),
+                "mae_post": round(mae_post, 6),
+                "improved": bool(mae_post < mae_pre - 1e-6),
+                "hrm_col": int(i_hrm),
+                "tiny_col": int(i_tny),
             })
-        
-        # Save calibration parameters
-        storage = self.container.get("storage")
-        calibration_path = storage.save_metrics_report(
-            {"parameters": calib_params, "statistics": dim_stats},
-            run_id, "calibration_parameters"
-        )
-        
-        return {
-            "parameters": calib_params,
-            "statistics": dim_stats,
-            "path": str(calibration_path)
-        }
-    
-    async def _simulate_routing(self, hrm_matrix: np.ndarray, tiny_matrix: np.ndarray,
-                            hrm_names: List[str], tiny_names: List[str],
-                            calibration_results: Dict[str, Any], run_id: str) -> Dict[str, Any]:
-        """Simulate routing based on Tiny diagnostics and calibration."""
-        # Extract diagnostic signals
-        uncertainty_scores = self._extract_diagnostic_signal(tiny_matrix, tiny_names, ("uncertainty",))
-        ood_scores = self._extract_diagnostic_signal(tiny_matrix, tiny_names, ("ood_hat",))
 
-        # Create routing mask
-        uncertainty_threshold = self.config.route_threshold_uncertainty
-        ood_threshold = self.config.route_threshold_ood
-        
-        use_hrm_mask = (uncertainty_scores > uncertainty_threshold) | (ood_scores > ood_threshold)
+        # Persist calibration params
+        params_path = metrics_dir / "calibration_params.json"
+        with open(params_path, "w", encoding="utf-8") as f:
+            json.dump({"per_dimension": calib_params, "stats": dim_stats}, f, indent=2)
+
+        # 3) Build routing mask from Tiny diagnostics (uncertainty / ood_hat / consistency)
+        #    We look for diagnostic columns on the Tiny side using loose search.
+        tiny_unc = _maybe_diag_col(tiny_mat, tiny_names, ("uncertainty",))
+        tiny_ood = _maybe_diag_col(tiny_mat, tiny_names, ("ood_hat",))
+        tiny_unc = _safe01(tiny_unc) if tiny_unc is not None else np.zeros(tiny_mat.shape[0])
+        tiny_ood = _safe01(tiny_ood) if tiny_ood is not None else np.zeros(tiny_mat.shape[0])
+
+        thr_unc = float(getattr(self.config, "route_threshold_uncertainty", 0.6))
+        thr_ood = float(getattr(self.config, "route_threshold_ood", 0.7))
+
+        use_hrm_mask = (tiny_unc > thr_unc) | (tiny_ood > thr_ood)
         usage_rate = float(np.mean(use_hrm_mask))
-        
-        # Simulate routed scores for each dimension
-        per_dim_results = []
-        calib_params = calibration_results["parameters"]
-        
-        for dim in self.config.dimensions:
+
+        # 4) Simulate routed final scores and compute dimension MAEs vs HRM
+        per_dim_results: List[Dict[str, Any]] = []
+        for dim in dims:
             if dim not in calib_params:
                 per_dim_results.append({"dimension": dim, "status": "skipped"})
                 continue
 
-            hrm_col = self._find_dimension_column(hrm_names, "hrm", dim)
-            tiny_col = self._find_dimension_column(tiny_names, "tiny", dim)
-
-            if hrm_col is None or tiny_col is None:
-                per_dim_results.append({"dimension": dim, "status": "missing_columns"})
+            i_hrm = _col_for_dim(hrm_names, "hrm", dim)
+            i_tny = _col_for_dim(tiny_names, "tiny", dim)
+            if i_hrm is None or i_tny is None:
+                per_dim_results.append({"dimension": dim, "status": "missing"})
                 continue
 
-            hrm_scores = self._safe_clip(hrm_matrix[:, hrm_col])
-            tiny_scores = self._safe_clip(tiny_matrix[:, tiny_col])
-            tiny_calibrated = self._apply_calibration(tiny_scores, calib_params[dim])
+            hrm_scores = _safe01(hrm_mat[:, i_hrm])
+            tiny_scores = _safe01(tiny_mat[:, i_tny])
+            tiny_cal = _apply_monotone_pl(tiny_scores, calib_params[dim])
 
-            final_scores = np.where(use_hrm_mask, hrm_scores, tiny_calibrated)
-            
-            # Compute metrics
-            mae_routed = self._mean_absolute_error(final_scores, hrm_scores)
-            mae_tiny = self._mean_absolute_error(tiny_scores, hrm_scores)
-            mae_calibrated = self._mean_absolute_error(tiny_calibrated, hrm_scores)
-            
+            final = np.where(use_hrm_mask, hrm_scores, tiny_cal)
+
+            mae_vs_hrm = _mae(final, hrm_scores)
+            mae_tiny   = _mae(tiny_scores, hrm_scores)
+            mae_cal    = _mae(tiny_cal, hrm_scores)
+
             per_dim_results.append({
                 "dimension": dim,
-                "status": "routed",
-                "mae_routed": float(mae_routed),
-                "mae_tiny": float(mae_tiny),
-                "mae_calibrated": float(mae_calibrated),
-                "routing_usage": float(np.mean(use_hrm_mask))
+                "status": "ok",
+                "mae_vs_hrm_routed": round(mae_vs_hrm, 6),
+                "mae_vs_hrm_tiny": round(mae_tiny, 6),
+                "mae_vs_hrm_calibrated_tiny": round(mae_cal, 6),
             })
-        
-        # Save routing results
-        storage = self.container.get("storage")
-        routing_path = storage.save_metrics_report(
-            {
-                "usage_rate": usage_rate,
-                "thresholds": {
-                    "uncertainty": uncertainty_threshold,
-                    "ood": ood_threshold
-                },
-                "per_dimension_results": per_dim_results
-            },
-            run_id, "routing_simulation"
-        )
-        
-        return {
-            "usage_rate": usage_rate,
-            "per_dimension_results": per_dim_results,
-            "path": str(routing_path)
-        }
-    
-    def _find_dimension_column(self, names: List[str], model: str, dimension: str) -> Optional[int]:
-        """Find column index for a dimension score."""
-        candidates = [
-            f"{model}.{dimension}.score",
-            f"{model}.{dimension}.aggregate", 
-            f"{model}.{dimension}",
-        ]
-        
-        for candidate in candidates:
-            if candidate in names:
-                return names.index(candidate)
-        
-        # Fallback: loose match
-        for i, name in enumerate(names):
-            if (name.startswith(f"{model}.{dimension}") and 
-                any(name.endswith(suffix) for suffix in [".score", ".aggregate", ".value", ".raw"])):
-                return i
-        
-        return None
-    
-    def _extract_diagnostic_signal(self, matrix, names, key_parts):
-        for i, name in enumerate(names):
-            if name.startswith("tiny.") and all(part in name for part in key_parts):
-                return self._safe_clip(matrix[:, i])
-        # fallback: zeros (same length as rows)
-        return np.zeros(matrix.shape[0], dtype=np.float64)
 
+        # 5) Persist routing results
+        detail_path = metrics_dir / "routing_detail.json"
+        with open(detail_path, "w", encoding="utf-8") as f:
+            json.dump({"per_dimension": per_dim_results}, f, indent=2)
+
+        maes = [r.get("mae_vs_hrm_routed") for r in per_dim_results if r.get("status") == "ok"]
+        avg_mae = float(np.mean(maes)) if maes else 0.0
+
+        summary_path = metrics_dir / "routing_summary.json"
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "usage_rate": round(usage_rate, 6),
+                "avg_mae_vs_hrm": round(avg_mae, 6),
+                "thresholds": {"uncertainty": thr_unc, "ood": thr_ood},
+            }, f, indent=2)
+
+        # 6) Final progress + return
+        if progress_cb:
+            progress_cb(100, 100, {"stage": "calibration"})
+
+        return {
+            "params_path": str(params_path),
+            "routing_summary_path": str(summary_path),
+            "routing_detail_path": str(detail_path),
+            "usage_rate": usage_rate,
+            "avg_mae_vs_hrm": avg_mae,
+        }
+
+
+# ---------- helpers (mirrors of the agent version) ---------------------------
+def _find_first(names: List[str], candidates: List[str]) -> Optional[str]:
+    for c in candidates:
+        if c in names:
+            return c
+    return None
+
+def _col_for_dim(names: List[str], model: str, dim: str) -> Optional[int]:
+    """
+    Find a column index for {model}.{dim} final score-like series.
+    Preference: .score -> .aggregate -> exact -> any suffix match.
+    """
+    priorities = [
+        f"{model}.{dim}.score",
+        f"{model}.{dim}.aggregate",
+        f"{model}.{dim}",
+    ]
+    choice = _find_first(names, priorities)
+    if choice is None:
+        # loose search fallback
+        for i, n in enumerate(names):
+            if n.startswith(f"{model}.{dim}") and n.endswith((".score", ".aggregate", ".value", ".raw")):
+                return i
+        return None
+    return names.index(choice)
+
+def _col_for_diag(names: List[str], model: str, key_parts: tuple[str, ...]) -> Optional[int]:
+    """
+    Find diagnostic column like 'tiny.reasoning.attr.ood_hat' or 'tiny.uncertainty'.
+    Matches if all key_parts appear in the column name (in order).
+    """
+    def has_parts(s: str) -> bool:
+        pos = 0
+        for kp in key_parts:
+            j = s.find(kp, pos)
+            if j < 0:
+                return False
+            pos = j + len(kp)
+        return True
+
+    for i, n in enumerate(names):
+        if n.startswith(f"{model}.") and has_parts(n):
+            return i
+    return None
+
+def _maybe_diag_col(mat: np.ndarray, names: List[str], parts: tuple[str, ...]) -> Optional[np.ndarray]:
+    idx = _col_for_diag(names, "tiny", parts)
+    if idx is None:
+        return None
+    return mat[:, idx]
+
+def _safe01(a: np.ndarray) -> np.ndarray:
+    a = np.asarray(a, dtype=np.float64).reshape(-1)
+    return np.clip(a, 0.0, 1.0)
+
+def _mae(a: np.ndarray, b: np.ndarray) -> float:
+    a = np.asarray(a, dtype=np.float64).reshape(-1)
+    b = np.asarray(b, dtype=np.float64).reshape(-1)
+    if a.size == 0:
+        return 0.0
+    return float(np.mean(np.abs(a - b)))
+
+def _monotone_pl_calibration(x: np.ndarray, y: np.ndarray, *, n_knots: int = 21) -> Dict[str, List[float]]:
+    """
+    Fit simple monotone piecewise-linear map Tiny->HRM using quantile knots.
+    Returns {"x_knots":[...],"y_knots":[...]} with y non-decreasing in x.
+    """
+    x = np.asarray(x, dtype=np.float64).reshape(-1)
+    y = np.asarray(y, dtype=np.float64).reshape(-1)
+    if x.size == 0 or y.size == 0:
+        return {"x_knots": [0.0, 1.0], "y_knots": [0.0, 1.0]}
+
+    qs = np.linspace(0, 1, n_knots)
+    x_knots = np.quantile(x, qs).astype(float)
+    # hard clamp ends to [0,1] to stabilize extrapolation
+    x_knots[0], x_knots[-1] = 0.0, 1.0
+
+    y_knots = []
+    for q in qs:
+        lo = np.quantile(x, max(0.0, q - 0.025))
+        hi = np.quantile(x, min(1.0, q + 0.025))
+        mask = (x >= lo) & (x <= hi)
+        if mask.sum() < 8:
+            # nearest-neighbor fallback
+            idx = np.argsort(np.abs(x - np.quantile(x, q)))[:16]
+            y_knots.append(float(np.mean(y[idx])))
+        else:
+            y_knots.append(float(np.mean(y[mask])))
+
+    # isotonic projection
+    yk = np.array(y_knots, dtype=np.float64)
+    for i in range(1, len(yk)):
+        if yk[i] < yk[i - 1]:
+            yk[i] = yk[i - 1]
+    yk = np.clip(yk, 0.0, 1.0)
+
+    return {"x_knots": x_knots.tolist(), "y_knots": yk.tolist()}
+
+def _apply_monotone_pl(x: np.ndarray, calib: Dict[str, List[float]]) -> np.ndarray:
+    if not calib or "x_knots" not in calib or "y_knots" not in calib:
+        return x
+    xx = np.asarray(x, dtype=np.float64).reshape(-1)
+    xk = np.asarray(calib["x_knots"], dtype=np.float64)
+    yk = np.asarray(calib["y_knots"], dtype=np.float64)
+    return np.interp(xx, xk, yk).astype(np.float64)
