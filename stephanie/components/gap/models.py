@@ -34,7 +34,8 @@ class GapConfig:
     interleave: bool = False
     progress_log_every: int = 25
     dedupe_policy: str = "first_wins"
-    per_dim_cap: int = 100
+    # per_dim_cap: int = 1000 # count limit per dimension
+    per_dim_cap: int = 100 
     route_threshold_uncertainty: float = 0.6
     route_threshold_ood: float = 0.7
     enable_scm_head: bool = True

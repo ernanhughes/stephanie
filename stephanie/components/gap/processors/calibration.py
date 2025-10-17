@@ -57,7 +57,7 @@ class CalibrationProcessor:
 
         # 0) Progress
         if progress_cb:
-            progress_cb(0, 100, {"stage": "calibration"})
+            progress_cb(0, {"stage": "calibration"})
 
         # 1) Load aligned matrices + names (as produced by ScoringProcessor)
         hrm_mat = np.load(aligned_dir / "hrm_matrix.npy")

@@ -168,24 +168,28 @@ class HRMScorer(BaseScorer):
                     y_pred, intermediate = model(x_input)
 
                 raw_score = float(y_pred.squeeze().item())
+                raw01 = float(max(0.0, min(1.0, y_pred.squeeze().item())))
+                hrm_score100 = round(raw01 * 100.0, 4)
 
                 # Pull a few useful magnitudes if present (robust to None / non-tensors)
                 zL_mag = _safe_norm(intermediate.get("zL_final"))
                 zH_mag = _safe_norm(intermediate.get("zH_final"))
 
                 rationale = (
-                    f"HRM[{dimension}] raw={raw_score:.4f} | "
+                    f"HRM[{dimension}] raw={raw01:.4f} | "
                     f"zL_mag={_fmt_opt4(zL_mag)}, zH_mag={_fmt_opt4(zH_mag)}"
                 )
 
                 # Native attrs (kept for drill-down)
                 attributes: Dict[str, Any] = {
                     "raw_score": raw_score,
+                    "hrm.score01": raw01,
+                    "hrm.score100": hrm_score100,
                     "zL_magnitude": zL_mag,
                     "zH_magnitude": zH_mag,
                     # historical keys used in your blog glossary
-                    "q_value": raw_score,
-                    "energy": raw_score,  # swap out later if you add real energy
+                    "q_value": raw01,
+                    # "energy": raw_score,  # AVOID scale confustion
                 }
 
                 # Optionally proxy extra HRM diagnostics if your HRMModel exposes them
@@ -193,16 +197,17 @@ class HRMScorer(BaseScorer):
                     if k in intermediate:
                         v = intermediate[k]
                         attributes[k] = float(v.detach().mean().item() if isinstance(v, torch.Tensor) else float(v))
-
                 # === SCM: derive shared-core metrics from HRM internals/attrs ===
                 scm = _build_scm_from_hrm(attrs=attributes, intermediate=intermediate)
                 attributes.update(scm)
 
                 # Mirror the five core scores under hrm.* for PHOS rows
                 for dname in ("reasoning", "knowledge", "clarity", "faithfulness", "coverage"):
-                    key = f"scm.{dname}.score01"
-                    if key in scm:
-                        attributes[f"hrm.{dname}"] = float(scm[key])
+                    k01 = f"scm.{dname}.score01"
+                    if k01 in scm:
+                        v01 = float(scm[k01])
+                        attributes[f"hrm.{dname}.score01"]  = v01
+                        attributes[f"hrm.{dname}.score100"] = round(v01 * 100.0, 4)
 
                 results[dimension] = ScoreResult(
                     dimension=dimension,

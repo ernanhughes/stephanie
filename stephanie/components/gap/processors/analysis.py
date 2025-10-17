@@ -43,7 +43,6 @@ class AnalysisProcessor:
         We prefer native alignment if shapes match; otherwise we fall back to SCM matrices.
         """
         zm = self.container.get("zeromodel")
-        storage = self.container.get("gap_storage")
 
         out_metrics_dir = self.config.base_dir / run_id / "metrics"
         out_visuals_dir = self.config.base_dir / run_id / "visuals"
@@ -153,7 +152,6 @@ class AnalysisProcessor:
         Prefer native alignment if present and shapes match; else fall back to SCM.
         Returns: (hrm_matrix, tiny_matrix, hrm_names, tiny_names)
         """
-        use_scm = False
         H = scoring_results.get("hrm_vectors")
         T = scoring_results.get("tiny_vectors")
 
