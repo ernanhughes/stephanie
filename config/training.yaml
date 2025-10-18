@@ -7,6 +7,7 @@ defaults:
   - scorer/hrm/default
   - scorer/epistemic_hrm/default
 
+  - agents/chat_mrq_trainer
   - agents/arxiv_search
   - agents/document_loader
   - agents/document_profiler

@@ -9,7 +9,11 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+<<<<<<< HEAD
 from typing import Any, Dict, List, Optional
+=======
+from typing import Any, Callable, Dict, List, Optional
+>>>>>>> main
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -18,6 +22,7 @@ from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer
 from stephanie.utils.json_sanitize import dumps_safe
+<<<<<<< HEAD
 
 from stephanie.services.event_service import EventService
 from stephanie.services.service_protocol import Service
@@ -26,6 +31,15 @@ import scipy.stats as spstats  # optional, but nice if available
 
 from collections import defaultdict
 from datetime import datetime
+=======
+from stephanie.zeromodel.vpm_phos import robust01
+
+from stephanie.services.event_service import EventService
+from stephanie.services.service_protocol import Service
+import scipy.stats as spstats  # optional, but nice if available
+
+from collections import defaultdict
+>>>>>>> main
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
@@ -148,6 +162,36 @@ def _pad_square_top_left(img: np.ndarray, side: int) -> np.ndarray:
     out[:h, :w] = img  # keep TL structure; pad BR
     return out
 
+<<<<<<< HEAD
+=======
+def _save_field_image(
+    mat: np.ndarray,
+    title: str,
+    out_base: str,
+    *,
+    cmap: str = "coolwarm",
+) -> Optional[str]:
+    """
+    Save a 2D heatmap image. Accepts 1D arrays (reshapes to Nx1).
+    Returns the file path or None if input is empty.
+    """
+    mat = np.asarray(mat)
+    if mat.size == 0:
+        return None
+    if mat.ndim == 1:
+        mat = mat.reshape(-1, 1)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    im = ax.imshow(mat, cmap=cmap, aspect="auto")
+    ax.set_title(title, fontsize=10)
+    fig.colorbar(im, ax=ax, label="Δ Intensity")
+    plt.tight_layout()
+    out_path = f"{out_base}.png"
+    plt.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return out_path
+
+>>>>>>> main
 def _align_square_phos(A: np.ndarray, B: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     s = max(A.shape[0], B.shape[0])
     if A.shape != (s, s): A = _pad_square_top_left(A, s)
@@ -273,11 +317,22 @@ class ZeroModelService(Service):
                 f = float(v)
             except Exception:
                 f = 0.0
-            if f < 0:
-                f = abs(f)
-            elif f > 1.0:
-                f = min(f / 100.0, 1.0)
-            normalized.append(f)
+            # Respect values as-is unless caller *explicitly* asks for scaling
+            scale_mode = (self.cfg.get("timeline_scale_mode") or "passthrough").lower()
+            f = float(v) if np.isfinite(float(v)) else 0.0
+
+            if scale_mode == "passthrough":
+                pass
+            elif scale_mode == "clip01":
+                f = max(0.0, min(1.0, f))
+            elif scale_mode == "percent_0_100":
+                f = max(0.0, min(1.0, f / 100.0))
+            elif scale_mode == "robust01":
+                # defer to a per-column robust scaler at finalize time (simpler here)
+                pass
+            else:
+                pass  # unknown mode → passthrough
+            normalized.append(float(f))
 
         # 2️⃣ Initialize metrics_order if missing or dummy
         if not sess.metrics_order or sess.metrics_order == []:
@@ -338,7 +393,10 @@ class ZeroModelService(Service):
         fps: Optional[int] = None,
         datestamp: bool = True,
         out_path: Optional[str] = None,
+        progress_cb: Optional[Callable[[str, int, int], None]] = None, 
     ) -> Dict[str, Any]:
+        if progress_cb: progress_cb("finalize:start", 0, 1)
+
         sess = self._sessions.pop(run_id, None)
         if not sess:
             return {"status": "noop", "reason": "no_session"}
@@ -370,6 +428,7 @@ class ZeroModelService(Service):
         gif_path = os.path.join(run_dir, base_name + ".gif")
 
         # Render animated timeline GIF
+        if progress_cb: progress_cb("timeline:render:start", 0, int(mat.shape[0]))
         res = self.render_timeline_from_matrix(
             mat,
             gif_path,
@@ -378,6 +437,7 @@ class ZeroModelService(Service):
             options={"panel": "timeline"},
             datestamp=datestamp,
         )
+        if progress_cb: progress_cb("timeline:render:done", int(mat.shape[0]), int(mat.shape[0]))
 
         # Write meta JSON
         meta_path = os.path.join(run_dir, base_name + ".json")
@@ -410,6 +470,7 @@ class ZeroModelService(Service):
             # Build small contrastive populations from the current matrix
             # Here we treat the first half as "positive" and second half as "negative"
             if mat.size >= 4 and mat.shape[0] > 2:
+                if progress_cb: progress_cb("ef:prepare", 0, 1)
                 midpoint = mat.shape[0] // 2
                 pos_mats = [mat[:midpoint, :]]
                 neg_mats = [mat[midpoint:, :]]
@@ -425,6 +486,7 @@ class ZeroModelService(Service):
                     output_dir=os.path.join(run_dir, "epistemic_fields"),
                     metric_names=metric_names,
                 )
+                if progress_cb: progress_cb("ef:done", 1, 1)
                 _logger.debug(
                     f"[ZeroModelService] 🧠 Epistemic field auto-generated "
                     f"(ΔMass={field_meta['delta_mass']:.4f}) → {field_meta['png']}"
@@ -448,7 +510,7 @@ class ZeroModelService(Service):
                     "metrics": sess.metrics_order,
                 },
             )
-
+        if progress_cb: progress_cb("finalize:done", 1, 1)
         return {
             "status": "ok",
             "matrix": mat,
@@ -572,6 +634,7 @@ class ZeroModelService(Service):
         metrics: Optional[List[str]] = None,
         options: Optional[Dict[str, Any]] = None,
         datestamp: bool = False,
+        progress_cb: Optional[Callable[[str,int,int],None]] = None,
     ) -> Dict[str, Any]:
         assert self._pipeline is not None, "ZeroModelService not initialized"
 
@@ -583,7 +646,8 @@ class ZeroModelService(Service):
         fps = fps or self._gif_fps
 
         sorted_matrix = self.sort_on_first_index(matrix)
-        for i in range(sorted_matrix.shape[0]):
+        total = int(sorted_matrix.shape[0])
+        for i in range(total):
             row = sorted_matrix[i : i + 1, :]
             vpm_out, _ = self._pipeline.run(row, {"enable_gif": False})
             gif.add_frame(
@@ -595,6 +659,8 @@ class ZeroModelService(Service):
                     "acc": row.std(),
                 },
             )
+            if progress_cb and ((i % 10) == 0 or (i + 1) == total):
+                progress_cb("timeline:frame", i + 1, total)
 
         gif.save_gif(out_path, fps=fps)
         _logger.debug(f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}")
@@ -699,6 +765,10 @@ class ZeroModelService(Service):
         aggregate: bool = False,
         metric_names: Optional[List[str]] = None,
         save_individual: bool = True, 
+<<<<<<< HEAD
+=======
+        progress_cb: Optional[Callable[[str,int,int],None]] = None,
+>>>>>>> main
     ) -> dict:
         """
         Generate the ZeroModel Epistemic Field — a contrastive visual intelligence map.
@@ -719,6 +789,7 @@ class ZeroModelService(Service):
         # -------------------------------
         # 1️⃣ Aggregate or stack matrices
         # -------------------------------
+        if progress_cb: progress_cb("stack", 1, 5)
         def _normalize_field(matrix: np.ndarray) -> np.ndarray:
             matrix = np.nan_to_num(matrix)
             max_val = np.max(np.abs(matrix)) + 1e-8
@@ -757,11 +828,13 @@ class ZeroModelService(Service):
         # -------------------------------
         # 2️⃣ Learn canonical layout
         # -------------------------------
+        if progress_cb: progress_cb("optimize_layout_start", 2, 5)
         opt = SpatialOptimizer(Kc=Kc, Kr=Kr, alpha=alpha)
         opt.apply_optimization([X_pos])
         w = opt.metric_weights
         layout = opt.canonical_layout
-        
+        if progress_cb: progress_cb("optimize_layout_done", 3, 5)
+
         # Build index mapping: old_index -> new_position (based on canonical layout)
         if layout is not None:
             flat_layout = np.ravel(layout)
@@ -777,6 +850,7 @@ class ZeroModelService(Service):
         # -------------------------------
         # 3️⃣ Apply canonical transform
         # -------------------------------
+        if progress_cb: progress_cb("project", 4, 5)
         Y_pos, _, _ = opt.phi_transform(X_pos, w, w)
         Y_neg, _, _ = opt.phi_transform(X_neg, w, w)
 
@@ -874,61 +948,113 @@ class ZeroModelService(Service):
         _logger.debug(f"[ZeroModelService] Metric reordering preserved {len(reordered_metric_names)} names")
 
         # ================================================================
-        # 8️⃣ Subfield Extraction — Q-field, Energy-field, Overlay
+        # 8️⃣ Subfield Extraction — Q(5) vs E(5) + Overlay (SCM-aware, HRM/Tiny fallback)
         # ================================================================
         try:
-            # Helper normalization
-            def _normalize(mat):
-                mat = np.nan_to_num(mat)
-                return mat / (np.max(np.abs(mat)) + 1e-8) if mat.size else mat
+            def _robust01(a: np.ndarray, lo=1, hi=99) -> np.ndarray:
+                a = np.asarray(a, dtype=np.float32)
+                if a.size == 0: return a
+                lo_v, hi_v = np.percentile(a, [lo, hi])
+                if not np.isfinite(lo_v) or not np.isfinite(hi_v) or hi_v <= lo_v:
+                    return np.zeros_like(a)
+                x = (a - lo_v) / (hi_v - lo_v)
+                return np.clip(x, 0.0, 1.0).astype(np.float32)
 
-            # Helper to extract column subset by keyword
-            def _subset_field(names: List[str], keywords: List[str]) -> np.ndarray:
-                if not names:
-                    return np.zeros_like(diff)
-                cols = [i for i, n in enumerate(names)
-                        if any(k in n.lower() for k in keywords)]
-                if not cols:
-                    return np.zeros_like(diff)
-                return diff[:, cols]
+            # Helpers to find per-dimension "score-like" cols, tolerant of hrm./tiny. prefixes
+            CAND_SUFFIXES = ("", ".score", ".aggregate", ".raw", ".value")
+            def _pick_dim_col(names: list[str], dim: str) -> int | None:
+                # exact SCM first
+                scm_exact = f"scm.{dim}.score01"
+                low = [n.lower() for n in names]
+                if scm_exact in low:
+                    return low.index(scm_exact)
+                # hrm./tiny. style
+                for i, n in enumerate(low):
+                    if f".{dim}" in n and n.endswith(CAND_SUFFIXES):
+                        return i
+                # looser fallback: any column that contains the dim token
+                for i, n in enumerate(low):
+                    if f".{dim}" in n:
+                        return i
+                return None
 
-            # --- Extract Q-value and Energy subfields ---
-            q_field = _subset_field(reordered_metric_names, ["q_value"])
-            e_field = _subset_field(reordered_metric_names, ["energy"])
+            dims5 = ["reasoning","knowledge","clarity","faithfulness","coverage"]
+            # 1) Build Q: try SCM first; otherwise per-dimension score columns
+            q_idxs = []
+            for d in dims5:
+                idx = _pick_dim_col(reordered_metric_names, d)
+                if idx is not None: q_idxs.append(idx)
 
-            q_field_norm = _normalize(q_field)
-            e_field_norm = _normalize(e_field)
+            if len(q_idxs) == 0:
+                _logger.warning("[ZeroModelService] No Q columns found; skipping Q/E overlays.")
+                q_path = e_path = o_path = None
+            else:
+                q_field = diff[:, q_idxs]                 # shape (T, k_q)
+                # ensure 2D
+                if q_field.ndim == 1:
+                    q_field = q_field.reshape(-1, 1)
 
-            # --- Compute overlay ---
-            overlay = q_field_norm - e_field_norm
+                # 2) Build E buckets to 5 dims (configurable; tolerant lookups)
+                E_BUCKETS = {
+                    "reasoning":    ["scm.consistency01", "scm.temp01"],
+                    "knowledge":    ["scm.ood_hat01", "recon_sim"],
+                    "clarity":      ["scm.length_norm01", "aux3_p_bad"],
+                    "faithfulness": ["recon_sim", "scm.consistency01"],
+                    "coverage":     ["concept_sparsity", "scm.uncertainty01"],
+                }
+                name2idx = {n.lower(): i for i, n in enumerate(reordered_metric_names)}
+                low_names = [n.lower() for n in reordered_metric_names]
 
-            # --- Visualization helper ---
-            def _save_field_image(mat, title, suffix):
-                if mat.size == 0:
-                    return None
-                fig, ax = plt.subplots(figsize=(8, 5))
-                im = ax.imshow(mat, cmap="coolwarm", aspect="auto")
-                ax.set_title(title, fontsize=10)
-                fig.colorbar(im, ax=ax, label="Δ Intensity")
-                plt.tight_layout()
-                out_path = f"{base}_{suffix}.png"
-                plt.savefig(out_path, dpi=150)
-                plt.close(fig)
-                return out_path
+                def _find_any(indices_or_names: list[str]) -> list[int]:
+                    out = []
+                    for key in indices_or_names:
+                        k = key.lower()
+                        if k in name2idx:
+                            out.append(name2idx[k]); continue
+                        # fuzzy: match if all parts appear
+                        parts = k.split(".")
+                        for i, n in enumerate(low_names):
+                            if all(p in n for p in parts):
+                                out.append(i); break
+                    return sorted(set(out))
 
-            q_path = _save_field_image(q_field_norm, "Q-Field (Value Surface)", "q_field")
-            e_path = _save_field_image(e_field_norm, "Energy Field (Uncertainty Surface)", "energy_field")
-            o_path = _save_field_image(overlay, "Q–Energy Overlay (Value−Uncertainty)", "overlay")
+                e_cols = []
+                for d in dims5:
+                    idxs = _find_any(E_BUCKETS.get(d, []))
+                    if not idxs:
+                        e_cols.append(None)
+                    else:
+                        e_cols.append(idxs)
 
-            # --- Simple quantitative correlation between Q and Energy ---
-            corr = float(np.corrcoef(
-                q_field_norm.flatten(), e_field_norm.flatten()
-            )[0, 1]) if q_field_norm.size and e_field_norm.size else None
+                # E as (T, len(dims5)), averaging each bucket (or 0 if missing)
+                T = diff.shape[0]
+                e_field = np.zeros((T, len(dims5)), dtype=np.float32)
+                for j, idxs in enumerate(e_cols):
+                    if idxs:
+                        e_field[:, j] = np.mean(diff[:, idxs], axis=1)
 
-            _logger.debug(
-                f"[ZeroModelService] Subfields saved → Q:{bool(q_path)} | E:{bool(e_path)} | "
-                f"Overlay:{bool(o_path)} | Corr(Q,E)={corr}"
-            )
+                # If Q has k!=5 columns, align to 5 by projecting/tiling
+                if q_field.shape[1] != len(dims5):
+                    # project Q into 5 via nearest-dim mapping: take first k dims we have, pad rest with zeros
+                    q5 = np.zeros((T, len(dims5)), dtype=np.float32)
+                    k = min(q_field.shape[1], len(dims5))
+                    q5[:, :k] = q_field[:, :k]
+                    q_field = q5
+
+                # 3) Robust scales
+                q_field_norm = _robust01(q_field)
+                e_field_norm = _robust01(e_field)
+
+                # 4) Overlay (shapes guaranteed compatible)
+                overlay = q_field_norm - e_field_norm
+
+                q_path = _save_field_image(q_field_norm, "Q-Field (5D or fewer)", f"{base}_q_field")
+                e_path = _save_field_image(e_field_norm, "E-Field (5D)",         f"{base}_energy_field")
+                o_path = _save_field_image(overlay,       "Q–E Overlay (Q−E)",   f"{base}_overlay")
+
+                # optional correlation
+                corr = float(np.corrcoef(q_field_norm.ravel(), e_field_norm.ravel())[0,1]) if q_field_norm.size and e_field_norm.size else None
+                _logger.debug(f"[ZeroModelService] Subfields saved → Q:{bool(q_path)} E:{bool(e_path)} Overlay:{bool(o_path)} Corr={corr}")
 
         except Exception as e:
             _logger.warning("[ZeroModelService] Subfield extraction failed: %s", e)
@@ -1013,6 +1139,7 @@ class ZeroModelService(Service):
             "metric_index_mapping": index_mapping,
             "metric_names_original": metric_names,
             "metric_names_reordered": reordered_metric_names,
+            "timeline_scale_mode": (self.cfg.get("timeline_scale_mode") or "passthrough"),
             "png": base + ".png",
             "gif": gif_path,
             "diff_matrix": diff.tolist(),
@@ -1042,6 +1169,10 @@ class ZeroModelService(Service):
         cmap: str = "seismic",
         aggregate: bool = False,
         metric_names: Optional[List[str]] = None,
+<<<<<<< HEAD
+=======
+        progress_cb: Optional[Callable[[str,int,int],None]] = None,
+>>>>>>> main
     ) -> dict:
         """
         PHOS-style 2D ordering: reorder columns and rows to concentrate intensity
@@ -1188,6 +1319,10 @@ class ZeroModelService(Service):
         k_latent=20,
         cmap_main="magma",
         cmap_delta="seismic",
+<<<<<<< HEAD
+=======
+        progress_cb: Optional[Callable[[str,int,int],None]] = None,
+>>>>>>> main
     ):
         """
         Frontier Map: a single composite figure showing the 'layer between models'.

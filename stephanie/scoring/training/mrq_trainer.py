@@ -64,8 +64,13 @@ class MRQTrainer(BaseTrainer):
 
         iterable = samples
         pbar = None
+<<<<<<< HEAD
         if getattr(self, "show_progress", False) and "tqdm" in globals() and tqdm is not None:
             pbar = tqdm(samples, desc="Packing MRQ pairs", unit="pair", leave=getattr(self, "progress_leave", False))
+=======
+        if self.show_progress and "tqdm" in globals() and tqdm is not None:
+            pbar = tqdm(samples, desc="Packing MRQ pairs", unit="pair", leave=self.progress_leave)
+>>>>>>> main
             iterable = pbar
 
         kept = 0
@@ -152,6 +157,7 @@ class MRQTrainer(BaseTrainer):
         predictor = ValuePredictor(zsa_dim=self.dim, hdim=self.hdim).to(self.device)
         return MRQModel(encoder, predictor, self.memory.embedding, device=self.device)
 
+<<<<<<< HEAD
 
     @torch.no_grad()
     def _pair_metrics(self, dataloader):
@@ -221,6 +227,8 @@ class MRQTrainer(BaseTrainer):
 
         return {"pair_acc": pair_acc, "auc": auc, "logloss": logloss, "pos_rate": float((L > 0).mean())}
 
+=======
+>>>>>>> main
     def _train_epoch(self, model, dataloader, epoch_idx: int = 1):
         model.encoder.train()
         model.predictor.train()
@@ -228,9 +236,17 @@ class MRQTrainer(BaseTrainer):
 
         iterator = dataloader
         pbar = None
+<<<<<<< HEAD
         if getattr(self, "show_progress", False) and "tqdm" in globals() and tqdm is not None:
             pbar = tqdm(dataloader, desc=f"Epoch {epoch_idx}", unit="batch", leave=getattr(self, "progress_leave", False))
 
+=======
+        if self.show_progress and "tqdm" in globals() and tqdm is not None:
+            pbar = tqdm(dataloader, total=len(dataloader), desc=f"Epoch {epoch_idx}",
+            unit="batch", leave=self.progress_leave)
+
+
+>>>>>>> main
         for batch in (pbar if pbar is not None else iterator):
             if len(batch) == 3:
                 X, y, w = batch
@@ -311,7 +327,7 @@ class MRQTrainer(BaseTrainer):
         losses = []
 
         for epoch in range(self.epochs):
-            avg_loss = self._train_epoch(self.model, dataloader)
+            avg_loss = self._train_epoch(self.model, dataloader, epoch_idx=epoch + 1)
             losses.append(avg_loss)
             self.logger.log("MRQTrainingEpoch", {
                 "epoch": epoch + 1,
@@ -330,9 +346,21 @@ class MRQTrainer(BaseTrainer):
         torch.save(self.model.encoder.state_dict(), locator.encoder_file())
         torch.save(self.model.predictor.state_dict(), locator.model_file())
 
+<<<<<<< HEAD
         # --- Collect train-set metrics (you can add a val split later) ---
         train_preds, train_acts = self._collect_preds_targets(self.model, dataloader, self.device)
         reg_stats = self._regression_metrics(train_preds, train_acts)
+=======
+        train_preds01, train_acts = self.collect_preds_targets(
+            self.model, dataloader, self.device, head="q", apply_sigmoid=True
+        )
+        reg_stats = self.regression_metrics(train_preds01, train_acts)
+
+        # --- Pairwise classification metrics on logits (unchanged) ---
+        pair_stats = self.binary_cls_metrics(
+            dataloader, forward_fn=lambda X: self.model.predictor(X)
+        )
+>>>>>>> main
 
         # --- Optional tuner calibration on *train* (or a held-out set if you have one) ---
         if self.use_tuner:
@@ -390,10 +418,17 @@ class MRQTrainer(BaseTrainer):
             "train_within5": reg_stats["within5"],
             "pred_mean": reg_stats["pred_mean"],
             "pred_std": reg_stats["pred_std"],
+<<<<<<< HEAD
             "pair_acc": cls["pair_acc"],
             "pair_auc": cls["auc"],
             "pos_rate": cls["pos_rate"],
             "logloss": cls["logloss"],
+=======
+            "pair_acc": pair_stats["pair_acc"],
+            "pair_auc": pair_stats["auc"],
+            "pos_rate": pair_stats["pos_rate"],
+            "logloss": pair_stats["logloss"],
+>>>>>>> main
             "timestamp": datetime.now().isoformat(),
         }
         self._save_meta_file(meta, dimension)

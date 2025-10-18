@@ -12,23 +12,43 @@ _logger = logging.getLogger(__name__)
 
 class VPMWorkerInline:
     """Simplified in-process timeline writer (no bus)."""
-    def __init__(self, zm: ZeroModelService, logger=None):
+    def __init__(self, zm: ZeroModelService, logger=None, progress_cb: Optional[callable] = None):
         self.zm = zm
         self.logger = logger or _logger
+        self.progress_cb = progress_cb
 
-    async def append(self, run_id: str, node_id: str, metrics: dict):
+    def append(self, run_id: str, node_id: str, metrics: Dict[str, Any]):
+        cols = metrics.get("columns")
+        vals = metrics.get("values")
+
+        if (not isinstance(cols, list) or not isinstance(vals, list)) and isinstance(metrics.get("vector"), dict):
+            vec = metrics["vector"]
+            cols = list(vec.keys())
+            vals = [float(vec[k]) for k in cols]
+
         self.zm.timeline_append_row(
-            run_id=run_id,
-            metrics_columns=metrics["columns"],
-            metrics_values=metrics["values"],
+            run_id,
+            metrics_columns=cols,
+            metrics_values=vals,
         )
-        _logger.debug(f"[VPMWorkerInline] Row appended for node {node_id}")
+        self.logger.log(f"[VPMWorkerInline] Row appended for node {node_id} in run {run_id}")
 
     async def finalize(self, run_id: str, out_path: str):
-        res = await self.zm.timeline_finalize(run_id, out_path=out_path)
+        cb = self.progress_cb or self._log_progress        # <-- pick a callback
+        res = await self.zm.timeline_finalize(
+            run_id,
+            out_path=out_path,
+            progress_cb=cb                                  # <-- pass it through
+        )
         self.logger.info(f"[VPMWorkerInline] Timeline finalized for run {run_id}")
         return res
 
+    def _log_progress(self, stage, i, total):
+        try:
+            pct = int(100 * i / max(total,1))
+            self.logger.log("TopologyProgress", {"stage": stage, "i": i, "total": total, "pct": pct})
+        except Exception:
+            pass
 
 class VPMWorker:
     """

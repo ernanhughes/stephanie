@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import os
 
+from stephanie.scoring.model.value_predictor import ValuePredictor
 import torch
 import torch.nn.functional as F
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.evaluator.hypothesis_value_predictor import \
-    HypothesisValuePredictor
 from stephanie.scoring.model.in_context_q import InContextQModel
 from stephanie.scoring.model.mrq_model import MRQModel
 from stephanie.scoring.model.policy_head import PolicyHead
@@ -189,7 +188,7 @@ class MRQInferenceAgent(BaseAgent):
                 {
                     "scorable": scorable.to_dict(),
                     "scores": dimension_scores,
-                    "score_bundle": score_bundle.to_dict(),
+                    "score_bundle": bundle.to_dict(),
                 }
             )
 
@@ -275,7 +274,7 @@ class MRQInferenceAgent(BaseAgent):
                     tuner.load(tuner_path)
                     self.tuners[dim] = tuner
             else:
-                predictor = HypothesisValuePredictor(self.dim, self.hdim)
+                predictor = ValuePredictor(self.dim, self.hdim)
                 model = MRQModel(
                     encoder,
                     predictor,

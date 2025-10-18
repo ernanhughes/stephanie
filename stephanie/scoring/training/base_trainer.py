@@ -220,9 +220,17 @@ class BaseTrainer:
                         pearson_r=math.nan, spearman_rho=math.nan,
                         within1=math.nan, within2=math.nan, within5=math.nan,
                         pred_mean=math.nan, pred_std=math.nan)
+<<<<<<< HEAD
         p = preds_v[:n].astype(np.float64)
         y = acts_v[:n].astype(np.float64)
         d = p - y
+=======
+
+        p = preds_v[:n].astype(np.float64)
+        y = acts_v[:n].astype(np.float64)
+        d = p - y
+
+>>>>>>> main
         mae = float(np.mean(np.abs(d)))
         mse = float(np.mean(d*d))
         rmse = float(np.sqrt(mse))
@@ -230,24 +238,49 @@ class BaseTrainer:
         r2 = float(1.0 - (np.sum(d**2) / (np.sum((y - y.mean())**2) + 1e-9))) if var > 1e-12 else float("nan")
         pearson = float(np.corrcoef(p, y)[0,1]) if (np.std(p) > 1e-12 and np.std(y) > 1e-12) else float("nan")
         spearman = self._spearmanr(p, y)
+<<<<<<< HEAD
         within1 = float(np.mean(np.abs(d) <= 1.0))
         within2 = float(np.mean(np.abs(d) <= 2.0))
         within5 = float(np.mean(np.abs(d) <= 5.0))
+=======
+
+        # --- auto-scale within deltas ---
+        vmax = float(max(np.max(np.abs(p)), np.max(np.abs(y))))
+        if vmax <= 1.5:
+            d1, d2, d5 = 0.01, 0.02, 0.05  # 1/2/5 percentage points in 0..1
+        else:
+            d1, d2, d5 = 1.0, 2.0, 5.0     # original 0..100 behavior
+
+        within1 = float(np.mean(np.abs(d) <= d1))
+        within2 = float(np.mean(np.abs(d) <= d2))
+        within5 = float(np.mean(np.abs(d) <= d5))
+
+>>>>>>> main
         return dict(count=int(n), mae=mae, mse=mse, rmse=rmse, r2=r2,
                     pearson_r=pearson, spearman_rho=spearman,
                     within1=within1, within2=within2, within5=within5,
                     pred_mean=float(np.mean(p)), pred_std=float(np.std(p)))
 
     @torch.no_grad()
+<<<<<<< HEAD
     def collect_preds_targets(self, model, dataloader, device, head: str = "q"):
         """
         Works with:
           - SICQL-style batches: (ctx, doc, y) and model(ctx, doc)[head]
           - MRQ-style batches: (X, y, ...) and model.predictor(X)
+=======
+    def collect_preds_targets(self, model, dataloader, device, head: str = "q", apply_sigmoid: bool = False):
+        """
+        Works with:
+        - SICQL-style: (ctx, doc, y)  -> model(ctx, doc)[head]
+        - MRQ-style:   (X, y, w?)     -> model.predictor(X)
+        - MRQ pairs 2-tuple: (X, y)   -> model.predictor(X)
+>>>>>>> main
         """
         preds_all, acts_all = [], []
         model.eval()
         for batch in dataloader:
+<<<<<<< HEAD
             if len(batch) == 3:
                 # SICQL triples
                 ctx, doc, y = batch
@@ -268,6 +301,55 @@ class BaseTrainer:
             preds_all.append(p); acts_all.append(a)
         if not preds_all:
             return np.array([]), np.array([])
+=======
+            # Unpack defensively
+            if len(batch) == 3:
+                a, b, c = batch
+                # Heuristic: MRQ triple if model has predictor AND first elem looks like a feature matrix
+                if hasattr(model, "predictor") and isinstance(a, torch.Tensor) and a.dim() >= 2:
+                    X, y = a.to(device), b.to(device)
+                    out = model.predictor(X)
+                    p = out.view(-1).detach().cpu().numpy()
+                    a_np = y.view(-1).detach().cpu().numpy()
+                else:
+                    # SICQL triple: (ctx, doc, y)
+                    ctx, doc, y = a.to(device), b.to(device), c.to(device)
+                    outs = model(ctx, doc)
+                    # prefer 'q_value' head, else first value
+                    if isinstance(outs, dict):
+                        out = outs.get("q_value", next(iter(outs.values())))
+                    else:
+                        out = outs
+                    p = out.view(-1).detach().cpu().numpy()
+                    a_np = y.view(-1).detach().cpu().numpy()
+
+            elif len(batch) == 2:
+                # MRQ pair: (X, y)
+                X, y = batch
+                X, y = X.to(device), y.to(device)
+                if hasattr(model, "predictor"):
+                    out = model.predictor(X)
+                else:
+                    out = X.sum(dim=-1)
+                p = out.view(-1).detach().cpu().numpy()
+                a_np = y.view(-1).detach().cpu().numpy()
+
+            else:
+                # Fallback: try to handle like MRQ features
+                X = batch[0].to(device)
+                out = model.predictor(X) if hasattr(model, "predictor") else X.sum(dim=-1)
+                p = out.view(-1).detach().cpu().numpy()
+                a_np = batch[1].to(device).view(-1).detach().cpu().numpy()
+
+            # Optionally map logits → probabilities
+            if apply_sigmoid:
+                p = 1.0 / (1.0 + np.exp(-np.clip(p, -50.0, 50.0)))
+            preds_all.append(p); acts_all.append(a_np)
+
+        if not preds_all:
+            return np.array([]), np.array([])
+
+>>>>>>> main
         return np.concatenate(preds_all, axis=0), np.concatenate(acts_all, axis=0)
 
     @torch.no_grad()

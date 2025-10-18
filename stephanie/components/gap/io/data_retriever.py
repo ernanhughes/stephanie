@@ -18,6 +18,10 @@ class RetrieverConfig:
     limit: optional hard cap per dimension
     """
     source: str = "memory"
+<<<<<<< HEAD
+=======
+    # limit: int = 1000 # CAP count limit per dimension
+>>>>>>> main
     limit: int = 100
     # file paths only used for jsonl/parquet sources
     jsonl_path: Optional[str] = None

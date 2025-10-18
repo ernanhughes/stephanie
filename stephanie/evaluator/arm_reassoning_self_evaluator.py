@@ -2,13 +2,12 @@
 import json
 from copy import deepcopy
 
+from stephanie.scoring.model.value_predictor import ValuePredictor
 import torch
 import torch.nn.functional as F
 
 from stephanie.dataloaders import ARMDataLoader
 from stephanie.evaluator.base import BaseEvaluator
-from stephanie.evaluator.hypothesis_value_predictor import \
-    HypothesisValuePredictor
 from stephanie.scoring.model.text_encoder import TextEncoder
 
 
@@ -17,6 +16,7 @@ class ARMReasoningSelfEvaluator(BaseEvaluator):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
+        self.container = container
         self.device = cfg.get("device", "cpu")
 
         self.format_freq = cfg.get(
@@ -31,7 +31,7 @@ class ARMReasoningSelfEvaluator(BaseEvaluator):
         self.kl_penalty_coeff = cfg.get("kl_penalty_coeff", 0.1)
 
         self.encoder = TextEncoder().to(self.device)
-        self.value_predictor = HypothesisValuePredictor(512, 1024).to(self.device)
+        self.value_predictor = ValuePredictor(512, 1024).to(self.device)
         self.ref_value_predictor = deepcopy(self.value_predictor)
         self.ref_value_predictor.eval()
 

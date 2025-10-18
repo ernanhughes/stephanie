@@ -154,7 +154,11 @@ class TinyScorer(BaseScorer):
                     )
 
                 # Core metrics
+<<<<<<< HEAD
                 raw01 = _tf(aux.get("score"))
+=======
+                raw01 = float(max(0.0, min(1.0, _tf(aux.get("score")))))
+>>>>>>> main
                 # "uncertainty" key carries certainty in current model; prefer certainty01 if present.
                 certainty01 = _tf(aux.get("certainty01")) or _tf(aux.get("uncertainty"))
                 entropy = _tf(aux.get("entropy_aux"))
@@ -162,11 +166,23 @@ class TinyScorer(BaseScorer):
 
                 # Meta & scaling
                 meta = self.model_meta.get(dim, {})
+<<<<<<< HEAD
                 final_score = round(_safe_scale_0_100(float(raw01), meta), 4)
 
                 # Attributes (base set)
                 attrs: Dict[str, Any] = {
                     "raw01": float(raw01),
+=======
+                final_score = _tf(aux.get("score"))
+                tiny_score01 = raw01
+                tiny_score100 = round(_safe_scale_0_100(tiny_score01, meta), 4)
+
+                # Attributes (base set)
+                attrs: Dict[str, Any] = {
+                    "tiny.score01": tiny_score01,
+                    "tiny.score100": tiny_score100,
+                    "raw01": tiny_score01,  # backward-compat shortcut if others read it
+>>>>>>> main
                     "entropy": float(entropy),
                     "certainty01": float(certainty01),
                     "halt_prob": float(halt_prob) if halt_prob is not None else None,
@@ -203,6 +219,12 @@ class TinyScorer(BaseScorer):
                 for dname in ("reasoning", "knowledge", "clarity", "faithfulness", "coverage"):
                     key = f"scm.{dname}.score01"
                     if key in scm:
+<<<<<<< HEAD
+=======
+                        v01 = float(scm[key])
+                        attrs[f"tiny.{dname}.score01"]  = v01
+                        attrs[f"tiny.{dname}.score100"] = round(v01 * 100.0, 4)
+>>>>>>> main
                         attrs[f"tiny.{dname}"] = float(scm[key])
 
                 rationale = (
