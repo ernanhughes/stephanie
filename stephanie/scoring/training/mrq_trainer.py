@@ -64,8 +64,8 @@ class MRQTrainer(BaseTrainer):
 
         iterable = samples
         pbar = None
-        if getattr(self, "show_progress", False) and "tqdm" in globals() and tqdm is not None:
-            pbar = tqdm(samples, desc="Packing MRQ pairs", unit="pair", leave=getattr(self, "progress_leave", False))
+        if self.show_progress and "tqdm" in globals() and tqdm is not None:
+            pbar = tqdm(samples, desc="Packing MRQ pairs", unit="pair", leave=self.progress_leave)
             iterable = pbar
 
         kept = 0
@@ -159,8 +159,10 @@ class MRQTrainer(BaseTrainer):
 
         iterator = dataloader
         pbar = None
-        if getattr(self, "show_progress", False) and "tqdm" in globals() and tqdm is not None:
-            pbar = tqdm(dataloader, desc=f"Epoch {epoch_idx}", unit="batch", leave=getattr(self, "progress_leave", False))
+        if self.show_progress and "tqdm" in globals() and tqdm is not None:
+            pbar = tqdm(dataloader, total=len(dataloader), desc=f"Epoch {epoch_idx}",
+            unit="batch", leave=self.progress_leave)
+
 
         for batch in (pbar if pbar is not None else iterator):
             if len(batch) == 3:
@@ -242,7 +244,7 @@ class MRQTrainer(BaseTrainer):
         losses = []
 
         for epoch in range(self.epochs):
-            avg_loss = self._train_epoch(self.model, dataloader)
+            avg_loss = self._train_epoch(self.model, dataloader, epoch_idx=epoch + 1)
             losses.append(avg_loss)
             self.logger.log("MRQTrainingEpoch", {
                 "epoch": epoch + 1,

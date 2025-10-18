@@ -251,32 +251,62 @@ class BaseTrainer:
 
     @torch.no_grad()
     def collect_preds_targets(self, model, dataloader, device, head: str = "q", apply_sigmoid: bool = False):
+        """
+        Works with:
+        - SICQL-style: (ctx, doc, y)  -> model(ctx, doc)[head]
+        - MRQ-style:   (X, y, w?)     -> model.predictor(X)
+        - MRQ pairs 2-tuple: (X, y)   -> model.predictor(X)
+        """
         preds_all, acts_all = [], []
         model.eval()
         for batch in dataloader:
+            # Unpack defensively
             if len(batch) == 3:
-                # SICQL triples
-                ctx, doc, y = batch
-                ctx = ctx.to(device); doc = doc.to(device); y = y.to(device)
-                outs = model(ctx, doc)
-                out = outs["q_value"] if head == "q" else outs.get(head)
-                logits = out.view(-1)
-            else:
-                # MRQ pairs
-                X, y = batch[0].to(device), batch[1].to(device)
-                if hasattr(model, "predictor"):
-                    logits = model.predictor(X).view(-1)
+                a, b, c = batch
+                # Heuristic: MRQ triple if model has predictor AND first elem looks like a feature matrix
+                if hasattr(model, "predictor") and isinstance(a, torch.Tensor) and a.dim() >= 2:
+                    X, y = a.to(device), b.to(device)
+                    out = model.predictor(X)
+                    p = out.view(-1).detach().cpu().numpy()
+                    a_np = y.view(-1).detach().cpu().numpy()
                 else:
-                    logits = X.sum(dim=-1)  # harmless fallback
+                    # SICQL triple: (ctx, doc, y)
+                    ctx, doc, y = a.to(device), b.to(device), c.to(device)
+                    outs = model(ctx, doc)
+                    # prefer 'q_value' head, else first value
+                    if isinstance(outs, dict):
+                        out = outs.get("q_value", next(iter(outs.values())))
+                    else:
+                        out = outs
+                    p = out.view(-1).detach().cpu().numpy()
+                    a_np = y.view(-1).detach().cpu().numpy()
 
-            vals = torch.sigmoid(logits) if apply_sigmoid else logits
-            p = vals.detach().cpu().numpy()
-            a = y.view(-1).detach().cpu().numpy()
+            elif len(batch) == 2:
+                # MRQ pair: (X, y)
+                X, y = batch
+                X, y = X.to(device), y.to(device)
+                if hasattr(model, "predictor"):
+                    out = model.predictor(X)
+                else:
+                    out = X.sum(dim=-1)
+                p = out.view(-1).detach().cpu().numpy()
+                a_np = y.view(-1).detach().cpu().numpy()
 
-            preds_all.append(p); acts_all.append(a)
+            else:
+                # Fallback: try to handle like MRQ features
+                X = batch[0].to(device)
+                out = model.predictor(X) if hasattr(model, "predictor") else X.sum(dim=-1)
+                p = out.view(-1).detach().cpu().numpy()
+                a_np = batch[1].to(device).view(-1).detach().cpu().numpy()
+
+            # Optionally map logits → probabilities
+            if apply_sigmoid:
+                p = 1.0 / (1.0 + np.exp(-np.clip(p, -50.0, 50.0)))
+            preds_all.append(p); acts_all.append(a_np)
 
         if not preds_all:
             return np.array([]), np.array([])
+
         return np.concatenate(preds_all, axis=0), np.concatenate(acts_all, axis=0)
 
     @torch.no_grad()
