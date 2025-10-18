@@ -1,0 +1,13 @@
+# pulls in your usuals, plus the two HF variants
+defaults:
+  - tiny/default
+  - hrm/default
+  - mrq/default
+  - sicql/default
+  - reward/default
+  - ebt/default
+  - svm/default
+  - contrastive_ranker/default
+  - hf_tiny/default
+  - hf_hrm/default
+  - hf_mistral/default

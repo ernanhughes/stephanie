@@ -1,6 +1,5 @@
-# stephanie/agents/knowledge/document_reward_scorer.py
-import time
-from typing import Any, Dict
+import logging
+from typing import Dict, List, Tuple
 
 from tqdm import tqdm
 
@@ -8,155 +7,168 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
+from stephanie.models.cartridge_triple import CartridgeTripleORM
+from stephanie.models.casebook import CaseScorableORM
+from stephanie.models.document import DocumentORM
+from stephanie.models.hypothesis import HypothesisORM
+from stephanie.models.chat import ChatTurnORM
+from stephanie.models.prompt import PromptORM
+from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
-from stephanie.scoring.scorer.contrastive_ranker_scorer import \
-    ContrastiveRankerScorer
-from stephanie.scoring.scorer.ebt_scorer import EBTScorer
-from stephanie.scoring.scorer.hrm_scorer import HRMScorer
-from stephanie.scoring.scorer.mrq_scorer import MRQScorer
-from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
-from stephanie.scoring.scorer.svm_scorer import SVMScorer
+from stephanie.utils.db_scope import session_scope
+
+_logger = logging.getLogger(__name__)
 
 
 class ScorerAgent(BaseAgent):
     """
-    Scores document sections or full documents to assess reward value
-    using configured reward model (e.g., SVM-based or regression-based).
+    Service-driven scorer agent.
 
-    Enhanced with MARS (Model Agreement and Reasoning Signal) analysis
-    to evaluate consistency across scoring models using the tensor-based architecture.
+    - Pulls candidates (documents/turns/etc.) from context or DB.
+    - Scores with an ensemble of scorers via ScoringService.
+    - Optionally persists via ScoringService.save_bundle / score_and_persist.
+    - Never imports scorer classes directly (all via service).
+
+    Config keys:
+      enabled_scorers: [ "tiny", "hrm", ... ]          # registered in ScoringService
+      dimensions:     [ "reasoning", "knowledge", ... ]
+      target_types:   [ "document", "conversation_turn", ... ]
+      force_rescore:  bool
+      save_results:   bool
+      progress:       bool
     """
+
+    ORM_MAP = {
+        ScorableType.DOCUMENT: DocumentORM,
+        ScorableType.PROMPT: PromptORM,
+        ScorableType.HYPOTHESIS: HypothesisORM,
+        ScorableType.CARTRIDGE: CartridgeORM,
+        ScorableType.THEOREM: TheoremORM,
+        ScorableType.TRIPLE: CartridgeTripleORM,
+        ScorableType.CASE_SCORABLE: CaseScorableORM,
+        ScorableType.CONVERSATION_TURN: ChatTurnORM,
+    }
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.dimensions = cfg.get(
-            "dimensions", ["helpfulness", "truthfulness", "reasoning_quality"]
-        )
-        self.include_mars = cfg.get("include_mars", True)
-        self.test_mode = cfg.get("test_mode", False)
-        self.test_document_count = cfg.get("test_document_count", 100)
-        self.embedding_types = cfg.get(
-            "embedding_types", ["hnet", "hf", "mxbai"]
-        )
-        # Configure which scorers to use
-        self.enabled_scorers = cfg.get(
-            "enabled_scorers",
-            ["svm", "mrq", "sicql", "ebt", "hrm", "contrastive_ranker"],
-        )
 
-        # Initialize scorers dynamically
-        self.scorers = self._initialize_scorers()
-
-        # Initialize MARS calculator with dimension-specific configurations
-        dimension_config = cfg.get("dimension_config", {})
+        # knobs
+        self.enabled_scorers: List[str] = cfg.get("enabled_scorers", ["tiny", "hf_tiny"])
+        self.dimensions: List[str] = cfg.get(
+            "dimensions",
+            ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"],
+        )
+        self.target_types: List[str] = cfg.get(
+            "target_types",
+            [
+                ScorableType.DOCUMENT,
+                ScorableType.CONVERSATION_TURN,
+            ],
+        )
+        dimension_config = self.cfg.get("dimension_config", {})
         self.mars_calculator = MARSCalculator(dimension_config, self.memory, self.logger)
 
-        self.logger.log(
-            "DocumentRewardScorerInitialized",
-            {
-                "dimensions": self.dimensions,
-                "scorers": self.enabled_scorers,
-                "include_mars": self.include_mars,
-                "test_mode": self.test_mode,
-            },
+        self.force_rescore: bool = bool(cfg.get("force_rescore", False))
+        self.save_results: bool = bool(cfg.get("save_results", True))
+        self.progress: bool = bool(cfg.get("progress", True))
+
+        # service handle
+        self.scoring_service = self.container.get("scoring")
+
+        _logger.debug(
+            "ScorerAgentInitialized: enabled=%s dims=%s targets=%s force_rescore=%s save_results=%s",
+            self.enabled_scorers, self.dimensions, self.target_types,
+            self.force_rescore, self.save_results
         )
-
-    def _initialize_scorers(self) -> Dict[str, Any]:
-        """Initialize all configured scorers"""
-        scorers = {}
-
-        if "svm" in self.enabled_scorers:
-            scorers["svm"] = SVMScorer(
-                self.cfg, memory=self.memory, logger=self.logger
-            )
-        if "mrq" in self.enabled_scorers:
-            scorers["mrq"] = MRQScorer(
-                self.cfg, memory=self.memory, logger=self.logger
-            )
-        if "sicql" in self.enabled_scorers:
-            scorers["sicql"] = SICQLScorer(
-                self.cfg, memory=self.memory, logger=self.logger
-            )
-        if "ebt" in self.enabled_scorers:
-            scorers["ebt"] = EBTScorer(
-                self.cfg, memory=self.memory, logger=self.logger
-            )
-        if "hrm" in self.enabled_scorers:
-            scorers["hrm"] = HRMScorer(
-                self.cfg, memory=self.memory, logger=self.logger
-            )
-        if "contrastive_ranker" in self.enabled_scorers:
-            scorers["contrastive_ranker"] = ContrastiveRankerScorer(
-                self.cfg, memory=self.memory, logger=self.logger
-            )
-
-        return scorers
 
     async def run(self, context: dict) -> dict:
-        """Main execution method with optional test mode"""
-        start_time = time.time()
-
-        documents = context.get(self.input_key, [])
-        documents = documents[:5] if self.test_mode else documents
-
-        if not documents:
-            self.logger.log("NoDocumentsFound", {"source": self.input_key})
+        candidates: List[Tuple[dict, str]] = self._collect_candidates(context)
+        total = len(candidates)
+        if total == 0:
+            self.logger.log("ScorerAgentNoCandidates", {"target_types": self.target_types})
             return context
 
-        # Process all documents and collect ScoreBundles
+        self.logger.log("ScorerAgentStart", {
+            "total": total,
+            "scorers": self.enabled_scorers,
+            "dimensions": self.dimensions,
+        })
+
+        pbar = tqdm(candidates, desc="Scoring (service)", disable=not self.progress)
+        results_out = []
         all_bundles = {}  # scorable_id -> ScoreBundle
-        results = []
-        total_documents = len(documents)
-
-        # Process documents with progress tracking
-        pbar = tqdm(
-            documents,
-            desc="Scoring Documents",
-            total=total_documents,
-            disable=not self.cfg.get("progress", True),
-        )
-
-        for idx, doc in enumerate(pbar):
+        
+        for idx, (obj, ttype) in enumerate(pbar):
             try:
-                # Score document with all scorers
-                scoring_start = time.time()
-                doc_scores, bundle = self._score_document(context, doc)
-                scoring_time = time.time() - scoring_start
+                scorable = ScorableFactory.from_dict(obj, ttype)
+                if not scorable or not scorable.text:
+                    self.logger.log("ScorerAgentSkipEmpty", {"type": ttype, "obj_id": obj.get("id")})
+                    continue
 
-                # Update progress bar
-                pbar.set_postfix(
-                    {
-                        "docs": f"{idx + 1}/{total_documents}",
-                        "scorers": len(self.scorers),
-                    }
-                )
-
-                # Log performance metrics
-                if (idx + 1) % 10 == 0 or idx == total_documents - 1:
-                    self.logger.log(
-                        "DocumentScoringProgress",
-                        {
-                            "processed": idx + 1,
-                            "total": total_documents,
-                            "avg_time_per_doc": scoring_time,
-                            "scorers": len(self.scorers),
-                        },
+                # skip if scored & not forcing
+                if not self.force_rescore:
+                    has_any = self.memory.scores.has_any_score_for_target(
+                        target_id=scorable.id,
+                        target_type=ttype,
+                        dimensions=self.dimensions,
                     )
+                    if has_any:
+                        self.logger.log("ScorerAgentAlreadyScored", {"type": ttype, "id": scorable.id})
+                        continue
 
-                # Store results
-                results.append(doc_scores)
+                # score through the service (and optionally persist)
+                per_scorer = {}
+                for scorer_name in self.enabled_scorers:
+                    try:
+                        if self.save_results:
+                            bundle = self.scoring_service.score_and_persist(
+                                scorer_name=scorer_name,
+                                scorable=scorable,
+                                context=context,
+                                dimensions=self.dimensions,
+                                source=scorer_name,
+                                evaluator=self.name,
+                                model_name=scorer_name,
+                            )
+                        else:
+                            bundle = self.scoring_service.score(
+                                scorer_name=scorer_name,
+                                scorable=scorable,
+                                context=context,
+                                dimensions=self.dimensions,
+                            )
 
-                # Save bundle for corpus analysis
-                all_bundles[doc["id"]] = bundle
+                        # flatten for report
+                        per_scorer[scorer_name] = {
+                            d: {
+                                "score": float(sr.score),
+                                "rationale": sr.rationale,
+                                "source": sr.source,
+                                "attributes": getattr(sr, "attributes", {}) or {},
+                            }
+                            for d, sr in bundle.results.items()
+                        }
+
+                    except Exception as e:
+                        self.logger.log("ScorerAgentServiceError", {
+                            "scorer": scorer_name, "id": scorable.id, "type": ttype, "error": str(e)
+                        })
+
+                results_out.append({
+                    "id": scorable.id,
+                    "type": ttype,
+                    "text": scorable.text,
+                    "scores": per_scorer,
+                })
+                pbar.set_postfix({"done": f"{idx+1}/{total}"})
 
             except Exception as e:
-                self.logger.log(
-                    "DocumentScoringError",
-                    {"document_id": doc.get("id", "unknown"), "error": str(e)},
-                )
-                continue
+                self.logger.log("ScorerAgentItemError", {
+                    "type": ttype, "obj_id": obj.get("id"), "error": str(e)
+                })
 
-        # Create ScoreCorpus for MARS analysis
+        self.logger.log("ScorerAgentDone", {"count": len(results_out)})
+# Create ScoreCorpus for MARS analysis
         corpus = ScoreCorpus(bundles=all_bundles)
 
         self.logger.log("ScoreCorpusSummary", {
@@ -186,87 +198,34 @@ class ScorerAgent(BaseAgent):
                 },
             )
 
-        # Save results to context
-        context[self.output_key] = results
-        context["scoring_time"] = time.time() - start_time
-        context["total_documents"] = total_documents
-        context["scorers_used"] = list(self.scorers.keys())
-
-        self.logger.log(
-            "DocumentScoringComplete",
-            {
-                "total_documents": total_documents,
-                "dimensions": self.dimensions,
-                "scorers": len(self.scorers),
-                "total_time": context["scoring_time"],
-            },
-        )
-
+        context[self.output_key] = results_out
         return context
 
-    def _score_document(self, context: dict, doc: dict) -> tuple:
-        """Score a single document with all configured scorers"""
-        doc_id = doc["id"]
-        goal = context.get("goal", {"goal_text": ""})
-        scorable = ScorableFactory.from_dict(doc, ScorableType.DOCUMENT)
+    # ---------------- helpers ----------------
 
-        # Collect ScoreResults for this document
-        score_results = {}
+    def _collect_candidates(self, context: dict) -> List[Tuple[dict, str]]:
+        items: List[Tuple[dict, str]] = []
 
-        for scorer_name, scorer in self.scorers.items():
-            try:
-                # Score with this scorer
-                score_bundle = scorer.score(
-                    context,
-                    scorable=scorable,
-                    dimensions=self.dimensions,
-                )
-
-                # Add all results to our collection
-                for dim, result in score_bundle.results.items():
-                    if dim not in score_results:
-                        score_results[dim] = result
-
-            except Exception as e:
-                self.logger.log(
-                    "ScorerError",
-                    {
-                        "scorer": scorer_name,
-                        "document_id": doc_id,
-                        "error": str(e),
-                    },
-                )
+        for ttype in self.target_types:
+            # 1) prefer objects in context
+            ctx_key = ttype.lower() + "s"
+            from_ctx = context.get(ctx_key, [])
+            if from_ctx:
+                for o in from_ctx:
+                    items.append((o, ttype))
                 continue
 
-        # Create ScoreBundle for this document
-        bundle = ScoreBundle(results=score_results)
+            # 2) fallback to DB fetch via ORM map
+            orm_cls = self.ORM_MAP.get(ttype)
+            if orm_cls is None:
+                continue
+            try:
+                sessionmaker = self.memory.session
+                with session_scope(sessionmaker) as session:
+                    rows = session.query(orm_cls).all()
+                for r in rows:
+                    items.append((r.to_dict(), ttype))
+            except Exception as e:
+                self.logger.log("ScorerAgentDBError", {"type": ttype, "error": str(e)})
 
-        # Save to memory
-        eval_id = self.memory.evaluations.save_bundle(
-            bundle=bundle,
-            scorable=scorable,
-            context=context,
-            cfg=self.cfg,
-            source=self.name,
-            agent_name=self.name,
-            model_name="ensemble",
-            evaluator_name=str(self.scorers.keys())
-        )
-
-        # Prepare results for reporting
-        report_scores = {
-            dim: {
-                "score": result.score,
-                "rationale": result.rationale,
-                "source": result.source,
-            }
-            for dim, result in score_results.items()
-        }
-
-        return {
-            "document_id": doc_id,
-            "title": doc.get("title", ""),
-            "scores": report_scores,
-            "evaluation_id": eval_id,
-            "goal_text": goal.get("goal_text", ""),
-        }, bundle
+        return items

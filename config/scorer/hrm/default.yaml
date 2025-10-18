@@ -1,6 +1,7 @@
 # config/scorer/hrm.yaml
 name: hrm
 model_type: hrm
+display_name: HRM
 model_version: v1
 evaluator: hrm
 target_type: conversation_turn

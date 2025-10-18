@@ -5,22 +5,42 @@ gap:
   save_context: false
   skip_if_completed: false
 
-
-
   enable_scm_head: true
   scm:
     version: v1
     dims: [reasoning, knowledge, clarity, faithfulness, coverage]
     latent_dim: 128
-    use_native_scores_as_inputs: false   # << default OFF
+    use_native_scores_as_inputs: false
 
+  # Which comparisons to run (left model vs right model)
+  comparisons:
+    - id: tiny_vs_hrm
+      left:
+        scorer: tiny          # must match ScoringService name
+        alias: tiny           # label prefix for vectors/PHOS/timeline
+      right:
+        scorer: hrm
+        alias: hrm
+      dims: [reasoning, knowledge, clarity, faithfulness, coverage]
+      timeline_prefix: vpm
 
+    - id: hf_tiny_vs_hf_hrm
+      left:
+        scorer: hf_tiny       # e.g., your HF TinyLlama scorer instance
+        alias: hf_tiny
+      right:
+        scorer: hf_hrm        # e.g., your HF Llama-3 scorer instance
+        alias: hf_hrm
+      dims: [reasoning, knowledge, clarity, faithfulness, coverage]
+      timeline_prefix: vpm
+
+  # (Your current LLM “model” keys for prompt rendering can stay)
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
+
   input_keys: ["goal", "hypotheses"]
-  input_key: documents
   output_key: gap
   prompt_mode: file
   prompt_file: gap.txt

@@ -1,0 +1,31 @@
+# config/scorer/hf_tiny/default.yaml
+name: hf_tiny
+model_type: hf
+display_name: TinyLlama-1.1B-Chat
+
+model_version: v1
+evaluator: hf
+target_type: conversation_turn
+dimensions:
+  - reasoning
+  - knowledge
+  - clarity
+  - faithfulness
+  - coverage
+
+# HuggingFaceScorer settings
+model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+model_alias: hf_tiny         # used to prefix attributes, e.g. hf_tiny.*
+device_map: auto             # or "cuda:0" if you want to pin
+torch_dtype: auto            # auto | float16 | bfloat16 | float32
+max_seq_len: 4096
+ppl_range: [5.0, 40.0]       # for normalizing perplexity→ood_hat01
+tokenizer_name: null         # (optional) override tokenizer
+compute_bpb: true                 # add bits-per-byte
+calibration_path: models/calib/hf_tiny.stats.json
+compute_zscores: true             # emit z_mean_logprob, z_entropy, z_bpb if calib exists
+expose_token_dists_topk: 0        # 0 = off, else emit top-k probs (for debugging)
+eps: 1e-8                         # numerical floor for KL/JSD
+local_files_only: true
+offline: true
+low_cpu_mem_usage: true

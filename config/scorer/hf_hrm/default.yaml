@@ -1,0 +1,26 @@
+# config/scorer/hf_hrm/default.yaml
+name: hf_hrm
+model_type: hf
+display_name: Llama-3.1-8B
+
+model_version: v1
+evaluator: hf
+target_type: conversation_turn
+dimensions:
+  - reasoning
+  - knowledge
+  - clarity
+  - faithfulness
+  - coverage
+
+# Choose a stronger model you can still run locally
+model_name: meta-llama/Llama-3.1-8B
+model_alias: hf_hrm
+device_map: auto
+torch_dtype: auto
+max_seq_len: 4096
+ppl_range: [3.0, 30.0]
+tokenizer_name: null
+local_files_only: true
+offline: true
+low_cpu_mem_usage: true

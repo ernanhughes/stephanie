@@ -73,3 +73,6 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         if not (0.0 - eps <= val <= 1.0 + eps):
             # hard failure if wildly out-of-range
             _logger.error(f"ScoreRangeViolation tag: {tag} value: {float(val)}")
+
+    def get_display_name(self) -> str:
+        return self.cfg.get("display_name", self.name)

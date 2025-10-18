@@ -27,8 +27,8 @@ class GapConfig:
     dimensions: List[str] = field(default_factory=lambda: [
         "reasoning", "knowledge", "clarity", "faithfulness", "coverage"
     ])
-    hrm_scorers: List[str] = field(default_factory=lambda: ["hrm"])
-    tiny_scorers: List[str] = field(default_factory=lambda: ["tiny"])
+    hrm_scorers: List[str] = field(default_factory=lambda: ["hf_hrm"])
+    tiny_scorers: List[str] = field(default_factory=lambda: ["hf_mistral"])
     out_dir: Path = field(default_factory=lambda: Path("data/gap_runs/vpm"))
     base_dir: Path = field(default_factory=lambda: Path("data/gap_runs"))
     interleave: bool = False

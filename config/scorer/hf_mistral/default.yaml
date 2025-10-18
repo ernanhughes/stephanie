@@ -1,0 +1,42 @@
+# config/scorer/hf_mistral/default.yaml
+name: hf_mistral
+model_type: hf
+display_name: Mistral-7B
+
+
+model_version: v1
+evaluator: hf
+target_type: conversation_turn
+dimensions:
+  - reasoning
+  - knowledge
+  - clarity
+  - faithfulness
+  - coverage
+
+# Hugging Face model
+model_name: mistralai/Mistral-7B-Instruct-v0.3
+model_alias: hf_mistral
+
+# Runtime
+device_map: auto
+torch_dtype: auto
+max_seq_len: 4096
+tokenizer_name: null
+
+# (Optional) scoring helpers
+ppl_range: [3.0, 30.0]
+
+# If your HF adapter supports 4-bit, you can add:
+# load_in_4bit: true
+# bnb_4bit_compute_dtype: float16
+# config/scorer/hf_foo/default.yaml
+compute_bpb: true                 # add bits-per-byte
+calibration_path: models/calib/hf_mistral.stats.json
+compute_zscores: true             # emit z_mean_logprob, z_entropy, z_bpb if calib exists
+expose_token_dists_topk: 0        # 0 = off, else emit top-k probs (for debugging)
+eps: 1e-8                         # numerical floor for KL/JSD
+
+local_files_only: true
+offline: true
+low_cpu_mem_usage: true

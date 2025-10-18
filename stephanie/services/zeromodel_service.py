@@ -378,7 +378,7 @@ class ZeroModelService(Service):
         progress_cb: Optional[Callable[[str, int, int], None]] = None, 
     ) -> Dict[str, Any]:
         if progress_cb: progress_cb("finalize:start", 0, 1)
-
+        _logger.debug(f"[ZeroModelService] Finalizing timeline for run_id={run_id}")
         sess = self._sessions.pop(run_id, None)
         if not sess:
             return {"status": "noop", "reason": "no_session"}

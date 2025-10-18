@@ -41,6 +41,13 @@ class ScoringProcessor:
         progress_cb: Optional[Callable[[int,int,Optional[Dict[str,Any]]], None]] = None,
     ) -> Dict[str, Any]:
         scoring_service = self.container.get("scoring")
+
+        def _disp(n):
+            s = scoring_service._scorers.get(n)
+            return s.get_display_name() if s and hasattr(s, "get_display_name") else n
+
+        hrm_label = ", ".join(_disp(n) for n in self.config.hrm_scorers)
+        tiny_label = ", ".join(_disp(n) for n in self.config.tiny_scorers)
         zm = self.container.get("zeromodel")
 
         hrm_worker = MetricsWorkerInline(scoring_service, self.config.hrm_scorers, self.config.dimensions)
@@ -89,19 +96,23 @@ class ScoringProcessor:
                 hrm_metrics = await hrm_worker.score(scorable, triple.goal_text, hrm_tl)
                 tiny_metrics = await tiny_worker.score(scorable, triple.goal_text, tiny_tl)
 
-                # extract flat vectors
-                h_vec = self._to_vector(hrm_metrics)
-                t_vec = self._to_vector(tiny_metrics)
+                # ---- extract flat vectors from RAW metrics
+                h_vec_raw = self._to_vector(hrm_metrics)
+                t_vec_raw = self._to_vector(tiny_metrics)
 
-                # build SCM dicts (same source of truth as vectors we save)
-                h_scm = scm_from_vector(h_vec, model_prefix="hrm")
-                t_scm = scm_from_vector(t_vec, model_prefix="tiny")
+                # ---- build SCM dicts (source of truth for aligned heads)
+                h_scm = scm_from_vector(h_vec_raw, model_prefix="hrm")
+                t_scm = scm_from_vector(t_vec_raw, model_prefix="tiny")
 
-                # append SCM-merged payloads to timelines (IMPORTANT)
-                hrm_for_tl = self._merge_for_timeline(hrm_metrics, h_scm)
+                # ---- merge for timeline (and for downstream vector usage)
+                hrm_for_tl  = self._merge_for_timeline(hrm_metrics, h_scm)
                 tiny_for_tl = self._merge_for_timeline(tiny_metrics, t_scm)
                 vpm_worker.append(hrm_tl, triple.node_id, hrm_for_tl)
                 vpm_worker.append(tiny_tl, triple.node_id, tiny_for_tl)
+
+                # >>> use the MERGED vectors everywhere from here on <<<
+                h_vec = hrm_for_tl["vector"]
+                t_vec = tiny_for_tl["vector"]
 
                 # lock first-row names; align subsequent rows by first-row order
                 if i == 0:
@@ -124,8 +135,10 @@ class ScoringProcessor:
                 if ((i+1) % log_every) == 0 or (i+1) == T:
                     self.logger.log("ScoringProgress", {"processed": i+1, "total": T})
                     if progress_cb:
-                        try: progress_cb(i+1, T, None)
-                        except Exception: pass
+                        try:
+                            progress_cb(i+1, T, None)
+                        except Exception:
+                            pass
                 pbar.update(1)
                 await asyncio.sleep(0)
 
@@ -138,6 +151,7 @@ class ScoringProcessor:
         tiny_matrix_raw = np.asarray(tiny_rows, dtype=np.float32)
 
         # 5) pick preferred indices and align (aggregate + per-dim)
+        # NOTE: ensure _preferred_indices falls back to 'scm.*.score01' keys.
         pref_hrm = self._preferred_indices(hrm_names, "hrm", self.config.dimensions)
         pref_tny = self._preferred_indices(tiny_names, "tiny", self.config.dimensions)
 
@@ -169,8 +183,10 @@ class ScoringProcessor:
         raw_paths = storage.save_rows_df(df_rows, run_id, name="rows_for_df")
 
         if progress_cb:
-            try: progress_cb(T, T, {"done": True})
-            except Exception: pass
+            try:
+                progress_cb(T, T, {"done": True})
+            except Exception:
+                pass
 
         # --- save row-level provenance so we can trace loops back to text ---
         provenance = []
@@ -184,7 +200,6 @@ class ScoringProcessor:
             }
             provenance.append(prov_row)
 
-        storage = self.container.get("gap_storage")
         storage.save_json(
             run_id,
             "raw",
@@ -310,26 +325,32 @@ class ScoringProcessor:
     def _preferred_indices(self, names: List[str], model: str, dims: List[str]) -> Dict[str, int]:
         name_idx = {n: i for i, n in enumerate(names)}
 
-        def exact(key: str) -> Optional[int]:
-            return name_idx.get(key)
+        def exact(k: str): return name_idx.get(k)
 
-        def loose(parts: List[str]) -> Optional[int]:
+        def seek(*patterns: str):
             for i, n in enumerate(names):
                 s = n.lower()
-                if all(p in s for p in parts): return i
+                if all(p in s for p in patterns):
+                    return i
             return None
 
-        out: Dict[str, int] = {}
-        # aggregate
-        idx = exact(f"{model}.aggregate") or loose([model+".", "aggregate"])
-        if idx is not None: out["aggregate"] = idx
-        # per-dim
+        out = {}
+
+        # aggregate: prefer model-prefixed, else SCM
+        agg = (exact(f"{model}.aggregate01")
+            or exact(f"{model}.aggregate")
+            or seek(model+".", ".aggregate01")
+            or seek(model+".", ".aggregate")
+            or exact("scm.aggregate01"))                       # <<< NEW
+        if agg is not None:
+            out["aggregate"] = agg
+
         for d in dims:
-            cands = [f"{model}.{d}.score", f"{model}.{d}.aggregate", f"{model}.{d}"]
-            idx = None
-            for c in cands:
-                if c in name_idx: idx = name_idx[c]; break
-            if idx is None:
-                idx = loose([model+".", f".{d}", ".score"]) or loose([model+".", f".{d}", ".aggregate"])
-            if idx is not None: out[d] = idx
+            idx = (exact(f"{model}.{d}.score01")
+                or seek(model+".", f".{d}", ".score01")
+                or exact(f"{model}.{d}.score")            # legacy 0–1
+                or seek(model+".", f".{d}", ".score")
+                or exact(f"scm.{d}.score01"))             # <<< NEW (gold path)
+            if idx is not None:
+                out[d] = idx
         return out

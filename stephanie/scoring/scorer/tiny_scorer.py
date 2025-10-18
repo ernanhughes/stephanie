@@ -156,7 +156,13 @@ class TinyScorer(BaseScorer):
                 # Core metrics
                 raw01 = float(max(0.0, min(1.0, _tf(aux.get("score")))))
                 # "uncertainty" key carries certainty in current model; prefer certainty01 if present.
-                certainty01 = _tf(aux.get("certainty01")) or _tf(aux.get("uncertainty"))
+                # prefer certainty01; fall back to (1 - uncertainty) if that’s present; else 0.5
+                c01 = _tf(aux.get("certainty01"))
+                if c01 == 0.0:  # _tf returns 0.0 on missing; distinguish from true zero:
+                    unc = _tf(aux.get("uncertainty"))
+                    certainty01 = (1.0 - unc) if unc > 0.0 else 0.5
+                else:
+                    certainty01 = c01
                 entropy = _tf(aux.get("entropy_aux"))
                 halt_prob = _sigmoid_mean(halt_logits)
 
@@ -218,13 +224,16 @@ class TinyScorer(BaseScorer):
                     f"halt_p={float(halt_prob) if halt_prob is not None else -1:.3f}"
                 )
 
+                # Build a flat vector so GAP can align columns deterministically
+                vector = _tiny_build_vector(attrs)
+
                 results[dim] = ScoreResult(
                     dimension=dim,
-                    score=final_score,
+                    score=tiny_score01,
                     source=self.model_type,
                     rationale=rationale,
                     weight=1.0,
-                    attributes=attrs,
+                    attributes={**attrs, "vector": vector["vector"], "columns": vector["columns"], "values": vector["values"]},
                 )
 
             except Exception as e:
@@ -279,6 +288,43 @@ def _safe_scale_0_100(raw: float, meta: dict | None) -> float:
     lo = float(meta.get("min_value", 0.0))
     hi = float(meta.get("max_value", 100.0))
     return float(max(lo, min(hi, lo + (hi - lo) * max(0.0, min(1.0, raw)))))
+
+def _tiny_build_vector(attrs: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Produce vector/columns/values for ScoringProcessor alignment.
+    Includes tiny raw stats + SCM + mirrored tiny.{dim} scores.
+    """
+    vec: Dict[str, float] = {}
+    # a few raw-ish tiny stats that show up often
+    vec["tiny.score01"]        = float(attrs.get("tiny.score01", 0.0))
+    vec["tiny.score100"]       = float(attrs.get("tiny.score100", 0.0))
+    vec["tiny.certainty01"]    = float(attrs.get("certainty01", 0.5))
+    vec["tiny.entropy_mean"]   = float(attrs.get("entropy", 0.0))
+    if "halt_prob" in attrs and attrs["halt_prob"] is not None:
+        vec["tiny.halt_prob"] = float(attrs["halt_prob"])
+
+    # SCM (fixed schema)
+    for k in [
+        "scm.reasoning.score01","scm.knowledge.score01","scm.clarity.score01",
+        "scm.faithfulness.score01","scm.coverage.score01","scm.aggregate01",
+        "scm.uncertainty01","scm.ood_hat01","scm.consistency01",
+        "scm.length_norm01","scm.temp01","scm.agree_hat01",
+    ]:
+        if k in attrs:
+            vec[k] = float(attrs[k])
+
+    # mirror five dimensions under tiny.* for PHOS
+    for d in ("reasoning","knowledge","clarity","faithfulness","coverage"):
+        k = f"scm.{d}.score01"
+        if k in attrs:
+            v01 = float(attrs[k])
+            vec[f"tiny.{d}.score01"]  = v01
+            vec[f"tiny.{d}.score100"] = round(v01 * 100.0, 4)
+            vec[f"tiny.{d}"]          = v01
+
+    cols = list(vec.keys())
+    vals = [vec[c] for c in cols]
+    return {"vector": vec, "columns": cols, "values": vals}
 
 
 def _extract_standard_aux(aux: Dict[str, Any]) -> Dict[str, float]:

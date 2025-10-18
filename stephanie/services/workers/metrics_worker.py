@@ -6,12 +6,13 @@ import logging
 import time
 import traceback
 from typing import Any, Dict, Optional
+import numpy as np
+import torch
 
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.scoring_service import ScoringService
 
 _logger = logging.getLogger(__name__)
-
 
 class MetricsWorkerInline:
     """Simplified in-process scorer (no bus)."""

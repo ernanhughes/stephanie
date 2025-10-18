@@ -249,6 +249,9 @@ class ScoringService(Service):
                 from stephanie.scoring.scorer.contrastive_ranker_scorer import \
                     ContrastiveRankerScorer
                 return ContrastiveRankerScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
+            if name.startswith("hf_") or name in ("huggingface", "hf_causal"):
+                from stephanie.scoring.scorer.hf_scorer import HuggingFaceScorer
+                return HuggingFaceScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
         except Exception as e:
             if self.logger:
                 self.logger.log("ScoringServiceBuildScorerError", {"name": name, "error": str(e)})

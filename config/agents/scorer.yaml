@@ -6,12 +6,16 @@ scorer:
   skip_if_completed: false
 
   enabled_scorers:
-    - svm
-    - mrq
-    - sicql
-    - ebt
+    # - svm
+    # - mrq
+    # - sicql
+    # - ebt
+    # - hrm
+    # - contrastive_ranker
+    - hf_tiny
+    - tiny
     - hrm
-    - contrastive_ranker
+    - hf_hrm
   include_mars: true
 
   # Test mode configuration
@@ -25,14 +29,14 @@ scorer:
   model_type: "rank"
   target_type: "document"
   dimensions: 
-    - "alignment"
-    - "clarity"
-    - "implementability"
-    - "novelty"
-    - "relevance"
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage
 
   dimension_config:
-      alignment:
+      reasoning:
         scale: "0-100"
         trust_references: ["llm"]
         expected_variance: 0.15
@@ -40,15 +44,15 @@ scorer:
         scale: "0-100"
         trust_references: ["llm"]
         expected_variance: 0.15
-      implementability:
+      knowledge:
         scale: "0-100"
         trust_references: ["llm"]
         expected_variance: 0.15
-      novelty:
+      coverage:
         scale: "0-100"
         trust_references: ["llm"]
         expected_variance: 0.15
-      relevance:
+      faithfulness:
         scale: "0-100"
         trust_references: ["llm"]
         expected_variance: 0.15
