@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from sklearn.neighbors import NearestNeighbors
 
+from stephanie.utils.json_sanitize import dumps_safe
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +30,7 @@ def _zscore(M: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     mu = M.mean(axis=0, keepdims=True)
     sd = M.std(axis=0, keepdims=True)
     return (M - mu) / (sd + eps)
+
 
 
 # ---------------------------------------------------------------------
@@ -335,6 +338,32 @@ class TopologyProcessor:
                         max_edges=200_000,
                     )
                     self.logger.log("TopologyLoopOverlay", loop_vis)
+
+                cycle_nodes = [int(i) for i in loop_vis.get("cycle_nodes", [])]
+                # Per-dimension semantics on the loop (SCM core-5 order you used)
+                loop_sem = self._loop_semantics_report(
+                    H5=H5, T5=T5,
+                    cycle_nodes=cycle_nodes,
+                    dim_names=["reasoning","knowledge","clarity","faithfulness","coverage"],
+                    base_dir=base_dir / run_id,
+                    k_examples=50,
+                )
+                _save_json(met_dir / "loop_semantics.json", loop_sem)
+
+
+                if cycle_nodes:
+                    score = self._loop_circularity_score(Delta[cycle_nodes])
+                    _save_json(met_dir / "loop_shape.json", {"circularity_score": score})
+
+                cases = self._export_loop_cases(
+                    run_dir=base_dir / run_id,
+                    cycle_nodes=cycle_nodes,
+                    H5=H5, T5=T5,
+                    dim_names=["reasoning","knowledge","clarity","faithfulness","coverage"],
+                    k_examples=50,   # change as you like
+                )
+                self.logger.log("TopologyLoopCases", cases)
+
             except Exception as e:
                 logger.info(f"[Topology] Loop overlay skipped: {e}")
             self._progress("umap:done", 1, 1, {"has_loop": bool(betti.get("H1_bars"))})
@@ -469,6 +498,83 @@ class TopologyProcessor:
 
         return {"bootstrap": bstrap, "weight_jitter": jitter}
 
+
+    def _export_loop_cases(
+        self,
+        run_dir: Path,
+        cycle_nodes: list[int],
+        H5: np.ndarray,
+        T5: np.ndarray,
+        dim_names: list[str],
+        k_examples: int = 50,
+    ) -> dict:
+        """
+        Save a CSV + JSON with detailed, per-case provenance for the loop nodes:
+        row_index, node_id, dimension, goal_text, output_text,
+        per-dimension HRM/Tiny core-5 scores + Δ, and Δ_norm (L2 over core-5).
+        """
+        out_dir = run_dir / "metrics"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Load provenance saved by ScoringProcessor
+        import json
+        prov_path = run_dir / "raw" / "row_provenance.json"
+        if not prov_path.exists():
+            return {"status": "no_provenance"}
+
+        with open(prov_path, "r", encoding="utf-8") as f:
+            provenance = json.load(f)
+
+        # De-dup & clamp which rows to export
+        idxs = [int(i) for i in cycle_nodes]
+        if not idxs:
+            return {"status": "no_cycle_nodes"}
+
+        # Compute per-row deltas
+        rows = []
+        for i in idxs[:k_examples]:
+            meta = provenance[i] if i < len(provenance) else {"row_index": i}
+            rec = {
+                "row_index": i,
+                "node_id": meta.get("node_id"),
+                "dimension": meta.get("dimension"),
+                "goal_text": meta.get("goal_text"),
+                "output_text": meta.get("output_text"),
+            }
+            # per-dim HRM/Tiny + Δ
+            for j, name in enumerate(dim_names):
+                rec[f"hrm.{name}"]  = float(H5[i, j])
+                rec[f"tiny.{name}"] = float(T5[i, j])
+                rec[f"delta.{name}"] = float(H5[i, j] - T5[i, j])
+            # overall magnitude across the core-5
+            d = H5[i, :] - T5[i, :]
+            rec["delta_l2_core5"] = float(np.linalg.norm(d, ord=2))
+            rows.append(rec)
+
+        # Save CSV + JSON
+        import csv
+        csv_path  = out_dir / "loop_cases.csv"
+        json_path = out_dir / "loop_cases.json"
+
+        if rows:
+            # CSV
+            fieldnames = list(rows[0].keys())
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=fieldnames)
+                w.writeheader()
+                for r in rows: w.writerow(r)
+            # JSON
+            with open(json_path, "w", encoding="utf-8") as f:
+                f.write(dumps_safe(rows, indent=2))
+
+        return {
+            "status": "ok",
+            "count": len(rows),
+            "csv": str(csv_path),
+            "json": str(json_path),
+        }
+
+
     # ---------------------------------------------------------------------
     # Nulls (simple)
     # ---------------------------------------------------------------------
@@ -572,6 +678,65 @@ class TopologyProcessor:
         # persist the embedding so other steps can reuse it
         np.save(out_png.with_suffix(".npy"), U)
         return U
+
+    def _loop_semantics_report(
+        self,
+        H5: np.ndarray,
+        T5: np.ndarray,
+        cycle_nodes: list[int],
+        dim_names: list[str],
+        base_dir: Path,
+        *,
+        k_examples: int = 8,
+    ) -> dict:
+        """
+        Compute per-dimension stats on the loop and export a few example rows.
+        Assumes H5/T5 are the 5-dim SCM core matrices you already built.
+        """
+        out_dir = base_dir / "metrics"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        if not cycle_nodes:
+            report = {"status": "no_cycle", "dims": dim_names, "examples": []}
+            (out_dir / "loop_semantics.json").write_text(dumps_safe(report, indent=2))
+            return report
+
+        loop_H = H5[cycle_nodes, :]
+        loop_T = T5[cycle_nodes, :]
+        D = loop_H - loop_T  # Δ on the loop
+
+        stats = []
+        for j, name in enumerate(dim_names):
+            col = D[:, j]
+            stats.append({
+                "dimension": name,
+                "mean_delta": float(np.mean(col)),
+                "abs_mean_delta": float(np.mean(np.abs(col))),
+                "std_delta": float(np.std(col)),
+                "min_delta": float(np.min(col)),
+                "max_delta": float(np.max(col)),
+            })
+
+        # Most divergent dimension by mean |Δ|
+        key_dim = max(stats, key=lambda r: r["abs_mean_delta"])["dimension"]
+
+        # Pick example indices: farthest |Δ| in that key dimension
+        j_key = dim_names.index(key_dim)
+        order = np.argsort(-np.abs(D[:, j_key]))
+        take = min(k_examples, len(order))
+        chosen = [int(cycle_nodes[i]) for i in order[:take]]
+
+        report = {
+            "status": "ok",
+            "loop_size": int(len(cycle_nodes)),
+            "dims": dim_names,
+            "summary": stats,
+            "most_divergent_dimension": key_dim,
+            "example_row_indices": chosen,
+        }
+
+        (out_dir / "loop_semantics.json").write_text(dumps_safe(report, indent=2))
+        return report
 
     # ---------------------------------------------------------------------
     # Statistical Significance
@@ -715,6 +880,18 @@ class TopologyProcessor:
             "condition_number": cond_num,
             "numerical_stability": "good" if np.isfinite(cond_num) and cond_num < 1e10 else "poor",
         }
+
+
+    def _loop_circularity_score(self, Delta_loop: np.ndarray) -> float:
+        # PCA to 2D
+        X = Delta_loop - Delta_loop.mean(0, keepdims=True)
+        U, S, Vt = np.linalg.svd(X, full_matrices=False)
+        Y = X @ Vt[:2].T  # [m,2]
+        # angles & circular variance
+        ang = np.arctan2(Y[:,1], Y[:,0])
+        re = np.mean(np.exp(1j * ang))
+        circ_var = 1.0 - np.abs(re)   # 0 = perfect circle, 1 = spread
+        return float(1.0 - circ_var)  # higher is “more circular”
 
     def _progress(self, stage: str, i: int, total: int, extra: Optional[Dict[str, Any]] = None):
         """Emit structured progress to both logger + optional callback."""

@@ -172,6 +172,26 @@ class ScoringProcessor:
             try: progress_cb(T, T, {"done": True})
             except Exception: pass
 
+        # --- save row-level provenance so we can trace loops back to text ---
+        provenance = []
+        for i, triple in enumerate(all_triples):
+            prov_row = {
+                "row_index": i,
+                "node_id": triple.node_id,
+                "dimension": triple.dimension,
+                "goal_text": triple.goal_text,
+                "output_text": triple.output_text,
+            }
+            provenance.append(prov_row)
+
+        storage = self.container.get("gap_storage")
+        storage.save_json(
+            run_id,
+            "raw",
+            "row_provenance.json",
+            provenance
+        )
+
         return {
             "hrm_vectors": hrm_matrix,
             "tiny_vectors": tiny_matrix,

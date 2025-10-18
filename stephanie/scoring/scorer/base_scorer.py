@@ -69,3 +69,7 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
     def log_event(self, event: str, data: dict):
         self.logger.log(event, data)
 
+    def range_sentinel(self, tag: str, val: float, eps: float = 1e-6):
+        if not (0.0 - eps <= val <= 1.0 + eps):
+            # hard failure if wildly out-of-range
+            _logger.error(f"ScoreRangeViolation tag: {tag} value: {float(val)}")

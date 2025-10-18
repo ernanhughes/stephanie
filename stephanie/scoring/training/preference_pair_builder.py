@@ -6,6 +6,26 @@ import math
 
 from stephanie.scoring.scorable import ScorableType
 
+def _normalize01(v: float) -> float:
+    """
+    Accept 0..1 or 0..100 and return 0..1.
+    If v > 1 but <= 100, treat as percent.
+    Clamp to [0,1]; NaN/inf → None handled by caller.
+    """
+    try:
+        f = float(v)
+    except Exception:
+        return float("nan")
+
+    if not math.isfinite(f):
+        return float("nan")
+
+    if 0.0 <= f <= 1.0:
+        return f
+    if 0.0 <= f <= 100.0:
+        return f / 100.0
+    # out of range → NaN so it gets dropped
+    return float("nan")
 
 def _nonempty(s: Optional[str], min_len: int = 3) -> bool:
     return isinstance(s, str) and (s.strip() != "") and (len(s.strip()) >= min_len)
@@ -66,51 +86,47 @@ class PreferencePairBuilder:
             b_txt = (s.get("output_b") or "").strip()
             a_val = _finite_score(s.get("value_a"))
             b_val = _finite_score(s.get("value_b"))
+
             if _nonempty(title) and _nonempty(a_txt) and _nonempty(b_txt) and a_val is not None and b_val is not None:
-                a_val = _clamp01_or_100(a_val)
-                b_val = _clamp01_or_100(b_val)
-                if math.isfinite(a_val) and math.isfinite(b_val):
+                a01 = _normalize01(a_val)
+                b01 = _normalize01(b_val)
+                if math.isfinite(a01) and math.isfinite(b01):
                     out.append({
                         "title": title,
                         "output_a": a_txt,
                         "output_b": b_txt,
-                        "value_a": a_val,
-                        "value_b": b_val,
+                        "value_a": a01,     # <<< normalized 0..1
+                        "value_b": b01,     # <<< normalized 0..1
                     })
                     kept += 1
                     continue
             dropped += 1
 
         if self.logger:
-            self.logger.log("PreferencePairsFilteredPairwise", {
-                "kept": kept, "dropped": dropped
-            })
+            self.logger.log("PreferencePairsFilteredPairwise", {"kept": kept, "dropped": dropped})
         return out
 
     def _filter_singletons(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         kept, dropped = 0, 0
         out: List[Dict[str, Any]] = []
         for s in items:
-            # Accept several schema spellings
             title = (s.get("goal_text") or s.get("title") or "").strip()
             text  = (s.get("scorable_text") or s.get("output") or "").strip()
             score = _finite_score(s.get("target_score", s.get("score")))
             if _nonempty(title) and _nonempty(text) and score is not None:
-                score = _clamp01_or_100(score)
-                if math.isfinite(score):
+                s01 = _normalize01(score)
+                if math.isfinite(s01):
                     out.append({
                         "goal_text": title,
                         "scorable_text": text,
-                        "score": score,
+                        "score": s01,       # <<< normalized 0..1
                     })
                     kept += 1
                     continue
             dropped += 1
 
         if self.logger:
-            self.logger.log("PreferencePairsFilteredSingletons", {
-                "kept": kept, "dropped": dropped
-            })
+            self.logger.log("PreferencePairsFilteredSingletons", {"kept": kept, "dropped": dropped})
         return out
 
     def _detect_and_filter(self, raw: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -174,7 +190,6 @@ def _is_valid_score(v) -> bool:
         return False
 
 def _clean_pair_dict(s: dict) -> dict | None:
-    # Accept singleton or pairwise shapes; keep only if all required fields are valid
     title = (s.get("goal_text") or s.get("title") or "").strip()
     if not _is_valid_text(title):
         return None
@@ -184,7 +199,8 @@ def _clean_pair_dict(s: dict) -> dict | None:
         out = (s.get("scorable_text") or s.get("output") or "").strip()
         val = s.get("target_score", s.get("score"))
         if _is_valid_text(out) and _is_valid_score(val):
-            return {"title": title, "output": out, "score": float(val)}
+            v01 = _normalize01(val)
+            return {"title": title, "output": out, "score": v01} if math.isfinite(v01) else None
         return None
 
     # pairwise
@@ -192,12 +208,14 @@ def _clean_pair_dict(s: dict) -> dict | None:
         a_ok = _is_valid_text(s.get("output_a")) and _is_valid_score(s.get("value_a"))
         b_ok = _is_valid_text(s.get("output_b")) and _is_valid_score(s.get("value_b"))
         if a_ok or b_ok:
+            va01 = _normalize01(s["value_a"]) if a_ok else float("nan")
+            vb01 = _normalize01(s["value_b"]) if b_ok else float("nan")
             return {
                 "title": title,
-                "output_a": s.get("output_a") if a_ok else None,
-                "value_a": float(s["value_a"]) if a_ok else None,
-                "output_b": s.get("output_b") if b_ok else None,
-                "value_b": float(s["value_b"]) if b_ok else None,
+                "output_a": s.get("output_a") if (a_ok and math.isfinite(va01)) else None,
+                "value_a": va01 if (a_ok and math.isfinite(va01)) else None,
+                "output_b": s.get("output_b") if (b_ok and math.isfinite(vb01)) else None,
+                "value_b": vb01 if (b_ok and math.isfinite(vb01)) else None,
             }
         return None
 
@@ -206,5 +224,6 @@ def _clean_pair_dict(s: dict) -> dict | None:
         out = (s.get("scorable_text") or "").strip()
         val = s.get("target_score", s.get("score"))
         if _is_valid_text(out) and _is_valid_score(val):
-            return {"title": title, "output": out, "score": float(val)}
+            v01 = _normalize01(val)
+            return {"title": title, "output": out, "score": v01} if math.isfinite(v01) else None
     return None

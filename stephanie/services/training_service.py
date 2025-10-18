@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from stephanie.evaluator.mrq_trainer import MRQTrainer
+from stephanie.scoring.training.mrq_trainer import MRQTrainer
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.training.sicql_trainer import SICQLTrainer
 from stephanie.services.service_protocol import Service

@@ -152,75 +152,6 @@ class MRQTrainer(BaseTrainer):
         predictor = ValuePredictor(zsa_dim=self.dim, hdim=self.hdim).to(self.device)
         return MRQModel(encoder, predictor, self.memory.embedding, device=self.device)
 
-
-    @torch.no_grad()
-    def _pair_metrics(self, dataloader):
-        self.model.encoder.eval()
-        self.model.predictor.eval()
-        logits_all, y_all = [], []
-        for X, y, _w in dataloader:
-            X = X.to(self.device)
-            y = y.to(self.device)
-            logits = self.model.predictor(X).view(-1)
-            logits_all.append(logits.detach().cpu())
-            y_all.append(y.detach().cpu())
-        if not logits_all:
-            return {"pair_acc": float("nan"), "pos_rate": float("nan")}
-
-        L = torch.cat(logits_all).numpy()
-        Y = torch.cat(y_all).numpy()
-
-        pair_acc = float(((L > 0).astype(np.float32) == Y.astype(np.float32)).mean())
-        pos_rate = float((L > 0).mean())  # sanity: should not collapse to all-pos or all-neg
-
-        # AUC (safe, small impl)
-        try:
-            order = np.argsort(L)
-            ranks = np.empty_like(order); ranks[order] = np.arange(len(L))
-            pos = (Y == 1).astype(np.float64); neg = 1.0 - pos
-            n_pos, n_neg = pos.sum(), neg.sum()
-            auc = float(((ranks[pos == 1]).sum() - n_pos * (n_pos - 1) / 2) / max(n_pos * n_neg, 1.0))
-        except Exception:
-            auc = float("nan")
-
-        return {"pair_acc": pair_acc, "pos_rate": pos_rate, "auc": auc}
-
-    @torch.no_grad()
-    def _cls_metrics(self, dataloader):
-        self.model.encoder.eval()
-        self.model.predictor.eval()
-        logits_all, y_all = [], []
-        for batch in dataloader:
-            if len(batch) == 3:
-                X, y, _ = batch
-            else:
-                X, y = batch
-            X = X.to(self.device); y = y.to(self.device)
-            logits = self.model.predictor(X).view(-1)
-            logits_all.append(logits.detach().cpu())
-            y_all.append(y.detach().cpu())
-        if not logits_all:
-            return {"pair_acc": float("nan"), "auc": float("nan"), "logloss": float("nan"), "pos_rate": float("nan")}
-        import numpy as np
-        L = torch.cat(logits_all).numpy()
-        Y = torch.cat(y_all).numpy().astype(np.float32)
-
-        # pair accuracy
-        pair_acc = float(((L > 0).astype(np.float32) == Y).mean())
-
-        # AUC (same as you had)
-        order = np.argsort(L); ranks = np.empty_like(order); ranks[order] = np.arange(len(L))
-        pos = (Y == 1).astype(np.float64); neg = 1.0 - pos
-        n_pos, n_neg = pos.sum(), neg.sum()
-        auc = float(((ranks[pos == 1]).sum() - n_pos * (n_pos - 1) / 2) / max(n_pos * n_neg, 1.0)) if n_pos > 0 and n_neg > 0 else float("nan")
-
-        # logloss on sigmoid
-        P = 1.0 / (1.0 + np.exp(-L))
-        eps = 1e-7
-        logloss = float(-np.mean(Y * np.log(P + eps) + (1 - Y) * np.log(1 - P + eps)))
-
-        return {"pair_acc": pair_acc, "auc": auc, "logloss": logloss, "pos_rate": float((L > 0).mean())}
-
     def _train_epoch(self, model, dataloader, epoch_idx: int = 1):
         model.encoder.train()
         model.predictor.train()
@@ -330,9 +261,15 @@ class MRQTrainer(BaseTrainer):
         torch.save(self.model.encoder.state_dict(), locator.encoder_file())
         torch.save(self.model.predictor.state_dict(), locator.model_file())
 
-        # --- Collect train-set metrics (you can add a val split later) ---
-        train_preds, train_acts = self._collect_preds_targets(self.model, dataloader, self.device)
-        reg_stats = self._regression_metrics(train_preds, train_acts)
+        train_preds01, train_acts = self.collect_preds_targets(
+            self.model, dataloader, self.device, head="q", apply_sigmoid=True
+        )
+        reg_stats = self.regression_metrics(train_preds01, train_acts)
+
+        # --- Pairwise classification metrics on logits (unchanged) ---
+        pair_stats = self.binary_cls_metrics(
+            dataloader, forward_fn=lambda X: self.model.predictor(X)
+        )
 
         # --- Optional tuner calibration on *train* (or a held-out set if you have one) ---
         if self.use_tuner:
@@ -360,10 +297,6 @@ class MRQTrainer(BaseTrainer):
         except Exception:
             min_value = max_value = float("nan")
 
-        # --- Meta file for this dimension --- Hearing none again and
-        pair_stats = self._pair_metrics(dataloader)
-
-        cls = self._cls_metrics(dataloader)
         meta = {
             "dimension": dimension,
             "model_type": "mrq",
@@ -390,10 +323,10 @@ class MRQTrainer(BaseTrainer):
             "train_within5": reg_stats["within5"],
             "pred_mean": reg_stats["pred_mean"],
             "pred_std": reg_stats["pred_std"],
-            "pair_acc": cls["pair_acc"],
-            "pair_auc": cls["auc"],
-            "pos_rate": cls["pos_rate"],
-            "logloss": cls["logloss"],
+            "pair_acc": pair_stats["pair_acc"],
+            "pair_auc": pair_stats["auc"],
+            "pos_rate": pair_stats["pos_rate"],
+            "logloss": pair_stats["logloss"],
             "timestamp": datetime.now().isoformat(),
         }
         self._save_meta_file(meta, dimension)
