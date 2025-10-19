@@ -14,6 +14,7 @@ import networkx as nx
 from sklearn.neighbors import NearestNeighbors
 
 from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.utils.progress_mixin import ProgressMixin
 
 logger = logging.getLogger(__name__)
 if matplotlib.get_backend().lower() != "agg":
@@ -35,7 +36,6 @@ def _zscore(M: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     return (M - mu) / (sd + eps)
 
 
-
 # ---------------------------------------------------------------------
 # Hole visualization (UMAP + representative loop)
 # ---------------------------------------------------------------------
@@ -50,8 +50,6 @@ def plot_topology_holes(
     Visualize holes:
       1) UMAP scatter (density)
       2) Loop overlay using a representative cycle at eps ~ mid of top H1 bar
-
-    Returns dict with file paths and chosen eps.
     """
     out: Dict[str, Any] = {}
     visuals = run_dir / "visuals"
@@ -75,7 +73,7 @@ def plot_topology_holes(
     pers = H1_bars_np[:, 1] - H1_bars_np[:, 0]
     top_idx = int(np.argmax(pers))
     b, d = H1_bars_np[top_idx].tolist()
-    eps = 0.5 * (b + d)  # midpoint filtration scale
+    eps = 0.5 * (b + d)
     out["top_H1_bar"] = {"birth": float(b), "death": float(d), "persistence": float(d - b)}
     out["chosen_eps"] = float(eps)
 
@@ -126,6 +124,7 @@ def plot_topology_holes(
     loop_png = visuals / "umap_delta_loop_overlay.png"
     fig.savefig(loop_png, dpi=160, bbox_inches="tight"); plt.close(fig)
     out["umap_loop_overlay"] = str(loop_png)
+    out["cycle_nodes"] = [int(x) for x in cycle_nodes]
 
     # (F) Optional: highlight component nodes
     comp_nodes = list(comps[0]) if comps else []
@@ -166,11 +165,12 @@ class TopologyConfig:
     n_nulls: int = 50
     # Repro
     random_seed: int = 42
-    fast_mode: bool = False           
+    fast_mode: bool = False
     max_points_for_ph: Optional[int] = 1500
-    compute_significance: bool = True 
+    compute_significance: bool = True
+    # TDA backend: "ripser" (default) or "giotto"
     tda_backend: Literal["ripser", "giotto"] = "ripser"
-    
+
 
 # ---------------------------------------------------------------------
 # PH backends (Ripser vs Giotto) — uniform API for H0/H1 bars
@@ -178,6 +178,7 @@ class TopologyConfig:
 class _PHBackend:
     def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         raise NotImplementedError
+
 
 class _RipserPH(_PHBackend):
     def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -187,32 +188,27 @@ class _RipserPH(_PHBackend):
         H1 = dgms[1] if len(dgms) > 1 else np.zeros((0, 2), dtype=float)
         return H0, H1
 
+
 class _GiottoPH(_PHBackend):
     def __init__(self):
-        # cache transformers (giotto-tda follows sklearn API)
         from gtda.homology import VietorisRipsPersistence
         self.vr = VietorisRipsPersistence(homology_dimensions=[0, 1], metric="euclidean")
 
     def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """
-        giotto-tda returns shape (1, n_points, 3) with (birth, death, hom_dim).
-        We filter by hom_dim==0 / 1.
-        """
-        import numpy as np
-        D = X[np.newaxis, :, :]        # (1, N, d)
-        diags = self.vr.fit_transform(D)   # (1, n_pts, 3)
+        D = X[np.newaxis, :, :]
+        diags = self.vr.fit_transform(D)   # (1, n_points, 3)
         diag = diags[0] if diags.ndim == 3 else diags
         if diag.size == 0:
             return np.zeros((0, 2), dtype=float), np.zeros((0, 2), dtype=float)
-        # columns: birth, death, hom_dim
         H0 = diag[diag[:, 2] == 0][:, :2]
         H1 = diag[diag[:, 2] == 1][:, :2]
         return H0.astype(float), H1.astype(float)
 
+
 # ---------------------------------------------------------------------
-# Processor
+# Processor (ProgressMixin version, no callbacks)
 # ---------------------------------------------------------------------
-class TopologyProcessor:
+class TopologyProcessor(ProgressMixin):
     """
     Computes persistent homology on the gap field Δ = H - T (SCM core-5),
     with stability + null controls, and generates UMAP storytelling figures.
@@ -237,17 +233,11 @@ class TopologyProcessor:
         self.container = container
         self.logger = logger
         self.stability_results: Dict[str, Any] = {}
-        self._progress_cb: Optional[Callable[[str, int, int, Optional[Dict[str, Any]]], None]] = None
 
-class TopologyProcessor:
-    def __init__(self, cfg: TopologyConfig, container, logger):
-        self.cfg = cfg
-        self.container = container
-        self.logger = logger
-        self.stability_results: Dict[str, Any] = {}
-        self._progress_cb = None
+        # Init progress service (no callbacks passed around)
+        self._init_progress(container, logger)
 
-        # pick PH backend
+        # pick PH backend (configurable; default ripser)
         if getattr(self.cfg, "tda_backend", "ripser") == "giotto":
             try:
                 self._ph_backend = _GiottoPH()
@@ -258,22 +248,18 @@ class TopologyProcessor:
         else:
             self._ph_backend = _RipserPH()
 
+        # Fast mode softeners
         if self.cfg.fast_mode:
-            # (your existing fast tweaks)
-            ...
-
-
-        if self.cfg.fast_mode:
-            # soften defaults
             self.cfg.n_bootstrap = min(self.cfg.n_bootstrap, 5)
             self.cfg.n_nulls = min(self.cfg.n_nulls, 20)
             self.cfg.umap_n_neighbors = min(self.cfg.umap_n_neighbors, 10)
             self.cfg.dbscan_min_samples = max(3, self.cfg.dbscan_min_samples // 2)
 
-    async def run(self, run_id: str, base_dir: Path, *, progress_cb: Optional[Callable[[str,int,int,Optional[Dict[str,Any]]], None]] = None) -> Dict[str, Any]:
-        self._progress_cb = progress_cb
-
-        self._progress("load:begin", 0, 1)
+    async def run(self, run_id: str, base_dir: Path) -> Dict[str, Any]:
+        task = f"topology:{run_id}"
+        # High-level stages we’ll tick through:
+        total_stages = 8  # load, delta, assumptions, ph, stability, nulls, umap, significance
+        self.pstart(task, total=total_stages, meta={"run_id": run_id})
 
         # RNG control for reproducibility
         rng_state = np.random.get_state()
@@ -282,11 +268,12 @@ class TopologyProcessor:
             base_dir = Path(base_dir)
             vis_dir = base_dir / run_id / "visuals"
             met_dir = base_dir / run_id / "metrics"
+            aligned_dir = base_dir / run_id / "aligned"
             vis_dir.mkdir(parents=True, exist_ok=True)
             met_dir.mkdir(parents=True, exist_ok=True)
 
             # --- Load SCM-aligned matrices
-            aligned_dir = base_dir / run_id / "aligned"
+            self.pstage(task, "load:start")
             H_path = aligned_dir / "hrm_scm_matrix.npy"
             T_path = aligned_dir / "tiny_scm_matrix.npy"
             names_path = aligned_dir / "scm_metric_names.json"
@@ -295,11 +282,11 @@ class TopologyProcessor:
                 self.logger.log("TopologyMissingMatrices", {
                     "run_id": run_id, "hrm_scm_matrix": str(H_path), "tiny_scm_matrix": str(T_path)
                 })
+                self.pstage(task, "load:missing", run_id=run_id)
+                self.pdone(task, status="error")
                 return {"status": "missing_scm_matrices"}
 
             H = np.load(H_path); T = np.load(T_path)
-            self._progress("load:done", 1, 1, {"rows": int(H.shape[0]), "cols": int(H.shape[1])})
-
             if names_path.exists():
                 with open(names_path, "r", encoding="utf-8") as f:
                     names = json.load(f)
@@ -310,32 +297,42 @@ class TopologyProcessor:
                     "scm.aggregate01","scm.uncertainty01","scm.ood_hat01","scm.consistency01",
                     "scm.length_norm01","scm.temp01","scm.agree_hat01"
                 ]
+            self.pstage(task, "load:done", rows=int(H.shape[0]), cols=int(H.shape[1]))
+            self.ptick(task, done=1, total=total_stages)
 
-            self._progress("delta:prep", 0, 1)
-
-            # --- Extract SCM core-5 columns
+            # --- Δ cloud build (core-5, zscore, weights)
+            self.pstage(task, "delta:prep")
             want = [
                 "scm.reasoning.score01","scm.knowledge.score01","scm.clarity.score01",
                 "scm.faithfulness.score01","scm.coverage.score01"
             ]
             name_to_idx = {n: i for i, n in enumerate(names)}
             col_idx = [name_to_idx[w] for w in want if w in name_to_idx]
-            if len(col_idx) != 5:  # fallback to first 5
+            if len(col_idx) != 5:
                 col_idx = list(range(min(5, H.shape[1])))
 
             H5 = H[:, col_idx]; T5 = T[:, col_idx]
-
             if H5.shape != T5.shape or H5.shape[1] == 0:
                 self.logger.log("TopologyShapeMismatch", {"H5": H5.shape, "T5": T5.shape})
+                self.pstage(task, "delta:shape_mismatch")
+                self.pdone(task, status="error")
                 return {"status": "shape_mismatch"}
 
-            # --- Δ cloud (zscore each model first if configured)
             if self.cfg.zscore_inputs:
                 H5 = _zscore(H5); T5 = _zscore(T5)
-            Delta = H5 - T5  # (N, 5)
-            self._progress("delta:ready", 1, 1, {"shape": list(Delta.shape)})
+            Delta = H5 - T5
+            # Optional per-dimension weights
+            if self.cfg.use_weighted and self.cfg.weights:
+                W = np.ones(Delta.shape[1], dtype=np.float32)
+                for i, n in enumerate([names[j] for j in col_idx]):
+                    suf = n.split("scm.")[-1]
+                    W[i] = float(self.cfg.weights.get(suf, 1.0))
+                Delta = Delta * W[None, :]
+            np.save(aligned_dir / "delta_core5.npy", Delta)
+            self.pstage(task, "delta:ready", shape=list(Delta.shape))
+            self.ptick(task, done=2, total=total_stages)
 
-            # Optional row cap for heavy steps
+            # Optional cap for heavy steps
             row_cap = self.cfg.max_points_for_ph or 0
             if row_cap and Delta.shape[0] > row_cap:
                 idx = np.random.RandomState(self.cfg.random_seed).choice(Delta.shape[0], size=row_cap, replace=False)
@@ -344,52 +341,42 @@ class TopologyProcessor:
                 idx = None
                 Delta_ph = Delta
 
-            # tell downstream which one to use where:
-            Delta_for_ph = Delta_ph
-            Delta_for_story = Delta  # keep full for UMAP if you want
-
-            # Optional per-dimension weights
-            if self.cfg.use_weighted and self.cfg.weights:
-                W = np.ones(Delta.shape[1], dtype=np.float32)
-                for i, n in enumerate([names[j] for j in col_idx]):
-                    suf = n.split("scm.")[-1]  # e.g., "reasoning.score01"
-                    W[i] = float(self.cfg.weights.get(suf, 1.0))
-                Delta = Delta * W[None, :]
-
-            # Persist Δ for other processors
-            np.save(aligned_dir / "delta_core5.npy", Delta)
-
             # --- Assumption/quality checks
-            self._progress("assumptions:start", 0, 1)
+            self.pstage(task, "assumptions:start")
             tda_assumptions = self._validate_tda_assumptions(Delta)
-            self._progress("assumptions:done", 1, 1)
             _save_json(met_dir / "tda_assumptions.json", tda_assumptions)
+            self.pstage(task, "assumptions:done", numerical_stability=tda_assumptions.get("numerical_stability"))
+            self.ptick(task, done=3, total=total_stages)
 
             # --- PH + figures
-            self._progress("ph:start", 0, 1)
-            betti = self._compute_ph_and_figures(Delta_for_ph, vis_dir)
-            self._progress("ph:done", 1, 1, {"b1": betti.get("b1", 0)})
+            self.pstage(task, "ph:start")
+            betti = self._compute_ph_and_figures(Delta_ph, vis_dir)
             _save_json(met_dir / "betti.json", betti)
+            self.pstage(task, "ph:done", b1=betti.get("b1", 0))
+            self.ptick(task, done=4, total=total_stages)
 
             # --- Stability (bootstrap + weight jitter)
-            self._progress("stability:start", 0, 1)
-            stability = self._stability_checks(Delta_for_ph, names=[names[j] for j in col_idx], vis_dir=vis_dir)
+            self.pstage(task, "stability:start")
+            stability = self._stability_checks(Delta_ph, names=[names[j] for j in col_idx], vis_dir=vis_dir)
             self.stability_results = stability
-            self._progress("stability:done", 1, 1)
             _save_json(met_dir / "stability.json", stability)
+            self.pstage(task, "stability:done")
+            self.ptick(task, done=5, total=total_stages)
 
-            # --- Null controls (both simple pairing/self and stronger)
-            self._progress("nulls:start", 0, 2)
+            # --- Null controls (simple + stronger)
+            self.pstage(task, "nulls:start")
             null_simple = self._null_controls(H5, T5)
-            self._progress("nulls:simple", 1, 2)
-            null_strong = self._null_controls_stronger(Delta_for_ph)
-            self._progress("nulls:strong", 2, 2)
+            self.pstage(task, "nulls:simple:done")
+            null_strong = self._null_controls_stronger(Delta_ph)
+            self.pstage(task, "nulls:strong:done")
             nulls = {**null_simple, **null_strong}
             _save_json(met_dir / "nulls.json", nulls)
+            self.ptick(task, done=6, total=total_stages)
 
             # --- UMAP storytelling + loop overlay
-            self._progress("umap:start", 0, 1)
+            self.pstage(task, "umap:start")
             U = None
+            loop_vis = {}
             try:
                 U = self._umap_overlay(Delta, out_png=vis_dir / "umap_loop_overlay.png")
             except Exception as e:
@@ -406,53 +393,51 @@ class TopologyProcessor:
                     )
                     self.logger.log("TopologyLoopOverlay", loop_vis)
 
-                cycle_nodes = [int(i) for i in loop_vis.get("cycle_nodes", [])]
-                # Per-dimension semantics on the loop (SCM core-5 order you used)
-                loop_sem = self._loop_semantics_report(
-                    H5=H5, T5=T5,
-                    cycle_nodes=cycle_nodes,
-                    dim_names=["reasoning","knowledge","clarity","faithfulness","coverage"],
-                    base_dir=base_dir / run_id,
-                    k_examples=50,
-                )
-                _save_json(met_dir / "loop_semantics.json", loop_sem)
+                    cycle_nodes = [int(i) for i in loop_vis.get("cycle_nodes", [])]
+                    # Per-dimension semantics on the loop (SCM core-5)
+                    loop_sem = self._loop_semantics_report(
+                        H5=H5, T5=T5,
+                        cycle_nodes=cycle_nodes,
+                        dim_names=["reasoning","knowledge","clarity","faithfulness","coverage"],
+                        base_dir=base_dir / run_id,
+                        k_examples=50,
+                    )
+                    _save_json(met_dir / "loop_semantics.json", loop_sem)
 
+                    if cycle_nodes:
+                        score = self._loop_circularity_score(Delta[cycle_nodes])
+                        _save_json(met_dir / "loop_shape.json", {"circularity_score": score})
 
-                if cycle_nodes:
-                    score = self._loop_circularity_score(Delta[cycle_nodes])
-                    _save_json(met_dir / "loop_shape.json", {"circularity_score": score})
-
-                cases = self._export_loop_cases(
-                    run_dir=base_dir / run_id,
-                    cycle_nodes=cycle_nodes,
-                    H5=H5, T5=T5,
-                    dim_names=["reasoning","knowledge","clarity","faithfulness","coverage"],
-                    k_examples=50,   # change as you like
-                )
-                self.logger.log("TopologyLoopCases", cases)
-
+                    cases = self._export_loop_cases(
+                        run_dir=base_dir / run_id,
+                        cycle_nodes=cycle_nodes,
+                        H5=H5, T5=T5,
+                        dim_names=["reasoning","knowledge","clarity","faithfulness","coverage"],
+                        k_examples=50,
+                    )
+                    self.logger.log("TopologyLoopCases", cases)
             except Exception as e:
                 logger.info(f"[Topology] Loop overlay skipped: {e}")
-            self._progress("umap:done", 1, 1, {"has_loop": bool(betti.get("H1_bars"))})
+            self.pstage(task, "umap:done", has_loop=bool(betti.get("H1_bars")))
+            self.ptick(task, done=7, total=total_stages)
 
             # --- Formal significance & corrections
+            self.pstage(task, "significance:start")
             if self.cfg.compute_significance and betti.get("b1", 0) > 0:
-                self._progress("significance:start", 0, 3)
                 significance = self._statistical_significance(betti["top_H1_persistence"], nulls)
                 _save_json(met_dir / "statistical_significance.json", significance)
 
-                self._progress("significance:step", 1, 3)
                 mult_test = self._correct_multiple_testing(betti.get("H1_bars", []), nulls)
                 _save_json(met_dir / "multiple_testing_correction.json", mult_test)
 
-                self._progress("significance:step", 2, 3)
-                param_sens = self._parameter_sensitivity_analysis(Delta_for_ph, betti["top_H1_persistence"])
+                param_sens = self._parameter_sensitivity_analysis(Delta_ph, betti["top_H1_persistence"])
                 _save_json(met_dir / "parameter_sensitivity.json", param_sens)
-                self._progress("significance:done", 3, 3)
             else:
                 significance = {"p_value": 1.0, "significance": "no_h1_bars"}
                 mult_test = {"total_bars": 0, "significant_bars_bh_5pct": 0, "q_values": []}
                 param_sens = {}
+            self.pstage(task, "significance:done", b1=betti.get("b1", 0))
+            self.ptick(task, done=8, total=total_stages)
 
             out = {
                 "status": "ok",
@@ -470,9 +455,10 @@ class TopologyProcessor:
                     "umap_xy_npy": str((vis_dir / "umap_loop_overlay.npy").resolve()),
                 },
             }
+            self.pdone(task, status="ok")
             return out
+
         finally:
-            # restore RNG
             np.random.set_state(rng_state)
 
     # ---------------------------------------------------------------------
@@ -482,7 +468,7 @@ class TopologyProcessor:
         # Compute diagrams via selected backend
         H0, H1 = self._ph_backend.h0_h1(Delta)
 
-        # Try a scatter of all diagrams (optional, backend-agnostic)
+        # All diagrams (optional)
         try:
             plt.figure(figsize=(6, 5))
             if H0.size:
@@ -498,7 +484,7 @@ class TopologyProcessor:
         except Exception:
             pass
 
-        # H1-only diagram and barcode (manual barcode)
+        # H1-only diagram and barcode
         try:
             plt.figure(figsize=(6, 5))
             if H1.size:
@@ -546,8 +532,8 @@ class TopologyProcessor:
             _, H1 = self._ph_backend.h0_h1(dsub)
             top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             bstrap.append({"b1": int(H1.shape[0]), "top_H1_persistence": top})
-            if (b % 2) == 0 or (b + 1) == B:   # light cadence
-                self._progress("stability:bootstrap", b + 1, B)
+            if (b % 2) == 0 or (b + 1) == B:
+                self.pstage(f"topology:bootstrap", "tick", b=b+1, B=B)
 
         jitter: List[Dict[str, Any]] = []
         if self.cfg.use_weighted:
@@ -559,11 +545,13 @@ class TopologyProcessor:
                 top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
                 jitter.append({"b1": int(H1.shape[0]), "top_H1_persistence": top})
                 if (j % 2) == 0 or (j + 1) == J:
-                    self._progress("stability:jitter", j + 1, J)
+                    self.pstage(f"topology:jitter", "tick", j=j+1, J=J)
 
         return {"bootstrap": bstrap, "weight_jitter": jitter}
 
-
+    # ---------------------------------------------------------------------
+    # Export loop cases
+    # ---------------------------------------------------------------------
     def _export_loop_cases(
         self,
         run_dir: Path,
@@ -573,16 +561,9 @@ class TopologyProcessor:
         dim_names: list[str],
         k_examples: int = 50,
     ) -> dict:
-        """
-        Save a CSV + JSON with detailed, per-case provenance for the loop nodes:
-        row_index, node_id, dimension, goal_text, output_text,
-        per-dimension HRM/Tiny core-5 scores + Δ, and Δ_norm (L2 over core-5).
-        """
         out_dir = run_dir / "metrics"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load provenance saved by ScoringProcessor
-        import json
         prov_path = run_dir / "raw" / "row_provenance.json"
         if not prov_path.exists():
             return {"status": "no_provenance"}
@@ -590,12 +571,10 @@ class TopologyProcessor:
         with open(prov_path, "r", encoding="utf-8") as f:
             provenance = json.load(f)
 
-        # De-dup & clamp which rows to export
         idxs = [int(i) for i in cycle_nodes]
         if not idxs:
             return {"status": "no_cycle_nodes"}
 
-        # Compute per-row deltas
         rows = []
         for i in idxs[:k_examples]:
             meta = provenance[i] if i < len(provenance) else {"row_index": i}
@@ -606,48 +585,37 @@ class TopologyProcessor:
                 "goal_text": meta.get("goal_text"),
                 "output_text": meta.get("output_text"),
             }
-            # per-dim HRM/Tiny + Δ
             for j, name in enumerate(dim_names):
                 rec[f"hrm.{name}"]  = float(H5[i, j])
                 rec[f"tiny.{name}"] = float(T5[i, j])
                 rec[f"delta.{name}"] = float(H5[i, j] - T5[i, j])
-            # overall magnitude across the core-5
             d = H5[i, :] - T5[i, :]
             rec["delta_l2_core5"] = float(np.linalg.norm(d, ord=2))
             rows.append(rec)
 
-        # Save CSV + JSON
         import csv
         csv_path  = out_dir / "loop_cases.csv"
         json_path = out_dir / "loop_cases.json"
 
         if rows:
-            # CSV
             fieldnames = list(rows[0].keys())
             with open(csv_path, "w", newline="", encoding="utf-8") as f:
                 w = csv.DictWriter(f, fieldnames=fieldnames)
                 w.writeheader()
-                for r in rows: w.writerow(r)
-            # JSON
+                for r in rows:
+                    w.writerow(r)
             with open(json_path, "w", encoding="utf-8") as f:
                 f.write(dumps_safe(rows, indent=2))
 
-        return {
-            "status": "ok",
-            "count": len(rows),
-            "csv": str(csv_path),
-            "json": str(json_path),
-        }
-
+        return {"status": "ok", "count": len(rows), "csv": str(csv_path), "json": str(json_path)}
 
     # ---------------------------------------------------------------------
     # Nulls (simple)
     # ---------------------------------------------------------------------
     def _null_controls(self, H5: np.ndarray, T5: np.ndarray) -> Dict[str, Any]:
-        from ripser import ripser
         N = H5.shape[0]
         K = max(5, int(self.cfg.n_nulls))
-        
+
         # Shuffled pairing H - T_perm
         shuffled: List[Dict[str, Any]] = []
         for k in range(K):
@@ -657,16 +625,14 @@ class TopologyProcessor:
             top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             shuffled.append({"b1": int(H1.shape[0]), "top_H1_persistence": top})
             if (k % 5) == 0 or (k + 1) == K:
-                self._progress("nulls:simple:shuffled", k + 1, K)
+                self.pstage("topology:nulls:simple", "tick", k=k+1, K=K)
 
         # Self-differences (should be trivial)
         _, H1_selfH = self._ph_backend.h0_h1(H5 - H5)
         selfH_top = 0.0 if H1_selfH.shape[0] == 0 else float(np.max(H1_selfH[:, 1] - H1_selfH[:, 0]))
-
         _, H1_selfT = self._ph_backend.h0_h1(T5 - T5)
         selfT_top = 0.0 if H1_selfT.shape[0] == 0 else float(np.max(H1_selfT[:, 1] - H1_selfT[:, 0]))
 
-        self._progress("nulls:simple:selfdiff", 2, 2)
         return {
             "shuffled_pairing": shuffled,
             "self_diff": {"H_minus_H_top": selfH_top, "T_minus_T_top": selfT_top},
@@ -676,7 +642,7 @@ class TopologyProcessor:
     # Nulls (stronger)
     # ---------------------------------------------------------------------
     def _null_controls_stronger(self, Delta: np.ndarray) -> Dict[str, Any]:
-        from ripser import ripser
+        from ripser import ripser  # used only for direct call in this function
         N = Delta.shape[0]
         K = max(50, int(self.cfg.n_nulls))
         res: Dict[str, Any] = {}
@@ -690,7 +656,7 @@ class TopologyProcessor:
             top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             rads.append({"top_H1_persistence": top})
             if (k % 5) == 0 or (k + 1) == K:
-                self._progress("nulls:strong:signflip", k + 1, K)
+                self.pstage("topology:nulls:signflip", "tick", k=k+1, K=K)
         res["sign_flip"] = rads
 
         # B) Gaussian surrogate with matched covariance
@@ -707,7 +673,7 @@ class TopologyProcessor:
         return res
 
     # ---------------------------------------------------------------------
-    # UMAP – for storytelling (not used for homology)
+    # UMAP – storytelling (not used for homology)
     # ---------------------------------------------------------------------
     def _umap_overlay(self, Delta: np.ndarray, out_png: Path) -> np.ndarray:
         import umap
@@ -720,27 +686,30 @@ class TopologyProcessor:
             random_state=self.cfg.random_seed,
         )
         U = reducer.fit_transform(Delta)  # (N, 2)
-        self._progress("umap:fit:done", 1, 1, {"n": int(U.shape[0])})
-        # outline dense regions (optional)
+        self.pstage("topology:umap", "fit:done", n=int(U.shape[0]))
         cl = DBSCAN(eps=self.cfg.dbscan_eps, min_samples=self.cfg.dbscan_min_samples)
         labels = cl.fit_predict(U)
-        self._progress("umap:cluster:done", 1, 1)
+        self.pstage("topology:umap", "cluster:done", clusters=int(max(labels) + 1 if labels.size else 0))
+
         plt.figure(figsize=(7, 6))
-        K = max(labels) + 1
+        K = max(labels) + 1 if labels.size else 0
         for k in range(-1, K):
             mask = labels == k
             plt.scatter(U[mask, 0], U[mask, 1], s=10, alpha=0.7,
                         label=("noise" if k == -1 else f"cluster {k}"))
-        plt.legend(loc="best", fontsize=8)
+        if K > 0:
+            plt.legend(loc="best", fontsize=8)
         plt.title("UMAP of Δ (for intuition only)")
         out_png.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(out_png, dpi=160, bbox_inches="tight")
         plt.close()
 
-        # persist the embedding so other steps can reuse it
         np.save(out_png.with_suffix(".npy"), U)
         return U
 
+    # ---------------------------------------------------------------------
+    # Loop analytics
+    # ---------------------------------------------------------------------
     def _loop_semantics_report(
         self,
         H5: np.ndarray,
@@ -751,10 +720,6 @@ class TopologyProcessor:
         *,
         k_examples: int = 8,
     ) -> dict:
-        """
-        Compute per-dimension stats on the loop and export a few example rows.
-        Assumes H5/T5 are the 5-dim SCM core matrices you already built.
-        """
         out_dir = base_dir / "metrics"
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -779,10 +744,7 @@ class TopologyProcessor:
                 "max_delta": float(np.max(col)),
             })
 
-        # Most divergent dimension by mean |Δ|
         key_dim = max(stats, key=lambda r: r["abs_mean_delta"])["dimension"]
-
-        # Pick example indices: farthest |Δ| in that key dimension
         j_key = dim_names.index(key_dim)
         order = np.argsort(-np.abs(D[:, j_key]))
         take = min(k_examples, len(order))
@@ -804,13 +766,11 @@ class TopologyProcessor:
     # Statistical Significance
     # ---------------------------------------------------------------------
     def _statistical_significance(self, observed_top_persistence: float, null_results: Dict[str, Any]) -> Dict[str, Any]:
-        """One-sided p-value vs pooled nulls; also Cohen's d and 95% CI from bootstrap."""
         shuffled = [r.get("top_H1_persistence", 0.0) for r in null_results.get("shuffled_pairing", [])]
         self_persistences = [
             null_results.get("self_diff", {}).get("H_minus_H_top", 0.0),
             null_results.get("self_diff", {}).get("T_minus_T_top", 0.0),
         ]
-        # include stronger nulls too
         signflip = [r.get("top_H1_persistence", 0.0) for r in null_results.get("sign_flip", [])]
         gauss = [r.get("top_H1_persistence", 0.0) for r in null_results.get("gaussian_cov", [])]
 
@@ -860,7 +820,6 @@ class TopologyProcessor:
             return {"total_bars": len(h1_bars), "significant_bars_bh_5pct": None, "q_values": []}
 
         pvals = np.array([(nulls >= p).mean() for p in pers], dtype=float)
-
         m = len(pvals)
         order = np.argsort(pvals)
         ranks = np.empty_like(order); ranks[order] = np.arange(1, m + 1)
@@ -893,7 +852,6 @@ class TopologyProcessor:
                 top = None
             out[f"maxdim_{md}"] = top
 
-        # echo weight jitter summary from stability
         if "weight_jitter" in self.stability_results:
             wj = [r.get("top_H1_persistence", 0.0) for r in self.stability_results["weight_jitter"]]
             if wj:
@@ -941,24 +899,12 @@ class TopologyProcessor:
             "numerical_stability": "good" if np.isfinite(cond_num) and cond_num < 1e10 else "poor",
         }
 
-
     def _loop_circularity_score(self, Delta_loop: np.ndarray) -> float:
         # PCA to 2D
         X = Delta_loop - Delta_loop.mean(0, keepdims=True)
         U, S, Vt = np.linalg.svd(X, full_matrices=False)
         Y = X @ Vt[:2].T  # [m,2]
-        # angles & circular variance
         ang = np.arctan2(Y[:,1], Y[:,0])
         re = np.mean(np.exp(1j * ang))
         circ_var = 1.0 - np.abs(re)   # 0 = perfect circle, 1 = spread
         return float(1.0 - circ_var)  # higher is “more circular”
-
-    def _progress(self, stage: str, i: int, total: int, extra: Optional[Dict[str, Any]] = None):
-        """Emit structured progress to both logger + optional callback."""
-        try:
-            if self._progress_cb:
-                self._progress_cb(stage, i, total, extra or {})
-            # also log a compact event for your dashboards
-            self.logger.log("TopologyProgress", {"stage": stage, "i": i, "total": total, **(extra or {})})
-        except Exception:
-            pass

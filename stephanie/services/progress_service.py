@@ -209,9 +209,13 @@ class ProgressService(Service):
         except Exception:
             pass
 
-        if self.console_echo:
+        if self.console_echo and t.meta.get("console_echo", True):
             try:
-                sub = f" | {payload.get('substage')}" if payload.get("substage") else ""
-                print(f"{self.console_prefix} {task}: {pct:3d}% ({int(d)}/{int(total)}){sub}", flush=True)
+                from tqdm import tqdm as _tqdm
+                _tqdm.write(f"{self.console_prefix} {task}: {pct:3d}% ({int(d)}/{int(total)})"
+                            + (f" | {payload.get('substage')}" if payload.get("substage") else ""))
             except Exception:
-                pass
+                print(f"{self.console_prefix} {task}: {pct:3d}% ({int(d)}/{int(total)})"
+                    + (f" | {payload.get('substage')}" if payload.get("substage") else ""),
+                    flush=True)
+

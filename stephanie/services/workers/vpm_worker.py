@@ -33,11 +33,9 @@ class VPMWorkerInline:
         self.logger.log(f"[VPMWorkerInline] Row appended for node {node_id} in run {run_id}")
 
     async def finalize(self, run_id: str, out_path: str):
-        cb = self.progress_cb or self._log_progress        # <-- pick a callback
         res = await self.zm.timeline_finalize(
             run_id,
             out_path=out_path,
-            progress_cb=cb                                  # <-- pass it through
         )
         self.logger.info(f"[VPMWorkerInline] Timeline finalized for run {run_id}")
         return res

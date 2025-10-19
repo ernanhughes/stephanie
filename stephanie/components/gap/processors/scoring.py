@@ -95,7 +95,7 @@ class ScoringProcessor(ProgressMixin):
         T = len(all_triples)
 
         task = f"scoring:{run_id}"
-        self.pstart(task, total=T, meta={"dims": len(triples_data)})
+        self.pstart(task, total=T, meta={"dims": len(triples_data), "console_echo": False})
 
         # 1) timelines
         zm = self.container.get("zeromodel")
@@ -117,7 +117,7 @@ class ScoringProcessor(ProgressMixin):
 
         log_every = max(1, self.config.progress_log_every)
 
-        with tqdm(total=T, desc="[GAP] Scoring", unit="turn") as pbar:
+        with tqdm(total=T, desc=task, unit="turn") as pbar:
             for i, triple in enumerate(all_triples):
                 scorable = Scorable(triple.output_text, ScorableType.CONVERSATION_TURN)
 
@@ -235,7 +235,7 @@ class ScoringProcessor(ProgressMixin):
         hrm_label = ", ".join(_disp(n) for n in self.config.hrm_scorers)
         tiny_label = ", ".join(_disp(n) for n in self.config.tiny_scorers)
 
-        self.pdone(task, meta={"rows": T})
+        self.pdone(task, extra={"rows": T})
 
         return {
             "hrm_vectors": hrm_matrix,

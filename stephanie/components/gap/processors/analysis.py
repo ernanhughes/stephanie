@@ -45,7 +45,8 @@ class AnalysisProcessor(ProgressMixin):
         manifest: Any | None = None,
     ) -> Dict[str, Any]:
         task = f"analysis:{run_id}"
-        self.pstart(task, total=None, meta={"run_id": run_id})
+        total_stages = 6  # frontier, delta, intensity, phos, scm_visuals, topology
+        self.pstart(task, total=total_stages, meta={"run_id": run_id})
 
         _logger.debug(f"Starting analysis pipeline for run {run_id}")
         _logger.debug(f"Scoring results keys: {list(scoring_results.keys())}")
@@ -60,10 +61,12 @@ class AnalysisProcessor(ProgressMixin):
         # Resolve matrices (prefers native vectors)
         self.pstage(task, "resolve_matrices")
         hrm_matrix, tiny_matrix, hrm_names, tiny_names = self._resolve_mats_and_names(scoring_results)
+        self.pstage(task, "resolve_matrices:done", status="ok",
+                    shapes={"hrm": getattr(hrm_matrix, "shape", None),
+                            "tiny": getattr(tiny_matrix, "shape", None)})
 
         results: Dict[str, Any] = {}
         done_stages = 0
-        total_stages = 6  # frontier, delta, intensity, phos, scm_visuals, topology
 
         # --- Frontier ---
         self.pstage(task, "frontier:start")
@@ -192,7 +195,7 @@ class AnalysisProcessor(ProgressMixin):
         self.ptick(task, done=done_stages, total=total_stages)
 
         _logger.info(f"Analysis pipeline completed for run {run_id} with {len(results)} components")
-        self.pdone(task, meta={"stages": done_stages})
+        self.pdone(task, extra={"stages": done_stages})
         return results
 
     # ---------- Matrix resolution ----------
