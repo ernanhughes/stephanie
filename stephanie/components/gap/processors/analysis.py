@@ -1,21 +1,3 @@
-"""
-GAP Analysis Processor Module
-
-This module orchestrates the comprehensive analytical pipeline for the GAP (Generative Assessment Platform) system.
-It performs multi-faceted analysis on scoring results from HRM (Human Reference Model) and Tiny (small model) outputs.
-
-Key analytical components:
-- Frontier Analysis: Visualizes the difference field between HRM and Tiny models
-- Delta Analysis: Quantifies inter-model differences and performance gaps
-- Intensity Reporting: Identifies high-variance metrics and critical dimensions
-- PHOS Analysis: Performs PHOS-guarded statistical analysis with threshold learning
-- Topology Analysis: Applies UMAP dimensionality reduction and persistent homology to detect structural patterns
-- SCM Visualization: Generates comprehensive visualizations for score comparison matrices
-
-The processor handles both native vector alignment and SCM (Score Comparison Matrix) fallback strategies,
-ensuring robust analysis across different data availability scenarios.
-"""
-
 # stephanie/components/gap/processors/analysis.py
 from __future__ import annotations
 
