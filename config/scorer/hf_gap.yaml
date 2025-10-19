@@ -1,4 +1,4 @@
-# pulls in your usuals, plus the two HF variants
+# config/scorer/hf_gap.yaml
 defaults:
   - tiny/default
   - hrm/default
@@ -8,6 +8,6 @@ defaults:
   - ebt/default
   - svm/default
   - contrastive_ranker/default
-  # - hf_tiny/default
-  # - hf_hrm/default
-  # - hf_mistral/default
+  - hf_tiny/default
+  - hf_hrm/default
+  - hf_mistral/default

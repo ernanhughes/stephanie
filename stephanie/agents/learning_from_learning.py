@@ -24,7 +24,7 @@ from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.json_sanitize import dumps_safe  # and/or sanitize
 from stephanie.utils.paper_utils import (build_paper_goal_meta,
                                          build_paper_goal_text)
-from stephanie.utils.progress import AgentProgress
+from stephanie.utils.agent_progress import AgentProgress
 
 _logger = logging.getLogger(__name__)
 

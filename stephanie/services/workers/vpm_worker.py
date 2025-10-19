@@ -12,10 +12,9 @@ _logger = logging.getLogger(__name__)
 
 class VPMWorkerInline:
     """Simplified in-process timeline writer (no bus)."""
-    def __init__(self, zm: ZeroModelService, logger=None, progress_cb: Optional[callable] = None):
+    def __init__(self, zm: ZeroModelService, logger=None):
         self.zm = zm
         self.logger = logger or _logger
-        self.progress_cb = progress_cb
 
     def append(self, run_id: str, node_id: str, metrics: Dict[str, Any]):
         cols = metrics.get("columns")

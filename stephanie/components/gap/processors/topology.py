@@ -5,9 +5,10 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, List
+from typing import Any, Callable, Dict, Optional, Tuple, List, Literal
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import networkx as nx
 from sklearn.neighbors import NearestNeighbors
@@ -15,6 +16,8 @@ from sklearn.neighbors import NearestNeighbors
 from stephanie.utils.json_sanitize import dumps_safe
 
 logger = logging.getLogger(__name__)
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
 
 
 # ---------------------------------------------------------------------
@@ -166,7 +169,46 @@ class TopologyConfig:
     fast_mode: bool = False           
     max_points_for_ph: Optional[int] = 1500
     compute_significance: bool = True 
+    tda_backend: Literal["ripser", "giotto"] = "ripser"
     
+
+# ---------------------------------------------------------------------
+# PH backends (Ripser vs Giotto) — uniform API for H0/H1 bars
+# ---------------------------------------------------------------------
+class _PHBackend:
+    def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        raise NotImplementedError
+
+class _RipserPH(_PHBackend):
+    def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        from ripser import ripser
+        dgms = ripser(X, maxdim=1)["dgms"]
+        H0 = dgms[0] if len(dgms) > 0 else np.zeros((0, 2), dtype=float)
+        H1 = dgms[1] if len(dgms) > 1 else np.zeros((0, 2), dtype=float)
+        return H0, H1
+
+class _GiottoPH(_PHBackend):
+    def __init__(self):
+        # cache transformers (giotto-tda follows sklearn API)
+        from gtda.homology import VietorisRipsPersistence
+        self.vr = VietorisRipsPersistence(homology_dimensions=[0, 1], metric="euclidean")
+
+    def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        giotto-tda returns shape (1, n_points, 3) with (birth, death, hom_dim).
+        We filter by hom_dim==0 / 1.
+        """
+        import numpy as np
+        D = X[np.newaxis, :, :]        # (1, N, d)
+        diags = self.vr.fit_transform(D)   # (1, n_pts, 3)
+        diag = diags[0] if diags.ndim == 3 else diags
+        if diag.size == 0:
+            return np.zeros((0, 2), dtype=float), np.zeros((0, 2), dtype=float)
+        # columns: birth, death, hom_dim
+        H0 = diag[diag[:, 2] == 0][:, :2]
+        H1 = diag[diag[:, 2] == 1][:, :2]
+        return H0.astype(float), H1.astype(float)
+
 # ---------------------------------------------------------------------
 # Processor
 # ---------------------------------------------------------------------
@@ -196,6 +238,31 @@ class TopologyProcessor:
         self.logger = logger
         self.stability_results: Dict[str, Any] = {}
         self._progress_cb: Optional[Callable[[str, int, int, Optional[Dict[str, Any]]], None]] = None
+
+class TopologyProcessor:
+    def __init__(self, cfg: TopologyConfig, container, logger):
+        self.cfg = cfg
+        self.container = container
+        self.logger = logger
+        self.stability_results: Dict[str, Any] = {}
+        self._progress_cb = None
+
+        # pick PH backend
+        if getattr(self.cfg, "tda_backend", "ripser") == "giotto":
+            try:
+                self._ph_backend = _GiottoPH()
+                self.logger.log("TopologyPHBackend", {"backend": "giotto-tda"})
+            except Exception as e:
+                self.logger.log("TopologyPHBackendFallback", {"backend": "ripser", "error": str(e)})
+                self._ph_backend = _RipserPH()
+        else:
+            self._ph_backend = _RipserPH()
+
+        if self.cfg.fast_mode:
+            # (your existing fast tweaks)
+            ...
+
+
         if self.cfg.fast_mode:
             # soften defaults
             self.cfg.n_bootstrap = min(self.cfg.n_bootstrap, 5)
@@ -412,48 +479,49 @@ class TopologyProcessor:
     # Core PH
     # ---------------------------------------------------------------------
     def _compute_ph_and_figures(self, Delta: np.ndarray, vis_dir: Path) -> Dict[str, Any]:
-        from ripser import ripser
-        from persim import plot_diagrams
+        # Compute diagrams via selected backend
+        H0, H1 = self._ph_backend.h0_h1(Delta)
 
-        res = ripser(Delta, maxdim=self.cfg.max_betti_dim)
-        dgms = res["dgms"]
-
-        # All diagrams
+        # Try a scatter of all diagrams (optional, backend-agnostic)
         try:
             plt.figure(figsize=(6, 5))
-            plot_diagrams(dgms, show=False)
+            if H0.size:
+                plt.scatter(H0[:, 0], H0[:, 1], s=8, alpha=0.6, label="H0")
+            if H1.size:
+                plt.scatter(H1[:, 0], H1[:, 1], s=8, alpha=0.8, label="H1")
+            lim = np.nanmax([H0[:, :2].max() if H0.size else 0, H1[:, :2].max() if H1.size else 0])
+            plt.plot([0, lim], [0, lim], ls="--", lw=1, alpha=0.5, color="k")
+            plt.legend()
             plt.title("Persistence Diagrams (H0/H1)")
             vis_dir.mkdir(parents=True, exist_ok=True)
-            plt.savefig(vis_dir / "pers_diagram_all.png", dpi=160, bbox_inches="tight")
-            plt.close()
+            plt.savefig(vis_dir / "pers_diagram_all.png", dpi=160, bbox_inches="tight"); plt.close()
         except Exception:
             pass
 
-        # H1 diagram + barcode
-        H1 = dgms[1] if len(dgms) > 1 else np.zeros((0, 2))
+        # H1-only diagram and barcode (manual barcode)
         try:
             plt.figure(figsize=(6, 5))
-            plot_diagrams([H1], show=False)
+            if H1.size:
+                plt.scatter(H1[:, 0], H1[:, 1], s=10, alpha=0.9)
+                lim = float(max(H1.max(), 1e-6))
+                plt.plot([0, lim], [0, lim], ls="--", lw=1, alpha=0.5, color="k")
             plt.title("Persistence Diagram (H1)")
-            plt.savefig(vis_dir / "pers_diagram_H1.png", dpi=160, bbox_inches="tight")
-            plt.close()
+            plt.savefig(vis_dir / "pers_diagram_H1.png", dpi=160, bbox_inches="tight"); plt.close()
 
-            if H1.shape[0] > 0:
+            if H1.size:
                 lives = H1[:, 1] - H1[:, 0]
                 order = np.argsort(lives)[::-1]
                 H1_sorted = H1[order]
                 plt.figure(figsize=(8, max(3, 0.25 * len(H1_sorted))))
                 for i, (b, d) in enumerate(H1_sorted):
                     plt.hlines(y=i, xmin=b, xmax=d, linewidth=2)
-                plt.xlabel("Filtration scale")
-                plt.ylabel("H1 features (sorted by persistence)")
+                plt.xlabel("Filtration scale"); plt.ylabel("H1 features (sorted)")
                 plt.title("Persistence Barcode (H1)")
-                plt.savefig(vis_dir / "pers_barcode_H1.png", dpi=160, bbox_inches="tight")
-                plt.close()
+                plt.savefig(vis_dir / "pers_barcode_H1.png", dpi=160, bbox_inches="tight"); plt.close()
         except Exception:
             pass
 
-        b0 = int(dgms[0].shape[0]) if len(dgms) > 0 else 0
+        b0 = int(H0.shape[0])
         b1 = int(H1.shape[0])
         top_H1 = 0.0 if b1 == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
         return {
@@ -467,7 +535,6 @@ class TopologyProcessor:
     # Stability
     # ---------------------------------------------------------------------
     def _stability_checks(self, Delta: np.ndarray, names: List[str], vis_dir: Path) -> Dict[str, Any]:
-        from ripser import ripser
         N = Delta.shape[0]
         bstrap: List[Dict[str, Any]] = []
 
@@ -476,8 +543,7 @@ class TopologyProcessor:
             m = max(2, int(self.cfg.bootstrap_frac * N))
             idx = np.random.choice(N, size=m, replace=False)
             dsub = Delta[idx]
-            dgms = ripser(dsub, maxdim=self.cfg.max_betti_dim)["dgms"]
-            H1 = dgms[1] if len(dgms) > 1 else np.zeros((0, 2))
+            _, H1 = self._ph_backend.h0_h1(dsub)
             top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             bstrap.append({"b1": int(H1.shape[0]), "top_H1_persistence": top})
             if (b % 2) == 0 or (b + 1) == B:   # light cadence
@@ -489,8 +555,7 @@ class TopologyProcessor:
             for j in range(J):
                 r = 1.0 + 0.1 * (2 * np.random.rand(Delta.shape[1]) - 1)
                 dJ = Delta * r[None, :]
-                dgms = ripser(dJ, maxdim=self.cfg.max_betti_dim)["dgms"]
-                H1 = dgms[1] if len(dgms) > 1 else np.zeros((0, 2))
+                _, H1 = self._ph_backend.h0_h1(dJ)
                 top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
                 jitter.append({"b1": int(H1.shape[0]), "top_H1_persistence": top})
                 if (j % 2) == 0 or (j + 1) == J:
@@ -588,20 +653,17 @@ class TopologyProcessor:
         for k in range(K):
             perm = np.random.permutation(N)
             d = H5 - T5[perm]
-            dgms = ripser(d, maxdim=self.cfg.max_betti_dim)["dgms"]
-            H1 = dgms[1] if len(dgms) > 1 else np.zeros((0, 2))
+            _, H1 = self._ph_backend.h0_h1(d)
             top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             shuffled.append({"b1": int(H1.shape[0]), "top_H1_persistence": top})
             if (k % 5) == 0 or (k + 1) == K:
                 self._progress("nulls:simple:shuffled", k + 1, K)
 
         # Self-differences (should be trivial)
-        selfH = ripser(H5 - H5, maxdim=self.cfg.max_betti_dim)["dgms"]
-        H1_selfH = selfH[1] if len(selfH) > 1 else np.zeros((0, 2))
+        _, H1_selfH = self._ph_backend.h0_h1(H5 - H5)
         selfH_top = 0.0 if H1_selfH.shape[0] == 0 else float(np.max(H1_selfH[:, 1] - H1_selfH[:, 0]))
 
-        selfT = ripser(T5 - T5, maxdim=self.cfg.max_betti_dim)["dgms"]
-        H1_selfT = selfT[1] if len(selfT) > 1 else np.zeros((0, 2))
+        _, H1_selfT = self._ph_backend.h0_h1(T5 - T5)
         selfT_top = 0.0 if H1_selfT.shape[0] == 0 else float(np.max(H1_selfT[:, 1] - H1_selfT[:, 0]))
 
         self._progress("nulls:simple:selfdiff", 2, 2)
@@ -821,13 +883,11 @@ class TopologyProcessor:
     # Parameter Sensitivity
     # ---------------------------------------------------------------------
     def _parameter_sensitivity_analysis(self, Delta: np.ndarray, base_persistence: float) -> Dict[str, Any]:
-        from ripser import ripser
         out: Dict[str, Any] = {"baseline_top_H1_persistence": float(base_persistence)}
 
         for md in (1, 2):
             try:
-                dgms = ripser(Delta, maxdim=md)["dgms"]
-                H1 = dgms[1] if len(dgms) > 1 else np.zeros((0, 2))
+                _, H1 = self._ph_backend.h0_h1(Delta)
                 top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             except Exception:
                 top = None

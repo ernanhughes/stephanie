@@ -8,18 +8,22 @@ import pandas as pd
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
-from stephanie.components.gap.models import GapConfig, TripleSample, GapRunManifest
+from stephanie.components.gap.models import GapConfig, TripleSample 
+from stephanie.components.gap.io.manifest import GapRunManifest
 from stephanie.components.gap.shared_scm import scm_from_vector, scm_row, SCM_COLUMNS
+from stephanie.utils.progress_mixin import ProgressMixin
+import time
 
 logger = logging.getLogger(__name__)
 
-class ScoringProcessor:
+class ScoringProcessor(ProgressMixin):
     """Minimal, readable scoring + alignment pipeline with SCM injection."""
 
     def __init__(self, config: GapConfig, container, logger):
         self.config = config
         self.container = container
         self.logger = logger
+        self._init_progress(container, logger)  # <-- ProgressService hookup
 
     # ---------- public API --------------------------------------------------
     async def prepare_samples(self, dimensions: List[str], memory) -> Dict[str, List[TripleSample]]:
@@ -37,30 +41,61 @@ class ScoringProcessor:
         triples_data: Dict[str, List[TripleSample]],
         run_id: str,
         manifest: GapRunManifest,
-        *,
-        progress_cb: Optional[Callable[[int,int,Optional[Dict[str,Any]]], None]] = None,
     ) -> Dict[str, Any]:
         scoring_service = self.container.get("scoring")
 
         zm = self.container.get("zeromodel")
 
+        # start stage on the manifest
+        total_rows = sum(len(v) for v in triples_data.values())
+        manifest.stage_start(
+            "scoring",
+            total=total_rows,
+            run_id=run_id,
+            status="running",
+            started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        )
+
         hrm_worker = MetricsWorkerInline(scoring_service, self.config.hrm_scorers, self.config.dimensions)
         tiny_worker = MetricsWorkerInline(scoring_service, self.config.tiny_scorers, self.config.dimensions)
-        vpm_worker = VPMWorkerInline(zm, self.logger, progress_cb=progress_cb)
+        vpm_worker = VPMWorkerInline(zm, self.logger)
 
-        return await self._score_all_triples(triples_data, hrm_worker, tiny_worker, vpm_worker, run_id, progress_cb=progress_cb)
+        result = await self._score_all_triples(triples_data, hrm_worker, tiny_worker, vpm_worker, run_id)
+
+        manifest.stage_end(
+                "scoring",
+                status="ok",
+                finished_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                triples_count=result.get("triples_count"),
+                columns=result.get("hrm_names"),
+                hrm_label=result.get("hrm_label"),
+                tiny_label=result.get("tiny_label"),
+                artifacts={
+                    "hrm_gif": result.get("hrm_gif"),
+                    "tiny_gif": result.get("tiny_gif"),
+                    "rows_for_df": result.get("rows_for_df_path"),
+                },
+            )
+
+        # optional: also persist a flat copy for quick inspection
+        storage = self.container.get("gap_storage")
+        storage.save_json(run_id, "metrics", "scoring_stage.json", manifest.to_dict())
+
+        return result
 
     # ---------- core pipeline ----------------------------------------------
     async def _score_all_triples(
         self,
         triples_data: Dict[str, List[TripleSample]],
         hrm_worker, tiny_worker, vpm_worker, run_id: str,
-        *, progress_cb=None
     ) -> Dict[str, Any]:
 
         # 0) materialize list
         all_triples: List[TripleSample] = [t for ts in triples_data.values() for t in ts]
         T = len(all_triples)
+
+        task = f"scoring:{run_id}"
+        self.pstart(task, total=T, meta={"dims": len(triples_data)})
 
         # 1) timelines
         zm = self.container.get("zeromodel")
@@ -125,14 +160,11 @@ class ScoringProcessor:
                     phos_row[f"tiny.{d}"] = float(t_scm.get(f"scm.{d}.score01", 0.0))
                 rows_for_df.append(phos_row)
 
-                # progress
-                if ((i+1) % log_every) == 0 or (i+1) == T:
-                    self.logger.log("ScoringProgress", {"processed": i+1, "total": T})
-                    if progress_cb:
-                        try:
-                            progress_cb(i+1, T, None)
-                        except Exception:
-                            pass
+                # progress (structured + optional legacy log)
+                if ((i + 1) % log_every) == 0 or (i + 1) == T:
+                    self.logger.log("ScoringProgress", {"processed": i + 1, "total": T})
+                self.ptick(task, done=i + 1, total=T, extra={"dim": triple.dimension, "node_id": triple.node_id})
+
                 pbar.update(1)
                 await asyncio.sleep(0)
 
@@ -176,12 +208,6 @@ class ScoringProcessor:
         df_rows = pd.DataFrame(rows_for_df)
         raw_paths = storage.save_rows_df(df_rows, run_id, name="rows_for_df")
 
-        if progress_cb:
-            try:
-                progress_cb(T, T, {"done": True})
-            except Exception:
-                pass
-
         # --- save row-level provenance so we can trace loops back to text ---
         provenance = []
         for i, triple in enumerate(all_triples):
@@ -209,6 +235,7 @@ class ScoringProcessor:
         hrm_label = ", ".join(_disp(n) for n in self.config.hrm_scorers)
         tiny_label = ", ".join(_disp(n) for n in self.config.tiny_scorers)
 
+        self.pdone(task, meta={"rows": T})
 
         return {
             "hrm_vectors": hrm_matrix,

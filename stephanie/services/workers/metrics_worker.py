@@ -7,6 +7,7 @@ import time
 import traceback
 from typing import Any, Dict, Optional
 import numpy as np
+from stephanie.utils.progress_mixin import ProgressMixin
 import torch
 
 from stephanie.scoring.scorable import Scorable
@@ -14,31 +15,67 @@ from stephanie.services.scoring_service import ScoringService
 
 _logger = logging.getLogger(__name__)
 
-class MetricsWorkerInline:
+# stephanie/services/workers/metrics_worker.py
+
+from stephanie.utils.progress_mixin import ProgressMixin
+# ... (rest unchanged)
+
+class MetricsWorkerInline(ProgressMixin):
     """Simplified in-process scorer (no bus)."""
     def __init__(self, scoring: ScoringService, scorers: list[str], dimensions: list[str], persist=False):
         self.scoring = scoring
         self.scorers = scorers
         self.dimensions = dimensions
         self.persist = persist
+        # progress service lives in the container; fallbacks are safe
+        self._init_progress(scoring.container)
 
     async def score(self, scorable: Scorable, goal_text: str, run_id: str) -> dict:
+        # one progress task per call; total = number of scorers
+        task = f"metrics-inline:{run_id}"
+        self.pstart(task, total=len(self.scorers), meta={
+            "run_id": run_id,
+            "dims": len(self.dimensions),
+            "text_len": len(scorable.text or ""),
+        })
+
         ctx = {"goal": {"goal_text": goal_text}, "pipeline_run_id": run_id}
         vector, results = {}, {}
-        for name in self.scorers:
-            bundle = (self.scoring.score_and_persist if self.persist else self.scoring.score)(
-                scorer_name=name, scorable=scorable, context=ctx, dimensions=self.dimensions
-            )
-            agg = float(bundle.aggregate())
-            per = {d: float(sr.score) for d, sr in bundle.results.items()}
-            results[name] = {"aggregate": agg, "per_dimension": per}
-            flat = bundle.flatten(include_scores=True, include_attributes=True, numeric_only=True)
-            for k, v in flat.items():
-                vector[f"{name}.{k}"] = float(v)
-            vector[f"{name}.aggregate"] = agg
-        columns = sorted(vector.keys())
-        values = [vector[c] for c in columns]
-        return {"columns": columns, "values": values, "vector": vector, "scores": results}
+
+        try:
+            for idx, name in enumerate(self.scorers, 1):
+                # substage: which scorer we’re running
+                self.pstage(task, "scorer", scorer=name, idx=idx)
+                bundle = (
+                    self.scoring.score_and_persist if self.persist else self.scoring.score
+                )(scorer_name=name, scorable=scorable, context=ctx, dimensions=self.dimensions)
+
+                agg = float(bundle.aggregate())
+                per = {d: float(sr.score) for d, sr in bundle.results.items()}
+                results[name] = {"aggregate": agg, "per_dimension": per}
+
+                flat = bundle.flatten(include_scores=True, include_attributes=True, numeric_only=True)
+                for k, v in flat.items():
+                    vector[f"{name}.{k}"] = float(v)
+                vector[f"{name}.aggregate"] = agg
+
+                # tick after each scorer
+                self.ptick(task, done=idx, total=len(self.scorers))
+
+                # yield to event loop so progress can flush in long runs
+                await asyncio.sleep(0)
+
+            columns = sorted(vector.keys())
+            values = [vector[c] for c in columns]
+            return {"columns": columns, "values": values, "vector": vector, "scores": results}
+
+        except Exception as e:
+            # mark the task as error but still re-raise
+            self.pdone(task, status="error", error=str(e))
+            raise
+        finally:
+            # if not already errored, mark as ok
+            self.pdone(task, status="ok", extra={"scorers": len(self.scorers), "vector_keys": len(vector)})
 
 
 
