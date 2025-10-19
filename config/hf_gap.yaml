@@ -12,7 +12,7 @@ defaults:
   - agents/chat_tiny_trainer
   - agents/chat_scorer
   - agents/scorer
-  - agents/gap
+  - agents/hf_gap
 
 embeddings:
   backend: hnet
@@ -77,8 +77,8 @@ pipeline:
        enabled: false
        iterations: 1
 
-     - name: gap
+     - name: hf_gap
        description: "Understanding the Gap between two models using chat conversation_turns"
-       cls: stephanie.components.gap.component.GapAgent
+       cls: stephanie.components.gap.gap.GapAgent
        enabled: true
        iterations: 1

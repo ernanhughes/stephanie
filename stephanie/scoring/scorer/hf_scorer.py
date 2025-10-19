@@ -109,6 +109,7 @@ class HuggingFaceScorer(BaseScorer):
             "dtype": str(self.torch_dtype),
         })
 
+
     # -----------------------------
     # Public scoring API
     # -----------------------------
