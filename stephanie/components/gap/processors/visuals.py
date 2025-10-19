@@ -38,6 +38,7 @@ def render_scm_images(
     tiny_scm: np.ndarray,
     columns: List[str],
     out_dir: str | Path,
+    pos_label: str, neg_label: str,
 ) -> Dict[str, str]:
     """
     Produce a small suite of visuals from aligned SCM matrices.

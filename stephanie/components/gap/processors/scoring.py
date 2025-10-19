@@ -42,12 +42,6 @@ class ScoringProcessor:
     ) -> Dict[str, Any]:
         scoring_service = self.container.get("scoring")
 
-        def _disp(n):
-            s = scoring_service._scorers.get(n)
-            return s.get_display_name() if s and hasattr(s, "get_display_name") else n
-
-        hrm_label = ", ".join(_disp(n) for n in self.config.hrm_scorers)
-        tiny_label = ", ".join(_disp(n) for n in self.config.tiny_scorers)
         zm = self.container.get("zeromodel")
 
         hrm_worker = MetricsWorkerInline(scoring_service, self.config.hrm_scorers, self.config.dimensions)
@@ -206,12 +200,23 @@ class ScoringProcessor:
             "row_provenance.json",
             provenance
         )
+        scoring_service = self.container.get("scoring")
+
+        def _disp(n):
+            s = scoring_service._scorers.get(n)
+            return s.get_display_name() if s and hasattr(s, "get_display_name") else n
+
+        hrm_label = ", ".join(_disp(n) for n in self.config.hrm_scorers)
+        tiny_label = ", ".join(_disp(n) for n in self.config.tiny_scorers)
+
 
         return {
             "hrm_vectors": hrm_matrix,
             "tiny_vectors": tiny_matrix,
             "hrm_names": shared,
+            "hrm_label": hrm_label,
             "tiny_names": shared,
+            "tiny_label": tiny_label,
             "hrm_scm_matrix": np.asarray(hrm_scm_rows, np.float32),
             "tiny_scm_matrix": np.asarray(tiny_scm_rows, np.float32),
             "scm_names": SCM_COLUMNS,

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
-from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, Sequence
 
 import numpy as np
 import pandas as pd
@@ -14,7 +12,6 @@ import pandas as pd
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
 
-import logging
 _logger = logging.getLogger(__name__)
 
 class GapStorageService(Service):

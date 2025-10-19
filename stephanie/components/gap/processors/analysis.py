@@ -100,7 +100,9 @@ class AnalysisProcessor:
         _logger.debug("Starting frontier analysis...")
         try:
             results["frontier"] = await self._perform_frontier(
-                zm, hrm_matrix, tiny_matrix, run_id
+                zm, hrm_matrix, tiny_matrix, run_id, 
+                scoring_results.get("hrm_label", "HRM"), 
+                scoring_results.get("tiny_label", "Tiny")
             )
             _logger.debug("Frontier analysis completed successfully")
         except Exception as e:
@@ -163,7 +165,9 @@ class AnalysisProcessor:
                 _logger.debug(f"Loaded SCM matrices from storage: {hrm_scm.shape}, {tiny_scm.shape}")
 
             scm_dir = self.config.base_dir / run_id / "visuals" / "scm"
-            img_paths = render_scm_images(hrm_scm, tiny_scm, scm_names, scm_dir)
+            pos_label = scoring_results.get("hrm_label", "HRM")
+            neg_label = scoring_results.get("tiny_label", "Tiny")
+            img_paths = render_scm_images(hrm_scm, tiny_scm, scm_names, scm_dir, pos_label, neg_label)  
             results["scm_visuals"] = img_paths
             _logger.debug(f"Generated {len(img_paths)} SCM visualizations")
         except Exception as e:
@@ -265,8 +269,10 @@ class AnalysisProcessor:
     async def _perform_frontier(
         self,
         zm,
-        hrm_matrix: np.ndarray,
-        tiny_matrix: np.ndarray,
+        pos_matrix: np.ndarray,
+        neg_matrix: np.ndarray,
+        pos_label: str,
+        neg_label: str,
         run_id: str,
     ) -> Dict[str, Any]:
         """
@@ -275,18 +281,18 @@ class AnalysisProcessor:
         Creates a 2D projection showing the performance frontier where models diverge.
         Uses latent space analysis to identify regions of maximum differentiation.
         """
-        _logger.debug(f"Rendering frontier map for matrices: {hrm_matrix.shape}")
+        _logger.debug(f"Rendering frontier map for matrices: {pos_matrix.shape}")
         
-        if hrm_matrix.shape != tiny_matrix.shape:
-            raise ValueError(f"Frontier: shape mismatch hrm={hrm_matrix.shape} tiny={tiny_matrix.shape}")
+        if pos_matrix.shape != neg_matrix.shape:
+            raise ValueError(f"Frontier: shape mismatch hrm={pos_matrix.shape} tiny={neg_matrix.shape}")
 
         out_dir = str(self.config.base_dir / run_id / "visuals")
         meta = zm.render_frontier_map(
-            hrm_matrix,
-            tiny_matrix,
+            pos_matrix,
+            neg_matrix,
             out_dir=out_dir,
-            pos_label="HRM",
-            neg_label="Tiny",
+            pos_label=pos_label,
+            neg_label=neg_label,
             k_latent=20,  # Number of latent dimensions for projection
         )
         _logger.debug(f"Frontier map generated with metadata: {list(meta.keys())}")
