@@ -1,5 +1,4 @@
 import os
-import re
 
 def normalize_python_headers(root_dir="stephanie"):
     for dirpath, _, filenames in os.walk(root_dir):

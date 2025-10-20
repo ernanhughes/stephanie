@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 
 import libcst as cst
 import libcst.matchers as m

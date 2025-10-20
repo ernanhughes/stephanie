@@ -37,6 +37,6 @@ compute_zscores: true             # emit z_mean_logprob, z_entropy, z_bpb if cal
 expose_token_dists_topk: 0        # 0 = off, else emit top-k probs (for debugging)
 eps: 1e-8                         # numerical floor for KL/JSD
 
-local_files_only: true
+local_files_only: false
 offline: true
 low_cpu_mem_usage: true

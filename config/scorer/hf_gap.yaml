@@ -1,9 +1,4 @@
 # config/scorer/hf_gap.yaml
 defaults:
-  - tiny/default
-  - hrm/default
-  - mrq/default
-  - sicql/default
-  - hf_tiny/default
   - hf_hrm/default
   - hf_mistral/default

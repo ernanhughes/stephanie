@@ -122,6 +122,15 @@ class ScoringProcessor(ProgressMixin):
                 scorable = Scorable(triple.output_text, ScorableType.CONVERSATION_TURN)
 
                 # score both models
+                if len(triple.goal_text) > 2000 or len(scorable.text) > 2000:
+                    self.logger.log("ScoringSkipped", {
+                        "node_id": triple.node_id,
+                        "dimension": triple.dimension,
+                        "reason": "input_too_large",
+                        "goal_length": len(triple.goal_text),
+                        "output_length": len(triple.output_text),
+                    })
+                    continue
                 hrm_metrics = await hrm_worker.score(scorable, triple.goal_text, hrm_tl)
                 tiny_metrics = await tiny_worker.score(scorable, triple.goal_text, tiny_tl)
 

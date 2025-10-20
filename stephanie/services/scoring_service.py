@@ -249,7 +249,7 @@ class ScoringService(Service):
                 from stephanie.scoring.scorer.contrastive_ranker_scorer import \
                     ContrastiveRankerScorer
                 return ContrastiveRankerScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
-            if name.startswith("hf_") or name in ("huggingface", "hf_causal"):
+            if name.startswith("hf_") or name in ("hf_tiny", "hf_mistral", "hf_hrm"):
                 from stephanie.scoring.scorer.hf_scorer import HuggingFaceScorer
                 return HuggingFaceScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
         except Exception as e:
@@ -309,6 +309,9 @@ class ScoringService(Service):
         scorer = self._scorers.get(scorer_name)
         if not scorer:
             raise ValueError(f"Scorer '{scorer_name}' not registered")
+
+        if len(context.get("goal", {}).get("goal_text", "")) > 2000:
+            context["goal"] = {"goal_text": ""  }
 
         return scorer.score(context, scorable, dimensions)
 
@@ -726,7 +729,7 @@ class ScoringService(Service):
             sa = sum(sr.score for sr in bundle_a.results.values()) / max(1, len(bundle_a.results))
             sb = sum(sr.score for sr in bundle_b.results.values()) / max(1, len(bundle_b.results))
             res = {
-                I: "a" if sa >= sb else "b",
+                "winner" : "a" if sa >= sb else "b",
                 "score_a": float(sa),
                 "score_b": float(sb),
                 "mode": "aggregate_fallback",

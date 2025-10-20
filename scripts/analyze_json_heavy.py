@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import math
 import re
 from collections import defaultdict, Counter
 from typing import Dict, Tuple, List

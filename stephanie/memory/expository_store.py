@@ -54,7 +54,7 @@ class ExpositorySnippetStore(BaseSQLAlchemyStore):
                 expository_score=float(expository_score),
                 bloggability_score=float(bloggability_score),
                 picked=bool(picked),
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(),
             )
             s.add(row)
             s.flush()
@@ -103,7 +103,7 @@ class ExpositorySnippetStore(BaseSQLAlchemyStore):
                         expository_score=float(it.get("expository_score") or 0.0),
                         bloggability_score=float(it.get("bloggability_score") or 0.0),
                         picked=bool(it.get("picked") or False),
-                        created_at=datetime.utcnow(),
+                        created_at=datetime.now(),
                     )
                 )
             if not rows:
@@ -444,7 +444,7 @@ class BlogDraftStore(BaseSQLAlchemyStore):
             rows = q.order_by(PaperSourceQueueORM.created_at.asc()).limit(int(limit)).all()
             for r in rows:
                 r.status = "fetched"  # move to fetched to avoid double work; adjust if you want separate fetch step
-                r.updated_at = datetime.utcnow()
+                r.updated_at = datetime.now()
             s.flush()
             return rows
         return self._run(op)
@@ -456,7 +456,7 @@ class BlogDraftStore(BaseSQLAlchemyStore):
             r.status = status
             if meta_update:
                 r.meta = {**(r.meta or {}), **meta_update}
-            r.updated_at = datetime.utcnow()
+            r.updated_at = datetime.now()
             s.flush()
         return self._run(op)
 

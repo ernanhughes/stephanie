@@ -76,3 +76,6 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
 
     def get_display_name(self) -> str:
         return self.cfg.get("display_name", self.name)
+    
+
+    

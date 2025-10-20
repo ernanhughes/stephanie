@@ -29,3 +29,4 @@ eps: 1e-8                         # numerical floor for KL/JSD
 local_files_only: true
 offline: true
 low_cpu_mem_usage: true
+use_compile: false
