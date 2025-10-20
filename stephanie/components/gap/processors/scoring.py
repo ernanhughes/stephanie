@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Tuple, Callable, Optional
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
-
+import os
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
@@ -58,9 +58,8 @@ class ScoringProcessor(ProgressMixin):
 
         hrm_worker = MetricsWorkerInline(scoring_service, self.config.hrm_scorers, self.config.dimensions)
         tiny_worker = MetricsWorkerInline(scoring_service, self.config.tiny_scorers, self.config.dimensions)
-        vpm_worker = VPMWorkerInline(zm, self.logger)
 
-        result = await self._score_all_triples(triples_data, hrm_worker, tiny_worker, vpm_worker, run_id)
+        result = await self._score_all_triples(triples_data, hrm_worker, tiny_worker, run_id)
 
         manifest.stage_end(
                 "scoring",
@@ -89,7 +88,7 @@ class ScoringProcessor(ProgressMixin):
         model_label: str,                         # "hrm" or "tiny"
         worker,                                   # MetricsWorkerInline bound to that model
         triples: List[TripleSample],
-        timeline_id: str,
+        run_id: str,
             *,
         parent_task: str,              # overall task name (e.g., f"scoring:{run_id}")
         base_done: int,                # offset into the overall progress (0 for HRM, T for Tiny)
@@ -104,12 +103,12 @@ class ScoringProcessor(ProgressMixin):
         - Better kernel reuse (attention impl stays hot).
         """
         sub_task = f"{parent_task}:{model_label}"
-        self.pstart(sub_task, total=len(triples), meta={"model": model_label, "timeline": timeline_id})
+        self.pstart(sub_task, total=len(triples), meta={"model": model_label, "timeline": run_id})
 
         zm = self.container.get("zeromodel")
         vpm_worker = VPMWorkerInline(zm, self.logger)
 
-        zm.timeline_open(run_id=timeline_id)
+        zm.timeline_open(run_id=run_id)
 
         names: List[str] = []
         rows: List[List[float]] = []
@@ -130,7 +129,7 @@ class ScoringProcessor(ProgressMixin):
                 continue
 
             # Score this model
-            metrics = await worker.score(scorable, triple.goal_text, timeline_id)
+            metrics = await worker.score(scorable, triple.goal_text, run_id)
 
             # Extract vectors and SCM
             vec_raw = self._to_vector(metrics)
@@ -138,7 +137,7 @@ class ScoringProcessor(ProgressMixin):
             merged = self._merge_for_timeline(metrics, scm)
 
             # Timeline (for GIFs)
-            vpm_worker.append(timeline_id, triple.node_id, merged)
+            vpm_worker.append(run_id, triple.node_id, merged)
 
             # Lock first-row column order for this model, align subsequent rows
             vec = merged["vector"]
@@ -162,8 +161,8 @@ class ScoringProcessor(ProgressMixin):
                     "model": model_label, "processed": i + 1, "total": len(triples)
                 })
             await asyncio.sleep(0)
-
-        gif_path = await vpm_worker.finalize(timeline_id, f"vpm_phos_run_{timeline_id}.gif")
+        visuals_dir = os.path.join(self.base_dir, run_id, "visuals")
+        gif_path = await vpm_worker.finalize(run_id, f"{visuals_dir}/vpm_phos_run_{run_id}.gif")
 
         return {
             "names": names,
@@ -178,42 +177,40 @@ class ScoringProcessor(ProgressMixin):
     async def _score_all_triples(
         self,
         triples_data: Dict[str, List[TripleSample]],
-        hrm_worker, tiny_worker, vpm_worker, run_id: str,
+        hrm_worker,
+        tiny_worker,
+        run_id: str,
     ) -> Dict[str, Any]:
-
+        """
+        Two-pass scoring: run ALL samples with HRM, then ALL with Tiny.
+        WHY: keeps one model resident at a time → avoids GPU VRAM thrash on 12 GB boxes,
+        yields steadier throughput, and mirrors CPU/GGUF batch execution.
+        """
         # 0) materialize flattened list (stable order for both passes)
         all_triples: List[TripleSample] = [t for ts in triples_data.values() for t in ts]
         T = len(all_triples)
 
         task = f"scoring:{run_id}"
-        self.pstart(task, total=T * 2, meta={
-            "dims": len(triples_data),
-            "passes": 2,
-            "console_echo": False
-        })
+        # overall spans both passes (HRM + Tiny)
+        self.pstart(task, total=T * 2, meta={"dims": len(triples_data), "passes": 2, "console_echo": False})
 
-
-        # 1) PER-MODEL PASSES (keeps one model resident on GPU at a time)
-        hrm_tl  = f"{run_id}_hrm"
-        tiny_tl = f"{run_id}_tiny"
+        # 1) PER-MODEL PASSES (keep one model in memory at a time)
 
         # HRM pass updates overall [0 .. T]
         hrm_res = await self._score_model_pass(
-            "hrm", hrm_worker, all_triples, hrm_tl,
+            "hrm", hrm_worker, all_triples, run_id,
             parent_task=task, base_done=0, grand_total=T * 2
         )
-
         # Tiny pass updates overall [T .. 2T]
         tiny_res = await self._score_model_pass(
-            "tiny", tiny_worker, all_triples, tiny_tl,
+            "tiny", tiny_worker, all_triples, run_id,
             parent_task=task, base_done=T, grand_total=T * 2
         )
 
         hrm_names = hrm_res["names"]
         tiny_names = tiny_res["names"]
 
-        # 2) INTERSECT MASKS to ensure both models scored the same rows
-        #    We intersect by ORIGINAL INDEX; we then select corresponding rows from each pass.
+        # 2) INTERSECT MASKS to ensure both models scored the same original rows
         hrm_keep = hrm_res["keep_mask"]
         tny_keep = tiny_res["keep_mask"]
         if hrm_keep.shape != tny_keep.shape:
@@ -222,16 +219,18 @@ class ScoringProcessor(ProgressMixin):
         both_keep_mask = hrm_keep & tny_keep
         kept_idx = np.nonzero(both_keep_mask)[0].tolist()     # original indices we keep
 
-        # Build compaction index maps: original index -> compacted row index within each pass
-        # (helper since each pass only kept some rows)
+        # Build compaction No no no this is gone this is probably OK enough: original index -> compacted row index within each pass
         hrm_idx_map = {orig: j for j, orig in enumerate(hrm_res["kept_indices"])}
         tny_idx_map = {orig: j for j, orig in enumerate(tiny_res["kept_indices"])}
 
-        # 3) SLICE MATRICES to the common subset
-        def _select_rows(pass_rows: np.ndarray, idx_map: Dict[int,int], orig_idx: List[int]) -> np.ndarray:
+        # Helper to select rows by original indices
+        def _select_rows(pass_rows: np.ndarray, idx_map: Dict[int, int], orig_idx: List[int]) -> np.ndarray:
+            if pass_rows.size == 0 or not orig_idx:
+                return np.zeros((0, 0), dtype=np.float32)
             sel = [idx_map[i] for i in orig_idx if i in idx_map]
-            return pass_rows[sel, :] if len(sel) else np.zeros((0, pass_rows.shape[1]), dtype=pass_rows.dtype)
+            return pass_rows[sel, :] if sel else np.zeros((0, pass_rows.shape[1]), dtype=pass_rows.dtype)
 
+        # 3) SLICE MATRICES to the common subset
         hrm_matrix_raw  = _select_rows(hrm_res["rows"],  hrm_idx_map, kept_idx)
         tiny_matrix_raw = _select_rows(tiny_res["rows"], tny_idx_map, kept_idx)
 
@@ -255,18 +254,17 @@ class ScoringProcessor(ProgressMixin):
         hrm_matrix  = hrm_matrix_raw[:, h_cols]
         tiny_matrix = tiny_matrix_raw[:, t_cols]
 
-        # 5) SCM matrices (already in canonical SCM_COLUMNS order)
-        #    Select the same rows by original index for both passes
-        from stephanie.components.gap.shared_scm import SCM_COLUMNS
+        # 5) SCM matrices (already in canonical SCM_COLUMNS order) on the same rows
         hrm_scm_sel  = _select_rows(hrm_res["scm_rows"],  hrm_idx_map, kept_idx)
         tiny_scm_sel = _select_rows(tiny_res["scm_rows"], tny_idx_map, kept_idx)
 
         # 6) Build PHOS rows by merging per-model dicts on the common subset
-        #    Note: rows_for_df in each pass is only for kept rows in that pass; reindex via kept indices.
-        def _select_rows_for_df(rows_for_df: List[Dict[str,float]], idx_map: Dict[int,int], orig_idx: List[int]) -> List[Dict[str,float]]:
+        def _select_rows_for_df(rows_for_df: List[Dict[str, float]],
+                                idx_map: Dict[int, int],
+                                orig_idx: List[int]) -> List[Dict[str, float]]:
             sel = []
             for i in orig_idx:
-                j = idx_map.get(i, None)
+                j = idx_map.get(i)
                 if j is not None:
                     sel.append(rows_for_df[j])
             return sel
@@ -274,12 +272,11 @@ class ScoringProcessor(ProgressMixin):
         hrm_df_rows  = _select_rows_for_df(hrm_res["rows_for_df"],  hrm_idx_map, kept_idx)
         tiny_df_rows = _select_rows_for_df(tiny_res["rows_for_df"], tny_idx_map, kept_idx)
 
-        merged_rows = []
+        merged_rows: List[Dict[str, float]] = []
         for rh, rt in zip(hrm_df_rows, tiny_df_rows):
-            # both contain node_id; keep one
             row = {"node_id": rh.get("node_id") or rt.get("node_id")}
-            row.update({k:v for k,v in rh.items() if k != "node_id"})
-            row.update({k:v for k,v in rt.items() if k != "node_id"})
+            row.update({k: v for k, v in rh.items() if k != "node_id"})
+            row.update({k: v for k, v in rt.items() if k != "node_id"})
             merged_rows.append(row)
 
         df_rows = pd.DataFrame(merged_rows)

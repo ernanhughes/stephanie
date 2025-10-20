@@ -185,7 +185,7 @@ class VPMWorker:
             if not getattr(self.zm, "_initialized", False):
                 await self.zm.initialize()
 
-            res = await self.zm.timeline_finalize(run_id)
+            res = await self.zm.timeline_finalize(run_id, out_path=payload.get("out_path"))
             _logger.info("VPMFinalized run_id %s %s", run_id, str(res))
             self._open_runs.discard(run_id)
 

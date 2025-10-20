@@ -617,8 +617,9 @@ class GapAgent(BaseAgent):
 
 
         # finalize GIFs via worker (returns paths)
-        hrm_gif_path = await vpm_worker.finalize(hrm_run_id, f"vpm_phos_run_{hrm_run_id}.gif")
-        tiny_gif_path = await vpm_worker.finalize(tiny_run_id, f"vpm_phos_run_{tiny_run_id}.gif")
+        visuals_dir = os.path.join(self.base_dir, pipeline_run_id, "visuals")
+        hrm_gif_path = await vpm_worker.finalize(hrm_run_id, f"{visuals_dir}/vpm_phos_run_{hrm_run_id}.gif")
+        tiny_gif_path = await vpm_worker.finalize(tiny_run_id, f"{visuals_dir}/vpm_phos_run_{tiny_run_id}.gif")
 
         # persist matrices + names
         hrm_mat = np.array(hrm_rows, dtype=np.float32) if hrm_rows else np.zeros((0,0), np.float32)

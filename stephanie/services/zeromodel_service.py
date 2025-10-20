@@ -374,7 +374,7 @@ class ZeroModelService(Service):
         *,
         fps: Optional[int] = None,
         datestamp: bool = True,
-        out_path: Optional[str] = None,
+        out_path: Optional[str] = "data/vpms",
         progress_cb: Optional[Callable[[str, int, int], None]] = None, 
     ) -> Dict[str, Any]:
         if progress_cb: progress_cb("finalize:start", 0, 1)
@@ -403,7 +403,7 @@ class ZeroModelService(Service):
         # Timestamped output dir
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_prefix = str(run_id)[:8]
-        run_dir = os.path.join(sess.out_dir, f"run_{run_prefix}_{timestamp}")
+        run_dir = os.path.join(out_path, f"run_{run_prefix}_{timestamp}")
         os.makedirs(run_dir, exist_ok=True)
 
         base_name = f"vpm_timeline_{run_prefix}_{timestamp}"
