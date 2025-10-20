@@ -90,6 +90,10 @@ class ScoringProcessor(ProgressMixin):
         worker,                                   # MetricsWorkerInline bound to that model
         triples: List[TripleSample],
         timeline_id: str,
+            *,
+        parent_task: str,              # overall task name (e.g., f"scoring:{run_id}")
+        base_done: int,                # offset into the overall progress (0 for HRM, T for Tiny)
+        grand_total: int,              # overall total = T*2
     ) -> Dict[str, Any]:
         """
         Score ALL samples for ONE model in a single pass.
@@ -99,6 +103,9 @@ class ScoringProcessor(ProgressMixin):
         - Much more stable on 12 GB GPUs (no interleaved memory spikes).
         - Better kernel reuse (attention impl stays hot).
         """
+        sub_task = f"{parent_task}:{model_label}"
+        self.pstart(sub_task, total=len(triples), meta={"model": model_label, "timeline": timeline_id})
+
         zm = self.container.get("zeromodel")
         vpm_worker = VPMWorkerInline(zm, self.logger)
 
@@ -118,7 +125,7 @@ class ScoringProcessor(ProgressMixin):
             scorable = Scorable(triple.output_text, ScorableType.CONVERSATION_TURN)
 
             # SHARED GATE: identical length guard for both models so masks intersect cleanly.
-            if len(triple.goal_text) > 1000 or len(scorable.text) > 1000:
+            if len(triple.goal_text) > 4000 or len(scorable.text) > 4000:
                 keep_mask.append(False)
                 continue
 
@@ -179,14 +186,28 @@ class ScoringProcessor(ProgressMixin):
         T = len(all_triples)
 
         task = f"scoring:{run_id}"
-        self.pstart(task, total=T, meta={"dims": len(triples_data), "console_echo": False})
+        self.pstart(task, total=T * 2, meta={
+            "dims": len(triples_data),
+            "passes": 2,
+            "console_echo": False
+        })
+
 
         # 1) PER-MODEL PASSES (keeps one model resident on GPU at a time)
         hrm_tl  = f"{run_id}_hrm"
         tiny_tl = f"{run_id}_tiny"
 
-        hrm_res  = await self._score_model_pass("hrm",  hrm_worker,  all_triples, hrm_tl)
-        tiny_res = await self._score_model_pass("tiny", tiny_worker, all_triples, tiny_tl)
+        # HRM pass updates overall [0 .. T]
+        hrm_res = await self._score_model_pass(
+            "hrm", hrm_worker, all_triples, hrm_tl,
+            parent_task=task, base_done=0, grand_total=T * 2
+        )
+
+        # Tiny pass updates overall [T .. 2T]
+        tiny_res = await self._score_model_pass(
+            "tiny", tiny_worker, all_triples, tiny_tl,
+            parent_task=task, base_done=T, grand_total=T * 2
+        )
 
         hrm_names = hrm_res["names"]
         tiny_names = tiny_res["names"]
