@@ -84,110 +84,138 @@ class ScoringProcessor(ProgressMixin):
         return result
 
     # ---------- core pipeline ----------------------------------------------
+    async def _score_model_pass(
+        self,
+        model_label: str,                         # "hrm" or "tiny"
+        worker,                                   # MetricsWorkerInline bound to that model
+        triples: List[TripleSample],
+        timeline_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Score ALL samples for ONE model in a single pass.
+
+        WHY THIS EXISTS:
+        - Keeps ONE HF model loaded on the GPU for the whole pass → avoids VRAM thrash.
+        - Much more stable on 12 GB GPUs (no interleaved memory spikes).
+        - Better kernel reuse (attention impl stays hot).
+        """
+        zm = self.container.get("zeromodel")
+        vpm_worker = VPMWorkerInline(zm, self.logger)
+
+        zm.timeline_open(run_id=timeline_id)
+
+        names: List[str] = []
+        rows: List[List[float]] = []
+        scm_rows: List[List[float]] = []
+
+        keep_mask: List[bool] = []         # one bool per original triple index
+        kept_indices: List[int] = []       # original indices we kept (for merges)
+        rows_for_df: List[Dict[str, float]] = []   # PHOS-friendly rows (model side)
+
+        log_every = max(1, self.config.progress_log_every)
+
+        for i, triple in enumerate(triples):
+            scorable = Scorable(triple.output_text, ScorableType.CONVERSATION_TURN)
+
+            # SHARED GATE: identical length guard for both models so masks intersect cleanly.
+            if len(triple.goal_text) > 1000 or len(scorable.text) > 1000:
+                keep_mask.append(False)
+                continue
+
+            # Score this model
+            metrics = await worker.score(scorable, triple.goal_text, timeline_id)
+
+            # Extract vectors and SCM
+            vec_raw = self._to_vector(metrics)
+            scm = scm_from_vector(vec_raw, model_prefix=model_label)    # e.g. "scm.reasoning.score01"
+            merged = self._merge_for_timeline(metrics, scm)
+
+            # Timeline (for GIFs)
+            vpm_worker.append(timeline_id, triple.node_id, merged)
+
+            # Lock first-row column order for this model, align subsequent rows
+            vec = merged["vector"]
+            if not names:
+                names = list(vec.keys())
+            rows.append(self._align_row(vec, names))
+            scm_rows.append(scm_row(scm))
+
+            # PHOS row (only this model’s side for now; we’ll merge later)
+            r = {"node_id": triple.node_id}
+            for d in self.config.dimensions:
+                r[f"{model_label}.{d}"] = float(scm.get(f"scm.{d}.score01", 0.0))
+            rows_for_df.append(r)
+
+            keep_mask.append(True)
+            kept_indices.append(i)
+
+            # structured progress
+            if ((i + 1) % log_every) == 0 or (i + 1) == len(triples):
+                self.logger.log("ScoringProgress", {
+                    "model": model_label, "processed": i + 1, "total": len(triples)
+                })
+            await asyncio.sleep(0)
+
+        gif_path = await vpm_worker.finalize(timeline_id, f"vpm_phos_run_{timeline_id}.gif")
+
+        return {
+            "names": names,
+            "rows": np.asarray(rows, np.float32),
+            "scm_rows": np.asarray(scm_rows, np.float32),
+            "keep_mask": np.array(keep_mask, dtype=bool),
+            "kept_indices": kept_indices,           # original indices retained (in order)
+            "gif": gif_path,
+            "rows_for_df": rows_for_df,             # one entry per kept index (same order as kept_indices)
+        }
+
     async def _score_all_triples(
         self,
         triples_data: Dict[str, List[TripleSample]],
         hrm_worker, tiny_worker, vpm_worker, run_id: str,
     ) -> Dict[str, Any]:
 
-        # 0) materialize list
+        # 0) materialize flattened list (stable order for both passes)
         all_triples: List[TripleSample] = [t for ts in triples_data.values() for t in ts]
         T = len(all_triples)
 
         task = f"scoring:{run_id}"
         self.pstart(task, total=T, meta={"dims": len(triples_data), "console_echo": False})
 
-        # 1) timelines
-        zm = self.container.get("zeromodel")
-        hrm_tl = f"{run_id}_hrm"
+        # 1) PER-MODEL PASSES (keeps one model resident on GPU at a time)
+        hrm_tl  = f"{run_id}_hrm"
         tiny_tl = f"{run_id}_tiny"
-        zm.timeline_open(run_id=hrm_tl)
-        zm.timeline_open(run_id=tiny_tl)
 
-        # 2) accumulators
-        hrm_names: List[str] = []
-        tiny_names: List[str] = []
-        hrm_rows: List[List[float]] = []
-        tiny_rows: List[List[float]] = []
+        hrm_res  = await self._score_model_pass("hrm",  hrm_worker,  all_triples, hrm_tl)
+        tiny_res = await self._score_model_pass("tiny", tiny_worker, all_triples, tiny_tl)
 
-        hrm_scm_rows: List[List[float]] = []
-        tiny_scm_rows: List[List[float]] = []
+        hrm_names = hrm_res["names"]
+        tiny_names = tiny_res["names"]
 
-        rows_for_df: List[Dict[str, float]] = []  # PHOS-friendly per turn
+        # 2) INTERSECT MASKS to ensure both models scored the same rows
+        #    We intersect by ORIGINAL INDEX; we then select corresponding rows from each pass.
+        hrm_keep = hrm_res["keep_mask"]
+        tny_keep = tiny_res["keep_mask"]
+        if hrm_keep.shape != tny_keep.shape:
+            raise RuntimeError("Internal: mask shapes differ between models.")
 
-        log_every = max(1, self.config.progress_log_every)
+        both_keep_mask = hrm_keep & tny_keep
+        kept_idx = np.nonzero(both_keep_mask)[0].tolist()     # original indices we keep
 
-        with tqdm(total=T, desc=task, unit="turn") as pbar:
-            for i, triple in enumerate(all_triples):
-                scorable = Scorable(triple.output_text, ScorableType.CONVERSATION_TURN)
+        # Build compaction index maps: original index -> compacted row index within each pass
+        # (helper since each pass only kept some rows)
+        hrm_idx_map = {orig: j for j, orig in enumerate(hrm_res["kept_indices"])}
+        tny_idx_map = {orig: j for j, orig in enumerate(tiny_res["kept_indices"])}
 
-                # score both models
-                if len(triple.goal_text) > 2000 or len(scorable.text) > 2000:
-                    self.logger.log("ScoringSkipped", {
-                        "node_id": triple.node_id,
-                        "dimension": triple.dimension,
-                        "reason": "input_too_large",
-                        "goal_length": len(triple.goal_text),
-                        "output_length": len(triple.output_text),
-                    })
-                    continue
-                hrm_metrics = await hrm_worker.score(scorable, triple.goal_text, hrm_tl)
-                tiny_metrics = await tiny_worker.score(scorable, triple.goal_text, tiny_tl)
+        # 3) SLICE MATRICES to the common subset
+        def _select_rows(pass_rows: np.ndarray, idx_map: Dict[int,int], orig_idx: List[int]) -> np.ndarray:
+            sel = [idx_map[i] for i in orig_idx if i in idx_map]
+            return pass_rows[sel, :] if len(sel) else np.zeros((0, pass_rows.shape[1]), dtype=pass_rows.dtype)
 
-                # ---- extract flat vectors from RAW metrics
-                h_vec_raw = self._to_vector(hrm_metrics)
-                t_vec_raw = self._to_vector(tiny_metrics)
+        hrm_matrix_raw  = _select_rows(hrm_res["rows"],  hrm_idx_map, kept_idx)
+        tiny_matrix_raw = _select_rows(tiny_res["rows"], tny_idx_map, kept_idx)
 
-                # ---- build SCM dicts (source of truth for aligned heads)
-                h_scm = scm_from_vector(h_vec_raw, model_prefix="hrm")
-                t_scm = scm_from_vector(t_vec_raw, model_prefix="tiny")
-
-                # ---- merge for timeline (and for downstream vector usage)
-                hrm_for_tl  = self._merge_for_timeline(hrm_metrics, h_scm)
-                tiny_for_tl = self._merge_for_timeline(tiny_metrics, t_scm)
-                vpm_worker.append(hrm_tl, triple.node_id, hrm_for_tl)
-                vpm_worker.append(tiny_tl, triple.node_id, tiny_for_tl)
-
-                # >>> use the MERGED vectors everywhere from here on <<<
-                h_vec = hrm_for_tl["vector"]
-                t_vec = tiny_for_tl["vector"]
-
-                # lock first-row names; align subsequent rows by first-row order
-                if i == 0:
-                    hrm_names = list(h_vec.keys())
-                    tiny_names = list(t_vec.keys())
-
-                hrm_rows.append(self._align_row(h_vec, hrm_names))
-                tiny_rows.append(self._align_row(t_vec, tiny_names))
-                hrm_scm_rows.append(scm_row(h_scm))
-                tiny_scm_rows.append(scm_row(t_scm))
-
-                # PHOS rows (per-dim stable)
-                phos_row = {"node_id": triple.node_id}
-                for d in self.config.dimensions:
-                    phos_row[f"hrm.{d}"]  = float(h_scm.get(f"scm.{d}.score01", 0.0))
-                    phos_row[f"tiny.{d}"] = float(t_scm.get(f"scm.{d}.score01", 0.0))
-                rows_for_df.append(phos_row)
-
-                # progress (structured + optional legacy log)
-                if ((i + 1) % log_every) == 0 or (i + 1) == T:
-                    self.logger.log("ScoringProgress", {"processed": i + 1, "total": T})
-                self.ptick(task, done=i + 1, total=T, extra={"dim": triple.dimension, "node_id": triple.node_id})
-
-                pbar.update(1)
-                await asyncio.sleep(0)
-
-        # 3) finalize timelines (GIFs)
-        hrm_gif = await vpm_worker.finalize(hrm_tl, f"vpm_phos_run_{hrm_tl}.gif")
-        tiny_gif = await vpm_worker.finalize(tiny_tl, f"vpm_phos_run_{tiny_tl}.gif")
-
-        # 4) convert to matrices
-        hrm_matrix_raw = np.asarray(hrm_rows, dtype=np.float32)
-        tiny_matrix_raw = np.asarray(tiny_rows, dtype=np.float32)
-
-        # 5) pick preferred indices and align (aggregate + per-dim)
-        # NOTE: ensure _preferred_indices falls back to 'scm.*.score01' keys.
-        pref_hrm = self._preferred_indices(hrm_names, "hrm", self.config.dimensions)
+        # 4) Resolve preferred columns ONCE, align columns
+        pref_hrm = self._preferred_indices(hrm_names,  "hrm",  self.config.dimensions)
         pref_tny = self._preferred_indices(tiny_names, "tiny", self.config.dimensions)
 
         canonical_order = ["aggregate"] + list(self.config.dimensions)
@@ -203,48 +231,74 @@ class ScoringProcessor(ProgressMixin):
 
         h_cols = [pref_hrm[k] for k in shared]
         t_cols = [pref_tny[k] for k in shared]
-        hrm_matrix = hrm_matrix_raw[:, h_cols]
+        hrm_matrix  = hrm_matrix_raw[:, h_cols]
         tiny_matrix = tiny_matrix_raw[:, t_cols]
 
-        # 6) persist artifacts
+        # 5) SCM matrices (already in canonical SCM_COLUMNS order)
+        #    Select the same rows by original index for both passes
+        from stephanie.components.gap.shared_scm import SCM_COLUMNS
+        hrm_scm_sel  = _select_rows(hrm_res["scm_rows"],  hrm_idx_map, kept_idx)
+        tiny_scm_sel = _select_rows(tiny_res["scm_rows"], tny_idx_map, kept_idx)
+
+        # 6) Build PHOS rows by merging per-model dicts on the common subset
+        #    Note: rows_for_df in each pass is only for kept rows in that pass; reindex via kept indices.
+        def _select_rows_for_df(rows_for_df: List[Dict[str,float]], idx_map: Dict[int,int], orig_idx: List[int]) -> List[Dict[str,float]]:
+            sel = []
+            for i in orig_idx:
+                j = idx_map.get(i, None)
+                if j is not None:
+                    sel.append(rows_for_df[j])
+            return sel
+
+        hrm_df_rows  = _select_rows_for_df(hrm_res["rows_for_df"],  hrm_idx_map, kept_idx)
+        tiny_df_rows = _select_rows_for_df(tiny_res["rows_for_df"], tny_idx_map, kept_idx)
+
+        merged_rows = []
+        for rh, rt in zip(hrm_df_rows, tiny_df_rows):
+            # both contain node_id; keep one
+            row = {"node_id": rh.get("node_id") or rt.get("node_id")}
+            row.update({k:v for k,v in rh.items() if k != "node_id"})
+            row.update({k:v for k,v in rt.items() if k != "node_id"})
+            merged_rows.append(row)
+
+        df_rows = pd.DataFrame(merged_rows)
+
+        # 7) Timelines → GIF paths
+        hrm_gif = hrm_res["gif"]
+        tiny_gif = tiny_res["gif"]
+
+        # 8) Persist artifacts
         storage = self.container.get("gap_storage")
         storage.save_matrix(hrm_matrix, shared, run_id, tag="hrm")
         storage.save_matrix(tiny_matrix, shared, run_id, tag="tiny")
-        storage.save_matrix(np.asarray(hrm_scm_rows, np.float32), SCM_COLUMNS, run_id, tag="hrm_scm")
-        storage.save_matrix(np.asarray(tiny_scm_rows, np.float32), SCM_COLUMNS, run_id, tag="tiny_scm")
+        storage.save_matrix(hrm_scm_sel.astype(np.float32),  SCM_COLUMNS, run_id, tag="hrm_scm")
+        storage.save_matrix(tiny_scm_sel.astype(np.float32), SCM_COLUMNS, run_id, tag="tiny_scm")
 
-        # rows_for_df for PHOS
-        df_rows = pd.DataFrame(rows_for_df)
         raw_paths = storage.save_rows_df(df_rows, run_id, name="rows_for_df")
 
-        # --- save row-level provenance so we can trace loops back to text ---
+        # Row-level provenance: filter by kept indices for a 1:1 mapping
         provenance = []
-        for i, triple in enumerate(all_triples):
-            prov_row = {
-                "row_index": i,
-                "node_id": triple.node_id,
-                "dimension": triple.dimension,
-                "goal_text": triple.goal_text,
-                "output_text": triple.output_text,
-            }
-            provenance.append(prov_row)
+        for row_idx, orig_i in enumerate(kept_idx):
+            t = all_triples[orig_i]
+            provenance.append({
+                "row_index": row_idx,
+                "orig_index": orig_i,
+                "node_id": t.node_id,
+                "dimension": t.dimension,
+                "goal_text": t.goal_text,
+                "output_text": t.output_text,
+            })
+        storage.save_json(run_id, "raw", "row_provenance.json", provenance)
 
-        storage.save_json(
-            run_id,
-            "raw",
-            "row_provenance.json",
-            provenance
-        )
+        # Labels (human display)
         scoring_service = self.container.get("scoring")
-
         def _disp(n):
             s = scoring_service._scorers.get(n)
             return s.get_display_name() if s and hasattr(s, "get_display_name") else n
-
-        hrm_label = ", ".join(_disp(n) for n in self.config.hrm_scorers)
+        hrm_label  = ", ".join(_disp(n) for n in self.config.hrm_scorers)
         tiny_label = ", ".join(_disp(n) for n in self.config.tiny_scorers)
 
-        self.pdone(task, extra={"rows": T})
+        self.pdone(task, extra={"rows": len(kept_idx)})
 
         return {
             "hrm_vectors": hrm_matrix,
@@ -253,16 +307,15 @@ class ScoringProcessor(ProgressMixin):
             "hrm_label": hrm_label,
             "tiny_names": shared,
             "tiny_label": tiny_label,
-            "hrm_scm_matrix": np.asarray(hrm_scm_rows, np.float32),
-            "tiny_scm_matrix": np.asarray(tiny_scm_rows, np.float32),
+            "hrm_scm_matrix": hrm_scm_sel.astype(np.float32),
+            "tiny_scm_matrix": tiny_scm_sel.astype(np.float32),
             "scm_names": SCM_COLUMNS,
             "hrm_gif": hrm_gif,
             "tiny_gif": tiny_gif,
-            "triples_count": T,
+            "triples_count": len(kept_idx),
             "rows_for_df_path": str(storage.base_dir / run_id / "raw" / "rows_for_df.parquet"),
             **raw_paths,
         }
-
     # ---------- helpers -----------------------------------------------------
     def _flatten_samples(self, samples: List[Dict[str, Any]], dim: str) -> List[TripleSample]:
         triples: List[TripleSample] = []

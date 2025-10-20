@@ -1,4 +1,4 @@
-# conf/components/hf_gap.yaml
+# conf/agents/hf_gap.yaml
 hf_gap:
   # ---- Identity / wiring ----
   name: hf_gap
@@ -37,6 +37,8 @@ hf_gap:
     latent_dim: 128
     use_native_scores_as_inputs: false   # normalize to [0,1] before SCM if false
 
+  per_dim_cap: 1000           # cap comparisons collected per dimension (prevents runaway)
+
   # ---- Directories / artifacts ----
   gap_base_dir: "${hydra:runtime.cwd}/data/gap_runs"   # canonical run root
   out_dir: "${hydra:runtime.cwd}/data/gap_runs/vpm"    # VPM tiles, timelines, etc.
@@ -49,7 +51,6 @@ hf_gap:
   interleave: false           # alternate scorer eval order for fairness; off by default
   progress_log_every: 25
   dedupe_policy: first_wins   # or 'last_wins' for identical hypothesis fingerprints
-  per_dim_cap: 10           # cap comparisons collected per dimension (prevents runaway)
 
   # Routing guardrails (useful if you branch to different analyzers later)
   route_threshold_uncertainty: 0.6

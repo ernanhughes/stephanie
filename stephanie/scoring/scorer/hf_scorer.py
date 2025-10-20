@@ -127,18 +127,27 @@ class HuggingFaceScorer(BaseScorer):
             stats = self._ll_stats(goal_text, resp_text)
 
         scm = self._scm_from_ll(stats)
-        if self.cfg.get("compute_zscores", True) and getattr(self, "calib", None):
-            try:
-                mlp = stats["mean_logprob"]
-                ent = stats["entropy_mean"]
-                bpb = stats.get("bpb", float("nan"))
-                c = self.calib  # expects means/stds for fields
-                stats["z_mean_logprob"] = self._zs(mlp, c["mean_logprob"]["mean"], c["mean_logprob"]["std"])
-                stats["z_entropy"] = self._zs(ent, c["entropy_mean"]["mean"], c["entropy_mean"]["std"])
-                if math.isfinite(bpb) and "bpb" in c:
-                    stats["z_bpb"] = self._zs(bpb, c["bpb"]["mean"], c["bpb"]["std"])
-            except Exception as e:
-                self.logger and self.logger.log("HFCalibApplyError", {"error": str(e)})
+
+
+        try:
+            mlp = stats["mean_logprob"]
+            ent = stats["entropy_mean"]
+            bpb = stats.get("bpb", float("nan"))
+
+            cal = self.calib or {}  # may be {}
+            def _zmaybe(key: str, x: float) -> float:
+                try:
+                    cfg = cal[key]
+                    return self._zs(x, cfg["mean"], cfg["std"])
+                except Exception:
+                    return float("nan")  # or 0.0 if you prefer
+
+            stats["z_mean_logprob"] = _zmaybe("mean_logprob", mlp)
+            stats["z_entropy"]      = _zmaybe("entropy_mean", ent)
+            if math.isfinite(bpb) and "bpb" in cal:
+                stats["z_bpb"] = _zmaybe("bpb", bpb)
+        except Exception as e:
+            self.logger and self.logger.log("HFCalibApplyError", {"error": str(e)})
 
         k = int(self.cfg.get("expose_token_dists_topk", 0) or 0)
         if k > 0:
