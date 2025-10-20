@@ -133,6 +133,37 @@ class ScoringService(Service):
             "dimensions": list(self._scorers.keys()),   # optional/legacy field
         }
 
+    def unload_scorer(self, name: str) -> bool:
+        """
+        Close and remove a single scorer instance from the cache.
+        Returns True if something was unloaded.
+        """
+        s = self._scorers.pop(name, None)
+        if s is None:
+            return False
+        try:
+            close = getattr(s, "close", None)
+            if callable(close):
+                close()
+        finally:
+            # extra safety
+            import gc, torch
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+        self.logger and self.logger.log("ScoringServiceUnloaded", {"name": name})
+        return True
+
+    def unload_all(self, except_names: list[str] | None = None) -> None:
+        """
+        Close and remove all scorers except those listed.
+        """
+        keep = set(except_names or [])
+        to_drop = [n for n in list(self._scorers.keys()) if n not in keep]
+        for n in to_drop:
+            self.unload_scorer(n)
+
     
     def shutdown(self) -> None:
         """Cleanly shut down the service and release resources."""

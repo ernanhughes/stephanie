@@ -37,15 +37,6 @@ class AnalysisProcessor(ProgressMixin):
         *,
         manifest: Any | None = None,
     ) -> Dict[str, Any]:
-        return await self.perform_analysis(scoring_results, run_id, manifest=manifest)
-
-    async def perform_analysis(
-        self,
-        scoring_results: Dict[str, Any],
-        run_id: str,
-        *,
-        manifest: Any | None = None,
-    ) -> Dict[str, Any]:
         task = f"analysis:{run_id}"
         total_stages = 6  # frontier, delta, intensity, phos, scm_visuals, topology
         self.pstart(task, total=total_stages, meta={"run_id": run_id})
@@ -83,7 +74,6 @@ class AnalysisProcessor(ProgressMixin):
             )
             self.pstage(task, "frontier:done", status="ok")
         except Exception as e:
-            self.logger.log("FrontierError", {"run_id": run_id, "error": str(e)})
             _logger.error(f"Frontier analysis failed: {e}", exc_info=True)
             results["frontier"] = {"error": str(e)}
             self.pstage(task, "frontier:done", status="error", error=str(e))
@@ -98,7 +88,6 @@ class AnalysisProcessor(ProgressMixin):
             )
             self.pstage(task, "delta:done", status="ok")
         except Exception as e:
-            self.logger.log("DeltaAnalysisError", {"run_id": run_id, "error": str(e)})
             _logger.error(f"Delta analysis failed: {e}", exc_info=True)
             results["delta_analysis"] = {"error": str(e)}
             self.pstage(task, "delta:done", status="error", error=str(e))
@@ -113,7 +102,6 @@ class AnalysisProcessor(ProgressMixin):
             )
             self.pstage(task, "intensity:done", status="ok")
         except Exception as e:
-            self.logger.log("IntensityError", {"run_id": run_id, "error": str(e)})
             _logger.error(f"Intensity report generation failed: {e}", exc_info=True)
             results["intensity"] = {"error": str(e)}
             self.pstage(task, "intensity:done", status="error", error=str(e))
@@ -126,7 +114,6 @@ class AnalysisProcessor(ProgressMixin):
             results["phos"] = await self._perform_phos_analysis(run_id)
             self.pstage(task, "phos:done", status="ok")
         except Exception as e:
-            self.logger.log("PHOSAnalysisError", {"run_id": run_id, "error": str(e)})
             _logger.error(f"PHOS analysis failed: {e}", exc_info=True)
             results["phos"] = {"error": str(e)}
             self.pstage(task, "phos:done", status="error", error=str(e))
@@ -156,7 +143,6 @@ class AnalysisProcessor(ProgressMixin):
             results["scm_visuals"] = img_paths
             self.pstage(task, "scm_visuals:done", status="ok", n_imgs=len(img_paths))
         except Exception as e:
-            self.logger.log("SCMVisualsError", {"run_id": run_id, "error": str(e)})
             _logger.error(f"SCM visualization failed: {e}", exc_info=True)
             results["scm_visuals"] = {"error": str(e)}
             self.pstage(task, "scm_visuals:done", status="error", error=str(e))
@@ -189,7 +175,6 @@ class AnalysisProcessor(ProgressMixin):
             results["topology"] = topo_out
             self.pstage(task, "topology:done", status="ok")
         except Exception as e:
-            self.logger.log("TopologyError", {"run_id": run_id, "error": str(e)})
             _logger.error(f"Topology analysis failed: {e}", exc_info=True)
             results["topology"] = {"error": str(e)}
             self.pstage(task, "topology:done", status="error", error=str(e))

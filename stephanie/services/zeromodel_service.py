@@ -1353,11 +1353,11 @@ class ZeroModelService(Service):
         # (a) PHOS energy maps
         ax1 = fig.add_subplot(gs[0,0]); im1 = ax1.imshow(A_phos_n, cmap=cmap_main, aspect="auto"); ax1.set_title(f"{pos_label} PHOS Energy"); ax1.axis("off"); fig.colorbar(im1, ax=ax1, fraction=0.035, pad=0.04)
         ax2 = fig.add_subplot(gs[0,1]); im2 = ax2.imshow(B_phos_n, cmap=cmap_main, aspect="auto"); ax2.set_title(f"{neg_label} PHOS Energy"); ax2.axis("off"); fig.colorbar(im2, ax=ax2, fraction=0.035, pad=0.04)
-        ax3 = fig.add_subplot(gs[0,2]); im3 = ax3.imshow(diff_phos, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1); ax3.set_title("PHOS Δ (HRM − Tiny)"); ax3.axis("off"); fig.colorbar(im3, ax=ax3, fraction=0.035, pad=0.04)
+        ax3 = fig.add_subplot(gs[0,2]); im3 = ax3.imshow(diff_phos, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1); ax3.set_title(f"PHOS Δ ({pos_label} − {neg_label})"); ax3.axis("off"); fig.colorbar(im3, ax=ax3, fraction=0.035, pad=0.04)
 
         # (b) Latent residual heatmap (the frontier)
         ax4 = fig.add_subplot(gs[1,0]); im4 = ax4.imshow(resid_n, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1)
-        ax4.set_title("Shared-Latent Residuals (HRM − Tiny)")
+        ax4.set_title(f"Shared-Latent Residuals ({pos_label} − {neg_label})")
         ax4.set_xlabel("Latent dimension"); ax4.set_ylabel("Sample (row)")
         fig.colorbar(im4, ax=ax4, fraction=0.035, pad=0.04)
 
