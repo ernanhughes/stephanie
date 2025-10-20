@@ -55,7 +55,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
 
         # NER retriever init (optional)
         self.ner_retriever = None
-        self.ner_enabled = bool(self.cfg.get("enable_ner", True))
+        self.ner_enabled = bool(self.cfg.get("enable_ner", False))
         self.ner_index_initialized = False
 
         # Retrieval knobs

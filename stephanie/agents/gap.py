@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Tuple
 
 import asyncio
 import hashlib
+import shutil
 import json
 import logging
 import os
@@ -40,6 +41,7 @@ from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
+from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.json_sanitize import dumps_safe
 
 _logger = logging.getLogger(__name__)
@@ -393,7 +395,7 @@ class GapAgent(BaseAgent):
 
         # 4.1 Tools
         scoring_service = self.container.get("scoring")
-        zm = self.container.get("zeromodel")
+        zm: ZeroModelService = self.container.get("zeromodel")
         hrm_worker = MetricsWorkerInline(scoring_service, self.hrm_scorers, self.dimensions)
         tiny_worker = MetricsWorkerInline(scoring_service, self.tiny_scorers, self.dimensions)
         vpm_worker = VPMWorkerInline(zm, self.logger)
@@ -410,6 +412,7 @@ class GapAgent(BaseAgent):
         base = os.path.join(str(self.base_dir), manifest.run_id)
         manifest_dict = asdict(manifest)
         manifest_dict["dimensions"] = self.dimensions
+        visuals_dir = os.path.join(base, "visuals")
         manifest_dict["paths"] = {
             "root": base,
             "raw": os.path.join(base, "raw"),
@@ -425,8 +428,8 @@ class GapAgent(BaseAgent):
         # 4.3 Open timelines
         hrm_run_id = f"{pipeline_run_id}_hrm"
         tiny_run_id = f"{pipeline_run_id}_tiny"
-        zm.timeline_open(run_id=hrm_run_id)
-        zm.timeline_open(run_id=tiny_run_id)
+        zm.timeline_open(run_id=hrm_run_id, out_dir=visuals_dir)
+        zm.timeline_open(run_id=tiny_run_id, out_dir=visuals_dir)
 
         # 4.4 Collect + dedupe samples
         pair_builder = PreferencePairBuilder(self.memory, self.logger)
@@ -519,8 +522,8 @@ class GapAgent(BaseAgent):
         # open fresh timelines (distinct from HRM/Tiny scoring session IDs if needed)
         hrm_run_id = f"{pipeline_run_id}_hrm"
         tiny_run_id = f"{pipeline_run_id}_tiny"
-        zm.timeline_open(run_id=hrm_run_id)
-        zm.timeline_open(run_id=tiny_run_id)
+        zm.timeline_open(run_id=hrm_run_id, out_dir=visuals_dir)
+        zm.timeline_open(run_id=tiny_run_id, out_dir=visuals_dir)
 
         # We'll accumulate rows → matrices
         hrm_names: List[str] = []
@@ -564,10 +567,10 @@ class GapAgent(BaseAgent):
                     # defensive: if names differ in later rows, align by first-row names
                     # (missing keys become 0.0, extras are ignored)
                     if h_names != hrm_names:
-                        name2val = {n: v for n, v in zip(h_names, h_vals)}
+                        name2val = dict(zip(h_names, h_vals))
                         h_vals = [float(name2val.get(n, 0.0)) for n in hrm_names]
                     if t_names != tiny_names:
-                        name2val = {n: v for n, v in zip(t_names, t_vals)}
+                        name2val = dict(zip(t_names, t_vals))
                         t_vals = [float(name2val.get(n, 0.0)) for n in tiny_names]
 
                 hrm_rows.append([float(v) for v in h_vals])
@@ -617,7 +620,6 @@ class GapAgent(BaseAgent):
 
 
         # finalize GIFs via worker (returns paths)
-        visuals_dir = os.path.join(self.base_dir, pipeline_run_id, "visuals")
         hrm_gif_path = await vpm_worker.finalize(hrm_run_id, f"{visuals_dir}/vpm_phos_run_{hrm_run_id}.gif")
         tiny_gif_path = await vpm_worker.finalize(tiny_run_id, f"{visuals_dir}/vpm_phos_run_{tiny_run_id}.gif")
 
@@ -835,7 +837,6 @@ class GapAgent(BaseAgent):
 
             # Standardize “chosen” copies to stable names in visuals/
             # (build_hrm_vs_tiny_guarded already writes *_chosen.png; we also expose them plainly)
-            import shutil
             hrm_chosen = phos_res.get("hrm_chosen", {})
             tiny_chosen = phos_res.get("tiny_chosen", {})
             if hrm_chosen.get("phos_path"):
@@ -1085,11 +1086,10 @@ def _align_mats_by_names(
       shared: ordered list of shared (or union) names used
       info:   diagnostics (missing_A, missing_B)
     """
-    idxA = {n: i for i, n in enumerate(names_A)}
-    idxB = {n: i for i, n in enumerate(names_B)}
+    idxA = dict((n, i) for i, n in enumerate(names_A))
+    idxB = dict((n, i) for i, n in enumerate(names_B))
 
     if mode == "intersection":
-        shared = [n for n in names_A if n in idxB]
         A2 = A[:, [idxA[n] for n in shared]] if shared else np.zeros((A.shape[0], 0), A.dtype)
         B2 = B[:, [idxB[n] for n in shared]] if shared else np.zeros((B.shape[0], 0), B.dtype)
         info = {
@@ -1124,7 +1124,7 @@ def _fill_from_columns(row: Dict[str, float], cols: List[str], vals: List[float]
       - '{model}.{dim}.aggregate}'
     Prefers a strict match in that order; falls back gracefully.
     """
-    name2val = {str(c): float(v) for c, v in zip(cols, vals)}
+    name2val = dict((str(c), float(v)) for c, v in zip(cols, vals))
     for dim in dims:
         preferred = [
             f"{model_name}.{dim}",
@@ -1163,8 +1163,6 @@ def _harvest_model_dim_scores(row: Dict[str, float], metrics: Dict[str, Any], *,
     vals = metrics.get("values")
     if isinstance(cols, list) and isinstance(vals, (list, tuple)) and len(cols) == len(vals):
         _fill_from_columns(row, cols, vals, model_name, dims)
-        return
-    return
 
 
 def _fingerprint(goal_text: str, output_text: str) -> str:

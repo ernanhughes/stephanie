@@ -1,7 +1,6 @@
 # config/scorer/hf_mistral/default.yaml
 name: hf_mistral
 model_type: hf
-display_name: gemma-2-2b-it
 
 
 model_version: v1
@@ -19,9 +18,14 @@ dimensions:
 # model_name: microsoft/Phi-3-mini-4k-instruct
 # model_alias: hf_mistral Let's just make sure they actually know
 # model_alias: hf_Phi-3
+# model_name: google/gemma-2-2b-it
+# model_alias: hf_Gemma-2
+# display_name: gemma-2-2b-it
 
-model_name: google/gemma-2-2b-it
-model_alias: hf_Gemma-2
+model_name: EleutherAI/pythia-160m
+model_alias: pythia-160m
+display_name: pythia-160m
+
 # Runtime
 # device_map: auto
 device_map: cuda

@@ -683,6 +683,7 @@ class TopologyProcessor(ProgressMixin):
             n_neighbors=self.cfg.umap_n_neighbors,
             min_dist=self.cfg.umap_min_dist,
             metric="euclidean",
+            n_jobs=1,           
             random_state=self.cfg.random_seed,
         )
         U = reducer.fit_transform(Delta)  # (N, 2)
