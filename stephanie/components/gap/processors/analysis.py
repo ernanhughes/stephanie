@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Tuple
+
 import numpy as np
 
 from stephanie.components.gap.models import GapConfig
-from stephanie.components.gap.processors.topology import TopologyProcessor, TopologyConfig
+from stephanie.components.gap.processors.topology import (TopologyConfig,
+                                                          TopologyProcessor)
 from stephanie.components.gap.processors.visuals import render_scm_images
 from stephanie.utils.progress_mixin import ProgressMixin
 

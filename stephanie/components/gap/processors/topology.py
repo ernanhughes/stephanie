@@ -5,12 +5,12 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, List, Literal
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
-import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 from sklearn.neighbors import NearestNeighbors
 
 from stephanie.utils.json_sanitize import dumps_safe

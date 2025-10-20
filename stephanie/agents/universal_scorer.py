@@ -7,9 +7,9 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseScorableORM
+from stephanie.models.chat import ChatTurnORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM
-from stephanie.models.chat import ChatTurnORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator

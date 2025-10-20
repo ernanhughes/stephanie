@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import copy
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional
-import time
 
 from stephanie.components.gap.io.storage import GapStorageService
 

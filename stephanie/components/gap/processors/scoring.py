@@ -1,18 +1,23 @@
 from __future__ import annotations
-import asyncio, hashlib, logging
-from typing import Any, Dict, List, Tuple, Callable, Optional
-from tqdm import tqdm
+
+import asyncio
+import hashlib
+import logging
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
+from stephanie.components.gap.io.manifest import GapRunManifest
+from stephanie.components.gap.models import GapConfig, TripleSample
+from stephanie.components.gap.shared_scm import (SCM_COLUMNS, scm_from_vector,
+                                                 scm_row)
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
-from stephanie.components.gap.models import GapConfig, TripleSample 
-from stephanie.components.gap.io.manifest import GapRunManifest
-from stephanie.components.gap.shared_scm import scm_from_vector, scm_row, SCM_COLUMNS
 from stephanie.utils.progress_mixin import ProgressMixin
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +32,8 @@ class ScoringProcessor(ProgressMixin):
 
     # ---------- public API --------------------------------------------------
     async def prepare_samples(self, dimensions: List[str], memory) -> Dict[str, List[TripleSample]]:
-        from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
+        from stephanie.scoring.training.preference_pair_builder import \
+            PreferencePairBuilder
         pb = PreferencePairBuilder(memory, self.logger)
         by_dim: Dict[str, List[TripleSample]] = {}
         for d in dimensions:

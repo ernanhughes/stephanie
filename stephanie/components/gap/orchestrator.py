@@ -2,28 +2,22 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Callable
+from typing import Any, Callable, Dict
 
-from stephanie.components.gap.models import GapConfig
-from stephanie.components.gap.io.storage import GapStorageService
+from stephanie.components.gap.io.data_retriever import (DataRetriever,
+                                                        RetrieverConfig)
 from stephanie.components.gap.io.manifest import ManifestManager
-from stephanie.components.gap.io.data_retriever import (
-    DataRetriever,
-    RetrieverConfig,
-)
-from stephanie.components.gap.processors.scoring import ScoringProcessor
+from stephanie.components.gap.io.storage import GapStorageService
+from stephanie.components.gap.models import GapConfig
 from stephanie.components.gap.processors.analysis import AnalysisProcessor
-from stephanie.components.gap.processors.calibration import (
-    CalibrationProcessor,
-)
+from stephanie.components.gap.processors.calibration import \
+    CalibrationProcessor
 from stephanie.components.gap.processors.report import ReportBuilder
+from stephanie.components.gap.processors.scoring import ScoringProcessor
+from stephanie.components.gap.processors.significance import (
+    SignificanceConfig, SignificanceProcessor)
 from stephanie.components.gap.services.scm_term_head import SCMTermHeadService
 from stephanie.utils.progress_mixin import ProgressMixin
-
-from stephanie.components.gap.processors.significance import (
-    SignificanceProcessor,
-    SignificanceConfig,
-)
 
 _logger = logging.getLogger(__name__)
 

@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, List, Mapping, Optional
-from stephanie.services.service_protocol import Service
 
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-import time
+
+from stephanie.services.service_protocol import Service
 
 _logger = logging.getLogger(__name__)
 

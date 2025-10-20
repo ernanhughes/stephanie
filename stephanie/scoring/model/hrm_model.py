@@ -27,7 +27,7 @@ Date: 2024
 from __future__ import annotations
 
 import logging
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn

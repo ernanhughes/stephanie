@@ -1,9 +1,13 @@
 # stephanie/services/progress_service.py
 from __future__ import annotations
-import time, threading
+
+import threading
+import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Callable, Iterable, Iterator
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional
+
 from stephanie.services.service_protocol import Service
+
 
 @dataclass
 class ProgressTask:

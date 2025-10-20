@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict
+
 import numpy as np
 
 from stephanie.components.gap.models import GapConfig
-
 
 logger = logging.getLogger(__name__)
 

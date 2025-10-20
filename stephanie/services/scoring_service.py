@@ -77,18 +77,26 @@ class ScoringService(Service):
         self.container = container
         self.logger = logger
         self.embedding_type = self.memory.embedding.name
-        self._scorers: Dict[str, BaseScorer] = {}   # name -> scorer instance
 
-        # Deter Hello That's Hey Cortana mine which scorers to enable:
-        # 1) explicit list in cfg.enabled_scorers
-        # 2) else all keys present under cfg.scorer.*
+        # runtime cache of *initialized* scorers
+        self._scorers: Dict[str, BaseScorer] = {}    # name -> scorer (initialized)
+
+        # keep raw scorer configs here for lazy instantiation
+        self._scorer_cfgs: Dict[str, Dict[str, Any]] = {}  # name -> cfg
+
+        # simple per-scorer lock to avoid double inits under concurrency
+        import threading
+        self._scorer_locks: Dict[str, threading.Lock] = {}
+
         self.enabled_scorer_names: List[str] = self._resolve_scorer_names()
 
-        # Auto-register scorers from configuration
-        self.register_from_cfg(self.enabled_scorer_names)
+        # register configs only (no model loading yet)
+        self._register_cfgs(self.enabled_scorer_names)
 
-        _logger.debug("ScoringServiceInitialized: enabled=%s registered=%s",
-            self.enabled_scorer_names, list(self._scorers.keys()))
+        _logger.debug(
+            "ScoringServiceInitialized(lazy): enabled=%s available_cfgs=%s",
+            self.enabled_scorer_names, list(self._scorer_cfgs.keys())
+        )
 
 
     @property
@@ -118,15 +126,25 @@ class ScoringService(Service):
         """
         return {
             "status": "healthy",
-            "model_count": len(self.models),
-            "last_updated": self.last_model_update.isoformat() if self.last_model_update else None,
-            "dimensions": list(self.models.keys())
+            "configured": list(self._scorer_cfgs.keys()),
+            "initialized": list(self._scorers.keys()),
+            "model_count_initialized": len(self._scorers),
+            "last_updated": getattr(self, "last_model_update", None) and self.last_model_update.isoformat(),
+            "dimensions": list(self._scorers.keys()),   # optional/legacy field
         }
+
     
     def shutdown(self) -> None:
         """Cleanly shut down the service and release resources."""
-        self.models = {}
-        self.logger.log("ScoringServiceShutdown", {"status": "complete"})
+        for _, s in self._scorers.items():
+            try:
+                close = getattr(s, "close", None)
+                if callable(close):
+                    close()
+            except Exception:
+                pass
+        self._scorers.clear()
+        self.logger and self.logger.log("ScoringServiceShutdown", {"status": "complete"})
 
     # ------------------------------------------------------------------ #
     # Initialization / registration
@@ -183,6 +201,25 @@ class ScoringService(Service):
         if not names:
             names = ["hrm", "sicql"]
         return names
+
+    def _register_cfgs(self, names: List[str]) -> None:
+        """
+        Record scorer configs for lazy initialization later.
+        """
+        for name in names:
+            try:
+                if name in self._scorer_cfgs:
+                    continue
+                cfg_block = self.cfg.scorer[name]
+                self._scorer_cfgs[name] = cfg_block
+                # create a lock for this scorer
+                import threading
+                self._scorer_locks.setdefault(name, threading.Lock())
+                if self.logger:
+                    self.logger.log("ScoringServiceScorerConfigRegistered", {"name": name})
+            except Exception as e:
+                if self.logger:
+                    self.logger.log("ScoringServiceRegisterCfgError", {"name": name, "error": str(e)})
 
     def register_from_cfg(self, names: List[str]) -> None:
         """
@@ -250,12 +287,46 @@ class ScoringService(Service):
                     ContrastiveRankerScorer
                 return ContrastiveRankerScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name.startswith("hf_") or name in ("hf_tiny", "hf_mistral", "hf_hrm"):
-                from stephanie.scoring.scorer.hf_scorer import HuggingFaceScorer
+                from stephanie.scoring.scorer.hf_scorer import \
+                    HuggingFaceScorer
                 return HuggingFaceScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
         except Exception as e:
             if self.logger:
                 self.logger.log("ScoringServiceBuildScorerError", {"name": name, "error": str(e)})
         return None
+
+    def _get_or_init_scorer(self, name: str) -> BaseScorer:
+        """
+        Return an initialized scorer. If it's not built yet, build it now (once).
+        """
+        # fast path
+        s = self._scorers.get(name)
+        if s is not None:
+            return s
+
+        # check we even have a config for it
+        cfg = self._scorer_cfgs.get(name)
+        if cfg is None:
+            raise ValueError(f"Scorer '{name}' not registered (no config)")
+
+        # double-checked locking
+        lock = self._scorer_locks.get(name)
+        if lock is None:
+            import threading
+            lock = self._scorer_locks[name] = threading.Lock()
+
+        with lock:
+            s = self._scorers.get(name)
+            if s is not None:
+                return s
+            # build now
+            scorer = self._build_scorer(name, cfg)
+            if scorer is None:
+                raise RuntimeError(f"Failed to initialize scorer '{name}'")
+            self._scorers[name] = scorer
+            if self.logger:
+                self.logger.log("ScoringServiceScorerInitialized", {"name": name})
+            return scorer
 
     def register_scorer(self, name: str, scorer: Any) -> None:
         """
@@ -306,7 +377,7 @@ class ScoringService(Service):
             Does not persist automatically. Extracts goal from context and passes
             it to the scorer for goal-conditioned scoring.
         """
-        scorer = self._scorers.get(scorer_name)
+        scorer = self._get_or_init_scorer(scorer_name)
         if not scorer:
             raise ValueError(f"Scorer '{scorer_name}' not registered")
 
@@ -610,14 +681,23 @@ class ScoringService(Service):
             - ready: Whether the model is ready for use
             - info: Additional model information if available
         """
-        s = self._scorers.get(name)
-        if not s:
-            return {"name": name, "registered": False, "ready": False, "info": None}
-        has_model = getattr(s, "has_model", None)
-        get_info = getattr(s, "get_model_info", None)
-        ready = bool(has_model and has_model())
-        info = get_info() if callable(get_info) else None
-        return {"name": name, "registered": True, "ready": ready, "info": info}
+        cfg_present = name in self._scorer_cfgs
+        initialized = name in self._scorers
+        info = None
+        ready = False
+        if initialized:
+            s = self._scorers[name]
+            has_model = getattr(s, "has_model", None)
+            ready = bool(has_model and has_model())
+            get_info = getattr(s, "get_model_info", None)
+            info = get_info() if callable(get_info) else None
+        return {
+            "name": name,
+            "registered": cfg_present,
+            "initialized": initialized,
+            "ready": ready,
+            "info": info,
+        }
 
     def ensure_ready(self, required: list[str], auto_train: bool = False, fail_on_missing: bool = False) -> dict:
         """
@@ -636,25 +716,27 @@ class ScoringService(Service):
         """
         report = {}
         for name in required or []:
+            if name not in self._scorer_cfgs:
+                msg = {"scorer": name, "reason": "not_registered"}
+                self.logger and self.logger.log("ScoringModelMissing", msg)
+                st = {"name": name, "registered": False, "initialized": False, "ready": False, "error": "not_registered"}
+                report[name] = st
+                if fail_on_missing:
+                    raise RuntimeError(f"Required scorer '{name}' missing config")
+                continue
+
+            # Only build if we must guarantee readiness
             st = self.get_model_status(name)
-            if not st["registered"]:
-                self.logger and self.logger.log("ScoringModelMissing", {"scorer": name, "reason": "not_registered"})
-                st["error"] = "not_registered"
-            if not st["ready"]:
-                if auto_train:
-                    trainer = getattr(self._scorers.get(name), "train", None)
-                    if callable(trainer):
-                        try:
-                            trainer()  # allow scorer to load/fit its model
-                            st = self.get_model_status(name)
-                        except Exception as e:
-                            st["error"] = f"train_failed: {e}"
-                            self.logger and self.logger.log("ScoringModelTrainFailed", {"scorer": name, "error": str(e)})
-                    else:
-                        st["error"] = "no_train_method"
-                        self.logger and self.logger.log("ScoringModelNoTrain", {"scorer": name})
-                if fail_on_missing and not st["ready"]:
-                    raise RuntimeError(f"Required scorer '{name}' not ready: {st}")
+            if (auto_train or fail_on_missing) and not st["initialized"]:
+                try:
+                    self._get_or_init_scorer(name)  # builds now
+                    st = self.get_model_status(name)
+                except Exception as e:
+                    st["error"] = f"init_failed: {e}"
+                    self.logger and self.logger.log("ScoringModelInitFailed", {"scorer": name, "error": str(e)})
+                    if fail_on_missing:
+                        raise
+
             report[name] = st
         self.logger and self.logger.log("ScoringEnsureReadyReport", report)
         return report
@@ -710,7 +792,7 @@ class ScoringService(Service):
             Uses scorer's native compare method if available, otherwise falls back
             to aggregate scoring. Applies goal similarity tie-breaking if margin is provided.
         """
-        scorer = self._scorers.get(scorer_name)
+        scorer = self._get_or_init_scorer(scorer_name)
         if not scorer:
             raise ValueError(f"No scorer registered under '{scorer_name}'")
 

@@ -1,7 +1,9 @@
 # stephanie/components/gap/shared_scm.py
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Tuple
+
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 
 # ----------------------------

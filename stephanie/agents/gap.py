@@ -16,29 +16,28 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
+import logging
+import os
+import shutil
+import time
 # [S1] Imports & constants -----------------------------------------------------
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import asyncio
-import hashlib
-import shutil
-import json
-import logging
-import os
-import time
-
 import matplotlib
 import matplotlib.pyplot as plt
-
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable, ScorableType
-from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.services.zeromodel_service import ZeroModelService

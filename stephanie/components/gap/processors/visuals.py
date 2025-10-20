@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, List, Tuple
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Which SCM columns count as Tier-1 core dims (for radar plot)
 CORE5 = [

@@ -1,8 +1,9 @@
 # stephanie/utils/lru_cache.py
 from __future__ import annotations
+
 from collections import OrderedDict
 from threading import RLock
-from typing import Generic, TypeVar, Optional, Iterable
+from typing import Generic, Iterable, Optional, TypeVar
 
 K = TypeVar("K")
 V = TypeVar("V")

@@ -1,11 +1,15 @@
 # stephanie/components/gap/processors/significance.py
 from __future__ import annotations
+
 import json
-import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Dict, Iterable, List
+
+import numpy as np
+
 from stephanie.utils.json_sanitize import dumps_safe
-from typing import Any, Dict, List, Iterable
+
 
 def _save_json(p: Path, obj):
     p.parent.mkdir(parents=True, exist_ok=True)

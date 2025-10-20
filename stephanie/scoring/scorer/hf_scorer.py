@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import math
 import os
 from typing import Any, Dict, List, Optional
@@ -374,6 +375,52 @@ class HuggingFaceScorer(BaseScorer):
     def _to_bits(self, nats: float) -> float:
         # bits = nats / ln(2)
         return float(nats / math.log(2.0))
+
+
+    def close(self):
+        """
+        Hard-unload the model to free VRAM and RAM.
+        """
+        try:
+            # Detach hooks / peft / LoRA if any
+            for attr in ("peft_model", "lora_model"):
+                m = getattr(self, attr, None)
+                if m is not None:
+                    try:
+                        m.cpu()
+                    except Exception:
+                        pass
+                    setattr(self, attr, None)
+
+            # Move to CPU first (helps when some params are still referenced)
+            if getattr(self, "model", None) is not None:
+                try:
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+            # Clear refs
+            self.model = None
+
+            # Tokenizer is small but free it too
+            if getattr(self, "tokenizer", None) is not None:
+                self.tokenizer = None
+
+            # If using accelerate’s offload state / hooks, clean them
+            try:
+                offload = getattr(self, "_cpu_offload", None)
+                if offload and hasattr(offload, "teardown"):
+                    offload.teardown()
+            except Exception:
+                pass
+
+            # Run full collection + CUDA cache clear
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()  # helps with some driver versions
+        except Exception as e:
+            self.logger and self.logger.log("HFScorerCloseError", {"error": str(e)})
+
 
     def _load_calibration(self):
         self.calib = None

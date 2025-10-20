@@ -1,10 +1,10 @@
 # stephanie/components/gap/component.py
 from __future__ import annotations
 
-from dataclasses import asdict
 import logging
-from typing import Any, Dict
+from dataclasses import asdict
 from pathlib import Path
+from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.gap.models import GapConfig

@@ -1,4 +1,5 @@
 import abc
+import logging
 from typing import Any, Dict, List, Protocol
 
 import torch
@@ -6,7 +7,6 @@ import torch
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.model_locator_mixin import ModelLocatorMixin
-import logging
 
 _logger = logging.getLogger(__name__)
 

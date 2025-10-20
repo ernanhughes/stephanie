@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -14,17 +15,15 @@ from typing import Any, Callable, Dict, List, Optional
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats as spstats  # optional, but nice if available
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer
-from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.zeromodel.vpm_phos import robust01
 
 from stephanie.services.event_service import EventService
 from stephanie.services.service_protocol import Service
-import scipy.stats as spstats  # optional, but nice if available
-
-from collections import defaultdict
+from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.zeromodel.vpm_phos import robust01
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")

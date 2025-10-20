@@ -1,6 +1,8 @@
 # stephanie/scoring/model/mrq_model.py
 from __future__ import annotations
+
 import torch
+
 
 class MRQModel:
     def __init__(self, encoder, predictor, embedding_store, device="cpu"):
