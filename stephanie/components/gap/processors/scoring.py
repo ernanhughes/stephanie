@@ -37,7 +37,7 @@ class ScoringProcessor(ProgressMixin):
         pb = PreferencePairBuilder(memory, self.logger)
         by_dim: Dict[str, List[TripleSample]] = {}
         for d in dimensions:
-            pairs = pb.get_training_pairs_by_dimension(dimension=d)
+            pairs = pb.get_training_pairs_by_dimension(dimension=d, text_max=2000)
             samples = pairs.get(d, [])
             by_dim[d] = self._flatten_samples(samples, d)
         return self._dedupe(by_dim)
@@ -89,115 +89,155 @@ class ScoringProcessor(ProgressMixin):
 
         return result
 
+
+    async def _score_model_pass(
+        self,
+        *,
+        model_label: str,                 # "hrm" or "tiny"
+        worker: MetricsWorkerInline,
+        triples: List[TripleSample],
+        timeline_id: str,
+        task_name: str,
+    ) -> Dict[str, Any]:
+        """Score ALL samples with ONE model to avoid VRAM thrash."""
+        zm = self.container.get("zeromodel")
+        vpm_worker = VPMWorkerInline(zm, self.logger)
+
+        zm.timeline_open(run_id=timeline_id)
+
+        names: List[str] = []
+        rows: List[List[float]] = []
+        scm_rows: List[List[float]] = []
+        rows_for_df: List[Dict[str, float]] = []
+        keep_mask: List[bool] = []
+        kept_indices: List[int] = []
+
+        log_every = max(1, self.config.progress_log_every)
+
+        with tqdm(total=len(triples), desc=task_name, unit="turn") as pbar:
+            for i, triple in enumerate(triples):
+                scorable = Scorable(triple.output_text, ScorableType.CONVERSATION_TURN)
+
+                # same guard both passes so masks line up
+                if len(triple.goal_text) > 4000 or len(scorable.text) > 4000:
+                    keep_mask.append(False)
+                    pbar.update(1)
+                    continue
+
+                metrics = await worker.score(scorable, triple.goal_text, timeline_id)
+
+                vec_raw = self._to_vector(metrics)
+                scm = scm_from_vector(vec_raw, model_prefix=model_label)
+                merged = self._merge_for_timeline(metrics, scm)
+
+                # timeline
+                vpm_worker.append(timeline_id, triple.node_id, merged)
+
+                vec = merged["vector"]
+                if not names:
+                    names = list(vec.keys())
+                rows.append(self._align_row(vec, names))
+                scm_rows.append(scm_row(scm))
+
+                # PHOS row (model side)
+                r = {"node_id": triple.node_id}
+                for d in self.config.dimensions:
+                    r[f"{model_label}.{d}"] = float(scm.get(f"scm.{d}.score01", 0.0))
+                rows_for_df.append(r)
+
+                keep_mask.append(True)
+                kept_indices.append(i)
+
+                if ((i + 1) % log_every) == 0 or (i + 1) == len(triples):
+                    self.logger.log("ScoringProgress", {
+                        "model": model_label, "processed": i + 1, "total": len(triples)
+                    })
+                pbar.update(1)
+                await asyncio.sleep(0)
+
+        # finalize GIF under standard visuals dir
+        out_dir = str(self.config.base_dir / timeline_id.split("_")[0] / "visuals")
+        hrm_or_tiny_gif = await vpm_worker.finalize(
+            timeline_id, f"{out_dir}/vpm_phos_run_{timeline_id}.gif"
+        )
+
+        return {
+            "names": names,
+            "rows": np.asarray(rows, np.float32),
+            "scm_rows": np.asarray(scm_rows, np.float32),
+            "rows_for_df": rows_for_df,
+            "keep_mask": np.array(keep_mask, dtype=bool),
+            "kept_indices": kept_indices,
+            "gif": hrm_or_tiny_gif,
+        }
+
     # ---------- core pipeline ----------------------------------------------
     async def _score_all_triples(
         self,
         triples_data: Dict[str, List[TripleSample]],
         hrm_worker, tiny_worker, vpm_worker, run_id: str,
     ) -> Dict[str, Any]:
-
-        # 0) materialize list
+        # 0) flatten in a stable order used by both passes
         all_triples: List[TripleSample] = [t for ts in triples_data.values() for t in ts]
         T = len(all_triples)
 
-        task = f"scoring:{run_id}"
-        self.pstart(task, total=T, meta={"dims": len(triples_data), "console_echo": False})
+        overall = f"scoring:{run_id}"
+        self.pstart(overall, total=T*2, meta={"dims": len(triples_data), "passes": 2, "console_echo": False})
 
-        # 1) timelines
-        zm = self.container.get("zeromodel")
+        # --- PASS 1: HRM only
         hrm_tl = f"{run_id}_hrm"
+        hrm_res = await self._score_model_pass(
+            model_label="hrm",
+            worker=hrm_worker,
+            triples=all_triples,
+            timeline_id=hrm_tl,
+            task_name=f"{overall}:hrm",
+        )
+
+        # Unload HuggingFace models (free VRAM) before loading Tiny
+        # This is the critical change that prevents repeated OOM.
+        self._unload_hf_scorers()
+
+        # --- PASS 2: Tiny only
         tiny_tl = f"{run_id}_tiny"
-        zm.timeline_open(run_id=hrm_tl)
-        zm.timeline_open(run_id=tiny_tl)
+        tiny_res = await self._score_model_pass(
+            model_label="tiny",
+            worker=tiny_worker,
+            triples=all_triples,
+            timeline_id=tiny_tl,
+            task_name=f"{overall}:tiny",
+        )
 
-        # 2) accumulators
-        hrm_names: List[str] = []
-        tiny_names: List[str] = []
-        hrm_rows: List[List[float]] = []
-        tiny_rows: List[List[float]] = []
+        # Update structured progress
+        self.ptick(overall, done=T*2, total=T*2)
 
-        hrm_scm_rows: List[List[float]] = []
-        tiny_scm_rows: List[List[float]] = []
+        # --- Align common subset of rows (both passes must have kept them)
+        hrm_keep = hrm_res["keep_mask"]
+        tny_keep = tiny_res["keep_mask"]
+        if hrm_keep.shape != tny_keep.shape:
+            raise RuntimeError("Internal: mask shapes differ between models.")
+        both_keep_mask = hrm_keep & tny_keep
+        kept_idx = np.nonzero(both_keep_mask)[0].tolist()
 
-        rows_for_df: List[Dict[str, float]] = []  # PHOS-friendly per turn
+        # Build index maps from original -> compacted row within each pass
+        hrm_idx_map = {orig: j for j, orig in enumerate(hrm_res["kept_indices"])}
+        tny_idx_map = {orig: j for j, orig in enumerate(tiny_res["kept_indices"])}
 
-        log_every = max(1, self.config.progress_log_every)
+        def _select_rows(pass_rows: np.ndarray, idx_map: Dict[int,int], orig_idx: List[int]) -> np.ndarray:
+            if pass_rows.size == 0 or not orig_idx:
+                return np.zeros((0, 0), dtype=np.float32)
+            sel = [idx_map[i] for i in orig_idx if i in idx_map]
+            return pass_rows[sel, :] if sel else np.zeros((0, pass_rows.shape[1]), dtype=pass_rows.dtype)
 
-        with tqdm(total=T, desc=task, unit="turn") as pbar:
-            for i, triple in enumerate(all_triples):
-                scorable = Scorable(triple.output_text, ScorableType.CONVERSATION_TURN)
+        # matrices
+        hrm_names = hrm_res["names"]
+        tiny_names = tiny_res["names"]
+        hrm_matrix_raw  = _select_rows(hrm_res["rows"],  hrm_idx_map, kept_idx)
+        tiny_matrix_raw = _select_rows(tiny_res["rows"], tny_idx_map, kept_idx)
 
-                # score both models
-                if len(triple.goal_text) > 4000 or len(scorable.text) > 4000:
-                    self.logger.log("ScoringSkipped", {
-                        "node_id": triple.node_id,
-                        "dimension": triple.dimension,
-                        "reason": "input_too_large",
-                        "goal_length": len(triple.goal_text),
-                        "output_length": len(triple.output_text),
-                    })
-                    continue
-                hrm_metrics = await hrm_worker.score(scorable, triple.goal_text, hrm_tl)
-                tiny_metrics = await tiny_worker.score(scorable, triple.goal_text, tiny_tl)
-
-                # ---- extract flat vectors from RAW metrics
-                h_vec_raw = self._to_vector(hrm_metrics)
-                t_vec_raw = self._to_vector(tiny_metrics)
-
-                # ---- build SCM dicts (source of truth for aligned heads)
-                h_scm = scm_from_vector(h_vec_raw, model_prefix="hrm")
-                t_scm = scm_from_vector(t_vec_raw, model_prefix="tiny")
-
-                # ---- merge for timeline (and for downstream vector usage)
-                hrm_for_tl  = self._merge_for_timeline(hrm_metrics, h_scm)
-                tiny_for_tl = self._merge_for_timeline(tiny_metrics, t_scm)
-                vpm_worker.append(hrm_tl, triple.node_id, hrm_for_tl)
-                vpm_worker.append(tiny_tl, triple.node_id, tiny_for_tl)
-
-                # >>> use the MERGED vectors everywhere from here on <<<
-                h_vec = hrm_for_tl["vector"]
-                t_vec = tiny_for_tl["vector"]
-
-                if not hrm_names:
-                    hrm_names = list(h_vec.keys())
-                if not tiny_names:
-                    tiny_names = list(t_vec.keys())
-
-
-                hrm_rows.append(self._align_row(h_vec, hrm_names))
-                tiny_rows.append(self._align_row(t_vec, tiny_names))
-                hrm_scm_rows.append(scm_row(h_scm))
-                tiny_scm_rows.append(scm_row(t_scm))
-
-                # PHOS rows (per-dim stable)
-                phos_row = {"node_id": triple.node_id}
-                for d in self.config.dimensions:
-                    phos_row[f"hrm.{d}"]  = float(h_scm.get(f"scm.{d}.score01", 0.0))
-                    phos_row[f"tiny.{d}"] = float(t_scm.get(f"scm.{d}.score01", 0.0))
-                rows_for_df.append(phos_row)
-
-                # progress (structured + optional legacy log)
-                if ((i + 1) % log_every) == 0 or (i + 1) == T:
-                    self.logger.log("ScoringProgress", {"processed": i + 1, "total": T})
-                self.ptick(task, done=i + 1, total=T, extra={"dim": triple.dimension, "node_id": triple.node_id})
-
-                pbar.update(1)
-                await asyncio.sleep(0)
-
-        # 3) finalize timelines (GIFs)
-        out_dir = str(self.config.base_dir / run_id / "visuals")
-        hrm_gif = await vpm_worker.finalize(hrm_tl, f"{out_dir}/vpm_phos_run_{hrm_tl}.gif")
-        tiny_gif = await vpm_worker.finalize(tiny_tl, f"{out_dir}/vpm_phos_run_{tiny_tl}.gif")
-
-        # 4) convert to matrices
-        hrm_matrix_raw = np.asarray(hrm_rows, dtype=np.float32)
-        tiny_matrix_raw = np.asarray(tiny_rows, dtype=np.float32)
-
-        # 5) pick preferred indices and align (aggregate + per-dim)
-        # NOTE: ensure _preferred_indices falls back to 'scm.*.score01' keys.
-        pref_hrm = self._preferred_indices(hrm_names, "hrm", self.config.dimensions)
+        # preferred columns (aggregate + dims) → shared order
+        pref_hrm = self._preferred_indices(hrm_names,  "hrm",  self.config.dimensions)
         pref_tny = self._preferred_indices(tiny_names, "tiny", self.config.dimensions)
-
         canonical_order = ["aggregate"] + list(self.config.dimensions)
         shared = [k for k in canonical_order if k in pref_hrm and k in pref_tny]
         if not shared:
@@ -208,52 +248,70 @@ class ScoringProcessor(ProgressMixin):
                 "dims": self.config.dimensions,
             })
             raise RuntimeError("No shared preferred metrics across models.")
-
         h_cols = [pref_hrm[k] for k in shared]
         t_cols = [pref_tny[k] for k in shared]
-        hrm_matrix = hrm_matrix_raw[:, h_cols]
+        hrm_matrix  = hrm_matrix_raw[:, h_cols]
         tiny_matrix = tiny_matrix_raw[:, t_cols]
 
-        # 6) persist artifacts
+        # SCM matrices (canonical order)
+        hrm_scm_sel  = _select_rows(hrm_res["scm_rows"],  hrm_idx_map, kept_idx)
+        tiny_scm_sel = _select_rows(tiny_res["scm_rows"], tny_idx_map, kept_idx)
+
+        # PHOS rows merged
+        def _select_rows_for_df(rows_for_df: List[Dict[str,float]], idx_map: Dict[int,int], orig_idx: List[int]) -> List[Dict[str,float]]:
+            out = []
+            for i in orig_idx:
+                j = idx_map.get(i)
+                if j is not None:
+                    out.append(rows_for_df[j])
+            return out
+
+        hrm_df_rows  = _select_rows_for_df(hrm_res["rows_for_df"],  hrm_idx_map, kept_idx)
+        tiny_df_rows = _select_rows_for_df(tiny_res["rows_for_df"], tny_idx_map, kept_idx)
+        merged_rows: List[Dict[str, float]] = []
+        for rh, rt in zip(hrm_df_rows, tiny_df_rows):
+            row = {"node_id": rh.get("node_id") or rt.get("node_id")}
+            row.update({k:v for k,v in rh.items() if k != "node_id"})
+            row.update({k:v for k,v in rt.items() if k != "node_id"})
+            merged_rows.append(row)
+        df_rows = pd.DataFrame(merged_rows)
+
+        # GIFs (already saved by each pass)
+        hrm_gif = hrm_res["gif"]
+        tiny_gif = tiny_res["gif"]
+
+        # Persist artifacts (same locations & tags as before)
         storage = self.container.get("gap_storage")
         storage.save_matrix(hrm_matrix, shared, run_id, tag="hrm")
         storage.save_matrix(tiny_matrix, shared, run_id, tag="tiny")
-        storage.save_matrix(np.asarray(hrm_scm_rows, np.float32), SCM_COLUMNS, run_id, tag="hrm_scm")
-        storage.save_matrix(np.asarray(tiny_scm_rows, np.float32), SCM_COLUMNS, run_id, tag="tiny_scm")
+        storage.save_matrix(hrm_scm_sel.astype(np.float32),  SCM_COLUMNS, run_id, tag="hrm_scm")
+        storage.save_matrix(tiny_scm_sel.astype(np.float32), SCM_COLUMNS, run_id, tag="tiny_scm")
 
-        # rows_for_df for PHOS
-        df_rows = pd.DataFrame(rows_for_df)
         raw_paths = storage.save_rows_df(df_rows, run_id, name="rows_for_df")
 
-        # --- save row-level provenance so we can trace loops back to text ---
+        # row-level provenance for the *kept* rows
         provenance = []
-        for i, triple in enumerate(all_triples):
-            prov_row = {
-                "row_index": i,
-                "node_id": triple.node_id,
-                "dimension": triple.dimension,
-                "goal_text": triple.goal_text,
-                "output_text": triple.output_text,
-            }
-            provenance.append(prov_row)
+        for row_idx, orig_i in enumerate(kept_idx):
+            t = all_triples[orig_i]
+            provenance.append({
+                "row_index": row_idx,
+                "orig_index": orig_i,
+                "node_id": t.node_id,
+                "dimension": t.dimension,
+                "goal_text": t.goal_text,
+                "output_text": t.output_text,
+            })
+        storage.save_json(run_id, "raw", "row_provenance.json", provenance)
 
-        storage.save_json(
-            run_id,
-            "raw",
-            "row_provenance.json",
-            provenance
-        )
+        # Labels
         scoring_service = self.container.get("scoring")
-
         def _disp(n):
             s = scoring_service._scorers.get(n)
             return s.get_display_name() if s and hasattr(s, "get_display_name") else n
-
-        hrm_label = ", ".join(_disp(n) for n in self.config.hrm_scorers)
+        hrm_label  = ", ".join(_disp(n) for n in self.config.hrm_scorers)
         tiny_label = ", ".join(_disp(n) for n in self.config.tiny_scorers)
 
-        self.pdone(task, extra={"rows": T})
-
+        self.pdone(overall, extra={"rows": len(kept_idx)})
         return {
             "hrm_vectors": hrm_matrix,
             "tiny_vectors": tiny_matrix,
@@ -261,12 +319,12 @@ class ScoringProcessor(ProgressMixin):
             "hrm_label": hrm_label,
             "tiny_names": shared,
             "tiny_label": tiny_label,
-            "hrm_scm_matrix": np.asarray(hrm_scm_rows, np.float32),
-            "tiny_scm_matrix": np.asarray(tiny_scm_rows, np.float32),
+            "hrm_scm_matrix": hrm_scm_sel.astype(np.float32),
+            "tiny_scm_matrix": tiny_scm_sel.astype(np.float32),
             "scm_names": SCM_COLUMNS,
             "hrm_gif": hrm_gif,
             "tiny_gif": tiny_gif,
-            "triples_count": T,
+            "triples_count": len(kept_idx),
             "rows_for_df_path": str(storage.base_dir / run_id / "raw" / "rows_for_df.parquet"),
             **raw_paths,
         }
@@ -403,3 +461,43 @@ class ScoringProcessor(ProgressMixin):
             if idx is not None:
                 out[d] = idx
         return out
+
+
+
+    # --- VRAM / RAM cleanup helpers -----------------------------------------
+    def _unload_hf_scorers(self):
+        """
+        Best-effort unload of HuggingFace-based scorers to release VRAM/RAM.
+        Works if scorers expose .unload() or .close(); otherwise drop heavy attrs.
+        """
+        scoring = self.container.get("scoring")
+        for name, scorer in list(getattr(scoring, "_scorers", {}).items()):
+            try:
+                # Preferred explicit API if your scorer implements it
+                if hasattr(scorer, "unload") and callable(scorer.unload):
+                    scorer.unload()
+                elif hasattr(scorer, "close") and callable(scorer.close):
+                    scorer.close()
+
+                # Defensive: drop common heavy attrs
+                for attr in ("model", "tokenizer", "pipeline", "hf_model", "hf_tokenizer"):
+                    if hasattr(scorer, attr):
+                        try:
+                            setattr(scorer, attr, None)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        # Finally, ask CUDA/GC to give memory back
+        self._free_accelerator_memory()
+
+    def _free_accelerator_memory(self):
+        try:
+            import torch, gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+        except Exception:
+            pass

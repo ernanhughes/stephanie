@@ -1,7 +1,6 @@
 # config/scorer/hf_hrm/default.yaml
 name: hf_hrm
 model_type: hf
-display_name: TinyLlama-1.1B
 
 model_version: v1
 evaluator: hf
@@ -14,10 +13,12 @@ dimensions:
   - coverage
 
 # Choose a stronger model you can still run locally
-# model_name: meta-llama/Llama-3.2-3B-Instruct
-# model_alias: hf_hrm
-model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
-model_alias: hf_TinyLama
+model_name: meta-llama/Llama-3.2-3B-Instruct
+model_alias: Llama-3.2-3B
+display_name: Llama-3.2-3B-Instruct
+# model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+# model_alias: hf_TinyLama
+# display_name: TinyLlama-1.1B
 
 # device_map: auto
 device_map: cuda

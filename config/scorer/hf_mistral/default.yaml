@@ -22,9 +22,13 @@ dimensions:
 # model_alias: hf_Gemma-2
 # display_name: gemma-2-2b-it
 
-model_name: EleutherAI/pythia-160m
-model_alias: pythia-160m
-display_name: pythia-160m
+# model_name: mistralai/Mistral-7B-Instruct-v0.3
+model_name: mistralai/Mistral-7B-Instruct-v0.3
+model_alias: Mistral-7B
+display_name: Mistral-7B-Instruct-v0.3
+# model_name: EleutherAI/pythia-160m
+# model_alias: pythia-160m
+# display_name: pythia-160m
 
 # Runtime
 # device_map: auto
