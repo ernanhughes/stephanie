@@ -2,6 +2,7 @@
 
 import os
 
+from stephanie.scoring.scorable import Scorable
 import torch
 
 from stephanie.data.plan_trace import PlanTrace
@@ -147,8 +148,9 @@ class EpistemicPlanHRMScorer(BaseScorer):
                     },
                 )
 
-    def score(
-        self, plan_trace: PlanTrace, dimensions: list[str]
+
+    def _score_core(self, 
+        context: dict, plan_trace: Scorable, dimensions: list[str]
     ) -> ScoreBundle:
         """
         Scores a PlanTrace using the trained Epistemic Plan HRM model(s).

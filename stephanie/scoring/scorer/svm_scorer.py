@@ -35,7 +35,7 @@ class SVMScorer(BaseScorer):
             self.tuners[dim] = tuner
             self.metas[dim] = load_json(locator.meta_file())
 
-    def score(self, context: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
         goal = context.get(GOAL, {})
         goal_text = goal.get(GOAL_TEXT, "")
         ctx_emb = np.asarray(self.memory.embedding.get_or_create(goal_text))

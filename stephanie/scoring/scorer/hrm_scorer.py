@@ -124,7 +124,7 @@ class HRMScorer(BaseScorer):
     # -------------------------------------------------------------------------
     # Scoring
     # -------------------------------------------------------------------------
-    def score(self, context: dict, scorable: Scorable, dimensions: List[str]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable: Scorable, dimensions: List[str]) -> ScoreBundle:
         """
         Scores a single scorable item against a goal using the HRM models per dimension.
         Returns: ScoreBundle with ScoreResult for each dimension.

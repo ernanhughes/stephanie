@@ -359,6 +359,20 @@ class ScoringService(Service):
                 self.logger.log("ScoringServiceScorerInitialized", {"name": name})
             return scorer
 
+    def get_model_name(self, scorer_name: str) -> str:
+        """
+        Get the model name for the specified scorer.
+        
+        Args:
+            scorer_name: Name of the registered scorer
+        Returns:
+            Model name as a string
+        """                
+        cfg = self._scorer_cfgs.get(scorer_name)
+        if cfg is None:
+            raise ValueError(f"Scorer '{scorer_name}' not registered (no config)")
+        return cfg.get("model_alias", scorer_name)
+
     def register_scorer(self, name: str, scorer: Any) -> None:
         """
         Register a scorer instance with the service.

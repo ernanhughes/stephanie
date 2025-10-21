@@ -5,6 +5,7 @@ import logging
 from typing import Any, Dict, Tuple
 
 import numpy as np
+import time
 
 from stephanie.components.gap.models import GapConfig
 from stephanie.components.gap.processors.topology import (TopologyConfig,
@@ -29,7 +30,6 @@ class AnalysisProcessor(ProgressMixin):
         self._init_progress(container, logger)  # <-- ProgressService hookup
         _logger.debug(f"AnalysisProcessor initialized with config: {config}")
 
-    # Public API kept stable for orchestrator
     async def execute_analysis(
         self,
         scoring_results: Dict[str, Any],
@@ -40,6 +40,49 @@ class AnalysisProcessor(ProgressMixin):
         task = f"analysis:{run_id}"
         total_stages = 6  # frontier, delta, intensity, phos, scm_visuals, topology
         self.pstart(task, total=total_stages, meta={"run_id": run_id})
+
+        # --- NEW: small helpers to keep manifest logging DRY -------------------
+        def _m_start(stage_name: str, extra: dict | None = None):
+            if not manifest: 
+                return
+            manifest.stage_start(
+                stage_name,
+                total=None,
+                run_id=run_id,
+                status="running",
+                started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                **(extra or {}),
+            )
+
+        def _m_end(stage_name: str, status: str = "ok", artifacts: dict | None = None, extra: dict | None = None):
+            if not manifest:
+                return
+            manifest.stage_end(
+                stage_name,
+                status=status,
+                finished_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                artifacts=(artifacts or {}),
+                **(extra or {}),
+            )
+
+        def _pick_artifacts(d: dict) -> dict:
+            """Heuristic: keep paths to files/images that are useful for the manifest."""
+            out = {}
+            for k, v in (d or {}).items():
+                if isinstance(v, str) and any(v.lower().endswith(ext) for ext in (
+                    ".png", ".jpg", ".jpeg", ".webp", ".gif",
+                    ".json", ".npy", ".npz", ".parquet", ".csv", ".pdf"
+                )):
+                    out[k] = v
+                # lists of paths (e.g., scm images)
+                if isinstance(v, list) and v and all(isinstance(x, str) for x in v):
+                    if any(str(x).lower().endswith((".png",".json",".npy",".parquet",".gif",".jpg",".jpeg",".webp")) for x in v):
+                        out[k] = v
+                # nested dict with "paths"
+                if isinstance(v, dict) and "paths" in v and isinstance(v["paths"], dict):
+                    out[f"{k}_paths"] = v["paths"]
+            return out
+        # ----------------------------------------------------------------------
 
         _logger.debug(f"Starting analysis pipeline for run {run_id}")
         _logger.debug(f"Scoring results keys: {list(scoring_results.keys())}")
@@ -63,65 +106,79 @@ class AnalysisProcessor(ProgressMixin):
 
         # --- Frontier ---
         self.pstage(task, "frontier:start")
+        _m_start("analysis.frontier")
         try:
-            results["frontier"] = await self._perform_frontier(
-                zm,
-                hrm_matrix,
-                tiny_matrix,
-                run_id,
+            res = await self._perform_frontier(
+                zm, hrm_matrix, tiny_matrix, run_id,
                 scoring_results.get("hrm_label", "HRM"),
                 scoring_results.get("tiny_label", "Tiny"),
             )
+            results["frontier"] = res
             self.pstage(task, "frontier:done", status="ok")
+            _m_end("analysis.frontier", status="ok",
+                artifacts=_pick_artifacts(res),
+                extra={"summary": {k:v for k,v in res.items() if isinstance(v,(int,float,str))}})
         except Exception as e:
             _logger.error(f"Frontier analysis failed: {e}", exc_info=True)
             results["frontier"] = {"error": str(e)}
             self.pstage(task, "frontier:done", status="error", error=str(e))
+            _m_end("analysis.frontier", status="error", artifacts={"error": str(e)})
         done_stages += 1
         self.ptick(task, done=done_stages, total=total_stages)
 
         # --- Delta analysis ---
         self.pstage(task, "delta:start")
+        _m_start("analysis.delta")
         try:
-            results["delta_analysis"] = await self._perform_delta_analysis(
-                zm, hrm_matrix, tiny_matrix, hrm_names, tiny_names, run_id
-            )
+            res = await self._perform_delta_analysis(zm, hrm_matrix, tiny_matrix, hrm_names, tiny_names, run_id)
+            results["delta_analysis"] = res
             self.pstage(task, "delta:done", status="ok")
+            _m_end("analysis.delta", status="ok",
+                artifacts=_pick_artifacts(res),
+                extra={"metrics": {k:v for k,v in res.get("metrics", {}).items() if isinstance(v,(int,float))}})
         except Exception as e:
             _logger.error(f"Delta analysis failed: {e}", exc_info=True)
             results["delta_analysis"] = {"error": str(e)}
             self.pstage(task, "delta:done", status="error", error=str(e))
+            _m_end("analysis.delta", status="error", artifacts={"error": str(e)})
         done_stages += 1
         self.ptick(task, done=done_stages, total=total_stages)
 
         # --- Intensity report ---
         self.pstage(task, "intensity:start")
+        _m_start("analysis.intensity")
         try:
-            results["intensity"] = await self._generate_intensity_report(
-                zm, hrm_matrix, tiny_matrix, hrm_names, tiny_names, run_id
-            )
+            res = await self._generate_intensity_report(zm, hrm_matrix, tiny_matrix, hrm_names, tiny_names, run_id)
+            results["intensity"] = res
             self.pstage(task, "intensity:done", status="ok")
+            _m_end("analysis.intensity", status="ok", artifacts=_pick_artifacts(res))
         except Exception as e:
             _logger.error(f"Intensity report generation failed: {e}", exc_info=True)
             results["intensity"] = {"error": str(e)}
             self.pstage(task, "intensity:done", status="error", error=str(e))
+            _m_end("analysis.intensity", status="error", artifacts={"error": str(e)})
         done_stages += 1
         self.ptick(task, done=done_stages, total=total_stages)
 
         # --- PHOS analysis ---
         self.pstage(task, "phos:start")
+        _m_start("analysis.phos")
         try:
-            results["phos"] = await self._perform_phos_analysis(run_id)
+            res = await self._perform_phos_analysis(run_id)
+            results["phos"] = res
             self.pstage(task, "phos:done", status="ok")
+            _m_end("analysis.phos", status="ok", artifacts=_pick_artifacts(res))
         except Exception as e:
             _logger.error(f"PHOS analysis failed: {e}", exc_info=True)
             results["phos"] = {"error": str(e)}
             self.pstage(task, "phos:done", status="error", error=str(e))
+            _m_end("analysis.phos", status="error", artifacts={"error": str(e)})
         done_stages += 1
         self.ptick(task, done=done_stages, total=total_stages)
 
         # --- SCM visuals ---
         self.pstage(task, "scm_visuals:start")
+        _m_start("analysis.scm_visuals")
         try:
             hrm_scm = scoring_results.get("hrm_scm_matrix")
             tiny_scm = scoring_results.get("tiny_scm_matrix")
@@ -142,15 +199,18 @@ class AnalysisProcessor(ProgressMixin):
             img_paths = render_scm_images(hrm_scm, tiny_scm, scm_names, scm_dir, pos_label, neg_label)
             results["scm_visuals"] = img_paths
             self.pstage(task, "scm_visuals:done", status="ok", n_imgs=len(img_paths))
+            _m_end("analysis.scm_visuals", status="ok", artifacts={"images": img_paths})
         except Exception as e:
             _logger.error(f"SCM visualization failed: {e}", exc_info=True)
             results["scm_visuals"] = {"error": str(e)}
             self.pstage(task, "scm_visuals:done", status="error", error=str(e))
+            _m_end("analysis.scm_visuals", status="error", artifacts={"error": str(e)})
         done_stages += 1
         self.ptick(task, done=done_stages, total=total_stages)
 
         # --- Topology (UMAP + PH) ---
         self.pstage(task, "topology:start")
+        _m_start("analysis.topology")
         try:
             self.topology_processor = TopologyProcessor(
                 TopologyConfig(
@@ -168,21 +228,29 @@ class AnalysisProcessor(ProgressMixin):
                     dbscan_min_samples=5,
                     max_betti_dim=1,
                 ),
-                container=self.container,   # TopologyProcessor can use ProgressMixin too
+                container=self.container,
                 logger=self.logger,
             )
             topo_out = await self.topology_processor.run(run_id, base_dir=self.config.base_dir)
             results["topology"] = topo_out
             self.pstage(task, "topology:done", status="ok")
+            _m_end("analysis.topology", status="ok",
+                artifacts=_pick_artifacts(topo_out),
+                extra={"betti": topo_out.get("betti", {})})
         except Exception as e:
             _logger.error(f"Topology analysis failed: {e}", exc_info=True)
             results["topology"] = {"error": str(e)}
             self.pstage(task, "topology:done", status="error", error=str(e))
+            _m_end("analysis.topology", status="error", artifacts={"error": str(e)})
         done_stages += 1
         self.ptick(task, done=done_stages, total=total_stages)
 
         _logger.info(f"Analysis pipeline completed for run {run_id} with {len(results)} components")
         self.pdone(task, extra={"stages": done_stages})
+
+        if manifest:
+            results["manifest"] = manifest.to_dict()
+
         return results
 
     # ---------- Matrix resolution ----------

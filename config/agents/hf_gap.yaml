@@ -37,7 +37,7 @@ hf_gap:
     latent_dim: 128
     use_native_scores_as_inputs: false   # normalize to [0,1] before SCM if false
 
-  per_dim_cap: 100          # cap comparisons collected per dimension (prevents runaway)
+  per_dim_cap: 10          # cap comparisons collected per dimension (prevents runaway)
 
   # ---- Directories / artifacts ----
   gap_base_dir: "${hydra:runtime.cwd}/data/gap_runs"   # canonical run root

@@ -12,13 +12,18 @@ dimensions:
   - faithfulness
   - coverage
 
-# Choose a stronger model you can still run locally
-model_name: meta-llama/Llama-3.2-3B-Instruct
-model_alias: Llama-3.2-3B
-display_name: Llama-3.2-3B-Instruct
-# model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
-# model_alias: hf_TinyLama
-# display_name: TinyLlama-1.1B
+# Hugging Face model
+model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+model_alias: hf_TinyLama
+display_name: TinyLlama-1.1B
+# ----
+# model_name: meta-llama/Llama-3.2-3B-Instruct
+# model_alias: Llama-3.2-3B
+# display_name: Llama-3.2-3B-Instruct
+# ----
+
+
+
 
 # device_map: auto
 device_map: cuda
@@ -30,3 +35,12 @@ local_files_only: false
 offline: true
 low_cpu_mem_usage: true
 use_compile: false
+
+plugins:
+  - scm:
+      # optional: if your SCM service is registered under a nonstandard name
+      service_name: scm_service      # default resolution tries "scm" then "scm_service"
+      # optional: override ppl_range just for this scorer
+      ppl_range: [2.5, 28.0]
+      # optional: request token top-k payload inside the service (if implemented)
+      expose_token_dists_topk: 5

@@ -1,10 +1,12 @@
 # config/scorer/reward/default.yaml
 name: reward
+model_type: contrastive_ranker
+model_alias: Reward
+display_name: Reward
 
 margin: 0.05   # tie-break threshold
 goal_conditioned: true
 
-model_type: contrastive_ranker
 model_version: v1
 evaluator: contrastive_ranker
 target_type: document

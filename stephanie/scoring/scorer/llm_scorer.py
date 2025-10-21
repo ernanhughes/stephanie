@@ -30,7 +30,7 @@ class LLMScorer(BaseScorer):
     def name(self) -> str:
         return "llm"
 
-    def score(self, context:dict, scorable: Scorable, dimensions: list[dict], llm_fn=None) -> ScoreBundle:
+    def _score_core(self, context:dict, scorable: Scorable, dimensions: list[dict], llm_fn=None) -> ScoreBundle:
         """
         Scores a Scorable across multiple dimensions using an LLM.
         Returns a ScoreBundle object.

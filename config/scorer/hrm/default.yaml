@@ -1,6 +1,7 @@
 # config/scorer/hrm.yaml
 name: hrm
 model_type: hrm
+model_alias: HRM
 display_name: HRM
 model_version: v1
 evaluator: hrm

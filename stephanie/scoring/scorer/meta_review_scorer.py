@@ -23,7 +23,7 @@ class MetaReviewScorer(BaseScorer):
         self.mrq_scorer = MRQScorer(cfg, memory, container, logger)
         self.llm_scorer = LLMScorer(cfg, memory, container, logger)
 
-    def score(self, goal, hypothesis, dimensions):
+    def _score_core(self, goal, hypothesis, dimensions):
         mrq_scores = self.mrq_scorer.score(goal, hypothesis, dimensions)
 
         if self._needs_llm_fallback(mrq_scores, dimensions):

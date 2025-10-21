@@ -24,18 +24,21 @@ class MetricsWorkerInline:
     async def score(self, scorable: Scorable, goal_text: str, run_id: str) -> dict:
         ctx = {"goal": {"goal_text": goal_text}, "pipeline_run_id": run_id}
         vector, results = {}, {}
+        model_aliases = []
         for name in self.scorers:
             bundle = (self.scoring.score_and_persist if self.persist else self.scoring.score)(
                 scorer_name=name, scorable=scorable, context=ctx, dimensions=self.dimensions
             )
+            model_alias = self.scoring.get_model_name(name)
+            model_aliases.append(model_alias)
             agg = float(bundle.aggregate())
             per = {d: float(sr.score) for d, sr in bundle.results.items()}
             results[name] = {"aggregate": agg, "per_dimension": per}
 
             flat = bundle.flatten(include_scores=True, include_attributes=True, numeric_only=True)
             for k, v in flat.items():
-                vector[f"{name}.{k}"] = float(v)
-            vector[f"{name}.aggregate"] = agg
+                vector[f"{model_alias}.{k}"] = float(v)
+            vector[f"{model_alias}.aggregate"] = agg
 
 
             # yield to event loop so progress can flush in long runs
@@ -43,7 +46,7 @@ class MetricsWorkerInline:
 
         columns = sorted(vector.keys())
         values = [vector[c] for c in columns]
-        return {"columns": columns, "values": values, "vector": vector, "scores": results}
+        return {"model_alias": model_aliases, "columns": columns, "values": values, "vector": vector, "scores": results}
 
 
 

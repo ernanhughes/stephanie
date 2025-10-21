@@ -207,7 +207,7 @@ class ContrastiveRankerScorer(BaseScorer):
 
     # ---------- scoring API ---------- #
 
-    def score(self, context: dict, scorable: Scorable, dimensions: List[str]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable: Scorable, dimensions: List[str]) -> ScoreBundle:
         """
         Absolute scoring by baseline comparison:
         For each dimension d:

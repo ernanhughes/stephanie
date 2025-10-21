@@ -242,6 +242,175 @@ class ScoreBundle:
         }
 
 
+
+    # ---------- bundle diff / change report ----------
+    def diff(
+        self,
+        other: "ScoreBundle",
+        *,
+        include_attributes: bool = True,
+        numeric_only: bool = True,
+        rel_tol: float = 1e-6,
+        abs_tol: float = 1e-9,
+    ) -> Dict[str, Any]:
+        """
+        Compare this bundle (BEFORE) with another bundle (AFTER).
+        Returns a structured diff with per-dimension changes.
+        """
+        def _is_close(a, b) -> bool:
+            try:
+                import math
+                return math.isclose(float(a), float(b), rel_tol=rel_tol, abs_tol=abs_tol)
+            except Exception:
+                return a == b
+
+        def _to_float_or_str(v):
+            try:
+                x = float(v)
+                return x if x == x else None  # drop NaN
+            except Exception:
+                return (str(v) if not numeric_only else None)
+
+        dims = sorted(set(self.results.keys()) | set(other.results.keys()))
+        out: Dict[str, Any] = {
+            "aggregate_before": float(self.aggregate()) if hasattr(self, "aggregate") else None,
+            "aggregate_after":  float(other.aggregate()) if hasattr(other, "aggregate") else None,
+            "dimensions": {},
+        }
+        if out["aggregate_before"] is not None and out["aggregate_after"] is not None:
+            out["aggregate_delta"] = float(out["aggregate_after"] - out["aggregate_before"])
+
+        for d in dims:
+            before = self.results.get(d)
+            after  = other.results.get(d)
+            entry: Dict[str, Any] = {}
+
+            # --- top-level score delta
+            sb = getattr(before, "score", None)
+            sa = getattr(after,  "score", None)
+            if sb is not None or sa is not None:
+                fb = _to_float_or_str(sb)
+                fa = _to_float_or_str(sa)
+                if fb is not None or fa is not None:
+                    entry["score_before"] = fb
+                    entry["score_after"]  = fa
+                    if isinstance(fb, (int, float)) and isinstance(fa, (int, float)):
+                        entry["score_delta"] = float(fa - fb)
+
+            # --- attributes delta (optional)
+            if include_attributes:
+                ab = dict(getattr(before, "attributes", {}) or {})
+                aa = dict(getattr(after,  "attributes", {}) or {})
+
+                keys_all = set(ab.keys()) | set(aa.keys())
+                added, removed, changed = [], [], {}
+
+                for k in keys_all:
+                    vb = ab.get(k, None)
+                    va = aa.get(k, None)
+                    if k not in ab:
+                        v = _to_float_or_str(va)
+                        if (v is not None) or (not numeric_only):
+                            added.append(k)
+                    elif k not in aa:
+                        v = _to_float_or_str(vb)
+                        if (v is not None) or (not numeric_only):
+                            removed.append(k)
+                    else:
+                        # exists on both sides; report if materially different
+                        if not _is_close(vb, va):
+                            vb2 = _to_float_or_str(vb)
+                            va2 = _to_float_or_str(va)
+                            if (vb2 is not None) or (va2 is not None) or (not numeric_only):
+                                delta = None
+                                if isinstance(vb2, (int, float)) and isinstance(va2, (int, float)):
+                                    delta = float(va2 - vb2)
+                                changed[k] = {"before": vb2, "after": va2, "delta": delta}
+
+                # keep only non-empty sections
+                attr_report: Dict[str, Any] = {}
+                if added:   attr_report["added"] = sorted(added)
+                if removed: attr_report["removed"] = sorted(removed)
+                if changed: attr_report["changed"] = dict(sorted(changed.items()))
+                if attr_report:
+                    entry["attributes"] = attr_report
+
+            if entry:
+                out["dimensions"][d] = entry
+
+        return out
+
+    def diff_report(
+        self,
+        other: "ScoreBundle",
+        *,
+        include_attributes: bool = True,
+        numeric_only: bool = True,
+        rel_tol: float = 1e-6,
+        abs_tol: float = 1e-9,
+        max_changed_keys: int = 50,
+    ) -> str:
+        """
+        Pretty, human-readable report from `diff()`.
+        """
+        d = self.diff(
+            other,
+            include_attributes=include_attributes,
+            numeric_only=numeric_only,
+            rel_tol=rel_tol,
+            abs_tol=abs_tol,
+        )
+        lines: List[str] = []
+        lines.append("=== ScoreBundle Diff (before -> after) ===")
+
+        # Aggregate
+        if "aggregate_before" in d and "aggregate_after" in d:
+            ab = d.get("aggregate_before")
+            aa = d.get("aggregate_after")
+            ad = d.get("aggregate_delta")
+            lines.append(f"Aggregate: {ab:.4f} → {aa:.4f} (Δ {ad:+.4f})")
+
+        # Per-dimension
+        for dim, entry in d.get("dimensions", {}).items():
+            lines.append(f"\n-- {dim} --")
+            sb = entry.get("score_before", None)
+            sa = entry.get("score_after", None)
+            sd = entry.get("score_delta", None)
+            if sb is not None or sa is not None:
+                try:
+                    lines.append(f"score: {float(sb):.4f} → {float(sa):.4f} (Δ {float(sd):+.4f})")
+                except Exception:
+                    lines.append(f"score: {sb} → {sa}")
+
+            attrs = entry.get("attributes", {})
+            if attrs:
+                added = attrs.get("added", [])
+                removed = attrs.get("removed", [])
+                changed = attrs.get("changed", {})
+
+                if added:
+                    lines.append(f"added: {', '.join(added)}")
+                if removed:
+                    lines.append(f"removed: {', '.join(removed)}")
+                if changed:
+                    lines.append("changed:")
+                    # cap to avoid giant logs
+                    count = 0
+                    for k, rec in changed.items():
+                        if count >= max_changed_keys:
+                            lines.append(f"  ... and {len(changed) - max_changed_keys} more")
+                            break
+                        b = rec.get("before")
+                        a = rec.get("after")
+                        delt = rec.get("delta")
+                        if isinstance(b, (int, float)) and isinstance(a, (int, float)):
+                            lines.append(f"  {k}: {b:.6f} → {a:.6f} (Δ {delt:+.6f})")
+                        else:
+                            lines.append(f"  {k}: {b} → {a}")
+                        count += 1
+
+        return "\n".join(lines)
+
     # ---------- rewards vector helpers ----------
     @staticmethod
     def _safe(v: float, lo: float = -1.0, hi: float = 1.0) -> float:

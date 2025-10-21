@@ -1,6 +1,7 @@
 # config/scorer/hf_tiny/default.yaml
 name: hf_tiny
 model_type: hf
+model_alias: TinyLama
 display_name: TinyLlama-1.1B
 
 model_version: v1
@@ -33,3 +34,26 @@ local_files_only: true
 offline: true
 low_cpu_mem_usage: true
 use_compile: false
+
+
+# load_in_4bit: true                        # Optional: saves VRAM
+# tokenizer_name: null
+# trust_remote_code: false
+# If your HF adapter supports 4-bit, you can add:
+# load_in_4bit: true
+# bnb_4bit_compute_dtype: float16
+# config/scorer/hf_foo/default.yaml
+# compute_bpb: true                 # add bits-per-byte
+# calibration_path: models/calib/hf_mistral.stats.json
+# compute_zscores: true             # emit z_mean_logprob, z_entropy, z_bpb if calib exists
+# expose_token_dists_topk: 0        # 0 = off, else emit top-k probs (for debugging)
+# eps: 1e-8                         # numerical floor for KL/JSD
+
+plugins:
+  - scm:
+      # optional: if your SCM service is registered under a nonstandard name
+      service_name: scm_service      # default resolution tries "scm" then "scm_service"
+      # optional: override ppl_range just for this scorer
+      ppl_range: [2.5, 28.0]
+      # optional: request token top-k payload inside the service (if implemented)
+      expose_token_dists_topk: 5

@@ -1,6 +1,8 @@
 # config/scorer/ebt/default.yaml
 name: ebt
 model_type: ebt
+model_alias: EBT
+display_name: EBT
 model_version: v1
 evaluator: ebt
 target_type: document

@@ -1,8 +1,10 @@
 # config/scorer/svm/default.yaml
 name: svm
 model_type: svm
+model_alias: svm
+display_name: svm
 model_version: v1
-evaluator: svn
+evaluator: svm
 target_type: document
 dimensions: 
   - alignment

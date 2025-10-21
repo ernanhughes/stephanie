@@ -1,3 +1,4 @@
+# stephanie/scoring/scorer/huggingface_scorer.py
 from __future__ import annotations
 
 import gc
@@ -18,39 +19,38 @@ from stephanie.scoring.scorer.base_scorer import BaseScorer
 class HuggingFaceScorer(BaseScorer):
     """
     Simple, stable HF CausalLM scorer (Windows-friendly).
-    Teacher-forced LL/entropy on response conditioned on goal, then SCM metrics.
+    - Computes teacher-forced LL/entropy stats of response conditioned on goal
+    - Does *not* compute SCM or calibration; plugins add that after _score_core()
     """
 
     def __init__(self, cfg, memory, container, logger):
-        super().__init__(cfg, memory, container, logger)
+        super().__init__(cfg, memory, container, logger, enable_plugins=True)
         self.model_type = "hf"
 
         # --- config
         self.model_name = str(cfg.get("model_name", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"))
         self.tokenizer_name = cfg.get("tokenizer_name") or self.model_name
         self.max_seq_len = int(cfg.get("max_seq_len", 4096))
-        self.device_map = cfg.get("device_map", "auto")   # keep simple; no compile
+        self.device_map = cfg.get("device_map", "auto")
         self.trust_remote_code = bool(cfg.get("trust_remote_code", True))
         self.model_alias = str(cfg.get("model_alias", "hf"))
         self.dimensions: List[str] = cfg.get(
             "dimensions",
             ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"],
         )
-        self.ppl_low, self.ppl_high = (cfg.get("ppl_range") or [5.0, 40.0])[:2]
 
-        # huggingface cache knobs (optional but handy for Windows/offline)
-        # if HF_HOME is set (e.g., E:\huggingface_models), use it
+        # Optional HF cache knobs
         self.cache_dir = cfg.get("cache_dir") or os.environ.get("HF_HOME") or None
         self.local_files_only = bool(cfg.get("local_files_only", False))
 
-        # dtype (keep eager; fp16 only if CUDA exists; bfloat16 also OK, but keep it simple)
+        # dtype selection
         dtype_str = str(cfg.get("torch_dtype", "auto"))
         if dtype_str == "auto":
             self.torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         else:
             self.torch_dtype = getattr(torch, dtype_str, torch.float32)
 
-        # --- tokenizer (fast → slow)
+        # --- tokenizer (fast → slow fallback)
         tok_id = self.tokenizer_name
         try:
             self.tok = AutoTokenizer.from_pretrained(
@@ -89,13 +89,11 @@ class HuggingFaceScorer(BaseScorer):
         )
         self.model.eval()
 
-        # Force eager attention (avoid SDPA/Flash stalls on Windows/CUDA combos)
+        # Force eager attention (avoid SDPA/Flash issues on some Windows/CUDA combos)
         try:
             if hasattr(self.model, "config"):
-                # newer name
                 if getattr(self.model.config, "attn_implementation", None) is not None:
                     self.model.config.attn_implementation = "eager"
-                # legacy private toggle
                 setattr(self.model.config, "_attn_implementation", "eager")
         except Exception:
             pass
@@ -103,14 +101,12 @@ class HuggingFaceScorer(BaseScorer):
         # For uniformity with other scorers
         self.embedding_type = self.memory.embedding.name
 
-        # safe device probe (works with device_map="auto")
+        # safe device probe
         try:
             p = next(self.model.parameters())
             dev_str = str(p.device)
         except Exception:
             dev_str = "unknown"
-
-        self._load_calibration()
 
         self.logger and self.logger.log(
             "HFScorerLoaded",
@@ -118,71 +114,54 @@ class HuggingFaceScorer(BaseScorer):
         )
 
     # -----------------------------
-    # Public scoring API
+    # Core scoring (plugins will enhance results afterward)
     # -----------------------------
-    def score(self, context: dict, scorable, dimensions: List[str]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable, dimensions: List[str]) -> ScoreBundle:
+        """
+        Returns basic stats only. SCM, calibration, top-k, etc. are added by plugins.
+        """
         goal_text = (context.get(GOAL, {}) or {}).get(GOAL_TEXT, "") or ""
         resp_text = scorable.text or ""
 
         with torch.no_grad():
             stats = self._ll_stats(goal_text, resp_text)
 
-        scm = self._scm_from_ll(stats)
+        # Minimal attributes that plugins can build on
+        base_attrs = {
+            "mean_logprob": stats["mean_logprob"],
+            "ppl": stats["ppl"],
+            "entropy_mean": stats["entropy_mean"],
+            "len_tokens": stats["len_tokens"],
+            "len_chars": stats["len_chars"],
+            "bytes_len": stats["bytes_len"],
+            "sum_nll_nats": stats["sum_nll_nats"],
+            "bpb": stats["bpb"],
+        }
 
-
-        try:
-            mlp = stats["mean_logprob"]
-            ent = stats["entropy_mean"]
-            bpb = stats.get("bpb", float("nan"))
-
-            cal = self.calib or {}  # may be {}
-            def _zmaybe(key: str, x: float) -> float:
-                try:
-                    cfg = cal[key]
-                    return self._zs(x, cfg["mean"], cfg["std"])
-                except Exception:
-                    return float("nan")  # or 0.0 if you prefer
-
-            stats["z_mean_logprob"] = _zmaybe("mean_logprob", mlp)
-            stats["z_entropy"]      = _zmaybe("entropy_mean", ent)
-            if math.isfinite(bpb) and "bpb" in cal:
-                stats["z_bpb"] = _zmaybe("bpb", bpb)
-        except Exception as e:
-            self.logger and self.logger.log("HFCalibApplyError", {"error": str(e)})
-
-        k = int(self.cfg.get("expose_token_dists_topk", 0) or 0)
-        if k > 0:
-            try:
-                stats["topk_per_token"] = self.token_topk(goal_text, resp_text, k=k)
-            except Exception as e:
-                self.logger and self.logger.log("HFTopKError", {"k": k, "error": str(e)})
+        # Build a small vector under the model alias (no SCM keys here)
+        vector = self._build_base_vector(self.model_alias, base_attrs)
 
         results: Dict[str, ScoreResult] = {}
         for dim in dimensions:
-            v01 = float(scm.get(f"scm.{dim}.score01", 0.0))
-            attrs = {
-                **stats,
-                **scm,
-                f"{self.model_alias}.{dim}.score01": v01,
-                f"{self.model_alias}.{dim}.score100": round(v01 * 100.0, 4),
-                f"{self.model_alias}.{dim}": v01,
-            }
-            vector = self._build_vector(attrs)
-
+            # We don’t set a semantic score here; plugins may write scm.* to attributes.
+            # Keep score=0.0 as placeholder so downstream code has a float.
             results[dim] = ScoreResult(
                 dimension=dim,
-                score=v01,
+                score=0.0,
                 source=self.model_type,
                 rationale=(
                     f"{self.model_alias}[{dim}] ppl={stats['ppl']:.2f}, "
                     f"H̄={stats['entropy_mean']:.3f}, lp̄={stats['mean_logprob']:.3f}"
                 ),
                 weight=1.0,
-                attributes={**attrs, **vector},
+                attributes={**base_attrs, **vector},
             )
 
         return ScoreBundle(results=results)
 
+    # -----------------------------
+    # Optional helper for plugins (token distributions)
+    # -----------------------------
     @torch.no_grad()
     def token_topk(self, goal: str, resp: str, k: int = 5) -> Optional[List[List[tuple[str, float]]]]:
         if not k or k <= 0:
@@ -203,7 +182,7 @@ class HuggingFaceScorer(BaseScorer):
                 for t in range(topi.size(0))]
 
     # -----------------------------
-    # Internals
+    # Internals (teacher-forced stats only)
     # -----------------------------
     @torch.no_grad()
     def _ll_stats(self, goal: str, resp: str) -> Dict[str, float]:
@@ -287,79 +266,29 @@ class HuggingFaceScorer(BaseScorer):
             bpb=float(bpb),
         )
 
-    def _scm_from_ll(self, st: Dict[str, float]) -> Dict[str, float]:
-        ood = self._norm01(st["ppl"], self.ppl_low, self.ppl_high)
-        ood_hat01 = float(max(0.0, min(1.0, ood)))
-
-        vocab_est = (
-            getattr(self.tok, "vocab_size", None)
-            or (len(getattr(self.tok, "get_vocab")() or {}) if hasattr(self.tok, "get_vocab") else None)
-            or 32000
-        )
-        ent_norm = st["entropy_mean"] / max(math.log(vocab_est), 1e-6)
-        uncertainty01 = float(max(0.0, min(1.0, ent_norm)))
-
-        lp01 = self._sig01(st["mean_logprob"], center=-1.5, scale=2.0)
-        consistency01 = float(max(0.0, min(1.0, 0.6 * lp01 + 0.4 * (1.0 - uncertainty01))))
-        length_norm01 = float(self._norm01(st["len_tokens"], 5.0, 200.0))
-        temp01 = uncertainty01
-        agree_hat01 = lp01
-
-        reasoning = 0.55 * consistency01 + 0.35 * (1.0 - uncertainty01) + 0.10 * agree_hat01
-        knowledge = 0.55 * (1.0 - ood_hat01) + 0.25 * lp01 + 0.20 * (1.0 - uncertainty01)
-        clarity   = 0.50 * (1.0 - length_norm01) + 0.30 * (1.0 - uncertainty01) + 0.20 * consistency01
-        faithful  = 0.45 * lp01 + 0.35 * consistency01 + 0.20 * (1.0 - uncertainty01)
-        coverage  = 0.50 * (1.0 - ood_hat01) + 0.25 * (1.0 - uncertainty01) + 0.25 * length_norm01
-
-        def clamp01(x: float) -> float:
-            return float(min(1.0, max(0.0, x)))
-
-        dim_scores = {
-            "reasoning": clamp01(reasoning),
-            "knowledge": clamp01(knowledge),
-            "clarity": clamp01(clarity),
-            "faithfulness": clamp01(faithful),
-            "coverage": clamp01(coverage),
-        }
-
-        scm: Dict[str, float] = {f"scm.{k}.score01": v for k, v in dim_scores.items()}
-        scm["scm.aggregate01"]   = float(sum(dim_scores.values()) / 5.0)
-        scm["scm.uncertainty01"] = uncertainty01
-        scm["scm.ood_hat01"]     = ood_hat01
-        scm["scm.consistency01"] = consistency01
-        scm["scm.length_norm01"] = length_norm01
-        scm["scm.temp01"]        = temp01
-        scm["scm.agree_hat01"]   = agree_hat01
-        return scm
-
-    def _build_vector(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+    # -----------------------------
+    # Vector builder (base metrics only)
+    # -----------------------------
+    def _build_base_vector(self, alias: str, attrs: Dict[str, Any]) -> Dict[str, Any]:
         keys = [
-            f"{self.model_alias}.mean_logprob",
-            f"{self.model_alias}.ppl",
-            f"{self.model_alias}.entropy_mean",
-            f"{self.model_alias}.len_tokens",
-            "scm.reasoning.score01","scm.knowledge.score01","scm.clarity.score01",
-            "scm.faithfulness.score01","scm.coverage.score01","scm.aggregate01",
-            "scm.uncertainty01","scm.ood_hat01","scm.consistency01",
-            "scm.length_norm01","scm.temp01","scm.agree_hat01",
+            f"{alias}.mean_logprob",
+            f"{alias}.ppl",
+            f"{alias}.entropy_mean",
+            f"{alias}.len_tokens",
+            f"{alias}.len_chars",
+            f"{alias}.bytes_len",
+            f"{alias}.sum_nll_nats",
+            f"{alias}.bpb",
         ]
         vec: Dict[str, float] = {}
-        vec[f"{self.model_alias}.mean_logprob"] = float(attrs.get("mean_logprob", 0.0))
-        vec[f"{self.model_alias}.ppl"] = float(attrs.get("ppl", float("inf")))
-        vec[f"{self.model_alias}.entropy_mean"] = float(attrs.get("entropy_mean", 0.0))
-        vec[f"{self.model_alias}.len_tokens"] = float(attrs.get("len_tokens", 0))
-
-        for k in keys[4:]:
-            if k in attrs:
-                vec[k] = float(attrs[k])
-
-        for d in ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"]:
-            k = f"scm.{d}.score01"
-            if k in attrs:
-                v01 = float(attrs[k])
-                vec[f"{self.model_alias}.{d}.score01"]  = v01
-                vec[f"{self.model_alias}.{d}.score100"] = round(v01 * 100.0, 4)
-                vec[f"{self.model_alias}.{d}"]          = v01
+        vec[f"{alias}.mean_logprob"] = float(attrs.get("mean_logprob", 0.0))
+        vec[f"{alias}.ppl"] = float(attrs.get("ppl", float("inf")))
+        vec[f"{alias}.entropy_mean"] = float(attrs.get("entropy_mean", 0.0))
+        vec[f"{alias}.len_tokens"] = float(attrs.get("len_tokens", 0))
+        vec[f"{alias}.len_chars"] = float(attrs.get("len_chars", 0))
+        vec[f"{alias}.bytes_len"] = float(attrs.get("bytes_len", 0))
+        vec[f"{alias}.sum_nll_nats"] = float(attrs.get("sum_nll_nats", 0.0))
+        vec[f"{alias}.bpb"] = float(attrs.get("bpb", 0.0))
 
         cols = list(vec.keys())
         vals = [vec[c] for c in cols]
@@ -376,11 +305,8 @@ class HuggingFaceScorer(BaseScorer):
         # bits = nats / ln(2)
         return float(nats / math.log(2.0))
 
-
+    # Cleanup (also lets BaseScorer.close() clean up plugins)
     def close(self):
-        """
-        Hard-unload the model to free VRAM and RAM.
-        """
         try:
             # Detach hooks / peft / LoRA if any
             for attr in ("peft_model", "lora_model"):
@@ -392,20 +318,19 @@ class HuggingFaceScorer(BaseScorer):
                         pass
                     setattr(self, attr, None)
 
-            # Move to CPU first (helps when some params are still referenced)
+            # Move to CPU first
             if getattr(self, "model", None) is not None:
                 try:
                     self.model.to("cpu")
                 except Exception:
                     pass
-            # Clear refs
             self.model = None
 
-            # Tokenizer is small but free it too
+            # Tokenizer free
             if getattr(self, "tokenizer", None) is not None:
                 self.tokenizer = None
 
-            # If using accelerate’s offload state / hooks, clean them
+            # Accelerate offload teardown
             try:
                 offload = getattr(self, "_cpu_offload", None)
                 if offload and hasattr(offload, "teardown"):
@@ -413,41 +338,11 @@ class HuggingFaceScorer(BaseScorer):
             except Exception:
                 pass
 
-            # Run full collection + CUDA cache clear
+            # GC + CUDA cache clear
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                torch.cuda.ipc_collect()  # helps with some driver versions
-        except Exception as e:
-            self.logger and self.logger.log("HFScorerCloseError", {"error": str(e)})
-
-
-    def _load_calibration(self):
-        self.calib = None
-        path = self.cfg.get("calibration_path")
-        if not path:
-            return
-        try:
-            import json
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    self.calib = json.load(f) or None
-                self.logger and self.logger.log("HFCalibLoaded", {"path": path})
-        except Exception as e:
-            self.logger and self.logger.log("HFCalibLoadError", {"error": str(e), "path": path})
-
-    def _zs(self, x: float, mean: float, std: float) -> float:
-        return float((x - mean) / (std if std > 1e-9 else 1.0))
-
-    @staticmethod
-    def _norm01(x: float, lo: float, hi: float) -> float:
-        if not math.isfinite(x):
-            return 1.0
-        if hi <= lo:
-            return 0.0
-        return (x - lo) / (hi - lo)
-
-    @staticmethod
-    def _sig01(x: float, center: float = 0.0, scale: float = 1.0) -> float:
-        z = (x - center) / max(scale, 1e-6)
-        return 1.0 / (1.0 + math.exp(-z))
+                torch.cuda.ipc_collect()
+        finally:
+            # Ensure plugins also get a chance to close
+            super().close()

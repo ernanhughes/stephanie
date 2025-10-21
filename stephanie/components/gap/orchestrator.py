@@ -16,7 +16,7 @@ from stephanie.components.gap.processors.report import ReportBuilder
 from stephanie.components.gap.processors.scoring import ScoringProcessor
 from stephanie.components.gap.processors.significance import (
     SignificanceConfig, SignificanceProcessor)
-from stephanie.components.gap.services.scm_term_head import SCMTermHeadService
+from stephanie.components.gap.services.scm_service import SCMService
 from stephanie.utils.progress_mixin import ProgressMixin
 
 _logger = logging.getLogger(__name__)
@@ -47,8 +47,8 @@ class GapAnalysisOrchestrator(ProgressMixin):
         if config.enable_scm_head:
             try:
                 container.register(
-                    name="scm_term_head",
-                    factory=lambda: SCMTermHeadService(),
+                    name="scm_service",
+                    factory=lambda: SCMService(),
                     dependencies=[],
                     init_args={"config": config.scm, "logger": logger},
                 )
@@ -135,6 +135,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
         analysis_out = await self.analysis_processor.execute_analysis(
             score_out,
             run_id,
+            manifest=m,
         )
 
         # 4) Significance (p-values, CIs, nulls, sensitivity, assumptions)
@@ -162,7 +163,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
         analysis_out = {**analysis_out, "significance": significance_out}
         report_out = await reporter.build(
             run_id,
-            analysis_out,
+            analysis_out, 
             score_out,
         )
 
@@ -173,6 +174,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
             "significance": significance_out,
             "calibration": calib_out,
             "report": report_out,
+            "manifest": m.to_dict(),  
         }
         self.manifest_manager.finish_run(run_id, result)
         return result

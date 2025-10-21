@@ -103,7 +103,6 @@ class GapRunManifest:
             stages=copy.deepcopy(d.get("stages", {})),
         )
     
-
 class ManifestManager:
     def __init__(self, storage: GapStorageService):
         self.storage = storage
@@ -117,4 +116,66 @@ class ManifestManager:
         self.storage.patch_manifest(run_id, {"dimensions": list(dims)})
 
     def finish_run(self, run_id: str, final_payload: Dict[str, Any]):
-        self.storage.patch_manifest(run_id, {"final": final_payload})
+        """
+        Persist a lightweight summary to the manifest, and write the full result
+        to a separate JSON file referenced from the manifest. This avoids
+        self-embedding 'manifest' inside itself and keeps the manifest small.
+        """
+        # 1) Make a copy and drop the nested 'manifest' (if present)
+        import copy, time
+        payload = copy.deepcopy(final_payload)
+        payload.pop("manifest", None)  # prevent recursion
+
+        # 2) Persist the full result as an artifact next to other metrics
+        #    (you can change subdir/filename if you prefer)
+        full_path = self.storage.save_json(
+            run_id,
+            "metrics",
+            "final_result.json",
+            payload
+        )
+
+        # 3) Build a compact summary for the manifest
+        def _pick_paths(d):
+            out = {}
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    if isinstance(v, str) and any(v.lower().endswith(ext) for ext in
+                        (".png",".jpg",".jpeg",".webp",".gif",".json",".npy",".npz",".parquet",".csv",".pdf")):
+                        out[k] = v
+                    elif isinstance(v, list) and v and all(isinstance(x, str) for x in v):
+                        if any(str(x).lower().endswith(tuple([".png",".jpg",".jpeg",".webp",".gif",".json",".npy",".npz",".parquet",".csv",".pdf"])) for x in v):
+                            out[k] = v
+                    elif isinstance(v, dict) and "paths" in v and isinstance(v["paths"], dict):
+                        out[f"{k}_paths"] = v["paths"]
+            return out
+
+        score = payload.get("score", {})
+        analysis = payload.get("analysis", {})
+
+        summary = {
+            "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "triples_count": score.get("triples_count"),
+            "models": {
+                "hrm_label": score.get("hrm_label"),
+                "tiny_label": score.get("tiny_label"),
+            },
+            "artifacts": {
+                # top-level handy artifacts
+                "hrm_gif": score.get("hrm_gif"),
+                "tiny_gif": score.get("tiny_gif"),
+                "rows_for_df": score.get("rows_for_df_path"),
+            },
+            "analysis_artifacts": {
+                "frontier": _pick_paths(analysis.get("frontier", {})),
+                "delta": _pick_paths(analysis.get("delta_analysis", {})),
+                "intensity": _pick_paths(analysis.get("intensity", {})),
+                "phos": _pick_paths(analysis.get("phos", {})),
+                "scm_visuals": {"images": analysis.get("scm_visuals", []) if isinstance(analysis.get("scm_visuals"), list) else []},
+                "topology": _pick_paths(analysis.get("topology", {})),
+            },
+            "full_result_path": full_path,   # pointer, not the blob itself
+        }
+
+        # 4) Patch the manifest with the small summary only
+        self.storage.patch_manifest(run_id, {"final_summary": summary})

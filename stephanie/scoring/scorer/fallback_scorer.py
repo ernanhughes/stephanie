@@ -2,12 +2,10 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 
@@ -48,7 +46,7 @@ class FallbackScorer(BaseScorer):
         self.fallback_order = fallback_order or list(self.scorers.keys())
         self.default_fallback = default_fallback
 
-    def score(self, context: dict, scorable: Scorable, dimensions: List[str] = None) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable: Scorable, dimensions: List[str] = None) -> ScoreBundle:
         """
         Try scorers in order. Returns first successful score bundle.
         If all fail, returns neutral score with fallback reason.

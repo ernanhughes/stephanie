@@ -15,7 +15,7 @@ from stephanie.data.plan_trace import PlanTrace
 from stephanie.scoring.model.epistemic_trace_encoder import \
     EpistemicTraceEncoder
 from stephanie.scoring.model.hrm_model import HRMModel
-from stephanie.scoring.scorer.model_locator_mixin import ModelLocatorMixin
+from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
 from stephanie.utils.trace_utils import (get_trace_score_stats,
                                          load_plan_traces_from_export_dir)
 

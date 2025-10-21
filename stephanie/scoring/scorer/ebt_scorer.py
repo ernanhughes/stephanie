@@ -77,7 +77,7 @@ class EBTScorer(BaseScorer):
                 tuner.load(locator.tuner_file())
                 self.tuners[dim] = tuner
 
-    def score(self, context: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable: Scorable, dimensions: list[str]) -> ScoreBundle:
         goal = context.get(GOAL, {})
         goal_text = goal.get(GOAL_TEXT, "")
         results = {}

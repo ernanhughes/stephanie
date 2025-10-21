@@ -128,7 +128,7 @@ class TinyScorer(BaseScorer):
     # -------------------------
     # Scoring
     # -------------------------
-    def score(self, context: dict, scorable, dimensions: List[str]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable, dimensions: List[str]) -> ScoreBundle:
         goal = context.get(GOAL, {})
         goal_text = goal.get(GOAL_TEXT, "")
         results: Dict[str, ScoreResult] = {}

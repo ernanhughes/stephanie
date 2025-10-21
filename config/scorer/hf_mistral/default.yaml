@@ -14,18 +14,18 @@ dimensions:
   - coverage
 
 # Hugging Face model
+model_name: microsoft/Phi-3-mini-4k-instruct
+model_alias: Phi-3-mini
+display_name: Phi-3-mini-4k-instruct
+# ----
 # model_name: mistralai/Mistral-7B-Instruct-v0.3
-# model_name: microsoft/Phi-3-mini-4k-instruct
-# model_alias: hf_mistral Let's just make sure they actually know
-# model_alias: hf_Phi-3
+# model_alias: Mistral-7B
+# display_name: Mistral-7B-Instruct-v0.3
+# ----
 # model_name: google/gemma-2-2b-it
 # model_alias: hf_Gemma-2
 # display_name: gemma-2-2b-it
-
-# model_name: mistralai/Mistral-7B-Instruct-v0.3
-model_name: mistralai/Mistral-7B-Instruct-v0.3
-model_alias: Mistral-7B
-display_name: Mistral-7B-Instruct-v0.3
+# ----
 # model_name: EleutherAI/pythia-160m
 # model_alias: pythia-160m
 # display_name: pythia-160m
@@ -35,23 +35,33 @@ display_name: Mistral-7B-Instruct-v0.3
 device_map: cuda
 torch_dtype: float16
 max_seq_len: 4096
-load_in_4bit: true                        # Optional: saves VRAM
-tokenizer_name: null
-trust_remote_code: false
 
 # (Optional) scoring helpers
 ppl_range: [3.0, 30.0]
 
+# load_in_4bit: true                        # Optional: saves VRAM
+# tokenizer_name: null
+# trust_remote_code: false
 # If your HF adapter supports 4-bit, you can add:
 # load_in_4bit: true
 # bnb_4bit_compute_dtype: float16
 # config/scorer/hf_foo/default.yaml
-compute_bpb: true                 # add bits-per-byte
-calibration_path: models/calib/hf_mistral.stats.json
-compute_zscores: true             # emit z_mean_logprob, z_entropy, z_bpb if calib exists
-expose_token_dists_topk: 0        # 0 = off, else emit top-k probs (for debugging)
-eps: 1e-8                         # numerical floor for KL/JSD
+# compute_bpb: true                 # add bits-per-byte
+# calibration_path: models/calib/hf_mistral.stats.json
+# compute_zscores: true             # emit z_mean_logprob, z_entropy, z_bpb if calib exists
+# expose_token_dists_topk: 0        # 0 = off, else emit top-k probs (for debugging)
+# eps: 1e-8                         # numerical floor for KL/JSD
 
 local_files_only: false
 offline: true
 low_cpu_mem_usage: true
+use_compile: false
+
+plugins:
+  - scm:
+      # optional: if your SCM service is registered under a nonstandard name
+      service_name: scm_service      # default resolution tries "scm" then "scm_service"
+      # optional: override ppl_range just for this scorer
+      ppl_range: [2.5, 28.0]
+      # optional: request token top-k payload inside the service (if implemented)
+      expose_token_dists_topk: 5
