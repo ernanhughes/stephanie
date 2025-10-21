@@ -368,7 +368,7 @@ class PhosAgent(BaseAgent):
                 metrics_columns = list(vector.keys())
                 metrics_values = list(vector.values())
                 if len(metrics_columns):
-                    self.zm.timeline_append_row(
+                    self.zm. OK (
                         run_id=run_id,
                         metrics_columns=metrics_columns,
                         metrics_values=metrics_values,

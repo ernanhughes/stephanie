@@ -168,33 +168,89 @@ def _pick_metric_column(df: pd.DataFrame, base: str) -> str | None:
             return c
     return None
 
-def _project_dimensions(df_in: pd.DataFrame, dims: list[str], logger) -> pd.DataFrame:
-    out = {"node_id": df_in["node_id"].values}
-    missing = {"hrm": [], "tiny": []}
-    for d in dims:
-        h_col = _pick_metric_column(df_in, f"hrm.{d}")
-        t_col = _pick_metric_column(df_in, f"tiny.{d}")
+def _project_dimensions(
+    df_in: pd.DataFrame,
+    dims: list[str],
+    logger,
+    *,
+    alias_A: str,
+    alias_B: str,
+) -> pd.DataFrame:
+    """
+    Project a rows_for_df table into:
+      node_id,
+      {alias_A}.{dim} for dim in dims,
+      {alias_B}.{dim} for dim in dims
 
-        if h_col is None:
-            missing["hrm"].append(d)
-            out[f"hrm.{d}"] = 0.0
-        else:
-            out[f"hrm.{d}"] = pd.to_numeric(df_in[h_col], errors="coerce").fillna(0.0).astype(float)
+    Looks up columns with tolerant matching (exact, .score01, .score, etc.).
+    Missing dims are filled with 0.0 and reported in the log.
+    """
+    import numpy as np
+    import pandas as pd
 
-        if t_col is None:
-            missing["tiny"].append(d)
-            out[f"tiny.{d}"] = 0.0
-        else:
-            out[f"tiny.{d}"] = pd.to_numeric(df_in[t_col], errors="coerce").fillna(0.0).astype(float)
+    def _pick_metric_column_for_alias(columns, alias: str, dim: str):
+        """
+        Tolerant column picker. Prefers exact '{alias}.{dim}', then score-ish suffixes.
+        Case-insensitive, returns the ORIGINAL column name if found, else None.
+        """
+        cols = [c for c in columns if isinstance(c, str)]
+        lower_to_orig = {c.lower(): c for c in cols}
+        a = alias.lower()
+        d = dim.lower()
 
+        # Preference order
+        preferred = [
+            f"{a}.{d}",
+            f"{a}.{d}.score01",
+            f"{a}.{d}.score",
+            f"{a}.{d}.aggregate",
+            f"{a}.{d}.value",
+        ]
+        for key in preferred:
+            if key in lower_to_orig:
+                return lower_to_orig[key]
+
+        # Fuzzy fallback: startswith(alias.) and contains .dim
+        for low, orig in lower_to_orig.items():
+            if low.startswith(a + ".") and f".{d}" in low:
+                # prefer endings that look "scorey"
+                if low.endswith(".score01") or low.endswith(".score"):
+                    return orig
+        # Final fallback: any column starting with alias and containing the dim token
+        for low, orig in lower_to_orig.items():
+            if low.startswith(a + ".") and d in low:
+                return orig
+        return None
+
+    # --- build output ---
+    out: dict[str, Any] = {
+        "node_id": df_in["node_id"].astype(str).values
+    }
+
+    missing: dict[str, list[str]] = {alias_A: [], alias_B: []}
+
+    for alias in (alias_A, alias_B):
+        for d in dims:
+            col = _pick_metric_column_for_alias(df_in.columns, alias, d)
+            key = f"{alias}.{d}"
+            if col is None:
+                missing[alias].append(d)
+                out[key] = np.zeros(len(df_in), dtype=float)
+            else:
+                out[key] = pd.to_numeric(df_in[col], errors="coerce").fillna(0.0).astype(float)
+
+    # logging: what’s present/missing per alias
+    present = {
+        alias_A: [c for c in df_in.columns if isinstance(c, str) and c.lower().startswith(alias_A.lower() + ".")],
+        alias_B: [c for c in df_in.columns if isinstance(c, str) and c.lower().startswith(alias_B.lower() + ".")],
+    }
     logger.log("PHOSColumnDiscovery", {
         "rows": int(df_in.shape[0]),
         "dims": dims,
-        "present_hrm": [c for c in df_in.columns if isinstance(c, str) and c.startswith("hrm.")],
-        "present_tiny": [c for c in df_in.columns if isinstance(c, str) and c.startswith("tiny.")],
-        "missing_hrm_dims": missing["hrm"],
-        "missing_tiny_dims": missing["tiny"],
+        "present": present,
+        "missing_dims": missing,
     })
+
     return pd.DataFrame(out)
 
 
@@ -526,7 +582,9 @@ class GapAgent(BaseAgent):
 
         # We'll accumulate rows → matrices
         hrm_names: List[str] = []
+        alias_a = "HRM"
         tiny_names: List[str] = []
+        alias_b = "Tiny"
         hrm_rows: List[List[float]] = []
         tiny_rows: List[List[float]] = []
 
@@ -552,8 +610,8 @@ class GapAgent(BaseAgent):
 
 
                 # append to timelines for GIFs
-                await vpm_worker.append(hrm_run_id, node_id, hrm_metrics)
-                await vpm_worker.append(tiny_run_id, node_id, tiny_metrics)
+                vpm_worker.append(hrm_run_id, node_id, hrm_metrics)
+                vpm_worker.append(tiny_run_id, node_id, tiny_metrics)
 
                 # extract vectors → matrices
                 h_names, h_vals = _safe_vec(hrm_metrics)
@@ -713,14 +771,13 @@ class GapAgent(BaseAgent):
         # Expect frontier_meta to include file path(s) and summary stats.
 
         # 4.2 Inter-model Δ-meta (numbers you cite in the blog)
-        delta_out_dir = metrics_dir
         delta_meta = zm.render_intermodel_delta(
             hrm_mat, tiny_mat,
             names_A=hrm_names,
             names_B=tiny_names,
-            output_dir=str(delta_out_dir),
-            pos_label="HRM",
-            neg_label="Tiny",
+            output_dir=str(Path(self.out_dir, "intermodel_delta", f"run_{pipeline_run_id}")),
+            pos_label=alias_a,
+            neg_label=alias_b,
         )
 
         # Optional: quick |Δ| heat for eyeballing (grayscale)
@@ -819,17 +876,20 @@ class GapAgent(BaseAgent):
             keep = ["node_id"] + [c for c in df_raw.columns
                                 if isinstance(c, str) and (c.startswith("hrm.") or c.startswith("tiny."))]
             df_raw = df_raw[keep]
-            df_proj = _project_dimensions(df_raw, self.dimensions, self.logger)
+            df_proj = _project_dimensions(df_raw, self.dimensions, self.logger, alias_a, alias_b)
 
             # 5.2 Build PHOS-guarded artifacts using your zeromodel helper
-            from stephanie.zeromodel.vpm_phos import build_hrm_vs_tiny_guarded
+            from stephanie.zeromodel.vpm_phos import build_compare_guarded
             vpm_prefix = os.path.join(visuals_dir, "vpm")  # prefix for per-model sweep outputs
-            phos_res = build_hrm_vs_tiny_guarded(
+            phos_res = build_compare_guarded(
                 df_proj,
+                model_A=alias_a,
+                model_B=alias_b,
                 dimensions=self.dimensions,
                 out_prefix=vpm_prefix,
                 tl_fracs=(0.25, 0.16, 0.36, 0.09),
                 delta=0.02,
+                models=[alias_a, alias_b],
                 interleave=bool(self.interleave),
                 weights=None,
             )

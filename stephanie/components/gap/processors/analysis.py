@@ -6,6 +6,8 @@ from typing import Any, Dict, Tuple
 
 import numpy as np
 import time
+import json, os
+from collections import Counter
 
 from stephanie.components.gap.models import GapConfig
 from stephanie.components.gap.processors.topology import (TopologyConfig,
@@ -14,6 +16,8 @@ from stephanie.components.gap.processors.visuals import render_scm_images
 from stephanie.utils.progress_mixin import ProgressMixin
 
 _logger = logging.getLogger(__name__)
+
+
 
 
 class AnalysisProcessor(ProgressMixin):
@@ -373,21 +377,47 @@ class AnalysisProcessor(ProgressMixin):
         return intensity
 
     async def _perform_phos_analysis(self, run_id: str) -> Dict[str, Any]:
-        from stephanie.zeromodel.vpm_phos import build_hrm_vs_tiny_guarded
+        from stephanie.zeromodel.vpm_phos import build_compare_guarded
+
         df_proj = self._prepare_phos_data(run_id)
-        if df_proj.empty:
+        if df_proj is None or df_proj.empty:
             _logger.warning(f"No PHOS data available for run {run_id}")
             return {"status": "no_rows_for_df"}
 
-        missing_dims = [d for d in self.config.dimensions if f"hrm.{d}" not in df_proj.columns or f"tiny.{d}" not in df_proj.columns]
-        if missing_dims:
-            self.logger.log("PHOSMissingDims", {"run_id": run_id, "missing_dims": missing_dims})
+        # 1) Get aliases (manifest → df inference → fallback)
+        alias_a, alias_b = self._read_manifest_aliases(run_id)
+        if not alias_a or not alias_b:
+            ia, ib = self._infer_aliases_from_df(df_proj, self.config.dimensions)
+            alias_a = alias_a or ia
+            alias_b = alias_b or ib
+        if not alias_a or not alias_b:
+            # Final fallback to legacy names
+            alias_a = alias_a or "hrm"
+            alias_b = alias_b or "tiny"
 
+        # 2) Ensure df has columns for those aliases (copy from hrm./tiny. if needed)
+        self._ensure_alias_columns(df_proj, alias_a, alias_b, self.config.dimensions)
+
+        # 3) Missing dims check must use aliases
+        missing_dims = [
+            d for d in self.config.dimensions
+            if f"{alias_a}.{d}" not in df_proj.columns or f"{alias_b}.{d}" not in df_proj.columns
+        ]
+        if missing_dims:
+            self.logger.log("PHOSMissingDims", {
+                "run_id": run_id,
+                "aliases": {"A": alias_a, "B": alias_b},
+                "missing_dims": missing_dims
+            })
+
+        # 4) Build outputs (pass required keyword-only args)
         out_prefix = str(self.config.base_dir / run_id / "visuals" / "vpm")
-        return build_hrm_vs_tiny_guarded(
+        return build_compare_guarded(
             df_proj,
             dimensions=self.config.dimensions,
             out_prefix=out_prefix,
+            model_A=alias_a,
+            model_B=alias_b,
             tl_fracs=(0.25, 0.16, 0.36, 0.09),
             delta=0.02,
             interleave=self.config.interleave,
@@ -409,5 +439,66 @@ class AnalysisProcessor(ProgressMixin):
             self.logger.log("PHOSRowsMissing", {"run_id": run_id, "raw_dir": str(raw_dir)})
             return pd.DataFrame()
 
-        keep = ["node_id"] + [c for c in df.columns if isinstance(c, str) and (c.startswith("hrm.") or c.startswith("tiny."))]
-        return df[keep]
+        # keep = ["node_id"] + [c for c in df.columns if isinstance(c, str) and (c.startswith("hrm.") or c.startswith("tiny."))]
+        return df
+
+    def _read_manifest_aliases(self, run_id: str) -> tuple[str|None, str|None]:
+        """Try to read aliases saved earlier in manifest.json."""
+        mpath = os.path.join(str(self.config.base_dir), run_id, "manifest.json")
+        try:
+            with open(mpath, "r", encoding="utf-8") as f:
+                m = json.load(f)
+            # Prefer explicit aliases if present; else fall back to models.{A,B}
+            aliases = m.get("aliases") or {}
+            a = aliases.get("A") or (m.get("models") or {}).get("A")
+            b = aliases.get("B") or (m.get("models") or {}).get("B")
+            return (str(a) if a else None, str(b) if b else None)
+        except Exception:
+            return (None, None)
+
+    def _infer_aliases_from_df(self, df_proj, dims: list[str]) -> tuple[str|None, str|None]:
+        """Infer aliases from df_proj column prefixes like '<alias>.<dim>'."""
+        pref = []
+        for c in df_proj.columns:
+            if not isinstance(c, str) or c == "node_id" or "." not in c:
+                continue
+            alias, rest = c.split(".", 1)
+            base_dim = rest.split(".", 1)[0]
+            if base_dim in dims:
+                pref.append(alias)
+        if not pref:
+            return (None, None)
+        counts = Counter(pref).most_common()
+        if len(counts) == 1:
+            return (counts[0][0], None)
+        # Keep stable, friendly ordering: 'hrm' first if present; otherwise by count then name
+        aliases = [a for a, _ in counts]
+        if "hrm" in aliases:
+            a = "hrm"
+            aliases.remove("hrm")
+            b = aliases[0] if aliases else None
+            return (a, b)
+        return (aliases[0], aliases[1])
+
+    def _ensure_alias_columns(self, df_proj, alias_a: str, alias_b: str, dims: list[str]):
+        """
+        If df_proj only has hrm./tiny. but we want custom aliases, copy columns so both exist.
+        Non-destructive: keeps originals, adds missing alias columns if needed.
+        """
+        import pandas as pd
+        cols = set(df_proj.columns)
+        for dim in dims:
+            # A
+            want = f"{alias_a}.{dim}"
+            if want not in cols:
+                if f"hrm.{dim}" in cols:
+                    df_proj[want] = pd.to_numeric(df_proj[f"hrm.{dim}"], errors="coerce").fillna(0.0)
+                elif f"tiny.{dim}" in cols and alias_a.lower().startswith("tiny"):
+                    df_proj[want] = pd.to_numeric(df_proj[f"tiny.{dim}"], errors="coerce").fillna(0.0)
+            # B
+            want = f"{alias_b}.{dim}"
+            if want not in cols:
+                if f"tiny.{dim}" in cols:
+                    df_proj[want] = pd.to_numeric(df_proj[f"tiny.{dim}"], errors="coerce").fillna(0.0)
+                elif f"hrm.{dim}" in cols and alias_b.lower().startswith("hrm"):
+                    df_proj[want] = pd.to_numeric(df_proj[f"hrm.{dim}"], errors="coerce").fillna(0.0)

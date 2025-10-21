@@ -66,8 +66,6 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         bundle: ScoreBundle = self._score_core(goal, scorable, dimensions)
         result = self._run_plugins_and_merge(bundle=bundle, goal=goal, scorable=scorable)
 
-        print(bundle.diff_report(result))
-
         return result
 
     @abc.abstractmethod

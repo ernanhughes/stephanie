@@ -23,17 +23,16 @@ Date: 2024
 """
 
 from __future__ import annotations
+from pathlib import Path
 
 import json
+import pandas as pd
+import numpy as np
 import time
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Tuple, Optional
 
 import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 
 from stephanie.utils.json_sanitize import dumps_safe
 
@@ -437,73 +436,85 @@ def _chosen_from_sweep(sweep: List[Dict], delta: float) -> Dict:
     return cand[0] if cand else {}
 
 
-def build_hrm_vs_tiny_guarded(
+
+# --- helper: pick best sweep result (prefer improved; else best phos conc) ---
+def _chosen_from_sweep(sweep: List[Dict], *, delta: float = 0.02) -> Optional[Dict]:
+    if not sweep:
+        return None
+    improved = [r for r in sweep if r.get("improved")]
+    return max(improved, key=lambda r: r.get("phos_conc", 0.0)) if improved else \
+           max(sweep,    key=lambda r: r.get("phos_conc", 0.0))
+
+def build_compare_guarded(
     df: pd.DataFrame,
     *,
     dimensions: List[str],
     out_prefix: str,
+    model_A: str,                 # e.g. "hf_HRM" or "Llama3-8B"
+    model_B: str,                 # e.g. "hf_TinyLama" or "Phi-3-mini"
     tl_fracs: Iterable[float] = (0.25, 0.16, 0.36, 0.09),
     delta: float = 0.02,
     interleave: bool = False,
     weights: Dict[str, float] | None = None,
 ) -> Dict:
     """
-    Main comparison function: HRM vs Tiny model analysis with guard conditions.
-    
-    Performs comprehensive comparison:
-      - Sweeps multiple tl_frac parameters for both models
-      - Applies improvement guard to select optimal PHOS configurations
-      - Generates comparison metrics and visualizations
-      - Produces difference map between selected PHOS images
-    
-    Args:
-        df: Input DataFrame with both model scores
-        dimensions: Evaluation dimensions to compare
-        out_prefix: Output path prefix
-        tl_fracs: TL fraction values to test
-        delta: Improvement threshold for guard condition
-        interleave: Whether to interleave dimensions
-        weights: Optional dimension weights
-        
-    Returns:
-        Comprehensive results dictionary with sweep data and selected artifacts
-    """
-    results: Dict[str, Dict] = {"sweep": {}}
-    models = ["hrm", "tiny"]
+    Compare two models (by alias) with a PHOS guard sweep.
 
-    # Process each model with parameter sweep
-    for model in models:
-        model_sweep = []
+    - Sweeps multiple tl_frac values per model
+    - Selects the best (guarded) PHOS config per model
+    - Builds a PHOS difference visualization (A − B) if shapes match
+    - Emits a summary JSON keyed by the real model aliases
+    """
+    # Ensure parent folder exists for all outputs derived from out_prefix
+    Path(out_prefix).parent.mkdir(parents=True, exist_ok=True)
+
+    results: Dict[str, Dict] = {"sweep": {}, "models": [model_A, model_B]}
+
+    # ---- 1) Per-model sweeps -------------------------------------------------
+    for model in (model_A, model_B):
+        model_sweep: List[Dict] = []
         for tl in tl_fracs:
-            prefix = f"{out_prefix}_{model}_tl{tl:.2f}"
+            prefix = f"{out_prefix}_{model}_tl{float(tl):.2f}"
+
+            # Build both raw and PHOS artifacts for this (model, tl)
             res = build_vpm_phos_artifacts(
-                df, model=model, dimensions=dimensions,
-                out_prefix=prefix, tl_frac=tl,
-                interleave=interleave, weights=weights
+                df,
+                model=model,
+                dimensions=dimensions,
+                out_prefix=prefix,
+                tl_frac=float(tl),
+                interleave=interleave,
+                weights=weights,
             )
-            raw_c  = res["metrics"]["raw"]["brightness_top_left"]
-            phos_c = res["metrics"]["phos"]["brightness_top_left"]
+
+            raw_c  = float(res["metrics"]["raw"]["brightness_top_left"])
+            phos_c = float(res["metrics"]["phos"]["brightness_top_left"])
             improved = phos_c > raw_c * (1.0 + float(delta))
+
             model_sweep.append({
                 "tl_frac": float(tl),
-                "raw_conc": float(raw_c),
-                "phos_conc": float(phos_c),
+                "raw_conc": raw_c,
+                "phos_conc": phos_c,
                 "improved": bool(improved),
                 "raw_path": res["paths"]["raw"],
                 "phos_path": res["paths"]["phos"],
             })
 
-        # Select optimal configuration
         chosen = _chosen_from_sweep(model_sweep, delta=delta)
         results["sweep"][model] = model_sweep
         results[f"{model}_chosen"] = chosen
 
-        # Save detailed metrics
+        # Persist the sweep details for this model
         with open(f"{out_prefix}_{model}_vpm_guard_metrics.json", "w", encoding="utf-8") as f:
-            json.dump({"model": model, "delta": float(delta), "sweep": model_sweep, "chosen": chosen}, f, indent=2)
+            json.dump({
+                "model": model,
+                "delta": float(delta),
+                "sweep": model_sweep,
+                "chosen": chosen,
+            }, f, indent=2)
 
-        # Create convenience copy of chosen image
-        if chosen:
+        # Convenience: copy chosen PHOS to a stable name (ignore if not available)
+        if chosen and chosen.get("phos_path"):
             import shutil
             dst = f"{out_prefix}_{model}_vpm_chosen.png"
             try:
@@ -511,30 +522,40 @@ def build_hrm_vs_tiny_guarded(
             except Exception:
                 pass
 
-    # Generate difference visualization if shapes match
+    # ---- 2) PHOS(A) − PHOS(B) visualization (using current DataFrame) -------
+    # Use your existing vectorizer + packer. If either fails, we just skip diff.
     try:
-        hrm_vec = vpm_vector_from_df(df, "hrm", dimensions, interleave=interleave, weights=weights)
-        tiny_vec = vpm_vector_from_df(df, "tiny", dimensions, interleave=interleave, weights=weights)
-        hrm_img = phos_sort_pack(hrm_vec)
-        tiny_img = phos_sort_pack(tiny_vec)
-        if hrm_img.shape == tiny_img.shape:
-            diff = hrm_img - tiny_img
-            dmin, dmax = float(diff.min()), float(diff.max())
-            diff_vis = (diff - dmin) / (dmax - dmin + 1e-12)
-            save_img(diff_vis, f"{out_prefix}_vpm_chosen_diff.png", title="PHOS(HRM) − PHOS(Tiny)")
+        vec_A  = vpm_vector_from_df(df, model_A, dimensions, interleave=interleave, weights=weights)
+        vec_B  = vpm_vector_from_df(df, model_B, dimensions, interleave=interleave, weights=weights)
+        img_A  = phos_sort_pack(vec_A)
+        img_B  = phos_sort_pack(vec_B)
+
+        if img_A.shape == img_B.shape and img_A.size and img_B.size:
+            diff   = img_A - img_B
+            dmin   = float(diff.min()); dmax = float(diff.max())
+            # Normalize to [0,1] for viewing
+            diff01 = (diff - dmin) / (dmax - dmin + 1e-12)
+            save_img(diff01, f"{out_prefix}_vpm_chosen_diff.png",
+                     title=f"PHOS({model_A}) − PHOS({model_B})")
             results["diff_range"] = [dmin, dmax]
+        else:
+            results["diff_range"] = None
     except Exception:
-        # Difference generation is non-critical
-        pass
+        # Non-fatal: the sweeps and chosen outputs are still useful
+        results["diff_range"] = None
 
-    # Save comparison summary
+    # ---- 3) Summary (keyed by real aliases) ---------------------------------
+    summary = {
+        "delta": float(delta),
+        "chosen": {
+            model_A: results.get(f"{model_A}_chosen"),
+            model_B: results.get(f"{model_B}_chosen"),
+        }
+    }
     with open(f"{out_prefix}_guard_compare.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "delta": float(delta),
-            "hrm_chosen": results.get("hrm_chosen"),
-            "tiny_chosen": results.get("tiny_chosen"),
-        }, f, indent=2)
+        json.dump(summary, f, indent=2)
 
+    results["summary"] = summary
     return results
 
 def pick_metric_column(df: pd.DataFrame, base: str) -> str | None:

@@ -6,6 +6,7 @@ import logging
 import time
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from stephanie.components.gap.io import storage
 from stephanie.components.gap.services.scm_service import SCM_FEATURE_KEYS
 
 import numpy as np
@@ -24,6 +25,22 @@ from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.utils.progress_mixin import ProgressMixin
+
+
+prefer = [
+    "scm.aggregate01",
+    "scm.reasoning.score01",
+    "scm.knowledge.score01",
+    "scm.clarity.score01",
+    "scm.faithfulness.score01",
+    "scm.coverage.score01",
+    "scm.uncertainty01",
+    "scm.ood_hat01",
+    "scm.consistency01",
+    "scm.length_norm01",
+    "scm.temp01",
+    "scm.agree_hat01",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +137,6 @@ class ScoringProcessor(ProgressMixin):
 
         return result
 
-
     async def _score_model_pass(
         self,
         *,
@@ -148,22 +164,28 @@ class ScoringProcessor(ProgressMixin):
 
         with tqdm(total=len(triples), desc=task_name, unit="turn") as pbar:
             for i, triple in enumerate(triples):
-                scorable = Scorable(triple.output_text, ScorableType.CONVERSATION_TURN)
+                scorable = Scorable(
+                    triple.output_text, ScorableType.CONVERSATION_TURN
+                )
 
-                metrics = await worker.score(scorable, triple.goal_text, timeline_id)
+                metrics = await worker.score(
+                    scorable, triple.goal_text, timeline_id
+                )
 
                 # 1) Pull raw vector from the scorer output and normalize key space
                 vec_raw = self._to_vector(metrics)
                 vec_canon = self._promote_scm_keys(vec_raw)
 
                 # 2) Resolve the alias used by the scorer (e.g., "hf_TinyLama")
-                model_alias = _first_or_str(metrics.get("model_alias", model_label))
+                model_alias = _first_or_str(
+                    metrics.get("model_alias", model_label)
+                )
 
                 # 3) Ask SCM service to build the enriched vector bundle
                 scm_bundle = scm_service.build_vector(
                     model_alias=model_alias,
                     attrs=vec_canon,
-                    dimensions=self.config.dimensions,  
+                    dimensions=self.config.dimensions,
                 )
                 # scm_bundle: {"vector": {...}, "columns": [...], "values": [...]}
                 scm_vec = scm_bundle["vector"]
@@ -171,8 +193,39 @@ class ScoringProcessor(ProgressMixin):
                 # 4) Merge original metrics with SCM vector bundle for the timeline payload
                 merged = self._merge_for_timeline(metrics, scm_bundle)
 
+                # Build minimal preference order (SCM first)
+
+                payload = _sanitize_for_vpm(merged, prefer_keys=prefer)
+                payload = _normalize_for_vpm(payload, per_frame=True)
+
+                # DEBUG: catch empties early
+                if not payload["columns"]:
+                    self.logger.log(
+                        "VPMEmptyPayload", {"node_id": triple.node_id}
+                    )
+                # Optional: cap to a fixed top-N so frames aren’t too sparse/dim
+                TOP_N = 32
+                if len(payload["columns"]) > TOP_N:
+                    payload = {
+                        "columns": payload["columns"][:TOP_N],
+                        "values": payload["values"][:TOP_N],
+                        "vector": {
+                            c: payload["vector"][c]
+                            for c in payload["columns"][:TOP_N]
+                        },
+                    }
+
+                if (i % max(1, self.config.progress_log_every)) == 0:
+                    self.logger.log("VPMFrameStats", {
+                        "node": triple.node_id,
+                        "cols": len(payload["columns"]),
+                        "zeros": int(sum(1 for v in payload["values"] if v == 0.0)),
+                        "min": float(min(payload["values"])) if payload["values"] else None,
+                        "max": float(max(payload["values"])) if payload["values"] else None,
+                    })
+
                 # 5) Append to the timeline video
-                vpm_worker.append(timeline_id, triple.node_id, merged)
+                vpm_worker.append(timeline_id, triple.node_id, payload)
 
                 # 6) Build the aligned row across all keys observed so far
                 vec = merged["vector"]
@@ -182,12 +235,16 @@ class ScoringProcessor(ProgressMixin):
 
                 # 7) Build SCM row in fixed order (SCM_FEATURE_KEYS)
                 #    (Previously you passed a bundle to scm_row, which is why you got zeros.)
-                scm_rows.append([float(scm_vec.get(k, 0.0)) for k in SCM_FEATURE_KEYS])
+                scm_rows.append(
+                    [float(scm_vec.get(k, 0.0)) for k in SCM_FEATURE_KEYS]
+                )
 
                 # 8) PHOS row (model side): copy the per-dimension scalar scores from scm_vec
-                r = {"node_id": triple.node_id}
+                r = {"node_id": triple.node_id, "model_alias": model_alias}
                 for d in self.config.dimensions:
-                    r[f"{model_alias}.{d}"] = float(scm_vec.get(f"scm.{d}.score01", 0.0))
+                    # prefer scm.{d}.score01 (canonical), but tolerate aliased variants
+                    val = float(scm_vec.get(f"scm.{d}.score01", scm_vec.get(f"{model_alias}.{d}", 0.0)))
+                    r[f"{model_alias}.{d}"] = val
                 rows_for_df.append(r)
 
                 keep_mask.append(True)
@@ -196,19 +253,26 @@ class ScoringProcessor(ProgressMixin):
                 if ((i + 1) % log_every) == 0 or (i + 1) == len(triples):
                     self.logger.log(
                         "ScoringProgress",
-                        {"model": model_label, "processed": i + 1, "total": len(triples)},
+                        {
+                            "model": model_label,
+                            "processed": i + 1,
+                            "total": len(triples),
+                        },
                     )
                 pbar.update(1)
                 await asyncio.sleep(0)
 
         # finalize GIF under standard visuals dir
-        out_dir = str(self.config.base_dir / timeline_id.split("_")[0] / "visuals")
+        out_dir = str(
+            self.config.base_dir / timeline_id.split("_")[0] / "visuals"
+        )
         hrm_or_tiny_gif = await vpm_worker.finalize(
             timeline_id, f"{out_dir}/vpm_phos_run_{timeline_id}.gif"
         )
 
         return {
             "names": names,
+            "model_alias": model_alias,
             "rows": np.asarray(rows, np.float32),
             "scm_rows": np.asarray(scm_rows, np.float32),
             "rows_for_df": rows_for_df,
@@ -302,13 +366,14 @@ class ScoringProcessor(ProgressMixin):
         tiny_names = tiny_res["names"]
         hrm_matrix_raw = _select_rows(hrm_res["rows"], hrm_idx_map, kept_idx)
         tiny_matrix_raw = _select_rows(tiny_res["rows"], tny_idx_map, kept_idx)
-
+        alias_a = hrm_res.get("model_alias")
         # preferred columns (aggregate + dims) → shared order
         pref_hrm = self._preferred_indices(
-            hrm_names, "hrm", self.config.dimensions
+            hrm_names, alias_a, self.config.dimensions
         )
+        alias_b = tiny_res.get("model_alias")
         pref_tny = self._preferred_indices(
-            tiny_names, "tiny", self.config.dimensions
+            tiny_names, alias_b, self.config.dimensions
         )
         canonical_order = ["aggregate"] + list(self.config.dimensions)
         shared = [
@@ -323,6 +388,8 @@ class ScoringProcessor(ProgressMixin):
                 {
                     "hrm_names": hrm_names,
                     "tiny_names": tiny_names,
+                    "alias_a": alias_a,
+                    "alias_b": alias_b,
                     "preferred_hrm": pref_hrm,
                     "preferred_tiny": pref_tny,
                     "dims": self.config.dimensions,
@@ -353,19 +420,21 @@ class ScoringProcessor(ProgressMixin):
                     out.append(rows_for_df[j])
             return out
 
-        hrm_df_rows = _select_rows_for_df(
-            hrm_res["rows_for_df"], hrm_idx_map, kept_idx
-        )
-        tiny_df_rows = _select_rows_for_df(
-            tiny_res["rows_for_df"], tny_idx_map, kept_idx
-        )
-        merged_rows: List[Dict[str, float]] = []
+        hrm_df_rows = _select_rows_for_df(hrm_res["rows_for_df"], hrm_idx_map, kept_idx)
+        tiny_df_rows = _select_rows_for_df(tiny_res["rows_for_df"], tny_idx_map, kept_idx)
+
+        merged_rows = []
         for rh, rt in zip(hrm_df_rows, tiny_df_rows):
             row = {"node_id": rh.get("node_id") or rt.get("node_id")}
-            row.update({k: v for k, v in rh.items() if k != "node_id"})
-            row.update({k: v for k, v in rt.items() if k != "node_id"})
+            # keep existing alias columns verbatim
+            for k, v in rh.items():
+                if k != "node_id":
+                    row[k] = v
+            for k, v in rt.items():
+                if k != "node_id":
+                    row[k] = v
             merged_rows.append(row)
-        df_rows = pd.DataFrame(merged_rows)
+
 
         # GIFs (already saved by each pass)
         hrm_gif = hrm_res["gif"]
@@ -373,19 +442,21 @@ class ScoringProcessor(ProgressMixin):
 
         # Persist artifacts (same locations & tags as before)
         storage = self.container.get("gap_storage")
-        storage.save_matrix(hrm_matrix, shared, run_id, tag="hrm")
-        storage.save_matrix(tiny_matrix, shared, run_id, tag="tiny")
+        storage.save_matrix(hrm_matrix, shared, run_id, tag=alias_a)
+        storage.save_matrix(tiny_matrix, shared, run_id, tag=alias_b)
         storage.save_matrix(
-            hrm_scm_sel.astype(np.float32), SCM_COLUMNS, run_id, tag="hrm_scm"
+            hrm_scm_sel.astype(np.float32), SCM_COLUMNS, run_id, tag=f"{alias_a}_scm"
         )
         storage.save_matrix(
             tiny_scm_sel.astype(np.float32),
             SCM_COLUMNS,
             run_id,
-            tag="tiny_scm",
+            tag=f"{alias_b}_scm",
         )
 
+        df_rows  = pd.DataFrame(merged_rows)
         raw_paths = storage.save_rows_df(df_rows, run_id, name="rows_for_df")
+
 
         # row-level provenance for the *kept* rows
         provenance = []
@@ -554,130 +625,98 @@ class ScoringProcessor(ProgressMixin):
     ) -> List[float]:
         return [float(vec.get(n, 0.0)) for n in names]
 
-    def _merge_for_timeline(self, metrics: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
+    def _merge_for_timeline(self, metrics: Dict[str, Any], extra: Dict[str, float]) -> Dict[str, Any]:
         """
-        Merge 'metrics' (may contain vector and/or columns+values) with 'extra', which can be
-        a flat dict or an SCM-style {vector, columns, values}. Extras win on collisions.
-        Drops non-finite values (NaN/±inf) and keeps a stable column order.
+        Build a flat mapping from the incoming metrics (vector or columns/values),
+        merge in `extra` (including its vector/columns/values), and return BOTH
+        representations so downstream callers always find 'columns'/'values'.
         """
-        def _num(x):
-            try:
-                fx = float(x)
-                if fx == fx and fx not in (float("inf"), float("-inf")):
-                    return fx
-            except Exception:
-                pass
-            return None  # drop NaN/inf/non-numeric
-
-        # 1) Seed from metrics.vector
         base: Dict[str, float] = {}
-        if isinstance(metrics.get("vector"), dict):
-            for k, v in metrics["vector"].items():
-                nv = _num(v)
-                if nv is not None:
-                    base[str(k)] = nv
 
-        # 2) Merge metrics.columns/values (remember original order)
-        metric_cols = metrics.get("columns") if isinstance(metrics.get("columns"), list) else []
-        metric_vals = metrics.get("values") if isinstance(metrics.get("values"), list) else []
-        if metric_cols and metric_vals and len(metric_cols) == len(metric_vals):
-            for c, v in zip(metric_cols, metric_vals):
-                nv = _num(v)
-                if nv is not None:
-                    base[str(c)] = nv
+        # 1) Start from metrics.vector if present
+        vec = metrics.get("vector")
+        if isinstance(vec, dict):
+            for k, v in vec.items():
+                try:
+                    base[str(k)] = float(v)
+                except Exception:
+                    pass
 
-        # 3) Normalize 'extra' into vector + (optional) ordering
-        extra_vec: Dict[str, float] = {}
-        extra_cols: List[str] = []
+        # 2) Merge any metrics.columns/values if present
+        cols = metrics.get("columns")
+        vals = metrics.get("values")
+        if isinstance(cols, list) and isinstance(vals, list) and len(cols) == len(vals):
+            for c, v in zip(cols, vals):
+                try:
+                    base[str(c)] = float(v)
+                except Exception:
+                    pass
 
-        if isinstance(extra, dict) and ("vector" in extra or "columns" in extra or "values" in extra):
-            if isinstance(extra.get("vector"), dict):
-                for k, v in extra["vector"].items():
-                    nv = _num(v)
-                    if nv is not None:
-                        extra_vec[str(k)] = nv
-            ecols = extra.get("columns") if isinstance(extra.get("columns"), list) else []
-            evals = extra.get("values") if isinstance(extra.get("values"), list) else []
-            if ecols and evals and len(ecols) == len(evals):
-                for c, v in zip(ecols, evals):
-                    nv = _num(v)
-                    if nv is not None:
-                        extra_vec[str(c)] = nv
-                extra_cols = [str(c) for c in ecols]
-        elif isinstance(extra, dict):
-            for k, v in extra.items():
-                nv = _num(v)
-                if nv is not None:
-                    extra_vec[str(k)] = nv
+        # 3) Overlay SCM extras — IMPORTANT: include its vector/columns/values
+        if isinstance(extra, dict):
+            # (a) direct scalar keys
+            for k, v in list(extra.items()):
+                if isinstance(v, (int, float)):
+                    base[str(k)] = float(v)
 
-        # 4) Overlay extras (extras WIN on collisions)
-        base.update(extra_vec)
+            # (b) SCM vector
+            ex_vec = extra.get("vector")
+            if isinstance(ex_vec, dict):
+                for k, v in ex_vec.items():
+                    try:
+                        base[str(k)] = float(v)
+                    except Exception:
+                        pass
 
-        # 5) Build final column order safely
-        #    a) keep metrics.columns order, but only those that survived into base
-        ordered = [c for c in (metric_cols or []) if c in base]
+            # (c) SCM columns/values
+            ex_cols = extra.get("columns")
+            ex_vals = extra.get("values")
+            if isinstance(ex_cols, list) and isinstance(ex_vals, list) and len(ex_cols) == len(ex_vals):
+                for c, v in zip(ex_cols, ex_vals):
+                    try:
+                        base[str(c)] = float(v)
+                    except Exception:
+                        pass
 
-        #    b) then append NEW keys from extra, preferring extra_cols order if provided
-        seen = set(ordered)
-        if extra_cols:
-            for c in extra_cols:
-                if c in base and c not in seen:
-                    ordered.append(c); seen.add(c)
-        else:
-            for c in extra_vec.keys():
-                if c in base and c not in seen:
-                    ordered.append(c); seen.add(c)
-
-        #    c) finally append any remaining base keys not yet included
-        for k in base.keys():
-            if k not in seen:
-                ordered.append(k)
-
-        # 6) Values aligned to columns (use .get as a guard, though all should exist)
-        final_cols = ordered
-        final_vals = [base.get(c, 0.0) for c in final_cols]
-
+        # 4) Rebuild columns/values (stable order: sort by key for determinism)
+        final_cols = sorted(base.keys())
+        final_vals = [base[c] for c in final_cols]
         return {"columns": final_cols, "values": final_vals, "vector": base}
 
-    def _preferred_indices(
-        self, names: List[str], model: str, dims: List[str]
-    ) -> Dict[str, int]:
-        name_idx = {n: i for i, n in enumerate(names)}
+    def _preferred_indices(self, names: list[str], alias: str, dims: list[str]) -> dict[str, int]:
+        """
+        Build mapping {'aggregate': idx, dim: idx, ...} by trying, in order:
+        1) {alias}.aggregate / {alias}.{dim}
+        2) scm.aggregate01 / scm.{dim}.score01
+        3) loose match: any column containing '.aggregate' or '.{dim}'
+        """
+        low = [str(n).lower() for n in names]
+        idx_map = {}
 
-        def exact(k: str):
-            return name_idx.get(k)
-
-        def seek(*patterns: str):
-            for i, n in enumerate(names):
-                s = n.lower()
-                if all(p in s for p in patterns):
+        def find_one(key: str) -> int | None:
+            # exact prefix match
+            t1 = f"{alias}.{key}"
+            if t1 in low:
+                return low.index(t1)
+            # SCM canonical
+            if key == "aggregate":
+                t2 = "scm.aggregate01"
+            else:
+                t2 = f"scm.{key}.score01"
+            if t2 in low:
+                return low.index(t2)
+            # loose fallback
+            needle = f".{key}"
+            for i, n in enumerate(low):
+                if needle in n:
                     return i
             return None
 
-        out = {}
-
-        # Aggregate: prefer canonical SCM, then model-prefixed.
-        agg = (
-            exact("scm.aggregate01")
-            or exact(f"{model}.aggregate01")
-            or exact(f"{model}.aggregate")
-            or seek(model + ".", ".aggregate01")
-            or seek(model + ".", ".aggregate")
-        )
-        if agg is not None:
-            out["aggregate"] = agg
-
-        for d in dims:
-            idx = (
-                exact(f"scm.{d}.score01")  # gold path
-                or exact(f"{model}.{d}.score01")
-                or seek(model + ".", f".{d}", ".score01")
-                or exact(f"{model}.{d}.score")
-                or seek(model + ".", f".{d}", ".score")
-            )
-            if idx is not None:
-                out[d] = idx
-        return out
+        for key in ["aggregate"] + list(dims):
+            i = find_one(key)
+            if i is not None:
+                idx_map[key] = i
+        return idx_map
 
     # --- VRAM / RAM cleanup helpers -----------------------------------------
     def _unload_hf_scorers(self):
@@ -790,9 +829,111 @@ def extract_raw_dim_and_scm(
 
     return out
 
+
 def _first_or_str(x):
     # metrics["model_alias"] can be ["hf_TinyLama"] or "hf_TinyLama"
     if isinstance(x, (list, tuple)) and x:
         return str(x[0])
     return str(x)
 
+
+# S4.4: VPM payload sanitizer (filters NaN/Inf and builds vector)
+def _sanitize_for_vpm(
+    payload: dict, *, prefer_keys: list[str] | None = None
+) -> dict:
+    import math
+
+    cols = payload.get("columns") or []
+    vals = payload.get("values") or []
+    if not (
+        isinstance(cols, list)
+        and isinstance(vals, list)
+        and len(cols) == len(vals)
+    ):
+        # try vector fallback
+        vec = payload.get("vector") or {}
+        cols = list(vec.keys())
+        vals = [vec[k] for k in cols]
+
+    # optional stable ordering: prefer SCM keys first, then others
+    if prefer_keys:
+        # keep order: prefer_keys (existing ones), then remaining in original order
+        seen = set()
+        ordered = [
+            k
+            for k in prefer_keys
+            if k in cols and not (k in seen or seen.add(k))
+        ]
+        for k in cols:
+            if k not in seen:
+                ordered.append(k)
+                seen.add(k)
+        cols = ordered
+        vals = (
+            [payload.get("vector", {}).get(k) for k in cols]
+            if "vector" in payload
+            else [
+                v
+                for _, v in sorted(
+                    zip(cols, vals), key=lambda x: cols.index(x[0])
+                )
+            ]
+        )
+
+    clean_cols, clean_vals = [], []
+    for c, v in zip(cols, vals):
+        try:
+            fv = float(v)
+        except Exception:
+            continue
+        if not math.isfinite(fv):
+            continue  # drop NaN/Inf (e.g., ppl=inf on empty text)
+        clean_cols.append(str(c))
+        clean_vals.append(fv)
+
+    vec = {c: v for c, v in zip(clean_cols, clean_vals)}
+    return {"columns": clean_cols, "values": clean_vals, "vector": vec}
+
+
+# S4.5: VPM payload normalizer (maps non-SCM to 0..1; SCM already 0..1)
+SCM_KEYS = {
+    "scm.reasoning.score01",
+    "scm.knowledge.score01",
+    "scm.clarity.score01",
+    "scm.faithfulness.score01",
+    "scm.coverage.score01",
+    "scm.aggregate01",
+    "scm.uncertainty01",
+    "scm.ood_hat01",
+    "scm.consistency01",
+    "scm.length_norm01",
+    "scm.temp01",
+    "scm.agree_hat01",
+}
+
+
+def _normalize_for_vpm(payload: dict, *, per_frame: bool = True) -> dict:
+    cols = payload["columns"]
+    vals = payload["values"]
+
+    # split SCM vs non-SCM
+    out = []
+    non_scm_vals = [v for c, v in zip(cols, vals) if c not in SCM_KEYS]
+    if non_scm_vals and per_frame:
+        lo = min(non_scm_vals)
+        hi = max(non_scm_vals)
+        span = (hi - lo) if (hi > lo) else 1.0
+    else:
+        lo, span = 0.0, 1.0
+
+    for c, v in zip(cols, vals):
+        if c in SCM_KEYS:
+            out.append(v)  # already 0..1 by construction
+        else:
+            out.append((v - lo) / span)  # min-max to 0..1
+
+    return {
+        "columns": cols,
+        "values": out,
+        "vector": {c: x for c, x in zip(cols, out)},
+    }
