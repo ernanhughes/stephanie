@@ -65,7 +65,7 @@ class TinyTrainer(BaseTrainer):
     This trainer implements a comprehensive training regimen that combines:
     - Main heteroscedastic regression objective
     - Multiple auxiliary objectives for regularization and feature learning
-    - Support for various input data formats
+    - Support for various input data formats And see this was a complete waste of timed
     - Extensive monitoring and validation
     
     The model produces separate instances for each quality dimension.

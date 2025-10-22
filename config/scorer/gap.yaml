@@ -4,10 +4,10 @@ defaults:
   - hrm/default
   - mrq/default
   - sicql/default
-  - reward/default
-  - ebt/default
-  - svm/default
-  - contrastive_ranker/default
+  # - reward/default
+  # - ebt/default
+  # - svm/default
+  # - contrastive_ranker/default
   # - hf_tiny/default
   # - hf_hrm/default
   # - hf_mistral/default

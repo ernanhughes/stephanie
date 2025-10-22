@@ -79,7 +79,6 @@ class ScoringProcessor(ProgressMixin):
         manifest: GapRunManifest,
     ) -> Dict[str, Any]:
         scoring_service = self.container.get("scoring")
-        zm = self.container.get("zeromodel")
 
         # start stage on the manifest
         total_rows = sum(len(v) for v in triples_data.values())
@@ -494,6 +493,8 @@ class ScoringProcessor(ProgressMixin):
             "tiny_vectors": tiny_matrix,
             "hrm_names": shared,
             "hrm_label": hrm_label,
+            "alias_a": alias_a,
+            "alias_b": alias_b,
             "tiny_names": shared,
             "tiny_label": tiny_label,
             "hrm_scm_matrix": hrm_scm_sel.astype(np.float32),

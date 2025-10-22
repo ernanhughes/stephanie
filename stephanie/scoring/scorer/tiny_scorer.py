@@ -255,6 +255,36 @@ class TinyScorer(BaseScorer):
         loaded = {k: (v is not None) for k, v in self.models.items()}
         return f"<TinyScorer(model_type={self.model_type}, loaded={loaded})>"
 
+def _take_scalar(t):
+    # works with tensor or float
+    if isinstance(t, torch.Tensor):
+        return float(t.detach().mean().cpu().item())
+    return float(t)
+
+@torch.no_grad()
+def tiny_infer_turn(model, embed, *, alias: str, dim: str, goal: str, output: str) -> dict:
+    # TinyRecursionModel uses (x, y, z). Keep it consistent with your training.
+    eg = embed(goal); eo = embed(output)
+    x  = torch.tensor(eg, dtype=torch.float32, device=model.device).unsqueeze(0)
+    y  = torch.tensor(eo, dtype=torch.float32, device=model.device).unsqueeze(0)
+    z  = torch.tensor(eg, dtype=torch.float32, device=model.device).unsqueeze(0)  # or learned plan
+
+    _, _, _, aux = model(x, y, z, seq_len=torch.tensor([len(output)], device=model.device), return_aux=True)
+    a = alias.lower()
+
+    # Map Tiny’s native aux into the common schema (rename where needed)
+    return {
+        f"{a}.{dim}.score01":   _take_scalar(aux.get("score", 0.0)),
+        f"{a}.uncertainty01":   _take_scalar(aux.get("uncertainty01", aux.get("uncertainty", 0.0))),
+        f"{a}.disagree_hat":    _take_scalar(aux.get("disagree_hat", 0.0)),
+        f"{a}.consistency_hat": _take_scalar(aux.get("consistency_hat", 0.0)),
+        f"{a}.ood_hat01":       _take_scalar(aux.get("ood_hat", 0.0)),
+        f"{a}.temp01":          _take_scalar(aux.get("temp01", 0.5)),
+        f"{a}.entropy_aux":     _take_scalar(aux.get("entropy_aux", 0.0)),
+        f"{a}.jacobian_fd":     _take_scalar(aux.get("jacobian_fd", 0.0)),
+        f"{a}.recon_sim":       _take_scalar(aux.get("recon_sim", 0.0)),
+        f"{a}.halt_prob":       _take_scalar(aux.get("halt_prob", 0.0)),
+    }
 
 # -------------------------
 # Helpers

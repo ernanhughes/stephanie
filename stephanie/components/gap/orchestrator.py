@@ -152,10 +152,14 @@ class GapAnalysisOrchestrator(ProgressMixin):
             )
             significance_out = {"status": "error", "error": str(e)}
 
+        alias_a = score_out.get("alias_a", "HRM")
+        alias_b = score_out.get("alias_b", "Tiny")
         # 5) Calibration (uses analysis outputs; independent of significance)
         calib_out = await self.calibration_processor.execute_calibration(
             analysis_out,
             run_id,
+            alias_a=alias_a,
+            alias_b=alias_b,
         )
 
         # 6) Report (Markdown quicklook) — pass significance so it can be shown

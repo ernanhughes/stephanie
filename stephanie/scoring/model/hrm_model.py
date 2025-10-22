@@ -317,6 +317,7 @@ class HRMModel(nn.Module):
         # Temperature-calibrated scoring
         tau_raw = self.temp_head(zH_head)
         tau = 0.5 + 0.5 * F.softplus(tau_raw)  # τ ∈ (0.5, ∞) with softplus
+        temp01  = torch.sigmoid(tau_raw)              # nice bounded proxy for telemetry
         score_logit = self.score_head(zH_head)
         score01 = torch.sigmoid(score_logit / tau)  # Calibrated score ∈ [0,1]
 
@@ -370,7 +371,7 @@ class HRMModel(nn.Module):
             # Derived metrics (normalized for visualization)
             "score": score01,                           # [batch, 1] ∈ [0,1]
             "certainty01": torch.sigmoid(-log_var),     # [batch, 1] certainty measure
-            "uncertainty": torch.sigmoid(-log_var),     # [batch, 1] alias for back-compat
+            "uncertainty": 1.0 - torch.sigmoid(-log_var),     # [batch, 1] alias for back-compat
             "aux3_probs": aux3_probs,                   # [batch, 3] probability distribution
             "entropy_aux": (-(aux3_probs * F.log_softmax(aux3_logits, -1)).sum(-1)
                              / torch.log(torch.tensor(3.0, device=x.device))).unsqueeze(-1),  # [batch, 1]
@@ -379,7 +380,7 @@ class HRMModel(nn.Module):
             "consistency_target": consistency_target,   # [batch, 1] regularization target
             "recon_sim": recon_sim,                     # [batch, 1] reconstruction quality
             "ood_hat": ood_hat,                         # [batch, 1] OOD probability
-            "temp01": (torch.tanh(tau) + 1) / 2,        # [batch, 1] temperature proxy
+            "temp01": temp01,                           # [batch, 1] temperature proxy
             "jacobian_fd": jacobian_fd,                 # [batch, 1] input sensitivity
             "halt_prob": halt_prob,                     # [batch, 1] evidence accumulation
 

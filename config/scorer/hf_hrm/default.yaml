@@ -13,13 +13,13 @@ dimensions:
   - coverage
 
 # Hugging Face model
-model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
-model_alias: hf_TinyLama
-display_name: TinyLlama-1.1B
+# model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+# model_alias: TinyLlama
+# display_name: TinyLlama-1.1B
 # ----
-# model_name: meta-llama/Llama-3.2-3B-Instruct
-# model_alias: Llama-3.2-3B
-# display_name: Llama-3.2-3B-Instruct
+model_name: meta-llama/Llama-3.2-3B-Instruct
+model_alias: Llama-3.2-3B
+display_name: Llama-3.2-3B-Instruct
 # ----
 
 

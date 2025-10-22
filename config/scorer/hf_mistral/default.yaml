@@ -14,13 +14,13 @@ dimensions:
   - coverage
 
 # Hugging Face model
-model_name: microsoft/Phi-3-mini-4k-instruct
-model_alias: Phi-3-mini
-display_name: Phi-3-mini-4k-instruct
+# model_name: microsoft/Phi-3-mini-4k-instruct
+# model_alias: Phi-3-mini
+# display_name: Phi-3-mini-4k-instruct
 # ----
-# model_name: mistralai/Mistral-7B-Instruct-v0.3
-# model_alias: Mistral-7B
-# display_name: Mistral-7B-Instruct-v0.3
+model_name: mistralai/Mistral-7B-Instruct-v0.3
+model_alias: Mistral-7B
+display_name: Mistral-7B-Instruct-v0.3
 # ----
 # model_name: google/gemma-2-2b-it
 # model_alias: hf_Gemma-2

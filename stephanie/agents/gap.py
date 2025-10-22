@@ -889,15 +889,14 @@ class GapAgent(BaseAgent):
                 out_prefix=vpm_prefix,
                 tl_fracs=(0.25, 0.16, 0.36, 0.09),
                 delta=0.02,
-                models=[alias_a, alias_b],
                 interleave=bool(self.interleave),
                 weights=None,
             )
 
             # Standardize “chosen” copies to stable names in visuals/
             # (build_hrm_vs_tiny_guarded already writes *_chosen.png; we also expose them plainly)
-            hrm_chosen = phos_res.get("hrm_chosen", {})
-            tiny_chosen = phos_res.get("tiny_chosen", {})
+            hrm_chosen = phos_res.get(alias_a, {})
+            tiny_chosen = phos_res.get(alias_b, {})
             if hrm_chosen.get("phos_path"):
                 shutil.copyfile(hrm_chosen["phos_path"], os.path.join(visuals_dir, "hrm_vpm_phos.png"))
             if tiny_chosen.get("phos_path"):
@@ -909,15 +908,15 @@ class GapAgent(BaseAgent):
                 shutil.copyfile(tiny_chosen["raw_path"], os.path.join(visuals_dir, "tiny_vpm_raw.png"))
 
             # Persist sweep summaries to metrics/
-            with open(os.path.join(metrics_dir, "hrm_vpm_guard_metrics.json"), "w", encoding="utf-8") as f:
-                json.dump({"model": "hrm", **{"chosen": hrm_chosen}, **{"sweep": phos_res.get("sweep", {}).get("hrm", [])}}, f, indent=2)
-            with open(os.path.join(metrics_dir, "tiny_vpm_guard_metrics.json"), "w", encoding="utf-8") as f:
-                json.dump({"model": "tiny", **{"chosen": tiny_chosen}, **{"sweep": phos_res.get("sweep", {}).get("tiny", [])}}, f, indent=2)
+            with open(os.path.join(metrics_dir, f"{alias_a}_vpm_guard_metrics.json"), "w", encoding="utf-8") as f:
+                json.dump({"model": alias_a, **{"chosen": hrm_chosen}, **{"sweep": phos_res.get("sweep", {}).get(alias_a, [])}}, f, indent=2)
+            with open(os.path.join(metrics_dir, f"{alias_b}_vpm_guard_metrics.json"), "w", encoding="utf-8") as f:
+                json.dump({"model": alias_b, **{"chosen": tiny_chosen}, **{"sweep": phos_res.get("sweep", {}).get(alias_b, [])}}, f, indent=2)
             with open(os.path.join(metrics_dir, "guard_compare.json"), "w", encoding="utf-8") as f:
                 json.dump({
                     "delta": 0.02,
-                    "hrm_chosen": hrm_chosen,
-                    "tiny_chosen": tiny_chosen
+                    f"{alias_a}_chosen": hrm_chosen,
+                    f"{alias_b}_chosen": tiny_chosen
                 }, f, indent=2)
 
             # Expose result in eval_stats

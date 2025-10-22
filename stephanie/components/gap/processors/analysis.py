@@ -180,6 +180,9 @@ class AnalysisProcessor(ProgressMixin):
         done_stages += 1
         self.ptick(task, done=done_stages, total=total_stages)
 
+        alias_a = res.get("models", ["HRM"])[0]
+        alias_b = res.get("models", ["Tiny"])[1]
+
         # --- SCM visuals ---
         self.pstage(task, "scm_visuals:start")
         _m_start("analysis.scm_visuals")
@@ -189,10 +192,10 @@ class AnalysisProcessor(ProgressMixin):
             scm_names = scoring_results.get("scm_names", [])
 
             if hrm_scm is None or tiny_scm is None or not scm_names:
-                storage = self.container.get("gap_storage")
+                storage = self.container.get("gap_storage") 
                 aligned = storage.base_dir / run_id / "aligned"
-                hrm_scm = np.load(aligned / "hrm_scm_matrix.npy")
-                tiny_scm = np.load(aligned / "tiny_scm_matrix.npy")
+                hrm_scm = np.load(aligned / f"{alias_a}_scm_matrix.npy")
+                tiny_scm = np.load(aligned / f"{alias_b}_scm_matrix.npy")
                 import json
                 with open(aligned / "hrm_scm_metric_names.json", "r", encoding="utf-8") as f:
                     scm_names = json.load(f)
