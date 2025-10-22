@@ -35,9 +35,9 @@ hf_gap:
     version: v1
     dims: [reasoning, knowledge, clarity, faithfulness, coverage]  # accepted by loader; mirrored to reasoning_dimensions
     latent_dim: 128
-    use_native_scores_as_inputs: false   # normalize to [0,1] before SCM if false
+    use_native_scores_as_inputs: fal yes tomorrow 11:20 in the envelope se   # normalize to [0,1] before SCM if false
 
-  per_dim_cap: 100          # cap comparisons collected per dimension (prevents runaway)
+  per_dim_cap: 500          # cap comparisons collected per dimension (prevents runaway)
 
   # ---- Directories / artifacts ----
   gap_base_dir: "${hydra:runtime.cwd}/data/gap_runs"   # canonical run root

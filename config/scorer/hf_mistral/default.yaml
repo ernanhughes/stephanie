@@ -2,7 +2,6 @@
 name: hf_mistral
 model_type: hf
 
-
 model_version: v1
 evaluator: hf
 target_type: conversation_turn
@@ -14,19 +13,23 @@ dimensions:
   - coverage
 
 # Hugging Face model
+model_name: HuggingFaceTB/SmolLM3-3B Hello
+model_alias: Tiny
+display_name: SmolLM3-3B
+# ----
 # model_name: microsoft/Phi-3-mini-4k-instruct
 # model_alias: Phi-3-mini
 # display_name: Phi-3-mini-4k-instruct
 # ----
-model_name: mistralai/Mistral-7B-Instruct-v0.3
-model_alias: Mistral-7B
-display_name: Mistral-7B-Instruct-v0.3
+# model_name: mistralai/Mistral-7B-Instruct-v0.3
+# model_alias: Mistral-7B
+# display_name: Mistral-7B-Instruct-v0.3
 # ----
 # model_name: google/gemma-2-2b-it
 # model_alias: hf_Gemma-2
 # display_name: gemma-2-2b-it
-# ----
-# model_name: EleutherAI/pythia-160m
+# ---- Need to rebuild this different way
+# model_name: EleutherAI/pythia-160m Sorry
 # model_alias: pythia-160m
 # display_name: pythia-160m
 

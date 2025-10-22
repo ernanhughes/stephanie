@@ -244,38 +244,6 @@ class HRMScorer(BaseScorer):
         loaded = {k: (v is not None) for k, v in self.models.items()}
         return f"<HRMScorer(model_type={self.model_type}, loaded={loaded})>"
 
-@torch.no_grad()
-def hrm_infer_turn(model: HRMModel, embed_fn, alias: str, goal: str, output: str, dim: str) -> dict:
-    """
-    Returns a flat dict of '{alias}.{dim}.score01', '{alias}.uncertainty01', etc.
-    Assumes model.cfg['input_dim'] == 2 * embedding_dim (concat goal+output).
-    """
-    a = alias.lower()
-    eg = embed_fn(goal)    # np.ndarray or list
-    eo = embed_fn(output)
-    x  = torch.tensor(
-        (eg + eo) if len(eg) != len(eo) else (eg + eo),  # replace with concat if that’s what you set input_dim for
-        dtype=torch.float32, device=model.device
-    ).unsqueeze(0)
-
-    score01, aux = model(x, return_aux=True)
-    def take(t): 
-        return float(t.mean().detach().cpu().item())
-
-    return {
-        f"{a}.{dim}.score01":        take(score01),
-        f"{a}.uncertainty01":        take(aux["uncertainty01"]),
-        f"{a}.entropy_aux":          take(aux["entropy_aux"]),
-        f"{a}.disagree_hat":         take(aux["disagree_hat"]),
-        f"{a}.consistency_hat":      take(aux["consistency_hat"]),
-        f"{a}.ood_hat01":            take(aux["ood_hat"]),
-        f"{a}.temp01":               take(aux["temp01"]),
-        f"{a}.jacobian_fd":          take(aux["jacobian_fd"]),
-        f"{a}.recon_sim":            take(aux["recon_sim"]),
-        f"{a}.length_norm01":        min(1.0, len(output.split()) / 300.0),  # optional cheap len proxy
-        f"{a}.halt_prob":            take(aux["halt_prob"]),
-    }
-
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -298,14 +266,6 @@ def _safe_norm(t):
 
 
 # === SCM mapping from HRM internals → aligned scm.* columns ==================
-
-_SCM_DIMS = ("reasoning", "knowledge", "clarity", "faithfulness", "coverage")
-
-def _clip01(x: float) -> float:
-    try:
-        return float(min(1.0, max(0.0, x)))
-    except Exception:
-        return 0.0
 
 def _build_scm_from_hrm(*, attrs: Dict[str, Any], intermediate: Dict[str, Any]) -> Dict[str, float]:
     """Dimension-specific SCM mapping for HRM using internal signals only."""

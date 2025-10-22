@@ -184,7 +184,7 @@ class MemoryTool:
         self.register_store(MARSConflictStore(self.session_maker, logger))
         self.register_store(CaseBookStore(self.session_maker, logger))
         self.register_store(ChatStore(self.session_maker, logger))
-        self.register_store(ScorableEntityStore(self.session_maker, logger))
+        # self.register_store(ScorableEntityStore(self.session_maker, logger))
         self.register_store(DynamicScorableStore(self.session_maker, logger))
         self.register_store(CalibrationEventStore(self.session_maker, logger))
         self.register_store(EntityCacheStore(self.session_maker, logger))

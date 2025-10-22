@@ -184,6 +184,7 @@ class NERRetrieverEmbedder:
     ):
         self.device = device
         self.logger = logger
+        self.logger.log("Warning", {"ner", "initializing"})
         self.memory = memory
         self.cfg = cfg or {}
 

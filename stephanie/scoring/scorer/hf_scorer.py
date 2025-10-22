@@ -308,29 +308,29 @@ class HuggingFaceScorer(BaseScorer):
     # Cleanup (also lets BaseScorer.close() clean up plugins)
     def close(self):
         try:
-            # Detach hooks / peft / LoRA if any
-            for attr in ("peft_model", "lora_model"):
-                m = getattr(self, attr, None)
-                if m is not None:
-                    try:
-                        m.cpu()
-                    except Exception:
-                        pass
-                    setattr(self, attr, None)
+            # 0) Remove accelerate hooks if present
+            try:
+                import accelerate
+                accelerate.hooks.remove_hook_from_submodules(self.model)
+            except Exception:
+                pass
 
-            # Move to CPU first
+            # 1) Move model to CPU and drop it
             if getattr(self, "model", None) is not None:
                 try:
+                    # If model has hf_device_map / tied weights across devices, clear it
+                    if hasattr(self.model, "hf_device_map"):
+                        self.model.hf_device_map = None
                     self.model.to("cpu")
                 except Exception:
                     pass
-            self.model = None
+                self.model = None
 
-            # Tokenizer free
-            if getattr(self, "tokenizer", None) is not None:
-                self.tokenizer = None
+            # 2) Drop tokenizer ref (your code uses self.tok, not self.tokenizer)
+            if getattr(self, "tok", None) is not None:
+                self.tok = None
 
-            # Accelerate offload teardown
+            # 3) Teardown any offload managers
             try:
                 offload = getattr(self, "_cpu_offload", None)
                 if offload and hasattr(offload, "teardown"):
@@ -338,11 +338,13 @@ class HuggingFaceScorer(BaseScorer):
             except Exception:
                 pass
 
-            # GC + CUDA cache clear
+            # 4) Hard GC and allocator cleanup
+            import gc, torch
             gc.collect()
             if torch.cuda.is_available():
+                torch.cuda.synchronize()
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
+                torch.cuda.reset_peak_memory_stats()
         finally:
-            # Ensure plugins also get a chance to close
             super().close()

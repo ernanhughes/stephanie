@@ -22,7 +22,7 @@ class RetrieverConfig:
     """
     source: str = "memory"
     limit: int = 100
-    max_text_len: Optional[int] = 4000
+    max_text_len: Optional[int] = 2000
     overfetch_factor: int = 5
 
     # file paths only used for jsonl/parquet sources

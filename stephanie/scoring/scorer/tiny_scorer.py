@@ -157,12 +157,14 @@ class TinyScorer(BaseScorer):
                 raw01 = float(max(0.0, min(1.0, _tf(aux.get("score")))))
                 # "uncertainty" key carries certainty in current model; prefer certainty01 if present.
                 # prefer certainty01; fall back to (1 - uncertainty) if that’s present; else 0.5
-                c01 = _tf(aux.get("certainty01"))
-                if c01 == 0.0:  # _tf returns 0.0 on missing; distinguish from true zero:
-                    unc = _tf(aux.get("uncertainty"))
-                    certainty01 = (1.0 - unc) if unc > 0.0 else 0.5
+                if "certainty01" in aux:
+                    certainty01 = _tf(aux["certainty01"])
+                elif "uncertainty01" in aux:
+                    certainty01 = 1.0 - _tf(aux["uncertainty01"])
+                elif "uncertainty" in aux:
+                    certainty01 = 1.0 - _tf(aux["uncertainty"])
                 else:
-                    certainty01 = c01
+                    certainty01 = 0.5
                 entropy = _tf(aux.get("entropy_aux"))
                 halt_prob = _sigmoid_mean(halt_logits)
 
@@ -261,30 +263,6 @@ def _take_scalar(t):
         return float(t.detach().mean().cpu().item())
     return float(t)
 
-@torch.no_grad()
-def tiny_infer_turn(model, embed, *, alias: str, dim: str, goal: str, output: str) -> dict:
-    # TinyRecursionModel uses (x, y, z). Keep it consistent with your training.
-    eg = embed(goal); eo = embed(output)
-    x  = torch.tensor(eg, dtype=torch.float32, device=model.device).unsqueeze(0)
-    y  = torch.tensor(eo, dtype=torch.float32, device=model.device).unsqueeze(0)
-    z  = torch.tensor(eg, dtype=torch.float32, device=model.device).unsqueeze(0)  # or learned plan
-
-    _, _, _, aux = model(x, y, z, seq_len=torch.tensor([len(output)], device=model.device), return_aux=True)
-    a = alias.lower()
-
-    # Map Tiny’s native aux into the common schema (rename where needed)
-    return {
-        f"{a}.{dim}.score01":   _take_scalar(aux.get("score", 0.0)),
-        f"{a}.uncertainty01":   _take_scalar(aux.get("uncertainty01", aux.get("uncertainty", 0.0))),
-        f"{a}.disagree_hat":    _take_scalar(aux.get("disagree_hat", 0.0)),
-        f"{a}.consistency_hat": _take_scalar(aux.get("consistency_hat", 0.0)),
-        f"{a}.ood_hat01":       _take_scalar(aux.get("ood_hat", 0.0)),
-        f"{a}.temp01":          _take_scalar(aux.get("temp01", 0.5)),
-        f"{a}.entropy_aux":     _take_scalar(aux.get("entropy_aux", 0.0)),
-        f"{a}.jacobian_fd":     _take_scalar(aux.get("jacobian_fd", 0.0)),
-        f"{a}.recon_sim":       _take_scalar(aux.get("recon_sim", 0.0)),
-        f"{a}.halt_prob":       _take_scalar(aux.get("halt_prob", 0.0)),
-    }
 
 # -------------------------
 # Helpers
@@ -366,24 +344,39 @@ def _extract_standard_aux(aux: Dict[str, Any]) -> Dict[str, float]:
     # confidence triplet
     if "aux3_probs" in aux and isinstance(aux["aux3_probs"], torch.Tensor):
         p = aux["aux3_probs"].detach().float()
-        out["aux3_p_bad"] = float(p[..., 0].mean().item())
-        out["aux3_p_mid"] = float(p[..., 1].mean().item())
+        out["aux3_p_bad"]  = float(p[..., 0].mean().item())
+        out["aux3_p_mid"]  = float(p[..., 1].mean().item())
         out["aux3_p_good"] = float(p[..., 2].mean().item())
 
     # calibration / OOD
     out["temp01"] = float(_tf(aux.get("temp01")))
-    out["ood_hat"] = float(_tf(aux.get("ood_hat")))
 
-    # robustness & local sensitivity
+    # OOD (prefer ood_hat01)
+    if "ood_hat01" in aux:
+        out["ood_hat01"] = float(_tf(aux["ood_hat01"]))
+    elif "ood_hat" in aux:  # backward compat
+        out["ood_hat01"] = float(_tf(aux["ood_hat"]))
+
+    # Robustness & sensitivity
     out["consistency_hat"] = float(_tf(aux.get("consistency_hat")))
-    out["jacobian_fd"] = float(_tf(aux.get("jacobian_fd")))
+    out["jacobian_fd"]     = float(_tf(aux.get("jacobian_fd")))
 
-    # comprehension & invariance
-    out["recon_sim"] = float(_tf(aux.get("recon_sim")))
-    out["len_effect"] = float(_tf(aux.get("len_effect")))
+    # Reconstruction / comprehension
+    out["recon_sim"]  = float(_tf(aux.get("recon_sim")))
     out["disagree_hat"] = float(_tf(aux.get("disagree_hat")))
 
-    # SAE concept sparsity (how many concepts are “on”)
+    # Length proxy (prefer 0..1)
+    if "length_norm01" in aux:
+        out["length_norm01"] = float(_tf(aux["length_norm01"]))
+    else:
+        # derive from tanh-normalized len_effect if present
+        if "len_effect" in aux:
+            le = float(_tf(aux["len_effect"]))
+            out["length_norm01"] = float(max(0.0, min(1.0, (le + 1.0) * 0.5)))
+        else:
+            out["length_norm01"] = 0.0
+
+    # SAE sparsity
     out["concept_sparsity"] = float(_tf(aux.get("concept_sparsity")))
     return out
 
@@ -414,22 +407,6 @@ def _extract_full_aux(aux: Dict[str, Any]) -> Dict[str, float]:
 
 
 # === SCM mapping from Tiny aux → aligned scm.* columns =======================
-
-_SCM_DIMS = ("reasoning", "knowledge", "clarity", "faithfulness", "coverage")
-_SCM_COLUMNS = [
-    "scm.reasoning.score01",
-    "scm.knowledge.score01",
-    "scm.clarity.score01",
-    "scm.faithfulness.score01",
-    "scm.coverage.score01",
-    "scm.aggregate01",
-    "scm.uncertainty01",
-    "scm.ood_hat01",
-    "scm.consistency01",
-    "scm.length_norm01",
-    "scm.temp01",
-    "scm.agree_hat01",
-]
 
 def _build_scm_from_tiny_attrs(attrs: Dict[str, Any]) -> Dict[str, float]:
     """Dimension-specific SCM mapping for Tiny using model dynamics only."""
