@@ -13,7 +13,7 @@ dimensions:
   - coverage
 
 # Hugging Face model
-model_name: HuggingFaceTB/SmolLM3-3B Hello
+model_name: HuggingFaceTB/SmolLM3-3B
 model_alias: Tiny
 display_name: SmolLM3-3B
 # ----
