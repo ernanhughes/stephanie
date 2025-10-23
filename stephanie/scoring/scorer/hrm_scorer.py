@@ -17,7 +17,7 @@ from stephanie.utils.file_utils import load_json  # To load meta file
 _logger = logging.getLogger(__name__)
 
 class HRMScorer(BaseScorer):
-    """
+    """ I actually believe it's here
     Scorer that uses a trained Hierarchical Reasoning Model (HRM) to evaluate
     goal/document pairs. The HRM performs internal multi-step reasoning to
     produce a quality score.
@@ -124,7 +124,7 @@ class HRMScorer(BaseScorer):
     # -------------------------------------------------------------------------
     # Scoring
     # -------------------------------------------------------------------------
-    def score(self, context: dict, scorable: Scorable, dimensions: List[str]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable: Scorable, dimensions: List[str]) -> ScoreBundle:
         """
         Scores a single scorable item against a goal using the HRM models per dimension.
         Returns: ScoreBundle with ScoreResult for each dimension.
@@ -167,8 +167,13 @@ class HRMScorer(BaseScorer):
                     # HRM forward returns (y_pred, intermediate_states)
                     y_pred, intermediate = model(x_input)
 
-                raw_score = float(y_pred.squeeze().item())
+                val = float(y_pred.squeeze().item())
+                # robust clamp (and NaN/inf guard)
+                raw01 = 0.0 if not (val == val and abs(val) != float("inf")) else max(0.0, min(1.0, val))
+                raw_score = val
+
                 raw01 = float(max(0.0, min(1.0, y_pred.squeeze().item())))
+
                 hrm_score100 = round(raw01 * 100.0, 4)
 
                 # Pull a few useful magnitudes if present (robust to None / non-tensors)
@@ -211,7 +216,7 @@ class HRMScorer(BaseScorer):
 
                 results[dimension] = ScoreResult(
                     dimension=dimension,
-                    score=raw_score,
+                    score=raw01,
                     source=self.model_type,
                     rationale=rationale,
                     weight=1.0,
@@ -261,14 +266,6 @@ def _safe_norm(t):
 
 
 # === SCM mapping from HRM internals → aligned scm.* columns ==================
-
-_SCM_DIMS = ("reasoning", "knowledge", "clarity", "faithfulness", "coverage")
-
-def _clip01(x: float) -> float:
-    try:
-        return float(min(1.0, max(0.0, x)))
-    except Exception:
-        return 0.0
 
 def _build_scm_from_hrm(*, attrs: Dict[str, Any], intermediate: Dict[str, Any]) -> Dict[str, float]:
     """Dimension-specific SCM mapping for HRM using internal signals only."""

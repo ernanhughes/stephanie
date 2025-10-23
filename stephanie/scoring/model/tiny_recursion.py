@@ -1,3 +1,5 @@
+
+# stephanie/scoring/model/tiny_recursion.py
 """
 Tiny Recursion Model (Tiny+) - Parameter-Efficient Recursive Neural Architecture
 
@@ -19,20 +21,15 @@ Architecture Overview:
 3. SAE bottleneck for sparse concept representation
 4. Multi-head prediction for scores, uncertainty, and auxiliary tasks
 
-Author: Stephanie AI Team
-Version: 2.0
-Date: 2024
 """
 
 from __future__ import annotations
 
-import math
 from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 # ---------------------------
 # Core Building Blocks
@@ -307,82 +304,92 @@ class TinyRecursionModel(nn.Module):
         log_var = self.logvar_head(z_head)                  # [B, 1] uncertainty
 
         # ----- NUMERICAL SAFETY -----
-        LOGVAR_MIN = -5.0   # variance upper bound ~ e^5
-        LOGVAR_MAX =  5.0   # variance lower bound ~ e^-5
+        LOGVAR_MIN, LOGVAR_MAX = -5.0, 5.0
         log_var = log_var.clamp(min=LOGVAR_MIN, max=LOGVAR_MAX)
 
-        # Temperature already lower-bounded via softplus; still make division safe:
+        # Use tau for calibration; keep a stable proxy for telemetry
+        # NOTE: move temp01 to sigmoid(tau_raw) for cross-model alignment
+        tau_raw = self.temp_head(z_head) 
+        tau = 0.5 + 0.5 * F.softplus(tau_raw)
         tau_safe = torch.clamp(tau, min=1e-2)
         s = torch.sigmoid(score_logit / tau_safe)
 
-        aux3_logits = self.aux3_head(z_head)                # [B, 3] bad/medium/good
-        aux3_probs = F.softmax(aux3_logits, dim=-1)         # [B, 3] probabilities
-        disagree_logit = self.disagree_head(z_head)         # [B, 1]
-        y_recon = self.recon_head(z_head)                   # [B, D] reconstruction
-        ood_logit = self.ood_head(z_head)                   # [B, 1] OOD detection
+        # ----- Core auxiliaries
+        aux3_logits = self.aux3_head(z_head)
+        aux3_probs  = F.softmax(aux3_logits, dim=-1)
+        disagree_logit = self.disagree_head(z_head)
+        y_recon     = self.recon_head(z_head)
+        ood_logit   = self.ood_head(z_head)
 
-        # Bridge heads (conditional)
+        # Optional bridge heads
         agree01 = torch.sigmoid(self.agree_head(z_head)) if self.enable_agree_head else None
         sens01  = torch.sigmoid(self.causal_sens_head(z_head)) if self.enable_causal_sens_head else None
 
-        # In-graph consistency target computation
-        if with_consistency_target:
-            # Random masking for robustness evaluation
-            mask = (torch.rand_like(z_head) < self.consistency_mask_p).float()
-            z_masked = z_head * (1.0 - mask)
-            cos_consistency = self._cos01(z_head, z_masked).unsqueeze(-1)  # [B, 1]
-        else:
-            cos_consistency = torch.ones_like(s)  # Default target
+        # Consistency target 
+        mask = (torch.rand_like(z_head) < self.consistency_mask_p).float()
+        z_masked = z_head * (1.0 - mask)
+        cos_consistency = self._cos01(z_head, z_masked).unsqueeze(-1)
+        consistency_logit = self.consistency_head(z_head)
 
-        consistency_logit = self.consistency_head(z_head)  # [B, 1]
-
-        # Finite-difference sensitivity analysis (with safe temperature)
+        # Finite-difference sensitivity
         eps = 1e-3
-        y_eps = y + eps * F.normalize(torch.randn_like(y), dim=-1)  # Perturbed input
+        y_eps = y + eps * F.normalize(torch.randn_like(y), dim=-1)
         with torch.no_grad():
             _, z_head_eps, _, tau_eps, _ = self._recur(x, y_eps, z)
         tau_eps_safe = torch.clamp(tau_eps, min=1e-2)
-        score_eps = torch.sigmoid(self.score_head(z_head_eps) / tau_eps_safe)
-        jac_fd = ((score_eps - s).abs() / eps).clamp(0, 10.0) / 10.0  # [B, 1] ∈ [0,1]
+        score_eps    = torch.sigmoid(self.score_head(z_head_eps) / tau_eps_safe)
+        jac_fd       = ((score_eps - s).abs() / eps).clamp(0, 10.0) / 10.0
 
-        # Length effect normalization (optional)
+        # Length effect
         if seq_len is not None:
-            len_effect = torch.tanh((seq_len.float() / self.len_norm_L)).unsqueeze(-1)  # [B, 1]
+            len_effect = torch.tanh((seq_len.float() / self.len_norm_L)).unsqueeze(-1)
         else:
             len_effect = torch.zeros_like(s)
+        length_norm01 = (len_effect + 1.0) * 0.5
 
-        # Comprehensive auxiliary outputs dictionary
+        # ----- Aligned telemetry keys -----
+        certainty01   = torch.sigmoid(-log_var)
+        uncertainty01 = 1.0 - certainty01
+        temp01        = torch.sigmoid(tau_raw)  # aligned proxy in [0,1]
+        ood_hat01     = torch.sigmoid(ood_logit)
+        halt_prob     = torch.sigmoid(halt_logits).unsqueeze(-1) if halt_logits.dim()==1 else torch.sigmoid(halt_logits)
+
+        # Device-safe normalized entropy (in [0,1])
+        logK = torch.log(torch.tensor(3.0, device=z_head.device, dtype=z_head.dtype))
+        entropy_aux = (-(aux3_probs * F.log_softmax(aux3_logits, -1)).sum(-1) / logK).unsqueeze(-1)
+
         aux: Dict[str, Any] = {
-            # Raw head outputs
-            "score_logit": score_logit,               # [B, 1]
-            "log_var": log_var,                       # [B, 1]
-            "aux3_logits": aux3_logits,               # [B, 3]
-            "disagree_logit": disagree_logit,         # [B, 1]
-            "y_recon": y_recon,                       # [B, D]
-            "consistency_logit": consistency_logit,   # [B, 1]
-            "consistency_target": cos_consistency.detach(),  # [B, 1]
+            # raw heads you need for training
+            "score_logit": score_logit,
+            "log_var": log_var,
+            "aux3_logits": aux3_logits,
+            "disagree_logit": disagree_logit,
+            "y_recon": y_recon,
+            "consistency_logit": consistency_logit,
+            "consistency_target": cos_consistency.detach(),
 
-            # Derived metrics (normalized to [0,1] where applicable)
-            "score": s,                                   # [B, 1] calibrated score
-            "certainty01": torch.sigmoid(-log_var),       # [B, 1] certainty measure
-            "uncertainty": torch.sigmoid(-log_var),       # [B, 1] alias for certainty
-            "aux3_probs": aux3_probs,                     # [B, 3] probability distribution
-            "entropy_aux": (-(aux3_probs * F.log_softmax(aux3_logits, -1)).sum(-1)
-                            / math.log(3.0)).unsqueeze(-1),  # [B, 1] normalized entropy
-            "disagree_hat": torch.sigmoid(disagree_logit),   # [B, 1] predicted disagreement
-            "recon_sim": self._cos01(y_recon, y).unsqueeze(-1),  # [B, 1] reconstruction quality
-            "consistency_hat": torch.sigmoid(consistency_logit), # [B, 1] robustness prediction
-            "concept_vec": c,                               # [B, D//2] sparse concepts
-            "concept_sparsity": (c > 0).float().mean(dim=-1, keepdim=True),  # [B, 1]
-            "ood_hat": torch.sigmoid(ood_logit),            # [B, 1] OOD probability
-            "temp01": (torch.tanh(tau) + 1) / 2,            # [B, 1] temperature proxy
-            "jacobian_fd": jac_fd,                          # [B, 1] sensitivity measure
-            "len_effect": len_effect,                       # [B, 1] length normalization
+            # aligned derived telemetry (all ∈ [0,1])
+            "score": s,
+            "certainty01": certainty01,
+            "uncertainty01": uncertainty01,     # <— NEW (correct)
+            "uncertainty": uncertainty01,       # <— OPTIONAL alias for back-compat
+            "aux3_probs": aux3_probs,
+            "entropy_aux": entropy_aux,
+            "disagree_hat": torch.sigmoid(disagree_logit),
+            "recon_sim": self._cos01(y_recon, y).unsqueeze(-1),
+            "consistency_hat": torch.sigmoid(consistency_logit),
+            "concept_sparsity": (c > 0).float().mean(dim=-1, keepdim=True),
+            "ood_hat01": ood_hat01,             # <— NEW aligned name
+            "temp01": temp01,                   # <— changed to sigmoid(tau_raw)
+            "jacobian_fd": jac_fd,
+            "len_effect": len_effect,
+            "length_norm01": length_norm01,     # <— NEW 0..1 length proxy
+            "halt_prob": halt_prob,             # <— NEW
         }
 
         if agree01 is not None:
-            aux["agree01"] = agree01  # [B, 1]
+            aux["agree01"] = agree01
         if sens01 is not None:
-            aux["sens01"] = sens01    # [B, 1]
+            aux["sens01"] = sens01
 
         return logits, halt_logits.squeeze(-1), z_final, (aux if return_aux else {})

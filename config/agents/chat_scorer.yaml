@@ -8,6 +8,10 @@ chat_scorer:
   include_mars: true
   enabled_scorers:
     - tiny
+    - hf_tiny
+    - hrm
+    - hf_hrm
+    - hf_mistral
 
   include_ranking: true
   rank_top_k: 5

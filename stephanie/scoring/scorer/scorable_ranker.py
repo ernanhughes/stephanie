@@ -147,7 +147,7 @@ class ScorableRanker(BaseScorer):
             set(used_tools)
         )
 
-    def score(
+    def _score_core(
         self, context: dict, scorable: Scorable, dimensions=None
     ) -> dict:
         """

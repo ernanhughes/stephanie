@@ -1,6 +1,8 @@
 # config/scorer/tiny.yaml
 name: tiny
 model_type: tiny
+model_alias: Tiny
+display_name: Tiny
 model_version: v1
 evaluator: tiny
 target_type: conversation_turn

@@ -1,10 +1,11 @@
 # stephanie/components/gap/processors/report.py
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict
 import json
 import time
+from pathlib import Path
+from typing import Any, Dict
+
 
 class ReportBuilder:
     """Create a lightweight Markdown report that links all key artifacts."""

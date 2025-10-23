@@ -12,10 +12,9 @@ _logger = logging.getLogger(__name__)
 
 class VPMWorkerInline:
     """Simplified in-process timeline writer (no bus)."""
-    def __init__(self, zm: ZeroModelService, logger=None, progress_cb: Optional[callable] = None):
+    def __init__(self, zm: ZeroModelService, logger=None):
         self.zm = zm
         self.logger = logger or _logger
-        self.progress_cb = progress_cb
 
     def append(self, run_id: str, node_id: str, metrics: Dict[str, Any]):
         cols = metrics.get("columns")
@@ -34,11 +33,9 @@ class VPMWorkerInline:
         self.logger.log(f"[VPMWorkerInline] Row appended for node {node_id} in run {run_id}")
 
     async def finalize(self, run_id: str, out_path: str):
-        cb = self.progress_cb or self._log_progress        # <-- pick a callback
         res = await self.zm.timeline_finalize(
             run_id,
             out_path=out_path,
-            progress_cb=cb                                  # <-- pass it through
         )
         self.logger.info(f"[VPMWorkerInline] Timeline finalized for run {run_id}")
         return res
@@ -188,7 +185,7 @@ class VPMWorker:
             if not getattr(self.zm, "_initialized", False):
                 await self.zm.initialize()
 
-            res = await self.zm.timeline_finalize(run_id)
+            res = await self.zm.timeline_finalize(run_id, out_path=payload.get("out_path"))
             _logger.info("VPMFinalized run_id %s %s", run_id, str(res))
             self._open_runs.discard(run_id)
 

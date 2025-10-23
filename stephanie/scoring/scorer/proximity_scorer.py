@@ -55,7 +55,7 @@ class ProximityScorer:
         self.use_db = cfg.get("use_database_search", True)
         self.model_type = "proximity"
 
-    def score(self, context: dict, scorable, metrics: list[dict] = {}) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable, metrics: list[dict] = {}) -> ScoreBundle:
         """
         Compute proximity-based scores for a given scorable in context.
 

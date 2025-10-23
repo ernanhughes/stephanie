@@ -162,3 +162,11 @@ services:
       logger: ${logger}
       container: ${container}
 
+  progress:
+    enabled: true
+    cls: stephanie.services.progress_service.ProgressService
+    dependencies: []
+    args:
+      # Passed to ProgressService.initialize(**kwargs)
+      cfg: ${cfg}
+      logger: ${logger}

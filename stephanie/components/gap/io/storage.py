@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
-from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -14,7 +12,6 @@ import pandas as pd
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
 
-import logging
 _logger = logging.getLogger(__name__)
 
 class GapStorageService(Service):
@@ -116,18 +113,39 @@ class GapStorageService(Service):
         return {"matrix": str(mpath), "names": str(npath), "shape": list(map(int, mat.shape))}
 
     # Rows for PHOS (both parquet & csv for portability)
-    def save_rows_df(self, df: pd.DataFrame, run_id: str, *, name: str = "rows_for_df") -> Dict[str, str]:
-        raw = self.subdir(run_id, "raw")
-        pq = raw / f"{name}.parquet"
-        csv = raw / f"{name}.csv"
+    def save_rows_df(self, rows_or_df: Union[pd.DataFrame, List[Dict]], run_id: str, name: str="rows_for_df"):
+        """
+        Returns: {"parquet": <path or None>, "csv": <path>}
+        """
+        raw_dir = self.base_dir / run_id / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        # coerce
+        if isinstance(rows_or_df, pd.DataFrame):
+            df = rows_or_df.copy()
+        elif isinstance(rows_or_df, list):
+            df = pd.DataFrame(rows_or_df)
+        else:
+            raise TypeError(f"save_rows_df expected DataFrame or List[Dict], got {type(rows_or_df)}")
+
+        pq  = raw_dir / f"{name}.parquet"
+        csv = raw_dir / f"{name}.csv"
+
+        parquet_ok = None
         try:
             df.to_parquet(pq, index=False)
-        except Exception:
-            # parquet optional
-            pass
+            parquet_ok = str(pq)
+        except Exception as e:
+            self.logger.warning(f"Parquet save failed ({e}); continuing with CSV.")
+
         df.to_csv(csv, index=False)
-        self._mark_write()
-        return {"parquet": str(pq), "csv": str(csv)}
+
+        # (optional) sanity log
+        _logger.info("RowsPersisted" 
+            f"run_id {run_id,} rows :{int(len(df))}"
+            f"csv {str(csv)}, parquet: {parquet_ok is not None}"
+        )
+        return {"parquet": parquet_ok, "csv": str(csv)}
 
     # JSON helpers
     def save_json(self, run_id: str, sub: str, filename: str, payload: Dict[str, Any]) -> str:

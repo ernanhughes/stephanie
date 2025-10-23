@@ -1,5 +1,9 @@
 # configs/scorer/knowledge/default.yaml
 model_type: knowledge
+model_alias: Knowledge
+display_name: Knowledge
+
+
 target_type: document
 model_path: models
 model_version: v1

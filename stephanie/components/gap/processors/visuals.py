@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, List, Tuple
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Which SCM columns count as Tier-1 core dims (for radar plot)
 CORE5 = [
@@ -38,6 +39,7 @@ def render_scm_images(
     tiny_scm: np.ndarray,
     columns: List[str],
     out_dir: str | Path,
+    pos_label: str, neg_label: str,
 ) -> Dict[str, str]:
     """
     Produce a small suite of visuals from aligned SCM matrices.
@@ -67,9 +69,9 @@ def render_scm_images(
         ax.set_theta_direction(-1)
 
         ax.set_thetagrids(theta[:-1] * 180/np.pi, labels)
-        ax.plot(theta, h_plot, linewidth=2, label="HRM")
+        ax.plot(theta, h_plot, linewidth=2, label=pos_label)
         ax.fill(theta, h_plot, alpha=0.15)
-        ax.plot(theta, t_plot, linewidth=2, linestyle="--", label="Tiny")
+        ax.plot(theta, t_plot, linewidth=2, linestyle="--", label=neg_label)
         ax.fill(theta, t_plot, alpha=0.15)
         ax.set_title("SCM Core-5 (means)")
         ax.set_rlabel_position(0)
@@ -89,7 +91,7 @@ def render_scm_images(
     ax.set_xticks(range(len(columns)))
     ax.set_xticklabels([c.replace("scm.", "") for c in columns], rotation=60, ha="right")
     ax.axhline(0, linewidth=1)
-    ax.set_ylabel("Mean Δ (HRM − Tiny)")
+    ax.set_ylabel(f"Mean Δ ({pos_label} − {neg_label})")
     ax.set_title("SCM: mean difference by metric")
     paths["scm_delta_bar"] = _save(fig, out_dir / "scm_delta_bar.png")
 
@@ -103,8 +105,8 @@ def render_scm_images(
 
         fig = plt.figure(figsize=(5.5, 3.8))
         ax = fig.add_subplot(111)
-        ax.hist(h, bins=24, alpha=0.55, label="HRM", density=True)
-        ax.hist(t, bins=24, alpha=0.55, label="Tiny", density=True)
+        ax.hist(h, bins=24, alpha=0.55, label=pos_label, density=True)
+        ax.hist(t, bins=24, alpha=0.55, label=neg_label, density=True)
         ax.set_xlim(0, 1)
         ax.set_title(f"SCM distribution: {c.replace('scm.', '')}")
         ax.set_xlabel("score")
@@ -118,8 +120,8 @@ def render_scm_images(
         fig = plt.figure(figsize=(4.8, 4.8))
         ax = fig.add_subplot(111)
         ax.scatter(tiny_scm[:, agg_i], hrm_scm[:, agg_i], s=8, alpha=0.5)
-        ax.set_xlabel("Tiny aggregate01")
-        ax.set_ylabel("HRM aggregate01")
+        ax.set_xlabel(f"{neg_label} aggregate01")
+        ax.set_ylabel(f"{pos_label} aggregate01")
         ax.set_title("SCM aggregate: HRM vs Tiny")
         ax.plot([0,1],[0,1], linewidth=1)
         paths["scm_aggregate_scatter"] = _save(fig, out_dir / "scm_aggregate_scatter.png")

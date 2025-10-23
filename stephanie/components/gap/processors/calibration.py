@@ -35,6 +35,8 @@ class CalibrationProcessor:
         analysis_results: Dict[str, Any],   # currently not required; kept for API symmetry
         run_id: str,
         progress_cb=None,
+        alias_a: str = "HRM",
+        alias_b: str = "Tiny",
     ) -> Dict[str, Any]:
         """
         Load aligned matrices (saved in scoring), fit per-dimension monotone calibration,
@@ -60,12 +62,12 @@ class CalibrationProcessor:
             progress_cb(0, {"stage": "calibration"})
 
         # 1) Load aligned matrices + names (as produced by ScoringProcessor)
-        hrm_mat = np.load(aligned_dir / "hrm_matrix.npy")
-        tiny_mat = np.load(aligned_dir / "tiny_matrix.npy")
+        hrm_mat = np.load(aligned_dir / f"{alias_a}_matrix.npy")
+        tiny_mat = np.load(aligned_dir / f"{alias_b}_matrix.npy")
 
-        with open(aligned_dir / "hrm_metric_names.json", "r", encoding="utf-8") as f:
+        with open(aligned_dir / f"{alias_a}_metric_names.json", "r", encoding="utf-8") as f:
             hrm_names: List[str] = json.load(f)
-        with open(aligned_dir / "tiny_metric_names.json", "r", encoding="utf-8") as f:
+        with open(aligned_dir / f"{alias_b}_metric_names.json", "r", encoding="utf-8") as f:
             tiny_names: List[str] = json.load(f)
 
         dims = list(self.config.dimensions)

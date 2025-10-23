@@ -1,0 +1,68 @@
+# conf/agents/hf_gap.yaml
+hf_gap:
+  # ---- Identity / wiring ----
+  name: hf_gap
+  description: "HF-backed GAP analysis between Tiny (HF) and HRM (HF) scorers over chat hypotheses."
+  cls: stephanie.components.gap.component.GapAgent
+  enabled: true
+  iterations: 1         # GAP usually runs once per (goal, hypotheses) bundle
+  provides: gap         # pipeline key written by this node (matches output_key)
+
+  # ---- I/O contract ----
+  input_keys: ["goal", "hypotheses"]   # expects a goal string + a list of chat turns per hypothesis
+  output_key: gap
+
+  # ---- Prompting (optional; for rationale-only logs, not the math) ----
+  save_prompt: true
+  save_context: false
+  prompt_mode: file
+  prompt_file: gap.txt   # keep your simple rationale template
+
+  # ---- Scorers to compare (HF variants) ----
+  # Cross-product: every tiny_scorer is compared against every hrm_scorer.
+  hrm_scorers:
+    - hf_hrm         # must match ScoringService registry name
+
+  tiny_scorers:
+    - hf_mistral     # must match ScoringService registry name
+
+  # ---- Dimensions (kept in sync with SCM) ----
+  dimensions: [reasoning, knowledge, clarity, faithfulness, coverage]
+
+  # ---- SCM head (latent projection + energy/uncertainty for each comparison) ----
+  enable_scm_head: true
+  scm:
+    version: v1
+    dims: [reasoning, knowledge, clarity, faithfulness, coverage]  # accepted by loader; mirrored to reasoning_dimensions
+    latent_dim: 128
+    use_native_scores_as_inputs: fal yes tomorrow 11:20 in the envelope se   # normalize to [0,1] before SCM if false
+
+  per_dim_cap: 500          # cap comparisons collected per dimension (prevents runaway)
+
+  # ---- Directories / artifacts ----
+  gap_base_dir: "${hydra:runtime.cwd}/data/gap_runs"   # canonical run root
+  out_dir: "${hydra:runtime.cwd}/data/gap_runs/vpm"    # VPM tiles, timelines, etc.
+
+  # VPM / timeline emission (optional but handy)
+  emit_vpm_tiles: true
+  timeline_prefix: vpm        # used in artifact names (e.g., vpm:gap:pair:timestamp)
+
+  # ---- Runtime behavior ----
+  interleave: false           # alternate scorer eval order for fairness; off by default
+  progress_log_every: 25
+  dedupe_policy: first_wins   # or 'last_wins' for identical hypothesis fingerprints
+
+  # Routing guardrails (useful if you branch to different analyzers later)
+  route_threshold_uncertainty: 0.6
+  route_threshold_ood: 0.7
+
+  # Error handling & caching
+  fail_on_missing_scorer: false     # continue other pairs if one scorer is absent
+  cache_scores: true
+  cache_db: "${hydra:runtime.cwd}/data/gap_runs/cache/gap_scores.sqlite"
+
+  # ---- LLM for commentary only (not used for scoring math) ----
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null

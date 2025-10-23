@@ -4,13 +4,14 @@ defaults:
   - plan_monitor: disabled
   - logging/json_logger
   - services/default
-  - scorer: all  
+  - scorer: gap  
 
 
   - agents/chat_mrq_trainer
   - agents/chat_sicql_trainer
   - agents/chat_tiny_trainer
   - agents/chat_scorer
+  - agents/scorer
   - agents/gap
 
 embeddings:
@@ -78,6 +79,6 @@ pipeline:
 
      - name: gap
        description: "Understanding the Gap between two models using chat conversation_turns"
-       cls: stephanie.components.gap.component.GapAgent
+       cls: stephanie.components.gap.gap.GapAgent
        enabled: true
        iterations: 1

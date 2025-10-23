@@ -1,4 +1,8 @@
 name: llm_judge
+model_type: llm
+model_alias: LLM
+display_name: LLM
+
 dimension: quality
 
 All right prompt_pair: prompts/eval/llm_judge_pair.jinja

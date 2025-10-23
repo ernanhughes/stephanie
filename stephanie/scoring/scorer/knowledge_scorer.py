@@ -111,7 +111,7 @@ class KnowledgeScorer(BaseScorer):
             # "has_similar_human": bool(tm.get("has_similar_human", False)),
         }
 
-    def score(self, context: dict, scorable: Scorable, dimensions=["knowledge"]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable: Scorable, dimensions=["knowledge"]) -> ScoreBundle:
         goal_text = context.get(GOAL, {}).get("goal_text") or ""
         candidate = getattr(scorable, "text", "") or ""
 

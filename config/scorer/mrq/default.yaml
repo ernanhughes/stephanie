@@ -1,6 +1,9 @@
 # config/scorer/mrq/default.yaml
 name: mrq
 model_type: mrq
+model_alias: MRQ
+display_name: MRQ
+
 model_version: v1
 evaluator: mrq
 target_type: conversation_turn

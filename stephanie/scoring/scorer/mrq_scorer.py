@@ -27,8 +27,7 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.model.mrq_model import MRQModel
 from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.model.value_predictor import \
-    ValuePredictor  
+from stephanie.scoring.model.value_predictor import ValuePredictor
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
@@ -163,7 +162,7 @@ class MRQScorer(BaseScorer):
         # Ensure score is within valid range
         return max(0.0, min(1.0, val01))
 
-    def score(self, context: dict, scorable, dimensions: List[Union[str, dict]]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable, dimensions: List[Union[str, dict]]) -> ScoreBundle:
         """
         Score a response against goal text across specified dimensions
         

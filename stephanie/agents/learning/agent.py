@@ -19,7 +19,7 @@ from stephanie.agents.learning.scoring import Scoring
 from stephanie.agents.learning.strategy_manager import StrategyManager
 from stephanie.agents.learning.summarizer import Summarizer
 from stephanie.services.arena_reporting_adapter import ArenaReporter
-from stephanie.utils.progress import AgentProgress
+from stephanie.utils.agent_progress import AgentProgress
 
 _logger = logging.getLogger(__name__)
 

@@ -6,8 +6,8 @@ from collections import defaultdict
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.training.mrq_trainer import MRQTrainer
 from stephanie.models.unified_mrq import UnifiedMRQModelORM
+from stephanie.scoring.training.mrq_trainer import MRQTrainer
 
 
 class UnifiedMRQAgent(BaseAgent):

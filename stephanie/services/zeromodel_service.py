@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -14,17 +15,15 @@ from typing import Any, Callable, Dict, List, Optional
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats as spstats  # optional, but nice if available
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer
-from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.zeromodel.vpm_phos import robust01
 
 from stephanie.services.event_service import EventService
 from stephanie.services.service_protocol import Service
-import scipy.stats as spstats  # optional, but nice if available
-
-from collections import defaultdict
+from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.zeromodel.vpm_phos import robust01
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
@@ -286,83 +285,111 @@ class ZeroModelService(Service):
         sess = self._sessions.get(run_id)
         if not sess:
             self._sessions[run_id] = _TimelineSession(
-            run_id=run_id,
-            metrics_order=list(metrics_columns),
-            out_dir=self._out_dir,
+                run_id=run_id,
+                metrics_order=list(metrics_columns),
+                out_dir=self._out_dir,
             )
-            sess = self._sessions.get(run_id)
+            sess = self._sessions[run_id]
 
-        # Normalize
-        normalized = []
-        for v in metrics_values:
+        # ----- validate inputs -----
+        if not isinstance(metrics_columns, list) or not isinstance(metrics_values, list):
+            _logger.warning("[ZeroModelService] timeline_append_row: bad types for columns/values")
+            return
+        if len(metrics_columns) != len(metrics_values):
+            _logger.warning(
+                "[ZeroModelService] timeline_append_row: length mismatch cols=%d vals=%d",
+                len(metrics_columns), len(metrics_values)
+            )
+            # best-effort truncate to min length
+            n = min(len(metrics_columns), len(metrics_values))
+            metrics_columns = metrics_columns[:n]
+            metrics_values  = metrics_values[:n]
+
+        # ----- scale config (use the same place you read in initialize) -----
+        scale_mode = (
+            self.cfg.get("timeline_scale_mode")
+            or self.cfg.get("zero_model", {}).get("timeline_scale_mode")
+            or "passthrough"
+        ).lower()
+
+        # ----- build normalized values + mapping -----
+        normalized: List[float] = []
+        name_to_val: Dict[str, float] = {}
+
+        for c, v in zip(metrics_columns, metrics_values):
             try:
                 f = float(v)
             except Exception:
                 f = 0.0
-            # Respect values as-is unless caller *explicitly* asks for scaling
-            scale_mode = (self.cfg.get("timeline_scale_mode") or "passthrough").lower()
-            f = float(v) if np.isfinite(float(v)) else 0.0
+            if not np.isfinite(f):
+                f = 0.0
 
-            if scale_mode == "passthrough":
-                pass
-            elif scale_mode == "clip01":
-                f = max(0.0, min(1.0, f))
+            f_scaled = f
+            if scale_mode == "clip01":
+                f_scaled = max(0.0, min(1.0, f))
             elif scale_mode == "percent_0_100":
-                f = max(0.0, min(1.0, f / 100.0))
+                f_scaled = max(0.0, min(1.0, f / 100.0))
             elif scale_mode == "robust01":
-                # defer to a per-column robust scaler at finalize time (simpler here)
-                pass
-            else:
-                pass  # unknown mode → passthrough
-            normalized.append(float(f))
+                # defer robust scaling to finalize; store raw here
+                pass  # keep f_scaled = f
+            # else: passthrough
 
-        # 2️⃣ Initialize metrics_order if missing or dummy
-        if not sess.metrics_order or sess.metrics_order == []:
+            f_scaled = float(f_scaled)
+            normalized.append(f_scaled)
+            name_to_val[str(c)] = f_scaled
+
+        # ----- initialize or expand metric order -----
+        if not sess.metrics_order:
             sess.metrics_order = list(metrics_columns)
-            _logger.debug(f"[ZeroModelService] Metric order initialized → {sess.metrics_order}")
+            _logger.debug("[ZeroModelService] Metric order initialized → %s", sess.metrics_order)
         if len(metrics_columns) != len(sess.metrics_order):
-            _logger.warning(
-                """[ZeroModelService] Mismatched metrics length for run_id=%s: 
-                expected %d but got %d""",
-                run_id,
-                len(sess.metrics_order),
-                len(metrics_columns)
-            )
-            # Find the specific differences
             expected_set = set(sess.metrics_order)
             received_set = set(metrics_columns)
-            missing_columns = expected_set - received_set
-            extra_columns = received_set - expected_set
-            # a lot of work but we need to understand why the metrics are out of shape
             _logger.warning(
-                """[ZeroModelService] Mismatched metrics length for run_id=%s: 
-                expected %d but got %d
-                Missing columns: %s
-                Extra columns: %s
-                Expected: %s
-                Received: %s""",
-                run_id,
-                len(sess.metrics_order),
-                len(metrics_columns),
-                list(missing_columns) if missing_columns else "None",
-                list(extra_columns) if extra_columns else "None",
-                sess.metrics_order,
-                metrics_columns
+                "[ZeroModelService] Mismatched metrics for run_id=%s (expected=%d got=%d) "
+                "Missing=%s Extra=%s",
+                run_id, len(sess.metrics_order), len(metrics_columns),
+                list(expected_set - received_set) or "None",
+                list(received_set - expected_set) or "None",
             )
 
-        # ✅ Expand gracefully if new metrics appear later
+        # Add any new columns that appear later
         if len(metrics_columns) > len(sess.metrics_order):
             for name in metrics_columns:
                 if name not in sess.metrics_order:
                     sess.metrics_order.append(name)
-            # pad older rows
+            # pad older rows to new width
             for i in range(len(sess.rows)):
                 sess.rows[i] += [0.0] * (len(sess.metrics_order) - len(sess.rows[i]))
 
-        # Map columns to aligned row
+        # ----- align and append row -----
+        row = [float(name_to_val.get(name, 0.0)) for name in sess.metrics_order]
+
+        # make 'normalized' from metrics_values
+        normalized = []
+        for v in metrics_values:
+            try:
+                f = float(v)
+                if not np.isfinite(f): f = 0.0
+            except Exception:
+                f = 0.0
+            # optional scaling switch here...
+            normalized.append(float(f))
+
+        # then map names -> normalized values
         name_to_val = dict(zip(metrics_columns, normalized))
         row = [float(name_to_val.get(name, 0.0)) for name in sess.metrics_order]
         sess.rows.append(row)
+
+        # quick per-row stats (sanity)
+        try:
+            nz = sum(1 for x in row if x != 0.0)
+            _logger.debug(
+                "[ZeroModelService] row appended: cols=%d nonzero=%d min=%.4f max=%.4f mean=%.4f",
+                len(row), nz, float(min(row)), float(max(row)), float(sum(row)/max(1,len(row)))
+            )
+        except Exception:
+            pass
 
 
     # ------------------------------------------------------------------ #
@@ -374,16 +401,33 @@ class ZeroModelService(Service):
         *,
         fps: Optional[int] = None,
         datestamp: bool = True,
-        out_path: Optional[str] = None,
+        out_path: Optional[str] = "data/vpms",
         progress_cb: Optional[Callable[[str, int, int], None]] = None, 
     ) -> Dict[str, Any]:
         if progress_cb: progress_cb("finalize:start", 0, 1)
-
+        _logger.debug(f"[ZeroModelService] Finalizing timeline for run_id={run_id}")
         sess = self._sessions.pop(run_id, None)
         if not sess:
             return {"status": "noop", "reason": "no_session"}
 
         mat = sess.as_matrix()
+
+        # 🔧 Apply requested timeline scaling here (this was previously only "planned")
+        scale_mode = (self.cfg.get("timeline_scale_mode") or "robust01").lower()
+        if scale_mode == "robust01":
+            mat = _robust_scale_cols(mat, lo_p=1.0, hi_p=99.0)
+        elif scale_mode == "percent_0_100":
+            # treat values like "0..100" percentages → normalize to 0..1, clamp
+            mat = np.clip(np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0) / 100.0, 0.0, 1.0)
+        else:
+            # passthrough: at least clean NaN/Inf to zeros
+            mat = np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0)
+
+        _logger.info(
+            "[ZeroModelService] finalize scale=%s | shape=%s | min=%.4f max=%.4f mean=%.4f",
+            scale_mode, mat.shape, float(mat.min()), float(mat.max()), float(mat.mean())
+        )
+
         if mat.shape[0] < 3 or mat.shape[1] < 2:
             _logger.warning(f"[ZeroModelService] Too few rows ({mat.shape}) for run_id={run_id}, deferring finalize.")
             # Keep session alive for a few more seconds
@@ -403,10 +447,10 @@ class ZeroModelService(Service):
         # Timestamped output dir
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_prefix = str(run_id)[:8]
-        run_dir = os.path.join(sess.out_dir, f"run_{run_prefix}_{timestamp}")
+        run_dir = os.path.join(out_path, f"run_{run_prefix}_{timestamp}")
         os.makedirs(run_dir, exist_ok=True)
 
-        base_name = f"vpm_timeline_{run_prefix}_{timestamp}"
+        base_name = f"OK{run_prefix}_{timestamp}"
         gif_path = os.path.join(run_dir, base_name + ".gif")
 
         # Render animated timeline GIF
@@ -627,11 +671,18 @@ class ZeroModelService(Service):
         gif = GifLogger(max_frames=self._max_frames)
         fps = fps or self._gif_fps
 
-        sorted_matrix = self.sort_on_first_index(matrix)
-        total = int(sorted_matrix.shape[0])
+        # keep natural time order; column-0 sort can destroy contrast and order
+        M = np.asarray(matrix, dtype=np.float32)
+        total = int(M.shape[0])
         for i in range(total):
-            row = sorted_matrix[i : i + 1, :]
+            row = M[i : i + 1, :]
             vpm_out, _ = self._pipeline.run(row, {"enable_gif": False})
+
+        # sorted_matrix = self.sort_on_first_index(matrix)
+        # total = int(sorted_matrix.shape[0])
+        # for i in range(total):
+        #     row = sorted_matrix[i : i + 1, :]
+        #     vpm_out, _ = self._pipeline.run(row, {"enable_gif": False})
             gif.add_frame(
                 vpm_out,
                 metrics={
@@ -643,6 +694,10 @@ class ZeroModelService(Service):
             )
             if progress_cb and ((i % 10) == 0 or (i + 1) == total):
                 progress_cb("timeline:frame", i + 1, total)
+            if (i % 25) == 0 or (i + 1) == total:
+                _logger.debug("[ZeroModelService] frame %d/%d stats: min=%.4f max=%.4f mean=%.4f",
+                    i+1, total, float(row.min()), float(row.max()), float(row.mean()))
+
 
         gif.save_gif(out_path, fps=fps)
         _logger.debug(f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}")
@@ -1118,7 +1173,7 @@ class ZeroModelService(Service):
             "metric_index_mapping": index_mapping,
             "metric_names_original": metric_names,
             "metric_names_reordered": reordered_metric_names,
-            "timeline_scale_mode": (self.cfg.get("timeline_scale_mode") or "passthrough"),
+            "timeline_scale_mode": (self.cfg.get("timeline_scale_mode") or "robust01"),
             "png": base + ".png",
             "gif": gif_path,
             "diff_matrix": diff.tolist(),
@@ -1354,11 +1409,11 @@ class ZeroModelService(Service):
         # (a) PHOS energy maps
         ax1 = fig.add_subplot(gs[0,0]); im1 = ax1.imshow(A_phos_n, cmap=cmap_main, aspect="auto"); ax1.set_title(f"{pos_label} PHOS Energy"); ax1.axis("off"); fig.colorbar(im1, ax=ax1, fraction=0.035, pad=0.04)
         ax2 = fig.add_subplot(gs[0,1]); im2 = ax2.imshow(B_phos_n, cmap=cmap_main, aspect="auto"); ax2.set_title(f"{neg_label} PHOS Energy"); ax2.axis("off"); fig.colorbar(im2, ax=ax2, fraction=0.035, pad=0.04)
-        ax3 = fig.add_subplot(gs[0,2]); im3 = ax3.imshow(diff_phos, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1); ax3.set_title("PHOS Δ (HRM − Tiny)"); ax3.axis("off"); fig.colorbar(im3, ax=ax3, fraction=0.035, pad=0.04)
+        ax3 = fig.add_subplot(gs[0,2]); im3 = ax3.imshow(diff_phos, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1); ax3.set_title(f"PHOS Δ ({pos_label} − {neg_label})"); ax3.axis("off"); fig.colorbar(im3, ax=ax3, fraction=0.035, pad=0.04)
 
         # (b) Latent residual heatmap (the frontier)
         ax4 = fig.add_subplot(gs[1,0]); im4 = ax4.imshow(resid_n, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1)
-        ax4.set_title("Shared-Latent Residuals (HRM − Tiny)")
+        ax4.set_title(f"Shared-Latent Residuals ({pos_label} − {neg_label})")
         ax4.set_xlabel("Latent dimension"); ax4.set_ylabel("Sample (row)")
         fig.colorbar(im4, ax=ax4, fraction=0.035, pad=0.04)
 
@@ -1756,3 +1811,33 @@ class ZeroModelService(Service):
             "col_intensities": col_int.tolist(),
         }
 
+def _finite_mask(a: np.ndarray) -> np.ndarray:
+    a = np.asarray(a, dtype=np.float32)
+    return np.isfinite(a)
+
+def _robust_scale_cols(M: np.ndarray, lo_p=1.0, hi_p=99.0) -> np.ndarray:
+    """
+    Robust per-column min-max to [0,1] using percentiles (ignores non-finite).
+    Columns with flat or invalid ranges are zeroed.
+    """
+    M = np.asarray(M, dtype=np.float32)
+    if M.ndim != 2 or M.size == 0:
+        return np.nan_to_num(M)
+
+    X = np.nan_to_num(M, nan=0.0, posinf=0.0, neginf=0.0).copy()
+    n, d = X.shape
+    for j in range(d):
+        col = X[:, j]
+        # compute percentiles on finite values only
+        mask = _finite_mask(col)
+        if not mask.any():
+            X[:, j] = 0.0
+            continue
+        v = col[mask]
+        lo = np.percentile(v, lo_p)
+        hi = np.percentile(v, hi_p)
+        if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+            X[:, j] = 0.0
+            continue
+        X[:, j] = np.clip((col - lo) / (hi - lo), 0.0, 1.0)
+    return X

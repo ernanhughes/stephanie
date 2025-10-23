@@ -1,0 +1,48 @@
+# config/scorer/hf_hrm/default.yaml
+name: hf_hrm
+model_type: hf
+
+model_version: v1
+evaluator: hf
+target_type: conversation_turn
+dimensions:
+  - reasoning
+  - knowledge
+  - clarity
+  - faithfulness
+  - coverage
+
+# Hugging Face model
+# model_name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+# model_alias: TinyLlama
+# display_name: TinyLlama-1.1B
+# ----
+model_name: meta-llama/Llama-3.2-3B-Instruct
+# model_alias: Llama-3.2-3B
+display_name: Llama-3.2-3B-Instruct
+# ----
+# model_name: google/gemma-2-2b-it
+model_alias: HRM
+# display_name: gemma-2-2b-it
+
+
+
+# device_map: auto
+device_map: cuda
+torch_dtype: float16
+max_seq_len: 4096
+ppl_range: [3.0, 30.0]
+tokenizer_name: null
+local_files_only: false
+offline: true
+low_cpu_mem_usage: true
+use_compile: false
+
+plugins:
+  - scm:
+      # optional: if your SCM service is registered under a nonstandard name
+      service_name: scm_service      # default resolution tries "scm" then "scm_service"
+      # optional: override ppl_range just for this scorer
+      ppl_range: [2.5, 28.0]
+      # optional: request token top-k payload inside the service (if implemented)
+      expose_token_dists_topk: 5

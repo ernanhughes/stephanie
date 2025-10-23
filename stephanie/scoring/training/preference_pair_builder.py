@@ -1,10 +1,11 @@
 # stephanie/scoring/mrq/preference_pair_builder.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
 import math
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.scoring.scorable import ScorableType
+
 
 def _normalize01(v: float) -> float:
     """
@@ -38,17 +39,6 @@ def _finite_score(x: Any) -> Optional[float]:
     except Exception:
         pass
     return None
-
-def _clamp01_or_100(v: float) -> float:
-    # Accept 0..1 or 0..100; keep original scale (don’t normalize here).
-    # This is just a sanity clamp to drop wild values.
-    if 0.0 <= v <= 1.0:
-        return v
-    if 0.0 <= v <= 100.0:
-        return v
-    # Outside expected ranges → mark invalid by returning NaN
-    return float("nan")
-
 
 class PreferencePairBuilder:
     """
@@ -148,39 +138,113 @@ class PreferencePairBuilder:
         dimension: str = "knowledge",
         target_type: str = ScorableType.CONVERSATION_TURN,
         limit: int = 1000,
+        *,
+        text_max: Optional[int] = None,
+        fetch_multiplier: int = 5,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Fetch raw samples for a dimension, then:
-          - ensure non-empty text fields,
-          - ensure finite scores within expected ranges,
-          - drop & log invalid rows.
+        Fetch raw samples for a dimension, sanitize, enforce optional text-length
+        constraints, and return up to `limit` rows.
 
-        Returns:
-            {dimension: [pair_dicts or singleton_dicts]}
+        Length rule (when text_max is provided):
+          - Drop if goal/title length > text_max
+          - For singletons: drop if scorable/output length > text_max
+          - For pairwise: drop if either output_a or output_b is missing or exceeds text_max
+
+        We oversample upstream (limit * fetch_multiplier) when text_max is set
+        to compensate for dropped rows, then slice to `limit`.
         """
+        kept_len = 0
+        dropped_len = 0
+
         try:
+            # Oversample if we're going to filter by length,
+            # so we still have a good chance of returning `limit`.
+            fetch_n = int(limit * fetch_multiplier) if (text_max and limit) else limit
+
             samples = self.memory.reasoning_samples.get_eval_pairs_by_dimension(
-                target_type=target_type, dimension=dimension, limit=limit
+                target_type=target_type, dimension=dimension, limit=fetch_n
             )
-            # sanitize payloads
+
+            # 1) Clean normalization/shape (0..1, valid fields)
             cleaned: list[dict] = []
             for d in samples.get(dimension, []):
                 c = _clean_pair_dict(d)
                 if c is not None:
                     cleaned.append(c)
                 else:
-                    if self.logger: self.logger.log("PrefPairInvalid", {"dimension": dimension})
-            return {dimension: cleaned}
+                    if self.logger:
+                        self.logger.log("PrefPairInvalid", {"dimension": dimension})
+
+            # 2) Apply strict text-length filter if requested
+            if text_max is not None and text_max > 0:
+                filtered: list[dict] = []
+                for row in cleaned:
+                    title = (row.get("title") or "").strip()
+                    if not _within_len(title, text_max):
+                        dropped_len += 1
+                        continue
+
+                    if "output" in row:
+                        # singleton
+                        out = (row.get("output") or "").strip()
+                        if _within_len(out, text_max):
+                            filtered.append(row)
+                            kept_len += 1
+                        else:
+                            dropped_len += 1
+                    elif ("output_a" in row) or ("output_b" in row):
+                        # pairwise: both must be present and within limit
+                        a = row.get("output_a")
+                        b = row.get("output_b")
+                        if a is None or b is None:
+                            dropped_len += 1
+                            continue
+                        a = a.strip()
+                        b = b.strip()
+                        if _within_len(a, text_max) and _within_len(b, text_max):
+                            filtered.append(row)
+                            kept_len += 1
+                        else:
+                            dropped_len += 1
+                    else:
+                        # Unknown shape—be conservative and drop
+                        dropped_len += 1
+
+                cleaned = filtered
+
+            # 3) Trim to requested limit
+            result = cleaned[: max(0, int(limit))]
+
+            if self.logger:
+                if text_max:
+                    self.logger.log("PreferencePairsLengthFilter",
+                                    {"dimension": dimension,
+                                     "text_max": int(text_max),
+                                     "kept": kept_len,
+                                     "dropped": dropped_len,
+                                     "returned": len(result),
+                                     "requested_limit": int(limit),
+                                     "fetched": int(fetch_n)})
+                else:
+                    self.logger.log("PreferencePairsNoLengthFilter",
+                                    {"dimension": dimension,
+                                     "returned": len(result),
+                                     "requested_limit": int(limit)})
+
+            return {dimension: result}
+
         except Exception as e:
             if self.logger:
                 self.logger.log("PrefPairFetchError", {"dimension": dimension, "error": str(e)})
             return {dimension: []}
 
 
-# stephanie/scoring/mrq/preference_pair_builder.py
-
 def _is_valid_text(x: str | None) -> bool:
     return bool(x and isinstance(x, str) and x.strip())
+
+def _within_len(s: Optional[str], maxlen: int) -> bool:
+    return isinstance(s, str) and (len(s) <= maxlen)
 
 def _is_valid_score(v) -> bool:
     try:

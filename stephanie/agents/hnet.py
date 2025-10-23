@@ -35,6 +35,7 @@ class HNetValidationExperiment(BaseAgent):
     """Comprehensive validation of HNet and PlanTrace system in one end-to-end experiment"""
     
     def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
         
         # Initialize core components
         self.plan_trace_monitor = PlanTraceService(cfg, memory, container, logger)

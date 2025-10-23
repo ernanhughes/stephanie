@@ -10,6 +10,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.model.epistemic_trace_encoder import \
     EpistemicTraceEncoder
 from stephanie.scoring.model.hrm_model import HRMModel
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.utils.file_utils import load_json  # To load meta file
 from stephanie.utils.trace_utils import get_trace_score_stats
@@ -147,8 +148,9 @@ class EpistemicPlanHRMScorer(BaseScorer):
                     },
                 )
 
-    def score(
-        self, plan_trace: PlanTrace, dimensions: list[str]
+
+    def _score_core(self, 
+        context: dict, plan_trace: Scorable, dimensions: list[str]
     ) -> ScoreBundle:
         """
         Scores a PlanTrace using the trained Epistemic Plan HRM model(s).
