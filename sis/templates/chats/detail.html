@@ -25,7 +25,20 @@
               <strong>{{ m.role|capitalize }}</strong>
               <span class="text-muted small">{{ m.created_at }}</span>
             </div>
-            <pre class="mb-0" style="white-space: pre-wrap;">{{ m.text }}</pre>
+            <pre class="mb-2" style="white-space: pre-wrap;">{{ m.text }}</pre>
+
+            {% if m.role == 'assistant' %}
+              {% set prev = conversation.messages[loop.index0 - 1] if loop.index0 > 0 else None %}
+              {% if prev and prev.role == 'user' %}
+                <form method="post" action="/risk/analyze" class="mt-2">
+                  <textarea name="goal" class="d-none">{{ prev.text }}</textarea>
+                  <textarea name="reply" class="d-none">{{ m.text }}</textarea>
+                  <input type="hidden" name="model_alias" value="chat-hrm">
+                  <input type="hidden" name="monitor_alias" value="tiny-monitor">
+                  <button class="btn btn-outline-secondary btn-sm">Check</button>
+                </form>
+              {% endif %}
+            {% endif %}
           </div>
         {% endfor %}
         {% if not conversation.messages %}
@@ -41,7 +54,7 @@
       <h5 class="mb-2">Turns</h5>
       <table class="table table-sm table-hover align-middle">
         <thead>
-          <tr><th>ID</th><th>User</th><th>Assistant</th></tr>
+          <tr><th>ID</th><th>User</th><th>Assistant</th><th>Risk</th></tr>
         </thead>
         <tbody>
         {% for t in conversation.turns %}
@@ -49,10 +62,21 @@
             <td>#{{ t.id }}</td>
             <td>{{ t.user_message.text if t.user_message else '—' }}</td>
             <td>{{ t.assistant_message.text if t.assistant_message else '—' }}</td>
+            <td>
+              {% if t.user_message and t.assistant_message %}
+                <form method="post" action="/risk/analyze" class="d-inline">
+                  <textarea name="goal" class="d-none">{{ t.user_message.text }}</textarea>
+                  <textarea name="reply" class="d-none">{{ t.assistant_message.text }}</textarea>
+                  <input type="hidden" name="model_alias" value="chat-hrm">
+                  <input type="hidden" name="monitor_alias" value="tiny-monitor">
+                  <button class="btn btn-outline-secondary btn-sm">Check</button>
+                </form>
+              {% else %} — {% endif %}
+            </td>
           </tr>
         {% endfor %}
         {% if not conversation.turns %}
-          <tr><td colspan="3" class="text-muted">No turns recorded.</td></tr>
+          <tr><td colspan="4" class="text-muted">No turns recorded.</td></tr>
         {% endif %}
         </tbody>
       </table>

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Risk Result{% endblock %}
+{% block content %}
+<h1 class="mb-3">Risk Result</h1>
+<div class="d-flex align-items-center gap-4">
+  <img src="{{ rec.badge_svg }}" width="128" height="128" alt="risk badge" style="border-radius:16px;border:1px solid #ddd"/>
+  <div>
+    <div class="fs-5"><b>Decision:</b> {{ rec.decision }}</div>
+    <div class="text-muted">model={{ rec.model_alias }} • monitor={{ rec.monitor_alias }} • run_id={{ rec.run_id }}</div>
+  </div>
+</div>
+<hr/>
+<div class="row">
+  <div class="col-md-6">
+    <h5>Metrics</h5>
+    <table class="table table-sm">
+      <tbody>
+        <tr><th>confidence01</th><td>{{ '%.2f'|format(rec.metrics.confidence01) }}</td></tr>
+        <tr><th>faithfulness_risk01</th><td>{{ '%.2f'|format(rec.metrics.faithfulness_risk01) }}</td></tr>
+        <tr><th>ood_hat01</th><td>{{ '%.2f'|format(rec.metrics.ood_hat01) }}</td></tr>
+        <tr><th>delta_gap01</th><td>{{ '%.2f'|format(rec.metrics.delta_gap01) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col-md-6">
+    <h5>Thresholds & Reasons</h5>
+    <table class="table table-sm">
+      <tbody>
+        <tr><th>faithfulness</th><td>{{ '%.2f'|format(rec.thresholds.faithfulness) }}</td></tr>
+        <tr><th>uncertainty</th><td>{{ '%.2f'|format(rec.thresholds.uncertainty) }}</td></tr>
+        <tr><th>ood</th><td>{{ '%.2f'|format(rec.thresholds.ood) }}</td></tr>
+        <tr><th>delta</th><td>{{ '%.2f'|format(rec.thresholds.delta) }}</td></tr>
+      </tbody>
+    </table>
+    <table class="table table-sm">
+      <tbody>
+        <tr><th>risk_faith</th><td>{{ '%.2f'|format(rec.reasons.risk_faith) }}</td></tr>
+        <tr><th>risk_ood</th><td>{{ '%.2f'|format(rec.reasons.risk_ood) }}</td></tr>
+        <tr><th>risk_delta</th><td>{{ '%.2f'|format(rec.reasons.risk_delta) }}</td></tr>
+        <tr><th>risk_unc</th><td>{{ '%.2f'|format(rec.reasons.risk_unc) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

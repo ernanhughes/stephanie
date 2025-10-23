@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Risk Badge Lab{% endblock %}
+{% block content %}
+<h1 class="mb-3">🚦 Risk Badge Lab</h1>
+<form method="post" action="/risk/analyze">
+  <div class="row g-3">
+    <div class="col-12">
+      <label class="form-label">Goal / Instruction</label>
+      <textarea name="goal" class="form-control" rows="4" required></textarea>
+    </div>
+    <div class="col-12">
+      <label class="form-label">Model Reply</label>
+      <textarea name="reply" class="form-control" rows="6" required></textarea>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Model alias</label>
+      <input name="model_alias" class="form-control" value="chat-hrm" />
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Monitor alias</label>
+      <input name="monitor_alias" class="form-control" value="tiny-monitor" />
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Policy profile (optional)</label>
+      <input name="policy_profile" class="form-control" placeholder="chat.standard" />
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary">Analyze</button>
+    </div>
+  </div>
+</form>
+{% endblock %}
