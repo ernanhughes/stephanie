@@ -1,3 +1,4 @@
+# stephanie/scoring/training/tiny_recursion_trainer.py
 """
 TinyRecursionModel Trainer (Tiny+)
 
@@ -13,11 +14,8 @@ Key Features:
 - Comprehensive training monitoring and validation
 - Early stopping and model checkpointing
 
-Author: Stephanie AI Team
-Version: 1.0
 """
 
-# stephanie/scoring/training/tiny_recursion_trainer.py
 from __future__ import annotations
 
 import math
@@ -25,7 +23,7 @@ import os
 from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-
+import logging
 import torch
 import torch.nn.functional as F
 from torch import optim
@@ -39,6 +37,7 @@ try:
 except Exception:  # pragma: no cover
     tqdm = None
 
+_logger = logging.getLogger(__name__)
 
 def _bucket3(y01: torch.Tensor) -> torch.Tensor:
     """

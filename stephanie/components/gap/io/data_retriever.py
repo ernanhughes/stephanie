@@ -90,7 +90,8 @@ class DataRetriever:
         Pull pairs from PreferencePairBuilder and flatten to TripleSample.
         We over-fetch to preserve 'limit' after filtering long texts.
         """
-        from stephanie.scoring.training.preference_pair_builder import PreferencePairBuilder
+        from stephanie.scoring.training.preference_pair_builder import \
+            PreferencePairBuilder
         ppb = PreferencePairBuilder(memory, self.logger)
 
         out: Dict[str, List[TripleSample]] = {}

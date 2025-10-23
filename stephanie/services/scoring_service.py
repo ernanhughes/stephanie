@@ -147,7 +147,9 @@ class ScoringService(Service):
                 close()
         finally:
             # extra safety
-            import gc, torch
+            import gc
+
+            import torch
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

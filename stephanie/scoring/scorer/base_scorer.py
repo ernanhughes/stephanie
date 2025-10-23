@@ -1,16 +1,17 @@
 # stephanie/scoring/scorer/base_scorer.py
 from __future__ import annotations
+
 import abc
-from collections.abc import Mapping
 import logging
-from typing import Any, Dict, List, Protocol, Optional, Callable
-from omegaconf import OmegaConf
+from collections.abc import Mapping
+from typing import Any, Callable, Dict, List, Optional, Protocol
 
 import torch
+from omegaconf import OmegaConf
 
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
+from stephanie.scoring.scorable import Scorable
 
 _logger = logging.getLogger(__name__)
 

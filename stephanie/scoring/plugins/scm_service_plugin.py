@@ -1,8 +1,11 @@
 # stephanie/scoring/plugins/scm_service_plugin.py
 from __future__ import annotations
-from typing import Any, Dict, Optional
-from .registry import register
+
 import math
+from typing import Any, Dict, Optional
+
+from .registry import register
+
 
 @register("scm")
 class SCMServicePlugin:

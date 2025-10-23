@@ -17,13 +17,13 @@ dimensions:
 # model_alias: TinyLlama
 # display_name: TinyLlama-1.1B
 # ----
-# model_name: meta-llama/Llama-3.2-3B-Instruct
+model_name: meta-llama/Llama-3.2-3B-Instruct
 # model_alias: Llama-3.2-3B
-# display_name: Llama-3.2-3B-Instruct
+display_name: Llama-3.2-3B-Instruct
 # ----
-model_name: google/gemma-2-2b-it
+# model_name: google/gemma-2-2b-it
 model_alias: HRM
-display_name: gemma-2-2b-it
+# display_name: gemma-2-2b-it
 
 
 

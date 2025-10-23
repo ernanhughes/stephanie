@@ -3,29 +3,25 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import time
 import re
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from stephanie.components.gap.io import storage
-from stephanie.components.gap.services.scm_service import SCM_FEATURE_KEYS
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from stephanie.components.gap.io import storage
 from stephanie.components.gap.io.manifest import GapRunManifest
 from stephanie.components.gap.models import GapConfig, TripleSample
-from stephanie.components.gap.services.scm_service import SCMService
-from stephanie.components.gap.shared_scm import (
-    SCM_COLUMNS,
-    scm_from_vector,
-    scm_row,
-)
+from stephanie.components.gap.services.scm_service import (SCM_FEATURE_KEYS,
+                                                           SCMService)
+from stephanie.components.gap.shared_scm import (SCM_COLUMNS, scm_from_vector,
+                                                 scm_row)
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.utils.progress_mixin import ProgressMixin
-
 
 prefer = [
     "scm.aggregate01",
@@ -58,9 +54,8 @@ class ScoringProcessor(ProgressMixin):
     async def prepare_samples(
         self, dimensions: List[str], memory
     ) -> Dict[str, List[TripleSample]]:
-        from stephanie.scoring.training.preference_pair_builder import (
-            PreferencePairBuilder,
-        )
+        from stephanie.scoring.training.preference_pair_builder import \
+            PreferencePairBuilder
 
         pb = PreferencePairBuilder(memory, self.logger)
         by_dim: Dict[str, List[TripleSample]] = {}
@@ -755,7 +750,9 @@ class ScoringProcessor(ProgressMixin):
 
     def _free_accelerator_memory(self):
         try:
-            import torch, gc
+            import gc
+
+            import torch
 
             gc.collect()
             if torch.cuda.is_available():

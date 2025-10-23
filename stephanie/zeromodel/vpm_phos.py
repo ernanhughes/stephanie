@@ -23,16 +23,16 @@ Date: 2024
 """
 
 from __future__ import annotations
-from pathlib import Path
 
 import json
-import pandas as pd
-import numpy as np
 import time
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Tuple, Optional
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 from stephanie.utils.json_sanitize import dumps_safe
 

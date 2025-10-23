@@ -1,9 +1,11 @@
 # stephanie/scoring/plugins/factory.py Container logger
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
 import importlib
+from typing import Any, Dict, List, Optional
 
 from .registry import get as get_registered
+
 
 def _import_by_path(path: str):
     # Support "package.module:ClassName"

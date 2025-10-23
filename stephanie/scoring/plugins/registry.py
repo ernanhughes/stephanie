@@ -1,6 +1,6 @@
 # stephanie/scoring/plugins/registry.py
 from __future__ import annotations
-Sir
+
 from typing import Callable, Dict, Type
 
 _REGISTRY: Dict[str, Type] = {}

@@ -13,13 +13,13 @@ dimensions:
   - coverage
 
 # Hugging Face model
-model_name: HuggingFaceTB/SmolLM3-3B
+# model_name: HuggingFaceTB/SmolLM3-3B
 model_alias: Tiny
-display_name: SmolLM3-3B
+# display_name: SmolLM3-3B
 # ----
-# model_name: microsoft/Phi-3-mini-4k-instruct
+model_name: microsoft/Phi-3-mini-4k-instruct
 # model_alias: Phi-3-mini
-# display_name: Phi-3-mini-4k-instruct
+display_name: Phi-3-mini-4k-instruct
 # ----
 # model_name: mistralai/Mistral-7B-Instruct-v0.3
 # model_alias: Mistral-7B

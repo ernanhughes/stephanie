@@ -1,13 +1,14 @@
 # stephanie/components/gap/processors/analysis.py
 from __future__ import annotations
 
+import json
 import logging
+import os
+import time
+from collections import Counter
 from typing import Any, Dict, Tuple
 
 import numpy as np
-import time
-import json, os
-from collections import Counter
 
 from stephanie.components.gap.models import GapConfig
 from stephanie.components.gap.processors.topology import (TopologyConfig,

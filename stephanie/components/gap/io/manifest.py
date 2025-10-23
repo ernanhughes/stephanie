@@ -122,7 +122,8 @@ class ManifestManager:
         self-embedding 'manifest' inside itself and keeps the manifest small.
         """
         # 1) Make a copy and drop the nested 'manifest' (if present)
-        import copy, time
+        import copy
+        import time
         payload = copy.deepcopy(final_payload)
         payload.pop("manifest", None)  # prevent recursion
 

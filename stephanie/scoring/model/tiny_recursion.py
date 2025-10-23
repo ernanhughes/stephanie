@@ -1,4 +1,5 @@
 
+# stephanie/scoring/model/tiny_recursion.py
 """
 Tiny Recursion Model (Tiny+) - Parameter-Efficient Recursive Neural Architecture
 
@@ -20,14 +21,10 @@ Architecture Overview:
 3. SAE bottleneck for sparse concept representation
 4. Multi-head prediction for scores, uncertainty, and auxiliary tasks
 
-Author: Stephanie AI Team
-Version: 2.0
-Date: 2024
 """
 
 from __future__ import annotations
 
-import math
 from typing import Any, Dict, Optional, Tuple
 
 import torch

@@ -2,7 +2,6 @@
 
 import os
 
-from stephanie.scoring.scorable import Scorable
 import torch
 
 from stephanie.data.plan_trace import PlanTrace
@@ -11,6 +10,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.model.epistemic_trace_encoder import \
     EpistemicTraceEncoder
 from stephanie.scoring.model.hrm_model import HRMModel
+from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.utils.file_utils import load_json  # To load meta file
 from stephanie.utils.trace_utils import get_trace_score_stats

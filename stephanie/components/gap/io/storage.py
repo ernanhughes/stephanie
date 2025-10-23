@@ -4,10 +4,10 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, Sequence,  List, Union
-import pandas as pd
+from typing import Any, Dict, List, Sequence, Union
 
 import numpy as np
+import pandas as pd
 
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
