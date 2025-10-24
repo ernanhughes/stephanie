@@ -22,9 +22,6 @@ class PromptStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "prompts"
 
-    def name(self) -> str:
-        return self.name
-
     # --------------------
     # GOALS
     # --------------------

@@ -1,0 +1,18 @@
+badge_size: 256
+hysteresis: 0.05
+out_dir: ./data/runs/hallucinations
+publish_topic: sis.hallucination.badge
+thresholds:
+  faithfulness: 0.35
+  uncertainty: 0.40
+  ood: 0.30
+  delta: 0.30
+monitor:
+  default: tiny           # tiny | selfcheck | cove
+  selfcheck:
+    samples: 5
+    temperature: 0.8
+    timeout_s: 6.0
+  cove:
+    questions: 5
+    timeout_s: 6.0

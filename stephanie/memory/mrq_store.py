@@ -22,9 +22,6 @@ class MRQStore(BaseSQLAlchemyStore):
         self.name = "mrq"
         self.cfg = cfg
 
-    def name(self) -> str:
-        return self.name
-
     def log_evaluations(self) -> bool:
         return self.cfg.get("log_evaluations", True)
 

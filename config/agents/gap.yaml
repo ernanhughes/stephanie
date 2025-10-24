@@ -12,7 +12,7 @@ gap:
     latent_dim: 128
     use_native_scores_as_inputs: false
 
-  per_dim_cap: 800           # cap comparisons collected per dimension (prevents runaway)
+  per_dim_cap: 50           # cap comparisons collected per dimension (prevents runaway)
 
   # Which comparisons to run (left model vs right model)
   comparisons:

@@ -17,9 +17,6 @@ class PipelineRunStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "pipeline_runs"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, run_dict: dict) -> int:
         """
         Insert a new pipeline run record into the database.

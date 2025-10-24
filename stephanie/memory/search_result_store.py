@@ -16,9 +16,6 @@ class SearchResultStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "search_results"
 
-    def name(self) -> str:
-        return self.name
-
     def add_result(
         self,
         *,

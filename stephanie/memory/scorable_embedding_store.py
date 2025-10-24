@@ -23,9 +23,6 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
         self.name = "scorable_embeddings"
         self.embedding = embedding
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, data: dict) -> int:
         """
         Insert a new embedding record.

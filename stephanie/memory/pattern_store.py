@@ -15,9 +15,6 @@ class PatternStatStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "pattern_stats"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, stats: List[PatternStatORM]) -> None:
         """Insert multiple pattern stats in a single transaction"""
         def op(s):

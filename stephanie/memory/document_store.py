@@ -17,9 +17,6 @@ class DocumentStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "documents"
 
-    def name(self) -> str:
-        return self.name
-
     # ---------- Writes ----------
 
     def add_document(self, doc: dict) -> DocumentORM:

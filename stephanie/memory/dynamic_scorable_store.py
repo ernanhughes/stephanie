@@ -17,9 +17,6 @@ class DynamicScorableStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "dynamic_scorables"
 
-    def name(self) -> str:
-        return self.name
-
     def add(
         self,
         pipeline_run_id: str,

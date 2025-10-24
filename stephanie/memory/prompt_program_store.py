@@ -16,9 +16,6 @@ class PromptProgramStore(BaseSQLAlchemyStore):
         self.name = "prompt_programs"
         self.table_name = "prompt_programs"
 
-    def name(self) -> str:
-        return self.name
-
     # --------------------
     # INSERT / ADD
     # --------------------

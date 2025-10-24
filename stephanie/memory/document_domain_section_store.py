@@ -13,9 +13,6 @@ class DocumentSectionDomainStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "document_section_domains"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, data: dict) -> DocumentSectionDomainORM:
         """
         Insert or update a domain classification entry for a document section.

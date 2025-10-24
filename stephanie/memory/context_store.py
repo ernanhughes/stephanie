@@ -23,9 +23,6 @@ class ContextStore(BaseSQLAlchemyStore):
         if self.dump_dir:
             self.dump_dir = os.path.dirname(self.dump_dir)
 
-    def name(self) -> str:
-        return self.name
-
     def save(
         self,
         run_id: str,

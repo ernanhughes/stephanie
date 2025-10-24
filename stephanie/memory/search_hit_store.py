@@ -15,9 +15,6 @@ class SearchHitStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "search_hits"
 
-    def name(self) -> str:
-        return self.name
-
     def add_hit(self, hit_data: dict) -> SearchHitORM:
         """Insert a single search hit."""
         def op(s):

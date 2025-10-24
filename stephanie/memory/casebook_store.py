@@ -30,9 +30,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "casebooks"
 
-    def name(self) -> str:
-        return self.name
-
     # ------------------------
     # CaseBook methods
     # ------------------------

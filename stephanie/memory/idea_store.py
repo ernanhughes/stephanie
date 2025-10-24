@@ -17,9 +17,6 @@ class IdeaStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "ideas"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert / Update
     # -------------------

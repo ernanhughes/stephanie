@@ -25,9 +25,6 @@ class TrainingEventStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "training_events"
 
-    def name(self) -> str:
-        return self.name
-
     # ---------- Inserts (validated) ----------
 
     def insert_pairwise(

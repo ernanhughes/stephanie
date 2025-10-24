@@ -15,9 +15,6 @@ class MARSConflictStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "mars_conflicts"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert
     # -------------------

@@ -18,9 +18,6 @@ class EvaluationAttributeStore(BaseSQLAlchemyStore):
         self.name = "evaluation_attributes"
         self.table_name = "evaluation_attributes"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert
     # -------------------

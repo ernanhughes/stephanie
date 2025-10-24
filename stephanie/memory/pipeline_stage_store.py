@@ -15,9 +15,6 @@ class PipelineStageStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "pipeline_stages"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, stage_dict: dict) -> int:
         """
         Insert a new pipeline stage into the database.

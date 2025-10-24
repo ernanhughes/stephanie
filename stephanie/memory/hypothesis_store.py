@@ -21,9 +21,6 @@ class HypothesisStore(BaseSQLAlchemyStore):
         self.embedding_store = embedding_store  # Optional embedding model
         self.name = "hypotheses"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert / Update
     # -------------------

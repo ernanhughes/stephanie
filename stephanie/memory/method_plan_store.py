@@ -15,9 +15,6 @@ class MethodPlanStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "method_plans"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert
     # -------------------

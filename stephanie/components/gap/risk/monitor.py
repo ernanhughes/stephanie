@@ -6,6 +6,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Protocol, runtime_checkable
 
+from .plugins.selfcheck import SelfCheckScorer  # new
+from .plugins.cove import CoVeScorer
 
 # ------------------------------ Contracts -----------------------------------
 
@@ -237,6 +239,9 @@ class MonitorService:
         if ms is not None and hasattr(ms, "score_text_pair"):
             self.primary = MetricsServiceAdapter(ms, self.logger)
 
+        self._selfcheck_adapter = SelfCheckScorer(container, self.logger)
+        self._cove_adapter = CoVeScorer(container, logger=self.logger)
+        
         tiny = (
             getattr(container, "tiny_scorer", None)
             or getattr(container, "monitor_tiny", None)
@@ -317,6 +322,9 @@ class MonitorService:
                 )
             except Exception:
                 continue
+
+        if monitor_alias.lower().startswith("selfcheck") and self._selfcheck_adapter:
+            scorer_chain.insert(0, self._selfcheck_adapter)        
 
         # Total fallback
         self.logger.warning("MonitorService: all scorers failed; returning neutral metrics")

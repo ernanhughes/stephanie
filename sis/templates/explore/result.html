@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Explore Results{% endblock %}
+{% block content %}
+<h1 class="mb-3">🔭 Explore Results</h1>
+<div class="text-muted small mb-3">
+  Ran with: seeds={{ sample_n }}, K={{ k_triggers }}, divergence={{ divergence }}, profile={{ policy_profile or 'chat.standard' }}
+</div>
+
+{% if not results %}
+  <div class="alert alert-warning">No results produced (sampler unavailable or timeouts). Try fewer seeds or check container.chat_sampler.</div>
+{% else %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Badge</th>
+          <th>Decision</th>
+          <th>Interest</th>
+          <th>Novelty</th>
+          <th>Seed</th>
+          <th>Triggered Prompt</th>
+          <th>Speculative Reply</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+          <tr>
+            <td>
+              <img src="{{ r.badge_svg }}" width="64" height="64" alt="badge" style="border-radius:12px;border:1px solid #ddd" />
+            </td>
+            <td>
+              <span class="badge {{ 'bg-danger' if r.decision=='RISK' else ('bg-warning text-dark' if r.decision=='WATCH' else 'bg-success') }}">
+                {{ r.decision }}
+              </span>
+              <div class="small text-muted">
+                conf {{ '%.2f'|format(r.metrics.confidence01) }} ·
+                faith {{ '%.2f'|format(r.metrics.faithfulness_risk01) }} ·
+                ood {{ '%.2f'|format(r.metrics.ood_hat01) }} ·
+                Δ {{ '%.2f'|format(r.metrics.delta_gap01) }}
+              </div>
+            </td>
+            <td>{{ '%.2f'|format(r.interest) }}</td>
+            <td>{{ '%.2f'|format(r.novelty) }}</td>
+            <td style="max-width:22rem; white-space:pre-wrap">{{ r.seed_goal or r.goal_seed }}</td>
+            <td style="max-width:22rem; white-space:pre-wrap">{{ r.prompt_used }}</td>
+            <td style="max-width:28rem; white-space:pre-wrap">{{ r.reply or r.get('text','') }}</td>
+            <td class="text-nowrap">
+              <!-- Verify via existing Risk page (Option A) -->
+              <form method="post" action="/risk/analyze" class="d-inline" target="_blank">
+                <textarea name="goal" class="d-none">{{ r.prompt_used }}</textarea>
+                <textarea name="reply" class="d-none">{{ r.reply }}</textarea>
+                <input type="hidden" name="model_alias" value="{{ r.model_alias or 'chat-hrm' }}">
+                <input type="hidden" name="monitor_alias" value="selfcheck">
+                <button class="btn btn-outline-secondary btn-sm">Verify</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+<div class="mt-3">
+  <a class="btn btn-outline-primary" href="/explore">Run Again</a>
+</div>
+{% endblock %}

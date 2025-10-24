@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Overnight Suggestions{% endblock %}
+{% block content %}
+<h1 class="mb-3">🌙 Overnight Suggestions</h1>
+<div class="mb-3">
+  <form method="post" action="/overnight/run" class="d-inline">
+    <button class="btn btn-primary btn-sm">Run Now</button>
+  </form>
+  {% if latest %}<span class="text-muted small ms-2">latest: {{ latest }}</span>{% endif %}
+</div>
+
+{% if not cards %}
+  <div class="alert alert-warning">No suggestions yet. Click “Run Now” or set up a cron/APS schedule.</div>
+{% else %}
+  <div class="row row-cols-1 row-cols-lg-2 g-3">
+  {% for c in cards %}
+    <div class="col">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-3">
+            <img src="{{ c.badge_svg }}" width="64" height="64" alt="badge" style="border-radius:12px;border:1px solid #ddd"/>
+            <div>
+              <div class="small text-uppercase text-muted">{{ c.type }}</div>
+              <h5 class="mb-0">{{ c.title }}</h5>
+            </div>
+          </div>
+          <div class="mt-2 text-muted small">
+            novelty {{ '%.2f'|format(c.metrics.novelty) }} · support {{ '%.2f'|format(c.metrics.support) }} · risk_faith {{ '%.2f'|format(c.metrics.risk_faith) }}
+          </div>
+          <p class="mt-2" style="white-space:pre-wrap">{{ c.abstract }}</p>
+          {% if c.outline and c.outline|length %}
+            <ul class="small mb-2">
+              {% for b in c.outline %}<li>{{ b }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+          {% if c.sources and c.sources|length %}
+            <div class="small"><b>Sources</b>:
+              {% for s in c.sources[:3] %}
+                {% if s.url %}<a href="{{ s.url }}" target="_blank">link</a>{% elif s.id %}arXiv: {{ s.id }}{% else %}source{% endif %}{% if not loop.last %},{% endif %}
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+        <div class="card-footer d-flex gap-2">
+          <!-- Verify via existing risk page -->
+          <form method="post" action="/risk/analyze" target="_blank">
+            <textarea name="goal" class="d-none">{{ c.prompt_used }}</textarea>
+            <textarea name="reply" class="d-none">{{ c.reply_text }}</textarea>
+            <input type="hidden" name="monitor_alias" value="selfcheck">
+            <button class="btn btn-outline-secondary btn-sm">Verify</button>
+          </form>
+          <!-- TODO: wire to GitHub create-issue/branch -->
+          <form method="post" action="/github/create_issue" target="_blank">
+            <input type="hidden" name="title" value="{{ c.title }}">
+            <textarea name="body" class="d-none">{{ c.abstract }}\n\nOutline:\n- {{ c.outline|join('\n- ') }}</textarea>
+            <button class="btn btn-outline-primary btn-sm">Open Issue</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

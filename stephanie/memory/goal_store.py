@@ -18,9 +18,6 @@ class GoalStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "goals"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Retrieval
     # -------------------

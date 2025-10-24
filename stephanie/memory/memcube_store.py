@@ -20,9 +20,6 @@ class MemcubeStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "memcube"
 
-    def name(self) -> str:
-        return self.name
-
     # --------------------
     # GET / SAVE
     # --------------------

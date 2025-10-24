@@ -20,9 +20,6 @@ class SymbolicRuleStore(BaseSQLAlchemyStore):
         self.name = "symbolic_rules"
         self.table_name = "symbolic_rules"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert / Update
     # -------------------

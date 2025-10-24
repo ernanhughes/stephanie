@@ -13,6 +13,8 @@ from sis.routes import chats, cards
 from zoneinfo import ZoneInfo
 from stephanie.components.gap.risk.api import create_router as create_gap_risk_router
 from sis.routes import risk_ui # (new router below)
+from sis.routes import explore_ui  # add with other route imports
+from sis.routes import overnight_ui
 
 import yaml
 
@@ -91,7 +93,8 @@ app.include_router(chats.router)
 app.include_router(arena.router)
 app.include_router(cards.router)
 app.include_router(learning.router)
-
+app.include_router(explore_ui.router)
+app.include_router(overnight_ui.router)
 
 # After app = FastAPI(...)
 class SISContainer:

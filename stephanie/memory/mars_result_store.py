@@ -15,9 +15,6 @@ class MARSResultStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "mars_results"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert
     # -------------------
