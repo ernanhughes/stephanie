@@ -58,7 +58,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
     - Result aggregation and final reporting
     """
     
-    def __init__(self, config: GapConfig, container, logger, memory=None):
+    def __init__(self, cfg: GapConfig, container, logger, memory=None):
         """
         Initialize the GAP analysis orchestrator with all required components.
         
@@ -75,7 +75,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
             - Data retriever for sample collection
             - Progress tracking system
         """
-        self.config = config
+        self.cfg = cfg
         self.container = container
         self.logger = logger
         self.memory = memory
@@ -88,7 +88,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
                 factory=lambda: GapStorageService(),
                 dependencies=[],
                 init_args={
-                    "base_dir": str(self.config.base_dir),
+                    "base_dir": str(self.cfg.base_dir),
                     "logger": self.logger,
                 },
             )
@@ -97,13 +97,13 @@ class GapAnalysisOrchestrator(ProgressMixin):
 
         # Optional: shared SCM term head (used in scoring if enabled)
         # Enables Shared Core Metrics projection for cross-model alignment
-        if config.enable_scm_head:
+        if cfg.enable_scm_head:
             try:
                 container.register(
                     name="scm_service",
                     factory=lambda: SCMService(),
                     dependencies=[],
-                    init_args={"config": config.scm, "logger": logger},
+                    init_args={"config": cfg.scm, "logger": logger},
                 )
             except ValueError:
                 pass  # Service already registered
@@ -113,13 +113,13 @@ class GapAnalysisOrchestrator(ProgressMixin):
                     name="ep_guard",
                     factory=lambda: EpistemicGuard(),      # your EG core (HalVis+Risk)
                     dependencies=[],
-                    init_args={"config": config.eg, "logger": logger},
+                    init_args={"config": cfg.eg, "logger": logger},
                 )
                 container.register(
                     name="eg_visual",
                     factory=lambda: EGVisual(),
                     dependencies=[],
-                    init_args={"out_dir": str(config.base_dir)},
+                    init_args={"out_dir": str(cfg.base_dir)},
                 )
             except ValueError:
                 pass
@@ -129,14 +129,14 @@ class GapAnalysisOrchestrator(ProgressMixin):
             try:
                 self.container.register(
                     name="risk_predictor",
-                    factory=lambda: RiskPredictorService(),
+                    factory=lambda: RiskPredictorService(self.cfg, self.memory, logger=self.logger),
                     dependencies=["?memcube"],  # optional; service handles None
                     init_args={
                         "config": {
                             # update these paths/values as appropriate
                             "bundle_path": "./models/risk/bundle.joblib",
-                            "default_domains": tuple(self.config.eg.domains or ["science","history","geography","tech"])
-                                if getattr(self.config, "eg", None) and getattr(self.config.eg, "domains", None)
+                            "default_domains": tuple(self.cfg.eg.domains or ["science","history","geography","tech"])
+                                if getattr(self.cfg, "eg", None) and getattr(self.cfg.eg, "domains", None)
                                 else ("science", "history", "geography", "tech"),
                             "calib_ttl_s": 1800,
                             "fallback_low": 0.20,
@@ -163,26 +163,26 @@ class GapAnalysisOrchestrator(ProgressMixin):
         
         # Scoring: Runs HRM and Tiny models on all samples, produces timelines
         self.scoring_processor = ScoringProcessor(
-            self.config, container, logger
+            self.cfg, container, logger
         )
         
         # Analysis: Computes delta fields, topology, frontier maps, PHOS packs
         self.analysis_processor = AnalysisProcessor(
-            self.config, container, logger
+            self.cfg, container, logger
         )
         
         # Calibration: Determines routing thresholds and model escalation policies
         self.calibration_processor = CalibrationProcessor(
-            self.config, container, logger
+            self.cfg, container, logger
         )
 
         # Significance: Statistical validation of topological findings
         # Handles p-values, confidence intervals, null hypothesis testing
         self.significance_processor = SignificanceProcessor(
             SignificanceConfig(
-                n_nulls=getattr(self.config, "n_nulls", 100),
-                n_bootstrap=getattr(self.config, "n_bootstrap", 50),
-                random_seed=getattr(self.config, "random_seed", 42),
+                n_nulls=getattr(self.cfg, "n_nulls", 100),
+                n_bootstrap=getattr(self.cfg, "n_bootstrap", 50),
+                random_seed=getattr(self.cfg, "random_seed", 42),
                 max_betti_dim=1,  # Focus on H1 loops (1-dimensional holes)
             ),
             logger=self.logger,
@@ -190,7 +190,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
 
         # ---- Data retriever (memory-backed by default) ----
         # Handles sample collection with safety limits to prevent memory issues
-        safe_limit = self.config.per_dim_cap if self.config.per_dim_cap is not None else 10**9
+        safe_limit = self.cfg.per_dim_cap if self.cfg.per_dim_cap is not None else 10**9
         self.retriever = DataRetriever(
             container,
             logger,
@@ -258,17 +258,17 @@ class GapAnalysisOrchestrator(ProgressMixin):
             run_id=run_id,
             dataset=dataset_name,
             models={
-                "hrm": self.config.hrm_scorers[0],
-                "tiny": self.config.tiny_scorers[0],
+                "hrm": self.cfg.hrm_scorers[0],
+                "tiny": self.cfg.tiny_scorers[0],
             },
         )
-        self.manifest_manager.attach_dimensions(run_id, self.config.dimensions)
+        self.manifest_manager.attach_dimensions(run_id, self.cfg.dimensions)
 
         # Stage 1: Data Preparation
         # Retrieve conversation turns organized by reasoning dimension
         self.pstart(task=f"data:{run_id}", total=1, meta={"dataset": dataset_name})
         triples_by_dim = await self.retriever.get_triples_by_dimension(
-            self.config.dimensions,
+            self.cfg.dimensions,
             memory=self.memory,
             limit=self.retriever.cfg.limit,
         )
@@ -295,7 +295,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
         try:
             significance_out = await self.significance_processor.run(
                 run_id,
-                base_dir=self.config.base_dir,
+                base_dir=self.cfg.base_dir,
             )
         except Exception as e:
             self.logger.log(
@@ -316,7 +316,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
 
         # Stage 6: Reporting
         # Generate comprehensive Markdown report with all findings
-        reporter = ReportBuilder(self.config, self.container, self.logger)
+        reporter = ReportBuilder(self.cfg, self.container, self.logger)
         # Include significance results in final analysis output
         analysis_out = {**analysis_out, "significance": significance_out}
         report_out = await reporter.build(

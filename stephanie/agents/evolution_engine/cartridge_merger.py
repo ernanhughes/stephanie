@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sklearn.cluster import DBSCAN
 
-from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcube.knowledge_cartridge import KnowledgeCartridge
 
 
 class CartridgeMerger:

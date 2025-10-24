@@ -1,9 +1,9 @@
-# stephanie/memcubes/memcube_factory.py
+# stephanie/memcube/memcube_factory.py
 from datetime import datetime
 
 from sqlalchemy.sql import text
 
-from stephanie.memcubes.memcube import MemCube
+from stephanie.memcube.memcube import MemCube
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 
 

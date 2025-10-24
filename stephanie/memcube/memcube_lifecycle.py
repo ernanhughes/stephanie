@@ -1,8 +1,8 @@
-# stephanie/memcubes/memcube_lifecycle.py
+# stephanie/memcube/memcube_lifecycle.py
 
 import json
 
-from stephanie.memcubes.memcube import MemCube
+from stephanie.memcube.memcube import MemCube
 
 
 class MemCubeLifecycle:

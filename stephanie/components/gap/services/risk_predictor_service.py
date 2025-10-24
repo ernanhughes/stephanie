@@ -13,10 +13,7 @@ from stephanie.services.service_protocol import Service
 from stephanie.scoring.model.risk_predictor import DomainCalibratedRiskPredictor
 
 # Optional, if MemCube client is available in your env
-try:
-    from stephanie.memcube import MemCubeClient  # type: ignore
-except Exception:
-    MemCubeClient = None  # graceful fallback
+from stephanie.memcube.memcube_client import MemCubeClient  # type: ignore
 
 
 @dataclass
@@ -44,8 +41,9 @@ class RiskPredictorService(Service):
         - await explain_risk(question: str, context: str) -> Optional[bytes]  (PNG bytes if enabled)
     """
 
-    def __init__(self, cfg: Optional[RiskServiceConfig] = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, cfg: Optional[RiskServiceConfig], memory, logger: Optional[logging.Logger] = None):
         self._cfg = cfg or RiskServiceConfig()
+        self.memory = memory
         self._logger = logger or logging.getLogger(self.name)
 
         self._predictor: Optional[DomainCalibratedRiskPredictor] = None
@@ -90,7 +88,7 @@ class RiskPredictorService(Service):
         # Optional MemCube (used for calibration fetch/persist)
         if MemCubeClient is not None:
             try:
-                self._mem = MemCubeClient()
+                self._mem = MemCubeClient({}, self.memory, logger=self.logger)
             except Exception:
                 self._mem = None
 

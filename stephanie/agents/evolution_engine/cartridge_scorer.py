@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.agents.knowledge.paper_score import PaperScoreAgent
-from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcube.knowledge_cartridge import KnowledgeCartridge
 
 
 class CartridgeScorer:

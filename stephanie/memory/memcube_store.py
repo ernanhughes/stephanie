@@ -6,8 +6,8 @@ from typing import Optional
 
 from sqlalchemy import text
 
-from stephanie.memcubes.memcube import MemCube
-from stephanie.memcubes.memcube_factory import MemCubeFactory
+from stephanie.memcube.memcube import MemCube
+from stephanie.memcube.memcube_factory import MemCubeFactory
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.memcube import MemCubeORM
 

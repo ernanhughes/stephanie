@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.memcubes.memcube_factory import MemCubeFactory
+from stephanie.memcube.memcube_factory import MemCubeFactory
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.math_utils import (advantage_weighted_regression,
@@ -270,7 +270,7 @@ class EBTInferenceAgent(BaseAgent):
         uncertainty = torch.norm(refined_emb.grad).item() if refined_emb.grad is not None else 0.0
         
         # Create new MemCube version
-        from stephanie.memcubes.memcube_factory import MemCubeFactory
+        from stephanie.memcube.memcube_factory import MemCubeFactory
         scorable = Scorable(id=hash(refined_text), text=refined_text, target_type=ScorableType.DOCUMENT)
         memcube = MemCubeFactory.from_scorable(scorable, version="auto")
         memcube.extra_data["refinement_trace"] = energy_trace

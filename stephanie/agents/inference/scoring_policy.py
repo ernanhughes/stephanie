@@ -10,7 +10,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
-from stephanie.memcubes.memcube_factory import MemCubeFactory
+from stephanie.memcube.memcube_factory import MemCubeFactory
 from stephanie.scoring.ebt.buffer import EBTTrainingBuffer
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer

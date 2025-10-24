@@ -10,8 +10,8 @@ import networkx as nx
 import torch
 
 from stephanie.agents.inference.ebt_inference import DocumentEBTInferenceAgent
-from stephanie.memcubes.memcube import MemCube
-from stephanie.memcubes.theorem import Theorem
+from stephanie.memcube.memcube import MemCube
+from stephanie.memcube.theorem import Theorem
 from stephanie.models.belief import BeliefORM
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.model_utils import get_model_path

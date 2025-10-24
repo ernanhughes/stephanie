@@ -1,4 +1,4 @@
-# stephanie/memcubes/memcube.py
+# stephanie/memcube/memcube.py
 
 from datetime import datetime
 from enum import Enum

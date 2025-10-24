@@ -1,6 +1,6 @@
 from typing import List
 
-from stephanie.memcubes.world_model import WorldModel
+from stephanie.memcube.world_model import WorldModel
 from stephanie.models.belief import BeliefORM
 
 

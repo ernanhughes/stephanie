@@ -1,4 +1,4 @@
-# stephanie/memcubes/memcube_client.py
+# stephanie/memcube/memcube_client.py
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy import text
 
 from stephanie.memory.memcube_store import MemcubeStore
-from stephanie.memcubes.memcube_factory import MemCubeFactory
+from stephanie.memcube.memcube_factory import MemCubeFactory
 from stephanie.scoring.scorable import Scorable, ScorableType
 
 # --- simple domain heuristic (same as earlier stub) ---
@@ -47,8 +47,9 @@ class MemCubeClient:
       - get(cube_id)  # fetch MemCube by id
     """
 
-    def __init__(self, store: MemcubeStore, logger=None):
-        self.store = store
+    def __init__(self, cfg,  memory, logger=None):
+        self.cfg = cfg
+        self.memory = memory
         self.logger = logger
 
     # ------------- Calibration I/O -------------
@@ -207,4 +208,4 @@ class MemCubeClient:
 
     async def get(self, cube_id: str):
         """Fetch a MemCube by id (thin passthrough)."""
-        return await asyncio.to_thread(self.store.get_memcube, cube_id)
+        return self.memory.memcubes.get_memcube(cube_id)

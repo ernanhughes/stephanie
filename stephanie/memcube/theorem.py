@@ -1,8 +1,8 @@
-# stephanie/memcubes/theorem.py
+# stephanie/memcube/theorem.py
 from datetime import datetime
 from typing import List
 
-from stephanie.memcubes.memcube import MemCube
+from stephanie.memcube.memcube import MemCube
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.file_utils import hash_text
 
