@@ -18,6 +18,99 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class EgBadgeConfig:
+    """Controls the live risk/hallucination badge in SIS."""
+    enabled: bool = True
+    # How the compact badge is composed
+    show_risk_band: bool = True       # LOW/MED/HIGH chip
+    show_hrm_verified: bool = True    # 🛡️ mark when HRM+RAG verified
+    show_topo_signal: bool = True     # β₁ / topo_hallucination hint
+    show_history_span: int = 50       # turns to summarize in conversation badge
+    # Colors (string tokens that your front-end maps to theme vars)
+    color_low: str = "green"
+    color_med: str = "orange"
+    color_high: str = "red"
+
+@dataclass
+class EgRenderConfig:
+    """Rendering controls for VPMs/strips/GIFs."""
+    out_dir: Path = Path("./static/eg_runs")
+    make_vpm: bool = True
+    make_strip: bool = True
+    make_field: bool = True
+    make_gif: bool = True
+    gif_stride: int = 1
+    gif_duration_s: float = 0.8
+    # overlays
+    show_holes: bool = True
+    min_persistence: float = 0.30  # for H1 cycles
+    # rasterization (grid for the tensor-first path)
+    raster_size: int = 64
+
+@dataclass
+class EgThresholds:
+    """Routing & alert thresholds."""
+    # global fallbacks; domain-calibrated thresholds override at runtime
+    risk_low: float = 0.20
+    risk_high: float = 0.60
+    topo_hallucination_gate: float = 0.55  # if >=, force HRM+RAG
+    max_energy_alert: float = 0.80
+    wasserstein_h1_warn: float = 0.50
+
+@dataclass
+class EgStreams:
+    """NATS / telemetry subjects and durable names."""
+    nats_url: str = "nats://nats:4222"
+    sub_topics: List[str] = field(default_factory=lambda: [
+        "qa.scored", "trace.completed"
+    ])
+    pub_vpm_prefix: str = "vpm.hallucination"
+    pub_alerts_topic: str = "alerts.hallucination"
+    durable: str = "eg_gap_worker"
+
+@dataclass
+class EgMemConfig:
+    """MemCube integration."""
+    push_evidence: bool = True
+    evidence_type: str = "hallucination_map"
+    # where to store calibration / domain thresholds, etc.
+    store_calibration: bool = True
+
+@dataclass
+class EgModelConfig:
+    """Models plugged into EG: HalVis, risk, topology."""
+    # HalVis backend names you already wired
+    halvis_model: str = "halvis_v1"
+    # Risk predictor
+    risk_model: str = "xgb_isotonic"
+    use_domain_calibration: bool = True
+    # Topological learner checkpoint (optional, for topo features)
+    topo_checkpoint: Optional[Path] = None  # e.g. Path("./models/topo/best.ckpt")
+
+@dataclass
+class EgBaselineConfig:
+    """Topological baseline corpus for Wasserstein/β deltas."""
+    baseline_dir: Path = Path("./static/eg_baseline")
+    default_name: str = "qa_good"   # maps to qa_good_stack.npz
+
+@dataclass
+class EgConfig:
+    """Top-level Epistemic Guard block in GAP."""
+    enabled: bool = True
+    badge: EgBadgeConfig = field(default_factory=EgBadgeConfig)
+    render: EgRenderConfig = field(default_factory=EgRenderConfig)
+    thresholds: EgThresholds = field(default_factory=EgThresholds)
+    streams: EgStreams = field(default_factory=EgStreams)
+    mem: EgMemConfig = field(default_factory=EgMemConfig)
+    models: EgModelConfig = field(default_factory=EgModelConfig)
+    baseline: EgBaselineConfig = field(default_factory=EgBaselineConfig)
+
 @dataclass
 class GapConfig:
     """
@@ -79,6 +172,9 @@ class GapConfig:
         "reasoning_dimensions": ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"],
         "latent_dim": 128,  # Dimension of SCM latent space projections
     })
+
+    enable_epistemic_guard: bool = True
+    eg: EgConfig = field(default_factory=EgConfig)
 
 
 @dataclass

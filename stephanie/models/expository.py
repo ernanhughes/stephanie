@@ -21,7 +21,7 @@ class ExpositorySnippet(Base):
     expository_score = Column(Float, index=True)
     bloggability_score = Column(Float, index=True)
     picked = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
 Index("ix_expo_doc_section", ExpositorySnippet.doc_id, ExpositorySnippet.section)
 

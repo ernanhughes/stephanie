@@ -1,0 +1,9 @@
+# config/scorers/risk_scorer.yaml
+risk_scorer:
+  target_type: conversation_turn
+  model_type: risk
+  model_path: ${hydra:runtime.cwd}/models/risk/bundle.joblib
+  default_low: 0.20
+  default_high: 0.60
+  use_service: true        # prefer the service for domain + thresholds
+  attr_level: standard

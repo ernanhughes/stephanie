@@ -144,6 +144,14 @@ class ScoringProcessor(ProgressMixin):
         zm = self.container.get("zeromodel")
         vpm_worker = VPMWorkerInline(zm, self.logger)
         scm_service: SCMService = self.container.get("scm_service")
+        risk_pred = self.container.get("risk_predictor")
+
+        ep_guard = self.container.get("ep_guard") if self.config.enable_epistemic_guard else None
+        if ep_guard and risk_pred:
+            ep_guard.set_predictor(risk_pred)  # canonical risk source
+        eg_visual = self.container.get("eg_visual") if self.config.enable_epistemic_guard else None
+
+
 
         zm.timeline_open(run_id=timeline_id)
 
@@ -156,6 +164,13 @@ class ScoringProcessor(ProgressMixin):
 
         log_every = max(1, self.config.progress_log_every)
 
+        eg_out = {}
+        if ep_guard:
+            # 1) Build a per-row hallucination VPM + strip (HalVis)
+            #    Prefer batching by dimension to reuse embeddings.
+            eg_out["hal_badges"] = []      # badge per sample (optionally aggregated)
+            eg_out["vpm_stacks"] = []      # *.npz for training
+            eg_out["truth_gifs"] = []      # .gif timelines if enabled
         with tqdm(total=len(triples), desc=task_name, unit="turn") as pbar:
             for i, triple in enumerate(triples):
                 scorable = Scorable(
@@ -213,7 +228,7 @@ class ScoringProcessor(ProgressMixin):
                     self.logger.log("VPMFrameStats", {
                         "node": triple.node_id,
                         "cols": len(payload["columns"]),
-                        "zeros": int(sum(1 for v in payload["values"] if v == 0.0)),
+                        "zeros": int(sum(1) for v in payload["values"] if v == 0.0),
                         "min": float(min(payload["values"])) if payload["values"] else None,
                         "max": float(max(payload["values"])) if payload["values"] else None,
                     })
@@ -273,6 +288,7 @@ class ScoringProcessor(ProgressMixin):
             "keep_mask": np.array(keep_mask, dtype=bool),
             "kept_indices": kept_indices,
             "gif": hrm_or_tiny_gif,
+            "eg": eg_out
         }
 
     # ---------- core pipeline ----------------------------------------------

@@ -94,7 +94,7 @@ class KRMv1:
 
     def _coverage(self, answer: str, windows: List[str]) -> float:
         if not answer or not windows: return 0.0
-        aw = set((answer or "").lower().split()); 
+        aw = set((answer or "").lower().split())
         if not aw: return 0.0
         ctx = set((" ".join(windows)).lower().split())
         return len(aw & ctx)/max(1,len(aw))

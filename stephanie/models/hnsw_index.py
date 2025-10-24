@@ -135,11 +135,7 @@ class HNSWIndex:
         self.entity_key_to_idx = {}
         _logger.debug("Created new HNSW index (no existing data found)")
 
-    def _rebuild_keymap(self) -> None:
-        self.entity_key_to_idx = {}
-        for i, meta in enumerate(self.metadata):
-            self.entity_key_to_idx[self._get_entity_key(meta)] = i
-
+    
     # ---------- Keys & dedup ----------
     def _get_entity_key(self, meta: Dict[str, Any]) -> str:
         # Prefer explicit unique IDs if present

@@ -179,7 +179,7 @@ class KnowledgeFusionAgent(BaseAgent):
             # Build session index
             scorables = self._build_session_scorables(sections, chat)
             if self.kfc.enable_chunking:
-                self._index_session_entities_with_chunking(scorables)
+                await self._index_session_entities_with_chunking(scorables)
             else:
                 await self._index_session_entities(scorables)
 

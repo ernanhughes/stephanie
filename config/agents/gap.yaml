@@ -46,3 +46,65 @@ gap:
   output_key: gap
   prompt_mode: file
   prompt_file: gap.txt
+
+
+  # conf/gap.yaml
+  dimensions: [reasoning, knowledge, clarity, faithfulness, coverage]
+  hrm_scorers: [hrm]
+  tiny_scorers: [tiny]
+  out_dir: data/gap_runs/vpm
+  gap_base_dir: data/gap_runs
+
+  eg:
+    enabled: true
+
+    badge:
+      enabled: true
+      show_risk_band: true
+      show_hrm_verified: true
+      show_topo_signal: true
+      show_history_span: 50
+      color_low: green
+      color_med: orange
+      color_high: red
+
+    render:
+      out_dir: ./static/eg_runs
+      make_vpm: true
+      make_strip: true
+      make_field: true
+      make_gif: true
+      gif_stride: 1
+      gif_duration_s: 0.8
+      show_holes: true
+      min_persistence: 0.30
+      raster_size: 64
+
+    thresholds:
+      risk_low: 0.20
+      risk_high: 0.60
+      topo_hallucination_gate: 0.55
+      max_energy_alert: 0.80
+      wasserstein_h1_warn: 0.50
+
+    streams:
+      nats_url: nats://nats:4222
+      sub_topics: ["qa.scored", "trace.completed"]
+      pub_vpm_prefix: vpm.hallucination
+      pub_alerts_topic: alerts.hallucination
+      durable: eg_gap_worker
+
+    mem:
+      push_evidence: true
+      evidence_type: hallucination_map
+      store_calibration: true
+
+    models:
+      halvis_model: halvis_v1
+      risk_model: xgb_isotonic
+      use_domain_calibration: true
+      topo_checkpoint: ./models/topo/best.ckpt
+
+    baseline:
+      baseline_dir: ./static/eg_baseline
+      default_name: qa_good

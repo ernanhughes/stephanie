@@ -355,14 +355,6 @@ class LATSAgent(BaseAgent):
         prompt_text = self.prompt_loader.load_prompt(self.cfg, merged)
         return prompt_text
 
-    async def _run_proximity(self, context):
-        """Run proximity agent to find similar hypotheses"""
-        try:
-            return await self.proximity_agent.run(context)
-        except Exception as e:
-            self.logger.log("ProximityAgentFailed", {"error": str(e)})
-            return {}
-
     def _apply_proximity_guidance(self, comp, proximity_data):
         """Enhance completion using proximity feedback"""
         if not proximity_data.get("most_similar"):

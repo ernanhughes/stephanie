@@ -137,14 +137,14 @@ class NatsKnowledgeBus(BusProtocol):
                 _logger.debug(f"NATSLowLevelError error: {repr(e)}")
 
             async def _disc_cb():
-                _logger.error("NATSDisconnected")
+                _logger.debug("NATSDisconnected")
 
             async def _reconn_cb():
                 _logger.debug("NATSReconnected")
                 await self._on_reconnected()
 
             async def _closed_cb():
-                _logger.error("NATSClosed")
+                _logger.debug("NATSClosed")
 
             nc = None
             try:

@@ -80,9 +80,7 @@ class ICLHelper:
 
 class ICLAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
-        self.cfg = cfg
-        self.memory = memory
-        self.logger = logger
+        super().__init__(cfg, memory, container, logger)
         self.helper = ICLHelper()
 
     async def run(self, context: dict):

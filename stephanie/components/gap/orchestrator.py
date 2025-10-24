@@ -33,6 +33,11 @@ from stephanie.components.gap.processors.significance import (
     SignificanceConfig, SignificanceProcessor)
 from stephanie.components.gap.services.scm_service import SCMService
 from stephanie.utils.progress_mixin import ProgressMixin
+from stephanie.components.gap.processors.epistemic_guard import EpistemicGuard, EGVisual
+from stephanie.components.gap.services.risk_predictor_service import (
+    RiskPredictorService,
+    RiskServiceConfig,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -103,8 +108,54 @@ class GapAnalysisOrchestrator(ProgressMixin):
             except ValueError:
                 pass  # Service already registered
 
+            try:
+                container.register(
+                    name="ep_guard",
+                    factory=lambda: EpistemicGuard(),      # your EG core (HalVis+Risk)
+                    dependencies=[],
+                    init_args={"config": config.eg, "logger": logger},
+                )
+                container.register(
+                    name="eg_visual",
+                    factory=lambda: EGVisual(),
+                    dependencies=[],
+                    init_args={"out_dir": str(config.base_dir)},
+                )
+            except ValueError:
+                pass
+
+
+            # ---- Risk Predictor (single source of truth for risk & thresholds) ----
+            try:
+                self.container.register(
+                    name="risk_predictor",
+                    factory=lambda: RiskPredictorService(),
+                    dependencies=["?memcube"],  # optional; service handles None
+                    init_args={
+                        "config": {
+                            # update these paths/values as appropriate
+                            "bundle_path": "./models/risk/bundle.joblib",
+                            "default_domains": tuple(self.config.eg.domains or ["science","history","geography","tech"])
+                                if getattr(self.config, "eg", None) and getattr(self.config.eg, "domains", None)
+                                else ("science", "history", "geography", "tech"),
+                            "calib_ttl_s": 1800,
+                            "fallback_low": 0.20,
+                            "fallback_high": 0.60,
+                            "enable_explanations": False,  # set True if SHAP wired
+                        },
+                        "logger": self.logger,
+                    },
+                )
+            except ValueError:
+                # already registered elsewhere (e.g., global bootstrap) — safe
+                pass
+
+
         # Ensure storage is initialized and available to all components
         self.storage = self.container.get("gap_storage")
+
+
+
         self.manifest_manager = ManifestManager(self.storage)
 
         # ---- Processor Initialization ----
