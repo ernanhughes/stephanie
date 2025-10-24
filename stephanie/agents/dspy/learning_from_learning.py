@@ -3,18 +3,16 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import dspy
 
 from stephanie.agents.learning.corpus_retriever import CorpusRetriever
 from stephanie.agents.learning.evidence import Evidence
-from stephanie.agents.learning.knowledge_arena import KnowledgeArena
 from stephanie.agents.learning.persistence import Persistence
 from stephanie.agents.learning.scoring import Scoring
 from stephanie.agents.learning.strategy_manager import StrategyManager
 from stephanie.agents.learning.summarizer import Summarizer
-from stephanie.utils.json_sanitize import dumps_safe
 
 
 class BaselineSummarySignature(dspy.Signature):

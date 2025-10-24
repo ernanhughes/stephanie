@@ -2,7 +2,6 @@
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.scoring_store import ScoringStore
-from stephanie.utils.visualization_utils import save_dataframe_plot  # Optional
 
 
 class ScoringReportAgent(BaseAgent):

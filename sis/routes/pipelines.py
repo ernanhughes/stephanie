@@ -5,7 +5,6 @@ from sis.utils.data_utils import get_run_config
 from fastapi.responses import FileResponse, PlainTextResponse
 import os
 import tempfile
-import yaml
 
 router = APIRouter()
 

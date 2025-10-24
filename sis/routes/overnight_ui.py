@@ -1,6 +1,5 @@
 from __future__ import annotations
 import json
-from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from stephanie.jobs.overnight import OUT_DIR, run_once

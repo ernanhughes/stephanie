@@ -7,9 +7,7 @@ defaults:
   - scorer: gap  
 
 
-  - agents/chat_mrq_trainer
-  - agents/chat_sicql_trainer
-  - agents/chat_tiny_trainer
+  - agents/risk_trainer
   - agents/chat_scorer
   - agents/scorer
   - agents/gap
@@ -42,10 +40,10 @@ pipeline:
   tag: chat_training
   description: "Uses chat history to train models. Different dynamics than traditional training."
   stages:
-     - name: chat_mrq_trainer
-       description: "Trains a MRQ model using chat conversations" 
-       cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent 
-       enabled: false
+     - name: risk_trainer
+       description: "Trains a risk model using chat conversations"
+       cls: stephanie.agents.maintenance.risk_trainer.RiskTrainerAgent
+       enabled: true
        iterations: 1
 
      - name: chat_sicql_trainer
@@ -80,5 +78,5 @@ pipeline:
      - name: gap
        description: "Understanding the Gap between two models using chat conversation_turns"
        cls: stephanie.components.gap.gap.GapAgent
-       enabled: true
+       enabled: false
        iterations: 1

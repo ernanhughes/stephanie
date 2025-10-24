@@ -1,7 +1,6 @@
 # sis/routes/plan_traces.py
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy.orm import Session
 import logging
 
 from stephanie.data.plan_trace import PlanTrace

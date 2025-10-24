@@ -1,7 +1,6 @@
 # stephanie/agents/evolution_engine/cartridge_merger.py
 from __future__ import annotations
 
-import numpy as np
 from sklearn.cluster import DBSCAN
 
 from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
