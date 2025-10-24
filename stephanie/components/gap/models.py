@@ -175,6 +175,8 @@ class GapConfig:
 
     enable_epistemic_guard: bool = True
     eg: EgConfig = field(default_factory=EgConfig)
+    bundle_path: Optional[Path] = None  # Path to pre-bundled artifacts (if any)
+    default_domains: List[str] = field(default_factory=lambda: ["general", "medical", "legal", "finance"])
 
 
 @dataclass

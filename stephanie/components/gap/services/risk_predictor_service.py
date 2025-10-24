@@ -42,9 +42,9 @@ class RiskPredictorService(Service):
     """
 
     def __init__(self, cfg: Optional[RiskServiceConfig], memory, logger: Optional[logging.Logger] = None):
-        self._cfg = cfg or RiskServiceConfig()
+        self.cfg = cfg or RiskServiceConfig()
         self.memory = memory
-        self._logger = logger or logging.getLogger(self.name)
+        self.logger = logger or logging.getLogger(self.name)
 
         self._predictor: Optional[DomainCalibratedRiskPredictor] = None
         self._mem: Optional[Any] = None  # MemCubeClient if available
@@ -71,18 +71,18 @@ class RiskPredictorService(Service):
         cfg_kw = kwargs.get("config") or {}
         if cfg_kw:
             for k, v in cfg_kw.items():
-                if hasattr(self._cfg, k):
-                    setattr(self._cfg, k, v)
+                if hasattr(self.cfg, k):
+                    setattr(self.cfg, k, v)
 
         # Dedicated logger if provided
         lg = kwargs.get("logger")
         if lg is not None:
-            self._logger = lg
+            self.logger = lg
 
         # Instantiate predictor
         self._predictor = DomainCalibratedRiskPredictor(
-            bundle_path=self._cfg.bundle_path,
-            default_domains=self._cfg.default_domains,
+            bundle_path=self.cfg.bundle_path,
+            default_domains=self.cfg.default_domains,
         )
 
         # Optional MemCube (used for calibration fetch/persist)
@@ -93,12 +93,12 @@ class RiskPredictorService(Service):
                 self._mem = None
 
         self._up = True
-        self._logger.info(
+        self.logger.info(
             "RiskPredictorService initialized",
             extra={
                 "service": self.name,
-                "bundle_path": self._cfg.bundle_path,
-                "domains": list(self._cfg.default_domains),
+                "bundle_path": self.cfg.bundle_path,
+                "domains": list(self.cfg.default_domains),
             },
         )
 
@@ -125,9 +125,9 @@ class RiskPredictorService(Service):
                 queue_group="risk-calibration",
             )
             self._bus_ready.set()
-            self._logger.info("RiskPredictorService subscribed to calibration.risk.updated")
+            self.logger.info("RiskPredictorService subscribed to calibration.risk.updated")
         except Exception as e:
-            self._logger.error(f"Failed subscribing to bus: {e}")
+            self.logger.error(f"Failed subscribing to bus: {e}")
 
     async def _on_calibration_updated(self, payload: Dict[str, Any]):
         """
@@ -143,8 +143,8 @@ class RiskPredictorService(Service):
             return
 
         async with self._cache_lock:
-            self._th_cache[domain] = (float(low), float(high), time.time() + self._cfg.calib_ttl_s)
-        self._logger.info(
+            self._th_cache[domain] = (float(low), float(high), time.time() + self.cfg.calib_ttl_s)
+        self.logger.info(
             "Risk thresholds hot-reloaded",
             extra={"domain": domain, "low": low, "high": high},
         )
@@ -169,7 +169,7 @@ class RiskPredictorService(Service):
         self._up = False
         self._predictor = None
         self._th_cache.clear()
-        self._logger.info("RiskPredictorService shutdown complete")
+        self.logger.info("RiskPredictorService shutdown complete")
 
     # ---------- Public API for consumers ----------
     async def predict_risk(
@@ -204,9 +204,9 @@ class RiskPredictorService(Service):
             return float(risk), (float(low), float(high))
         except Exception as e:
             self._err_count += 1
-            self._logger.error(f"predict_risk failed: {e}")
+            self.logger.error(f"predict_risk failed: {e}")
             # Always provide some thresholds
-            return 0.0, (self._cfg.fallback_low, self._cfg.fallback_high)
+            return 0.0, (self.cfg.fallback_low, self.cfg.fallback_high)
 
     async def get_domain_thresholds(self, domain: Optional[str]) -> Tuple[float, float]:
         """
@@ -240,12 +240,12 @@ class RiskPredictorService(Service):
 
         # 3) Defaults
         if low is None or high is None:
-            low = self._cfg.fallback_low
-            high = self._cfg.fallback_high
+            low = self.cfg.fallback_low
+            high = self.cfg.fallback_high
 
         # Cache it
         async with self._cache_lock:
-            self._th_cache[d] = (low, high, now + self._cfg.calib_ttl_s)
+            self._th_cache[d] = (low, high, now + self.cfg.calib_ttl_s)
 
         return low, high
 
@@ -254,7 +254,7 @@ class RiskPredictorService(Service):
         Optional SHAP explanation as PNG bytes.
         Returns None if explanations are disabled or unavailable.
         """
-        if not self._cfg.enable_explanations:
+        if not self.cfg.enable_explanations:
             return None
         if not self._predictor:
             return None
@@ -269,7 +269,7 @@ class RiskPredictorService(Service):
                 )
                 return png_bytes
         except Exception as e:
-            self._logger.warning(f"explain_risk failed: {e}")
+            self.logger.warning(f"explain_risk failed: {e}")
         return None
 
     # ---------- internal helpers ----------
