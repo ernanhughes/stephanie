@@ -570,3 +570,13 @@ class AgenticTreeSearch:
         Example: tree 12, depth 3, sibling 45 -> 120030045
         """
         return (int(tree_id) * 10**7) + (node_depth * 10**4) + sibling_idx
+    
+    def node_reward(self, node: SolutionNode) -> float:
+        """Public reward view (respects metric_policy)."""
+        m = self.metric_fn(node.metric)
+        return -m if self.metric_policy == "minimize" else m
+
+    # --- OPTIONAL: expose candidate sampling if you'd like to reuse UCB ---
+    def candidates(self) -> List[SolutionNode]:
+        """Non-buggy nodes available for expansion (helper for adapters)."""
+        return [n for n in self.tree if not n.is_buggy]

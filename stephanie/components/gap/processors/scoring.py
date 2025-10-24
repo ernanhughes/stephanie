@@ -3,21 +3,17 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import re
-import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from stephanie.components.gap.io import storage
 from stephanie.components.gap.io.manifest import GapRunManifest
 from stephanie.components.gap.models import GapConfig, TripleSample
 from stephanie.components.gap.services.scm_service import (SCM_FEATURE_KEYS,
                                                            SCMService)
-from stephanie.components.gap.shared_scm import (SCM_COLUMNS, scm_from_vector,
-                                                 scm_row)
+from stephanie.components.gap.shared_scm import (SCM_COLUMNS)
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline

@@ -2,6 +2,7 @@ defaults:
   - _self_
   - db: postgres
   - plan_monitor: disabled
+  - bus: disabled   
   - logging/json_logger
   - services/default
   - scorer: gap  
@@ -13,7 +14,7 @@ defaults:
   - agents/gap
 
 embeddings:
-  backend: mxbai
+  backend: hnet
 
 
 goal:
@@ -43,7 +44,7 @@ pipeline:
      - name: risk_trainer
        description: "Trains a risk model using chat conversations"
        cls: stephanie.agents.maintenance.risk_trainer.RiskTrainerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: chat_sicql_trainer
@@ -78,5 +79,5 @@ pipeline:
      - name: gap
        description: "Understanding the Gap between two models using chat conversation_turns"
        cls: stephanie.components.gap.gap.GapAgent
-       enabled: false
+       enabled: true
        iterations: 1

@@ -24,6 +24,79 @@ from stephanie.agents.base_agent import BaseAgent
 
 # ---- Small helpers ---------------------------------------------------------
 
+
+HRM_DIMS  = ["reasoning","knowledge","clarity","faithfulness","coverage"]
+
+def _ensure_domain(df: pd.DataFrame) -> pd.DataFrame:
+    if "domain" in df.columns:
+        return df
+    # best effort from provenance.dimension or simple heuristics
+    if "dimension" in df.columns:
+        return df.rename(columns={"dimension": "domain"})
+    # fallback: everything "general"
+    df = df.copy()
+    df["domain"] = "general"
+    return df
+
+def _synth_disagreement_label(
+    df: pd.DataFrame,
+    per_dim_delta: float = 0.25,
+    multi_dim_min: int = 2,
+) -> pd.Series:
+    """
+    Label=1 if HRM and Tiny disagree enough across several dims.
+    """
+    diffs = []
+    for d in HRM_DIMS:
+        h = f"HRM.{d}"
+        t = f"Tiny.{d}"
+        if h in df.columns and t in df.columns:
+            diffs.append((df[h] - df[t]).abs())
+    if not diffs:
+        # no basis — return all zeros (trainer will raise if still unlabeled)
+        return pd.Series(np.zeros(len(df), dtype=int), index=df.index)
+    D = pd.concat(diffs, axis=1)  # shape [N, <=5]
+    hits = (D >= per_dim_delta).sum(axis=1)              # how many dims disagree meaningfully
+    lbl  = (hits >= multi_dim_min).astype(int)
+    return lbl
+
+def _pick_or_build_label(
+    df: pd.DataFrame,
+    energy_thresh: float = 0.80,
+    disagree_delta: float = 0.25,
+    disagree_dims_min: int = 2,
+) -> pd.Series:
+    """
+    Priority:
+      1) explicit boolean/0-1 'label'
+      2) 'hallucination' truthy/0-1
+      3) 'max_energy' >= energy_thresh
+      4) synth label from HRM/Tiny disagreement across dimensions
+    Returns a 0/1 series (int).
+    """
+    if "label" in df.columns:
+        s = df["label"]
+        # normalize
+        if s.dtype == bool:
+            return s.astype(int)
+        return (s.astype(float) >= 0.5).astype(int)
+
+    if "hallucination" in df.columns:
+        s = df["hallucination"]
+        if s.dtype == bool:
+            return s.astype(int)
+        return (s.astype(float) >= 0.5).astype(int)
+
+    if "max_energy" in df.columns:
+        return (df["max_energy"].astype(float) >= float(energy_thresh)).astype(int)
+
+    # Last resort: synthesize from disagreement
+    return _synth_disagreement_label(
+        df,
+        per_dim_delta=float(disagree_delta),
+        multi_dim_min=int(disagree_dims_min),
+    )
+
 def _safe_str(x: Any) -> str:
     try:
         return str(x) if x is not None else ""
@@ -140,7 +213,6 @@ class RiskTrainer:
     feature_order: List[str] = field(default_factory=lambda: list(DEFAULT_FEATURE_ORDER))
 
     def _memcube(self):
-        # Optional: grab memcube-like service if present
         try:
             return self.container.get("memcube")
         except Exception:
@@ -154,136 +226,170 @@ class RiskTrainer:
             return sorted([str(x) for x in df["domain"].fillna("general").unique().tolist()])
         return ["general"]
 
-    # Convenience (if you prefer calling from parquet path)
     def train_from_parquet(self, parquet_path: str | Path) -> Dict[str, Any]:
         df = pd.read_parquet(parquet_path)
         return self.train_dataframe(df)
 
-    # === The method you asked for ===
-    def train_dataframe(self, df: pd.DataFrame) -> Dict[str, Any]:
-        self.logger.log("RiskTrainerStart", {"rows": int(df.shape[0]), "cols": int(df.shape[1])})
-
-        # 1) Ensure features + label + domain
+    def train_dataframe(self, df: pd.DataFrame) -> dict:
+        # -------------------------
+        # 0) Basic hygiene
+        # -------------------------
         df = df.copy()
-        df = _ensure_features(df, self.feature_order)
-        if "domain" not in df.columns:
-            df["domain"] = "general"
-        domains = self._domains(df)
+        df = _ensure_domain(df)
 
-        y = _pick_label(df).astype(int)
-        X = df[self.feature_order].astype(float).values
-        dom_series = df["domain"].astype(str)
+        # -------------------------
+        # 1) Features (use what you have)
+        # -------------------------
+        # Prefer your engineered columns: lengths + deltas
+        delta_cols = [c for c in df.columns if c.startswith("delta.")]
+        base_feat_cols = ["len_goal", "len_out"] + delta_cols
+        # Fill missing numeric cols with 0.0 so we never crash
+        for c in base_feat_cols:
+            if c not in df.columns:
+                df[c] = 0.0
+        X = df[base_feat_cols].astype(float)
 
-        # 2) Split (stratify by y; domains used for per-domain eval later)
-        test_size = float(self.cfg.get("test_size", 0.2))
+        # -------------------------
+        # 2) Labels (robust synthesis)
+        # -------------------------
+        # Try explicit y/label/hallucination first
+        y = None
+        if "label" in df.columns:
+            y = (df["label"].astype(float) >= 0.5).astype(int)
+        elif "hallucination" in df.columns:
+            y = (df["hallucination"].astype(float) >= 0.5).astype(int)
+        elif "y" in df.columns:
+            y = df["y"].astype(int)
+
+        # If label is missing or degenerate (all the same), synthesize from deltas
+        def _synth_from_deltas(frame: pd.DataFrame, pos_rate_target: float = 0.20) -> pd.Series:
+            # Score of “disagreement energy”: max |delta| across the 5 dims
+            if not delta_cols:
+                # If no deltas, fallback to zeros (trainer will throw later)
+                return pd.Series(np.zeros(len(frame), dtype=int), index=frame.index)
+
+            D = frame[delta_cols].astype(float)
+            # use max absolute deviation as risk proxy
+            score = D.abs().max(axis=1)
+
+            # Per-domain percentile cut to hit target positive rate in each domain
+            dom = frame["domain"].astype(str).fillna("general")
+            labels = np.zeros(len(frame), dtype=int)
+            for dd in dom.unique():
+                mask = (dom == dd).values
+                if not np.any(mask):
+                    continue
+                cutoff = np.quantile(score[mask].values, 1.0 - pos_rate_target)
+                labels[mask] = (score[mask].values >= cutoff).astype(int)
+            return pd.Series(labels, index=frame.index)
+
+        if y is None or y.nunique() < 2 or y.sum() == 0:
+            # synthesize ~20% positives per domain (configurable via cfg)
+            target_pos_rate = float(self.cfg.get("target_pos_rate", 0.20))
+            y = _synth_from_deltas(df, pos_rate_target=target_pos_rate)
+
+        # Final sanity: ensure we have both classes
+        if y.nunique() < 2 or y.sum() == 0:
+            raise ValueError(
+                "Unable to construct a usable binary label from dataset. "
+                "Consider adjusting target_pos_rate (e.g., 0.30) or regenerating the dataset."
+            )
+
+        # -------------------------
+        # 3) Split
+        # -------------------------
+        test_size = float(self.cfg.get("test_size", 0.20))
         seed = int(self.cfg.get("seed", 42))
-        Xtr, Xva, ytr, yva, dtr, dva = train_test_split(
-            X, y, dom_series.values, test_size=test_size, random_state=seed, stratify=y
+        dom = df["domain"].fillna("general").astype(str).values
+
+        X_train, X_val, y_train, y_val, d_train, d_val = train_test_split(
+            X.values, y.values, dom, test_size=test_size, random_state=seed, stratify=y
         )
 
-        # 3) Fit base classifier
-        if _HAS_XGB:
+        # -------------------------
+        # 4) Model + calibration
+        # -------------------------
+        use_xgb = bool(self.cfg.get("use_xgb", True))
+        if use_xgb and _HAS_XGB:
             xgb_cfg = self.cfg.get("xgb", {}) or {}
             clf_base = xgb.XGBClassifier(
                 n_estimators=int(xgb_cfg.get("n_estimators", 300)),
                 max_depth=int(xgb_cfg.get("max_depth", 5)),
                 learning_rate=float(xgb_cfg.get("learning_rate", 0.05)),
                 subsample=float(xgb_cfg.get("subsample", 0.9)),
-                colsample_bytree=float(xgb_cfg.get("colsample_bytree", 0.8)),
-                reg_lambda=float(xgb_cfg.get("reg_lambda", 1.0)),
-                objective="binary:logistic",
+                colsample_bytree=float(xgb_cfg.get("colsample_bytree", 0.9)),
                 eval_metric="logloss",
                 random_state=seed,
-                n_jobs=int(xgb_cfg.get("n_jobs", 4)),
+                n_jobs=-1,
             )
         else:
-            # Reasonable fallback if xgboost isn't available
+            gbc_cfg = self.cfg.get("gbc", {}) or {}
             clf_base = GradientBoostingClassifier(
-                learning_rate=0.05, n_estimators=300, max_depth=3, random_state=seed
+                n_estimators=int(gbc_cfg.get("n_estimators", 400)),
+                learning_rate=float(gbc_cfg.get("learning_rate", 0.05)),
+                max_depth=int(gbc_cfg.get("max_depth", 3)),
+                subsample=float(gbc_cfg.get("subsample", 0.9)),
+                random_state=seed,
             )
 
-        clf_base.fit(Xtr, ytr)
+        # Isotonic calibration on a validation split
+        clf = CalibratedClassifierCV(estimator=clf_base, method="isotonic", cv=3)
+        clf.fit(X_train, y_train)
+        p_val = clf.predict_proba(X_val)[:, 1]
 
-        # 4) Isotonic calibration on validation fold
-        calib = CalibratedClassifierCV(base_estimator=clf_base, cv="prefit", method="isotonic")
-        calib.fit(Xva, yva)
-
-        # 5) Global metrics on validation
-        proba_va = calib.predict_proba(Xva)[:, 1]
-        roc = float(roc_auc_score(yva, proba_va)) if len(np.unique(yva)) > 1 else float("nan")
-        pr  = float(average_precision_score(yva, proba_va)) if len(np.unique(yva)) > 1 else float("nan")
-        ece = _ece_binary(yva, proba_va, n_bins=int(self.cfg.get("ece_bins", 15)))
-
-        # 6) Per-domain thresholds on validation
-        thresholds: Dict[str, Dict[str, float]] = {}
-        default_low  = float(self.cfg.get("thresholds", {}).get("default_low", 0.20))
+        # -------------------------
+        # 5) Per-domain thresholds from validation probs
+        # -------------------------
+        # Defaults if a domain is too small / degenerate
+        default_low = float(self.cfg.get("thresholds", {}).get("default_low", 0.20))
         default_high = float(self.cfg.get("thresholds", {}).get("default_high", 0.60))
 
-        for dom in domains:
-            mask = (dva == dom)
-            if not np.any(mask):
-                thresholds[dom] = {"low_threshold": default_low, "high_threshold": default_high, "count": 0}
+        domain_gates = {}
+        for dd in np.unique(d_val):
+            mask = (d_val == dd)
+            if np.sum(mask) < 10:
+                domain_gates[dd] = (default_low, default_high)
                 continue
-            p = proba_va[mask]
-            lo, hi = _percentile_thresholds(p, lo_pct=float(self.cfg.get("lo_pct", 20.0)),
-                                               hi_pct=float(self.cfg.get("hi_pct", 80.0)))
-            thresholds[dom] = {
-                "low_threshold": float(lo),
-                "high_threshold": float(hi),
-                "count": int(mask.sum()),
-            }
+            lo, hi = _percentile_thresholds(p_val[mask], lo_pct=20.0, hi_pct=80.0)
+            domain_gates[dd] = (lo, hi)
 
-        # 7) Persist model bundle
+        # -------------------------
+        # 6) Persist bundle (clf + feature names + version)
+        # -------------------------
         out_dir = self._out_dir()
         out_dir.mkdir(parents=True, exist_ok=True)
-        bundle_path = out_dir / "bundle.joblib"
         bundle = {
-            "clf": calib,                       # calibrated model
-            "feature_names": self.feature_order,
+            "clf": clf,
+            "feature_names": base_feat_cols,  # order matters
             "version": "risk-bundle.v1",
         }
-        dump(bundle, bundle_path)
+        bundle_path = out_dir / "bundle.joblib"
+        dump(bundle, str(bundle_path))
 
-        # 8) Persist calibration
-        memcube = self._memcube()
-        for dom, rec in thresholds.items():
-            payload = {
-                "domain": dom,
-                "low_threshold": rec["low_threshold"],
-                "high_threshold": rec["high_threshold"],
-                "ece": ece,
-                "sample_count": rec["count"],
-            }
-            if memcube is not None and hasattr(memcube, "store_calibration"):
-                try:
-                    # async interface in runtime; here we allow sync fallback
-                    maybe_coro = memcube.store_calibration("risk", payload)
-                    if hasattr(maybe_coro, "__await__"):
-                        import asyncio
-                        asyncio.get_event_loop().run_until_complete(maybe_coro)
-                except Exception:
-                    pass
+        # Save thresholds
+        gates_path = out_dir / "domain_thresholds.json"
+        with gates_path.open("w", encoding="utf-8") as f:
+            json.dump({k: {"low": v[0], "high": v[1]} for k, v in domain_gates.items()}, f, indent=2)
 
-        # Always write a local copy for transparency
-        with open(out_dir / "calibration.json", "w", encoding="utf-8") as f:
-            json.dump({"thresholds": thresholds, "ece": ece}, f, indent=2)
+        # -------------------------
+        # 7) Metrics
+        # -------------------------
+        auc = float(roc_auc_score(y_val, p_val)) if len(np.unique(y_val)) > 1 else float("nan")
+        ap  = float(average_precision_score(y_val, p_val)) if len(np.unique(y_val)) > 1 else float("nan")
 
-        # 9) Return training metadata
         meta = {
-            "status": "ok",
-            "rows": int(df.shape[0]),
-            "feature_names": list(self.feature_order),
-            "domains": domains,
-            "val_roc_auc": roc,
-            "val_pr_auc": pr,
-            "val_ece": ece,
-            "thresholds": thresholds,
+            "n_total": int(len(df)),
+            "n_train": int(len(X_train)),
+            "n_val": int(len(X_val)),
+            "pos_rate_total": float(np.mean(y.values)),
+            "pos_rate_val": float(np.mean(y_val)),
+            "features": base_feat_cols,
+            "auc_val": auc,
+            "ap_val": ap,
+            "thresholds": domain_gates,
             "bundle_path": str(bundle_path),
-            "model_type": "xgb_isotonic" if _HAS_XGB else "gb_isotonic",
-            "seed": seed,
-            "test_size": test_size,
+            "gates_path": str(gates_path),
         }
-        self.logger.log("RiskTrainerDone", meta)
         return meta
 
 
@@ -352,17 +458,17 @@ class RiskTrainerAgent(BaseAgent):
         hot_reload_service: true
     """
 
-    def __init__(self, cfg: dict, memory, container: ServiceContainer, logger):
+    def __init__(self, cfg: dict, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.run_dir: str = cfg.get("run_dir", "")
         self.data_path: str = cfg.get("data_path", "reports/risk_dataset.parquet")
         self.energy_thresh: float = float(cfg.get("energy_thresh", 0.80))
-        self.trainer_cfg: dict = cfg.get("trainer", {}) or {}
+        self.cfg: dict = cfg.get("trainer", {}) or {}
         self.output_key: str = cfg.get("output_key", "risk_training")
         self.hot_reload_service: bool = bool(cfg.get("hot_reload_service", True))
 
         self.trainer = RiskTrainer(
-            cfg=self.trainer_cfg, memory=memory, container=container, logger=logger
+            cfg=self.cfg, memory=memory, container=container, logger=logger
         )
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -391,23 +497,24 @@ class RiskTrainerAgent(BaseAgent):
         #    train_from_parquet(). Below we call the DataFrame path explicitly.
         meta = self.trainer.train_dataframe(df)
 
+
         # 4) (Optional) Hot-reload the runtime service so scorers pick up the new model
-        if self.hot_reload_service:
-            try:
-                svc = self.container.get("risk_predictor")
-                if hasattr(svc, "reload_bundle") and callable(svc.reload_bundle):
-                    svc.reload_bundle()
-                    self.logger.log("RiskServiceReloaded", {"ok": True})
-                else:
-                    self.logger.log("RiskServiceReloadSkipped", {"reason": "no reload_bundle()"})
-            except Exception as e:
-                self.logger.log("RiskServiceReloadFailed", {"error": str(e)})
+        # if self.hot_reload_service:
+        #     try:
+        #         svc = self.container.get("risk_predictor")
+        #         if hasattr(svc, "reload_bundle") and callable(svc.reload_bundle):
+        #             svc.reload_bundle()
+        #             self.logger.log("RiskServiceReloaded", {"ok": True})
+        #         else:
+        #             self.logger.log("RiskServiceReloadSkipped", {"reason": "no reload_bundle()"})
+        #     except Exception as e:
+        #         self.logger.log("RiskServiceReloadFailed", {"error": str(e)})
 
         # 3) Return stats in context (mirrors your other agents)
         context[self.output_key] = {
             "status": "ok",
             "dataset_path": str(self.data_path),
-            "model_out_dir": self.trainer_cfg.get("out_dir", "models/risk"),
+            "model_out_dir": self.cfg.get("out_dir", "models/risk"),
             "meta": meta,
         }
         return context
