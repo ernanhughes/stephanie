@@ -33,11 +33,13 @@ from stephanie.components.gap.processors.significance import (
     SignificanceConfig, SignificanceProcessor)
 from stephanie.components.gap.services.scm_service import SCMService
 from stephanie.utils.progress_mixin import ProgressMixin
-from stephanie.components.gap.processors.epistemic_guard import EpistemicGuard, EGVisual
 from stephanie.components.gap.services.risk_predictor_service import (
     RiskPredictorService,
-    RiskServiceConfig,
 )
+from stephanie.components.gap.services.epistemic_guard_service import (
+    EpistemicGuardService, EGVisualService
+)
+
 
 _logger = logging.getLogger(__name__)
 
@@ -108,18 +110,19 @@ class GapAnalysisOrchestrator(ProgressMixin):
             except ValueError:
                 pass  # Service already registered
 
+
             try:
                 container.register(
                     name="ep_guard",
-                    factory=lambda: EpistemicGuard(),      # your EG core (HalVis+Risk)
+                    factory=lambda: EpistemicGuardService(),
                     dependencies=[],
-                    init_args={"config": cfg.eg, "logger": logger},
+                    init_args={"config": {"out_dir": str(cfg.base_dir / "eg"), "thresholds": (0.2, 0.6)}, "logger": logger},
                 )
                 container.register(
                     name="eg_visual",
-                    factory=lambda: EGVisual(),
+                    factory=lambda: EGVisualService(),
                     dependencies=[],
-                    init_args={"out_dir": str(cfg.base_dir)},
+                    init_args={"config": {"out_dir": str(cfg.base_dir / "eg" / "img")}, "logger": logger},
                 )
             except ValueError:
                 pass
@@ -129,21 +132,18 @@ class GapAnalysisOrchestrator(ProgressMixin):
             try:
                 self.container.register(
                     name="risk_predictor",
-                    factory=lambda: RiskPredictorService(self.cfg, self.memory, logger=self.logger),
-                    dependencies=["?memcube"],  # optional; service handles None
+                    factory=lambda: RiskPredictorService(cfg=cfg, memory=memory, logger=logger),
+                    dependencies=["?memcube"],  # optional
                     init_args={
                         "config": {
-                            # update these paths/values as appropriate
                             "bundle_path": "./models/risk/bundle.joblib",
-                            "default_domains": tuple(self.cfg.eg.domains or ["science","history","geography","tech"])
-                                if getattr(self.cfg, "eg", None) and getattr(self.cfg.eg, "domains", None)
-                                else ("science", "history", "geography", "tech"),
-                            "calib_ttl_s": 1800,
+                            "default_domains": ("science", "history", "geography", "tech", "general"),
+                            "calib_ttl_s": 3600,
                             "fallback_low": 0.20,
                             "fallback_high": 0.60,
-                            "enable_explanations": False,  # set True if SHAP wired
-                        },
-                        "logger": self.logger,
+                            # optionally inject a memcube client explicitly:
+                            # "memcube": container.get("memcube"),
+                        }
                     },
                 )
             except ValueError:

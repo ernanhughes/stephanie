@@ -1,5 +1,4 @@
-# stephanie/policy/domain_risk.py
-# -*- coding: utf-8 -*-
+# stephanie/scoring/model/risk_predictor.py
 """
 DomainCalibratedRiskPredictor
 -----------------------------
@@ -30,6 +29,12 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from stephanie.analysis.scorable_classifier import ScorableClassifier
+
+import logging
+
+_logger = logging.getLogger(__name__)
+
 
 try:
     import joblib
@@ -167,7 +172,8 @@ class DomainCalibratedRiskPredictor:
         default_thresholds: Tuple[float,float] = (0.2, 0.6),
         memcube: Optional[MemCubeClient] = None,
         featurizer: Optional[RiskFeaturizer] = None,
-    ):
+        domain_classifier: Optional[ScorableClassifier] = None,  # <-- NEW
+   ):
         self.bundle: Optional[RiskModelBundle] = None
         if bundle_path:
             self.bundle = RiskModelBundle.load(bundle_path)
@@ -178,6 +184,8 @@ class DomainCalibratedRiskPredictor:
         self.featurizer = featurizer or RiskFeaturizer()
 
         # Local cache of thresholds to avoid frequent lookups
+        self.domain_classifier = domain_classifier  # <-- NEW
+
         self._domain_thresholds: Dict[str, Tuple[float,float]] = {}
 
         # Validate feature contract if bundle is present
@@ -242,7 +250,7 @@ class DomainCalibratedRiskPredictor:
             thresholds: (low, high): domain-calibrated gates
         """
         # 0) Domain
-        domain = await self.memcube.guess_domain(question or "")
+        domain = await self._guess_domain(question or "")
         low, high = await self._get_domain_thresholds(domain)
 
         # 1) Features
@@ -283,3 +291,22 @@ class DomainCalibratedRiskPredictor:
                     "shap_values": values}
         except Exception as e:
             return {"ok": False, "reason": f"shap failed: {e}"}
+
+    async def _guess_domain(self, question: str) -> str:
+        """
+        Uses ScorableClassifier if available, otherwise falls back to MemCube.
+        """
+        if self.domain_classifier:
+            try:
+                results = self.domain_classifier.classify(
+                    question,
+                    top_k=1,
+                    min_value=0.4  # or adjust threshold
+                )
+                if results:
+                    return results[0][0]
+            except Exception as e:
+                log.warn(f"Domain classification failed: {e}")
+
+        # Fallback
+        return await self.memcube.guess_domain(question or "")

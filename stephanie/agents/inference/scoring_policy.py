@@ -179,7 +179,7 @@ class ScoringPolicyAgent(BaseAgent):
             },
         )
     
-        self.memory.memcube.save_memcube(memcube)
+        self.memory.memcubes.save_memcube(memcube)
 
         if self.logger:
             self.logger.log("SRFTMemCubeSaved", {

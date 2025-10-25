@@ -18,7 +18,7 @@ class MemcubeStore(BaseSQLAlchemyStore):
 
     def __init__(self, session_or_maker, logger=None):
         super().__init__(session_or_maker, logger)
-        self.name = "memcube"
+        self.name = "memcubes"
 
     # --------------------
     # GET / SAVE
@@ -175,3 +175,57 @@ class MemcubeStore(BaseSQLAlchemyStore):
             if version_str.isdigit():
                 return int(version_str) + 1
         return 1
+
+
+    async def query_calibration(self, kind: str, filters: dict, sort=None, limit: int = 1):
+        """
+        Async-style query for calibration records (e.g., domain thresholds).
+        Compatible with DomainCalibratedRiskPredictor.
+
+        Expected schema:
+            memcubes.extra_data -> JSON with keys like "low_threshold", "high_threshold"
+            where memcube.source == kind (e.g. "risk")
+
+        Args:
+            kind: Calibration category, e.g. "risk".
+            filters: Dict with at least {"domain": <domain_name>}
+            sort: Optional sort criteria, defaults to created_at DESC.
+            limit: Number of records to return, defaults to 1.
+
+        Returns:
+            dict | None — calibration record or None if not found.
+        """
+        domain = filters.get("domain", "general")
+
+        def op(s):
+            query = """
+                SELECT extra_data
+                FROM memcubes
+                WHERE source = :kind
+                  AND (extra_data->>'domain') = :domain
+                ORDER BY created_at DESC
+                LIMIT :limit
+            """
+            row = s.execute(
+                text(query),
+                {"kind": kind, "domain": domain, "limit": limit}
+            ).fetchone()
+
+            if not row:
+                if self.logger:
+                    self.logger.log("NoCalibration", {"record": f"{kind}:{domain}"})
+                return None
+
+            try:
+                data = json.loads(row.extra_data) if isinstance(row.extra_data, str) else dict(row.extra_data)
+                if self.logger:
+                    self.logger.info(f"Loaded calibration for {domain}: {data}")
+                return data
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"Failed to parse calibration data for {domain}: {e}")
+                return None
+
+        # run in sync context and emulate async yield
+        result = self._run(op)
+        return result

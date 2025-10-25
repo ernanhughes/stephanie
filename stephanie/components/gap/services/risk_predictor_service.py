@@ -1,96 +1,114 @@
+# stephanie/components/gap/services/risk_predictor_service.py
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any, Dict, Optional, Tuple
-
-import numpy as np
+from typing import Any, Dict, Optional, Tuple, Union
 
 from stephanie.services.service_protocol import Service
 from stephanie.scoring.model.risk_predictor import DomainCalibratedRiskPredictor
 
-# Optional, if MemCube client is available in your env
-from stephanie.memcube.memcube_client import MemCubeClient  # type: ignore
+from stephanie.memcube.memcube_client import MemCubeClient
+from stephanie.memory.memcube_store import MemcubeStore
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 
 
 @dataclass
 class RiskServiceConfig:
     bundle_path: str = "./models/risk/bundle.joblib"
-    # If you already store per-domain calibration in MemCube, leave this empty.
-    # Otherwise we will use these domains for cold-start thresholds.
-    default_domains: tuple[str, ...] = ("science", "history", "geography", "tech")
-    # Cache TTL (seconds) for domain thresholds pulled from MemCube
+    default_domains: tuple[str, ...] = ("science", "history", "geography", "tech", "general")
     calib_ttl_s: int = 3600
-    # Hard fallback thresholds if neither MemCube nor model returns thresholds
     fallback_low: float = 0.20
     fallback_high: float = 0.60
-    # SHAP explanations can be expensive; keep opt-in
     enable_explanations: bool = False
+    # Optional direct injection
+    domain_seed_config_path: str = "config/domain/seeds.yaml"
+    memcube: Any = None
+
+
+def _coerce_cfg(cfg: Optional[Union[RiskServiceConfig, dict, Any]]) -> RiskServiceConfig:
+    """
+    Accept RiskServiceConfig, dict, or a large config object (e.g., GapConfig).
+    Try to extract a nested 'risk' or 'risk_predictor' block; otherwise use defaults.
+    """
+    if cfg is None:
+        return RiskServiceConfig()
+
+    if isinstance(cfg, RiskServiceConfig):
+        return cfg
+
+    if isinstance(cfg, dict):
+        # Allow nested shapes like {"risk": {...}} or {"risk_predictor": {...}}
+        sub = cfg.get("risk") or cfg.get("risk_predictor") or cfg
+        return RiskServiceConfig(**{k: v for k, v in sub.items() if k in RiskServiceConfig().__dict__})
+
+    # Fallback for big config objects (Hydra/OmegaConf/GapConfig)
+    # Try common attribute names
+    for attr in ("risk", "risk_predictor", "policy_risk", "eg"):
+        if hasattr(cfg, attr):
+            block = getattr(cfg, attr)
+            if isinstance(block, dict):
+                return _coerce_cfg(block)
+            # Support dataclass-like with __dict__
+            if hasattr(block, "__dict__"):
+                return _coerce_cfg(block.__dict__)
+
+    # Last resort: defaults
+    return RiskServiceConfig()
 
 
 class RiskPredictorService(Service):
-    """
-    Wraps DomainCalibratedRiskPredictor in a Service-compatible facade.
-
-    Public methods for consumers:
-        - await predict_risk(question: str, context: str, domain_hint: Optional[str]) -> tuple[float, tuple[float,float]]
-        - await get_domain_thresholds(domain: str) -> tuple[float,float]
-        - await explain_risk(question: str, context: str) -> Optional[bytes]  (PNG bytes if enabled)
-    """
-
-    def __init__(self, cfg: Optional[RiskServiceConfig], memory, logger: Optional[logging.Logger] = None):
-        self.cfg = cfg or RiskServiceConfig()
+    def __init__(self, cfg: Optional[Union[RiskServiceConfig, dict, Any]], memory, logger: Optional[logging.Logger] = None):
+        self.cfg = _coerce_cfg(cfg)
         self.memory = memory
-        self.logger = logger or logging.getLogger(self.name)
+        self.logger = logger or logging.getLogger("policy-risk-v2")
 
         self._predictor: Optional[DomainCalibratedRiskPredictor] = None
-        self._mem: Optional[Any] = None  # MemCubeClient if available
+        self.memcubes: MemcubeStore = memory.memcubes
         self._up: bool = False
         self._req_count: int = 0
         self._err_count: int = 0
         self._lat_ema_ms: float = 0.0
 
-        # Domain threshold cache {domain: (low, high, expires_at)}
         self._th_cache: Dict[str, Tuple[float, float, float]] = {}
         self._cache_lock = asyncio.Lock()
 
-        # For event bus subscription management
-        self._bus = None
-        self._bus_ready = asyncio.Event()
+        self.domain_classifier = ScorableClassifier(
+            memory,
+            logger,
+            self.cfg.domain_seed_config_path or "config/domain/seeds.yaml",
+        )
 
-    # ---------- Service protocol ----------
+        self.bus = memory.bus
+
     @property
     def name(self) -> str:
         return "policy-risk-v2"
 
     def initialize(self, **kwargs) -> None:
-        # Merge external init kwargs into our config (non-destructive)
-        cfg_kw = kwargs.get("config") or {}
-        if cfg_kw:
-            for k, v in cfg_kw.items():
-                if hasattr(self.cfg, k):
-                    setattr(self.cfg, k, v)
+        # Merge/override config if present
+        incoming = kwargs.get("config")
+        if incoming is not None:
+            self.cfg = _coerce_cfg(incoming)
 
-        # Dedicated logger if provided
         lg = kwargs.get("logger")
         if lg is not None:
             self.logger = lg
 
-        # Instantiate predictor
+        # Grab a memcube client if available:
+        # 1) explicit in config
+        # 2) memory.memcube (your store-backed client)
+        self.memcubes = self.memory.memcubes
+
+        # Instantiate predictor (pass memcube if present)
         self._predictor = DomainCalibratedRiskPredictor(
             bundle_path=self.cfg.bundle_path,
-            default_domains=self.cfg.default_domains,
+            default_domains=list(self.cfg.default_domains),
+            memcube=self.memcubes,
+            domain_classifier=self.domain_classifier,
         )
-
-        # Optional MemCube (used for calibration fetch/persist)
-        if MemCubeClient is not None:
-            try:
-                self._mem = MemCubeClient({}, self.memory, logger=self.logger)
-            except Exception:
-                self._mem = None
 
         self._up = True
         self.logger.info(
@@ -99,24 +117,21 @@ class RiskPredictorService(Service):
                 "service": self.name,
                 "bundle_path": self.cfg.bundle_path,
                 "domains": list(self.cfg.default_domains),
+                "memcube": bool(self.memcubes),
             },
         )
 
-        # If a bus was injected before initialize(), finish subscriptions
-        if self._bus is not None:
+        if self.bus is not None:
             asyncio.create_task(self._subscribe_bus())
 
     def set_bus(self, bus: Any) -> None:
-        """Attach event bus and subscribe to calibration updates."""
-        self._bus = bus
-        super().set_bus(bus)  # logs bus attach
-        # If we're already initialized, subscribe now
+        self.bus = bus
+        super().set_bus(bus)
         if self._up:
             asyncio.create_task(self._subscribe_bus())
 
     async def _subscribe_bus(self):
-        """Subscribe to calibration updates to hot-reload thresholds cache."""
-        if not self._bus:
+        if not self.bus:
             return
         try:
             await self.subscribe(
@@ -125,29 +140,21 @@ class RiskPredictorService(Service):
                 queue_group="risk-calibration",
             )
             self._bus_ready.set()
-            self.logger.info("RiskPredictorService subscribed to calibration.risk.updated")
+            self.logger.info("Subscribed to calibration.risk.updated")
         except Exception as e:
-            self.logger.error(f"Failed subscribing to bus: {e}")
+            self.logger.error(f"Bus subscribe failed: {e}")
 
     async def _on_calibration_updated(self, payload: Dict[str, Any]):
-        """
-        Payload example:
-            {"domain": "geography", "low_threshold": 0.15, "high_threshold": 0.55, "ts": "..."}
-        """
-        domain = str(payload.get("domain") or "").strip()
+        domain = str(payload.get("domain") or "").strip().lower()
         if not domain:
             return
         low = payload.get("low_threshold")
         high = payload.get("high_threshold")
         if low is None or high is None:
             return
-
         async with self._cache_lock:
             self._th_cache[domain] = (float(low), float(high), time.time() + self.cfg.calib_ttl_s)
-        self.logger.info(
-            "Risk thresholds hot-reloaded",
-            extra={"domain": domain, "low": low, "high": high},
-        )
+        self.logger.info("Risk thresholds hot-reloaded", extra={"domain": domain, "low": low, "high": high})
 
     def health_check(self) -> Dict[str, Any]:
         return {
@@ -160,8 +167,8 @@ class RiskPredictorService(Service):
             },
             "dependencies": {
                 "bundle": "loaded" if self._predictor is not None else "missing",
-                "memcube": "available" if self._mem is not None else "unavailable",
-                "bus": "connected" if self._bus is not None else "none",
+                "memcube": "available" if self.memcubes is not None else "unavailable",
+                "bus": "connected" if self.bus is not None else "none",
             },
         }
 
@@ -171,124 +178,92 @@ class RiskPredictorService(Service):
         self._th_cache.clear()
         self.logger.info("RiskPredictorService shutdown complete")
 
-    # ---------- Public API for consumers ----------
-    async def predict_risk(
-        self,
-        question: str,
-        context: str,
-        *,
-        domain_hint: Optional[str] = None,
-    ) -> Tuple[float, Tuple[float, float]]:
-        """
-        Return risk and (low, high) thresholds. Thresholds are fetched in order of preference:
-          1) Model's own per-domain calibration via DomainCalibratedRiskPredictor
-          2) Cached thresholds from MemCube (hot cache)
-          3) Cold fetch from MemCube (populate cache)
-          4) Hard-coded fallbacks in config
-        """
+    # --- public API ---
+    async def predict_risk(self, question: str, context: str, *, domain_hint: Optional[str] = None) -> Tuple[float, Tuple[float, float]]:
         if not self._predictor:
             raise RuntimeError("RiskPredictorService not initialized")
 
         t0 = time.perf_counter()
         try:
-            # Use predictor (which already performs its own calibration lookup)
             risk, (low, high) = await self._predictor.predict_risk(question, context)
-
-            # If the predictor can't provide thresholds, consult MemCube/cache
             if low is None or high is None:
-                domain = domain_hint or await self._guess_domain_safe(question)
+                domain = (domain_hint or await self._guess_domain_safe(question)).lower()
                 low, high = await self.get_domain_thresholds(domain)
-
             self._record_latency(t0)
             self._req_count += 1
             return float(risk), (float(low), float(high))
         except Exception as e:
             self._err_count += 1
             self.logger.error(f"predict_risk failed: {e}")
-            # Always provide some thresholds
             return 0.0, (self.cfg.fallback_low, self.cfg.fallback_high)
 
     async def get_domain_thresholds(self, domain: Optional[str]) -> Tuple[float, float]:
-        """
-        Best-effort domain thresholds with TTL cache and MemCube fallback.
-        """
-        # Normalize domain
         d = (domain or "").strip().lower() or "general"
-
-        # 1) Hot cache
         now = time.time()
         async with self._cache_lock:
             cached = self._th_cache.get(d)
             if cached and cached[2] > now:
                 return cached[0], cached[1]
 
-        # 2) MemCube lookup
-        low, high = None, None
-        if self._mem:
+        low = high = None
+        if self.memcubes:
             try:
-                rec = await self._mem.query_calibration(
-                    "risk",
-                    filters={"domain": d},
-                    sort=[("created_at", "DESC")],
-                    limit=1,
-                )
+                rec = await self.memcubes.query_calibration("risk", filters={"domain": d}, sort=[("created_at", "DESC")], limit=1)
                 if rec:
                     low = float(rec.get("low_threshold"))
                     high = float(rec.get("high_threshold"))
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.warning(f"MemCube calibration fetch failed: {e}")
 
-        # 3) Defaults
         if low is None or high is None:
             low = self.cfg.fallback_low
             high = self.cfg.fallback_high
 
-        # Cache it
         async with self._cache_lock:
             self._th_cache[d] = (low, high, now + self.cfg.calib_ttl_s)
-
         return low, high
 
     async def explain_risk(self, question: str, context: str) -> Optional[bytes]:
-        """
-        Optional SHAP explanation as PNG bytes.
-        Returns None if explanations are disabled or unavailable.
-        """
-        if not self.cfg.enable_explanations:
+        if not self.cfg.enable_explanations or not self._predictor:
             return None
-        if not self._predictor:
-            return None
-
         try:
-            # Many SHAP toolings require a sync call; wrap in thread if needed
-            # We assume predictor exposes `explain_to_png(question, context) -> bytes`
             if hasattr(self._predictor, "explain_to_png"):
-                loop = asyncio.get_event_loop()
-                png_bytes: bytes = await loop.run_in_executor(
-                    None, lambda: self._predictor.explain_to_png(question, context)
-                )
-                return png_bytes
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(None, lambda: self._predictor.explain_to_png(question, context))
         except Exception as e:
             self.logger.warning(f"explain_risk failed: {e}")
         return None
 
-    # ---------- internal helpers ----------
+    def reload_bundle(self) -> bool:
+        """Called by your trainer agent after writing a new bundle.joblib."""
+        try:
+            self._predictor = DomainCalibratedRiskPredictor(
+                bundle_path=self.cfg.bundle_path,
+                default_domains=list(self.cfg.default_domains),
+                memcube=self.memcubes,
+            )
+            self.logger.info("RiskPredictorService bundle reloaded", extra={"bundle_path": self.cfg.bundle_path})
+            return True
+        except Exception as e:
+            self.logger.error(f"reload_bundle failed: {e}")
+            return False
+
+    # --- internals ---
     def _record_latency(self, t0: float) -> None:
         dt_ms = (time.perf_counter() - t0) * 1000.0
-        # Simple EMA with alpha=0.05
         a = 0.05
         self._lat_ema_ms = (1 - a) * self._lat_ema_ms + a * dt_ms if self._lat_ema_ms > 0 else dt_ms
 
     async def _guess_domain_safe(self, question: str) -> str:
-        """Fallback domain guess if MemCube is not available via predictor."""
-        if self._predictor and hasattr(self._predictor, "memcube"):
-            try:
-                d = await self._predictor.memcube.guess_domain(question)  # type: ignore
+        # Prefer predictor’s memcube if present
+        try:
+            if self._predictor and getattr(self._predictor, "memcube", None):
+                d = await self._predictor.memcube.guess_domain(question)  # type: ignore[attr-defined]
                 if d:
                     return str(d)
-            except Exception:
-                pass
-        # naive heuristic fallback
+        except Exception:
+            pass
+        # fallback heuristic
         ql = (question or "").lower()
         if any(k in ql for k in ("who", "born", "died", "year", "reign", "empire")):
             return "history"

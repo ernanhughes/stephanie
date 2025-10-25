@@ -175,8 +175,15 @@ class GapConfig:
 
     enable_epistemic_guard: bool = True
     eg: EgConfig = field(default_factory=EgConfig)
-    bundle_path: Optional[Path] = None  # Path to pre-bundled artifacts (if any)
-    default_domains: List[str] = field(default_factory=lambda: ["general", "medical", "legal", "finance"])
+    risk: Dict[str, Any] = field(default_factory=lambda: {
+        "bundle_path": "/models/risk/bundle.joblib",  # Path to pre-bundled artifacts (if any)
+        "default_domains": ["science", "history", "geography", "tech", "general"],
+        "calib_ttl_s": 3600,
+        "fallback_low": 0.20,
+        "fallback_high": 0.60,
+        "domain_seed_config_path": "config/domain/seeds.yaml"
+    })
+
 
 
 @dataclass
@@ -188,15 +195,15 @@ class TripleSample:
     that will be scored by both HRM and Tiny models for comparison.
     
     Attributes:
-        node_id: Unique identifier for this sample (format: "dimension|fingerprint")
+        node_id: Unique identifier for this sample (format: "dimension_fingerprint")
         dimension: Which reasoning dimension this sample belongs to
         goal_text: The input prompt or goal text
         output_text: The model response to evaluate
         target_value: Optional ground truth score for training/validation
         fingerprint: Content-based hash for deduplication and tracking
     """
-    
-    node_id: str  # Format: "dimension|fingerprint" e.g., "reasoning|abc123"
+
+    node_id: str  # Format: "dimension_fingerprint" e.g., "reasoning_abc123"
     dimension: str  # One of: reasoning, knowledge, clarity, faithfulness, coverage
     goal_text: str  # Original user prompt or goal
     output_text: str  # Model-generated response to evaluate

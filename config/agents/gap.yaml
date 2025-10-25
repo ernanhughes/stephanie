@@ -108,3 +108,10 @@ gap:
     baseline:
       baseline_dir: ./static/eg_baseline
       default_name: qa_good
+
+  risk:
+    bundle_path: ${hydra:runtime.cwd}/models/risk/bundle.joblib
+    default_domains: [science, history, geography, tech, general]
+    calib_ttl_s: 3600
+    fallback_low: 0.20
+    fallback_high: 0.60

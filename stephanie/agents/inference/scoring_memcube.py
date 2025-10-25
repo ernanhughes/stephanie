@@ -81,7 +81,7 @@ class ScoringMemcubeAgent(BaseAgent):
             )
 
             # Save MemCube to DB
-            self.memory.memcube.save_memcube(memcube)
+            self.memory.memcubes.save_memcube(memcube)
 
             results.append({
                 "memcube": memcube.to_dict(),

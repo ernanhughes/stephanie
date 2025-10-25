@@ -277,7 +277,7 @@ class EBTInferenceAgent(BaseAgent):
         memcube.sensitivity = "internal"  # Upgrade sensitivity on refinement
         
         # Save new version
-        self.memory.memcube.save_memcube(memcube)
+        self.memory.memcubes.save_memcube(memcube)
 
         return {
             "refined_text": refined_text,

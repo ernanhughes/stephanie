@@ -302,6 +302,14 @@ class EpistemicGuard:
         self.badges = BadgeGenerator(out_dir=self.img_dir)
         self.store = EvidenceStore(base_dir=self.vpm_dir)
 
+
+    def set_predictor(self, predictor) -> None:
+        """
+        Inject a predictor with an async `predict_risk(question, context, **kw)`
+        that returns (risk: float, (low, high)).
+        """
+        self.risk = predictor
+
     # ---------- Routing policy ---------- #
     def _route(self, risk: float, low: float, high: float, max_B: float, beta: float = 0.55) -> str:
         if (risk < low) and (max_B < beta): return "FAST"

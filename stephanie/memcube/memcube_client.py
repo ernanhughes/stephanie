@@ -171,7 +171,7 @@ class MemCubeClient:
     async def store(self, blob: Dict[str, Any], *, source: str = "memcube.store", model: str = "unknown", sensitivity: str = "public") -> str:
         """
         Persist an arbitrary interaction blob, similar to your example:
-            memory.memcube.store({...})
+            memory.memcubes.store({...})
         """
         # We keep the raw payload in extra_data, and a minimal, sanitized text in content.
         content = json.dumps(
