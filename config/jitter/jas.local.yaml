@@ -1,0 +1,17 @@
+# Local dev config for JAS
+bus:
+  enabled: true
+  backend: nats            # nats | inproc
+  servers: ["nats://localhost:4222"]
+  stream: stephanie
+  required: false
+  connect_timeout_s: 2.0
+  fallback: inproc
+
+jitter:
+  tick_interval: 0.25      # seconds
+
+homeostasis:
+  energy_setpoint: 1.0
+  boundary_setpoint: 0.8
+  diversity_setpoint: 0.7
