@@ -15,9 +15,6 @@ class GoalDimensionsStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "goal_dimensions"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert
     # -------------------

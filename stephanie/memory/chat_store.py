@@ -49,10 +49,6 @@ class ChatStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "chats"
 
-    def name(self) -> str:
-        """Return the name identifier for this store."""
-        return self.name
-
     # ---------- Conversations ----------
 
     def add_conversation(self, data: dict) -> ChatConversationORM:

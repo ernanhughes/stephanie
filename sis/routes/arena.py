@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import time
 from typing import Optional
-from fastapi import HTTPException
 
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse

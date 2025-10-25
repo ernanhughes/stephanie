@@ -44,7 +44,7 @@ class ContextEnsembleRunner:
         best = max(results, key=lambda r: r["score"].overall)
 
         if self.memory:
-            self.memory.memcube.store({
+            self.memory.memcubes.store({
                 "query": query,
                 "answer": best["result"]["answer"],
                 "score": best["score"].dict() if hasattr(best["score"], "dict") else str(best["score"]),

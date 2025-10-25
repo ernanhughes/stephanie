@@ -126,26 +126,3 @@ class GILDSelectorAgent(BaseAgent):
             self.logger.log("Weighted selection", result)
         return result
 
-    # In GILDSelectorAgent._compute_efficiency_scores
-    def _compute_efficiency_scores(self, examples: list) -> dict:
-        from datetime import datetime
-
-        import numpy as np
-        
-        scorer_fields = [f"{emb}_{scorer}_score" for emb in ["hnet", "huggingface", "ollama"] 
-                        for scorer in ["ebt", "svm", "mrq"]]
-        
-        grouped = defaultdict(list)
-        for ex in examples:
-            age_days = (datetime.now() - ex.created_at).days  # Add created_at to GILDScoringExample
-            time_weight = 0.9 ** age_days  # Exponential decay
-            
-            for scorer_name in scorer_fields:
-                score = getattr(ex, scorer_name)
-                if score is not None and ex.llm_score is not None:
-                    norm_score = score / 100.0
-                    norm_llm = ex.llm_score / 100.0
-                    efficiency = max(0.0, 1.0 - abs(norm_score - norm_llm)) * time_weight
-                    grouped[scorer_name].append(efficiency)
-        
-        return {scorer: {"efficiency": float(np.mean(effs))} for scorer, effs in grouped.items()}

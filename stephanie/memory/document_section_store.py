@@ -13,9 +13,6 @@ class DocumentSectionStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "document_sections"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, section_dict: dict) -> DocumentSectionORM:
         def op(s):
             section = DocumentSectionORM(**section_dict)

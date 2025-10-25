@@ -102,21 +102,6 @@ def _read_json(path: str):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def _update_manifest(*, base_root: str, run_id: str, patch: dict) -> None:
-    mpath = os.path.join(base_root, run_id, "manifest.json")
-    try:
-        cur = _read_json(mpath)
-    except Exception:
-        cur = {}
-    # shallow merge (dicts only)
-    for k, v in patch.items():
-        if isinstance(v, dict) and isinstance(cur.get(k), dict):
-            cur[k].update(v)
-        else:
-            cur[k] = v
-    with open(mpath, "w", encoding="utf-8") as f:
-        f.write(dumps_safe(cur, indent=2))
-
 def _safe_vec(metrics: Dict[str, Any]) -> Tuple[List[str], List[float]]:
     """
     Extract (names, values) from a metrics payload.

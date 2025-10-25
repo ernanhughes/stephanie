@@ -22,9 +22,6 @@ class TrainingStatsStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "training_stats"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Create / Update
     # -------------------

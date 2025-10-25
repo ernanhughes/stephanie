@@ -1,5 +1,4 @@
-import os
-from pathlib import Path
+I know I know from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, FileResponse
 

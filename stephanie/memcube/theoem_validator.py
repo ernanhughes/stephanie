@@ -1,6 +1,6 @@
 
 from stephanie.agents.mixins.ebt_mixin import EBTMixin
-from stephanie.memcubes.theorem import Theorem
+from stephanie.memcube.theorem import Theorem
 
 
 class TheoremValidator:

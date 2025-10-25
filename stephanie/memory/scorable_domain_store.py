@@ -24,9 +24,6 @@ class ScorableDomainStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "scorable_domains"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, data: dict) -> ScorableDomainORM:
         """
         Insert or update a domain classification entry.

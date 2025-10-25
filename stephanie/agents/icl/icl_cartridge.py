@@ -8,7 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.icl.prompt_builder import PromptBuilder
-from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcube.knowledge_cartridge import KnowledgeCartridge
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
@@ -80,9 +80,7 @@ class ICLHelper:
 
 class ICLAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
-        self.cfg = cfg
-        self.memory = memory
-        self.logger = logger
+        super().__init__(cfg, memory, container, logger)
         self.helper = ICLHelper()
 
     async def run(self, context: dict):

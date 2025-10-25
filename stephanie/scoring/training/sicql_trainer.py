@@ -312,55 +312,6 @@ class SICQLTrainer(BaseTrainer):
 
         return self.early_stop_counter >= self.early_stopping_patience
 
-    def _save_model(self, model, dimension, stats):
-        locator = super().get_locator(dimension)
-        """Save model components with metadata"""
-        # Save each component
-        torch.save(model.encoder.state_dict(), locator.encoder_file())
-        torch.save(model.q_head.state_dict(), locator.q_head_file())
-        torch.save(model.v_head.state_dict(), locator.v_head_file())
-        torch.save(model.pi_head.state_dict(), locator.pi_head_file())
-
-        # Calculate policy metrics
-        policy_logits = model.pi_head.weight.data.mean(dim=0).tolist()
-        policy_probs = F.softmax(torch.tensor(policy_logits), dim=-1).tolist()
-        policy_entropy = -torch.sum(
-            policy_probs * torch.log(torch.tensor(policy_probs) + 1e-8)
-        ).item()
-
-        # Build metadata
-        meta = {
-            "dim": self.dim,
-            "hdim": self.hdim,
-            "dimension": dimension,
-            "version": self.cfg.get("model_version", "v1"),
-            "avg_q_loss": stats.get("avg_q_loss", 0.0),
-            "avg_v_loss": stats.get("avg_v_loss", 0.0),
-            "avg_pi_loss": stats.get("avg_pi_loss", 0.0),
-            "policy_logits": policy_logits,
-            "policy_probs": policy_probs,
-            "policy_entropy": policy_entropy,
-            "policy_stability": max(policy_probs),
-            "device": str(self.device),
-            "embedding_type": self.cfg.get("embedding_type", "hnet"),
-            "timestamp": datetime.now().isoformat(),
-        }
-
-        # Save metadata
-        with open(locator.meta_file(), "w") as f:
-            json.dump(meta, f)
-
-        # Save tuner if available
-        if dimension in self.tuners and self.tuners[dimension]:
-            self.tuners[dimension].save(locator.tuner_file())
-
-        # Save model version
-        model_version = ModelVersionORM(**meta)
-        self.memory.session.add(model_version)
-        self.memory.session.commit()
-
-        return meta
-
     def _validate_tensor(self, tensor, name):
         """Validate tensor before use"""
         if tensor is None:

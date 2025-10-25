@@ -6,7 +6,7 @@ import json
 import arxiv
 from openai import OpenAI
 
-from stephanie.memcubes.knowledge_cartridge import KnowledgeCartridge
+from stephanie.memcube.knowledge_cartridge import KnowledgeCartridge
 
 
 class ResearchSlave:

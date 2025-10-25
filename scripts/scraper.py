@@ -1,7 +1,5 @@
 import requests
 from bs4 import BeautifulSoup
-import csv
-import json
 import re
 
 COLLECTION_URL = "https://huggingface.co/collections/The-Great-Genius/skynet-66366061cc7af105efb7e0ca"

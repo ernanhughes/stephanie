@@ -175,31 +175,6 @@ class LATSAgent(BaseAgent):
 
         return completions[:self.branching_factor]
 
-    def _fallback_parsing(self, response: str):
-        """Fallback parser for raw text responses"""
-        # Match Thought N: patterns
-        thought_pattern = r"[Tt]hought\s*\d+:\s*(.*?)(?=\n(?:[Tt]hought\s*\d+:\s|\Z))"
-        matches = re.findall(thought_pattern, response.strip(), re.DOTALL)
-        
-        completions = []
-        for i, match in enumerate(matches[:self.branching_factor]):
-            step = match.strip()
-            completions.append({
-                "step": f"Thought {i+1}: {step}",
-                "rationale": "Fallback step due to parsing failure",
-                "action": step  # Use step as action
-            })
-        
-        # If no matches found, wrap the whole response
-        if not completions and response.strip():
-            completions.append({
-                "step": "Fallback reasoning step",
-                "rationale": "No structured thoughts found",
-                "action": response.strip()
-            })
-        
-        return completions
-
     def _update_state(self, state, action: str):
         """Update state with new action"""
         if isinstance(state, dict):

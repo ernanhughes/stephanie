@@ -1396,61 +1396,7 @@ class NERRetrieverEmbedder:
         # Weighted combination
         return (0.5 * sample_size) + (0.3 * recency) + (0.2 * query_variety)
 
-    def train_projection(
-        self,
-        triplets: List[Tuple[str, str, str]],
-        batch_size: int = 32,
-        epochs: int = 3,
-        lr: float = 1e-4,
-    ):
-        """Train projection network with contrastive learning"""
-        if (
-            not triplets
-            or not self.projection_enabled
-            or self.projection is None
-        ):
-            return
-
-        self.projection.train()
-        optimizer = torch.optim.Adam(self.projection.parameters(), lr=lr)
-        loss_fn = nn.TripletMarginLoss(margin=0.2)
-
-        for epoch in range(epochs):
-            total_loss = 0
-            random.shuffle(triplets)
-
-            for i in range(0, len(triplets), batch_size):
-                batch = triplets[i : i + batch_size]
-                anchor_batch, pos_batch, neg_batch = zip(*batch)
-
-                anchor_embs = [
-                    self._embed_text_for_training(a) for a in anchor_batch
-                ]
-                pos_embs = [
-                    self._embed_text_for_training(p) for p in pos_batch
-                ]
-                neg_embs = [
-                    self._embed_text_for_training(n) for n in neg_batch
-                ]
-
-                anchor_tensor = self.projection(
-                    torch.stack(anchor_embs)
-                )  # <-- Fix 4: project during training
-                pos_tensor = self.projection(torch.stack(pos_embs))
-                neg_tensor = self.projection(torch.stack(neg_embs))
-
-                loss = loss_fn(anchor_tensor, pos_tensor, neg_tensor)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                total_loss += loss.item()
-
-            avg_loss = total_loss / max(1, len(triplets) / batch_size)
-            self.logger.info(f"Epoch {epoch + 1}: avg loss {avg_loss:.4f}")
-
-        self.projection.eval()
-        _logger.debug("Projection network training completed")
-
+    
     def _embed_text_for_training(self, text: str) -> torch.Tensor:
         """Embed text using mid-layer representation for training"""
         inputs = self.tokenizer(

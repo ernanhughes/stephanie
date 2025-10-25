@@ -51,7 +51,6 @@ class EvaluationORM(Base):
     evaluator_name: Mapped[str] = Column(String, nullable=False)
     strategy: Mapped[Optional[str]] = Column(String)
     reasoning_strategy: Mapped[Optional[str]] = Column(String)
-    embedding_type: Mapped[Optional[str]] = Column(String, nullable=True)
 
     # Scores and extra details
     scores: Mapped[Dict[str, Any]] = Column(JSON, default={})

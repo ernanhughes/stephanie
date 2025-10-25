@@ -20,9 +20,6 @@ class ScoreAttributeStore(BaseSQLAlchemyStore):
         self.name = "score_attributes"
         self.table_name = "score_attributes"
 
-    def name(self) -> str:
-        return self.name
-
     def add_attribute(self, attribute: ScoreAttributeORM) -> ScoreAttributeORM:
         """Add a single score attribute to the database"""
         def op(s):

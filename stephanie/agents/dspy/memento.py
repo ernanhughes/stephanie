@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.dspy.mcts_reasoning import MCTSReasoningAgent
-from stephanie.constants import GOAL, GOAL_TEXT, PIPELINE_RUN_ID
+from stephanie.constants import GOAL, PIPELINE_RUN_ID
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable, ScorableType

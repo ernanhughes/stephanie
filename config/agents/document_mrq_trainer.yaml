@@ -1,3 +1,4 @@
+# config/agents/document_mrq_trainer.yaml
 document_mrq_trainer:
   name: document_mrq_trainer
   model_path: "${hydra:runtime.cwd}/models"

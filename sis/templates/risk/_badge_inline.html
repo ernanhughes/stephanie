@@ -1,0 +1,19 @@
+{# Usage:
+  {% include '/risk/_badge_inline.html' with context %}
+  Provide in context: goal, reply, (optional) model_alias, monitor_alias, profile, use_client
+#}
+<div class="risk-badge-inline d-inline-flex align-items-center gap-2">
+  {% if not use_client %}
+    <form method="post" action="/risk/analyze" class="d-inline">
+      <input type="hidden" name="goal" value="{{ goal|e }}" />
+      <input type="hidden" name="reply" value="{{ reply|e }}" />
+      <input type="hidden" name="model_alias" value="{{ model_alias or 'chat-hrm' }}" />
+      <input type="hidden" name="monitor_alias" value="{{ monitor_alias or 'tiny-monitor' }}" />
+      {% if profile %}<input type="hidden" name="policy_profile" value="{{ profile }}" />{% endif %}
+      <button class="btn btn-outline-secondary btn-sm">Check Risk</button>
+    </form>
+  {% else %}
+    <button class="btn btn-outline-secondary btn-sm" data-risk-goal="{{ goal|e }}" data-risk-reply="{{ reply|e }}" data-risk-model="{{ model_alias or 'chat-hrm' }}" data-risk-monitor="{{ monitor_alias or 'tiny-monitor' }}" onclick="window.SIS_RISK.fetchBadge(this)">Check Risk</button>
+    <span class="ms-2" data-risk-slot></span>
+  {% endif %}
+</div>

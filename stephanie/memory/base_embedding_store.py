@@ -97,9 +97,6 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                 self.ner_retriever = None
                 self.ner_enabled = False
 
-    def name(self) -> str:
-        return self.name
-
     def __repr__(self):
         return f"<{self.__class__.__name__} table={self.table} type={self.type}>"
 

@@ -21,9 +21,6 @@ class SkillFilterStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "skill_filters"
 
-    def name(self) -> str:
-        return self.name
-
     # --- Create ---
     def add_filter(self, data: Dict[str, Any]) -> SkillFilterORM:
         """Add a new SkillFilter record."""

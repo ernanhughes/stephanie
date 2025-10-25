@@ -15,9 +15,6 @@ class ReflectionDeltaStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "reflection_deltas"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, delta: ReflectionDeltaORM) -> int:
         def op(s):
             

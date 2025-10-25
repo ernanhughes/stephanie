@@ -17,9 +17,6 @@ class LookaheadStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "lookahead"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert
     # -------------------

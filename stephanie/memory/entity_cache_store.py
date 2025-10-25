@@ -19,9 +19,6 @@ class EntityCacheStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "entity_cache"
 
-    def name(self) -> str:
-        return self.name
-
     def get_by_embedding(self, embedding_ref: int) -> Optional[EntityCacheORM]:
         def op(s):
             return s.query(EntityCacheORM).filter(EntityCacheORM.embedding_ref == embedding_ref).one_or_none()

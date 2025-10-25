@@ -9,7 +9,6 @@ from zeromodel.vpm.logic import vpm_add, vpm_and, vpm_subtract, vpm_xor
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import numpy as np
 from PIL import Image
 
 

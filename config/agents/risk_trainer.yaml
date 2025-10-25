@@ -1,0 +1,15 @@
+risk_trainer:
+  name: risk_trainer
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_keys: ["goal", "hypotheses"]
+  input_key: documents
+  output_key: risk_trainer
+  prompt_mode: file
+  prompt_file: risk_trainer.txt

@@ -416,7 +416,7 @@ class TinyScorer(BaseScorer):
                 _logger.error(f"Scoring error for dimension {dim}: {e}")
                 self.logger.log("TinyScoreError", {"dimension": dim, "error": str(e)})
 
-        _logger.info(f"Scoring completed for {len(results)} dimensions")
+        _logger.debug(f"Scoring completed for {len(results)} dimensions")
         return ScoreBundle(results=results)
 
     # -------------------------

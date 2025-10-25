@@ -22,9 +22,6 @@ class ScorableEntityStore(BaseSQLAlchemyStore):
         self.name = "scorable_entities"
         self.retriever = NERRetrieverEmbedder(memory=memory, logger=self.logger)
 
-    def name(self) -> str:
-        return self.name
-
     @staticmethod
     def _normalize_entity_text(s: str) -> str:
         return " ".join((s or "").strip().split()).lower()

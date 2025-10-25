@@ -13,9 +13,6 @@ class SharpeningStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "sharpening"
 
-    def name(self) -> str:
-        return self.name
-
     def insert_sharpening_prediction(self, prediction_dict: dict) -> int:
         """
         Insert a new sharpening prediction (from A/B hypothesis testing).

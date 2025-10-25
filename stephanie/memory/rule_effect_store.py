@@ -16,9 +16,6 @@ class RuleEffectStore(BaseSQLAlchemyStore):
         self.name = "rule_effects"
         self.table_name = "rule_applications"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(
         self,
         rule_id: int,

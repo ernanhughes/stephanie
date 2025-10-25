@@ -17,11 +17,8 @@ class LLMScorer(BaseScorer):
     """
 
     def __init__(self, cfg, memory, container, logger, prompt_loader=None, llm_fn=None):
-
-        self.cfg = cfg
+        super().__init__(cfg, memory, container, logger)
         self.model_type = "llm"
-        self.memory = memory
-        self.logger = logger
         self.prompt_loader = prompt_loader
         self.llm_fn = llm_fn
         self.force_rescore = cfg.get("force_rescore", False)    

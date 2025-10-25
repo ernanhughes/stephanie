@@ -1,16 +1,19 @@
-# stephanie/components/gap/component.py
+# stephanie/components/gap/gap.py
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.gap.models import GapConfig
 from stephanie.components.gap.orchestrator import GapAnalysisOrchestrator
+from stephanie.components.gap.models import GapConfig, EgConfig, EgBadgeConfig, EgRenderConfig, EgThresholds, EgStreams, EgMemConfig, EgModelConfig, EgBaselineConfig
 
 _logger = logging.getLogger(__name__)
+
+
 
 class GapAgent(BaseAgent):
     """
@@ -102,8 +105,9 @@ class GapAgent(BaseAgent):
             dedupe_policy=raw_config.get("dedupe_policy", "first_wins"),
             # Lower cap for development/demo; increase for production analysis
             per_dim_cap=raw_config.get("per_dim_cap", 100), 
+            eg=_merge_eg(raw_config),  # ← NEW
         )
-    
+
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute full GAP analysis pipeline comparing HRM vs Tiny models.
@@ -174,3 +178,22 @@ class GapAgent(BaseAgent):
                 "config": asdict(self._config) if hasattr(self, '_config') else None
             })
             raise
+
+def _merge_eg(raw: dict) -> EgConfig:
+    eg = raw.get("eg", {}) or {}
+    # nested dicts → typed dataclasses with safe defaults
+    return EgConfig(
+        enabled=eg.get("enabled", True),
+        badge=EgBadgeConfig(**eg.get("badge", {})),
+        render=EgRenderConfig(
+            **{**asdict(EgRenderConfig()), **eg.get("render", {})}
+        ),
+        thresholds=EgThresholds(**eg.get("thresholds", {})),
+        streams=EgStreams(**eg.get("streams", {})),
+        mem=EgMemConfig(**eg.get("mem", {})),
+        models=EgModelConfig(
+            **{**asdict(EgModelConfig()), **eg.get("models", {})}
+        ),
+        baseline=EgBaselineConfig(**eg.get("baseline", {})),
+    )
+

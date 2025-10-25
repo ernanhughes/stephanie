@@ -11,6 +11,10 @@ from sis.routes import arena, db, pipelines, models, logs, plan_traces, document
 from sis.routes import casebooks as casebooks_routes
 from sis.routes import chats, cards
 from zoneinfo import ZoneInfo
+from stephanie.components.gap.risk.api import create_router as create_gap_risk_router
+from sis.routes import risk_ui # (new router below)
+from sis.routes import explore_ui  # add with other route imports
+from sis.routes import overnight_ui
 
 import yaml
 
@@ -89,3 +93,35 @@ app.include_router(chats.router)
 app.include_router(arena.router)
 app.include_router(cards.router)
 app.include_router(learning.router)
+app.include_router(explore_ui.router)
+app.include_router(overnight_ui.router)
+
+# After app = FastAPI(...)
+class SISContainer:
+    """Minimal DI bridge so GAP Risk can discover services already in SIS.
+    Add attributes here as your stack grows (metrics_service, tiny, hrm, event bus, etc.).
+    """
+    def __init__(self, app):
+        self.app = app
+        # Preferred unified scorer if present (contract: score_text_pair)
+        self.metrics_service = getattr(app.state, "metrics_service", None)
+
+        # Tiny & HRM monitors (any attribute name you use; best-effort discovery)
+        self.tiny_scorer = (
+            getattr(app.state, "tiny_scorer", None)
+            or getattr(app.state, "monitor_tiny", None)
+            or getattr(app.state, "tiny", None)
+        )
+        self.hrm_scorer = getattr(app.state, "hrm_scorer", None) or getattr(app.state, "hrm", None)
+
+        # Optional event publisher for arena/overlay; method: publish(topic, payload)
+        self.event_publisher = getattr(app.state, "event_publisher", None)
+
+# Bind container for GAP Risk orchestrator/router
+app.state.container = SISContainer(app)
+
+# Mount JSON API under /v1/gap/risk
+app.include_router(create_gap_risk_router(app.state.container), prefix="/v1/gap/risk", tags=["gap-risk"])
+
+# Mount SIS UI for risk
+app.include_router(risk_ui.router)

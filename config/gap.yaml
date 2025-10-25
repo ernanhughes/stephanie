@@ -15,7 +15,7 @@ defaults:
   - agents/gap
 
 embeddings:
-  backend: hnet
+  backend: mxbai
 
 
 goal:

@@ -240,15 +240,6 @@ class ScorableClassifier:
             self.logger.log("DomainKVUnavailable", {"error": str(e)})
         return None
 
-    def _cache_key(self, text: str, metric: str, top_k: int, min_value: float, context_tags: Tuple[str, ...]) -> str:
-        """Stable 64-hex key; avoids PII leakage by hashing text."""
-        payload = {
-            "t": hashlib.sha256((text or "").encode("utf-8")).hexdigest(),
-            "m": metric, "k": int(top_k), "min": float(min_value),
-            "ctx": list(context_tags),
-        }
-        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
-
     def _kv_get(self, key: str) -> Optional[List[Tuple[str, float]]]:
         """Synchronous KV get; returns parsed results or None."""
         if not self._kv:

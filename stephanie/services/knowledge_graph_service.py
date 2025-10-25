@@ -267,7 +267,7 @@ class KnowledgeGraphService(Service):
                 self.logger.error(
                     "KG: no text available for scorable_id=%s", scorable_id
                 )
-                self.publish(
+                await self.publish(
                     "knowledge_graph.index_failed",
                     {
                         "scorable_id": scorable_id,

@@ -15,9 +15,6 @@ class ScorableRankStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "scorable_ranks"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, data: dict) -> int:
         """Insert a single rank record."""
         def op(s):

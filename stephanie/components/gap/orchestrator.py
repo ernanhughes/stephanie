@@ -33,6 +33,13 @@ from stephanie.components.gap.processors.significance import (
     SignificanceConfig, SignificanceProcessor)
 from stephanie.components.gap.services.scm_service import SCMService
 from stephanie.utils.progress_mixin import ProgressMixin
+from stephanie.components.gap.services.risk_predictor_service import (
+    RiskPredictorService,
+)
+from stephanie.components.gap.services.epistemic_guard_service import (
+    EpistemicGuardService, EGVisualService
+)
+
 
 _logger = logging.getLogger(__name__)
 
@@ -53,7 +60,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
     - Result aggregation and final reporting
     """
     
-    def __init__(self, config: GapConfig, container, logger, memory=None):
+    def __init__(self, cfg: GapConfig, container, logger, memory=None):
         """
         Initialize the GAP analysis orchestrator with all required components.
         
@@ -70,7 +77,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
             - Data retriever for sample collection
             - Progress tracking system
         """
-        self.config = config
+        self.cfg = cfg
         self.container = container
         self.logger = logger
         self.memory = memory
@@ -83,7 +90,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
                 factory=lambda: GapStorageService(),
                 dependencies=[],
                 init_args={
-                    "base_dir": str(self.config.base_dir),
+                    "base_dir": str(self.cfg.base_dir),
                     "logger": self.logger,
                 },
             )
@@ -92,19 +99,63 @@ class GapAnalysisOrchestrator(ProgressMixin):
 
         # Optional: shared SCM term head (used in scoring if enabled)
         # Enables Shared Core Metrics projection for cross-model alignment
-        if config.enable_scm_head:
+        if cfg.enable_scm_head:
             try:
                 container.register(
                     name="scm_service",
                     factory=lambda: SCMService(),
                     dependencies=[],
-                    init_args={"config": config.scm, "logger": logger},
+                    init_args={"config": cfg.scm, "logger": logger},
                 )
             except ValueError:
                 pass  # Service already registered
 
+
+            try:
+                container.register(
+                    name="ep_guard",
+                    factory=lambda: EpistemicGuardService(),
+                    dependencies=[],
+                    init_args={"config": {"out_dir": str(cfg.base_dir / "eg"), "thresholds": (0.2, 0.6)}, "logger": logger},
+                )
+                container.register(
+                    name="eg_visual",
+                    factory=lambda: EGVisualService(),
+                    dependencies=[],
+                    init_args={"config": {"out_dir": str(cfg.base_dir / "eg" / "img")}, "logger": logger},
+                )
+            except ValueError:
+                pass
+
+
+            # ---- Risk Predictor (single source of truth for risk & thresholds) ----
+            try:
+                self.container.register(
+                    name="risk_predictor",
+                    factory=lambda: RiskPredictorService(cfg=cfg, memory=memory, logger=logger),
+                    dependencies=["?memcube"],  # optional
+                    init_args={
+                        "config": {
+                            "bundle_path": "./models/risk/bundle.joblib",
+                            "default_domains": ("science", "history", "geography", "tech", "general"),
+                            "calib_ttl_s": 3600,
+                            "fallback_low": 0.20,
+                            "fallback_high": 0.60,
+                            # optionally inject a memcube client explicitly:
+                            # "memcube": container.get("memcube"),
+                        }
+                    },
+                )
+            except ValueError:
+                # already registered elsewhere (e.g., global bootstrap) — safe
+                pass
+
+
         # Ensure storage is initialized and available to all components
         self.storage = self.container.get("gap_storage")
+
+
+
         self.manifest_manager = ManifestManager(self.storage)
 
         # ---- Processor Initialization ----
@@ -112,26 +163,26 @@ class GapAnalysisOrchestrator(ProgressMixin):
         
         # Scoring: Runs HRM and Tiny models on all samples, produces timelines
         self.scoring_processor = ScoringProcessor(
-            self.config, container, logger
+            self.cfg, container, logger
         )
         
         # Analysis: Computes delta fields, topology, frontier maps, PHOS packs
         self.analysis_processor = AnalysisProcessor(
-            self.config, container, logger
+            self.cfg, container, logger
         )
         
         # Calibration: Determines routing thresholds and model escalation policies
         self.calibration_processor = CalibrationProcessor(
-            self.config, container, logger
+            self.cfg, container, logger
         )
 
         # Significance: Statistical validation of topological findings
         # Handles p-values, confidence intervals, null hypothesis testing
         self.significance_processor = SignificanceProcessor(
             SignificanceConfig(
-                n_nulls=getattr(self.config, "n_nulls", 100),
-                n_bootstrap=getattr(self.config, "n_bootstrap", 50),
-                random_seed=getattr(self.config, "random_seed", 42),
+                n_nulls=getattr(self.cfg, "n_nulls", 100),
+                n_bootstrap=getattr(self.cfg, "n_bootstrap", 50),
+                random_seed=getattr(self.cfg, "random_seed", 42),
                 max_betti_dim=1,  # Focus on H1 loops (1-dimensional holes)
             ),
             logger=self.logger,
@@ -139,7 +190,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
 
         # ---- Data retriever (memory-backed by default) ----
         # Handles sample collection with safety limits to prevent memory issues
-        safe_limit = self.config.per_dim_cap if self.config.per_dim_cap is not None else 10**9
+        safe_limit = self.cfg.per_dim_cap if self.cfg.per_dim_cap is not None else 10**9
         self.retriever = DataRetriever(
             container,
             logger,
@@ -207,17 +258,17 @@ class GapAnalysisOrchestrator(ProgressMixin):
             run_id=run_id,
             dataset=dataset_name,
             models={
-                "hrm": self.config.hrm_scorers[0],
-                "tiny": self.config.tiny_scorers[0],
+                "hrm": self.cfg.hrm_scorers[0],
+                "tiny": self.cfg.tiny_scorers[0],
             },
         )
-        self.manifest_manager.attach_dimensions(run_id, self.config.dimensions)
+        self.manifest_manager.attach_dimensions(run_id, self.cfg.dimensions)
 
         # Stage 1: Data Preparation
         # Retrieve conversation turns organized by reasoning dimension
         self.pstart(task=f"data:{run_id}", total=1, meta={"dataset": dataset_name})
         triples_by_dim = await self.retriever.get_triples_by_dimension(
-            self.config.dimensions,
+            self.cfg.dimensions,
             memory=self.memory,
             limit=self.retriever.cfg.limit,
         )
@@ -244,7 +295,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
         try:
             significance_out = await self.significance_processor.run(
                 run_id,
-                base_dir=self.config.base_dir,
+                base_dir=self.cfg.base_dir,
             )
         except Exception as e:
             self.logger.log(
@@ -265,7 +316,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
 
         # Stage 6: Reporting
         # Generate comprehensive Markdown report with all findings
-        reporter = ReportBuilder(self.config, self.container, self.logger)
+        reporter = ReportBuilder(self.cfg, self.container, self.logger)
         # Include significance results in final analysis output
         analysis_out = {**analysis_out, "significance": significance_out}
         report_out = await reporter.build(

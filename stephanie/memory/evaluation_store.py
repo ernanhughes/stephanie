@@ -27,9 +27,6 @@ class EvaluationStore(BaseSQLAlchemyStore):
         self.name = "evaluations"
         self.table_name = "evaluations"
 
-    def name(self) -> str:
-        return self.name
-
     # -------------------
     # Insert
     # -------------------

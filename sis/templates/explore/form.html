@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Explore (Hallucination for Discovery){% endblock %}
+{% block content %}
+<h1 class="mb-3">🔭 Explore — Hallucination for Discovery</h1>
+<p class="text-muted">Paste candidate seed prompts (one per line) or leave empty to use defaults. Keep sample size small for now.</p>
+
+<form method="post" action="/explore/run" class="row g-3">
+  <div class="col-12">
+    <label class="form-label">Seed prompts (one per line)</label>
+    <textarea name="seeds" class="form-control" rows="8" placeholder="e.g. How to detect OOD drift in chat?&#10;What is a compact faithfulness badge?"></textarea>
+  </div>
+
+  <div class="col-md-3">
+    <label class="form-label">Sample seeds (N)</label>
+    <input type="number" name="sample_n" class="form-control" value="5" min="1" max="20" />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Triggers per seed (K)</label>
+    <input type="number" name="k_triggers" class="form-control" value="4" min="1" max="7" />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Divergence (0–1)</label>
+    <input type="number" name="divergence" class="form-control" value="0.8" min="0" max="1" step="0.1" />
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Policy profile (optional)</label>
+    <input type="text" name="policy_profile" class="form-control" placeholder="chat.standard" />
+  </div>
+
+  <div class="col-12 d-flex gap-2">
+    <button class="btn btn-primary">Run Exploration</button>
+    <a class="btn btn-outline-secondary" href="/risk">Open Risk Lab</a>
+  </div>
+
+  <!-- Advanced (optional provenance only) -->
+  <input type="hidden" name="model_alias" value="chat-hrm">
+  <input type="hidden" name="monitor_alias" value="tiny-monitor">
+</form>
+{% endblock %}

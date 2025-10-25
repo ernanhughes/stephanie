@@ -191,7 +191,7 @@ class DataRetriever:
                 if goal and out and val is not None and self._within_len(goal, out):
                     triples.append(
                         TripleSample(
-                            node_id=f"{dimension}|{i:06d}",
+                            node_id=f"{dimension}_{i:06d}",
                             dimension=dimension,
                             goal_text=goal,
                             output_text=out,
@@ -208,7 +208,7 @@ class DataRetriever:
                     if goal and out and val is not None and self._within_len(goal, out):
                         triples.append(
                             TripleSample(
-                                node_id=f"{dimension}|{i:06d}_{suf}",
+                                node_id=f"{dimension}_{i:06d}_{suf}",
                                 dimension=dimension,
                                 goal_text=goal,
                                 output_text=out,
@@ -224,7 +224,7 @@ class DataRetriever:
                 if goal and out and val is not None and self._within_len(goal, out):
                     triples.append(
                         TripleSample(
-                            node_id=f"{dimension}|{i:06d}",
+                            node_id=f"{dimension}_{i:06d}",
                             dimension=dimension,
                             goal_text=goal,
                             output_text=out,
@@ -244,7 +244,7 @@ class DataRetriever:
         if not goal or not out:
             return None
         return TripleSample(
-            node_id=f"{dimension}|{idx:06d}",
+            node_id=f"{dimension}_{idx:06d}",
             dimension=dimension,
             goal_text=goal,
             output_text=out,

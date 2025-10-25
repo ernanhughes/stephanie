@@ -27,9 +27,6 @@ class SelfPlayStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "selfplay"
 
-    def name(self) -> str:
-        return self.name
-
     # --- writes ---
 
     def insert(self, item_dict: Dict[str, Any]) -> SelfPlayItemORM:

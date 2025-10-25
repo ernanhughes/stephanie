@@ -3,21 +3,17 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import re
-import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from stephanie.components.gap.io import storage
 from stephanie.components.gap.io.manifest import GapRunManifest
 from stephanie.components.gap.models import GapConfig, TripleSample
 from stephanie.components.gap.services.scm_service import (SCM_FEATURE_KEYS,
                                                            SCMService)
-from stephanie.components.gap.shared_scm import (SCM_COLUMNS, scm_from_vector,
-                                                 scm_row)
+from stephanie.components.gap.shared_scm import (SCM_COLUMNS)
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
@@ -113,6 +109,8 @@ class ScoringProcessor(ProgressMixin):
                 "rows_for_df": result.get("rows_for_df_path"),
                 "hrm_scorers": self.config.hrm_scorers,
                 "tiny_scorers": self.config.tiny_scorers,
+                "eg_index_hrm": result.get("eg_index_hrm"),
+                "eg_index_tiny": result.get("eg_index_hrm"),
             },
         )
 
@@ -142,8 +140,18 @@ class ScoringProcessor(ProgressMixin):
     ) -> Dict[str, Any]:
         """Score ALL samples with ONE model to avoid VRAM thrash."""
         zm = self.container.get("zeromodel")
+        storage = self.container.get("gap_storage")  # you already do this later; keep one reference
+
         vpm_worker = VPMWorkerInline(zm, self.logger)
         scm_service: SCMService = self.container.get("scm_service")
+        risk_pred = self.container.get("risk_predictor")
+
+        ep_guard = self.container.get("ep_guard") if self.config.enable_epistemic_guard else None
+        if ep_guard and risk_pred:
+            ep_guard.set_predictor(risk_pred)  # canonical risk source
+        eg_visual = self.container.get("eg_visual") if self.config.enable_epistemic_guard else None
+
+
 
         zm.timeline_open(run_id=timeline_id)
 
@@ -155,7 +163,14 @@ class ScoringProcessor(ProgressMixin):
         kept_indices: List[int] = []
 
         log_every = max(1, self.config.progress_log_every)
-
+        eg_records = []                               # accumulate EG outputs for an index
+        eg_out = {}
+        if ep_guard:
+            # 1) Build a per-row hallucination VPM + strip (HalVis)
+            #    Prefer batching by dimension to reuse embeddings.
+            eg_out["hal_badges"] = []      # badge per sample (optionally aggregated)
+            eg_out["vpm_stacks"] = []      # *.npz for training
+            eg_out["truth_gifs"] = []      # .gif timelines if enabled
         with tqdm(total=len(triples), desc=task_name, unit="turn") as pbar:
             for i, triple in enumerate(triples):
                 scorable = Scorable(
@@ -208,15 +223,75 @@ class ScoringProcessor(ProgressMixin):
                             for c in payload["columns"][:TOP_N]
                         },
                     }
+                vals = payload.get("values") or []
+                # tolerate numpy arrays
+                try:
+                    import numpy as np
+                    arr = np.asarray(vals, dtype=float)
+                    zeros = int(np.sum(np.isclose(arr, 0.0, atol=1e-12)))
+                    vmin = float(np.min(arr)) if arr.size else None
+                    vmax = float(np.max(arr)) if arr.size else None
+                except Exception:
+                    vals_list = list(vals)
+                    zeros = sum(1 for v in vals_list if abs(float(v)) <= 1e-12) if vals_list else 0
+                    vmin = float(min(vals_list)) if vals_list else None
+                    vmax = float(max(vals_list)) if vals_list else None
+
 
                 if (i % max(1, self.config.progress_log_every)) == 0:
                     self.logger.log("VPMFrameStats", {
                         "node": triple.node_id,
-                        "cols": len(payload["columns"]),
-                        "zeros": int(sum(1 for v in payload["values"] if v == 0.0)),
-                        "min": float(min(payload["values"])) if payload["values"] else None,
-                        "max": float(max(payload["values"])) if payload["values"] else None,
+                        "cols": len(payload.get("columns", [])),
+                        "zeros": zeros,
+                        "min": vmin,
+                        "max": vmax,
                     })
+
+                # --- EpistemicGuard per-row evidence (optional; only if enabled)
+                if ep_guard:
+                    try:
+                        from stephanie.components.gap.processors.epistemic_guard import GuardInput
+                        eg_in = GuardInput(
+                            trace_id=triple.node_id,
+                            question=triple.goal_text,
+                            context=triple.goal_text,           # if you have a richer context, pass it here
+                            reference="",                        # if you have gold/reference text, pass it here
+                            hypothesis=triple.output_text,
+                            hrm_view={"confidence": float(vec_canon.get("scm.aggregate01", 0.5))},
+                            tiny_view={"confidence": float(vec_canon.get("scm.aggregate01", 0.5))}
+                        )
+                        eg_out_one = await ep_guard.assess(eg_in)
+
+                        # copy EG images into this run’s visuals dir so they travel with the run
+                        import shutil, os
+                        def _copy(p):
+                            if not p: return None
+                            if not os.path.exists(p): return None
+                            dst = os.path.basename(p)
+                            shutil.copy2(p, dst)
+                            return str(dst)
+
+                        field_p  = _copy(eg_out_one.field_path)
+                        strip_p  = _copy(eg_out_one.strip_path)
+                        legend_p = _copy(eg_out_one.legend_path)
+                        badge_p  = _copy(eg_out_one.badge_path)
+
+                        eg_records.append({
+                            "node_id": triple.node_id,
+                            "dimension": triple.dimension,
+                            "risk": float(eg_out_one.risk),
+                            "low": float(eg_out_one.thresholds[0]),
+                            "high": float(eg_out_one.thresholds[1]),
+                            "route": eg_out_one.route,
+                            "metrics": eg_out_one.metrics,
+                            "field_png": field_p,
+                            "strip_png": strip_p,
+                            "legend_png": legend_p,
+                            "badge_png": badge_p,
+                        })
+                    except Exception as e:
+                        self.logger.log("EpistemicGuardError", {"node": triple.node_id, "error": str(e)})
+
 
                 # 5) Append to the timeline video
                 vpm_worker.append(timeline_id, triple.node_id, payload)
@@ -263,7 +338,24 @@ class ScoringProcessor(ProgressMixin):
         hrm_or_tiny_gif = await vpm_worker.finalize(
             timeline_id, f"{out_dir}/vpm_phos_run_{timeline_id}.gif"
         )
+ 
+        # Save an index of EG artifacts for this pass
+        eg_index_path = None
+        if ep_guard and eg_records:
+            eg_index_path = OK Where am I storage.save_json(
+                run_id=timeline_id.split("_")[0],      # same run root as other artifacts
+                subdir="visuals",
+                name="eg_index.json",
+                obj=eg_records
+            )
+            # Quick summary log: top-5 risky rows
+            top5 = sorted(eg_records, key=lambda r: r["risk"], reverse=True)[:5]
+            self.logger.log("EpistemicGuardSummary", {
+                "count": len(eg_records),
+                "top5": [{"node": r["node_id"], "risk": round(r["risk"], 4), "route": r["route"]} for r in top5]
+            })
 
+ 
         return {
             "names": names,
             "model_alias": model_alias,
@@ -273,6 +365,8 @@ class ScoringProcessor(ProgressMixin):
             "keep_mask": np.array(keep_mask, dtype=bool),
             "kept_indices": kept_indices,
             "gif": hrm_or_tiny_gif,
+            "eg_index": eg_index_path,
+            "eg": eg_out
         }
 
     # ---------- core pipeline ----------------------------------------------
@@ -518,7 +612,7 @@ class ScoringProcessor(ProgressMixin):
                 if title and out and val is not None:
                     triples.append(
                         TripleSample(
-                            node_id=f"{dim}|{i:06d}",
+                            node_id=f"{dim}_{i:06d}",
                             dimension=dim,
                             goal_text=title,
                             output_text=out,
@@ -537,7 +631,7 @@ class ScoringProcessor(ProgressMixin):
                     if title and out and val is not None:
                         triples.append(
                             TripleSample(
-                                node_id=f"{dim}|{i:06d}_{suf}",
+                                node_id=f"{dim}_{i:06d}_{suf}",
                                 dimension=dim,
                                 goal_text=title,
                                 output_text=out,

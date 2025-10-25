@@ -102,15 +102,7 @@ class WeightedBCEWithLogits(nn.Module):
 # Hybrid SICQL Adapter (Critical Component)
 # ==============================
 
-class HybridSICQLAdapter:
-    """
-    Adapter unifying actor (HF LM) and critic (SICQL InContextQModel).
-    
-    - Actor: HuggingFace causal LM (text in → text out, uses tokenizer)
-    - Critic: SICQL InContextQModel (embeddings in → Q/V/π outputs)
-    """
-
-class HybridSICQLAdapter:
+I class HybridSICQLAdapter:
     def __init__(self, memory, actor_lm, tokenizer, critic_head=None, device=None):
         self._device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.memory = memory

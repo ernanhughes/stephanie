@@ -1,6 +1,6 @@
 # stephanie/core/belief_node.py
-from stephanie.memcubes.memcube import MemCube
-from stephanie.memcubes.memcube_factory import MemCubeFactory
+from stephanie.memcube.memcube import MemCube
+from stephanie.memcube.memcube_factory import MemCubeFactory
 
 
 class BeliefNode:

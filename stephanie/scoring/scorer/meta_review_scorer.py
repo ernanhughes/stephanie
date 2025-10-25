@@ -15,6 +15,7 @@ class MetaReviewScorer(BaseScorer):
     """
 
     def __init__(self, cfg, memory, logger, container, fallback_to_llm=True):
+        super().__init__(cfg, memory, container, logger)
         self.memory = memory
         self.logger = logger
         self.cfg = cfg or {}

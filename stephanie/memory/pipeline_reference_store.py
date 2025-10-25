@@ -19,9 +19,6 @@ class PipelineReferenceStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "pipeline_references"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, reference_dict: dict) -> int:
         """
         Inserts a new pipeline reference into the database.

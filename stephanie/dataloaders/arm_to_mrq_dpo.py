@@ -241,16 +241,6 @@ class ARMDataLoader:
         for diff, questions in buckets.items():
             self.log("SampleByDifficulty", {"difficulty": diff, "examples": questions})
 
-    def _detect_difficulty(self, question: str) -> str:
-        """Basic heuristic to infer difficulty based on question length."""
-        words = question.split()
-        if len(words) < 20:
-            return "easy"
-        elif len(words) < 50:
-            return "medium"
-        else:
-            return "hard"
-
     def generate_direct(self, answer: str) -> str:
         return f"{self.format_tokens['direct']}The answer is {answer}.{self.format_end_tokens['direct']}"
 

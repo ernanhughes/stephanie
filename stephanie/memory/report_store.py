@@ -15,9 +15,6 @@ class ReportStore(BaseSQLAlchemyStore):
         super().__init__(session_or_maker, logger)
         self.name = "reports"
 
-    def name(self) -> str:
-        return self.name
-
     def insert(self, run_id: int, goal: str, summary: str, path: str = None, content: str = None) -> ReportORM:
         def op(s):
             

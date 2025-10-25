@@ -35,6 +35,19 @@ def _zscore(M: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     sd = M.std(axis=0, keepdims=True)
     return (M - mu) / (sd + eps)
 
+# ---- Safe TDA helpers (sanitization for ripser) ----------------------
+def _to_numpy_f64(X: np.ndarray) -> np.ndarray:
+    """Ensure contiguous float64 NumPy on CPU."""
+    return np.ascontiguousarray(X, dtype=np.float64)
+
+def _sanitize_point_cloud(X: np.ndarray) -> np.ndarray:
+    """Replace NaN/Inf, drop exact duplicates, ensure at least 2 rows if possible."""
+    X = np.nan_to_num(X, copy=False, nan=0.0, posinf=1e12, neginf=-1e12)
+    if X.ndim == 2 and X.shape[0] > 1:
+        # Drop exact duplicate rows (can destabilize filtrations at scale)
+        uniq, idx = np.unique(X, axis=0, return_index=True)
+        X = uniq[np.argsort(idx)]
+    return X
 
 # ---------------------------------------------------------------------
 # Hole visualization (UMAP + representative loop)
@@ -175,34 +188,52 @@ class TopologyConfig:
 # ---------------------------------------------------------------------
 # PH backends (Ripser vs Giotto) — uniform API for H0/H1 bars
 # ---------------------------------------------------------------------
+# --- PH backends -----------------------------------
 class _PHBackend:
     def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         raise NotImplementedError
 
-
 class _RipserPH(_PHBackend):
+    def __init__(self, maxdim: int = 1):
+        self.maxdim = int(max(0, maxdim))
+
     def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         from ripser import ripser
-        dgms = ripser(X, maxdim=1)["dgms"]
-        H0 = dgms[0] if len(dgms) > 0 else np.zeros((0, 2), dtype=float)
-        H1 = dgms[1] if len(dgms) > 1 else np.zeros((0, 2), dtype=float)
-        return H0, H1
-
+        X = _to_numpy_f64(X)
+        X = _sanitize_point_cloud(X)
+        if X.ndim != 2 or X.shape[0] < 2 or X.shape[1] < 1:
+            return np.zeros((0, 2), dtype=float), np.zeros((0, 2), dtype=float)
+        try:
+            out = ripser(X, maxdim=self.maxdim)
+            dgms = out.get("dgms", [])
+            H0 = np.asarray(dgms[0] if len(dgms) > 0 else np.zeros((0, 2)), dtype=float)
+            H1 = np.asarray(dgms[1] if len(dgms) > 1 else np.zeros((0, 2)), dtype=float)
+            if H0.size: H0 = np.nan_to_num(H0, copy=False)
+            if H1.size: H1 = np.nan_to_num(H1, copy=False)
+            return H0, H1
+        except Exception as e:
+            logger.warning(f"[RipserPH] ripser failed on X shape {X.shape}: {e}")
+            return np.zeros((0, 2), dtype=float), np.zeros((0, 2), dtype=float)
 
 class _GiottoPH(_PHBackend):
-    def __init__(self):
+    def __init__(self, maxdim: int = 1):
         from gtda.homology import VietorisRipsPersistence
-        self.vr = VietorisRipsPersistence(homology_dimensions=[0, 1], metric="euclidean")
+        dims = list(range(min(2, maxdim) + 1))  # e.g., maxdim=1 → [0,1]
+        self.vr = VietorisRipsPersistence(homology_dimensions=dims, metric="euclidean")
 
     def h0_h1(self, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        X = _to_numpy_f64(X)                 # sanitize here too
+        X = _sanitize_point_cloud(X)
+        if X.ndim != 2 or X.shape[0] < 2 or X.shape[1] < 1:
+            return np.zeros((0, 2), dtype=float), np.zeros((0, 2), dtype=float)
         D = X[np.newaxis, :, :]
-        diags = self.vr.fit_transform(D)   # (1, n_points, 3)
+        diags = self.vr.fit_transform(D)  # (1, n_features?, 3)
         diag = diags[0] if diags.ndim == 3 else diags
         if diag.size == 0:
             return np.zeros((0, 2), dtype=float), np.zeros((0, 2), dtype=float)
-        H0 = diag[diag[:, 2] == 0][:, :2]
-        H1 = diag[diag[:, 2] == 1][:, :2]
-        return H0.astype(float), H1.astype(float)
+        H0 = diag[diag[:, 2] == 0][:, :2].astype(float) if (diag.ndim == 2) else np.zeros((0, 2))
+        H1 = diag[diag[:, 2] == 1][:, :2].astype(float) if (diag.ndim == 2) else np.zeros((0, 2))
+        return H0, H1
 
 
 # ---------------------------------------------------------------------
@@ -240,13 +271,13 @@ class TopologyProcessor(ProgressMixin):
         # pick PH backend (configurable; default ripser)
         if getattr(self.cfg, "tda_backend", "ripser") == "giotto":
             try:
-                self._ph_backend = _GiottoPH()
+                self._ph_backend = _GiottoPH(maxdim=self.cfg.max_betti_dim)
                 self.logger.log("TopologyPHBackend", {"backend": "giotto-tda"})
             except Exception as e:
                 self.logger.log("TopologyPHBackendFallback", {"backend": "ripser", "error": str(e)})
-                self._ph_backend = _RipserPH()
+                self._ph_backend = _RipserPH(maxdim=self.cfg.max_betti_dim)
         else:
-            self._ph_backend = _RipserPH()
+            self._ph_backend = _RipserPH(maxdim=self.cfg.max_betti_dim)
 
         # Fast mode softeners
         if self.cfg.fast_mode:
@@ -465,8 +496,14 @@ class TopologyProcessor(ProgressMixin):
     # Core PH
     # ---------------------------------------------------------------------
     def _compute_ph_and_figures(self, Delta: np.ndarray, vis_dir: Path) -> Dict[str, Any]:
-        # Compute diagrams via selected backend
-        H0, H1 = self._ph_backend.h0_h1(Delta)
+        # Lightweight pre-sanitization at call site
+        Delta = _to_numpy_f64(Delta)
+        Delta = _sanitize_point_cloud(Delta)
+        if Delta.ndim != 2 or Delta.shape[0] < 2:
+            H0 = np.zeros((0, 2), dtype=float)
+            H1 = np.zeros((0, 2), dtype=float)
+        else:
+            H0, H1 = self._ph_backend.h0_h1(Delta)
 
         # All diagrams (optional)
         try:
@@ -642,17 +679,21 @@ class TopologyProcessor(ProgressMixin):
     # Nulls (stronger)
     # ---------------------------------------------------------------------
     def _null_controls_stronger(self, Delta: np.ndarray) -> Dict[str, Any]:
-        from ripser import ripser  # used only for direct call in this function
         N = Delta.shape[0]
         K = max(50, int(self.cfg.n_nulls))
         res: Dict[str, Any] = {}
 
+        # reuse the same safe backend
+        def _h1_only(arr: np.ndarray) -> np.ndarray:
+            H0, H1 = self._ph_backend.h0_h1(arr)
+            return H1 if H1.size else np.zeros((0, 2))
+
         # A) Sign-flip (Rademacher) nulls
         rads: List[Dict[str, Any]] = []
         for k in range(K):
-            sigma = (np.random.rand(N) < 0.5).astype(np.float32) * 2 - 1  # ±1
+            sigma = (np.random.rand(N) < 0.5).astype(np.float64) * 2 - 1
             d = Delta * sigma[:, None]
-            H1 = ripser(d, maxdim=self.cfg.max_betti_dim)["dgms"][1] if self.cfg.max_betti_dim >= 1 else np.zeros((0, 2))
+            H1 = _h1_only(d) if self.cfg.max_betti_dim >= 1 else np.zeros((0, 2))
             top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             rads.append({"top_H1_persistence": top})
             if (k % 5) == 0 or (k + 1) == K:
@@ -665,7 +706,7 @@ class TopologyProcessor(ProgressMixin):
         gauss: List[Dict[str, Any]] = []
         for k in range(K):
             g = np.random.multivariate_normal(mean=np.zeros(Delta.shape[1]), cov=Sigma, size=N)
-            H1 = ripser(g, maxdim=self.cfg.max_betti_dim)["dgms"][1] if self.cfg.max_betti_dim >= 1 else np.zeros((0, 2))
+            H1 = _h1_only(g) if self.cfg.max_betti_dim >= 1 else np.zeros((0, 2))
             top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             gauss.append({"top_H1_persistence": top})
         res["gaussian_cov"] = gauss

@@ -18,9 +18,6 @@ class RuleApplicationStore(BaseSQLAlchemyStore):
         self.name = "rule_applications"
         self.table_name = "rule_applications"
 
-    def name(self) -> str:
-        return self.name
-    
     def add(self, application: RuleApplicationORM) -> RuleApplicationORM:
         """Insert a new RuleApplication row."""
         def op(s):

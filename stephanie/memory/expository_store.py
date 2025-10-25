@@ -198,7 +198,7 @@ class ExpositoryBufferStore(BaseSQLAlchemyStore):
                 topic=(topic or "general").strip(),
                 snippet_ids=list(snippet_ids or []),
                 meta=meta or {},
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(),
             )
             s.add(row); s.flush()
             if self.logger:
@@ -275,7 +275,7 @@ class BlogDraftStore(BaseSQLAlchemyStore):
                 arena_passes=int(arena_passes or 0),
                 repetition_penalty=float(repetition_penalty or 0.0),
                 kept=bool(kept),
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(),
             )
             s.add(row); s.flush()
             if self.logger:
