@@ -1,446 +1,416 @@
 """
 TriuneCognition
 ===============
-The cognitive nervous system of the Jitter organism, implementing the three-layer
-biological model where each layer has veto power over the others.
+Service- and plugin-oriented triune cognitive system.
 
-Integration Points:
-- Reptilian Core: Uses EBT for boundary threat assessment
-- Mammalian Layer: Leverages SVM for pattern recognition
-- Primate Cortex: Employs MRQ for abstract reasoning
+This version removes heavyweight embedded nets and delegates to Stephanie
+services/stores:
 
-The system implements true biological veto power: lower layers can override
-higher layers when survival is at stake.
+- Reptilian Core: boundary threat via text- or embedding-based scorer (container 'scoring')
+- Mammalian Layer: pattern confidence + emotional valence via memory VPM store (or scorer if configured)
+- Primate Cortex: lightweight abstract reasoning quality from relevant VPMs (service/store)
+- True veto cascade: reptilian > mammalian > primate
+- Config-driven attention, thresholds, energy extraction
+
+Expected container services (best-effort, optional):
+- 'scoring'                 → generic scoring facade (text/embedding scorers)
+- 'zeromodel-service-v2'    → VPM rendering/ops (if needed)
+
+Expected memory hooks (best-effort, optional):
+- memory.vpms or memory.vpm_manager with:
+  - get_negative_vpms() / get_positive_vpms()     (each VPM has .embedding)
+  - get_relevant_vpms(query_emb, top_k=5)
 """
 
-import torch
-import torch.nn as nn
-import numpy as np
+from __future__ import annotations
+
 import time
+import math
 import logging
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
+import torch.nn as nn
 
 log = logging.getLogger("stephanie.jas.triune")
 
+
+# ----------------------------- Data model ----------------------------- #
+
 @dataclass
 class CognitiveState:
-    """Complete cognitive state snapshot for telemetry and reproduction"""
-    reptilian: float  # Boundary integrity assessment (0-1)
-    mammalian: float  # Pattern recognition confidence (0-1)
-    primate: float    # Abstract reasoning quality (0-1)
-    integrated: float # Final cognitive output (0-1)
-    cognitive_energy: float  # Energy extracted from cognitive process
-    attention_weights: Dict[str, float]  # Current attention allocation
-    layer_veto: str   # Which layer has veto power (if any)
-    latency_ms: float # Processing time
-    threat_level: float  # Current boundary threat (0-1)
-    emotional_valence: float  # Mammalian layer emotional signal (-1 to 1)
-    reasoning_depth: int    # Primate cortex reasoning steps taken
+    reptilian: float                 # 0..1 (threat; 1 = high threat)
+    mammalian: float                 # 0..1 (pattern confidence)
+    primate: float                   # 0..1 (reasoning quality)
+    integrated: float                # 0..1 (weighted integration)
+    cognitive_energy: float          # 0..1 (extracted)
+    attention_weights: Dict[str, float]
+    layer_veto: str                  # 'none' | 'reptilian' | 'mammalian'
+    latency_ms: float
+    threat_level: float              # == reptilian
+    emotional_valence: float         # -1..1
+    reasoning_depth: int
+
+
+# ----------------------------- Triune ----------------------------- #
 
 class TriuneCognition(nn.Module):
     """
-    The complete triune cognitive architecture with biological veto power cascade.
-    
-    Key Features:
-    - Layer-specific processing with different neural architectures
-    - Dynamic attention allocation based on context
-    - Biological veto power (lower layers override higher ones)
-    - Energy-based cognitive efficiency measurement
-    - Continuous state history for reproduction system
+    Thin, configurable triune module that delegates work to services/stores.
+    Keeps nn.Module so upstream can call self.triune(x) → CognitiveState.
     """
-    
-    def __init__(self, cfg: Dict[str, Any], container, memory, logger):
+
+    def __init__(self, cfg: Dict[str, Any], container, memory, logger=None):
         super().__init__()
-        self.cfg = cfg
+        self.cfg = dict(cfg or {})
         self.container = container
         self.memory = memory
         self.logger = logger or log
 
-
-        # Layer thresholds for veto power
+        # veto thresholds
+        vt = self.cfg.get("veto_thresholds", {})
         self.veto_thresholds = {
-            "reptilian": cfg.get("reptilian_veto_threshold", 0.7),
-            "mammalian": cfg.get("mammalian_veto_threshold", 0.6)
+            "reptilian": float(vt.get("reptilian", self.cfg.get("reptilian_veto_threshold", 0.7))),
+            "mammalian": float(vt.get("mammalian", self.cfg.get("mammalian_veto_threshold", 0.6))),
         }
-        
-        # Dynamic attention weights (learned during operation)
-        self.attention_weights = nn.Parameter(torch.tensor([
-            cfg.get("reptilian_weight", 0.3),
-            cfg.get("mammalian_weight", 0.3),
-            cfg.get("primate_weight", 0.4)
-        ]))
-        
-        # Energy extraction network (converts cognitive output to metabolic energy)
-        self.energy_extractor = nn.Sequential(
-            nn.Linear(3, 32),
-            nn.ReLU(),
-            nn.Linear(32, 16),
-            nn.ReLU(),
-            nn.Linear(16, 1),
-            nn.Softplus()
-        )
-        
-        # Layer-specific processing networks
-        self.reptilian_net = nn.Sequential(
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.Tanh()
-        )
-        
-        self.mammalian_net = nn.Sequential(
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.Tanh()
-        )
-        
-        self.primate_net = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=512, nhead=8),
-            num_layers=3
-        )
-        
-        # State history for reproduction and learning
+
+        # attention weights (normalized dict)
+        aw_cfg = self.cfg.get("attention", {}).get("weights", {})
+        r_w = float(aw_cfg.get("reptilian", self.cfg.get("reptilian_weight", 0.3)))
+        m_w = float(aw_cfg.get("mammalian", self.cfg.get("mammalian_weight", 0.3)))
+        p_w = float(aw_cfg.get("primate",   self.cfg.get("primate_weight",   0.4)))
+        self._attn = self._normalize_weights({"reptilian": r_w, "mammalian": m_w, "primate": p_w})
+
+        # energy scale
+        self.energy_gain = float(self.cfg.get("energy_gain_factor", 1.0))
+
+        # primitive state history (for telemetry/reproduction)
         self.state_history: List[CognitiveState] = []
-        self.max_history = cfg.get("max_state_history", 1000)
-        
-        log.info("TriuneCognition initialized with biological veto power cascade")
+        self.max_history = int(self.cfg.get("max_state_history", 1000))
+
+        # fast accessors
+        self.vpm_store = self.memory.vpms
+        self.scoring = None
+        try:
+            self.scoring = self.container.get("scoring")
+        except Exception:
+            pass
+
+        # scorer aliases (optional; used if scoring service is present)
+        r_cfg = self.cfg.get("reptilian", {})
+        m_cfg = self.cfg.get("mammalian", {})
+        p_cfg = self.cfg.get("primate", {})
+        self.reptilian_alias = r_cfg.get("scorer_alias")  # e.g., 'ebt' or 'hf_reptilian'
+        self.mammalian_alias = m_cfg.get("scorer_alias")  # e.g., 'svm'
+        self.primate_alias   = p_cfg.get("scorer_alias")  # e.g., 'mrq'
+
+        self.primate_top_k = int(p_cfg.get("top_k", self.cfg.get("primate_top_k", 5)))
+
+        log.info(
+            "TriuneCognition ready | veto=(R:%.2f M:%.2f) attn=(R=%.2f M=%.2f P=%.2f)",
+            self.veto_thresholds["reptilian"],
+            self.veto_thresholds["mammalian"],
+            self._attn["reptilian"], self._attn["mammalian"], self._attn["primate"]
+        )
+
+    # ------------------------- public API ------------------------- #
 
     def forward(self, input_emb: torch.Tensor) -> CognitiveState:
-        """ No no keep it over keep it over OK OK input through all three cognitive layers with veto power cascade"""
-        start_time = torch.tensor(time.time())
-        
+        """
+        Processes an embedding through reptilian → mammalian → primate with veto cascade.
+        """
+        t0 = time.time()
         try:
-            # 1. Reptilian Core: Boundary threat assessment
-            reptilian_out = self._process_reptilian(input_emb)
-            threat_level = reptilian_out.item()
-            
-            # Check for reptilian veto (immediate boundary threats)
-            if threat_level > self.veto_thresholds["reptilian"]:
-                cognitive_state = self._create_veto_state(
-                    "reptilian", threat_level, input_emb, start_time
+            q = self._ensure_1d_cpu(input_emb)
+
+            # 1) Reptilian — boundary threat (0..1; higher = worse)
+            threat = float(self._process_reptilian(q))
+            if threat >= self.veto_thresholds["reptilian"]:
+                state = self._make_veto_state(
+                    veto_layer="reptilian",
+                    primary_value=threat,
+                    latency_ms=(time.time() - t0) * 1000.0,
                 )
-                self._record_state(cognitive_state)
-                return cognitive_state
-            
-            # 2. Mammalian Layer: Pattern recognition and emotional valence
-            mammalian_out = self._process_mammalian(input_emb)
-            pattern_confidence, emotional_valence = mammalian_out
-            
-            # Check for mammalian veto (emotional valence threshold)
-            if emotional_valence < -self.veto_thresholds["mammalian"]:
-                cognitive_state = self._create_veto_state(
-                    "mammalian", pattern_confidence, input_emb, start_time,
-                    emotional_valence=emotional_valence
+                self._record_state(state)
+                return state
+
+            # 2) Mammalian — pattern confidence (0..1) + emotional valence (-1..1)
+            pattern_conf, emo = self._process_mammalian(q)
+            if emo <= -self.veto_thresholds["mammalian"]:
+                # strong negative valence triggers veto
+                state = self._make_veto_state(
+                    veto_layer="mammalian",
+                    primary_value=max(0.0, min(1.0, 1.0 - (abs(emo)))),
+                    latency_ms=(time.time() - t0) * 1000.0,
+                    emotional_valence=emo,
                 )
-                self._record_state(cognitive_state)
-                return cognitive_state
-            
-            # 3. Primate Cortex: Abstract reasoning
-            primate_out, reasoning_depth = self._process_primate(input_emb)
-            
-            # No veto - integrate all layers
-            integrated = self._integrate_layers(
-                threat_level, pattern_confidence, primate_out
-            )
-            
-            # Extract cognitive energy
-            cognitive_energy = self._extract_energy(
-                threat_level, pattern_confidence, primate_out
-            )
-            
-            # Create final cognitive state
-            cognitive_state = CognitiveState(
-                reptilian=threat_level,
-                mammalian=pattern_confidence,
-                primate=primate_out,
+                self._record_state(state)
+                return state
+
+            # 3) Primate — reasoning quality (0..1) + depth
+            primate_q, depth = self._process_primate(q)
+
+            # integrate
+            integrated = self._integrate(threat, pattern_conf, primate_q)
+
+            # energy
+            cognitive_energy = max(0.0, min(1.0, integrated * self.energy_gain))
+
+            state = CognitiveState(
+                reptilian=threat,
+                mammalian=pattern_conf,
+                primate=primate_q,
                 integrated=integrated,
                 cognitive_energy=cognitive_energy,
-                attention_weights=self._get_attention_dict(),
+                attention_weights=dict(self._attn),
                 layer_veto="none",
-                latency_ms=(time.time() - start_time.item()) * 1000,
-                threat_level=threat_level,
-                emotional_valence=emotional_valence,
-                reasoning_depth=reasoning_depth
+                latency_ms=(time.time() - t0) * 1000.0,
+                threat_level=threat,
+                emotional_valence=float(emo),
+                reasoning_depth=int(depth),
             )
-            
-            self._record_state(cognitive_state)
-            return cognitive_state
-            
+            self._record_state(state)
+            return state
+
         except Exception as e:
-            log.error(f"TriuneCognition error: {str(e)}", exc_info=True)
-            # Return safe fallback state
-            return CognitiveState(
+            log.error(f"TriuneCognition error: {e}", exc_info=True)
+            # safe fallback
+            state = CognitiveState(
                 reptilian=0.5, mammalian=0.5, primate=0.5, integrated=0.5,
-                cognitive_energy=0.0, attention_weights=self._get_attention_dict(),
-                layer_veto="error", latency_ms=0.0, threat_level=0.5,
-                emotional_valence=0.0, reasoning_depth=0
+                cognitive_energy=0.0, attention_weights=dict(self._attn),
+                layer_veto="error", latency_ms=(time.time() - t0) * 1000.0,
+                threat_level=0.5, emotional_valence=0.0, reasoning_depth=0
             )
+            self._record_state(state)
+            return state
 
-    def _process_reptilian(self, input_emb: torch.Tensor) -> torch.Tensor:
-        """Process input through Reptilian Core (boundary threat assessment)"""
+    # ---------------------- layer implementations ---------------------- #
+
+    def _process_reptilian(self, emb1d: torch.Tensor) -> float:
+        """
+        Boundary threat assessment. Prefers a scorer via container ('scoring')
+        if an alias is configured; falls back to embedding heuristics.
+        Returns: 0..1 (1 = high threat).
+        """
+        # try a configured scorer (e.g., EBT)
+        if self.scoring and self.reptilian_alias:
+            try:
+                # Minimal scorable: raw embedding or empty text
+                scorable = {"embedding": emb1d.numpy().tolist(), "text": ""}
+                bundle = self.scoring.score(
+                    self.reptilian_alias,
+                    context={"mode": "reptilian"},
+                    scorable=scorable,
+                    dimensions=["threat"],
+                )
+                # duck-typed extraction
+                res = getattr(bundle, "results", None) or {}
+                maybe = res.get("threat") or res.get("threat_score")
+                if maybe is not None and hasattr(maybe, "score"):
+                    v = float(maybe.score)
+                    return max(0.0, min(1.0, v))
+            except Exception as e:
+                log.debug(f"Reptilian scorer path failed: {e}")
+
+        # heuristic: distance from mean (stabilized) → sigmoid to 0..1
         try:
-            # Use EBT to measure compatibility with core identity
-            # Lower energy = better compatibility = lower threat
-            threat_score = self.ebt.score("core_identity", input_emb)
-            
-            # Process through reptilian network
-            processed = self.reptilian_net(threat_score)
-            
-            # Normalize to 0-1 (1 = high threat)
-            return torch.sigmoid(processed)
-            
-        except Exception as e:
-            log.warning(f"Reptilian processing error: {str(e)}")
-            # Fallback: random threat assessment
-            return torch.tensor([0.5])
+            v = emb1d.detach().cpu().numpy().astype(np.float32)
+            z = float(np.linalg.norm(v) / (np.sqrt(v.size) + 1e-8))
+            # squash: higher norm → *lower* threat (assume strong identity), invert
+            inv = 1.0 - (1.0 / (1.0 + math.exp(-3.0 * (z - 1.0))))
+            return max(0.0, min(1.0, inv))
+        except Exception:
+            return 0.5
 
-    def _process_mammalian(self, input_emb: torch.Tensor) -> Tuple[float, float]:
-        """Process input through Mammalian Layer (pattern recognition)"""
-        try:
-            # Use SVM for pattern recognition confidence
-            pattern_confidence = self.svm.score(input_emb).item()
-            
-            # Determine emotional valence (negative = bad pattern)
-            emotional_valence = self._determine_emotional_valence(input_emb)
-            
-            return pattern_confidence, emotional_valence
-            
-        except Exception as e:
-            log.warning(f"Mammalian processing error: {str(e)}")
-            return 0.5, 0.0
+    def _process_mammalian(self, emb1d: torch.Tensor) -> Tuple[float, float]:
+        """
+        Pattern recognition + emotional valence.
+        - pattern_confidence: 0..1
+        - emotional_valence:  -1..1  (positive – negative)
+        Prefers VPM store similarity; falls back to scorer alias or neutral values.
+        """
+        # similarity-based valence via VPM store
+        pos_sim, neg_sim = 0.0, 0.0
+        if self.vpm_store:
+            try:
+                pos = getattr(self.vpm_store, "get_positive_vpms", lambda: [])()
+                neg = getattr(self.vpm_store, "get_negative_vpms", lambda: [])()
+                pos_sim = self._avg_cosine(emb1d, pos)
+                neg_sim = self._avg_cosine(emb1d, neg)
+            except Exception as e:
+                log.debug(f"Mammalian VPM similarity failed: {e}")
 
-    def _determine_emotional_valence(self, input_emb: torch.Tensor) -> float:
-        """Determine emotional valence of pattern (negative = bad)"""
-        try:
-            # Check against negative VPMs (learned bad patterns)
-            negative_vpms = self.vpm_manager.get_negative_vpms()
-            if not negative_vpms:
-                return 0.0
-                
-            # Calculate similarity to negative patterns
-            negative_similarity = self._calculate_similarity(
-                input_emb, negative_vpms
-            )
-            
-            # Check against positive VPMs
-            positive_vpms = self.vpm_manager.get_positive_vpms()
-            positive_similarity = self._calculate_similarity(
-                input_emb, positive_vpms
-            ) if positive_vpms else 0.0
-            
-            # Emotional valence = positive - negative
-            return float(positive_similarity - negative_similarity)
-            
-        except Exception as e:
-            log.warning(f"Emotional valence error: {str(e)}")
-            return 0.0
+        # valence: positive − negative (clip to [-1,1])
+        valence = float(np.clip(pos_sim - neg_sim, -1.0, 1.0))
+        # pattern confidence: how *decisive* the similarity difference is
+        pattern_conf = float(np.clip(abs(pos_sim - neg_sim), 0.0, 1.0))
 
-    def _process_primate(self, input_emb: torch.Tensor) -> Tuple[float, int]:
-        """Process input through Primate Cortex (abstract reasoning)"""
-        try:
-            # Get relevant VPMs for reasoning
-            relevant_vpms = self.vpm_manager.get_relevant_vpms(
-                input_emb, top_k=self.cfg.get("primate_top_k", 5)
-            )
-            
-            if not relevant_vpms:
-                return 0.5, 0
-                
-            # Convert to tensor for transformer
-            vpm_tensors = torch.stack([v.embedding for v in relevant_vpms])
-            
-            # Process through transformer
-            reasoning_output = self.primate_net(vpm_tensors)
-            
-            # Get reasoning depth (how many VPMs were chained)
-            reasoning_depth = len(relevant_vpms)
-            
-            # Calculate reasoning quality
-            reasoning_quality = self._calculate_reasoning_quality(
-                reasoning_output, input_emb
-            )
-            
-            return reasoning_quality, reasoning_depth
-            
-        except Exception as e:
-            log.warning(f"Primate processing error: {str(e)}")
-            return 0.5, 0
+        # if a scorer alias is configured, allow it to refine pattern_conf
+        if self.scoring and self.mammalian_alias:
+            try:
+                scorable = {"embedding": emb1d.numpy().tolist(), "text": ""}
+                bundle = self.scoring.score(
+                    self.mammalian_alias,
+                    context={"mode": "mammalian"},
+                    scorable=scorable,
+                    dimensions=["pattern_confidence"],
+                )
+                res = getattr(bundle, "results", None) or {}
+                maybe = res.get("pattern_confidence")
+                if maybe is not None and hasattr(maybe, "score"):
+                    pattern_conf = float(np.clip(maybe.score, 0.0, 1.0))
+            except Exception as e:
+                log.debug(f"Mammalian scorer path failed: {e}")
 
-    def _integrate_layers(
-        self, 
-        reptilian: float, 
-        mammalian: float, 
-        primate: float
-    ) -> float:
-        """Integrate outputs from all three layers with attention weighting"""
-        weights = torch.softmax(self.attention_weights, dim=0)
-        return float(
-            reptilian * weights[0] + 
-            mammalian * weights[1] + 
-            primate * weights[2]
-        )
+        return pattern_conf, valence
 
-    def _extract_energy(
-        self, 
-        reptilian: float, 
-        mammalian: float, 
-        primate: float
-    ) -> float:
-        """Extract metabolic energy from cognitive processing"""
-        # Stack layer outputs for energy network
-        inputs = torch.tensor([[reptilian, mammalian, primate]], dtype=torch.float32)
-        # Get energy value (0-1 scale)
-        energy = self.energy_extractor(inputs).item()
-        # Scale by configuration parameter
-        return energy * self.cfg.get("energy_gain_factor", 1.0)
+    def _process_primate(self, emb1d: torch.Tensor) -> Tuple[float, int]:
+        """
+        Lightweight abstract reasoning quality:
+        - fetch top-K relevant VPMs, compute mean cosine with them (mapped to 0..1)
+        - depth = K actually used
+        """
+        K = max(1, int(self.primate_top_k))
+        used = 0
+        mean_cos = 0.0
 
-    def _create_veto_state(
+        if self.vpm_store and hasattr(self.vpm_store, "get_relevant_vpms"):
+            try:
+                vpms = self.vpm_store.get_relevant_vpms(emb1d, top_k=K) or []
+                if vpms:
+                    cos = [self._cosine(emb1d, getattr(v, "embedding", None)) for v in vpms]
+                    cos = [c for c in cos if c is not None]
+                    if cos:
+                        mean_cos = float(np.mean(cos))
+                        used = len(cos)
+            except Exception as e:
+                log.debug(f"Primate relevant_vpms failed: {e}")
+
+        # map cosine [-1,1] → [0,1]
+        quality = float((mean_cos + 1.0) * 0.5)
+        return quality, used
+
+    # ---------------------- helpers & utilities ---------------------- #
+
+    def _integrate(self, reptilian: float, mammalian: float, primate: float) -> float:
+        w = self._attn
+        x = reptilian * w["reptilian"] + mammalian * w["mammalian"] + primate * w["primate"]
+        return float(np.clip(x, 0.0, 1.0))
+
+    def _make_veto_state(
         self,
+        *,
         veto_layer: str,
         primary_value: float,
-        input_emb: torch.Tensor,
-        start_time: torch.Tensor,
-        emotional_valence: float = 0.0
+        latency_ms: float,
+        emotional_valence: float = 0.0,
     ) -> CognitiveState:
-        """Create cognitive state when a layer has veto power"""
-        # Set all values to primary_value for veto layer
-        values = {
-            "reptilian": primary_value if veto_layer == "reptilian" else 0.0,
-            "mammalian": primary_value if veto_layer == "mammalian" else 0.0,
-            "primate": 0.0  # Primate never has veto power
-        }
-        
-        # For reptilian veto, threat_level = primary_value
-        # For mammalian veto, emotional_valence = primary_value
-        threat_level = primary_value if veto_layer == "reptilian" else 0.5
-        emotional_valence = emotional_valence if veto_layer == "mammalian" else 0.0
-        
+        rept = primary_value if veto_layer == "reptilian" else 0.0
+        mamm = primary_value if veto_layer == "mammalian" else 0.0
         return CognitiveState(
-            reptilian=values["reptilian"],
-            mammalian=values["mammalian"],
-            primate=values["primate"],
-            integrated=primary_value,
-            cognitive_energy=0.0,  # No energy gain during veto
-            attention_weights=self._get_attention_dict(),
+            reptilian=float(np.clip(rept, 0.0, 1.0)),
+            mammalian=float(np.clip(mamm, 0.0, 1.0)),
+            primate=0.0,
+            integrated=float(np.clip(primary_value, 0.0, 1.0)),
+            cognitive_energy=0.0,  # no gain during hard veto
+            attention_weights=dict(self._attn),
             layer_veto=veto_layer,
-            latency_ms=(time.time() - start_time.item()) * 1000,
-            threat_level=threat_level,
-            emotional_valence=emotional_valence,
-            reasoning_depth=0
+            latency_ms=float(latency_ms),
+            threat_level=float(np.clip(rept, 0.0, 1.0)) if veto_layer == "reptilian" else 0.5,
+            emotional_valence=float(np.clip(emotional_valence, -1.0, 1.0)) if veto_layer == "mammalian" else 0.0,
+            reasoning_depth=0,
         )
 
     def _record_state(self, state: CognitiveState):
-        """Record cognitive state for history and reproduction"""
         self.state_history.append(state)
         if len(self.state_history) > self.max_history:
             self.state_history.pop(0)
 
-    def _get_attention_dict(self) -> Dict[str, float]:
-        """Get attention weights as dictionary"""
-        weights = torch.softmax(self.attention_weights, dim=0)
-        return {
-            "reptilian": weights[0].item(),
-            "mammalian": weights[1].item(),
-            "primate": weights[2].item()
-        }
-
-    def _calculate_similarity(
-        self, 
-        query_emb: torch.Tensor, 
-        vpm_list: List
-    ) -> float:
-        """Calculate average similarity to a list of VPMs"""
-        if not vpm_list:
-            return 0.0
-            
-        similarities = []
-        for vpm in vpm_list:
-            # Cosine similarity
-            sim = torch.nn.functional.cosine_similarity(
-                query_emb, vpm.embedding.unsqueeze(0)
-            ).item()
-            similarities.append(sim)
-            
-        return float(np.mean(similarities))
-
-    def _calculate_reasoning_quality(
-        self, 
-        reasoning_output: torch.Tensor, 
-        input_emb: torch.Tensor
-    ) -> float:
-        """Calculate quality of reasoning output"""
-        try:
-            # Compare reasoning output to input for coherence
-            coherence = torch.nn.functional.cosine_similarity(
-                reasoning_output.mean(dim=0), input_emb
-            ).item()
-            
-            # Apply sigmoid to get 0-1 range
-            return float(torch.sigmoid(torch.tensor(coherence)).item())
-            
-        except Exception as e:
-            log.warning(f"Reasoning quality error: {str(e)}")
-            return 0.5
-
     def get_recent_states(self, n: int = 10) -> List[CognitiveState]:
-        """Get recent cognitive states for reproduction system"""
         return self.state_history[-n:] if self.state_history else []
 
     def update_attention(self, reward_signal: float):
-        """Update attention weights based on reward signal"""
-        with torch.no_grad():
-            # Simple reinforcement: increase weights for layers that contributed
-            # to positive outcomes
-            self.attention_weights += reward_signal * 0.01
-            # Ensure weights sum to 1
-            self.attention_weights = torch.softmax(self.attention_weights, dim=0)
+        """
+        Simple reinforcement: nudge all weights uniformly by reward and renormalize.
+        (Keep it bounded/stable; this is a placeholder policy.)
+        """
+        r = float(self._attn["reptilian"])
+        m = float(self._attn["mammalian"])
+        p = float(self._attn["primate"])
+        delta = float(reward_signal) * 0.01
+        self._attn = self._normalize_weights({"reptilian": r + delta, "mammalian": m + delta, "primate": p + delta})
 
     def get_health_metrics(self) -> Dict[str, float]:
-        """Get health metrics from cognitive state history"""
         if not self.state_history:
             return {
                 "stability": 0.5,
                 "efficiency": 0.5,
                 "balance": 0.5,
-                "veto_frequency": {"reptilian": 0.0, "mammalian": 0.0}
+                "veto_frequency": {"reptilian": 0.0, "mammalian": 0.0},
             }
-        
-        # Get last 50 states for metrics
+
         recent = self.state_history[-50:]
-        
-        # Stability: variance in integrated cognitive output
-        integrated_values = [s.integrated for s in recent]
-        stability = 1.0 / (1.0 + np.var(integrated_values))
-        
-        # Efficiency: average cognitive energy per tick
-        energy_values = [s.cognitive_energy for s in recent]
-        efficiency = float(np.mean(energy_values)) if energy_values else 0.5
-        
-        # Balance: how evenly attention is distributed
-        attention_values = [s.attention_weights for s in recent]
-        avg_attention = {
-            k: np.mean([a[k] for a in attention_values]) 
-            for k in attention_values[0].keys()
-        }
-        balance = 1.0 - np.std(list(avg_attention.values())) * 3
-        
-        # Veto frequency
-        veto_counts = {"reptilian": 0, "mammalian": 0}
-        for s in recent:
-            if s.layer_veto == "reptilian":
-                veto_counts["reptilian"] += 1
-            elif s.layer_veto == "mammalian":
-                veto_counts["mammalian"] += 1
-                
-        veto_freq = {
-            k: v / len(recent) for k, v in veto_counts.items()
-        }
-        
+        integrated = np.array([s.integrated for s in recent], dtype=np.float32)
+        stability = float(1.0 / (1.0 + float(np.var(integrated))))
+
+        energy = np.array([s.cognitive_energy for s in recent], dtype=np.float32)
+        efficiency = float(np.clip(float(np.mean(energy)), 0.0, 1.0)) if energy.size else 0.5
+
+        # balance across average attention weights (std low → well balanced)
+        attn_keys = list(recent[0].attention_weights.keys())
+        attn_mat = np.array([[s.attention_weights[k] for k in attn_keys] for s in recent], dtype=np.float32)
+        avg_attn = attn_mat.mean(axis=0)
+        balance = float(np.clip(1.0 - float(np.std(avg_attn)) * 3.0, 0.0, 1.0))
+
+        veto_r = sum(1 for s in recent if s.layer_veto == "reptilian") / len(recent)
+        veto_m = sum(1 for s in recent if s.layer_veto == "mammalian") / len(recent)
+
         return {
-            "stability": float(stability),
+            "stability": stability,
             "efficiency": efficiency,
-            "balance": float(balance),
-            "veto_frequency": veto_freq
+            "balance": balance,
+            "veto_frequency": {"reptilian": float(veto_r), "mammalian": float(veto_m)},
         }
+
+    # ---------------------- low-level utils ---------------------- #
+
+    @staticmethod
+    def _ensure_1d_cpu(x: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x, torch.Tensor):
+            x = torch.as_tensor(x, dtype=torch.float32)
+        if x.ndim > 1:
+            x = x.reshape(-1)
+        return x.detach().float().cpu()
+
+    @staticmethod
+    def _normalize_weights(w: Dict[str, float]) -> Dict[str, float]:
+        s = sum(max(1e-8, float(v)) for v in w.values())
+        return {k: float(max(1e-8, float(v)) / s) for k, v in w.items()}
+
+    @staticmethod
+    def _cosine(a: torch.Tensor, b: Optional[torch.Tensor]) -> Optional[float]:
+        if b is None:
+            return None
+        aa = a.detach().cpu().float()
+        bb = b.detach().cpu().float()
+        if aa.ndim > 1: aa = aa.reshape(-1)
+        if bb.ndim > 1: bb = bb.reshape(-1)
+        na = torch.norm(aa) + 1e-8
+        nb = torch.norm(bb) + 1e-8
+        return float(torch.dot(aa, bb) / (na * nb))
+
+    def _avg_cosine(self, q: torch.Tensor, vpms: List[Any]) -> float:
+        if not vpms:
+            return 0.0
+        vals: List[float] = []
+        for v in vpms:
+            emb = getattr(v, "embedding", None)
+            c = self._cosine(q, emb)
+            if c is not None and math.isfinite(c):
+                vals.append(c)
+        if not vals:
+            return 0.0
+        # map cosine [-1,1] → [0,1] for a similarity-like measure
+        return float(np.mean([(c + 1.0) * 0.5 for c in vals]))

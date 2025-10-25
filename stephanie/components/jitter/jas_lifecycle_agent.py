@@ -27,6 +27,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.jitter.telemetry.jas_telemetry import VitalSigns
 from stephanie.scoring.vpm_scorable import VPMScorable  
 from stephanie.data.score_bundle import ScoreBundle
+from stephanie.components.jitter.apoptosis import ApoptosisSystem
 
 
 import logging
@@ -169,14 +170,16 @@ class JASLifecycleAgent(BaseAgent):
             cognitive_state = self.triune(sensory_input)
             
             # 2.5. Score current VPM (non-blocking wrapper around CPU-bound scoring)
-            if self.vpm_enabled:
-                try:
-                    vpm_eval = await self._score_vpm_async(sensory_input)
-                    if vpm_eval is not None:
-                        self.logger.log("VPMScored", vpm_eval)  # structured JSON event
-                except Exception as e:
-                    log.error(f"VPM scoring error: {e}", exc_info=True)
-                    self.logger.log("VPMScoringError", {"error": str(e), "tick": self.tick})
+            scorable = VPMScorable.from_tensor(
+                sensory_input,
+                run_id=self.run_id,
+                step=self.tick,
+                meta={"source": "jas_tick"}
+            )
+
+            vpm_eval = self.scoring.score("vpm", scorable, {}, dimensions=["knowledge"])
+            if vpm_eval is not None:
+                self.logger.log("VPMScored", vpm_eval)  # structured JSON event
 
             # 3. Update energy based on cognitive processing
             self.core.energy.replenish("cognitive", cognitive_state.cognitive_energy)
@@ -211,10 +214,10 @@ class JASLifecycleAgent(BaseAgent):
         # In production, this would pull from real data sources
         if random.random() < 0.1:
             # Occasionally introduce external input
-            return await self.memory.get_external_input()
+            return await self.memory.vpms.get_external_input()
         else:
             # Normal operation: pull from VPM store
-            return self.memory.vpm_manager.get_random_embedding()
+            return self.memory.vpms.get_random_embedding()
 
     def _check_reproduction(self, vital_signs: VitalSigns):
         """Check if reproduction conditions are met"""
@@ -397,199 +400,3 @@ class JASLifecycleAgent(BaseAgent):
         # Wait for current tick to complete
         await asyncio.sleep(self.cfg.get("tick_interval", 1.0))
 
-class ApoptosisSystem:
-    """
-    The apoptosis (programmed cell death) system that handles graceful termination
-    when JAS can no longer maintain autopoiesis.
-    """
-    
-    def __init__(self, cfg: Dict[str, Any]):
-        self.cfg = cfg
-        self.crisis_threshold = cfg.get("crisis_threshold", 0.7)
-        self.max_crisis_ticks = cfg.get("max_crisis_ticks", 50)
-        self.crisis_counter = 0
-        
-    def should_initiate(self, core, homeostasis) -> bool:
-        """Determine if apoptosis should be initiated"""
-        # Get homeostasis telemetry
-        homeo_telem = homeostasis.get_telemetry()
-        
-        # Check for critical energy depletion
-        if (core.energy.level("metabolic") < 1.0 and 
-            core.energy.level("cognitive") < 1.0):
-            return True
-            
-        # Check for boundary failure
-        if core.membrane.integrity < 0.1:
-            return True
-            
-        # Check for prolonged crisis
-        if homeo_telem["crisis_level"] > self.crisis_threshold:
-            self.crisis_counter += 1
-            if self.crisis_counter > self.max_crisis_ticks:
-                return True
-        else:
-            self.crisis_counter = max(0, self.crisis_counter - 1)
-            
-        return False
-        
-    def get_reason(self, core, homeostasis) -> str:
-        """Get the reason for apoptosis"""
-        homeo_telem = homeostasis.get_telemetry()
-        
-        if core.energy.level("metabolic") < 1.0 and core.energy.level("cognitive") < 1.0:
-            return "energy_depletion"
-        if core.membrane.integrity < 0.1:
-            return "boundary_failure"
-        if homeo_telem["crisis_level"] > self.crisis_threshold and self.crisis_counter > self.max_crisis_ticks:
-            return "prolonged_crisis"
-            
-        return "unknown"
-
-    async def _score_vpm_async(self, sensory_input: torch.Tensor) -> Optional[Dict[str, Any]]:
-        """
-        Async wrapper to score the current VPM without blocking the event loop.
-        Returns a compact dict for structured data-logging, or None on skip.
-        """
-        return await asyncio.to_thread(self._score_vpm_blocking, sensory_input)
-
-    def _score_vpm_blocking(self, sensory_input: torch.Tensor) -> Optional[Dict[str, Any]]:
-        """
-        Sync scoring path (runs inside a thread). Obtains/renders a VPM image, wraps it in VPMScorable,
-        scores via container 'scoring' → 'vpm_transformer', optionally persists to memory.
-        """
-        # 0) Pull/Render the VPM image (prefer container service, fall back to memory)
-        vpm_img = self._get_vpm_image(sensory_input)
-        if vpm_img is None:
-            return None
-
-        # Ensure numpy ndarray, shape HxW or HxWxC
-        if isinstance(vpm_img, torch.Tensor):
-            vpm_img = vpm_img.detach().cpu().numpy()
-        if vpm_img.ndim == 2:
-            vpm_img = vpm_img[..., None]  # H,W -> H,W,1
-
-        # 1) Build scorable with importance semantics
-        scorable = VPMScorable(
-            id=f"vpm_tick_{self.tick}",
-            image_array=np.asarray(vpm_img, dtype=np.float32),
-            metadata={
-                "dimension_weights": self.vpm_dimension_weights,
-                "dimension_order": self.vpm_dimension_order,
-                "resize_method": self.vpm_cfg.get("resize_method", "bilinear"),
-                "source": "jas_lifecycle",
-                "tick": self.tick,
-            },
-        )
-
-        # 2) Skip if already scored and not forcing (reuse memory)
-        try:
-            existing = self.memory.scores.get_scores_for_target(
-                target_id=scorable.id,
-                target_type="vpm",
-                dimensions=[d for d in self.vpm_dimensions if d != "vpm_overall"],  # stored dims
-            )
-            if existing and not self.vpm_force_rescore:
-                return {
-                    "tick": self.tick,
-                    "scorable_id": scorable.id,
-                    "status": "skipped_already_scored",
-                    "dimensions": list(existing.keys()),
-                }
-        except Exception as e:
-            # Non-fatal: continue and attempt fresh score
-            log.debug(f"No existing VPM scores or lookup error: {e}")
-
-        # 3) Score via container scoring service
-        scoring = self.container.get("scoring")
-        bundle: ScoreBundle = scoring.score(
-            "vpm_transformer",
-            context=self._scoring_context(),
-            scorable=scorable,
-            dimensions=self.vpm_dimensions,
-        )
-
-        # 4) Persist scores (optional)
-        eval_id = None
-        if self.vpm_save_results:
-            try:
-                eval_id = self.memory.evaluations.save_bundle(
-                    bundle=bundle,
-                    scorable=scorable,
-                    context=self._scoring_context(),
-                    cfg=self.vpm_cfg,
-                    agent_name=self.name,
-                    source="vpm_transformer",
-                    model_name="vpm_transformer",
-                    evaluator_name=self.name,
-                )
-                log.debug(f"VPM evaluation saved: {eval_id}")
-            except Exception as e:
-                log.warning(f"Could not persist VPM scores: {e}")
-
-        # 5) Prepare compact, consumable event payload
-        flat_scores = {
-            dim: {
-                "score": float(res.score),
-                "source": res.source,
-                **({"weight": self.vpm_dimension_weights.get(dim)} if dim in self.vpm_dimension_weights else {})
-            }
-            for dim, res in bundle.results.items()
-        }
-
-        return {
-            "tick": self.tick,
-            "scorable_id": scorable.id,
-            "evaluation_id": eval_id,
-            "dimensions": self.vpm_dimensions,
-            "scores": flat_scores,
-            "order": self.vpm_dimension_order,
-        }
-
-    def _get_vpm_image(self, sensory_input: torch.Tensor):
-        """
-        Resolve a VPM image:
-          1) container.get('vpm').render(...) if available
-          2) memory.vpm_manager.get_latest_vpm() or .from_embedding(...)
-        Returns an image (np.ndarray or torch.Tensor), or None to skip.
-        """
-        # 1) Try container VPM service
-        try:
-            vpm_service = self.container.get("vpm")
-            # Adapt call signature to your vpm service
-            vpm_img = vpm_service.render(embedding=sensory_input)
-            if vpm_img is not None:
-                return vpm_img
-        except Exception:
-            pass
-
-        # 2) Fall back to memory VPM store/generator
-        try:
-            if hasattr(self.memory, "vpm_manager"):
-                # Prefer “from embedding” if available
-                if hasattr(self.memory.vpm_manager, "from_embedding"):
-                    img = self.memory.vpm_manager.from_embedding(sensory_input)
-                    if img is not None:
-                        return img
-                # Or latest/random VPM
-                if hasattr(self.memory.vpm_manager, "get_latest_vpm"):
-                    v = self.memory.vpm_manager.get_latest_vpm()
-                    if v is not None and hasattr(v, "image"):
-                        return v.image
-        except Exception as e:
-            log.debug(f"VPM fallback failed: {e}")
-
-        return None
-
-    def _scoring_context(self) -> Dict[str, Any]:
-        """
-        Build a lightweight, reproducible context for container scoring.
-        Intentionally small to keep logs & DB lean.
-        """
-        return {
-            "agent": self.name,
-            "tick": self.tick,
-            "jas_id": getattr(self.core, "id", None),
-            "generation": getattr(self.core, "generation", None),
-            "timestamp": time.time(),
-        }

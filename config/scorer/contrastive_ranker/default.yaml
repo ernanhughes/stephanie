@@ -1,4 +1,4 @@
-# config/scorer/contrastive_ranker.yaml
+# conf/scoring/contrastive_ranker/default.yaml
 name: contrastive_ranker
 model_type: contrastive_ranker
 model_alias: cr

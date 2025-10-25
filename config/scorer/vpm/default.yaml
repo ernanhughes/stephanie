@@ -1,3 +1,4 @@
+# conf/scoring/vpm/default.yaml
 name: vpm
 img_size: 64
 patch_size: 8

@@ -249,10 +249,17 @@ class ScorableFactory:
         if target_type == ScorableType.VPM:
             from stephanie.scoring.vpm_scorable import VPMScorable
             return VPMScorable(
-                id=str(data["id"]),
-                image_array=data["image"],  # np.ndarray or list -> ndarray upstream
-                metadata=data.get("metadata", {}),
+                id=str(data.get("id") or data.get("vpm_id") or f"vpm:{data.get('run_id')}:{data.get('step')}"),
+                run_id=int(data.get("run_id", 0)),
+                step=int(data.get("step", 0)),
+                metric_names=data.get("metric_names", []),
+                values=data.get("values", []),
+                order_weights=data.get("order_weights"),
+                metric_weights=data.get("metric_weights"),
+                metadata=data.get("metadata", {})
             )
+
+
         # fallback to doc-like behavior
         title = data.get("title", "")
         summary = data.get("summary", "")

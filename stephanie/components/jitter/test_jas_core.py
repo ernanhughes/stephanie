@@ -13,10 +13,15 @@ from stephanie.components.jitter.jas_core import (
     Membrane,
     EnergyMetabolism,
     ReproductionSystem,
-    ApoptosisSystem,
     HomeostasisController
 )
 from stephanie.memory.vpm_manager import VPMManager
+
+from stephanie.components.jitter.apoptosis import ApoptosisSystem
+from stephanie.components.jitter.jas_lifecycle_agent import JASLifecycleAgent 
+from stephanie.components.jitter.jas_triune import TriuneCognition
+from stephanie.components.jitter.telemetry.jas_telemetry import JASTelemetry, VitalSigns
+from stephanie.components.jitter.jas_homeostasis import EnhancedHomeostasis
 
 @pytest.fixture
 def mock_cfg():

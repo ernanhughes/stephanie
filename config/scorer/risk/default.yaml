@@ -1,4 +1,4 @@
-# config/scorers/risk_scorer.yaml
+# conf/scoring/risk/default.yaml
 risk_scorer:
   target_type: conversation_turn
   model_type: risk

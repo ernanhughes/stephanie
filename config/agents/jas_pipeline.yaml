@@ -1,8 +1,5 @@
 # JAS Pipeline Agent Configuration
 jas_pipeline:
-  name: jas_pipeline
-  description: "Pipeline agent that manages the JAS lifecycle and operations"
-
   # Core operation parameters
   duration: null                # Run until explicitly stopped (in seconds)
   auto_start: true              # Start automatically when initialized

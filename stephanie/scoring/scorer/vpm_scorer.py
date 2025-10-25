@@ -57,7 +57,7 @@ class VPMScorer(BaseScorer):
         self.model.eval()
 
     # ---------- public API ----------
-    def score(self, context: dict, scorable: Scorable, dimensions: List[str]) -> ScoreBundle:
+    def _score_core(self, context: dict, scorable: Scorable, dimensions: List[str]) -> ScoreBundle:
         try:
             img = self._to_tensor(scorable).to(self.device)  # (1,C,H,W) in [0,1]
             with torch.no_grad():

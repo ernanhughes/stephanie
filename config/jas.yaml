@@ -5,7 +5,7 @@ defaults:
   - bus: nats   
   - logging/json_logger
   - services/default
-  - scorer: gap  
+  - scorer: all  
 
   - agents/jas_pipeline
   - agents/risk_trainer

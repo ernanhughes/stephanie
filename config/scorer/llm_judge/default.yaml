@@ -1,3 +1,4 @@
+# conf/scoring/llm_judge/default.yaml
 name: llm_judge
 model_type: llm
 model_alias: LLM

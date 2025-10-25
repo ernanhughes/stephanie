@@ -1,4 +1,4 @@
-# config/scorer/tiny.yaml
+# conf/scoring/tiny/default.yaml
 name: tiny
 model_type: tiny
 model_alias: Tiny
