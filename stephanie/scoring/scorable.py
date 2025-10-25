@@ -18,30 +18,31 @@ from stephanie.models.theorem import CartridgeORM, TheoremORM
 # Enum defining all the supported types of scoreable targets
 class ScorableType:
     AGENT_OUTPUT = "agent_output"
+    CARTRIDGE = "cartridge"
     CASE = "case"
     CASE_SCORABLE = "case_scorable"
+    CHUNK = "chunk"
     CONVERSATION = "conversation"       # full conversation
     CONVERSATION_TURN = "conversation_turn"  # user→assistant pair
     CONVERSATION_MESSAGE = "conversation_message"  # single message
+    CUSTOM = "custom"
     DOCUMENT = "document"
     DOCUMENT_SECTION = "document_section"
     DYNAMIC = "dynamic"
     GOAL = "goal"
     HYPOTHESIS = "hypothesis"
-    CARTRIDGE = "cartridge"
-    TRIPLE = "triple"
-    CHUNK = "chunk"
-    PROMPT = "prompt"
     IDEA = "idea"
-    RESPONSE = "response"
-    PROMPT_RESPONSE = "prompt_response"
-    TRAINING = "training"
-    THEOREM = "theorem"
-    SYMBOLIC_RULE = "symbolic_rule"
-    CUSTOM = "custom"
-    REFINEMENT = "refinement"
     PLAN_TRACE = "plan_trace"
     PLAN_TRACE_STEP = "plan_trace_step"
+    PROMPT = "prompt"
+    PROMPT_RESPONSE = "prompt_response"
+    RESPONSE = "response"
+    SYMBOLIC_RULE = "symbolic_rule"
+    TRAINING = "training"
+    THEOREM = "theorem"
+    TRIPLE = "triple"
+    REFINEMENT = "refinement"
+    VPM = "vpm"
 
 
 class Scorable:
@@ -245,6 +246,13 @@ class ScorableFactory:
                 target_type=ScorableType.CASE_SCORABLE,
             )
 
+        if target_type == ScorableType.VPM:
+            from stephanie.scoring.vpm_scorable import VPMScorable
+            return VPMScorable(
+                id=str(data["id"]),
+                image_array=data["image"],  # np.ndarray or list -> ndarray upstream
+                metadata=data.get("metadata", {}),
+            )
         # fallback to doc-like behavior
         title = data.get("title", "")
         summary = data.get("summary", "")

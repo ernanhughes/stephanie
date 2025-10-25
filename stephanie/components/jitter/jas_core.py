@@ -9,24 +9,19 @@ Expected external integrations:
 Telemetry is produced by the lifecycle agent; this core returns vitals per cycle.
 """
 
-from __future__ import annotations
-from dataclasses import dataclass
-from typing import Dict, Any, Optional
-import logging
-import torch
-import torch.nn as nn
-
-log = logging.getLogger("stephanie.jas.core")
-
-
 
 from __future__ import annotations
-import math
 import time
 from dataclasses import dataclass
 from typing import Dict, Any
 
 import torch
+import logging
+import torch.nn as nn
+
+log = logging.getLogger("stephanie.jas.core")
+
+
 
 class EnergyPools:
     def __init__(self, cognitive: float = 50.0, metabolic: float = 50.0, reserve: float = 20.0):
@@ -82,7 +77,7 @@ class AutopoieticCore:
       - applies membrane stress fed from cognition (reptilian threat)
       - supports telemetry snapshot
     """
-    def __init__(self, cfg: Dict[str, Any], ebt, vpm_manager):
+    def __init__(self, cfg: Dict[str, Any], container, memory):
         e = cfg.get("energy", {})
         self.energy = EnergyPools(
             cognitive=e.get("initial_cognitive", 50.0),
@@ -95,8 +90,6 @@ class AutopoieticCore:
             thickness=m.get("initial_thickness", 0.8),
             permeability=m.get("initial_permeability", 0.5),
         )
-        self.vpm_manager = vpm_manager
-        self.ebt = ebt
         self.id = cfg.get("id", f"jas_{int(time.time())}")
         self.parent_id = cfg.get("parent_id", "")
         self.generation = int(cfg.get("generation", 0))

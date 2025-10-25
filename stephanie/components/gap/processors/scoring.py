@@ -342,7 +342,7 @@ class ScoringProcessor(ProgressMixin):
         # Save an index of EG artifacts for this pass
         eg_index_path = None
         if ep_guard and eg_records:
-            eg_index_path = OK Where am I storage.save_json(
+            eg_index_path = storage.save_json(
                 run_id=timeline_id.split("_")[0],      # same run root as other artifacts
                 subdir="visuals",
                 name="eg_index.json",
