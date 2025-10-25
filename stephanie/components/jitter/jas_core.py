@@ -30,7 +30,8 @@ class EnergyPools:
             "metabolic": float(metabolic),
             "reserve": float(reserve),
         }
-        self.max_reserve = 100.0
+        self.max_reserve = 100.
+        self.pathway_rate_factor: float = 1.0
 
     def level(self, name: str) -> float:
         return float(self.energy_pools.get(name, 0.0))
@@ -52,6 +53,17 @@ class EnergyPools:
         # minimal: dies if both cognitive & metabolic exhausted
         return self.level("metabolic") > 0.5 or self.level("cognitive") > 0.5
 
+    def adjust_pathway_rates(self, factor: float) -> None:
+        """
+        Adjust global pathway “throughput”. For simple pools this is stored as a
+        scalar that other components may consult. It’s clamped to a safe range.
+        """
+        try:
+            f = max(0.1, float(factor))
+        except Exception:
+            f = 1.0
+        # multiplicative update, then clamp overall factor
+        self.pathway_rate_factor = max(0.2, min(5.0, self.pathway_rate_factor * f))
 
 @dataclass
 class Membrane:

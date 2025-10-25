@@ -28,23 +28,18 @@ import asyncio
 import json
 import logging
 import os
+import base64
 from typing import Any, AsyncIterator, Callable, Dict, Optional
 
 from .hybrid_bus import HybridKnowledgeBus
 
 log = logging.getLogger("stephanie.bus.nats_client")
 
-# --------------------------- facade message ---------------------------
-
 class _Msg:
-    """Lightweight NATS-like message for async-iterator subscriptions."""
     __slots__ = ("subject", "data")
     def __init__(self, subject: str, data: bytes):
         self.subject = subject
-        self.data = data  # bytes
-
-
-# --------------------------- facade client ----------------------------
+        self.data = data
 
 class _JSFacade:
     """
@@ -54,51 +49,150 @@ class _JSFacade:
     """
     def __init__(self, bus: HybridKnowledgeBus):
         self._bus = bus
-        self._queues: Dict[str, asyncio.Queue] = {}  # subject -> queue for iter subs
+        self._queues: Dict[str, asyncio.Queue] = {}
 
-    # ---- publish / request ----
+    # -------------------- helpers --------------------
 
-    async def publish(self, subject: str, payload: Any) -> None:
-        """
-        Accepts dict or bytes. We always hand dict to the bus (it JSON-encodes).
-        """
-        if isinstance(payload, (bytes, bytearray)):
+    def _make_binary_envelope(
+        self, body: bytes, *, content_type: str = "application/octet-stream",
+        content_encoding: Optional[str] = None
+    ) -> Dict[str, Any]:
+        env = {
+            "__binary__": True,
+            "content_type": content_type,
+            "data_b64": base64.b64encode(body).decode("ascii"),
+        }
+        if content_encoding:
+            env["content_encoding"] = content_encoding
+        return env
+
+    def _unwrap_binary_envelope(self, payload: Any) -> Optional[bytes]:
+        if isinstance(payload, dict) and payload.get("__binary__") and "data_b64" in payload:
             try:
-                payload = json.loads(payload.decode("utf-8"))
+                return base64.b64decode(payload["data_b64"])
             except Exception:
-                # as a last resort, wrap raw bytes into envelope
-                payload = {"payload_raw": True, "data": payload.decode("utf-8", "ignore")}
-        elif not isinstance(payload, dict):
-            # allow simple types: wrap them
+                return None
+        return None
+
+    # -------------------- publish / request --------------------
+
+    async def publish(
+        self,
+        subject: str,
+        payload: Any,
+        *,
+        headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        """
+        Publish a message.
+
+        Accepted payload types:
+          - dict/list/number -> JSON via bus
+          - str              -> utf-8 via bus JSON wrapper {"payload": str}
+          - bytes/bytearray/memoryview -> raw bytes (preferred)
+              * If the bus does not support raw bytes, a base64 envelope is sent.
+        """
+        headers = dict(headers or {})
+
+        # raw binary payload
+        if isinstance(payload, (bytes, bytearray, memoryview)):
+            body = bytes(payload)
+
+            # If HybridKnowledgeBus supports raw publish, use it
+            if hasattr(self._bus, "publish_raw"):
+                await self._bus.publish_raw(subject, body, headers=headers)
+                return
+
+            # Otherwise, send a base64 envelope as JSON
+            # (Optionally infer gzip by magic number 1f 8b)
+            content_encoding = "gzip" if len(body) >= 2 and body[0] == 0x1F and body[1] == 0x8B else None
+            env = self._make_binary_envelope(body, content_encoding=content_encoding)
+            await self._bus.publish(subject, env, headers=headers)
+            return
+
+        # str -> wrap
+        if isinstance(payload, str):
             payload = {"payload": payload}
-        await self._bus.publish(subject, payload)
 
-    async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
-        return await self._bus.request(subject, payload, timeout)
+        # dict/list/number -> pass through (bus JSON-encodes)
+        await self._bus.publish(subject, payload, headers=headers)
 
-    # ---- subscribe ----
+    async def request(
+        self,
+        subject: str,
+        payload: Dict[str, Any],
+        timeout: float = 5.0,
+        *,
+        allow_binary: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Request/response path. Returns a dict if possible.
+        If the remote replies with a binary envelope and allow_binary=True,
+        returns {"__binary__": True, "data": <bytes>, ...}.
+        """
+        resp = await self._bus.request(subject, payload, timeout)
+        if resp is None:
+            return None
 
-    async def subscribe(self, subject: str, handler: Optional[Callable[[Dict[str, Any]], Any]] = None) -> AsyncIterator[_Msg] | None:
+        # If bus returns bytes, try JSON, else envelope
+        if isinstance(resp, (bytes, bytearray, memoryview)):
+            raw = bytes(resp)
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except Exception:
+                return {"__binary__": True, "data": raw} if allow_binary else None
+
+        # If bus returns dict, maybe it’s a binary envelope
+        if isinstance(resp, dict):
+            raw = self._unwrap_binary_envelope(resp)
+            if raw is not None and allow_binary:
+                return {"__binary__": True, "data": raw, **{k: v for k, v in resp.items() if k not in ("__binary__", "data_b64")}}
+            return resp
+
+        # Anything else is unexpected
+        return None
+
+    # -------------------- subscribe --------------------
+
+    async def subscribe(
+        self,
+        subject: str,
+        handler: Optional[Callable[[Dict[str, Any]], Any]] = None
+    ) -> AsyncIterator[_Msg] | None:
         """
         Two modes:
-          1) handler provided  -> returns None (callback receives payload dict)
-          2) no handler        -> returns async iterator yielding _Msg with .data bytes
+          1) handler provided  -> callback receives dict payloads (JSON-decoded)
+          2) no handler        -> returns async iterator yielding _Msg with raw bytes
+             - If the bus delivers dicts, we JSON-encode them to bytes.
+             - If the bus delivers a base64 binary envelope, we decode to bytes.
         """
         if handler is not None:
-            # Pass-through callback style (payload dict)
+            # Pass-through for dict-typed callbacks
             await self._bus.subscribe(subject, handler)
             return None
 
-        # Async-iterator mode: build a queue + handler that enqueues bytes
         q: asyncio.Queue = self._queues.get(subject) or asyncio.Queue(maxsize=1024)
         self._queues[subject] = q
 
-        async def _enqueue(payload: Dict[str, Any]):
-            try:
-                data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            except Exception:
-                # ensure we never break the consumer
-                data = b"{}"
+        async def _enqueue(payload: Any):
+            # 1) Raw bytes from bus -> pass through
+            if isinstance(payload, (bytes, bytearray, memoryview)):
+                data = bytes(payload)
+            else:
+                # 2) Binary envelope?
+                raw = self._unwrap_binary_envelope(payload)
+                if raw is not None:
+                    data = raw
+                else:
+                    # 3) Dict -> JSON bytes; str -> utf-8
+                    try:
+                        if isinstance(payload, str):
+                            data = payload.encode("utf-8")
+                        else:
+                            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                    except Exception:
+                        data = b"{}"
+
             try:
                 q.put_nowait(_Msg(subject, data))
             except asyncio.QueueFull:
@@ -107,12 +201,10 @@ class _JSFacade:
                     _ = q.get_nowait()
                 except Exception:
                     pass
-                with contextless(q):
-                    q.put_nowait(_Msg(subject, data))
+                q.put_nowait(_Msg(subject, data))
 
         await self._bus.subscribe(subject, _enqueue)
 
-        # Return an async iterator over the queue
         async def _aiter():
             while True:
                 msg = await q.get()
@@ -124,7 +216,7 @@ class _JSFacade:
 
         return _AIter()
 
-    # ---- ops passthrough ----
+    # -------------------- ops passthrough --------------------
 
     async def flush(self, timeout: float = 1.0) -> bool:
         if hasattr(self._bus, "flush"):
@@ -138,8 +230,6 @@ class _JSFacade:
 
     async def close(self) -> None:
         await self._bus.close()
-
-    # ---- health ----
 
     def health_check(self) -> Dict[str, Any]:
         if hasattr(self._bus, "health_check"):

@@ -10,13 +10,13 @@ from stephanie.scoring.model.vpm_model import TinyVisionTransformer, VPMDimensio
 log = logging.getLogger(__name__)
 
 SUPPORTED = [
-    VPMDimension.CLARITY.value,
-    VPMDimension.NOVELTY.value,
-    VPMDimension.CONFIDENCE.value,
-    VPMDimension.CONTRADICTION.value,
-    VPMDimension.COHERENCE.value,
-    VPMDimension.COMPLEXITY.value,
-    VPMDimension.ALIGNMENT.value,
+    VPMDimension.CLARITY,
+    VPMDimension.NOVELTY,
+    VPMDimension.CONFIDENCE,
+    VPMDimension.CONTRADICTION,
+    VPMDimension.COHERENCE,
+    VPMDimension.COMPLEXITY,
+    VPMDimension.ALIGNMENT,
 ]
 
 class VPMScorer(BaseScorer):
@@ -68,8 +68,8 @@ class VPMScorer(BaseScorer):
             base = {dim: float(raw[i]) for i, dim in enumerate(SUPPORTED)}
 
             # Apply importance/order if provided
-            w = (scorable.metadata or {}).get("dimension_weights", {})
-            order = (scorable.metadata or {}).get("dimension_order", [])
+            w = (scorable.meta or {}).get("dimension_weights", {})
+            order = (scorable.meta or {}).get("dimension_order", [])
             weighted = self._apply_importance(base, w, order)
 
             # Build results for requested dims
@@ -81,7 +81,7 @@ class VPMScorer(BaseScorer):
                         score=weighted[dim],
                         rationale=self._rationale(dim, weighted[dim]),
                         source="vpm_transformer",
-                        metadata={"raw_score": base[dim], "weight": w.get(dim, 1.0)}
+                        attributes={"raw_score": base[dim], "weight": w.get(dim, 1.0)}
                     )
             # Always emit a composite if requested or if weights/order exist
             if "vpm_overall" in dimensions or w or order:
@@ -91,7 +91,7 @@ class VPMScorer(BaseScorer):
                     score=comp,
                     rationale=f"Weighted composite honoring order {order or 'none'}",
                     source="vpm_transformer",
-                    metadata={"dimension_weights": w, "dimension_order": order}
+                    meta={"dimension_weights": w, "dimension_order": order}
                 )
 
             return ScoreBundle(results=results)
@@ -122,7 +122,7 @@ class VPMScorer(BaseScorer):
         # Up/Downscale to model size
         x = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0)  # (1,C,H,W)
         if x.shape[-2:] != (self.img_size, self.img_size):
-            mode = (scorable.metadata or {}).get("resize_method", "bilinear")
+            mode = (scorable.meta or {}).get("resize_method", "bilinear")
             x = torch.nn.functional.interpolate(x, size=(self.img_size, self.img_size),
                                                 mode=mode, align_corners=False if mode=="bilinear" else None)
         # Adapt channels (binary maps often 1-channel)

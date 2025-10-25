@@ -30,8 +30,12 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from nats import errors as nats_errors
 from nats.aio.client import Client as NATS
 from nats.errors import TimeoutError as NatsTimeoutError
-from nats.js.api import (ConsumerConfig, DeliverPolicy, RetentionPolicy,
-                         StreamConfig)
+from nats.js.api import (
+    ConsumerConfig,
+    DeliverPolicy,
+    RetentionPolicy,
+    StreamConfig,
+)
 
 from .bus_protocol import BusProtocol
 from .errors import BusRequestError
@@ -39,9 +43,11 @@ from .idempotency import InMemoryIdempotencyStore
 
 _logger = logging.getLogger(__name__)
 
+
 def _sanitize_durable(stream: str, subject: str) -> str:
     name = f"durable_{stream}_{subject}".replace(".", "_").replace(">", "all")
     return name[:240]
+
 
 class NatsKnowledgeBus(BusProtocol):
     """
@@ -86,7 +92,8 @@ class NatsKnowledgeBus(BusProtocol):
         self._health_task: Optional[asyncio.Task] = None
         self._keepalive_task: Optional[asyncio.Task] = None
 
-        self._subscriptions: Dict[str, Dict[str, Any]] = {}  # subject -> intent (handler, durable, cb, sub)
+        # subject -> {handler, durable, cb, sub}
+        self._subscriptions: Dict[str, Dict[str, Any]] = {}
         self._last_publish_time = 0.0
         self._publish_failures = 0
         self._dlq_writer = dlq_writer
@@ -95,14 +102,13 @@ class NatsKnowledgeBus(BusProtocol):
         self._faf_subjects: Set[str] = fire_and_forget_subjects or set()
         self._tasks: Set[asyncio.Task] = set()
 
-        # Connection guards (defensive, even though Hybrid bus does single-flight)
+        # Connection guards
         self._conn_lock = asyncio.Lock()
         self._conn_task: Optional[asyncio.Task] = None
 
         # Stream subjects we ensure; default to "<stream>.>"
         self._stream_subjects: List[str] = [f"{self.stream}.>"]
-        self._stopping: bool = False    
-
+        self._stopping: bool = False
 
     # ---------- Connection management ----------
 
@@ -179,7 +185,11 @@ class NatsKnowledgeBus(BusProtocol):
                 try:
                     await js.publish(health_subject, b"ping")
                 except Exception as e:
-                    _logger.error("NATSHealthPublishFailed subject: %s, error: %r", health_subject, e)
+                    _logger.error(
+                        "NATSHealthPublishFailed subject: %s, error: %r",
+                        health_subject,
+                        e,
+                    )
                     with contextlib.suppress(Exception):
                         await nc.close()
                     return False
@@ -188,7 +198,12 @@ class NatsKnowledgeBus(BusProtocol):
                 self._nc = nc
                 self._js = js
                 self._connected = True
-                _logger.debug(f"NATSReady servers: {self.servers}, stream: {self.stream}, subjects: {self._stream_subjects}")
+                _logger.debug(
+                    "NATSReady servers: %s, stream: %s, subjects: %s",
+                    self.servers,
+                    self.stream,
+                    self._stream_subjects,
+                )
 
                 # Start monitors (idempotent)
                 self._start_keepalive()
@@ -201,7 +216,7 @@ class NatsKnowledgeBus(BusProtocol):
                     if nc and not nc.is_closed:
                         await nc.close()
                 return False
-            
+
     async def _on_reconnected(self):
         # Refresh JS context and re-subscribe
         try:
@@ -243,12 +258,16 @@ class NatsKnowledgeBus(BusProtocol):
                 full_subject = f"{self.stream}.{subject}"
                 await self._js.publish(full_subject, data)
             self._last_publish_time = time.time()
-        except (nats_errors.TimeoutError,
-                nats_errors.FlushTimeoutError,
-                nats_errors.ConnectionClosedError,
-                nats_errors.NoServersError,
-                ConnectionResetError) as e:
-            _logger.error("NATSPublishErrorRetrying subject: %s, error: %r", subject, e)
+        except (
+            nats_errors.TimeoutError,
+            nats_errors.FlushTimeoutError,
+            nats_errors.ConnectionClosedError,
+            nats_errors.NoServersError,
+            ConnectionResetError,
+        ) as e:
+            _logger.error(
+                "NATSPublishErrorRetrying subject: %s, error: %r", subject, e
+            )
             ok = await self.connect(force=True)
             if not ok:
                 self._publish_failures += 1
@@ -260,7 +279,52 @@ class NatsKnowledgeBus(BusProtocol):
                 await self._js.publish(f"{self.stream}.{subject}", data)
             self._last_publish_time = time.time()
 
-    async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
+    async def publish_raw(
+        self,
+        subject: str,
+        body: bytes,
+        headers: Optional[Dict[str, str]] = None,   # accepted but unused
+    ) -> None:
+        """
+        Raw bytes publisher (JetStream under <stream>.<subject> or fire-and-forget).
+        """
+        await self._ensure_connected()
+        if not (self._nc and not self._nc.is_closed):
+            self._publish_failures += 1
+            _logger.error("NATSPublishRawSkippedNotConnected subject: %s", subject)
+            return
+        try:
+            if subject in self._faf_subjects:
+                await self._nc.publish(subject, body)
+            else:
+                await self._js.publish(f"{self.stream}.{subject}", body)
+            self._last_publish_time = time.time()
+        except (
+            nats_errors.TimeoutError,
+            nats_errors.FlushTimeoutError,
+            nats_errors.ConnectionClosedError,
+            nats_errors.NoServersError,
+            ConnectionResetError,
+        ) as e:
+            _logger.error(
+                "NATSPublishRawErrorRetrying subject: %s, error: %r", subject, e
+            )
+            ok = await self.connect(force=True)
+            if not ok:
+                self._publish_failures += 1
+                self._write_dlq(
+                    "publish_raw_connect_failed", subject, {"len": len(body)}
+                )
+                return
+            if subject in self._faf_subjects:
+                await self._nc.publish(subject, body)
+            else:
+                await self._js.publish(f"{self.stream}.{subject}", body)
+            self._last_publish_time = time.time()
+
+    async def request(
+        self, subject: str, payload: Dict[str, Any], timeout: float = 5.0
+    ) -> Optional[Dict[str, Any]]:
         """
         Request/Reply over a namespaced RPC subject: "<stream>.rpc.<subject>"
         Retries with jittered backoff.
@@ -272,27 +336,36 @@ class NatsKnowledgeBus(BusProtocol):
 
         request_timeout = min(timeout, self.timeout)
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        last_exc = None
         rpc_subject = f"{self.stream}.rpc.{subject}"
 
         for attempt in range(self.max_retries + 1):
             try:
-                resp = await self._nc.request(rpc_subject, data, timeout=request_timeout)
+                resp = await self._nc.request(
+                    rpc_subject, data, timeout=request_timeout
+                )
                 return json.loads(resp.data.decode())
-            except NatsTimeoutError as e:
+            except NatsTimeoutError:
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt))
                     continue
-                _logger.error("NATSRequestTimeout subject: %s, attempts: %d", subject, attempt + 1)
+                _logger.error(
+                    "NATSRequestTimeout subject: %s, attempts: %d",
+                    subject,
+                    attempt + 1,
+                )
                 return None
             except Exception as e:
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt))
                     continue
-                _logger.error(f"NATSRequestFailed subject: {subject}, error: {repr(e)}")
+                _logger.error(
+                    "NATSRequestFailed subject: %s, error: %r", subject, e
+                )
                 raise BusRequestError(f"Request failed for {subject}") from e
 
-    async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], Any]) -> None:
+    async def subscribe(
+        self, subject: str, handler: Callable[[Dict[str, Any]], Any]
+    ) -> None:
         """
         Public subscribe: ensures connection, builds the wrapped cb,
         stores intent for auto re-subscribe, then binds the consumer on JetStream.
@@ -314,14 +387,12 @@ class NatsKnowledgeBus(BusProtocol):
 
         await self._do_subscribe(subject, durable_name, wrapped_cb)
 
-
     async def _do_subscribe(self, subject: str, durable_name: str, cb) -> None:
-        # ack_wait: plain SECONDS; nats-py will convert to ns on the wire.
+        # ack_wait: use timedelta for correctness across nats-py versions
         ack_wait_seconds = int(max(1, self.timeout * 5))
-
         cfg = ConsumerConfig(
             deliver_policy=DeliverPolicy.ALL,
-            ack_wait=ack_wait_seconds,              # <-- seconds, not ns
+            ack_wait=timedelta(seconds=ack_wait_seconds),
             max_deliver=self.max_retries + 1,
         )
         full_subject = f"{self.stream}.{subject}"
@@ -334,7 +405,9 @@ class NatsKnowledgeBus(BusProtocol):
         )
 
         self._subscriptions[subject]["sub"] = sub
-        self.logger.info("NATSSubscribed", {"subject": subject, "durable": durable_name})
+        self.logger.info(
+            "NATSSubscribed", {"subject": subject, "durable": durable_name}
+        )
 
     async def _resubscribe_all(self):
         for subject, meta in list(self._subscriptions.items()):
@@ -343,17 +416,18 @@ class NatsKnowledgeBus(BusProtocol):
             cb = meta.get("cb") or self._build_wrapped(subject, handler)
             try:
                 await self._do_subscribe(subject, durable, cb)
-                _logger.debug(f"NATSResubscribed subject: {subject}")
+                _logger.debug("NATSResubscribed subject: %s", subject)
             except Exception as e:
-                _logger.error(f"NATSResubscribeFailed subject: {subject}, error: {repr(e)}")
+                _logger.error(
+                    "NATSResubscribeFailed subject: %s, error: %r", subject, e
+                )
 
     # ---------- Shutdown ----------
-
 
     async def stop(self) -> None:
         """Cooperative shutdown: stop loops first, then drain/close NATS."""
         self._stopping = True
-        await self._stop_tasks()          # cancels keepalive/health tasks
+        await self._stop_tasks()  # cancels keepalive/health tasks
         # Unsubscribe + drain/close like close(), but protected for shutdown races
         if self._nc:
             try:
@@ -371,7 +445,6 @@ class NatsKnowledgeBus(BusProtocol):
                 self._connected = False
                 self._nc = None
                 self._js = None
-
 
     async def close(self) -> None:
         self._stopping = True
@@ -421,16 +494,27 @@ class NatsKnowledgeBus(BusProtocol):
             "subscriptions": list(self._subscriptions.keys()),
         }
 
-    def _build_wrapped(self, subject: str, handler: Callable[[Dict[str, Any]], Any]):
+    def _build_wrapped(
+        self, subject: str, handler: Callable[[Dict[str, Any]], Any]
+    ):
         async def wrapped(msg):
             try:
-                envelope = json.loads(msg.data.decode())
+                # Try JSON first; if it fails, deliver raw bytes to handler.
+                try:
+                    envelope = json.loads(msg.data.decode())
+                except Exception:
+                    # Pass raw bytes to consumer (iterator/callback may handle bytes).
+                    await handler(msg.data)
+                    await msg.ack()
+                    return
 
                 # Idempotency (best-effort if event_id exists)
                 event_id = envelope.get("event_id")
                 if event_id and await self.idempotency_store.seen(event_id):
                     await msg.ack()
-                    self.logger.debug("NATSDuplicateEventSkipped", {"event_id": event_id})
+                    self.logger.debug(
+                        "NATSDuplicateEventSkipped", {"event_id": event_id}
+                    )
                     return
                 if event_id:
                     await self.idempotency_store.mark(event_id)
@@ -440,10 +524,13 @@ class NatsKnowledgeBus(BusProtocol):
 
                 await handler(payload)
             except Exception as e:
-                self.logger.error("NATSHandlerError", {"subject": subject, "error": repr(e)})
+                self.logger.error(
+                    "NATSHandlerError", {"subject": subject, "error": repr(e)}
+                )
             finally:
                 with contextlib.suppress(Exception):
                     await msg.ack()
+
         return wrapped
 
     # Low-level NATS callbacks (not used directly; we bind lambdas in connect)
@@ -501,7 +588,6 @@ class NatsKnowledgeBus(BusProtocol):
         self._keepalive_task = keepalive_task
         _logger.debug("NATSKeepaliveStarted")
 
-
     # ---------- Flush / Drain Helpers ----------
 
     async def flush(self, timeout: float = 1.0) -> bool:
@@ -524,19 +610,26 @@ class NatsKnowledgeBus(BusProtocol):
                 try:
                     # Purge entire stream (subject filters not universally supported)
                     await self._js.purge_stream(self.stream)
-                    _logger.debug(f"[NATSBus] Stream '{self.stream}' purged (no subject filter).")
+                    _logger.debug(
+                        "[NATSBus] Stream '%s' purged (no subject filter).", self.stream
+                    )
                 except TypeError:
                     # In some versions, purge_stream is not on context; fall back to flush
-                    _logger.warning(f"[NATSBus] purge_stream() unsupported; flushing {full_subject}.")
+                    _logger.warning(
+                        "[NATSBus] purge_stream() unsupported; flushing %s.",
+                        full_subject,
+                    )
                     await self._safe_flush(timeout=2.0)
             else:
-                _logger.warning(f"[NATSBus] No JetStream context; performing flush instead.")
+                _logger.warning(
+                    "[NATSBus] No JetStream context; performing flush instead."
+                )
                 await self._safe_flush(timeout=2.0)
 
             return True
 
         except Exception as e:
-            _logger.error(f"[NATSBus] Drain failed for {full_subject}: {e}")
+            _logger.error("[NATSBus] Drain failed for %s: %s", full_subject, e)
             try:
                 await self._safe_flush(timeout=2.0)
             except Exception:
@@ -585,7 +678,11 @@ class NatsKnowledgeBus(BusProtocol):
 
     def health_check(self) -> Dict[str, Any]:
         details = self.debug_connection_status()
-        status = "connected" if (self._connected and self._nc and not self._nc.is_closed) else "disconnected"
+        status = (
+            "connected"
+            if (self._connected and self._nc and not self._nc.is_closed)
+            else "disconnected"
+        )
         return {"bus_type": "nats", "status": status, "details": details}
 
     def _backoff(self, attempt: int) -> float:
@@ -606,7 +703,7 @@ class NatsKnowledgeBus(BusProtocol):
                 }
             )
         except Exception as e:
-            _logger.error(f"DLQWriterFailed subject: {subject}, error: {repr(e)}")
+            _logger.error("DLQWriterFailed subject: %s, error: %r", subject, e)
 
     async def _safe_flush(self, timeout: float = 1.0) -> bool:
         """
@@ -642,7 +739,9 @@ class NatsKnowledgeBus(BusProtocol):
 def jsonl_dlq_writer_factory(path: str):
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
+
     def write(obj: dict):
         with p.open("a", encoding="utf-8") as f:
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
     return write

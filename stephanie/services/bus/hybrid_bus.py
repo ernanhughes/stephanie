@@ -1,6 +1,7 @@
 # stephanie/services/bus/hybrid_bus.py
 from __future__ import annotations
 
+import base64
 import asyncio
 import logging
 from typing import Any, Callable, Dict, List, Optional
@@ -141,7 +142,7 @@ class HybridKnowledgeBus(BusProtocol):
             self._connected = False
     # --------------- API ---------------
 
-    async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
+    async def publish(self, subject: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> None:
         _logger.debug(f"Publishing to {subject}: {payload}")
         if self._bus is None and not self._disabled:
             ok = await self.connect()
@@ -150,10 +151,48 @@ class HybridKnowledgeBus(BusProtocol):
         if self._bus is None:  # disabled
             return
         try:
-            await self._bus.publish(subject, payload)
+            try:
+                await self._bus.publish(subject, payload, headers=headers) 
+            except TypeError:
+                await self._bus.publish(subject, payload)
         except Exception as e:
             _logger.error(f"Failed to publish to {subject}: {e}")
             raise BusPublishError(f"Failed to publish to {subject}") from e
+        except Exception as e:
+            _logger.error(f"Failed to publish to {subject}: {e}")
+            raise BusPublishError(f"Failed to publish to {subject}") from e
+
+
+    async def publish_raw(
+        self,
+        subject: str,
+        body: bytes,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """
+        Publish raw bytes if the backend supports it; otherwise wrap in a base64 envelope.
+        """
+        if self._bus is None and not self._disabled:
+            ok = await self.connect()
+            if not ok:
+                raise BusConnectionError("No bus connection available")
+        if self._bus is None:  # disabled
+            return
+        # If backend has publish_raw, prefer it
+        if hasattr(self._bus, "publish_raw"):
+            try:
+                await getattr(self._bus, "publish_raw")(subject, body, headers=headers)  # type: ignore[misc]
+                return
+            except TypeError:
+                await getattr(self._bus, "publish_raw")(subject, body)                   # type: ignore[misc]
+                return
+
+        # Fallback: JSON envelope (safe across all backends)
+        env = {
+            "__binary__": True,
+            "data_b64": base64.b64encode(body).decode("ascii"),
+        }
+        await self.publish(subject, env, headers=headers)
 
     async def subscribe(
         self,

@@ -128,7 +128,7 @@ class ZeroScorer(BaseScorer):
                 values=values,
                 order_weights=order_w,
                 metric_weights=metric_w,
-                metadata=m,
+                meta=m,
             )
 
         # If the scorable didn't provide order weights, synthesize from order_decay

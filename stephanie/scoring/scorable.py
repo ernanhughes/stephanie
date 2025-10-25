@@ -256,7 +256,7 @@ class ScorableFactory:
                 values=data.get("values", []),
                 order_weights=data.get("order_weights"),
                 metric_weights=data.get("metric_weights"),
-                metadata=data.get("metadata", {})
+                meta=data.get("metadata", {})
             )
 
 

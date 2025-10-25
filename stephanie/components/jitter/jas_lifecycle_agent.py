@@ -177,7 +177,7 @@ class JASLifecycleAgent(BaseAgent):
                 meta={"source": "jas_tick"}
             )
 
-            vpm_eval = self.scoring.score("vpm", scorable, {}, dimensions=["knowledge"])
+            vpm_eval = self.scoring.score("vpm", scorable, {}, dimensions=["clarity"])
             if vpm_eval is not None:
                 self.logger.log("VPMScored", vpm_eval)  # structured JSON event
 
