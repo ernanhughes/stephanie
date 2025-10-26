@@ -1,63 +1,86 @@
 # stephanie/components/ssp/cli.py
 from __future__ import annotations
 
-import os
 import click
-from omegaconf import OmegaConf, DictConfig
+import yaml
+from typing import Optional
+
 from stephanie.components.ssp.substrate import SspComponent
+from stephanie.components.ssp.config import ensure_cfg
 from stephanie.utils.json_sanitize import dumps_safe
 
-def _load_cfg(path: str) -> DictConfig:
-    if path and os.path.exists(path):
-        return OmegaConf.load(path)
-    here = os.path.dirname(__file__)
-    return OmegaConf.load(os.path.join(here, "config.yaml"))
 
-@click.group()
+def _load_cfg(path: Optional[str]):
+    """Load YAML (if provided) and normalize with ensure_cfg()."""
+    if not path:
+        return ensure_cfg({})
+    with open(path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    return ensure_cfg(raw)
+
+
+def _print_json(obj) -> None:
+    """Always emit JSON-safe output (handles numpy, datetimes, etc.)."""
+    click.echo(dumps_safe(obj, indent=2))
+
+
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
 def ssp():
-    """SSP component CLI"""
+    """Search Self-Play (SSP) component CLI.
+
+    Examples:
+      python -m stephanie.components.ssp.cli start -c ssp.local.yaml --steps 5
+      python -m stephanie.components.ssp.cli tick -c ssp.local.yaml
+      python -m stephanie.components.ssp.cli status -c ssp.local.yaml
+    """
+
 
 @ssp.command()
-@click.option("--config", default=None, help="Path to config.yaml")
-@click.option("--steps", default=0, type=int, help="0 = continuous; >0 = run N steps")
+@click.option("--config", "-c", type=click.Path(exists=True), default=None, help="YAML config")
+@click.option("--steps", type=int, default=None, help="Max training steps (blocks; None = continuous)")
 def start(config, steps):
-    """
-    Foreground run.
-      steps == 0  → run continuously until Ctrl+C
-      steps > 0   → run exactly N steps and exit
-    """
+    """Run the self-play loop. If --steps is set, block until done (clean shutdown)."""
     cfg = _load_cfg(config)
     comp = SspComponent(cfg)
-    try:
-        comp.start(max_steps=None if steps == 0 else steps, background=False)  # ← foreground
-        # If steps>0, we return here after finishing; if continuous, this call blocks until Ctrl+C
-    finally:
-        # ensure clean shutdown if we ever break/interrupt
+    # Block to avoid background thread shutdown races
+    comp.start(max_steps=steps, background=(steps is None))
+    if steps is not None:
         comp.stop()
-    # print final status
-    click.echo(dumps_safe(comp.status(), indent=2))
+    _print_json({"ok": True, "event": "started", "steps": steps})
+
 
 @ssp.command()
-@click.option("--config", default=None, help="Path to config.yaml")
+@click.option("--config", "-c", type=click.Path(exists=True), default=None, help="YAML config")
 def tick(config):
-    """
-    Execute one training step in foreground, then emit one substrate tick and exit.
-    """
+    """Perform a single jitter substrate tick and print the payload."""
     cfg = _load_cfg(config)
     comp = SspComponent(cfg)
-    try:
-        comp.start(max_steps=1, background=False)  # run exactly one step
-        out = comp.tick()                          # safe to tick in-process
-        click.echo(dumps_safe(out, indent=2))
-    finally:
-        comp.stop()
+    out = comp.tick()
+    _print_json(out)
+
 
 @ssp.command()
-@click.option("--config", default=None, help="Path to config.yaml")
+@click.option("--config", "-c", type=click.Path(exists=True), default=None, help="YAML config")
 def status(config):
+    """Print current SSP status as JSON."""
     cfg = _load_cfg(config)
-    comp = SspComponent(cfg)  # no background thread started
-    click.echo(dumps_safe(comp.status(), indent=2))
+    comp = SspComponent(cfg)
+    _print_json(comp.status())
+
+
+@ssp.command("train-step")
+@click.option("--config", "-c", type=click.Path(exists=True), default=None, help="YAML config")
+def train_step_cmd(config):
+    """Execute a single training step and print metrics (debug/ops)."""
+    cfg = _load_cfg(config)
+    comp = SspComponent(cfg)
+    # Be defensive if substrate exposes trainer differently
+    trainer = getattr(comp, "trainer", None)
+    if trainer and hasattr(trainer, "train_step"):
+        metrics = trainer.train_step()
+        _print_json({"ok": True, "metrics": metrics})
+    else:
+        _print_json({"ok": False, "error": "trainer.train_step not available"})
 
 
 if __name__ == "__main__":

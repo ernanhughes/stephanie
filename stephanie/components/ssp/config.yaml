@@ -1,27 +1,44 @@
-# stephanie/components/ssp/config.yaml
-self_play:
+ssp:
   enabled: true
-  batch_size: 8
-  max_episode_length: 10
-  temperature: 0.7
-  verification_threshold: 0.85
 
-  qmax:
-    initial_difficulty: 0.3
-    difficulty_step: 0.05
-    max_difficulty: 0.95
-    competence_window: 100
+  # Proposer (LLM) knobs
+  proposer:
+    model: "proposer"
+    temperature: 0.7
+    max_len: 512
 
-  reward:
-    w_hrm: 0.6
-    w_mars: 0.3
-    w_verifier: 0.1
-    length_penalty: 0.0
+  # Solver (Tree Search) – uses your existing module
+  solver:
+    task_type: "prompt_improvement"    # or "code_compile", "summarize", etc.
+    max_iterations: 120
+    time_limit_sec: 600
+    N_init: 4
+    C_ucb: 1.2
+    H_greedy: 0.35
+    H_debug: 0.5
+    no_improve_patience: 40
+    report_top_k: 5
+    progress_every: 5
+    heartbeat_secs: 10.0
 
-  snapshots:
-    keep: 5
-    update_interval: 50
+  # Verifier thresholds (reused by OutputVerifier)
+  verifier:
+    thresholds:
+      alignment: 0.80
+      coherence: 0.70
+    require_all: true
+    pass_threshold: 0.85
 
+  # GRPO over trees
+  grpo:
+    M: 2        # roots
+    N: 2        # nodes per tree/round
+    L: 1        # rounds
+    use_zscore_intra: false
+    use_zscore_inter: true
+    value_alpha: 0.0
+
+  # Jitter bridge
   jitter:
-    tick_interval: 2.0
-    sensory_channels: ["vpm","scm","epistemic"]
+    tick_interval_sec: 2.0
+    channels: ["vpm","scm","epistemic"]

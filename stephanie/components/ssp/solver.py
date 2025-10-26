@@ -6,10 +6,15 @@ from dataclasses import asdict
 from typing import Dict, Any
 from stephanie.components.ssp.types import Solution
 from stephanie.components.ssp.util import get_model_safe, get_trace_logger, PlanTrace_safe
+from omegaconf import DictConfig
+from stephanie.components.ssp.config import ensure_cfg
 
 class Solver:
-    def __init__(self, cfg):
-        self.cfg = cfg.self_play
+    def __init__(self, cfg: DictConfig | dict):
+        root = ensure_cfg(cfg)
+        self.root = root
+        self.sp = root.self_play
+        self.cfg = self.sp.solver
         self.model = get_model_safe("solver")
         self.trace_logger = get_trace_logger()
 

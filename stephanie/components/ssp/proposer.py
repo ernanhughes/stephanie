@@ -7,6 +7,8 @@ from dataclasses import asdict
 from typing import Optional, Dict, Any
 from stephanie.components.ssp.types import Proposal
 from stephanie.components.ssp.util import get_model_safe, get_trace_logger, PlanTrace_safe
+from omegaconf import DictConfig
+from stephanie.components.ssp.config import ensure_cfg
 
 JSON_INSTR = """Return ONLY valid JSON with keys:
 {"query": "...", "verification_approach": "...", "difficulty": 0.0, "connections": ["..."]}
@@ -14,11 +16,14 @@ No commentary, no markdown, no code fences.
 """
 
 class Proposer:
-    def __init__(self, cfg):
-        self.cfg = cfg.self_play
+    def __init__(self, cfg: DictConfig | dict):
+        root = ensure_cfg(cfg)
+        self.root: DictConfig = root                 # full config
+        self.sp: DictConfig = root.self_play         # shared SSP knobs (qmax, jitter, thresholds)
+        self.cfg: DictConfig = self.sp.proposer      # proposer-specific knobs (model/temps/etc.)
         self.model = get_model_safe("proposer")
         self.trace_logger = get_trace_logger()
-        self.difficulty = self.cfg.qmax.initial_difficulty
+        self.difficulty = float(self.sp.qmax.initial_difficulty)
 
     def _json_or_retry(self, prompt: str, retries: int = 2) -> dict:
         for _ in range(retries + 1):
@@ -65,8 +70,8 @@ Context: {context or 'None'}
 
     def update_difficulty(self, success_rate: float):
         target = 0.7
-        k_p = 0.5 * self.cfg.qmax.difficulty_step
+        k_p = 0.5 * float(self.sp.qmax.difficulty_step)
         delta = k_p * (target - success_rate)
-        self.difficulty = float(max(self.cfg.qmax.initial_difficulty,
-                                    min(self.cfg.qmax.max_difficulty,
+        self.difficulty = float(max(self.sp.qmax.initial_difficulty,
+                                    min(self.sp.qmax.max_difficulty,
                                         self.difficulty + delta)))

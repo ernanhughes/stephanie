@@ -14,24 +14,27 @@ from stephanie.components.ssp.util import (
 )
 import atexit
 import threading
+from omegaconf import DictConfig
+from stephanie.components.ssp.config import ensure_cfg
 
 
 class SspComponent:
-    def __init__(self, cfg):
+    def __init__(self, cfg: DictConfig | dict):
+        cfg = ensure_cfg(cfg)
         self.cfg = cfg
         self.trainer = Trainer(cfg)
         self.proposer = self.trainer.proposer
         self.vpm = VPMEvolverSafe(cfg)
         self.bridge = Bridge(self, cfg)
         self.trace_logger = get_trace_logger()
-        self.jitter_interval = cfg.self_play.jitter.get("tick_interval", 2.0)
+        self.jitter_interval = float(cfg.self_play.jitter.get("tick_interval", 2.0))
         self._last_tick = 0.0
         self.is_running = False
         self.episode_count = 0
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None  # already present in your file
-        atexit.register(self.stop)  # ensure clean shutdown on process exit
+        atexit.register(self.stop)
+
 
     def _run(self, max_steps: Optional[int] = None):
         # Run steps in this thread, but bail when stop() is signalled
@@ -86,9 +89,10 @@ class SspComponent:
         return {
             "status": "running" if self.is_running else "idle",
             "episode_count": self.episode_count,
-            "difficulty": getattr(self.proposer, "difficulty", 0.0),
-            "tick_interval": self.jitter_interval
+            "difficulty": float(getattr(self.proposer, "difficulty", 0.0)),
+            "tick_interval": self.jitter_interval,
         }
+
 
     def tick(self) -> Dict[str, Any]:
         if not self.is_running:

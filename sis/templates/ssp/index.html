@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">SSP — Search Self-Play</h2>
+    <div class="d-flex gap-2">
+      <button id="btnStart" class="btn btn-sm btn-success">Start</button>
+      <button id="btnStop" class="btn btn-sm btn-outline-danger">Stop</button>
+      <button id="btnTick" class="btn btn-sm btn-primary">Tick</button>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5>Status</h5>
+          <table class="table table-sm">
+            <tbody id="statusTable">
+              <tr><th>State</th><td id="st-status">{{ boot.status }}</td></tr>
+              <tr><th>Episodes</th><td id="st-episodes">{{ boot.episode_count }}</td></tr>
+              <tr><th>Difficulty</th><td id="st-difficulty">{{ boot.difficulty }}</td></tr>
+              <tr><th>Tick Interval</th><td id="st-tick">{{ boot.tick_interval }}</td></tr>
+            </tbody>
+          </table>
+          <small class="text-muted">Auto-refresh every 2s while running.</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5>Last Metrics</h5>
+          <pre id="lastMetrics" class="small bg-light p-2 rounded"
+               style="white-space: pre-wrap;">{{ boot.last_metrics | tojson(indent=2) }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5>Last Jitter Tick</h5>
+          <pre id="lastTick" class="small bg-light p-2 rounded"
+               style="white-space: pre-wrap;">{{ boot.last_tick | tojson(indent=2) }}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  async function getStatus() {
+    const r = await fetch('/v1/ssp/status');
+    return await r.json();
+  }
+  function renderStatus(s) {
+    document.getElementById('st-status').innerText = s.status;
+    document.getElementById('st-episodes').innerText = s.episode_count ?? 0;
+    document.getElementById('st-difficulty').innerText = (s.difficulty ?? 0).toFixed ? s.difficulty.toFixed(2) : s.difficulty;
+    document.getElementById('st-tick').innerText = s.tick_interval ?? '—';
+    document.getElementById('lastMetrics').innerText = JSON.stringify(s.last_metrics, null, 2);
+    document.getElementById('lastTick').innerText = JSON.stringify(s.last_tick, null, 2);
+  }
+  async function start(max_steps=null) {
+    const qs = max_steps ? ('?max_steps=' + encodeURIComponent(max_steps)) : '';
+    const r = await fetch('/v1/ssp/start' + qs, {method:'POST'});
+    renderStatus(await r.json());
+  }
+  async function stop() {
+    const r = await fetch('/v1/ssp/stop', {method:'POST'});
+    renderStatus(await r.json());
+  }
+  async function tick() {
+    const r = await fetch('/v1/ssp/tick', {method:'POST'});
+    const out = await r.json();
+    document.getElementById('lastTick').innerText = JSON.stringify(out, null, 2);
+  }
+
+  // wire buttons
+  document.getElementById('btnStart').addEventListener('click', ()=> start());
+  document.getElementById('btnStop').addEventListener('click', ()=> stop());
+  document.getElementById('btnTick').addEventListener('click', ()=> tick());
+
+  // auto refresh while running
+  async function loop() {
+    try {
+      const s = await getStatus();
+      renderStatus(s);
+    } catch(e) { /* noop */ }
+    setTimeout(loop, 2000);
+  }
+  loop();
+</script>
+{% endblock %}

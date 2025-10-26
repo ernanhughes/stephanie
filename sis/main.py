@@ -15,6 +15,7 @@ from stephanie.components.gap.risk.api import create_router as create_gap_risk_r
 from sis.routes import risk_ui # (new router below)
 from sis.routes import explore_ui  # add with other route imports
 from sis.routes import overnight_ui
+from sis.routes import ssp as ssp_routes
 
 import yaml
 
@@ -125,3 +126,4 @@ app.include_router(create_gap_risk_router(app.state.container), prefix="/v1/gap/
 
 # Mount SIS UI for risk
 app.include_router(risk_ui.router)
+app.include_router(ssp_routes.router)

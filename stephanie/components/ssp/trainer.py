@@ -14,18 +14,22 @@ from stephanie.components.ssp.util import (
     PlanTrace_safe,
 )
 from stephanie.utils.json_sanitize import sanitize
+from omegaconf import DictConfig
+from stephanie.components.ssp.config import ensure_cfg
 
 
 class Trainer:
-    def __init__(self, cfg):
-        self.cfg = cfg
+    def __init__(self, cfg: DictConfig | dict):
+        cfg = ensure_cfg(cfg)
+        self.cfg = cfg                  # keep the full, merged config
+        self.sp  = cfg.self_play
         self.trace_logger = get_trace_logger()
         self.proposer = Proposer(cfg)
         self.solver = Solver(cfg)
         self.verifier = Verifier(cfg)
         self.buffer = EpisodeBuffer(capacity=4096)
         self.vpm = VPMEvolverSafe(cfg)
-        self.success_history = []
+        self.success_history: list[int] = []
         self.step = 0
         self.hrm = lambda v: v
         self.mars = lambda v: v
@@ -33,39 +37,29 @@ class Trainer:
     def train_step(self) -> Dict[str, Any]:
         self.step += 1
         context = {
-            "recent_success_rate": sum(self.success_history)
-            / len(self.success_history)
-            if self.success_history
-            else 0.0
+            "recent_success_rate": (sum(self.success_history)/len(self.success_history)) if self.success_history else 0.0
         }
         prop = self.proposer.generate(context)
         pchk = self.verifier.verify_proposal(prop)
+
         if not pchk["can_verify"]:
-            reward = -0.05
             ver = {"score": 0.0, "is_valid": False}
             sol = {"answer": "", "reasoning_path": [], "evidence": []}
         else:
             sol = self.solver.solve(prop)
             ver = self.verifier.verify_solution(sol)
-            vpm_b = self.vpm.get_current_state()["tensor"]
-            vpm_a = self.vpm.evolve_once(vpm_b)
-            reward, rb = epistemic_reward(
-                self.hrm,
-                self.mars,
-                vpm_b,
-                vpm_a,
-                ver["score"],
-                self.cfg.self_play,
-            )
+
+        vpm_b = self.vpm.get_current_state()["tensor"]
+        vpm_a = self.vpm.evolve_once(vpm_b)
+        # important: pass self-play cfg to reward
+        reward, rb = epistemic_reward(self.hrm, self.mars, vpm_b, vpm_a, ver.get("score", 0.0), self.sp)
 
         success = 1 if ver.get("is_valid", False) else 0
         self.success_history.append(success)
-        if (
-            len(self.success_history)
-            > self.cfg.self_play.qmax.competence_window
-        ):
+        if len(self.success_history) > int(self.sp.qmax.competence_window):
             self.success_history.pop(0)
-        sr = sum(self.success_history) / len(self.success_history)
+
+        sr = (sum(self.success_history) / len(self.success_history)) if self.success_history else 0.0
         self.proposer.update_difficulty(sr)
 
         tr = PlanTrace_safe(
@@ -73,21 +67,13 @@ class Trainer:
             role="trainer",
             goal="self-play step",
             status="completed",
-            metadata={
-                "success": success,
-                "score": ver.get("score", 0.0),
-                "success_rate": sr,
-            },
+            metadata={"success": success, "score": ver.get("score", 0.0), "success_rate": sr},
             input="",
             output="ok",
             artifacts=sanitize({"proposal": prop, "solution": sol, "verification": ver}),
         )
         self.trace_logger.log(tr)
-        return {
-            "success": success,
-            "score": ver.get("score", 0.0),
-            "success_rate": sr,
-        }
+        return {"success": success, "score": ver.get("score", 0.0), "success_rate": sr}
 
     def run_continuous(self, max_steps: Optional[int] = None):
         i = 0
