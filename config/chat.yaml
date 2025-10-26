@@ -12,7 +12,7 @@ defaults:
   - bus: nats   
   - logging/json_logger
   - mars/default
-  - services/default
+  - services/all
   - scorer: all  
 
   - agents/chat_annotate
@@ -63,7 +63,7 @@ pipeline:
          🗂️ Import raw chat logs (JSON/HTML) from OpenAI, Qwen, Gemini, and DeepSeek.
          Parse, deduplicate, and normalize conversations into structured ORM objects.
        cls: stephanie.agents.knowledge.chat_import.ChatImportAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: chat_annotate

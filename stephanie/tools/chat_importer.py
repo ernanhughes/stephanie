@@ -25,10 +25,11 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup
 
+from stephanie.utils.file_utils import file_hash
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 
 # Initialize module logger
@@ -50,20 +51,6 @@ def _turn_hash(user_text: str, assistant_text: str) -> str:
     return hashlib.sha256(key).hexdigest()
 
 
-def file_hash(path: str) -> str:
-    """
-    Compute SHA256 hash of a file's contents.
-    
-    Args:
-        path: Path to the file to hash
-        
-    Returns:
-        SHA256 hash of file contents
-    """
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
-
-
 def safe_timestamp(ts: Optional[float]) -> Optional[datetime]:
     """
     Safely convert a timestamp to datetime object.
@@ -83,7 +70,7 @@ def safe_timestamp(ts: Optional[float]) -> Optional[datetime]:
         return None
 
 
-def conversation_to_chat(memory, bundle: dict, context: dict) -> Any:
+def conversation_to_chat(memory, bundle: dict, context: dict, fp) -> Any:
     """
     Import a conversation bundle into the chat storage system.
     
@@ -100,6 +87,10 @@ def conversation_to_chat(memory, bundle: dict, context: dict) -> Any:
     
     logger.info(f"Importing conversation: {title} (ID: {conversation_id})")
 
+    h = file_hash(fp)
+    meta = {"hash": h, "source_file": os.path.basename(fp), "raw": bundle}
+
+
     # Create conversation record
     conv = memory.chats.add_conversation(
         {
@@ -107,7 +98,7 @@ def conversation_to_chat(memory, bundle: dict, context: dict) -> Any:
             "external_id": conversation_id,
             "title": title,
             "created_at": safe_timestamp(bundle.get("created_at")),
-            "meta": {"raw": bundle},
+            "meta": meta,
         }
     )
 
@@ -184,16 +175,13 @@ def import_conversations(memory, path: str, context: dict) -> dict:
         # Process each conversation bundle in the file
         for bundle in bundles:
             try:
-                conv = conversation_to_chat(memory, bundle, context)
+                conv = conversation_to_chat(memory, bundle, context, fp)
                 # Add file metadata to conversation
-                conv.meta = {"hash": h, "source_file": os.path.basename(fp)}
-                memory.session.add(conv)
-                memory.commit()
+
                 total_convs += 1
                 total_messages += len(bundle.get("turns", []))
             except Exception as e:
                 logger.error(f"Failed to import conversation from {file_basename}: {str(e)}")
-                memory.session.rollback() 
 
     # Compile and return import statistics
     stats = {

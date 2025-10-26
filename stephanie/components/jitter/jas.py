@@ -41,7 +41,7 @@ class JASPipelineConfig:
     zero_model_service: Dict[str, Any] = field(default_factory=dict)
 
 
-class JASPipelineAgent(BaseAgent):
+class JASAgent(BaseAgent):
     """
     Tin husk → defers to JASOrchestrator (GAP-style).
     """

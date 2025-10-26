@@ -44,7 +44,7 @@ pipeline:
   stages:
      - name: jas_pipeline
        description: "Trains a risk model using chat conversations"
-       cls: stephanie.components.jitter.jas_pipeline_agent.JASPipelineAgent
+       cls: stephanie.components.jitter.jas.JASAgent
        enabled: true
        iterations: 1
 

@@ -71,6 +71,8 @@ class ChatAnnotateAgent(BaseAgent):
         # Retrieve conversations to process
         chats = self.memory.chats.get_all(limit=self.limit)
 
+        kg = self.container.get("knowledge_graph") 
+
         # Pre-count turns that need processing (respects only_missing/force settings)
         def count_turns_for(chat_id: int, missing: str | None) -> int:
             rows = self.memory.chats.get_turn_texts_for_conversation(
@@ -90,11 +92,6 @@ class ChatAnnotateAgent(BaseAgent):
             "turns_ner": total_ner,
             "turns_total": total_turns
         })
-
-        # Initialize Knowledge Graph if available
-        kg = self.container.get("knowledge_graph") 
-        if kg:
-            kg.initialize()
 
         # Create global progress bar for both domains and NER
         pbar = tqdm(
