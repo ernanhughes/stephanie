@@ -17,6 +17,53 @@ from stephanie.utils.lru_cache import SimpleLRUCache
 
 _logger = logging.getLogger(__name__)
 
+_NER_SINGLETON = None
+_NER_OPTS = None
+
+def _build_ner_retriever(cfg, memory, logger):
+    from stephanie.models.ner_retriever import NERRetrieverEmbedder
+    import torch
+
+    device = cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu")
+    model_name = cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct")
+
+    # Optional lightweight/quant settings (if your NERRetriever supports them)
+    kwargs = dict(
+        model_name=model_name,
+        layer=cfg.get("ner_layer", 17),
+        device=device,
+        embedding_dim=cfg.get("ner_dim", 2048),
+        index_path=cfg.get("ner_index_path", "data/ner_retriever/index"),
+        logger=logger,
+        memory=memory,
+        load_in_4bit=bool(cfg.get("ner_load_in_4bit", False)),
+        device_map=cfg.get("ner_device_map", "auto"),
+        dtype=cfg.get("ner_dtype", "bfloat16"),
+    )
+    return NERRetrieverEmbedder(**kwargs)
+
+def _get_ner_singleton(cfg, memory, logger):
+    global _NER_SINGLETON, _NER_OPTS
+    key = (
+        cfg.get("ner_model"),
+        cfg.get("ner_device"),
+        cfg.get("ner_dim"),
+        cfg.get("ner_index_path"),
+        cfg.get("ner_load_in_4bit", False),
+        cfg.get("ner_dtype", "bfloat16"),
+    )
+    if _NER_SINGLETON is not None and _NER_OPTS == key:
+        return _NER_SINGLETON
+
+    try:
+        ner = _build_ner_retriever(cfg, memory, logger)
+        _NER_SINGLETON, _NER_OPTS = ner, key
+        logger and logger.log("NERRetrieverInitialized", {"device": cfg.get("ner_device", "auto"), "model": cfg.get("ner_model")})
+        return ner
+    except Exception as e:
+        logger and logger.log("NERRetrieverInitFailed", {"error": str(e)})
+        return None
+
 
 class BaseEmbeddingStore(BaseSQLAlchemyStore):
     """
@@ -178,6 +225,16 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
             self.logger and self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
         return None
 
+    ## -------------- NER support ---------------
+    def _ensure_ner(self):
+        if not self.ner_enabled:
+            return False
+        if self.ner_retriever is None:
+            self.ner_retriever = _get_ner_singleton(self.cfg, self.memory, self.logger)
+            self.ner_enabled = self.ner_retriever is not None
+            self.ner_index_initialized = bool(self.ner_retriever and getattr(self.ner_retriever, "index_ready", False))
+        return self.ner_retriever is not None
+
     # --------------- public retrieval API ---------------
 
     def search_related_scorables(
@@ -298,8 +355,8 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
 
     def _get_ner_results_hardened(self, query: str, top_k: int) -> List[Dict]:
         """Hardened NER retrieval with fallbacks, confined to NER branch."""
-        if not self.ner_enabled or not self.ner_retriever:
-            return []
+        if not self._ensure_ner():
+            return []  # or False / {} depending on method
 
         q = self._sanitize_query(query)
         results: List[Dict] = []

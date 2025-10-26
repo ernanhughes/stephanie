@@ -1,0 +1,19 @@
+# stephanie/agents/self_play/ssp_substrate/config.yaml
+ssp:
+  enabled: true
+  batch_size: 8
+  max_episode_length: 10
+  verification_threshold: 0.85
+
+  reward:
+    w_hrm: 0.6
+    w_mars: 0.3
+    w_verifier: 0.1
+    length_penalty: 0.0
+
+  snapshots:
+    keep: 5
+    update_interval: 50
+
+  jitter:
+    tick_interval: 2.0

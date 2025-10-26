@@ -1,0 +1,27 @@
+# stephanie/components/ssp/config.yaml
+self_play:
+  enabled: true
+  batch_size: 8
+  max_episode_length: 10
+  temperature: 0.7
+  verification_threshold: 0.85
+
+  qmax:
+    initial_difficulty: 0.3
+    difficulty_step: 0.05
+    max_difficulty: 0.95
+    competence_window: 100
+
+  reward:
+    w_hrm: 0.6
+    w_mars: 0.3
+    w_verifier: 0.1
+    length_penalty: 0.0
+
+  snapshots:
+    keep: 5
+    update_interval: 50
+
+  jitter:
+    tick_interval: 2.0
+    sensory_channels: ["vpm","scm","epistemic"]

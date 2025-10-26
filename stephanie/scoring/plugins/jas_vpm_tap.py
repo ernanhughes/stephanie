@@ -15,7 +15,7 @@ class VPMTapPlugin:
 
     def post_tick(self, tick: int, vitals, core, triune):
         vpms = self.container.get("vpm_store")
-        zm = self.container.get("zeromodel-service-v2") if self.log_to_zero else None
+        zm = self.container.get("zeromodel")
 
         metrics = ["energy.cognitive","energy.metabolic","energy.reserve","boundary.integrity","health"]
         values  = [
