@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.jitter.jas_orchestrator import JASOrchestrator
+from stephanie.components.jitter.orchestrator import JASOrchestrator
 
 log = logging.getLogger("stephanie.agents.jas_pipeline")
 

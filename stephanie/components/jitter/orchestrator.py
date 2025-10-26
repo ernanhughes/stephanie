@@ -1,13 +1,12 @@
+# stephanie/components/jitter/orchestrator.py
 from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import Any, Dict, Optional
 
-from stephanie.components.jitter.jas_lifecycle_agent import JASLifecycleAgent
+from stephanie.components.jitter.lifecycle import JASLifecycleAgent
 
-# Optional: only if you want to register ZeroModel automatically
 from stephanie.services.zeromodel_service import ZeroModelService
 
 

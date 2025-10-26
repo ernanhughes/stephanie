@@ -1,11 +1,12 @@
+# stephanie/components/jitter/reproduction.py
 """
 JAS Reproduction System
 -----------------------
 Biologically plausible reproduction with genetic inheritance and mutation.
 Creates new Jitter instances when conditions are favorable.
 """
+from __future__ import annotations
 
-import torch
 import numpy as np
 import logging
 import uuid

@@ -1,18 +1,19 @@
+# stephanie/components/jitter/evolution.py
 """
 JAS Evolution Manager
 --------------------
 Manages population-level evolution across multiple Jitter instances.
 Implements selection, competition, and environmental adaptation.
 """
+from __future__ import annotations
 
 import asyncio
 import numpy as np
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from dataclasses import dataclass
-from .jas_reproduction import GeneticMaterial
 
-logger = logging.getLogger("stephanie.jas.evolution")
+logger = logging.getLogger(__file__)
 
 @dataclass
 class PopulationMetrics:

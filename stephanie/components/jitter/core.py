@@ -1,3 +1,4 @@
+# stephanie/components/jitter/core.py
 """
 JAS Core – Metabolic Engine + Boundary Membrane + Core Orchestration
 Drop-in production module (no external deps beyond torch + typing + logging).
@@ -8,9 +9,8 @@ Expected external integrations:
 
 Telemetry is produced by the lifecycle agent; this core returns vitals per cycle.
 """
-
-
 from __future__ import annotations
+
 import time
 from dataclasses import dataclass
 from typing import Dict, Any

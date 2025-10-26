@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 import time
 from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
 
-log = logging.getLogger("stephanie.jas.apoptosis")
+log = logging.getLogger(__file__)
 
 
 class ApoptosisSystem:

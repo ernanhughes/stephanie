@@ -1,3 +1,4 @@
+# stephanie/components/jitter/jaf.py
 """
 jaf.py
 ======
@@ -9,10 +10,12 @@ This implementation:
 - Includes versioning for forward compatibility
 - Provides methods for ingestion by offspring
 """
+from __future__ import annotations
 
 import json
 import time
 import random
+import torch
 import torch.nn as nn
 from dataclasses import dataclass, field, asdict, is_dataclass
 from typing import Dict, Any, List, Optional

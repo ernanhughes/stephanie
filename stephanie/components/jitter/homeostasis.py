@@ -1,3 +1,4 @@
+# stephanie/components/jitter/homeostasis.py
 """
 EnhancedHomeostasis
 ===================
@@ -19,7 +20,7 @@ import logging
 from typing import Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 
-log = logging.getLogger("stephanie.jas.homeostasis")
+log = logging.getLogger(__file__)
 
 @dataclass
 class HomeostaticState:
@@ -316,7 +317,11 @@ class EnhancedHomeostasis:
         if abs(actions["energy_balance"]) > 0.05:
             # Adjust metabolic pathways
             factor = 1.0 + actions["energy_balance"] * 0.1
-            core.energy.adjust_pathway_rates(factor)
+            if hasattr(core.energy, "adjust_pathway_rates"):
+                core.energy.adjust_pathway_rates(factor)          # EnergyMetabolism path
+            elif hasattr(core.energy, "adjust_c2m_bias"):
+                core.energy.adjust_c2m_bias((factor - 1.0) * 0.1) # AutopoieticCore path
+
         
         # Boundary integrity regulation
         if actions["boundary_integrity"] > 0.1:

@@ -19,9 +19,9 @@ import random
 import logging
 from typing import Dict, Any, Optional
 
-from stephanie.components.jitter.jas_core import AutopoieticCore
-from stephanie.components.jitter.jas_triune import TriuneCognition
-from stephanie.components.jitter.jas_homeostasis import EnhancedHomeostasis
+from stephanie.components.jitter.core import AutopoieticCore
+from stephanie.components.jitter.triune import TriuneCognition
+from stephanie.components.jitter.homeostasis import EnhancedHomeostasis
 from stephanie.components.jitter.telemetry.jas_telemetry import JASTelemetry
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.jitter.telemetry.jas_telemetry import VitalSigns
@@ -29,9 +29,9 @@ from stephanie.scoring.vpm_scorable import VPMScorable
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.components.jitter.apoptosis import ApoptosisSystem
 
-
+None
 import logging
-log = logging.getLogger("stephanie.jas.lifecycle")
+log = logging.getLogger(__file__)
 
 class JASLifecycleAgent(BaseAgent):
     """

@@ -1,3 +1,4 @@
+# stephanie/components/jitter/evolution_lifecycle.py
 """
 Enhanced Lifecycle with Evolution
 --------------------------------
@@ -9,14 +10,14 @@ import torch
 import logging
 from typing import Dict, Any
 
-from .jas_core import AutopoieticCore
-from .jas_triune import TriuneCognition
-from .jas_homeostasis import EnhancedHomeostasis
+from .core import AutopoieticCore
+from .triune import TriuneCognition
+from .homeostasis import EnhancedHomeostasis
 from .telemetry.jas_telemetry import TelemetryBridge
-from .jas_reproduction import ReproductionSystem, GeneticMaterial
-from .jas_evolution import EvolutionManager
+from .reproduction import ReproductionSystem, GeneticMaterial
+from .evolution import EvolutionManager
 
-logger = logging.getLogger("stephanie.jas.evolution_lifecycle")
+logger = logging.getLogger(__file__)
 
 class EvolutionaryJitterLifecycle:
     """

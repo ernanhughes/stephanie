@@ -1,3 +1,4 @@
+# stephanie/components/jitter/triune.py
 """
 TriuneCognition
 ===============
@@ -68,7 +69,7 @@ class TriuneCognition(nn.Module):
         self.container = container
         self.memory = memory
         self.logger = logger or log
-
+        self.emb_dim = self.memory.embedding.dim
         # veto thresholds
         vt = self.cfg.get("veto_thresholds", {})
         self.veto_thresholds = {
@@ -108,6 +109,16 @@ class TriuneCognition(nn.Module):
 
         self.primate_top_k = int(p_cfg.get("top_k", self.cfg.get("primate_top_k", 5)))
 
+        # small MLPs keyed to emb_dim (no hard-coded 1024)
+        self.reptilian_head = nn.Sequential(
+            nn.Linear(self.emb_dim, 64), nn.ReLU(), nn.Linear(64, 1)
+        )
+        self.mammalian_head = nn.Sequential(
+            nn.Linear(self.emb_dim, 64), nn.ReLU(), nn.Linear(64, 1)
+        )
+        self.primate_head = nn.Sequential(
+            nn.Linear(self.emb_dim, 128), nn.ReLU(), nn.Linear(128, 1)
+        )
         log.info(
             "TriuneCognition ready | veto=(R:%.2f M:%.2f) attn=(R=%.2f M=%.2f P=%.2f)",
             self.veto_thresholds["reptilian"],
