@@ -280,6 +280,19 @@ class EnhancedHomeostasis:
             
         return state
 
+    def set_setpoint(self, dim: str, value: float) -> bool:
+        if dim not in self.controllers:
+            return False
+        v = float(value)
+        # keep energy_balance wide, others 0..1 (match your clamps)
+        if dim == "energy_balance":
+            v = float(np.clip(v, 0.5, 2.0))
+        else:
+            v = float(np.clip(v, 0.0, 1.0))
+        self.adaptive_setpoints[dim] = v
+        self.controllers[dim].setpoint = v
+        return True
+
     def _get_measurements(self, core) -> Dict[str, float]:
         """Get current measurements for all regulated dimensions"""
         # Energy balance (cognitive/metabolic)

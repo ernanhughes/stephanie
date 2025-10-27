@@ -98,11 +98,11 @@ class EvolutionaryJitterLifecycle:
             
             # 2. Cognitive processing
             cognitive_state = self.core.triune.evaluate(sensory_input)
-            self.core.metabolism.energy_pools.replenish("cognitive", cognitive_state.cognitive_energy)
+            self.core.energy.replenish("cognitive", cognitive_state.cognitive_energy)
             
             # 3. Core autopoietic cycle
             cycle_result = self.core.cycle(sensory_input)
-            if not cycle_result.success:
+            if not cycle_result.get("ok", True):
                 logger.warning(f"Core cycle failed at tick {tick_count}")
                 return False
             

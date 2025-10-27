@@ -97,7 +97,12 @@ class LiveForm:
         self.b += self.cfg.learn_rate * td_error
 
         # 6) homeostasis (compute budget + crisis hysteresis)
-        crisis_level = float(tile[..., self._contradiction_ch()].mean())
+        ch = self._contradiction_ch()
+        if getattr(tile, "ndim", 2) >= 3:
+            crisis_level = float(tile[..., ch].mean())
+        else:
+            crisis_level = float(tile.mean())
+
         if crisis_level > self.cfg.crisis_hi:
             self.crisis_ticks += 1
             self.pathway_rate = min(5.0, self.pathway_rate * 1.1)  # spend more to stabilize

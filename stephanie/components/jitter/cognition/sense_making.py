@@ -22,3 +22,4 @@ class SenseMakingEngine:
         self._sens.append(sensory); self._act.append(action)
         if len(self._sens) > self._H: self._sens.pop(0); self._act.pop(0)
         return dict(meaning_type=mtype, resonance=resonance, familiarity=fam, outcome_quality=outcome.get("quality",0.5))
+All right so I'm going to Quan for right now Let's get it gone

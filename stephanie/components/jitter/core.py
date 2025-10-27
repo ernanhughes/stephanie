@@ -15,6 +15,8 @@ import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Dict
+from stephanie.components.jitter.core.energy import EnergyPools
+from types import SimpleNamespace
 
 import torch
 import torch.nn as nn
@@ -59,6 +61,11 @@ class AutopoieticCore:
             thickness=m.get("initial_thickness", 0.8),
             permeability=m.get("initial_permeability", 0.5),
         )
+        self.metabolism = SimpleNamespace(
+            energy_pools=self.energy,
+            replenish=self.energy.replenish,
+            consume=self.energy.consume,
+        )
         self.id = cfg.get("id", f"jas_{int(time.time())}")
         self.parent_id = cfg.get("parent_id", "")
         self.generation = int(cfg.get("generation", 0))
@@ -87,6 +94,7 @@ class AutopoieticCore:
             "baseline": baseline,
             "upkeep": upkeep,
             "integrity": self.membrane.integrity,
+            "ok": True, 
         }
 
     def snapshot(self) -> Dict[str, Any]:
