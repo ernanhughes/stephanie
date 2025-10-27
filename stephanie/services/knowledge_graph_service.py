@@ -160,7 +160,7 @@ class KnowledgeGraphService(Service):
             )
             self._retriever = NERRetrieverEmbedder(
                 model_name=self.cfg.get(
-                    "ner_model", "meta-llama/Llama-3.2-1B-Instruct"
+                    "ner_model", "dslim/bert-base-NER"
                 ),
                 layer=self.cfg.get("ner_layer", 16),
                 device=self.cfg.get(

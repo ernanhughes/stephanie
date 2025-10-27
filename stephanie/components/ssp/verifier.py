@@ -16,7 +16,7 @@ class Verifier:
     def __init__(self, cfg: DictConfig | dict):
         root = ensure_cfg(cfg)
         self.root = root
-        Hey Cortana self.sp = root.self_play
+        self.sp = root.self_play
         self.cfg = self.sp.verifier
         self.threshold = _resolve_threshold(self.cfg)
         self.trace_logger = get_trace_logger()

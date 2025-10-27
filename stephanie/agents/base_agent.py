@@ -62,7 +62,8 @@ class BaseAgent(ABC):
         self.scorable_details = {}
         self.is_scorable = False  # default
 
-        self.rule_applier = self.container.get("rules")
+        if self.container:
+            self.rule_applier = self.container.get("rules")
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
 
         self.logger.log(

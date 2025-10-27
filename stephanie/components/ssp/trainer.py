@@ -16,7 +16,16 @@ from stephanie.components.ssp.util import (
 from stephanie.utils.json_sanitize import sanitize
 from omegaconf import DictConfig
 from stephanie.components.ssp.config import ensure_cfg
+from dataclasses import dataclass
+from typing import Callable, List, Dict, Any
 
+@dataclass
+class EpisodeSummary:
+    episode_id: str
+    proposal: Dict[str, Any]
+    solution: Dict[str, Any]
+    verification: Dict[str, Any]
+    metrics: Dict[str, Any]
 
 class Trainer:
     def __init__(self, cfg: DictConfig | dict):
@@ -33,6 +42,17 @@ class Trainer:
         self.step = 0
         self.hrm = lambda v: v
         self.mars = lambda v: v
+        self._listeners: List[Callable[[EpisodeSummary], None]] = []
+
+    def on_episode(self, fn: Callable[[EpisodeSummary], None]) -> None:
+        self._listeners.append(fn)
+
+    def _emit_episode(self, summary: EpisodeSummary) -> None:
+        for fn in self._listeners:
+            try:
+                fn(summary)
+            except Exception:
+                pass  # never break training
 
     def train_step(self) -> Dict[str, Any]:
         self.step += 1
@@ -73,6 +93,14 @@ class Trainer:
             artifacts=sanitize({"proposal": prop, "solution": sol, "verification": ver}),
         )
         self.trace_logger.log(tr)
+        summary = EpisodeSummary(
+            episode_id=f"{self.step}",
+            proposal=prop,
+            solution=sol,
+            verification=ver,
+            metrics={"success": success, "score": ver.get("score", 0.0), "success_rate": sr}
+        )
+        self._emit_episode(summary)
         return {"success": success, "score": ver.get("score", 0.0), "success_rate": sr}
 
     def run_continuous(self, max_steps: Optional[int] = None):

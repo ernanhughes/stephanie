@@ -7,7 +7,14 @@ from typing import Optional
 
 from stephanie.components.ssp.substrate import SspComponent
 from stephanie.components.ssp.config import ensure_cfg
+from stephanie.logging.json_logger import JSONLogger
+from stephanie.memory.memory_tool import MemoryTool
+from stephanie.services.registry_loader import load_services_profile
+from stephanie.services.service_container import ServiceContainer
 from stephanie.utils.json_sanitize import dumps_safe
+import asyncio
+from stephanie.components.ssp.tree_bridge import SspTreeBridge
+
 
 
 def _load_cfg(path: Optional[str]):
@@ -81,6 +88,27 @@ def train_step_cmd(config):
         _print_json({"ok": True, "metrics": metrics})
     else:
         _print_json({"ok": False, "error": "trainer.train_step not available"})
+
+@ssp.command("tree-grpo")
+@click.option("--config", "-c", type=click.Path(exists=True), default=None)
+@click.option("--goal", "-g", type=str, required=True, help="Goal/Task text")
+@click.option("--value", type=float, default=0.0, help="Optional [0,1] value weight")
+def tree_grpo_cmd(config, goal, value):
+    """Run a single Tree-GRPO rollout and print a compact report."""
+    cfg = _load_cfg(config)
+    logger = JSONLogger("logs/sis.jsonl")
+    memory = MemoryTool(cfg=cfg.self_play, logger=logger)
+    container = ServiceContainer(cfg=cfg.self_play, logger=logger)
+    load_services_profile(
+        container,
+        cfg=cfg,
+        memory=memory,
+        logger=logger,
+        profile_path="./config/services/all.yaml",
+    )
+    bridge = SspTreeBridge(cfg, memory, container=container, logger=logger)
+    out = asyncio.run(bridge.rollout(goal_text=goal, value=value))
+    click.echo(dumps_safe(out["report"], indent=2))
 
 
 if __name__ == "__main__":

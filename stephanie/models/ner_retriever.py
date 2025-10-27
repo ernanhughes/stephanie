@@ -170,7 +170,7 @@ class NERRetrieverEmbedder:
 
     def __init__(
         self,
-        model_name="meta-llama/Llama-3.2-1B-Instruct",
+        model_name="dslim/bert-base-NER",
         layer=17,
         # device="cuda" if torch.cuda.is_available() else "cpu",
         device="cpu",

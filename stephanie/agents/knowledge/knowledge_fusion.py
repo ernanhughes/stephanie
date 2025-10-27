@@ -118,7 +118,7 @@ class KnowledgeFusionAgent(BaseAgent):
         self.entity_detector = EntityDetector(device=cfg.get("device", "cuda"))
         self.ner = NERRetrieverEmbedder(
             model_name=cfg.get(
-                "ner_model", "meta-llama/Llama-3.2-1B-Instruct"
+                "ner_model", "dslim/bert-base-NER"
             ),
             layer=cfg.get("ner_layer", 16), # in paper we seee 17 here the llm has on y 16 layers
             device=cfg.get("device", "cpu"),

@@ -5,7 +5,7 @@ import time
 import threading
 from dataclasses import asdict
 from typing import Optional, Dict, Any
-from stephanie.components.ssp.trainer import Trainer
+from stephanie.components.ssp.trainer import EpisodeSummary, Trainer
 from stephanie.components.ssp.bridge import Bridge
 from stephanie.components.ssp.util import (
     get_trace_logger,
@@ -23,6 +23,32 @@ class SspComponent:
         cfg = ensure_cfg(cfg)
         self.cfg = cfg
         self.trainer = Trainer(cfg)
+        publisher = getattr(getattr(self, "app", None), "state", None)
+        # but since substrate doesn't know app, do this safer:
+        from stephanie.utils.trace_logger import trace_logger
+        def _arena_listener(s: EpisodeSummary):
+            # Use SIS event publisher if present (SISContainer), else just trace
+            try:
+                # If SIS started this component, we’ll stash a publisher later (see section 5)
+                if hasattr(self, "event_publisher") and self.event_publisher:
+                    self.event_publisher.publish("arena:ssp:episode", {
+                        "id": s.episode_id,
+                        "proposal": s.proposal,
+                        "solution": s.solution,
+                        "verification": s.verification,
+                        "metrics": s.metrics,
+                    })
+                else:
+                    trace_logger.log({"trace_id": f"arena-episode-{s.episode_id}",
+                                    "role": "arena",
+                                    "goal": "ssp episode",
+                                    "status": "completed",
+                                    "artifacts": {"episode": s.episode_id, "metrics": s.metrics}})
+            except Exception:
+                pass
+
+        self.trainer.on_episode(_arena_listener)
+
         self.proposer = self.trainer.proposer
         self.vpm = VPMEvolverSafe(cfg)
         self.bridge = Bridge(self, cfg)

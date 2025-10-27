@@ -16,6 +16,7 @@ from sis.routes import risk_ui # (new router below)
 from sis.routes import explore_ui  # add with other route imports
 from sis.routes import overnight_ui
 from sis.routes import ssp as ssp_routes
+from sis.routes import ssp_ui
 
 import yaml
 
@@ -126,4 +127,17 @@ app.include_router(create_gap_risk_router(app.state.container), prefix="/v1/gap/
 
 # Mount SIS UI for risk
 app.include_router(risk_ui.router)
+
+try:
+    from stephanie.components.ssp.substrate import SspComponent
+    from stephanie.components.ssp.config import ensure_cfg
+    from stephanie.utils.trace_logger import attach_to_app
+    app.state.ssp = SspComponent(ensure_cfg(app.state.config))
+    attach_to_app(app, jsonl_path="logs/plan_traces.jsonl", enable_stdout=False)
+except Exception as e:
+    # Don't crash SIS if SSP isn't ready; you can still turn it on later
+    app.state.ssp = None
+    logger.info({"msg": "SSP not initialized at boot", "error": str(e)})
+app.include_router(ssp_ui.router)
+
 app.include_router(ssp_routes.router)

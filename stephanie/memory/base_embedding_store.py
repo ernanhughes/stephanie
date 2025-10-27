@@ -25,7 +25,7 @@ def _build_ner_retriever(cfg, memory, logger):
     import torch
 
     device = cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu")
-    model_name = cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct")
+    model_name = cfg.get("ner_model", "Minibase/NER-Small")
 
     # Optional lightweight/quant settings (if your NERRetriever supports them)
     kwargs = dict(
@@ -118,7 +118,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                 from stephanie.models.ner_retriever import NERRetrieverEmbedder
 
                 self.ner_retriever = NERRetrieverEmbedder(
-                    model_name=self.cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct"),
+                    model_name=self.cfg.get("ner_model", "dslim/bert-base-NER"),
                     layer=self.cfg.get("ner_layer", 17),
                     device=self.cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu"),
                     embedding_dim=self.cfg.get("ner_dim", 2048),
@@ -129,7 +129,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                 self.logger.log(
                     "NERRetrieverInitialized",
                     {
-                        "model": self.cfg.get("ner_model", "meta-llama/Llama-3.2-1B-Instruct"),
+                        "model": self.cfg.get("ner_model", "dslim/bert-base-NER"),
                         "layer": self.cfg.get("ner_layer", 17),
                         "dim": self.cfg.get("ner_dim", 2048),
                         "index_path": self.cfg.get("ner_index_path", "data/ner_retriever/index"),

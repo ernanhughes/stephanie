@@ -9,6 +9,23 @@ DEFAULTS = {
         "max_episode_length": 10,
         "temperature": 0.7,
         "verification_threshold": 0.85,
+        # tree
+        "M": 2,
+        "N": 2,
+        "L": 1,
+        "scorer_name": "sicql",
+        "dimensions": ["alignment"],
+        "use_zscore_intra": False,
+        "use_zscore_inter": True,
+        "value_alpha": 0.0,
+        "prefer_non_buggy": True,
+        "db": {
+            "name": "co",
+            "user": "co",
+            "password": "co",
+            "host": "localhost",
+            "port": 5432
+        },
         "qmax": {
             "initial_difficulty": 0.3,
             "difficulty_step": 0.05,
@@ -22,7 +39,7 @@ DEFAULTS = {
         },
         "snapshots": {"keep": 5, "update_interval": 50},
         "jitter": {
-            "tick_interval": 2.0,   # seconds
+            "tick_interval": 2.0,  # seconds
             "sensory_channels": ["vpm", "scm", "epistemic"],
             "metabolic_rate": 0.8,
         },
@@ -48,6 +65,7 @@ DEFAULTS = {
     }
 }
 
+
 def ensure_cfg(cfg_like=None) -> DictConfig:
     """
     - Convert dict → DictConfig
@@ -64,7 +82,7 @@ def ensure_cfg(cfg_like=None) -> DictConfig:
         if "ssp" in cfg:
             cfg.self_play = cfg["ssp"]  # copy alias
         else:
-            cfg.self_play = {}          # will be filled by defaults
+            cfg.self_play = {}  # will be filled by defaults
 
     # merge with defaults (user values override defaults)
     cfg = OmegaConf.merge(OmegaConf.create(DEFAULTS), cfg)
