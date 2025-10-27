@@ -4,13 +4,14 @@ import json
 import re
 import time
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import Optional, Dict, Any, List
 
 from omegaconf import DictConfig
 
 from stephanie.components.ssp.types import Proposal
-from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
+from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
 from stephanie.services.service_container import ServiceContainer
+
 
 # --------- Parsing helpers (YAML-ish, no external deps) ---------
 
@@ -43,6 +44,31 @@ def _strip_fences(text: str) -> str:
         return ""
     return _CODE_FENCE.sub("", text).strip()
 
+def _mission_ctx(self) -> dict:
+    # global mission/themes; keep short and stable
+    mission = (self.sp.get("mission") or "Improve Stephanie’s reasoning & tooling.")
+    return {"mission": mission, "constraints": ["verifiable", "implementable", "novel"]}
+
+def _default_prompt(self, context: Optional[Dict[str, Any]]) -> str:
+    ctx = {**(context or {}), **self._mission_ctx()}
+    ctx_str = json.dumps(ctx, ensure_ascii=False)
+    return (
+        "You generate research questions that are verifiable and implementable.\n"
+        f"Difficulty (0..1): {self.difficulty:.2f}\n"
+        f"Context JSON: {ctx_str}\n\n"
+        f"{FORMAT_INSTR}"
+    )
+
+async def _too_similar(self, query: str) -> bool:
+    # Simple novelty check against recent proposals via EmbeddingStore
+    try:
+        emb = self.container.get("embedding")
+        recent = (self.container.get("state")
+                  .get_ring_buffer("ssp.recent_queries", maxlen=200))  # light, in-memory
+        if not recent: return False
+        return any(emb.cosine_sim(query, r) > 0.92 for r in recent)  # threshold tuneable
+    except Exception:
+        return False
 
 def _parse_connections(block: str) -> List[str]:
     """
@@ -254,4 +280,3 @@ class Proposer:
             artifacts={},
         ))
 
-        return asdict(prop)
