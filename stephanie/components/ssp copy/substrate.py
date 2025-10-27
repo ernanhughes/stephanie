@@ -20,7 +20,7 @@ from stephanie.components.ssp.config import ensure_cfg
 
 class SspComponent:
     def __init__(self, cfg: DictConfig | dict):
-        cfg = ensure_cfg(cfg)
+        cfg = cfg
         self.cfg = cfg
         self.trainer = Trainer(cfg)
         publisher = getattr(getattr(self, "app", None), "state", None)

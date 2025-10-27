@@ -14,7 +14,7 @@ def _resolve_threshold(sp_cfg: DictConfig) -> float:
 
 class Verifier:
     def __init__(self, cfg: DictConfig | dict):
-        root = ensure_cfg(cfg)
+        root = cfg
         self.root = root
         self.sp = root.self_play
         self.cfg = self.sp.verifier

@@ -1,0 +1,15 @@
+# Compose-time entrypoint for SIS
+
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: disabled
+  - bus: nats
+  - logging/json_logger
+  - services/default
+  - scorer: all
+  - components: ssp
+
+# Anything pipeline-wide you want to override here:
+embeddings:
+  backend: hnet

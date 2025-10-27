@@ -1,4 +1,4 @@
-# stephanie/agents/paper_improver/vpm_controller.py
+# stephanie/zeromodel/vpm_controller.py
 # VPM Controller — trend-aware, goal-aware, bandit-ready control loop
 from __future__ import annotations
 
@@ -185,7 +185,7 @@ class VPMController:
             return self._resample(row, "Stagnation on core dims", candidate_exemplars)
 
         # 6) GLOBAL failure + worsening trend → ESCALATE (after a few resamples)
-        if global_fail and self._worsening(trend):
+        if global_fail and self._worsening(row.unit, trend):
             if self.resample_counts.get(row.unit, 0) >= self.p.escalate_after:
                 self._set_cooldown(row.unit, row.step_idx)
                 return self._decide(row, Signal.ESCALATE, "Global fail & worsening after resamples", {})
@@ -300,21 +300,19 @@ class VPMController:
         if len(hist) > self.p.oscillation_window:
             self.osc_dir_hist[unit] = hist[-self.p.oscillation_window:]
 
-    def _worsening(self, trend: Dict[str, float]) -> bool:
+    def _worsening(self, unit: str, trend: Dict[str, float]) -> bool:
         if not trend:
             return False
         vals = list(trend.values())
         neg = sum(1 for v in vals if v < -0.003)
-        # oscillation guard: frequent flips lowers confidence; treat as worsening
-        return neg >= max(1, len(vals)//2) or self._oscillating(trend)
+        return neg >= max(1, len(vals)//2) or self._oscillating_unit(unit)
 
-    def _oscillating(self, trend: Dict[str, float]) -> bool:
-        # simple: if we flipped direction a bunch recently
-        # (tracked in _track_oscillation via average slope sign)
-        for unit, hist in self.osc_dir_hist.items():
-            if len(hist) >= self.p.oscillation_window and sum(1 for i in range(1, len(hist)) if hist[i] != hist[i-1]) >= self.p.oscillation_threshold:
-                return True
-        return False
+    def _oscillating_unit(self, unit: str) -> bool:
+        hist = self.osc_dir_hist.get(unit, [])
+        if len(hist) < self.p.oscillation_window:
+            return False
+        flips = sum(1 for i in range(1, len(hist)) if hist[i] != hist[i-1])
+        return flips >= self.p.oscillation_threshold
 
     def _stagnating(self, window: List[VPMRow], thr: Thresholds) -> bool:
         if len(window) < self.p.patience + 1:
@@ -468,7 +466,7 @@ if __name__ == "__main__":
 
     def row(step, cov, cor, coh, cit, ent) -> VPMRow:
         return VPMRow(
-            unit="Blog:Method",
+            unit="Blog:Method", 
             kind="text",
             timestamp=time.time(),
             step_idx=step,

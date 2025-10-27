@@ -5,7 +5,7 @@ import click
 import yaml
 from typing import Optional
 
-from stephanie.components.ssp.substrate import SspComponent
+from stephanie.components.ssp.component import SSPComponent
 from stephanie.components.ssp.config import ensure_cfg
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
@@ -48,7 +48,7 @@ def ssp():
 def start(config, steps):
     """Run the self-play loop. If --steps is set, block until done (clean shutdown)."""
     cfg = _load_cfg(config)
-    comp = SspComponent(cfg)
+    comp = SSPComponent(cfg)
     # Block to avoid background thread shutdown races
     comp.start(max_steps=steps, background=(steps is None))
     if steps is not None:
@@ -61,7 +61,7 @@ def start(config, steps):
 def tick(config):
     """Perform a single jitter substrate tick and print the payload."""
     cfg = _load_cfg(config)
-    comp = SspComponent(cfg)
+    comp = SSPComponent(cfg)
     out = comp.tick()
     _print_json(out)
 
@@ -71,7 +71,7 @@ def tick(config):
 def status(config):
     """Print current SSP status as JSON."""
     cfg = _load_cfg(config)
-    comp = SspComponent(cfg)
+    comp = SSPComponent(cfg)
     _print_json(comp.status())
 
 
@@ -80,7 +80,7 @@ def status(config):
 def train_step_cmd(config):
     """Execute a single training step and print metrics (debug/ops)."""
     cfg = _load_cfg(config)
-    comp = SspComponent(cfg)
+    comp = SSPComponent(cfg)
     # Be defensive if substrate exposes trainer differently
     trainer = getattr(comp, "trainer", None)
     if trainer and hasattr(trainer, "train_step"):

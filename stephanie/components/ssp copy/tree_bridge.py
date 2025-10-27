@@ -36,7 +36,7 @@ class SspTreeBridge:
     - Returns a report usable by Jitter/SIS dashboards
     """
     def __init__(self, cfg: DictConfig | dict, memory=None, container=None, logger=None):
-        self.cfg = ensure_cfg(cfg)
+        self.cfg = cfg
         self.tcfg = TreeGRPOConfig(
             M=int(self.cfg.self_play.get("M", 2)),
             N=int(self.cfg.self_play.get("N", 2)),

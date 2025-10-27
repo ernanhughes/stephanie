@@ -20,6 +20,25 @@ db:
   host: "localhost"
   port: 5432
 
+# sis/config/config.yaml  (append / merge)
+components:
+  ssp:
+    enabled: true
+    route_prefix: "/ssp"
+    cls: "stephanie.components.ssp.component.SSPComponent"
+    args:
+      # SSP-specific knobs go here (merged with ensure_cfg)
+      self_play:
+        tick_interval: 2.0
+      models:
+        proposer: { kind: llm, provider: openai, name: gpt-4o-mini, json_mode: true }
+        solver_agent: { kind: llm, provider: openai, name: gpt-4o, temperature: 0.2 }
+    exports:                # services this component registers into the container
+      - "ssp.trainer"
+      - "ssp.tree"
+      - "ssp.status"
+
+
 # Dashboard settings
 dashboard:
   host: "0.0.0.0"
@@ -52,3 +71,117 @@ embeddings:
 logging:
   level: "INFO"
   file: "sis.log"
+
+
+services:
+  state:
+    enabled: true
+    cls: stephanie.services.state_tracker_service.StateTrackerService
+    dependencies: []
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  rules:
+    enabled: true
+    cls: stephanie.services.rules_service.RulesService
+    dependencies: []
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  llm:
+    enabled: true
+    cls: stephanie.services.llm_service.LLMService
+    dependencies: [rules]
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  scoring:
+    enabled: true
+    cls: stephanie.services.scoring_service.ScoringService
+    dependencies: []
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      container: ${container}
+      logger: ${logger}
+
+  plan_trace:
+    enabled: true
+    cls: stephanie.services.plan_trace_service.PlanTraceService
+    dependencies: [scoring, state]
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      container: ${container}
+      logger: ${logger}
+
+  reporting:
+    enabled: true
+    factory: "stephanie.services.factories:make_reporting_service"
+    dependencies: []
+    args:
+      sinks:
+        - cls: stephanie.services.reporting_service.JsonlSink
+          args:
+            path: ${cfg:logging.logger.report_path}
+        - cls: stephanie.services.reporting_service.LoggerSink
+          args:
+            logger: ${logger}
+      enabled: ${cfg:reporting.enabled}
+      sample_rate: ${cfg:reporting.sample_rate}
+
+  event:
+    enabled: true
+    cls: stephanie.services.event_service.EventService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  prompt:
+    enabled: true
+    cls: stephanie.services.prompt_service.PromptService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+  kbase:
+    enabled: true
+    cls: stephanie.services.knowledge_base_service.KnowledgeBaseService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+
+  zeromodel:
+    enabled: true
+    cls: stephanie.services.zeromodel_service.ZeroModelService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  # CBR tends to be used by learning agents
+  cbr:
+    enabled: true
+    cls: stephanie.services.cbr_service.CBRService
+    dependencies: [llm, scoring]
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+      container: ${container}
+

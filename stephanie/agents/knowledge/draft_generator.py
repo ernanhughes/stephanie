@@ -11,7 +11,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.improver import Improver
 from stephanie.agents.knowledge.knowledge_fuser import KnowledgeFuser
 from stephanie.agents.paper_improver import GoalScorer
-from stephanie.agents.paper_improver.vpm_controller import (Signal,
+from stephanie.zeromodel.vpm_controller import (Signal,
                                                             VPMController,
                                                             VPMRow,
                                                             default_controller)

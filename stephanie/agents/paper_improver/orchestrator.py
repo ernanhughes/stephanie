@@ -24,7 +24,7 @@ from .faithfulness import \
     FaithfulnessBot  # optional use; safe if not provided at CLI
 from .goals import GoalScorer, build_templates_from_yaml, load_yaml
 from .repo_link import RepoLink
-from .vpm_controller import VPMController
+from ...zeromodel.vpm_controller import VPMController
 
 # --------------------------- helpers ---------------------------
 

@@ -1,47 +1,49 @@
-# stephanie/components/ssp/types.py
 from __future__ import annotations
-
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
-@dataclass
+
+class EpisodeStatus(str, Enum):
+    PROPOSED = "proposed"
+    SOLVED = "solved"
+    VERIFIED = "verified"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
 class Proposal:
     query: str
     verification_approach: str
     difficulty: float
     connections: List[str] = field(default_factory=list)
-    prior: float = 1.0
     raw_response: str = ""
-    path_id: str = ""
-    depth: int = 0
 
-@dataclass
+
+@dataclass(frozen=True)
 class Solution:
     answer: str
-    reasoning_path: List[Dict[str, Any]]
-    evidence: List[Dict[str, Any]]
+    reasoning_path: List[Dict[str, Any]] = field(default_factory=list)
+    evidence: List[Dict[str, Any]] = field(default_factory=list)
     search_depth: int = 0
-    trace_id: str = ""
+    report: Dict[str, Any] = field(default_factory=dict)
+    training_batch: Optional[Dict[str, Any]] = None
 
-@dataclass
+
+@dataclass(frozen=True)
 class Verification:
     is_valid: bool
     score: float
-    dimension_scores: Dict[str, float]
-    evidence_count: int
-    reasoning_steps: int
-    checks: Dict[str, bool] = field(default_factory=dict)
+    dimension_scores: Dict[str, float] = field(default_factory=dict)
+    evidence_count: int = 0
+    reasoning_steps: int = 0
+
 
 @dataclass
-class RewardBreakdown:
-    hrm_delta: float
-    mars_delta: float
-    verifier_bonus: float
-    length_penalty: float
-
-@dataclass
-class SensoryBundle:
-    vpm: Dict[str, Any]               # {tensor, significance_map, metadata}
-    scm: Dict[str, float]             # {coherence, novelty, complexity, ...}
-    epistemic: Dict[str, float]       # {difficulty, success_rate, growth, verification_rate}
-    meta: Dict[str, Any] = field(default_factory=dict)
+class Episode:
+    id: str
+    proposal: Proposal
+    solution: Optional[Solution]
+    verification: Optional[Verification]
+    status: EpisodeStatus
+    metrics: Dict[str, float] = field(default_factory=dict)

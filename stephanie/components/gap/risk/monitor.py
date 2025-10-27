@@ -235,7 +235,7 @@ class MonitorService:
         self.secondary: Optional[PairScorer] = None
 
         # Discover services in the container
-        ms = getattr(container, "metrics_service", None)
+        ms = container.get("scoring")
         if ms is not None and hasattr(ms, "score_text_pair"):
             self.primary = MetricsServiceAdapter(ms, self.logger)
 

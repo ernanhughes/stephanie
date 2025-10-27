@@ -7,7 +7,7 @@ import numpy as np
 
 try:
     import torch
-    from PIL import Image
+    from PIL import Image, ImageFilter
     _HAS_PIL = True
 except Exception:
     _HAS_PIL = False
@@ -182,7 +182,7 @@ class ImageProfileService:
         score /= len(thirds)
         return max(0.0, min(1.0, score))
 
-    def _img_emb(self, img: "Image.Image") -> Optional[np.ndarray]:
+    def _img_emb(self, img: Image.Image) -> Optional[np.ndarray]:
         if _CLIP_BACKEND is None:
             return None
         try:

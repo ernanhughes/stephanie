@@ -10,27 +10,14 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-# Stephanie types (import if available; otherwise keep this file self-contained)
-try:
-    from stephanie.constants import GOAL, GOAL_TEXT
-except Exception:
-    GOAL, GOAL_TEXT = "goal", "goal_text"
-
-try:
-    from stephanie.scoring.scorable import (Scorable, ScorableFactory,
-                                            ScorableType)
-except Exception:
-    Scorable, ScorableFactory, ScorableType = None, None, None
+from stephanie.constants import GOAL, GOAL_TEXT
+from stephanie.scoring.scorable import (Scorable, ScorableFactory, ScorableType)
 
 
 # ---------------------------
 # Helpers
 # ---------------------------
 
-@dataclass
-class SimpleScorable:
-    id: str
-    text: str
 
 def _make_scorable(text: str, idx: int):
     """
@@ -196,39 +183,3 @@ def save_score_matrix(df: pd.DataFrame, metrics: Dict, *, out_prefix: str):
     with open(f"{out_prefix}_metrics.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
 
-
-# ---------------------------
-# Example usage (put this in your notebook/script)
-# ---------------------------
-"""
-from stephanie.eval.score_matrix import build_score_matrix, save_score_matrix
-from stephanie.scoring.hrm_scorer import HRMScorer
-from stephanie.scoring.tiny_scorer import TinyScorer  # <-- whatever your tiny scorer class is
-
-# 1) init scorers
-hrm = HRMScorer(cfg_hrm, memory, container, logger)
-tiny = TinyScorer(cfg_tiny, memory, container, logger)
-
-# 2) prepare data
-responses = load_my_500_responses()    # list[str], length >= 500
-goal_text = "General helpfulness and correctness relative to the user query."
-dimensions = ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"]
-
-# 3) run
-df, metrics = build_score_matrix(
-    responses=responses,
-    goal_text=goal_text,
-    dimensions=dimensions,
-    scorers={"hrm": hrm, "tiny": tiny},
-    memory=memory,
-    logger=logger,
-    max_n=500,
-)
-
-# 4) save
-save_score_matrix(df, metrics, out_prefix="out/hrm_vs_tiny")
-
-# 5) quick looks
-print(df.head())
-print(json.dumps(metrics["agreement"]["hrm_vs_tiny"], indent=2))
-"""
