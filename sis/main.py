@@ -15,8 +15,7 @@ from stephanie.components.gap.risk.api import create_router as create_gap_risk_r
 from sis.routes import risk_ui # (new router below)
 from sis.routes import explore_ui  # add with other route imports
 from sis.routes import overnight_ui
-from sis.routes import ssp as ssp_routes
-from sis.routes import ssp_ui
+from sis.routes import ssp
 
 import yaml
 
@@ -138,6 +137,4 @@ except Exception as e:
     # Don't crash SIS if SSP isn't ready; you can still turn it on later
     app.state.ssp = None
     logger.info({"msg": "SSP not initialized at boot", "error": str(e)})
-app.include_router(ssp_ui.router)
-
-app.include_router(ssp_routes.router)
+app.include_router(ssp.router, prefix="/ssp")   # ← add prefix

@@ -30,10 +30,19 @@ Task:
 Relevant knowledge: {" ".join(knowledge) if knowledge else "None"}
 Return only the plan text.
 """
-        response = await self.agent.async_call_llm(prompt, context=context)
+        llm_dict = {
+            "name": "ollama/qwen3",
+            "api_base": "http://localhost:11434",
+            "api_key": None,
+        }
+        response = await self.agent.async_call_llm(
+            prompt, context=context, llm_cfg=llm_dict
+        )
         return response.strip()
 
-    async def improve_plan(self, previous_plan: str, feedback: str, context: dict) -> str:
+    async def improve_plan(
+        self, previous_plan: str, feedback: str, context: dict
+    ) -> str:
         """Generate an improved version of a previous plan."""
         knowledge = context.get("knowledge", [])
         prompt = f"""
@@ -50,7 +59,9 @@ Return only the improved plan.
         response = await self.agent.async_call_llm(prompt, context=context)
         return response.strip()
 
-    async def debug_plan(self, previous_plan: str, error_log: str, context: dict) -> str:
+    async def debug_plan(
+        self, previous_plan: str, error_log: str, context: dict
+    ) -> str:
         """Repair a failed plan given error logs."""
         prompt = f"""
 The following plan failed or produced an error.

@@ -17,10 +17,10 @@
           <h5>Status</h5>
           <table class="table table-sm">
             <tbody id="statusTable">
-              <tr><th>State</th><td id="st-status">{{ boot.status }}</td></tr>
-              <tr><th>Episodes</th><td id="st-episodes">{{ boot.episode_count }}</td></tr>
-              <tr><th>Difficulty</th><td id="st-difficulty">{{ boot.difficulty }}</td></tr>
-              <tr><th>Tick Interval</th><td id="st-tick">{{ boot.tick_interval }}</td></tr>
+              <tr><th>State</th>       <td id="st-status">—</td></tr>
+              <tr><th>Episodes</th>    <td id="st-episodes">—</td></tr>
+              <tr><th>Difficulty</th>  <td id="st-difficulty">—</td></tr>
+              <tr><th>Tick Interval</th><td id="st-tick">—</td></tr>
             </tbody>
           </table>
           <small class="text-muted">Auto-refresh every 2s while running.</small>
@@ -32,8 +32,7 @@
       <div class="card shadow-sm">
         <div class="card-body">
           <h5>Last Metrics</h5>
-          <pre id="lastMetrics" class="small bg-light p-2 rounded"
-               style="white-space: pre-wrap;">{{ boot.last_metrics | tojson(indent=2) }}</pre>
+          <pre id="lastMetrics" class="small bg-light p-2 rounded" style="white-space: pre-wrap;">—</pre>
         </div>
       </div>
     </div>
@@ -42,8 +41,7 @@
       <div class="card shadow-sm">
         <div class="card-body">
           <h5>Last Jitter Tick</h5>
-          <pre id="lastTick" class="small bg-light p-2 rounded"
-               style="white-space: pre-wrap;">{{ boot.last_tick | tojson(indent=2) }}</pre>
+          <pre id="lastTick" class="small bg-light p-2 rounded" style="white-space: pre-wrap;">—</pre>
         </div>
       </div>
     </div>
@@ -52,43 +50,41 @@
 
 <script>
   async function getStatus() {
-    const r = await fetch('/v1/ssp/status');
+    const r = await fetch('/ssp/status');
     return await r.json();
   }
   function renderStatus(s) {
-    document.getElementById('st-status').innerText = s.status;
+    document.getElementById('st-status').innerText = s.status ?? '—';
     document.getElementById('st-episodes').innerText = s.episode_count ?? 0;
-    document.getElementById('st-difficulty').innerText = (s.difficulty ?? 0).toFixed ? s.difficulty.toFixed(2) : s.difficulty;
+    const diff = s.difficulty;
+    document.getElementById('st-difficulty').innerText = (typeof diff === 'number') ? diff.toFixed(2) : (diff ?? '—');
     document.getElementById('st-tick').innerText = s.tick_interval ?? '—';
-    document.getElementById('lastMetrics').innerText = JSON.stringify(s.last_metrics, null, 2);
-    document.getElementById('lastTick').innerText = JSON.stringify(s.last_tick, null, 2);
+    document.getElementById('lastMetrics').innerText = JSON.stringify(s.last_metrics ?? {}, null, 2);
+    document.getElementById('lastTick').innerText = JSON.stringify(s.last_tick ?? {}, null, 2);
   }
   async function start(max_steps=null) {
     const qs = max_steps ? ('?max_steps=' + encodeURIComponent(max_steps)) : '';
-    const r = await fetch('/v1/ssp/start' + qs, {method:'POST'});
-    renderStatus(await r.json());
+    const r = await fetch('/ssp/start' + qs, {method:'POST'});
+    await r.json(); // ignore body; we’ll re-pull status
+    renderStatus(await getStatus());
   }
   async function stop() {
-    const r = await fetch('/v1/ssp/stop', {method:'POST'});
-    renderStatus(await r.json());
+    const r = await fetch('/ssp/stop', {method:'POST'});
+    await r.json();
+    renderStatus(await getStatus());
   }
   async function tick() {
-    const r = await fetch('/v1/ssp/tick', {method:'POST'});
+    const r = await fetch('/ssp/tick', {method:'POST'});
     const out = await r.json();
     document.getElementById('lastTick').innerText = JSON.stringify(out, null, 2);
   }
 
-  // wire buttons
   document.getElementById('btnStart').addEventListener('click', ()=> start());
   document.getElementById('btnStop').addEventListener('click', ()=> stop());
   document.getElementById('btnTick').addEventListener('click', ()=> tick());
 
-  // auto refresh while running
   async function loop() {
-    try {
-      const s = await getStatus();
-      renderStatus(s);
-    } catch(e) { /* noop */ }
+    try { renderStatus(await getStatus()); } catch (e) {}
     setTimeout(loop, 2000);
   }
   loop();
