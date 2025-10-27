@@ -13,13 +13,15 @@ This implementation:
 from __future__ import annotations
 
 import json
-import time
 import random
+import time
+from dataclasses import asdict, dataclass, field, is_dataclass
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
 import torch
 import torch.nn as nn
-from dataclasses import dataclass, field, asdict, is_dataclass
-from typing import Dict, Any, List, Optional
-from enum import Enum
+
 
 class JAFVersion(str, Enum):
     V0 = "jaf/0"

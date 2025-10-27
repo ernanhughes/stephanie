@@ -174,8 +174,10 @@ class ApoptosisSystem:
 
             # import only when needed; stay decoupled if model code is absent
             try:
-                from stephanie.scoring.model.vpm_model import AttentionMap  # noqa: F401 (type side-effect)
-                from stephanie.scoring.scorer.vpm_transformer_scorer import VPMScorable  # existing class
+                from stephanie.scoring.model.vpm_model import \
+                    AttentionMap  # noqa: F401 (type side-effect)
+                from stephanie.scoring.scorer.vpm_transformer_scorer import \
+                    VPMScorable  # existing class
             except Exception:
                 # fallback: tiny scorable shim
                 class VPMScorable:  # type: ignore

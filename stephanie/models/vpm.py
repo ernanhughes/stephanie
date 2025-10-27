@@ -1,8 +1,12 @@
 # stephanie/models/vpm.py
 from __future__ import annotations
-from sqlalchemy import Column, Integer, String, JSON, Text, DateTime, UniqueConstraint, Index
+
+from sqlalchemy import (JSON, Column, DateTime, Index, Integer, String, Text,
+                        UniqueConstraint)
 from sqlalchemy.sql import func
+
 from stephanie.models.base import Base
+
 
 class VPMORM(Base):
     """

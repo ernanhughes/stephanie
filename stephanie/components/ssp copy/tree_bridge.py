@@ -1,9 +1,11 @@
 # stephanie/components/ssp/tree_bridge.py
 from __future__ import annotations
+
 import asyncio
 from typing import Any, Dict, Optional
 
 from omegaconf import DictConfig
+
 from stephanie.components.ssp.config import ensure_cfg
 from stephanie.components.tree.core import AgenticTreeSearch
 from stephanie.components.tree.tree_grpo import TreeGRPOAdapter, TreeGRPOConfig

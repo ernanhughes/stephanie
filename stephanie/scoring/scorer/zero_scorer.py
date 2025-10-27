@@ -1,14 +1,17 @@
 # stephanie/scoring/scorer/vpm_zero_scorer.py
 from __future__ import annotations
+
 import math
-import numpy as np
 from typing import Any, Dict, List
 
-from stephanie.scoring.scorer.base_scorer import BaseScorer
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.vpm_scorable import VPMScorable
-from stephanie.data.score_result import ScoreResult
+import numpy as np
+
 from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorer.base_scorer import BaseScorer
+from stephanie.scoring.vpm_scorable import VPMScorable
+
 
 class ZeroScorer(BaseScorer):
     """

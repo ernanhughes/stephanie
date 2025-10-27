@@ -1,21 +1,19 @@
 # stephanie/components/ssp/substrate.py
 from __future__ import annotations
 
-import time
-import threading
-from dataclasses import asdict
-from typing import Optional, Dict, Any
-from stephanie.components.ssp.trainer import EpisodeSummary, Trainer
-from stephanie.components.ssp.bridge import Bridge
-from stephanie.components.ssp.util import (
-    get_trace_logger,
-    PlanTrace_safe,
-    VPMEvolverSafe,
-)
 import atexit
 import threading
+import time
+from dataclasses import asdict
+from typing import Any, Dict, Optional
+
 from omegaconf import DictConfig
+
+from stephanie.components.ssp.bridge import Bridge
 from stephanie.components.ssp.config import ensure_cfg
+from stephanie.components.ssp.trainer import EpisodeSummary, Trainer
+from stephanie.components.ssp.util import (PlanTrace_safe, VPMEvolverSafe,
+                                           get_trace_logger)
 
 
 class SspComponent:

@@ -1,12 +1,13 @@
 # stephanie/components/gap/services/epistemic_guard_service.py
 from __future__ import annotations
+
+import asyncio
 import logging
 from typing import Any, Dict
-from stephanie.services.service_protocol import Service
+
 from stephanie.components.gap.processors.epistemic_guard import (
-    EpistemicGuard, EGVisual, GuardInput, GuardOutput
-)
-import asyncio
+    EGVisual, EpistemicGuard, GuardInput, GuardOutput)
+from stephanie.services.service_protocol import Service
 
 
 class EpistemicGuardService(Service):

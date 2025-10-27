@@ -1,7 +1,10 @@
 from __future__ import annotations
-import asyncio, logging
+
+import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Protocol, runtime_checkable
+
 
 @runtime_checkable
 class PairScorer(Protocol):

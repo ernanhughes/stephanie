@@ -39,5 +39,5 @@ def stop(request: Request):
 @router.post("/tick", response_class=JSONResponse)
 def tick(request: Request):
     ssp = _get_ssp(request.app)
-    out = ssp.tick() if hasattr(ssp, "tick") else ssp.jitter_tick()
+    out = ssp.tick() 
     return JSONResponse(content=sanitize(out))

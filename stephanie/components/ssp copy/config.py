@@ -1,5 +1,6 @@
 from __future__ import annotations
-from omegaconf import OmegaConf, DictConfig
+
+from omegaconf import DictConfig, OmegaConf
 
 # Minimal defaults that match your SSP usage
 DEFAULTS = {

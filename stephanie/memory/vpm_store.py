@@ -1,13 +1,16 @@
 # stephanie/memory/vpm_store.py
 from __future__ import annotations
+
+import random
 from typing import Any, Dict, List, Optional
+
+import numpy as np
+import torch
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.vpm import VPMORM
-from sqlalchemy import func
-import numpy as np, random
-
-import torch
 
 
 def _robust01_vec(v: np.ndarray, lo=1.0, hi=99.0) -> np.ndarray:

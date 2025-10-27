@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from collections import deque
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
 from stephanie.components.ssp.actors import Proposer, Solver
-from stephanie.components.ssp.types import (
-    Episode, Proposal, Solution, Verification, EpisodeStatus
-)
 from stephanie.components.ssp.core.curriculum import QMaxCurriculum
 from stephanie.components.ssp.core.epistemic import EpistemicRewardCalculator
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
-from stephanie.services.service_container import ServiceContainer
+from stephanie.components.ssp.types import (Episode, EpisodeStatus, Proposal,
+                                            Solution, Verification)
+from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
 from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.services.service_container import ServiceContainer
 from stephanie.utils.json_sanitize import sanitize
 
 
@@ -68,28 +68,19 @@ class Trainer:
         )
         self.dimensions = (
             OmegaConf.select(self.sp, "verifier.dimensions")
-            or ["novelty", "clarity", "relevance", "implementability", "alignment"]
+            or ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"]
         )
         self.threshold = _resolve_threshold(self.sp)
 
     # ---------------------------- helpers ---------------------------------
 
-    async def _maybe_await(self, fn, *args, **kwargs):
-        """Call sync or async functions transparently."""
-        res = fn(*args, **kwargs)
-        return await res if asyncio.iscoroutine(res) else res
+    @property
+    def success_history(self):
+        # returns a plain list (snapshotted) of recent 0/1 success flags
+        return list(self.success_hist)
 
     def _score_with_container(self, context: dict, text: str) -> tuple[float, dict]:
-        """
-        Use ScoringService to evaluate `text`.
-        Returns (final_score, per_dimension_avg_scores).
-        """
-        try:
-            scoring = self.container.get("scoring")
-        except Exception:
-            # No scoring service available; fallback to neutral
-            return 0.5, {d: 0.5 for d in self.dimensions}
-
+        scoring = self.container.get("scoring")
         scorable = Scorable(
             id=f"sol-{int(time.time()*1_000)}",
             text=text,
@@ -102,10 +93,8 @@ class Trainer:
             },
         )
 
-        # collect per-dimension scores across enabled scorers and average
-        dim_bag: dict[str, list[float]] = {d: [] for d in self.dimensions}
-
-        for scorer_name in self.enabled_scorers:
+        dim_bag = {d: [] for d in self.dimensions}
+        for scorer_name in (self.enabled_scorers or []):
             try:
                 bundle = scoring.score(
                     scorer_name,
@@ -114,43 +103,50 @@ class Trainer:
                     dimensions=self.dimensions,
                 )
                 for d in self.dimensions:
-                    if d in bundle.results:
-                        dim_bag[d].append(float(bundle.results[d].score))
+                    res = bundle.results.get(d)
+                    if res is not None:
+                        dim_bag[d].append(float(res.score))
             except Exception as e:
-                # keep going if a scorer fails
-                self.trace_logger.log(
-                    PlanTrace_safe(
-                        trace_id=f"scorer-{int(time.time()*1000)%1_000_000}",
-                        role="trainer",
-                        goal="scoring",
-                        status="warning",
-                        input={"scorer": scorer_name, "dimensions": self.dimensions},
-                        output="scorer_error",
-                        artifacts={"error": str(e)},
-                    )
-                )
+                self.trace_logger.log(PlanTrace_safe(
+                    trace_id=f"scorer-{int(time.time()*1000)%1_000_000}",
+                    role="trainer",
+                    goal="scoring",
+                    status="warning",
+                    input={"scorer": scorer_name, "dimensions": self.dimensions},
+                    output="scorer_error",
+                    artifacts={"error": str(e)},
+                ))
                 continue
 
-        # average per-dim, default to 0.5 if empty
-        dim_avg = {
-            d: (sum(vals) / len(vals) if vals else 0.5) for d, vals in dim_bag.items()
-        }
-        # simple aggregate: mean across configured dims
-        final_score = sum(dim_avg.values()) / max(1, len(dim_avg))
-        return float(final_score), {k: float(v) for k, v in dim_avg.items()}
+        dim_avg = {d: (sum(v)/len(v) if v else 0.5) for d, v in dim_bag.items()}
+        final = sum(dim_avg.values()) / max(1, len(dim_avg))
+        return float(final), {k: float(v) for k, v in dim_avg.items()}
 
     # ---------------------------- main step --------------------------------
 
-    async def train_step(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def train_step(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         t0 = time.time()
         ctx = dict(context or {})
 
         # 1) Propose
-        prop_dict = await self._maybe_await(self.proposer.generate, ctx)
+        prop_dict = self.proposer.generate(ctx)
         proposal = Proposal(**prop_dict)
 
+        pipeline_run_id = ctx.get("pipeline_run_id") or (int(time.time()*1000) % 10_000_000)
+
+        goal = {
+            "goal_text": proposal.query,                  # ← dynamic goal
+            "description": "SSP-generated goal",
+            "meta": {
+                "difficulty": proposal.difficulty,
+                "connections": proposal.connections,
+                "mission": self.sp.get("mission"),
+            },
+        }
+
+
         # 2) Solve
-        sol_dict = await self._maybe_await(self.solver.solve, prop_dict)
+        sol_dict = self.solver.solve(prop_dict)
         solution = Solution(
             answer=sol_dict.get("answer", ""),
             reasoning_path=sol_dict.get("reasoning_path", []),
@@ -161,9 +157,18 @@ class Trainer:
         )
 
         # 3) Score/Verify via ScoringService (container)
+        work_ctx = {
+            **ctx,
+            "pipeline_run_id": pipeline_run_id,
+            "goal": goal,                     # <-- ensures _score_with_container sees goal_id
+            "proposal": prop_dict,
+            "solution": sol_dict,
+        }
         final_score, dim_scores = self._score_with_container(
-            {**ctx, "proposal": prop_dict, "solution": sol_dict}, solution.answer or ""
+            work_ctx,
+            solution.answer or ""
         )
+
 
         verification = Verification(
             is_valid=bool(final_score >= self.threshold and bool(solution.answer.strip())),
@@ -234,14 +239,3 @@ class Trainer:
                 "training_batch": solution.training_batch,  # may be None
             }
         )
-
-    # Optional sync wrapper (CLI / tests)
-    def train_step_sync(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop and loop.is_running():
-            # If already inside an event loop, the caller should await `train_step`
-            raise RuntimeError("Use `await trainer.train_step(...)` in async contexts")
-        return asyncio.run(self.train_step(context))

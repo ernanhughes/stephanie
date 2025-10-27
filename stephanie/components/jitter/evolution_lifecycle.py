@@ -6,16 +6,17 @@ Jitter lifecycle that includes reproduction and evolutionary management.
 """
 
 import asyncio
-import torch
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
+
+import torch
 
 from .core import AutopoieticCore
-from .triune import TriuneCognition
-from .homeostasis import EnhancedHomeostasis
-from .telemetry.jas_telemetry import TelemetryBridge
-from .reproduction import ReproductionSystem, GeneticMaterial
 from .evolution import EvolutionManager
+from .homeostasis import EnhancedHomeostasis
+from .reproduction import GeneticMaterial, ReproductionSystem
+from .telemetry.jas_telemetry import TelemetryBridge
+from .triune import TriuneCognition
 
 logger = logging.getLogger(__file__)
 

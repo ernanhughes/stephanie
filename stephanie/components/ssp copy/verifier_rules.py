@@ -1,7 +1,8 @@
 # stephanie/components/ssp/verifier_rules.py
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 
 def basic_proposal_checks(memcube, proposal: Dict[str, Any], k: int = 5, threshold: float = 0.85) -> Dict[str, Any]:
     hits = memcube.search_neighbors(proposal.get("query",""), k=k) if memcube else []

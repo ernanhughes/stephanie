@@ -1,11 +1,17 @@
 # stephanie/scoring/scorer/vpm_transformer_scorer.py
-import torch, numpy as np, logging
-from typing import Dict, List, Optional, Any
-from stephanie.scoring.scorer.base_scorer import BaseScorer
-from stephanie.scoring.scorable import Scorable
-from stephanie.data.score_result import ScoreResult
+import logging
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import torch
+
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.model.vpm_model import TinyVisionTransformer, VPMDimension, AttentionMap
+from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.model.vpm_model import (AttentionMap,
+                                               TinyVisionTransformer,
+                                               VPMDimension)
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorer.base_scorer import BaseScorer
 
 log = logging.getLogger(__name__)
 

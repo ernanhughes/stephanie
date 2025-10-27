@@ -258,13 +258,16 @@ from __future__ import annotations
 
 import asyncio
 import math
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Callable, DefaultDict
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import (Any, Callable, DefaultDict, Dict, Iterable, List, Optional,
+                    Tuple)
+
 import numpy as np
 
 from stephanie.components.tree.core import AgenticTreeSearch, SolutionNode
 from stephanie.components.tree.plan_generator import PlanGenerator
+
 
 @dataclass
 class TreeGRPOConfig:

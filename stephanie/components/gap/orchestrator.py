@@ -31,15 +31,12 @@ from stephanie.components.gap.processors.report import ReportBuilder
 from stephanie.components.gap.processors.scoring import ScoringProcessor
 from stephanie.components.gap.processors.significance import (
     SignificanceConfig, SignificanceProcessor)
+from stephanie.components.gap.services.epistemic_guard_service import (
+    EGVisualService, EpistemicGuardService)
+from stephanie.components.gap.services.risk_predictor_service import \
+    RiskPredictorService
 from stephanie.components.gap.services.scm_service import SCMService
 from stephanie.utils.progress_mixin import ProgressMixin
-from stephanie.components.gap.services.risk_predictor_service import (
-    RiskPredictorService,
-)
-from stephanie.components.gap.services.epistemic_guard_service import (
-    EpistemicGuardService, EGVisualService
-)
-
 
 _logger = logging.getLogger(__name__)
 

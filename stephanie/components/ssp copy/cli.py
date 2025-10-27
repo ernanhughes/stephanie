@@ -1,20 +1,20 @@
 # stephanie/components/ssp/cli.py
 from __future__ import annotations
 
+import asyncio
+from typing import Optional
+
 import click
 import yaml
-from typing import Optional
 
 from stephanie.components.ssp.component import SSPComponent
 from stephanie.components.ssp.config import ensure_cfg
+from stephanie.components.ssp.tree_bridge import SspTreeBridge
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.registry_loader import load_services_profile
 from stephanie.services.service_container import ServiceContainer
 from stephanie.utils.json_sanitize import dumps_safe
-import asyncio
-from stephanie.components.ssp.tree_bridge import SspTreeBridge
-
 
 
 def _load_cfg(path: Optional[str]):

@@ -4,14 +4,13 @@ import json
 import re
 import time
 from dataclasses import asdict
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 from omegaconf import DictConfig
 
 from stephanie.components.ssp.types import Proposal
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
+from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
 from stephanie.services.service_container import ServiceContainer
-
 
 # --------- Parsing helpers (YAML-ish, no external deps) ---------
 
@@ -164,6 +163,7 @@ class Proposer:
         # Optional: name/path for a template (if you later add a file)
         self.template_name = getattr(self.cfg, "template_name", None)
 
+
     # --- lifecycle hooks --------------------------------------------------
 
     def set_difficulty(self, value: float) -> None:
@@ -189,14 +189,9 @@ class Proposer:
             f"{FORMAT_INSTR}"
         )
 
-    async def _call_llm(self, prompt: str, merged_context: dict) -> str:
-        # PromptService contract mirrors your ChatAnalyzeAgent usage
-        # (string prompt + context dict) → string response
-        return await self.prompt_service.run_prompt(prompt, merged_context)
-
     # --- public API -------------------------------------------------------
 
-    async def generate(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def generate(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Asks the LLM for a proposal (plain text schema), parses it, clamps difficulty,
         returns a Proposal dict your trainer can consume.
@@ -209,7 +204,7 @@ class Proposer:
         parsed = None
         last_raw = ""
         while attempts < 2 and parsed is None:
-            last_raw = await self._call_llm(prompt, {**ctx, "difficulty": self.difficulty})
+            last_raw = self.prompt_service.call_llm(prompt)
             try:
                 data = parse_proposal_text(last_raw)
                 parsed = data

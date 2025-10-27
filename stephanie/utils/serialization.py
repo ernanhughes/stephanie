@@ -21,12 +21,12 @@ The implementation prioritizes:
 from __future__ import annotations
 
 import json
-import zlib
-import zstandard as zstd
 import logging
+import zlib
 from typing import Any, Optional
 
 import numpy as np
+import zstandard as zstd
 from omegaconf import OmegaConf
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace

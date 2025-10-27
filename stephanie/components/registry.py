@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import importlib
 from typing import Any, Dict
+
 
 def load_component_class(path: str):
     mod, _, cls = path.rpartition(".")

@@ -6,8 +6,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Protocol, runtime_checkable
 
-from .plugins.selfcheck import SelfCheckScorer  # new
 from .plugins.cove import CoVeScorer
+from .plugins.selfcheck import SelfCheckScorer  # new
 
 # ------------------------------ Contracts -----------------------------------
 

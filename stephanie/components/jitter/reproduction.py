@@ -7,12 +7,13 @@ Creates new Jitter instances when conditions are favorable.
 """
 from __future__ import annotations
 
-import numpy as np
 import logging
 import uuid
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, field
 from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 
 logger = logging.getLogger("stephanie.jas.reproduction")
 

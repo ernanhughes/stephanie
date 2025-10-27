@@ -3,22 +3,19 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import asdict
-from typing import Dict, Any, Optional, List, Iterable
+from typing import Any, Dict, Iterable, List, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
-from stephanie.services.service_container import ServiceContainer
-from stephanie.utils.json_sanitize import sanitize
-
+# Optional event emitter (don’t hard-crash if it’s absent)
+from stephanie.components.ssp.search.tree_events import TreeEventEmitter
+from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
 # Tree search pieces
 from stephanie.components.tree.core import AgenticTreeSearch, SolutionNode
 from stephanie.components.tree.tree_grpo import TreeGRPOAdapter, TreeGRPOConfig
-
-# Optional event emitter (don’t hard-crash if it’s absent)
-from stephanie.components.ssp.search.tree_events import TreeEventEmitter
-
 from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.services.service_container import ServiceContainer
+from stephanie.utils.json_sanitize import sanitize
 
 
 def _maybe(val, default):

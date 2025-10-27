@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Union
 
-from stephanie.utils.json_sanitize import sanitize, dumps_safe
+from stephanie.utils.json_sanitize import dumps_safe, sanitize
 
 # If you have a canonical PlanTrace dataclass you can keep this import;
 # the logger works fine even without it (structural typing below).

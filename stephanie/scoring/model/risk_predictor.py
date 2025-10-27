@@ -20,18 +20,19 @@ Design:
 """
 
 from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import math
 import os
 import re
-import json
-import math
-import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from stephanie.analysis.scorable_classifier import ScorableClassifier
 
-import logging
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 
 _logger = logging.getLogger(__name__)
 

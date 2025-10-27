@@ -9,14 +9,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-
 # Defer importing pyplot until used (helps in headless envs)
 import matplotlib
+import numpy as np
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 
 from stephanie.services.zeromodel_service import ZeroModelService
 

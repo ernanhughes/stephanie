@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple, Optional
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 
 from stephanie.tools.embedding_tool import MXBAIEmbedder
-
 
 # ---------------------------
 # Tokenizer (byte-level)

@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Tuple
+
 
 class EpisodeBuffer:
     def __init__(self, capacity=4096):

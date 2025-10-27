@@ -8,10 +8,11 @@ Implements selection, competition, and environmental adaptation.
 from __future__ import annotations
 
 import asyncio
-import numpy as np
 import logging
-from typing import Dict, Any, List
 from dataclasses import dataclass
+from typing import Any, Dict, List
+
+import numpy as np
 
 logger = logging.getLogger(__file__)
 

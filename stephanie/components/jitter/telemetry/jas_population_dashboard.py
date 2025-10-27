@@ -4,12 +4,14 @@ Population Dashboard for Evolution Monitoring
 Streamlit dashboard to monitor evolving Jitter population.
 """
 
-import streamlit as st
+import asyncio
+from typing import Any, Dict
+
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
-import asyncio
-from typing import Dict, Any
+
 
 class PopulationDashboard:
     def __init__(self):

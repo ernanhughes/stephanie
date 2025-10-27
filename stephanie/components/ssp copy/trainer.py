@@ -2,22 +2,21 @@
 from __future__ import annotations
 
 import time
-from typing import Optional, Dict, Any
-from stephanie.components.ssp.proposer import Proposer
-from stephanie.components.ssp.solver import Solver
-from stephanie.components.ssp.verifier import Verifier
-from stephanie.components.ssp.buffer import EpisodeBuffer
-from stephanie.components.ssp.rewards import epistemic_reward
-from stephanie.components.ssp.util import (
-    get_trace_logger,
-    VPMEvolverSafe,
-    PlanTrace_safe,
-)
-from stephanie.utils.json_sanitize import sanitize
-from omegaconf import DictConfig
-from stephanie.components.ssp.config import ensure_cfg
 from dataclasses import dataclass
-from typing import Callable, List, Dict, Any
+from typing import Any, Callable, Dict, List, Optional
+
+from omegaconf import DictConfig
+
+from stephanie.components.ssp.buffer import EpisodeBuffer
+from stephanie.components.ssp.config import ensure_cfg
+from stephanie.components.ssp.proposer import Proposer
+from stephanie.components.ssp.rewards import epistemic_reward
+from stephanie.components.ssp.solver import Solver
+from stephanie.components.ssp.util import (PlanTrace_safe, VPMEvolverSafe,
+                                           get_trace_logger)
+from stephanie.components.ssp.verifier import Verifier
+from stephanie.utils.json_sanitize import sanitize
+
 
 @dataclass
 class EpisodeSummary:

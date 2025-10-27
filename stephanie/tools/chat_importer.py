@@ -29,8 +29,8 @@ from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup
 
-from stephanie.utils.file_utils import file_hash
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.utils.file_utils import file_hash
 
 # Initialize module logger
 logger = logging.getLogger(__name__)

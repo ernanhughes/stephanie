@@ -1,6 +1,9 @@
 from __future__ import annotations
-from typing import Protocol, Dict, Any, Iterable, Optional
-from fastapi import APIRouter Yes
+
+from typing import Any, Dict, Iterable, Optional, Protocol
+
+from fastapi import APIRouter, Yes
+
 
 class Component(Protocol):
     """Minimal interface for SIS-loadable components."""

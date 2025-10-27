@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+
 from omegaconf import DictConfig, OmegaConf
 
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
+from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
 from stephanie.services.service_container import ServiceContainer
 from stephanie.utils.json_sanitize import sanitize
-
 
 # --------------------------- helpers ---------------------------
 

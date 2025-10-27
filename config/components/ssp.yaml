@@ -1,5 +1,9 @@
 ssp:
   self_play:
+    mission: "Improve assistant answers for reasoning, clarity, and faithfulness on product Q&A."
+    domain_constraints:
+      allowed_topics: ["product", "pricing", "shipping", "returns"]
+      banned_topics: ["medical", "legal"]
     enabled: true
     batch_size: 8
     max_episode_length: 10
@@ -9,9 +13,14 @@ ssp:
     M: 2
     N: 2
     L: 1
-    scorer_name: sicql
+    scorer_name: 
+      - sicql
+      - tiny
+      - hrm
     dimensions:
-      - alignment
+      - knowledge
+      - clarity
+      - reasoning
     use_zscore_intra: false
     use_zscore_inter: true
     value_alpha: 0.0
@@ -51,6 +60,8 @@ ssp:
       reasoning_budget: 2048
 
     verifier:
+      scorers: ["sicql", "tiny"]
+      dimensions: [novelty, clarity, relevance, implementability, alignment]
       hrms:
         - name: coherence
           weight: 0.3

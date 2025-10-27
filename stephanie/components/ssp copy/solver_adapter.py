@@ -1,12 +1,16 @@
 from __future__ import annotations
-from typing import Dict, Any, Optional
+
+from typing import Any, Dict, Optional
+
 from omegaconf import DictConfig
+
+from stephanie.components.ssp.tree_events import TreeEventEmitter
 from stephanie.components.tree.core import AgenticTreeSearch
 from stephanie.components.tree.output_verifier import OutputVerifier
-from stephanie.components.ssp.tree_events import TreeEventEmitter
-from stephanie.utils.json_sanitize import sanitize
 from stephanie.data.plan_trace import PlanTrace
+from stephanie.utils.json_sanitize import sanitize
 from stephanie.utils.trace_logger import trace_logger
+
 
 class TreeSolverAdapter:
     """Thin wrapper that makes AgenticTreeSearch a ‘solver’ for SSP."""

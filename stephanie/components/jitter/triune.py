@@ -25,9 +25,9 @@ Expected memory hooks (best-effort, optional):
 
 from __future__ import annotations
 
-import time
-import math
 import logging
+import math
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 

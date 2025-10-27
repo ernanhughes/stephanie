@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, Optional
-import logging
-
 
 _SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
 

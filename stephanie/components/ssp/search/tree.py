@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Any, Dict, Optional
 
 from stephanie.components.tree.core import AgenticTreeSearch

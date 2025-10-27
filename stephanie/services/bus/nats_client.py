@@ -25,10 +25,10 @@ Env overrides (optional):
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
-import base64
 from typing import Any, AsyncIterator, Callable, Dict, Optional
 
 from .hybrid_bus import HybridKnowledgeBus

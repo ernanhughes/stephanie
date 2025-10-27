@@ -1,9 +1,14 @@
 from __future__ import annotations
-import asyncio, json, time
+
+import asyncio
+import json
+import time
 from typing import Any, Dict, Iterable, List, Tuple
 
 from stephanie.components.gap.risk.orchestrator import GapRiskOrchestrator
+
 from .triggers import apply_triggers
+
 
 class ExplorationRunner:
     def __init__(self, container: Any, profile: str = "chat.standard"):

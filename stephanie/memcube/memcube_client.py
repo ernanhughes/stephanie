@@ -8,8 +8,8 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy import text
 
-from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.memcube.memcube_factory import MemCubeFactory
+from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.scoring.scorable import Scorable, ScorableType
 
 # --- simple domain heuristic (same as earlier stub) ---

@@ -1,9 +1,13 @@
 # stephanie/scoring/vpm_scorable.py
 
 from __future__ import annotations
+
+import time
+import uuid
 from typing import Any, Dict, List, Optional
-import time, uuid
+
 import numpy as np
+
 from stephanie.scoring.scorable import Scorable
 
 

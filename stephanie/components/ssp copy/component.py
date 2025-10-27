@@ -1,10 +1,15 @@
 # stephanie/components/ssp/component.py
 from __future__ import annotations
-import threading, time
-from typing import Optional, Dict, Any
+
+import threading
+import time
+from typing import Any, Dict, Optional
+
 from omegaconf import OmegaConf
 
-from stephanie.components.ssp.core import SearchSelfPlayAgent      # or your prior module
+from stephanie.components.ssp.core import \
+    SearchSelfPlayAgent  # or your prior module
+
 
 class SSPComponent:
     """

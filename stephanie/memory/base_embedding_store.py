@@ -21,8 +21,9 @@ _NER_SINGLETON = None
 _NER_OPTS = None
 
 def _build_ner_retriever(cfg, memory, logger):
-    from stephanie.models.ner_retriever import NERRetrieverEmbedder
     import torch
+
+    from stephanie.models.ner_retriever import NERRetrieverEmbedder
 
     device = cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu")
     model_name = cfg.get("ner_model", "Minibase/NER-Small")

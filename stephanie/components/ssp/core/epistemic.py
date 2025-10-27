@@ -1,6 +1,8 @@
 from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
 import numpy as np
-from typing import Dict, Any, Optional
 
 
 class EpistemicRewardCalculator:

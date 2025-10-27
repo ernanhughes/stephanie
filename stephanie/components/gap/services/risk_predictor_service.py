@@ -7,12 +7,12 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, Union
 
-from stephanie.services.service_protocol import Service
-from stephanie.scoring.model.risk_predictor import DomainCalibratedRiskPredictor
-
+from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.memcube.memcube_client import MemCubeClient
 from stephanie.memory.memcube_store import MemcubeStore
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.scoring.model.risk_predictor import \
+    DomainCalibratedRiskPredictor
+from stephanie.services.service_protocol import Service
 
 
 @dataclass

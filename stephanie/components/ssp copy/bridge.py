@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict
+
 from stephanie.components.ssp.types import SensoryBundle
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
+from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
+
 
 class Bridge:
     def __init__(self, ssp, cfg):

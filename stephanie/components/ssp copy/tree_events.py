@@ -1,8 +1,11 @@
 from __future__ import annotations
-from typing import Dict, Any
+
+from typing import Any, Dict
+
 from stephanie.components.ssp.util import PlanTrace_safe
-from stephanie.utils.trace_logger import trace_logger
 from stephanie.utils.json_sanitize import sanitize
+from stephanie.utils.trace_logger import trace_logger
+
 
 class TreeEventEmitter:
     async def __call__(self, event: str, payload: Dict[str, Any]) -> None:

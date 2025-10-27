@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 from typing import Dict, Tuple
+
 import numpy as np
+
 from stephanie.components.ssp.types import RewardBreakdown
+
 
 def epistemic_reward(hrm_scorer, mars_scorer, vpm_before, vpm_after, verifier_score: float, cfg: Dict) -> Tuple[float, RewardBreakdown]:
     def _score(f, v):

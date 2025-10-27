@@ -13,7 +13,7 @@ from stephanie.components.gap.io.manifest import GapRunManifest
 from stephanie.components.gap.models import GapConfig, TripleSample
 from stephanie.components.gap.services.scm_service import (SCM_FEATURE_KEYS,
                                                            SCMService)
-from stephanie.components.gap.shared_scm import (SCM_COLUMNS)
+from stephanie.components.gap.shared_scm import SCM_COLUMNS
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
@@ -250,7 +250,8 @@ class ScoringProcessor(ProgressMixin):
                 # --- EpistemicGuard per-row evidence (optional; only if enabled)
                 if ep_guard:
                     try:
-                        from stephanie.components.gap.processors.epistemic_guard import GuardInput
+                        from stephanie.components.gap.processors.epistemic_guard import \
+                            GuardInput
                         eg_in = GuardInput(
                             trace_id=triple.node_id,
                             question=triple.goal_text,
@@ -263,7 +264,8 @@ class ScoringProcessor(ProgressMixin):
                         eg_out_one = await ep_guard.assess(eg_in)
 
                         # copy EG images into this run’s visuals dir so they travel with the run
-                        import shutil, os
+                        import os
+                        import shutil
                         def _copy(p):
                             if not p: return None
                             if not os.path.exists(p): return None

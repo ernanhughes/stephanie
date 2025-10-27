@@ -1,14 +1,19 @@
 # stephanie/components/ssp/engine.py
 
 from __future__ import annotations
+
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from omegaconf import DictConfig
-from stephanie.utils.json_sanitize import sanitize
+
 from stephanie.data.plan_trace import PlanTrace
+from stephanie.utils.json_sanitize import sanitize
 from stephanie.utils.trace_logger import trace_logger
-from .solver_adapter import TreeSolverAdapter
+
 from .grpo_bridge import make_tree_grpo_adapter, rollout_training_batch
+from .solver_adapter import TreeSolverAdapter
+
 
 class SSPEngine:
     """SSP component orchestrator: Propose → Solve(Tree) → Verify → Train(GRPO) → Jitter feed."""

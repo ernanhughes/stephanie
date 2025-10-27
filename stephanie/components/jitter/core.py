@@ -11,12 +11,12 @@ Telemetry is produced by the lifecycle agent; this core returns vitals per cycle
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Any, Dict
 
 import torch
-import logging
 import torch.nn as nn
 
 log = logging.getLogger("stephanie.jas.core")

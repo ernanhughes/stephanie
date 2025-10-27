@@ -19,13 +19,14 @@ Key improvements over heuristic VPMScorer:
 - Better generalization across VPM types and resolutions
 """
 
-import torch
-import torch.nn as nn
-import numpy as np
-from typing import Dict, List, Tuple, Optional
+import logging
 from dataclasses import dataclass
 from enum import Enum
-import logging
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
+import torch.nn as nn
 
 log = logging.getLogger(__file__)
 

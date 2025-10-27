@@ -1,9 +1,10 @@
 # stephanie/components/ssp/util.py
 from __future__ import annotations
 
-import sys
 import json
+import sys
 from dataclasses import dataclass
+
 
 def _dummy_llm_response(prompt: str) -> str:
     return json.dumps({
@@ -19,7 +20,8 @@ class DummyModel:
 
 def get_model_safe(name: str):
     try:
-        from stephanie.core.model_router import get_model as _gm  # type: ignore
+        from stephanie.core.model_router import \
+            get_model as _gm  # type: ignore
         return _gm(name)
     except Exception:
         return DummyModel()

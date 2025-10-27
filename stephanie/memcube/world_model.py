@@ -1,7 +1,6 @@
 import torch
 
 
-
 class WorldModel:
     def __init__(self, beliefs: list):
         self.beliefs = beliefs

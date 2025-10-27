@@ -1,10 +1,13 @@
 from __future__ import annotations
-from typing import Dict, Any
+
+from typing import Any, Dict
+
 from omegaconf import DictConfig, OmegaConf
 
 from stephanie.components.ssp.config import ensure_cfg
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
+from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
 from stephanie.utils.json_sanitize import sanitize
+
 
 def _resolve_threshold(sp_cfg: DictConfig) -> float:
     t = OmegaConf.select(sp_cfg, "verification_threshold")

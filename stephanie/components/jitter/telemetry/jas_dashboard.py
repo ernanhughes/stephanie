@@ -10,16 +10,16 @@ Notes:
 """
 
 from __future__ import annotations
+
 import asyncio
 import json
 import time
-from typing import Dict, Any
+from typing import Any, Dict
 
 import pandas as pd
 import streamlit as st
 
 from stephanie.services.bus.nats_client import get_js  # async JetStream helper
-
 
 TELEM_SUBJECT = "arena.jitter.telemetry"
 

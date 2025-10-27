@@ -1,7 +1,10 @@
 # stephanie/scoring/plugins/jas_vpm_tap.py
 from __future__ import annotations
-from .registry import register
+
 import asyncio
+
+from .registry import register
+
 
 @register("vpm_tap")
 class VPMTapPlugin:

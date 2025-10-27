@@ -1,19 +1,19 @@
 # stephanie/components/ssp/services/vpm_control_service.py
 from __future__ import annotations
 
-from dataclasses import asdict
-from typing import Any, Dict, Optional, Callable
-import time
 import os
+import time
+from dataclasses import asdict
+from typing import Any, Callable, Dict, Optional
 
-from stephanie.services.service_protocol import Service
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-
+from stephanie.services.service_protocol import Service
 # Reuse your existing controller (as shared earlier)
-from stephanie.zeromodel.vpm_controller import (
-    VPMController, VPMRow, Thresholds, Policy, Decision, Signal
-)
+from stephanie.zeromodel.vpm_controller import (Decision, Policy, Signal,
+                                                Thresholds, VPMController,
+                                                VPMRow)
+
 
 class VPMControlService(Service):
     """

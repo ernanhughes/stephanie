@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -18,6 +19,7 @@ class Proposal:
     difficulty: float
     connections: List[str] = field(default_factory=list)
     raw_response: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -28,7 +30,7 @@ class Solution:
     search_depth: int = 0
     report: Dict[str, Any] = field(default_factory=dict)
     training_batch: Optional[Dict[str, Any]] = None
-
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass(frozen=True)
 class Verification:
@@ -37,6 +39,7 @@ class Verification:
     dimension_scores: Dict[str, float] = field(default_factory=dict)
     evidence_count: int = 0
     reasoning_steps: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from .orchestrator import GapRiskOrchestrator
-
 
 # ------------------------- Pydantic Models ----------------------------------
 

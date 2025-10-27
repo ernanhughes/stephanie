@@ -4,15 +4,14 @@ import json
 import re
 import time
 from dataclasses import asdict
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 from omegaconf import DictConfig
 
-from stephanie.components.ssp.types import Proposal
 from stephanie.components.ssp.config import ensure_cfg
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
+from stephanie.components.ssp.types import Proposal
+from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
 from stephanie.services.service_container import ServiceContainer
-
 
 # --------- Parsing helpers (YAML-ish, no external deps) ---------
 

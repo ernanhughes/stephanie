@@ -3,10 +3,10 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
+from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
 from stephanie.utils.json_sanitize import sanitize
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
 
 
 def _node_rec(n: Any) -> Dict[str, Any]:

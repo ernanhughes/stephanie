@@ -13,12 +13,13 @@ Key Features:
 - Integration with cognitive state for anticipatory regulation
 """
 
+import logging
+import time
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
+
 import numpy as np
 import torch
-import time
-import logging
-from typing import Dict, Any, Tuple, Optional
-from dataclasses import dataclass
 
 log = logging.getLogger(__file__)
 

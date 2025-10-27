@@ -1,11 +1,13 @@
 # stephanie/scoring/plugins/vpm_energy_plugin.py
 from __future__ import annotations
+
 import math
 from typing import Any, Dict, Optional
 
 import numpy as np
 
 from .registry import register
+
 
 def _to_vec(x) -> np.ndarray:
     if x is None:

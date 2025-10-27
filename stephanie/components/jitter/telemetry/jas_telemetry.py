@@ -12,10 +12,11 @@ Key Features:
 """
 
 import json
-import time
 import logging
-from dataclasses import dataclass, asdict
-from typing import Dict, Any, List, Optional
+import time
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Optional
+
 from stephanie.services.bus.nats_client import get_js
 from stephanie.utils.serialization import compress_data
 

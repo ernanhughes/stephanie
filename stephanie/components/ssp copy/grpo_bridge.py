@@ -1,14 +1,15 @@
 # stephanie/components/ssp/grpo_bridge.py 
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any, Dict
+
 from omegaconf import DictConfig
-from stephanie.components.tree.tree_grpo import (
-    TreeGRPOConfig, TreeGRPOAdapter
-)
-from stephanie.components.tree.core import AgenticTreeSearch
+
 from stephanie.components.ssp.tree_events import TreeEventEmitter
+from stephanie.components.tree.core import AgenticTreeSearch
+from stephanie.components.tree.tree_grpo import TreeGRPOAdapter, TreeGRPOConfig
 from stephanie.utils.json_sanitize import sanitize
+
 
 def make_tree_grpo_adapter(cfg: DictConfig, base_agent) -> TreeGRPOAdapter:
     g = cfg.ssp.grpo

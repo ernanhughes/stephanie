@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from omegaconf import DictConfig
 
 from stephanie.components.ssp.trainer import Trainer
-from stephanie.components.ssp.util import (
-    VPMEvolverSafe,
-    get_trace_logger,
-    PlanTrace_safe,
-)
+from stephanie.components.ssp.util import (PlanTrace_safe, VPMEvolverSafe,
+                                           get_trace_logger)
 from stephanie.utils.json_sanitize import sanitize
 
 

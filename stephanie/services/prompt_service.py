@@ -6,10 +6,14 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
+import litellm
 import yaml
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.constants import (API_BASE, API_KEY, NAME, PROMPT_PATH,
+                                 SAVE_PROMPT, STRATEGY)
 from stephanie.services.service_protocol import Service
+from stephanie.utils.llm_utils import remove_think_blocks
 
 _logger = logging.getLogger(__name__)
 
@@ -120,3 +124,21 @@ class PromptService(Service):
     @property
     def name(self) -> str:
         return "prompt-service"  # Version bump to indicate fixed version
+
+
+    def call_llm(self, prompt: str, model = "ollama/qwen3") -> str:
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            response = litellm.completion(
+                model=model,
+                messages=messages,
+                api_base="http://localhost:11434",
+                api_key="",
+            )
+            output = response["choices"][0]["message"]["content"]
+            response_cleaned = remove_think_blocks(output)
+
+            return response_cleaned
+        except Exception as e:
+            print(f"❌ Exception: {type(e).__name__}: {e}")
+            return ""

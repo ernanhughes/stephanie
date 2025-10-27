@@ -11,8 +11,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from stephanie.constants import GOAL, GOAL_TEXT
-from stephanie.scoring.scorable import (Scorable, ScorableFactory, ScorableType)
-
+from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 
 # ---------------------------
 # Helpers

@@ -30,12 +30,8 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from nats import errors as nats_errors
 from nats.aio.client import Client as NATS
 from nats.errors import TimeoutError as NatsTimeoutError
-from nats.js.api import (
-    ConsumerConfig,
-    DeliverPolicy,
-    RetentionPolicy,
-    StreamConfig,
-)
+from nats.js.api import (ConsumerConfig, DeliverPolicy, RetentionPolicy,
+                         StreamConfig)
 
 from .bus_protocol import BusProtocol
 from .errors import BusRequestError
