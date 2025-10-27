@@ -137,6 +137,6 @@ def main():
     print(f"Wrote {out_path} ({len(formatted)} bytes).")
 
 
-# py scripts\dump_schema.py --host localhost --user co --dbname co --output schema_raw.sql --ask-password
+# py scripts\schema.py --host localhost --user co --dbname co --output schema_raw.sql --ask-password
 if __name__ == "__main__":
     main()
