@@ -30,8 +30,12 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from nats import errors as nats_errors
 from nats.aio.client import Client as NATS
 from nats.errors import TimeoutError as NatsTimeoutError
-from nats.js.api import (ConsumerConfig, DeliverPolicy, RetentionPolicy,
-                         StreamConfig)
+from nats.js.api import (
+    ConsumerConfig,
+    DeliverPolicy,
+    RetentionPolicy,
+    StreamConfig,
+)
 
 from .bus_protocol import BusProtocol
 from .errors import BusRequestError
@@ -57,14 +61,18 @@ class NatsKnowledgeBus(BusProtocol):
         stream: str = "stephanie",
         logger: Optional[logging.Logger] = None,
         *,
-        timeout: float = 1.0,           # publish/request deadline (s)
+        timeout: float = 1.0,  # publish/request deadline (s)
         max_retries: int = 3,
         retry_base_delay: float = 0.2,  # backoff base
-        max_in_flight: int = 256,       # bound concurrent publishes
+        max_in_flight: int = 256,  # bound concurrent publishes
         health_check_interval: float = 30.0,
-        debug: bool = False,            # stickier settings for debug
-        fire_and_forget_subjects: Optional[Set[str]] = None,  # subjects to bypass JS
-        dlq_writer: Optional[Callable[[dict], None]] = None,  # optional JSONL writer
+        debug: bool = False,  # stickier settings for debug
+        fire_and_forget_subjects: Optional[
+            Set[str]
+        ] = None,  # subjects to bypass JS
+        dlq_writer: Optional[
+            Callable[[dict], None]
+        ] = None,  # optional JSONL writer
     ):
         self.servers = servers
         self.stream = stream
@@ -119,11 +127,21 @@ class NatsKnowledgeBus(BusProtocol):
         On failure, closes the temp connection and returns False.
         """
         # Fast-path when already connected and not forcing
-        if self._connected and self._nc and not self._nc.is_closed and not force:
+        if (
+            self._connected
+            and self._nc
+            and not self._nc.is_closed
+            and not force
+        ):
             return True
 
         async with self._conn_lock:
-            if self._connected and self._nc and not self._nc.is_closed and not force:
+            if (
+                self._connected
+                and self._nc
+                and not self._nc.is_closed
+                and not force
+            ):
                 return True
 
             # If forcing, drain old connection
@@ -155,9 +173,9 @@ class NatsKnowledgeBus(BusProtocol):
                     name=self.stream,
                     allow_reconnect=True,
                     max_reconnect_attempts=-1,
-                    reconnect_time_wait=0.5,     # quicker retries
-                    ping_interval=5,              # more frequent pings
-                    max_outstanding_pings=2,      # fail fast if peer unresponsive
+                    reconnect_time_wait=0.5,  # quicker retries
+                    ping_interval=5,  # more frequent pings
+                    max_outstanding_pings=2,  # fail fast if peer unresponsive
                     error_cb=_err_cb,
                     disconnected_cb=_disc_cb,
                     reconnected_cb=_reconn_cb,
@@ -232,11 +250,43 @@ class NatsKnowledgeBus(BusProtocol):
             _logger.error("NATSEnsureConnectFailed")
 
     # ---------- Publish / Subscribe / Request ----------
+    def _maybe_prefix(self, subject: str) -> str:
+        """Ensure subjects for JS are under '<stream>.' without double-prefixing."""
+        prefix = f"{self.stream}."
+        return subject if subject.startswith(prefix) else f"{self.stream}.{subject}"
 
-    async def publish(self, subject: str, payload: dict) -> None:
+    async def _try_nc_publish(self, subject: str, data: bytes, headers: Optional[Dict[str, str]]) -> None:
+        # Core NATS publish with optional headers; fallback for older clients
+        if headers:
+            try:
+                await self._nc.publish(subject, data, headers=headers)  # type: ignore[call-arg]
+                return
+            except TypeError:
+                # Older nats-py: no headers support
+                if self.logger:
+                    self.logger.debug("NATSNoHeaderSupportCore", {"subject": subject})
+        await self._nc.publish(subject, data)
+
+    async def _try_js_publish(self, subject: str, data: bytes, headers: Optional[Dict[str, str]]) -> None:
+        # JetStream publish with optional headers; fallback for older clients
+        if headers:
+            try:
+                await self._js.publish(subject, data, headers=headers)  # type: ignore[call-arg]
+                return
+            except TypeError:
+                if self.logger:
+                    self.logger.debug("NATSNoHeaderSupportJS", {"subject": subject})
+        await self._js.publish(subject, data)
+
+    async def publish(
+        self,
+        subject: str,
+        payload: dict,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> None:
         """
-        Publish to JetStream as <stream>.<subject> so JS consumers receive it.
-        FAF subjects (telemetry) still use core publish without the stream prefix.
+        Publish a JSON envelope. If `subject` is in fire-and-forget, use core NATS.
+        Otherwise use JetStream on '<stream>.<subject>'. Pass headers when supported.
         """
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         await self._ensure_connected()
@@ -245,78 +295,77 @@ class NatsKnowledgeBus(BusProtocol):
             _logger.error("NATSPublishSkippedNotConnected subject: %s", subject)
             return
 
-        try:
-            if subject in self._faf_subjects:
-                # Fire-and-forget: plain NATS, no prefix
-                await self._nc.publish(subject, data)
-            else:
-                # JetStream: publish under the stream namespace
-                full_subject = f"{self.stream}.{subject}"
-                await self._js.publish(full_subject, data)
-            self._last_publish_time = time.time()
-        except (
-            nats_errors.TimeoutError,
-            nats_errors.FlushTimeoutError,
-            nats_errors.ConnectionClosedError,
-            nats_errors.NoServersError,
-            ConnectionResetError,
-        ) as e:
-            _logger.error(
-                "NATSPublishErrorRetrying subject: %s, error: %r", subject, e
-            )
-            ok = await self.connect(force=True)
-            if not ok:
-                self._publish_failures += 1
-                self._write_dlq("publish_connect_failed", subject, payload)
-                return
-            if subject in self._faf_subjects:
-                await self._nc.publish(subject, data)
-            else:
-                await self._js.publish(f"{self.stream}.{subject}", data)
-            self._last_publish_time = time.time()
+        async with self._sem:
+            try:
+                if subject in self._faf_subjects:
+                    await self._try_nc_publish(subject, data, headers)
+                else:
+                    full_subject = self._maybe_prefix(subject)
+                    await self._try_js_publish(full_subject, data, headers)
+                self._last_publish_time = time.time()
+
+            except (
+                nats_errors.TimeoutError,
+                nats_errors.FlushTimeoutError,
+                nats_errors.ConnectionClosedError,
+                nats_errors.NoServersError,
+                ConnectionResetError,
+            ) as e:
+                _logger.error("NATSPublishErrorRetrying subject: %s, error: %r", subject, e)
+                ok = await self.connect(force=True)
+                if not ok:
+                    self._publish_failures += 1
+                    self._write_dlq("publish_connect_failed", subject, payload)
+                    return
+                # Retry once after reconnect
+                if subject in self._faf_subjects:
+                    await self._try_nc_publish(subject, data, headers)
+                else:
+                    await self._try_js_publish(self._maybe_prefix(subject), data, headers)
+                self._last_publish_time = time.time()
 
     async def publish_raw(
         self,
         subject: str,
         body: bytes,
-        headers: Optional[Dict[str, str]] = None,   # accepted but unused
+        headers: Optional[Dict[str, str]] = None,
     ) -> None:
         """
-        Raw bytes publisher (JetStream under <stream>.<subject> or fire-and-forget).
+        Publish raw bytes. Honors fire-and-forget and headers (when supported).
         """
         await self._ensure_connected()
         if not (self._nc and not self._nc.is_closed):
             self._publish_failures += 1
             _logger.error("NATSPublishRawSkippedNotConnected subject: %s", subject)
             return
-        try:
-            if subject in self._faf_subjects:
-                await self._nc.publish(subject, body)
-            else:
-                await self._js.publish(f"{self.stream}.{subject}", body)
-            self._last_publish_time = time.time()
-        except (
-            nats_errors.TimeoutError,
-            nats_errors.FlushTimeoutError,
-            nats_errors.ConnectionClosedError,
-            nats_errors.NoServersError,
-            ConnectionResetError,
-        ) as e:
-            _logger.error(
-                "NATSPublishRawErrorRetrying subject: %s, error: %r", subject, e
-            )
-            ok = await self.connect(force=True)
-            if not ok:
-                self._publish_failures += 1
-                self._write_dlq(
-                    "publish_raw_connect_failed", subject, {"len": len(body)}
-                )
-                return
-            if subject in self._faf_subjects:
-                await self._nc.publish(subject, body)
-            else:
-                await self._js.publish(f"{self.stream}.{subject}", body)
-            self._last_publish_time = time.time()
+
+        async with self._sem:
+            try:
+                if subject in self._faf_subjects:
+                    await self._try_nc_publish(subject, body, headers)
+                else:
+                    await self._try_js_publish(self._maybe_prefix(subject), body, headers)
+                self._last_publish_time = time.time()
+
+            except (
+                nats_errors.TimeoutError,
+                nats_errors.FlushTimeoutError,
+                nats_errors.ConnectionClosedError,
+                nats_errors.NoServersError,
+                ConnectionResetError,
+            ) as e:
+                _logger.error("NATSPublishRawErrorRetrying subject: %s, error: %r", subject, e)
+                ok = await self.connect(force=True)
+                if not ok:
+                    self._publish_failures += 1
+                    self._write_dlq("publish_raw_connect_failed", subject, {"len": len(body)})
+                    return
+                # Retry once after reconnect
+                if subject in self._faf_subjects:
+                    await self._try_nc_publish(subject, body, headers)
+                else:
+                    await self._try_js_publish(self._maybe_prefix(subject), body, headers)
+                self._last_publish_time = time.time()
 
     async def request(
         self, subject: str, payload: Dict[str, Any], timeout: float = 5.0
@@ -327,7 +376,9 @@ class NatsKnowledgeBus(BusProtocol):
         """
         await self._ensure_connected()
         if not (self._nc and not self._nc.is_closed):
-            _logger.error("NATSRequestSkippedNotConnected subject: %s", subject)
+            _logger.error(
+                "NATSRequestSkippedNotConnected subject: %s", subject
+            )
             return None
 
         request_timeout = min(timeout, self.timeout)
@@ -368,7 +419,9 @@ class NatsKnowledgeBus(BusProtocol):
         """
         await self._ensure_connected()
         if not (self._js and self._nc and not self._nc.is_closed):
-            _logger.error("NATSSubscribeSkippedNotConnected subject: %s", subject)
+            _logger.error(
+                "NATSSubscribeSkippedNotConnected subject: %s", subject
+            )
             return
 
         durable_name = _sanitize_durable(self.stream, subject)
@@ -480,7 +533,9 @@ class NatsKnowledgeBus(BusProtocol):
             "last_publish": self._last_publish_time,
             "publish_failures": self._publish_failures,
             "connection_uptime": (
-                time.time() - self._last_publish_time if self._last_publish_time else 0
+                time.time() - self._last_publish_time
+                if self._last_publish_time
+                else 0
             ),
             "debug_mode": self.debug,
             "timeout": self.timeout,
@@ -557,7 +612,11 @@ class NatsKnowledgeBus(BusProtocol):
             try:
                 while not self._stopping:
                     try:
-                        if not self._connected or not self._nc or self._nc.is_closed:
+                        if (
+                            not self._connected
+                            or not self._nc
+                            or self._nc.is_closed
+                        ):
                             await asyncio.sleep(3.0)
                             continue
                         # Use NATS' own timeout; no external wait_for
@@ -580,7 +639,9 @@ class NatsKnowledgeBus(BusProtocol):
 
         keepalive_task = asyncio.create_task(_loop())
         self._tasks.add(keepalive_task)
-        keepalive_task.add_done_callback(lambda f: self._tasks.discard(keepalive_task))
+        keepalive_task.add_done_callback(
+            lambda f: self._tasks.discard(keepalive_task)
+        )
         self._keepalive_task = keepalive_task
         _logger.debug("NATSKeepaliveStarted")
 
@@ -607,7 +668,8 @@ class NatsKnowledgeBus(BusProtocol):
                     # Purge entire stream (subject filters not universally supported)
                     await self._js.purge_stream(self.stream)
                     _logger.debug(
-                        "[NATSBus] Stream '%s' purged (no subject filter).", self.stream
+                        "[NATSBus] Stream '%s' purged (no subject filter).",
+                        self.stream,
                     )
                 except TypeError:
                     # In some versions, purge_stream is not on context; fall back to flush
@@ -642,7 +704,11 @@ class NatsKnowledgeBus(BusProtocol):
                     try:
                         if not self._stopping:
                             await asyncio.sleep(self.health_check_interval)
-                        if not self._connected or not self._nc or self._nc.is_closed:
+                        if (
+                            not self._connected
+                            or not self._nc
+                            or self._nc.is_closed
+                        ):
                             continue
                         await self._nc.flush(timeout=1.0)
                     except (NatsTimeoutError, asyncio.TimeoutError):
@@ -656,7 +722,9 @@ class NatsKnowledgeBus(BusProtocol):
 
         health_task = asyncio.create_task(_health())
         self._tasks.add(health_task)
-        health_task.add_done_callback(lambda f: self._tasks.discard(health_task))
+        health_task.add_done_callback(
+            lambda f: self._tasks.discard(health_task)
+        )
         self._health_task = health_task
         _logger.debug("NATSHealthMonitorStarted")
 
@@ -683,7 +751,7 @@ class NatsKnowledgeBus(BusProtocol):
 
     def _backoff(self, attempt: int) -> float:
         # jittered exponential backoff
-        base = self.retry_base_delay * (2 ** attempt)
+        base = self.retry_base_delay * (2**attempt)
         return base * (1 + 0.2 * random.random())
 
     def _write_dlq(self, error: str, subject: str, envelope: dict) -> None:
@@ -723,7 +791,8 @@ class NatsKnowledgeBus(BusProtocol):
         """Detect if a debugger is attached (PyCharm, VSCode, etc.)"""
         try:
             return (
-                hasattr(sys, "gettrace") and sys.gettrace() is not None
+                hasattr(sys, "gettrace")
+                and sys.gettrace() is not None
                 or "pydevd" in sys.modules
                 or "pdb" in sys.modules
                 or os.getenv("DEBUG", "0") == "1"

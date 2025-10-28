@@ -1,4 +1,4 @@
-# stephanie/core/belief_node.py
+# stephanie/models/memcube/belief_node.py
 from __future__ import annotations
 
 from stephanie.memcube.memcube import MemCube
