@@ -17,7 +17,7 @@ from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.logging import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.supervisor import Supervisor
-from stephanie.utils import generate_run_id, get_log_file_path
+from stephanie.utils.run_utils import generate_run_id, get_log_file_path
 from stephanie.utils.file_utils import save_json, save_to_timestamped_file
 
 logger = logging.getLogger(__name__)

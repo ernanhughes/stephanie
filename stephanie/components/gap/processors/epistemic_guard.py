@@ -289,7 +289,7 @@ class EpistemicGuard:
     Returns risk, thresholds, route, VPM paths, image paths, and evidence id.
     """
     def __init__(self,
-                 out_dir: str = "./static/eg",
+                 out_dir: str = "./data/static/eg",
                  thresholds: Tuple[float,float] = (0.2, 0.6),
                  seed: int = 42):
         self.out_dir = out_dir

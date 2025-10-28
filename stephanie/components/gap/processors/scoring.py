@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from stephanie.components.gap.io.manifest import GapRunManifest
+from stephanie.core.manifest import GapRunManifest
 from stephanie.components.gap.models import GapConfig, TripleSample
 from stephanie.components.gap.services.scm_service import (SCM_FEATURE_KEYS,
                                                            SCMService)
@@ -273,10 +273,10 @@ class ScoringProcessor(ProgressMixin):
                             shutil.copy2(p, dst)
                             return str(dst)
 
-                        field_p  = _copy(eg_out_one.field_path)
-                        strip_p  = _copy(eg_out_one.strip_path)
-                        legend_p = _copy(eg_out_one.legend_path)
-                        badge_p  = _copy(eg_out_one.badge_path)
+                        # field_p  = _copy(eg_out_one.field_path)
+                        # strip_p  = _copy(eg_out_one.strip_path)
+                        # legend_p = _copy(eg_out_one.legend_path)
+                        # badge_p  = _copy(eg_out_one.badge_path)
 
                         eg_records.append({
                             "node_id": triple.node_id,
@@ -562,7 +562,7 @@ class ScoringProcessor(ProgressMixin):
                     "output_text": t.output_text,
                 }
             )
-        storage.save_json(run_id, "raw", "row_provenance.json", provenance)
+        storage.save_json(run_id, subdir="raw", name="row_provenance.json", obj=provenance)
 
         # Labels
         scoring_service = self.container.get("scoring")

@@ -4,11 +4,11 @@ from __future__ import annotations
 import time
 from typing import Any, Dict
 
-from stephanie.constants_metrics import METRICS_REQ
 from stephanie.services.service_protocol import Service
 
+METRICS_REQ = "metrics:enqueue"
 
-class MetricsEnqueueTool(Service):
+class MetricsEnqueueService(Service):
     """
     Tiny 'tool' (not an agent). Publishes a metrics job and returns.
     """

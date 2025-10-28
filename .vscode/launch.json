@@ -50,6 +50,18 @@
             ]
         },
         {
+            "name": "risk",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "risk",
+            ]
+        },
+        {
             "name": "jas",
             "type": "debugpy",
             "request": "launch",
