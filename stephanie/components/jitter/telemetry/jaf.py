@@ -1,4 +1,3 @@
-# stephanie/components/jitter/jaf.py
 """
 jaf.py
 ======
@@ -9,21 +8,22 @@ This implementation:
 - Handles serialization/deserialization
 - Includes versioning for forward compatibility
 - Provides methods for ingestion by offspring
+- Supports structured data for analysis and reproduction
 """
-from __future__ import annotations
 
 import json
-import random
 import time
-from dataclasses import asdict, dataclass, field, is_dataclass
-from enum import Enum
-from typing import Any, Dict, List, Optional
-
+import random
 import torch
 import torch.nn as nn
 
+import numpy as np
+from dataclasses import dataclass, field, asdict, is_dataclass
+from typing import Dict, Any, List, Optional, Union
+from enum import Enum
 
 class JAFVersion(str, Enum):
+    """Supported JAF versions for backward compatibility"""
     V0 = "jaf/0"
     V1 = "jaf/1"
 
@@ -110,6 +110,11 @@ class JitterArtifactV0:
                 return [serialize(item) for item in obj]
             elif is_dataclass(obj) and not isinstance(obj, type):
                 return {k: serialize(v) for k, v in asdict(obj).items()}
+            elif isinstance(obj, (np.ndarray, torch.Tensor)):
+                # Convert numpy/tensor to list
+                if isinstance(obj, torch.Tensor):
+                    obj = obj.detach().cpu().numpy()
+                return obj.tolist()
             else:
                 return str(obj)
                 

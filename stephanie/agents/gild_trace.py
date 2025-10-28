@@ -6,6 +6,7 @@ import traceback
 from datetime import datetime
 
 import torch
+from torch import nn
 import torch.nn.functional as F
 
 from stephanie.agents.base_agent import BaseAgent
