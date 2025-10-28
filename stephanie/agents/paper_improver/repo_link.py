@@ -1,7 +1,5 @@
 # stephanie/agents/paper_improver/repo_link.py
-
-# repo_link.py — Push improver artifacts into repo + open PR + optional auto-merge
-# Combines: your clean CLI flow + my structured contrib/ layout, VPM-rich PR body, auto-merge, and hardening.
+from __future__ import annotations
 
 import hashlib
 import json

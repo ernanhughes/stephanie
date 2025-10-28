@@ -1,4 +1,6 @@
 # stephanie/agents/recovery_parser.py
+from __future__ import annotations
+
 import json
 
 from stephanie.agents.base_agent import BaseAgent

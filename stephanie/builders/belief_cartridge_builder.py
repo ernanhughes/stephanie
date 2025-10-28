@@ -1,4 +1,6 @@
 # stephanie/agents/belief_cartridge_builder.py
+from __future__ import annotations
+
 import time
 from collections import defaultdict
 from datetime import datetime

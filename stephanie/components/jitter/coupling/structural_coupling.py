@@ -1,3 +1,4 @@
+# stephanie/components/jitter/coupling/structural_coupling.py
 """
 structural_coupling.py
 ======================
@@ -15,6 +16,7 @@ Key Enhancements:
 - SSP integration hooks
 - Comprehensive telemetry and monitoring
 """
+from __future__ import annotations
 
 from typing import Dict, Any, List, Optional
 import numpy as np

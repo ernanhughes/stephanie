@@ -1,3 +1,4 @@
+# stephanie/components/jitter/regulation/reproduction/__init__.py
 """
 reproduction/__init__.py
 =======================
@@ -12,6 +13,8 @@ This module initializes the reproduction components of the Jitter Autopoietic Sy
 The reproduction subsystem implements the autopoietic system's ability to create
 new organisms while maintaining genetic diversity and quality standards.
 """
+from __future__ import annotations
+
 from .reproduction_system import ReproductionSystem
 from .quality_control import QualityControlledReproduction
 from .heritage_manager import HeritageManager

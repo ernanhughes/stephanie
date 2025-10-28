@@ -1,4 +1,6 @@
 # stephanie/scoring/model/ebt_model.py
+from __future__ import annotations
+
 import torch
 from torch import nn
 from torch.nn import functional as F

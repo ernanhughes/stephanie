@@ -1,4 +1,6 @@
 # stephanie/scoring/mrq/value_predictor.py
+from __future__ import annotations
+
 
 from torch import nn
 

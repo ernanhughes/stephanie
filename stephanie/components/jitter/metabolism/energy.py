@@ -1,3 +1,4 @@
+# stephanie/components/jitter/metabolism/energy.py
 """
 energy.py
 =========
@@ -19,8 +20,10 @@ Key Features:
 - Energy-based regulation of system functions
 - Organizationally closed production of energy pathways
 """
+from __future__ import annotations
 
-from typing import Dict, Any, List, Tuple, Optional
+
+from typing import Dict, Any
 import numpy as np
 import logging
 import time
@@ -28,7 +31,6 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field, validator
 from enum import Enum
 from functools import wraps
-import uuid
 
 log = logging.getLogger("stephanie.jitter.metabolism.energy")
 

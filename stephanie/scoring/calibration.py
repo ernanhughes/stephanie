@@ -5,6 +5,7 @@ ScoreCalibrator - Calibrates AI-generated scores to align with human judgment
 This module provides a class for calibrating AI-generated scores (0-100) to match
 human-equivalent scores (0-1), addressing the common problem of AI over-optimism.
 """
+from __future__ import annotations
 
 import json
 import logging

@@ -1,3 +1,4 @@
+# stephanie/components/jitter/telemetry/__init__.py
 """
 telemetry/__init__.py
 ===================
@@ -13,6 +14,9 @@ This module initializes the telemetry components of the Jitter Autopoietic Syste
 The telemetry subsystem implements the system's ability to monitor, record, and communicate
 its internal state to external systems and humans.
 """
+from __future__ import annotations
+
+
 from .jaf import JitterArtifactV0
 from .telemetry import JASTelemetry
 from .structured_logger import StructuredLogger

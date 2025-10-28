@@ -1,4 +1,6 @@
 # stephanie/cbr/goal_state_tracker.py
+from __future__ import annotations
+
 class DefaultGoalStateTracker:
     def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg

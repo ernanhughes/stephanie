@@ -1,4 +1,6 @@
 # stephanie/models/pipeline_run.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer, String,

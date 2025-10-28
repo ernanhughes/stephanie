@@ -1,3 +1,4 @@
+# stephanie/components/jitter/lifecycle/orchestrator.py
 """
 orchestrator.py
 ===============
@@ -18,6 +19,7 @@ Key Features:
 - Comprehensive telemetry and monitoring
 - Service registration and dependency management
 """
+from __future__ import annotations
 
 from typing import Dict, Any, Optional, List
 import logging

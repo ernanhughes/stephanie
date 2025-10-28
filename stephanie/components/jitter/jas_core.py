@@ -1,3 +1,4 @@
+# stephanie/components/jitter/jas_core.py
 """
 JAS Core – Metabolic Engine + Boundary Membrane + Core Orchestration
 Drop-in production module (no external deps beyond torch + typing + logging).
@@ -6,6 +7,8 @@ ebt_model: provides compatibility scoring (see _ebt_compat()).
 vpm_manager: provides diversity() and active_count() if available.
 Telemetry is produced by the lifecycle agent; this core returns vitals per cycle.
 """
+from __future__ import annotations
+
 import time
 from dataclasses import dataclass
 from typing import Dict, Any

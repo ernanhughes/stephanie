@@ -1,4 +1,6 @@
 # stephanie/scoring/calculations/score_delta.py
+from __future__ import annotations
+
 class ScoreDeltaCalculator:
     def __init__(self, cfg: dict, memory, logger=None):
         self.cfg = cfg

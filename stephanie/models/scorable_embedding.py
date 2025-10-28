@@ -1,3 +1,6 @@
+# stephanie/models/scorable_embedding.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Index, Integer, String

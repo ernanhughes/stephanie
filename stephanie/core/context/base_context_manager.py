@@ -1,3 +1,6 @@
+# stephanie/core/context/base_context_manager.py
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 

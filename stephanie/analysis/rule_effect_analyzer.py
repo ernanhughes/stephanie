@@ -1,4 +1,6 @@
 # stephanie/analysis/rule_effect_analyzer.py
+from __future__ import annotations
+
 import json
 import math
 from collections import defaultdict

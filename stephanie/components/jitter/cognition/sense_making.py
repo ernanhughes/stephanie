@@ -1,3 +1,4 @@
+# stephanie/components/jitter/cognition/sense_making.py
 """
 sense_making.py
 ===============
@@ -16,6 +17,8 @@ Key Features:
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
+
 
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np

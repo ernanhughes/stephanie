@@ -1,4 +1,6 @@
 # stephanie/types/training_event.py
+from __future__ import annotations
+
 from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator

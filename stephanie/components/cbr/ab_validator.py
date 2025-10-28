@@ -1,4 +1,6 @@
 # stephanie/cbr/ab_validator.py
+from __future__ import annotations
+
 from typing import Callable, Dict, Tuple
 
 

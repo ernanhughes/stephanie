@@ -1,4 +1,6 @@
 # stephanie/scoring/structured_engine.py
+from __future__ import annotations
+
 import re
 from string import Template
 

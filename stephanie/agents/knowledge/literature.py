@@ -1,4 +1,6 @@
 # stephanie/agents/knowledge/literature.py
+from __future__ import annotations
+
 
 import re
 

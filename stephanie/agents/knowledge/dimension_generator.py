@@ -1,4 +1,6 @@
 # stephanie/agents/knowledge/dimension_generator.py
+from __future__ import annotations
+
 
 import re
 

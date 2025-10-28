@@ -1,4 +1,6 @@
 # stephanie/embedding/embedders.py
+from __future__ import annotations
+
 from sentence_transformers import SentenceTransformer
 
 from stephanie.core.embedding.protocols import EmbedderProtocol

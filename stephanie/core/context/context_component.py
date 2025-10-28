@@ -1,4 +1,6 @@
 # stephanie/context/context_component.py
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional

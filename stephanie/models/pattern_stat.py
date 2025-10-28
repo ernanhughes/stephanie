@@ -1,5 +1,6 @@
 # stephanie/models/pattern_stat.py
-# models/pattern_stat.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String

@@ -1,4 +1,6 @@
 # stephanie/agents/pipeline_judge.py
+from __future__ import annotations
+
 import csv
 import os
 from datetime import datetime

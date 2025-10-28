@@ -1,4 +1,6 @@
 # stephanie/scoring/score_display.py
+from __future__ import annotations
+
 from tabulate import tabulate
 
 

@@ -1,6 +1,8 @@
 # stephanie/components/jitter/core/config.py
+from __future__ import annotations
+
 from pydantic import BaseModel, Field, validator, root_validator
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import logging
 
 log = logging.getLogger(__name__)

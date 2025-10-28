@@ -1,4 +1,6 @@
 # stephanie/agents/mixins/memory_aware_mixin.py
+from __future__ import annotations
+
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional

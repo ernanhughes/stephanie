@@ -1,3 +1,4 @@
+# stephanie/components/jitter/lifecycle/integration/ssp_integration.py
 """
 ssp_integration.py
 ==================
@@ -20,13 +21,13 @@ Key Features:
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 import time
 import logging
 from dataclasses import dataclass, field
 from pydantic import BaseModel, Field, validator
-from enum import Enum
 from functools import wraps
 
 log = logging.getLogger("stephanie.jitter.integration.ssp")

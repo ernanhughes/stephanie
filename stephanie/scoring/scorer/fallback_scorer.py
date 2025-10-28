@@ -1,4 +1,5 @@
-# File: stephanie/scoring/fallback_scorer.py
+# stephanie/scoring/scorer/fallback_scorer.py
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime

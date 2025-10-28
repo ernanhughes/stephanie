@@ -1,4 +1,6 @@
 # stephanie/agents/master_pupil/lord_attack.py
+from __future__ import annotations
+
 import logging
 from typing import Any, Optional
 

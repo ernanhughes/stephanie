@@ -1,3 +1,4 @@
+# stephanie/components/jitter/regulation/homeostasis/__init__.py
 """
 homeostasis/__init__.py
 ======================
@@ -12,6 +13,8 @@ This module initializes the homeostasis components of the Jitter Autopoietic Sys
 The homeostasis subsystem implements the autopoietic system's ability to maintain
 physiological stability through feedback control mechanisms.
 """
+from __future__ import annotations
+
 from .controller import PIDController
 from .adaptive_setpoints import AdaptiveSetpoints
 from .crisis_detector import CrisisDetector

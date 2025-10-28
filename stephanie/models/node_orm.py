@@ -1,5 +1,5 @@
 # stephanie/models/node_orm.py
-# models/node_orm.py ---
+from __future__ import annotations
 
 from datetime import datetime
 

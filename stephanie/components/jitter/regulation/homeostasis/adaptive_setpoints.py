@@ -1,3 +1,4 @@
+# stephanie/components/jitter/regulation/homeostasis/adaptive_setpoints.py
 """
 adaptive_setpoints.py
 =====================
@@ -15,6 +16,8 @@ Key Features:
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
+
 
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np

@@ -1,4 +1,5 @@
 # stephanie/memcube/memcube_lifecycle.py
+from __future__ import annotations
 
 import json
 

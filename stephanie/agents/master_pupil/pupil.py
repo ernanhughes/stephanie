@@ -1,4 +1,6 @@
 # stephanie/agents/master_pupil/pupil.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 
 

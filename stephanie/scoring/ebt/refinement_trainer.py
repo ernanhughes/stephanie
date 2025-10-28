@@ -1,4 +1,6 @@
 # stephanie/scoring/ebt/ebt_refinement_trainer.py
+from __future__ import annotations
+
 import os
 from collections import defaultdict
 from datetime import datetime

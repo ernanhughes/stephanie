@@ -1,4 +1,6 @@
 # stephanie/agents/master_pupil/trainer.py
+from __future__ import annotations
+
 import matplotlib
 
 if matplotlib.get_backend().lower() != "agg":

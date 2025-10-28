@@ -1,3 +1,4 @@
+# stephanie/components/jitter/metabolism/metabolic_pathways.py
 """
 metabolic_pathways.py
 =====================
@@ -12,6 +13,8 @@ This module implements the organizationally closed production of energy pathways
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
+
 
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np

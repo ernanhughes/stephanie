@@ -1,7 +1,9 @@
 # stephanie/components/jitter/core/crisis_manager.py
+from __future__ import annotations
+
 import time
 import logging
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List
 from enum import Enum
 
 log = logging.getLogger("stephanie.jitter.crisis")

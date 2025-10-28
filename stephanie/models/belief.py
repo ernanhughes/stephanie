@@ -1,7 +1,10 @@
 # stephanie/models/belief.py
+from __future__ import annotations
+
+from __future__ import annotations
 from datetime import datetime
 
-from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
+from sqlalchemy import (Column, DateTime, Float, ForeignKey, Integer,
                         String, Text)
 from sqlalchemy.ext.declarative import declarative_base
 

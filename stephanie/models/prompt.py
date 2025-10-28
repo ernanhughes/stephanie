@@ -1,5 +1,6 @@
 # stephanie/models/prompt.py
-# models/prompt.py
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timezone
 

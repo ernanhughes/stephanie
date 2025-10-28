@@ -1,4 +1,6 @@
 # stephanie/evaluator/mrq_self_evaluator.py
+from __future__ import annotations
+
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.evaluator.base import BaseEvaluator

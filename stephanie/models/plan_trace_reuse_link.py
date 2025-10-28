@@ -1,4 +1,6 @@
 # stephanie/models/plan_trace_reuse_link.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String

@@ -17,6 +17,8 @@ Key Responsibilities:
 The agent produces the labeled dataset that enables apples-to-apples
 comparison between HRM and Tiny models in the GAP analysis pipeline.
 """
+from __future__ import annotations
+
 
 import logging
 import re

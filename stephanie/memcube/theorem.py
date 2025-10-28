@@ -1,10 +1,9 @@
 # stephanie/memcube/theorem.py
+from __future__ import annotations
+
 from datetime import datetime
 from typing import List
 
-from stephanie.memcube.memcube import MemCube
-from stephanie.scoring.scorable import Scorable
-from stephanie.utils.file_utils import hash_text
 
 
 class Theorem:

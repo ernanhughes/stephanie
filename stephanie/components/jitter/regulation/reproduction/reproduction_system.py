@@ -1,3 +1,4 @@
+# stephanie/components/jitter/regulation/reproduction/reproduction_system.py
 """
 reproduction_system.py
 ======================
@@ -16,19 +17,18 @@ Key Features:
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
 
-from typing import Dict, Any, List, Tuple, Optional
+
+from typing import Dict, Any, List, Optional
 import numpy as np
 import logging
 import time
-import asyncio
 from dataclasses import dataclass, field
 from pydantic import BaseModel, Field, validator
-from enum import Enum
 from functools import wraps
 import uuid
 
-from stephanie.components.jitter.jaf import JitterArtifactV0
 
 log = logging.getLogger("stephanie.jitter.regulation.reproduction.system")
 

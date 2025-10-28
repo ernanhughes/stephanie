@@ -1,4 +1,6 @@
 # stephanie/models/memcube.py
+from __future__ import annotations
+
 from typing import Any, Dict
 
 from sqlalchemy import JSON, TIMESTAMP, Column, Float, Integer, String, Text

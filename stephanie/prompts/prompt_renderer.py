@@ -1,4 +1,6 @@
 # stephanie/prompts/prompt_renderer.py
+from __future__ import annotations
+
 from jinja2 import Template
 
 

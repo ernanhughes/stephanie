@@ -1,3 +1,4 @@
+# stephanie/components/jitter/lifecycle/__init__.py
 """
 lifecycle/__init__.py
 ====================
@@ -13,6 +14,8 @@ This module initializes the lifecycle components of the Jitter Autopoietic Syste
 The lifecycle subsystem implements the complete operational cycle of Jitter
 from initialization through execution to termination.
 """
+from __future__ import annotations
+
 from .orchestrator import JASOrchestrator
 from .lifecycle_agent import JASLifecycleAgent
 from .integration.ssp_integration import SSPIntegration

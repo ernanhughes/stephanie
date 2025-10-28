@@ -1,4 +1,6 @@
 # stephanie/cbr/retention_policy.py
+from __future__ import annotations
+
 from typing import Dict, List, Optional
 
 from stephanie.constants import GOAL, PIPELINE_RUN_ID

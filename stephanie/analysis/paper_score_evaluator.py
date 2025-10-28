@@ -1,4 +1,6 @@
 # stephanie/analysis/paper_score_evaluator.py
+from __future__ import annotations
+
 from textwrap import wrap
 
 from stephanie.data.score_bundle import ScoreBundle

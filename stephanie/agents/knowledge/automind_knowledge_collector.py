@@ -26,6 +26,8 @@ Dependencies:
     - CosineSimilarityTool: Document similarity computation
     - HuggingFaceTool: Dataset search capabilities
 """
+from __future__ import annotations
+
 
 from typing import Dict, List
 

@@ -1,4 +1,6 @@
 # stephanie/models/world_view_evidence.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,

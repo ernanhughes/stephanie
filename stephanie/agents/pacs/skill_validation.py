@@ -1,4 +1,6 @@
 # stephanie/pipeline/stages/skill_validation.py
+from __future__ import annotations
+
 from typing import Any, Dict, List
 
 import numpy as np

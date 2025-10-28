@@ -1,7 +1,7 @@
 # stephanie/agents/rule_tuner.py
-from collections import defaultdict
+from __future__ import annotations
 
-from sqlalchemy.orm import joinedload
+
 from tabulate import tabulate
 
 from stephanie.agents.base_agent import BaseAgent

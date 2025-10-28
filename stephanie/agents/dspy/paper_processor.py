@@ -1,3 +1,4 @@
+# stephanie/agents/dspy/paper_processor.py
 """
 DSPy Paper Section Processor
 
@@ -13,6 +14,8 @@ Key Features:
 - Comprehensive logging and casebook storage for reproducibility
 - Support for both introduction and general section processing
 """
+from __future__ import annotations
+
 
 import json
 import logging

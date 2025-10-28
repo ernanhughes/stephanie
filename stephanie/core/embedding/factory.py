@@ -1,4 +1,6 @@
 # stephanie/embedding/factory.py
+from __future__ import annotations
+
 from stephanie.core.embedding.protocols import EmbedderProtocol
 from stephanie.registry.component_registry import ComponentRegistry
 

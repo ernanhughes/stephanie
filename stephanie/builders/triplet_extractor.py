@@ -1,4 +1,6 @@
 # stephanie/builders/triplet_extractor.py
+from __future__ import annotations
+
 
 import re
 

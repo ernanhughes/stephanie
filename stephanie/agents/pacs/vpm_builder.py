@@ -1,4 +1,6 @@
 # stephanie/agents/data/vpm_builder_agent.py
+from __future__ import annotations
+
 import matplotlib
 
 if matplotlib.get_backend().lower() != "agg":

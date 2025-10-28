@@ -1,3 +1,6 @@
+# stephanie/components/jitter/boundary/membrane.py
+
+"""  
 # membrane.py
 # ===========
 # Implementation of the semipermeable membrane for boundary definition.
@@ -17,6 +20,8 @@
 # - Comprehensive telemetry and monitoring
 # - SSP integration hooks
 # - Performance optimizations
+"""
+from __future__ import annotations
 
 from typing import Dict, Any, Optional
 import numpy as np

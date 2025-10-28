@@ -1,4 +1,6 @@
 # stephanie/agents/knowledge/document_reward_scorer.py
+from __future__ import annotations
+
 import random
 import time
 from typing import Any, Dict, List

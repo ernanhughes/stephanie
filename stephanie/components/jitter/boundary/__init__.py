@@ -1,3 +1,4 @@
+# stephanie/components/jitter/boundary/__init__.py
 """
 boundary/__init__.py
 ====================
@@ -12,6 +13,8 @@ The boundary subsystem implements Maturana & Varela's concept of a semipermeable
 membrane that defines the autopoietic system while allowing necessary interactions
 with the environment.
 """
+from __future__ import annotations
+
 from .membrane import Membrane
 from .boundary_maintenance import BoundaryMaintenance
 

@@ -1,5 +1,6 @@
 # stephanie/models/method_plan.py
-# models/method_plan.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,

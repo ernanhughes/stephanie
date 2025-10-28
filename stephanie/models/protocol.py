@@ -1,4 +1,6 @@
 # stephanie/models/protocol_orm.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import JSON, Boolean, Column, DateTime, Float, String

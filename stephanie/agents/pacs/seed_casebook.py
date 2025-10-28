@@ -1,12 +1,12 @@
 # stephanie/agents/maintenance/casebook_seeder.py
-import re
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
 # Models (names from your codebase)
-from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.slug import simple_slugify
 

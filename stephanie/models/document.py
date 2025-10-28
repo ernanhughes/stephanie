@@ -1,4 +1,5 @@
 # stephanie/models/document.py
+from __future__ import annotations
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY

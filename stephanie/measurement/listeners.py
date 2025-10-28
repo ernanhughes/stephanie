@@ -1,4 +1,6 @@
 # stephanie/measurement/listeners.py
+from __future__ import annotations
+
 from sqlalchemy import event
 
 from stephanie.measurement.registry import measurement_registry

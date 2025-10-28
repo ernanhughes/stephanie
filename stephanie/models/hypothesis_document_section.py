@@ -1,4 +1,6 @@
 # stephanie/models/hypothesis_document_section.py
+from __future__ import annotations
+
 from sqlalchemy import Column, ForeignKey, Integer
 
 from stephanie.models.base import Base

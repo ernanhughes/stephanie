@@ -1,11 +1,12 @@
 # stephanie/analysis/policy_analyzer.py
+from __future__ import annotations
+
 import json
 import logging
 from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
-from sqlalchemy.orm import Session
 import matplotlib
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")

@@ -44,6 +44,8 @@ Usage:
     agents to prepare documents for further analysis, scoring, or hypothesis generation.
 
 """
+from __future__ import annotations
+
 
 import os
 import re

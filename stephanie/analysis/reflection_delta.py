@@ -1,4 +1,6 @@
 # stephanie/analysis/reflection_delta.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 from statistics import mean
 

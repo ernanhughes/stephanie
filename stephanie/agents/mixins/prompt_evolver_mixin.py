@@ -1,4 +1,6 @@
 # stephanie/agents/mixins/prompt_evolver_mixin.py
+from __future__ import annotations
+
 from stephanie.compiler.prompt_evolver import PromptEvolver
 
 

@@ -1,4 +1,6 @@
 # stephanie/logs/icons.py
+from __future__ import annotations
+
 def get_event_icon(event_type: str) -> str:
     """Get the icon associated with a specific event type."""
     return EVENT_ICONS.get(event_type, "❓")  # Default: question mark

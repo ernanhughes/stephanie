@@ -1,4 +1,6 @@
 # stephanie/memory/entity_cache_store.py
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Optional
 

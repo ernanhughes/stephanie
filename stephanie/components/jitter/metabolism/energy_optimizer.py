@@ -1,3 +1,4 @@
+# stephanie/components/jitter/metabolism/energy_optimizer.py
 """
 energy_optimizer.py
 ===================
@@ -12,8 +13,9 @@ This module implements the energy optimization system with:
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List
 import numpy as np
 import logging
 import time
@@ -21,7 +23,6 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field, validator
 from enum import Enum
 from functools import wraps
-import uuid
 
 from .energy import EnergyPools, EnergyPool
 from .metabolic_pathways import MetabolicPathways, PathwayType

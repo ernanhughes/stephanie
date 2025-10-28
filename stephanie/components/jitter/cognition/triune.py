@@ -1,3 +1,4 @@
+# stephanie/components/jitter/cognition/triune.py
 """
 triune.py
 =========
@@ -22,6 +23,7 @@ Key Features:
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
 
 from typing import Dict, Any, Tuple, Optional, List
 import time

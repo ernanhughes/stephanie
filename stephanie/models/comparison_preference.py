@@ -1,6 +1,6 @@
 # stephanie/models/comparison_preference.py
+from __future__ import annotations
 
-# models/comparison_preference.py
 from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text

@@ -1,4 +1,6 @@
 # stephanie/registry/scorer.py
+from __future__ import annotations
+
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
 from stephanie.scoring.scorer.llm_scorer import LLMScorer
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer

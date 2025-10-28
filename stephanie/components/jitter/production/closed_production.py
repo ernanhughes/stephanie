@@ -1,3 +1,4 @@
+# stephanie/components/jitter/production/closed_production.py
 """
 closed_production.py
 ====================
@@ -12,6 +13,8 @@ must recursively produce the components that define the system itself, with:
 - Crisis management
 - Performance optimizations
 """
+from __future__ import annotations
+
 
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np

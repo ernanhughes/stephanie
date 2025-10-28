@@ -1,4 +1,6 @@
 # stephanie/models/cartridge_domain.py
+from __future__ import annotations
+
 from sqlalchemy import Column, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 

@@ -1,4 +1,6 @@
 # stephanie/models/score_dimension.py
+from __future__ import annotations
+
 from sqlalchemy import JSON, Column, Float, Integer, String, Text
 
 from stephanie.models.base import Base

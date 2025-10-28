@@ -1,4 +1,6 @@
 # stephanie/memory/memory_tool.py
+from __future__ import annotations
+
 import asyncio
 from typing import Any, Optional
 

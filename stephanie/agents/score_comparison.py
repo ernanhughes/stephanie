@@ -1,4 +1,6 @@
 # stephanie/agents/score_comparison.py
+from __future__ import annotations
+
 import csv
 import os
 from collections import defaultdict

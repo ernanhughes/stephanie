@@ -1,4 +1,6 @@
 # stephanie/models/mrq_preference_pair.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import JSON, Column, DateTime, Integer, Text

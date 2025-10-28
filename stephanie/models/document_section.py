@@ -1,4 +1,6 @@
 # stephanie/models/document_section.py
+from __future__ import annotations
+
 from sqlalchemy import JSON, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 

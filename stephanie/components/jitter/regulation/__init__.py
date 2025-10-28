@@ -1,3 +1,4 @@
+# stephanie/components/jitter/regulation/__init__.py
 """
 regulation/__init__.py
 ====================
@@ -13,6 +14,8 @@ The regulation subsystem implements the autopoietic system's ability to maintain
 internal stability while adapting to environmental changes and preparing for
 reproduction or death.
 """
+from __future__ import annotations
+
 from .homeostasis.controller import PIDController
 from .homeostasis.adaptive_setpoints import AdaptiveSetpoints
 from .homeostasis.crisis_detector import CrisisDetector

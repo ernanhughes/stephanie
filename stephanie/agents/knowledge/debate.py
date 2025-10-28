@@ -1,4 +1,6 @@
 # stephanie/agents/knowledge/debate.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 
 

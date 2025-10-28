@@ -1,5 +1,6 @@
-# stephanie/scoring/scorer/vpm_transformer_scorer.py
-import logging
+# stephanie/scoring/scorer/vpm_scorer.py
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional
 
 import numpy as np

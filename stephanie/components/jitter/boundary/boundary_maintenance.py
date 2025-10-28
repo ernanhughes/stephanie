@@ -1,3 +1,4 @@
+# stephanie/components/jitter/boundary/boundary_maintenance.py
 """
 boundary_maintenance.py
 =======================
@@ -13,6 +14,8 @@ This module implements the organizationally closed production of boundary compon
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
+
 
 from typing import Dict, Any, List
 import numpy as np

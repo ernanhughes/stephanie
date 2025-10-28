@@ -1,3 +1,5 @@
+# stephanie/memcube/theorem_validator.py
+from __future__ import annotations
 
 from stephanie.agents.mixins.ebt_mixin import EBTMixin
 from stephanie.memcube.theorem import Theorem

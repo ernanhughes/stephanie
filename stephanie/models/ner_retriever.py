@@ -1,3 +1,4 @@
+# stephanie/models/ner_retriever.py
 """
 NER Retriever Module
 
@@ -25,6 +26,7 @@ Typical Usage:
 Dependencies:
 - PyTorch, Transformers, Annoy, Numpy
 """
+from __future__ import annotations
 
 import json
 import logging

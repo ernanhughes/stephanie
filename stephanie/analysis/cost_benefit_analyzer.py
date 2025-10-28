@@ -1,4 +1,6 @@
 # stephanie/agents/analysis/cost_benefit_analyzer.py
+from __future__ import annotations
+
 
 import logging
 from statistics import mean

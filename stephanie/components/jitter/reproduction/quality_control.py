@@ -1,4 +1,6 @@
 # stephanie/components/jitter/reproduction/quality_control.py
+from __future__ import annotations
+
 import logging
 import uuid
 import numpy as np

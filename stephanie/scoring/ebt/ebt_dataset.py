@@ -1,4 +1,6 @@
 # stephanie/scoring/ebt/ebt_dataset.py
+from __future__ import annotations
+
 from torch.utils.data import Dataset
 
 

@@ -1,3 +1,4 @@
+# stephanie/components/jitter/telemetry/jaf.py
 """
 jaf.py
 ======
@@ -10,6 +11,7 @@ This implementation:
 - Provides methods for ingestion by offspring
 - Supports structured data for analysis and reproduction
 """
+from __future__ import annotations
 
 import json
 import time

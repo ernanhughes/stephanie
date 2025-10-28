@@ -1,3 +1,6 @@
+# stephanie/models/entropy_calibrator.py
+from __future__ import annotations
+
 from typing import Tuple
 
 import joblib

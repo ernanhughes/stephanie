@@ -1,4 +1,6 @@
 # stephanie/models/evaluation_rule_link.py
+from __future__ import annotations
+
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, func
 
 from stephanie.models.base import Base

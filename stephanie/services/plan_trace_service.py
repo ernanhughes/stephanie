@@ -1,4 +1,6 @@
 # stephanie/engine/plan_trace_monitor.py
+from __future__ import annotations
+
 import json
 import os
 import time

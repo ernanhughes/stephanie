@@ -1,3 +1,6 @@
+# stephanie/services/factories.py
+from __future__ import annotations
+
 from stephanie.services.registry_loader import _load_object
 from stephanie.services.reporting_service import ReportingService
 from stephanie.services.self_validation_service import SelfValidationService

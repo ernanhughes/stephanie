@@ -1,4 +1,6 @@
 # stephanie/agents/seal/seal_controller.py
+from __future__ import annotations
+
 from stephanie.agents.seal.rule_mutation import RuleMutationAgent
 from stephanie.agents.seal.self_edit_generator import SelfEditGeneratorAgent
 

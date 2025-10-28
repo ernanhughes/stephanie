@@ -1,3 +1,4 @@
+# stephanie/components/jitter/telemetry/telemetry.py
 """
 telemetry.py
 ============
@@ -15,6 +16,8 @@ Key Features:
 - SSP integration hooks
 - Performance optimizations
 """
+from __future__ import annotations
+
 
 from typing import Dict, Any, List, Optional, Tuple
 import json

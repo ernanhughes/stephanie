@@ -1,3 +1,4 @@
+# stephanie/components/jitter/telemetry/dashboard.py
 """
 dashboard.py
 ============
@@ -15,6 +16,7 @@ Key Features:
 - Responsive dashboard layout
 - Integration with Stephanie's monitoring infrastructure
 """
+from __future__ import annotations
 
 import asyncio
 import json

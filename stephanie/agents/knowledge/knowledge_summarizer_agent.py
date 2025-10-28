@@ -1,4 +1,6 @@
 # stephanie/agents/knowledge_summarizer_agent.py
+from __future__ import annotations
+
 import re
 import uuid
 from datetime import datetime

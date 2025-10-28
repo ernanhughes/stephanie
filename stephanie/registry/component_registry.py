@@ -1,4 +1,6 @@
 # stephanie/registry/registry.py
+from __future__ import annotations
+
 """
 Component registry for the Supervisor system.
 

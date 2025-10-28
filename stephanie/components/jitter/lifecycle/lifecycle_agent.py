@@ -1,3 +1,4 @@
+# stephanie/components/jitter/lifecycle/lifecycle_agent.py
 """
 lifecycle_agent.py
 ==================
@@ -16,17 +17,14 @@ Key Features:
 - Integration with Stephanie's ecosystem
 - Graceful shutdown with legacy preservation
 """
+from __future__ import annotations
 
 from typing import Dict, Any, Optional, List
 import time
 import logging
 import asyncio
 import torch
-import random
-from dataclasses import dataclass, field
 from pydantic import BaseModel, Field, validator
-from enum import Enum
-import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.jitter.boundary import BoundaryMaintenance
@@ -331,7 +329,7 @@ class JASLifecycleAgent(BaseAgent):
             if self.reproduction and self.reproduction.can_reproduce(self.core):
                 offspring = self.reproduction.reproduce(self.core)
                 if offspring:
-                    self.logger.info(f"Reproduction successful, offspring created")
+                    self.logger.info("Reproduction successful, offspring created")
     
     def _check_apoptosis(self, vital_signs: VitalSigns):
         """Check if apoptosis should be initiated"""

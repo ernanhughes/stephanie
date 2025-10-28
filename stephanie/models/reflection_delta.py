@@ -1,5 +1,6 @@
 # stephanie/models/reflection_delta.py
-# models/reflection_delta.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
