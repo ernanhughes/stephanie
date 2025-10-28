@@ -40,7 +40,7 @@ class SharpenedPaperSummarizerAgent(BaseAgent):
 
         # Sentence window (match Track A)
         self.min_sents = int(cfg.get("min_sents", SENTS_MIN_DEFAULT))
-        self.max_sents = int(cfg.get("max_sents", SENTS_MAX_DEFAULT All right))
+        self.max_sents = int(cfg.get("max_sents", SENTS_MAX_DEFAULT))
 
         # Training model keys
         self.model_key_ranker = cfg.get("model_key_ranker", "ranker.sicql.v1")

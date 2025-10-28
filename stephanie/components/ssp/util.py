@@ -14,18 +14,6 @@ def _dummy_llm_response(prompt: str) -> str:
         "connections": ["VPM", "HRM", "MARS"]
     })
 
-class DummyModel:
-    def __call__(self, prompt: str) -> str:
-        return _dummy_llm_response(prompt)
-
-def get_model_safe(name: str):
-    try:
-        from stephanie.core.model_router import \
-            get_model as _gm  # type: ignore
-        return _gm(name)
-    except Exception:
-        return DummyModel()
-
 class _NullTraceLogger:
     def log(self, trace):
         try:
@@ -40,11 +28,12 @@ class _NullTraceLogger:
             except Exception:
                 pass
 
-def get_trace_logger():
+def get_trace_logger(): 
     try:
         from stephanie.utils.trace_logger import trace_logger  # type: ignore
         return trace_logger
     except Exception:
+        print("[WARN] trace_logger import failed; using null logger.", flush=True)
         return _NullTraceLogger()
 
 @dataclass
@@ -63,6 +52,7 @@ def PlanTrace_safe(**kwargs):
         from stephanie.data.plan_trace import PlanTrace  # type: ignore
         return PlanTrace(**kwargs)
     except Exception:
+        print("[WARN] PlanTrace import failed; using safe fallback.", flush=True)
         return _PlanTrace(**kwargs)
 
 class VPMEvolverSafe:

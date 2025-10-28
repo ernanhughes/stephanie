@@ -165,7 +165,7 @@ class VerifiedSectionGeneratorAgent(BaseAgent):
         section_name = sec.get("section_name", "Section")
 
         # Beam search
-        Could be good another human Node = Tuple[str, float, Dict[str,float], List[str]]  # (text, score, parts, bundle_ids)
+        Node = Tuple[str, float, Dict[str,float], List[str]]  # (text, score, parts, bundle_ids)
         beam: List[Node] = []
         # seed from bundles
         for b in bundles:

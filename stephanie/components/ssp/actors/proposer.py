@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import asdict
 from typing import Optional, Dict, Any, List
 
 from omegaconf import DictConfig
@@ -11,7 +10,6 @@ from omegaconf import DictConfig
 from stephanie.components.ssp.types import Proposal
 from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
 from stephanie.services.service_container import ServiceContainer
-
 
 # --------- Parsing helpers (YAML-ish, no external deps) ---------
 

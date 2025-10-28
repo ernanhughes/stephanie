@@ -6,6 +6,11 @@ from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
+import matplotlib
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
@@ -529,12 +534,6 @@ class PolicyAnalyzer:
     def visualize_policy(self, dimension: str, output_path: str = "logs/policy_visualization"):
         """Generate policy visualization for a dimension"""
         try:
-            import matplotlib
-if matplotlib.get_backend().lower() != "agg":
-    matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import seaborn as sns
-
             sicql_data = self._get_sicql_data(dimension)
             if not sicql_data or not any(d["policy_logits"] for d in sicql_data):
                 return None

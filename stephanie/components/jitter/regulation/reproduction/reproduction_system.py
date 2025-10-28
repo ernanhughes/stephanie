@@ -28,6 +28,8 @@ from enum import Enum
 from functools import wraps
 import uuid
 
+from stephanie.components.jitter.jaf import JitterArtifactV0
+
 log = logging.getLogger("stephanie.jitter.regulation.reproduction.system")
 
 class ReproductionConfig(BaseModel):

@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, validator, root_validator
 from typing import Dict, Any, Optional
 import logging
 
-log = logging.getLogger(__name__) I
+log = logging.getLogger(__name__)
 
 class JitterConfig(BaseModel):
     """Validated configuration for the entire Jitter system"""
