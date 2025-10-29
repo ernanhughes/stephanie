@@ -19,17 +19,14 @@ import json
 import math
 import os
 import re
-import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-# --------------------------- Safe imports / light deps --------------------------- #
-try:
-    import numpy as np
-except Exception:
-    raise RuntimeError("EpistemicGuard requires numpy")
+from stephanie.tools.time_utils import now_iso
 
+# --------------------------- Safe imports / light deps --------------------------- #
+import numpy as np
 try:
     from PIL import Image, ImageDraw, ImageFont
 except Exception:
@@ -105,9 +102,6 @@ def _safe_trace_id(s: str) -> str:
     if not SAFE_ID.match(s):
         raise ValueError(f"unsafe trace_id: {s}")
     return s
-
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 # --------------------------- Risk predictor (pluggable) ------------------------ #
 class RiskPredictor:
@@ -343,7 +337,7 @@ class EpistemicGuard:
             "evidence_id": f"eg-{trace_id}",
             "schema": Subjects.SCHEMA_VER,
             "trace_id": trace_id,
-            "created_at": _now_iso(),
+            "created_at": now_iso(),
             "risk": risk,
             "thresholds": {"low": low, "high": high},
             "metrics": {**metrics, "max_B": disc["max_B"], "disagree_rate": disc["disagree_rate"]},

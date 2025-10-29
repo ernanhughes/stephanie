@@ -168,7 +168,7 @@ class GapConfig:
         "latent_dim": 128,  # Dimension of SCM latent space projections
     })
 
-    enable_epistemic_guard: bool = True
+    enable_epistemic_guard: bool = False  # Whether to run Epistemic Guard
     eg: EgConfig = field(default_factory=EgConfig)
     risk: Dict[str, Any] = field(default_factory=lambda: {
         "bundle_path": "/models/risk/bundle.joblib",  # Path to pre-bundled artifacts (if any)

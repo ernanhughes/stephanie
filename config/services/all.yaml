@@ -9,6 +9,12 @@ services:
       memory: ${memory}
       logger: ${logger}
 
+  storage:
+    enabled: true
+    cls: stephanie.services.storage_service.StorageService
+    dependencies: []
+    args:
+
   rules:
     enabled: true
     cls: stephanie.services.rules_service.RulesService

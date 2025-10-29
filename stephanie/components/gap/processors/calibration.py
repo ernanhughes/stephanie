@@ -51,7 +51,7 @@ class CalibrationProcessor:
               "avg_mae_vs_hrm": <float>
             }
         """
-        storage = self.container.get("gap_storage")
+        storage = self.container.get("storage")
         base_dir = Path(storage.base_dir) / run_id
         aligned_dir = base_dir / "aligned"
         metrics_dir = base_dir / "metrics"

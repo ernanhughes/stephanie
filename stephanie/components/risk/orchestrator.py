@@ -7,12 +7,13 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from stephanie.core.manifest import ManifestManager
 from stephanie.utils.progress_mixin import ProgressMixin
 from stephanie.services.risk_predictor_service import RiskPredictorService, RiskServiceConfig
 from stephanie.services.epistemic_guard_service import EpistemicGuardService
 from stephanie.components.risk.epi.epistemic_guard import GuardInput, GuardOutput
 
-from stephanie.services.storage import GapStorageService  # your FS-backed store
+from stephanie.services.storage_service import StorageService  # your FS-backed store
 
 _logger = logging.getLogger(__file__)
 
@@ -54,6 +55,7 @@ class RiskOrchestrator(ProgressMixin):
 
         # ---- Service registration / initialization --------------------------
         self.storage = self._ensure_storage()
+        self.manifest_manager = ManifestManager(self.storage)
         self.risk_svc = self._ensure_risk_service()
         self.eg_svc = self._ensure_eg_service()
 
@@ -92,19 +94,19 @@ class RiskOrchestrator(ProgressMixin):
 
     def _ensure_storage(self):
         # Prefer an existing storage on the container
-        st = getattr(self.container, "storage", None) or getattr(self.container, "gap_storage", None)
+        st = getattr(self.container, "storage", None) or getattr(self.container, "storage", None)
         if st:
             return st
 
-        if GapStorageService is None:
+        if StorageService is None:
             self.logger.warning("No GapStorageService available; run-scoped writes may fail.")
             return None
 
-        st = GapStorageService()
+        st = StorageService()
         st.initialize(base_dir=self.policy.runs_base_dir)
         # Set on container for reuse
         try:
-            setattr(self.container, "gap_storage", st)
+            setattr(self.container, "storage", st)
         except Exception:
             pass
         return st
@@ -207,7 +209,7 @@ class RiskOrchestrator(ProgressMixin):
         # Build simple summary and persist
         summary = self._summarize(records)
         if self.storage:
-            self.storage.save_json(run_id=run_id, sub="results", filename="risk_summary.json", payload=summary)
+            self.storage.save_json(run_id=run_id, subdir="results", name="risk_summary.json", obj=summary)
 
         result = {
             "run_id": run_id,
@@ -309,7 +311,7 @@ class RiskOrchestrator(ProgressMixin):
         except Exception:
             current = []
         current.append(entry)
-        self.storage.save_json(run_id=run_id, sub=sub, filename="risk_index.json", payload=current)
+        self.storage.save_json(run_id=run_id, subdir=sub, name="risk_index.json", obj=current)
 
     def _summarize(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         n = len(records)

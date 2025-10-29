@@ -14,7 +14,7 @@ from stephanie.utils.json_sanitize import dumps_safe
 
 _logger = logging.getLogger(__name__)
 
-class GapStorageService(Service):
+class StorageService(Service):
     """
     Filesystem-backed storage for GAP runs.
     Conforms to the Service protocol so it can be registered in the ServiceContainer.
@@ -38,7 +38,7 @@ class GapStorageService(Service):
         """
         base_dir = kwargs.get("base_dir")
         if not base_dir:
-            raise ValueError("GapStorageService.initialize: 'base_dir' is required")
+            raise ValueError("StorageService.initialize: 'base_dir' is required")
         custom_logger = kwargs.get("logger")
         if custom_logger is not None:
             self.logger = custom_logger
@@ -46,7 +46,7 @@ class GapStorageService(Service):
         self._base = Path(base_dir)
         self._base.mkdir(parents=True, exist_ok=True)
         self._initialized = True
-        _logger.info("GapStorageInit path: %s", self._base)
+        _logger.info("StorageInit path: %s", self._base)
 
     def health_check(self) -> Dict[str, Any]:
         return {
@@ -61,7 +61,7 @@ class GapStorageService(Service):
 
     def shutdown(self) -> None:
         # Nothing persistent to close; keep for symmetry/logging
-        _logger.debug("[GapStorage] Shutdown complete")
+        _logger.debug("[StorageService] Shutdown complete")
 
     @property
     def name(self) -> str:
@@ -72,7 +72,7 @@ class GapStorageService(Service):
     @property
     def base_dir(self) -> Path:
         if not self._initialized:
-            raise RuntimeError("GapStorageService not initialized")
+            raise RuntimeError("StorageService not initialized")
         return self._base
 
     # Directory helpers

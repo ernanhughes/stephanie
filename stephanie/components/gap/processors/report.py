@@ -38,7 +38,7 @@ class ReportBuilder:
         Dict[str, str]
             {"report_path": "<absolute-path-to-markdown>"}
         """
-        storage = self.container.get("gap_storage")
+        storage = self.container.get("storage")
         root: Path = storage.base_dir / run_id
         reports_dir: Path = root / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 # Optional import: if GAP shared_scm is present, we expose to_scm(); otherwise it's a no-op.
 try:
-    from stephanie.components.gap.shared_scm import scm_row  # type: ignore
+    from stephanie.core.shared_scm import scm_row  # type: ignore
 except Exception:  # pragma: no cover - optional
     def scm_row(**kwargs):  # type: ignore
         return kwargs

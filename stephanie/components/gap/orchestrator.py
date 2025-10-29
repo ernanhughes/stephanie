@@ -29,6 +29,11 @@ from stephanie.components.gap.processors.report import ReportBuilder
 from stephanie.components.gap.processors.scoring import ScoringProcessor
 from stephanie.components.gap.processors.significance import (
     SignificanceConfig, SignificanceProcessor)
+from stephanie.core.manifest import ManifestManager
+from stephanie.services.epistemic_guard_service import EGVisualService, EpistemicGuardService
+from stephanie.services.risk_predictor_service import RiskPredictorService
+from stephanie.services.scm_service import SCMService
+from stephanie.services.storage_service import StorageService
 from stephanie.utils.progress_mixin import ProgressMixin
 
 _logger = logging.getLogger(__name__)
@@ -90,6 +95,62 @@ class GapAnalysisOrchestrator(ProgressMixin):
         self.calibration_processor = CalibrationProcessor(
             self.cfg, container, logger
         )
+        self.base_dir = getattr(self.cfg, "base_dir", "./data/runs")
+
+        # Register and initialize persistent storage for analysis artifacts
+        try:
+            self.container.register(
+                name="storage",
+                factory=lambda: StorageService(),
+                dependencies=[],
+                init_args={
+                    "base_dir": str(self.cfg.base_dir),
+                    "logger": self.logger,
+                },
+            )
+
+            container.register(
+                name="scm_service",
+                factory=lambda: SCMService(),
+                dependencies=[],
+                init_args={"config": cfg.scm, "logger": logger},
+            )
+    
+            container.register(
+                name="ep_guard",
+                factory=lambda: EpistemicGuardService(),
+                dependencies=[],
+                init_args={"config": {"out_dir": str(cfg.base_dir / "eg"), "thresholds": (0.2, 0.6)}, "logger": logger},
+            )
+            container.register(
+                name="eg_visual",
+                factory=lambda: EGVisualService(),
+                dependencies=[],
+                init_args={"config": {"out_dir": str(cfg.base_dir / "eg" / "img")}, "logger": logger},
+            )
+
+
+            self.container.register(
+                name="risk_predictor",
+                factory=lambda: RiskPredictorService(cfg=cfg, memory=memory, logger=logger),
+                dependencies=["?memcube"],  # optional
+                init_args={
+                    "config": {
+                        "bundle_path": "./models/risk/bundle.joblib",
+                        "default_domains": ("science", "history", "geography", "tech", "general"),
+                        "calib_ttl_s": 3600,
+                        "fallback_low": 0.20,
+                        "fallback_high": 0.60,
+                        # optionally inject a memcube client explicitly:
+                        # "memcube": container.get("memcube"),
+                    }
+                },
+            )
+
+        except ValueError:
+            pass  # Already registered - safe to ignore
+        self.storage = self.container.get("storage")
+        self.manifest_manager = ManifestManager(self.storage)
 
         # Significance: Statistical validation of topological findings
         # Handles p-values, confidence intervals, null hypothesis testing
@@ -255,3 +316,22 @@ class GapAnalysisOrchestrator(ProgressMixin):
         self.manifest_manager.finish_run(run_id, result)
         
         return result
+    
+    def _ensure_storage(self, base_dir: str) -> StorageService | None:
+        # Prefer an existing storage on the container
+        st = getattr(self.container, "storage", None) or getattr(self.container, "storage", None)
+        if st:
+            return st
+
+        if StorageService is None:
+            self.logger.warning("No GapStorageService available; run-scoped writes may fail.")
+            return None
+
+        st = StorageService()
+        st.initialize(base_dir=base_dir)
+        # Set on container for reuse
+        try:
+            setattr(self.container, "storage", st)
+        except Exception:
+            pass
+        return st

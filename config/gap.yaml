@@ -3,7 +3,7 @@ defaults:
   - db: postgres
   - plan_monitor: disabled
   - logging: json_logger
-  - services/default
+  - services: all
   - scorer: gap  
 
 

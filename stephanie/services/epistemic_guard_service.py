@@ -9,7 +9,7 @@ from stephanie.components.risk.epi.epistemic_guard import EGVisual, EpistemicGua
 from stephanie.services.service_protocol import Service
 
 # Optional: your storage API (generic, lives under GAP but is reusable)
-from stephanie.services.storage import GapStorageService  # noqa: F401
+from stephanie.services.storage_service import StorageService  # noqa: F401
 
 
 class EpistemicGuardService(Service):
@@ -25,7 +25,7 @@ class EpistemicGuardService(Service):
     def __init__(self):
         self._logger = logging.getLogger(self.name)
         self._core: EpistemicGuard | None = None   # static fallback
-        self._storage: Optional[GapStorageService] = None
+        self._storage: Optional[StorageService] = None
         self._visuals_subdir = "visuals/risk"
         self._static_out_dir: Optional[str] = None
         self._thresholds = (0.2, 0.6)
@@ -48,6 +48,7 @@ class EpistemicGuardService(Service):
         self._static_out_dir = cfg.get("out_dir")  # only used if no storage/run_id
         self._thresholds = tuple(cfg.get("thresholds", (0.2, 0.6)))
         self._seed = int(cfg.get("seed", 42))
+        self._storage = self._ensure_storage()
 
         # Fallback static core (only used when no run_id is provided)
         if self._static_out_dir:
@@ -135,6 +136,25 @@ class EpistemicGuardService(Service):
                 return pr(question, context, **kw)
 
         self._core.set_predictor(_AsyncAdapter())
+
+    def _ensure_storage(self):
+        # Prefer an existing storage on the container
+        st = getattr(self.container, "storage", None) or getattr(self.container, "storage", None)
+        if st:
+            return st
+
+        if StorageService is None:
+            self.logger.warning("No GapStorageService available; run-scoped writes may fail.")
+            return None
+
+        st = StorageService()
+        st.initialize(base_dir=self._static_out_dir or "./data/runs/storage")
+        # Set on container for reuse
+        try:
+            setattr(self.container, "storage", st)
+        except Exception:
+            pass
+        return st
 
 
 class EGVisualService(Service):
