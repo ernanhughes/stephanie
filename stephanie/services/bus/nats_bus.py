@@ -25,7 +25,7 @@ import sys
 import time
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 from nats import errors as nats_errors
 from nats.aio.client import Client as NATS
@@ -47,6 +47,19 @@ _logger = logging.getLogger(__name__)
 def _sanitize_durable(stream: str, subject: str) -> str:
     name = f"durable_{stream}_{subject}".replace(".", "_").replace(">", "all")
     return name[:240]
+
+
+def _as_timedelta(v: Optional[Union[int, float, timedelta]], default_seconds: float) -> timedelta:
+    if v is None:
+        return timedelta(seconds=int(max(1, default_seconds)))
+    if isinstance(v, timedelta):
+        return v
+    try:
+        return timedelta(seconds=float(v))
+    except Exception:
+        return timedelta(seconds=int(max(1, default_seconds)))
+
+
 
 
 class NatsKnowledgeBus(BusProtocol):
@@ -411,52 +424,87 @@ class NatsKnowledgeBus(BusProtocol):
                 raise BusRequestError(f"Request failed for {subject}") from e
 
     async def subscribe(
-        self, subject: str, handler: Callable[[Dict[str, Any]], Any]
+        self,
+        subject: str,
+        handler: Callable[[Dict[str, Any]], Any],
+        *,
+        # alias set — any of these may be used by callers
+        queue: Optional[str] = None,
+        queue_group: Optional[str] = None,
+        deliver_group: Optional[str] = None,
+        durable: Optional[str] = None,
+        ack_wait: Optional[Union[int, float, timedelta]] = None,
+        max_deliver: Optional[int] = None,
+        deliver_policy: Optional[DeliverPolicy] = None,
     ) -> None:
-        """
-        Public subscribe: ensures connection, builds the wrapped cb,
-        stores intent for auto re-subscribe, then binds the consumer on JetStream.
-        """
         await self._ensure_connected()
         if not (self._js and self._nc and not self._nc.is_closed):
-            _logger.error(
-                "NATSSubscribeSkippedNotConnected subject: %s", subject
-            )
+            _logger.error("NATSSubscribeSkippedNotConnected subject: %s", subject)
             return
 
-        durable_name = _sanitize_durable(self.stream, subject)
+        qgroup = queue or deliver_group or queue_group
+        durable_name = durable or _sanitize_durable(self.stream, subject)
         wrapped_cb = self._build_wrapped(subject, handler)
 
-        # Remember intent for reconnects
+        # remember intent for reconnects
         self._subscriptions[subject] = {
             "handler": handler,
             "durable": durable_name,
+            "queue": qgroup,
+            "ack_wait": ack_wait,
+            "max_deliver": max_deliver,
+            "deliver_policy": deliver_policy,
             "cb": wrapped_cb,
         }
 
-        await self._do_subscribe(subject, durable_name, wrapped_cb)
+        await self._do_subscribe(
+            subject,
+            durable_name,
+            wrapped_cb,
+            queue=qgroup,
+            ack_wait=ack_wait,
+            max_deliver=max_deliver,
+            deliver_policy=deliver_policy,
+        )
 
-    async def _do_subscribe(self, subject: str, durable_name: str, cb) -> None:
-        # ack_wait: use timedelta for correctness across nats-py versions
-        ack_wait_seconds = int(max(1, self.timeout * 5))
+    async def _do_subscribe(
+        self,
+        subject: str,
+        durable_name: str,
+        cb,
+        *,
+        queue: Optional[str] = None,
+        ack_wait: Optional[Union[int, float, timedelta]] = None,
+        max_deliver: Optional[int] = None,
+        deliver_policy: Optional[DeliverPolicy] = None,
+    ) -> None:
+        ack_td = _as_timedelta(ack_wait, default_seconds=(self.timeout * 5))
         cfg = ConsumerConfig(
-            deliver_policy=DeliverPolicy.ALL,
-            ack_wait=timedelta(seconds=ack_wait_seconds),
-            max_deliver=self.max_retries + 1,
+            deliver_policy=deliver_policy or DeliverPolicy.ALL,
+            ack_wait=ack_td,
+            max_deliver=(self.max_retries + 1) if max_deliver is None else int(max_deliver),
         )
         full_subject = f"{self.stream}.{subject}"
 
-        sub = await self._js.subscribe(
-            full_subject,
-            durable=durable_name,
-            cb=cb,
-            config=cfg,
-        )
+        # prefer passing queue if supported; otherwise fall back
+        try:
+            sub = await self._js.subscribe(             # type: ignore[call-arg]
+                full_subject,
+                durable=durable_name,
+                cb=cb,
+                config=cfg,
+                queue=queue,                            # <- correct kw for nats-py
+            )
+        except TypeError:
+            sub = await self._js.subscribe(
+                full_subject,
+                durable=durable_name,
+                cb=cb,
+                config=cfg,
+            )
 
         self._subscriptions[subject]["sub"] = sub
-        self.logger.info(
-            "NATSSubscribed", {"subject": subject, "durable": durable_name}
-        )
+        self.logger.info("NATSSubscribed", {"subject": subject, "durable": durable_name, "queue": queue})
 
     async def _resubscribe_all(self):
         for subject, meta in list(self._subscriptions.items()):
@@ -464,12 +512,18 @@ class NatsKnowledgeBus(BusProtocol):
             durable = meta["durable"]
             cb = meta.get("cb") or self._build_wrapped(subject, handler)
             try:
-                await self._do_subscribe(subject, durable, cb)
+                await self._do_subscribe(
+                    subject,
+                    durable,
+                    cb,
+                    queue=meta.get("queue"),
+                    ack_wait=meta.get("ack_wait"),
+                    max_deliver=meta.get("max_deliver"),
+                    deliver_policy=meta.get("deliver_policy"),
+                )
                 _logger.debug("NATSResubscribed subject: %s", subject)
             except Exception as e:
-                _logger.error(
-                    "NATSResubscribeFailed subject: %s, error: %r", subject, e
-                )
+                _logger.error("NATSResubscribeFailed subject: %s, error: %r", subject, e)
 
     # ---------- Shutdown ----------
 

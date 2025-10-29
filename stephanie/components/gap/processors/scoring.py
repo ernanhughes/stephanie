@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from stephanie.core.manifest import GapRunManifest
 from stephanie.components.gap.models import GapConfig, TripleSample
-from stephanie.components.gap.services.scm_service import (SCM_FEATURE_KEYS,
+from stephanie.core.scm_service import (SCM_FEATURE_KEYS,
                                                            SCMService)
 from stephanie.components.gap.shared_scm import SCM_COLUMNS
 from stephanie.scoring.scorable import Scorable, ScorableType

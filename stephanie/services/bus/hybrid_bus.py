@@ -5,10 +5,10 @@ import asyncio
 import base64
 import logging
 from typing import Any, Callable, Dict, List, Optional
+import inspect
 
 from .bus_protocol import BusProtocol
-from .errors import (BusConnectionError, BusPublishError, BusRequestError,
-                     BusSubscribeError)
+from .errors import (BusConnectionError, BusPublishError, BusRequestError)
 from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
 from .nats_bus import NatsKnowledgeBus
@@ -198,6 +198,7 @@ class HybridKnowledgeBus(BusProtocol):
         self,
         subject: str,
         handler: Callable[[Dict[str, Any]], None],
+        **kwargs: Any,                      
     ) -> None:
         if self._bus is None and not self._disabled:
             ok = await self.connect()
@@ -205,11 +206,27 @@ class HybridKnowledgeBus(BusProtocol):
                 raise BusConnectionError("No bus connection available")
         if self._bus is None:
             return
+
+        # ---- normalize arg names once here ----
+        norm = dict(kwargs)
+        # prefer JetStream term 'deliver_group'; accept common aliases
+        if "queue_group" in norm and "deliver_group" not in norm:
+            norm["deliver_group"] = norm.pop("queue_group")
+        if "group" in norm and "deliver_group" not in norm:
+            norm["deliver_group"] = norm.pop("group")
+
+        # ---- filter to what the underlying bus supports ----
         try:
-            return await self._bus.subscribe(subject, handler)
-        except Exception as e:
-            _logger.error(f"Failed to subscribe to {subject}: {e}")
-            raise BusSubscribeError(f"Failed to subscribe to {subject}") from e
+            sig = inspect.signature(self._bus.subscribe)  # type: ignore[attr-defined]
+            filtered = {k: v for k, v in norm.items() if k in sig.parameters}
+        except Exception:
+            filtered = norm  # best effort
+
+        try:
+            return await self._bus.subscribe(subject, handler, **filtered)  # type: ignore[misc]
+        except TypeError:
+            # absolute fallback
+            return await self._bus.subscribe(subject, handler)  # type: ignore[misc]
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         if self._bus is None and not self._disabled:

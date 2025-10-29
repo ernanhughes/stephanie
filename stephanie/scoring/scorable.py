@@ -7,8 +7,11 @@ from typing import Any, Dict, List, Optional
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseORM
-from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
-                                   ChatTurnORM)
+from stephanie.models.chat import (
+    ChatConversationORM,
+    ChatMessageORM,
+    ChatTurnORM,
+)
 from stephanie.models.document import DocumentORM
 from stephanie.models.document_section import DocumentSectionORM
 from stephanie.models.dynamic_scorable import DynamicScorableORM
@@ -24,7 +27,7 @@ class ScorableType:
     CASE = "case"
     CASE_SCORABLE = "case_scorable"
     CHUNK = "chunk"
-    CONVERSATION = "conversation"       # full conversation
+    CONVERSATION = "conversation"  # full conversation
     CONVERSATION_TURN = "conversation_turn"  # user→assistant pair
     CONVERSATION_MESSAGE = "conversation_message"  # single message
     CUSTOM = "custom"
@@ -48,16 +51,29 @@ class ScorableType:
 
 
 class Scorable:
-    def __init__(self, text: str, id: str = "", target_type: str = "custom", meta: Dict[str, Any] = None):
+    def __init__(
+        self,
+        text: str,
+        id: str = "",
+        target_type: str = "custom",
+        meta: Dict[str, Any] = None,
+        domains: Dict[str, Any] = None,
+        ner: Dict[str, Any] = None,
+    ):
         self._id = id
         self._text = text
         self._target_type = target_type
         self._metadata = meta or {}
+        self._domains = domains or {}
+        self._ner = ner or {}
 
     @property
     def meta(self) -> Dict[str, Any]:
         return self._metadata
 
+    @property
+    def domains(self) -> Dict[str, Any]:
+        return self._metadata
 
     @property
     def text(self) -> str:
@@ -76,7 +92,9 @@ class Scorable:
             "id": self._id,
             "text": self._text,
             "target_type": self._target_type,
-            "metadata": self._metadata  
+            "metadata": self._metadata,
+            "domains": self._domains,
+            "ner": self._ner,
         }
 
     def __repr__(self):
@@ -95,7 +113,9 @@ class ScorableFactory:
     """
 
     @staticmethod
-    def get_text(title: str, summary: str, text: str, mode: str = "default") -> str:
+    def get_text(
+        title: str, summary: str, text: str, mode: str = "default"
+    ) -> str:
         """
         Utility to produce either a summary or full text representation of a document.
 
@@ -113,7 +133,6 @@ class ScorableFactory:
             return f"{title}\n\n{summary}"
         return f"{title}\n\n{text or summary}"
 
-
     @staticmethod
     def from_orm(obj, mode: str = "default") -> Scorable:
         """
@@ -125,59 +144,89 @@ class ScorableFactory:
             return ScorableFactory.from_prompt_pair(obj, mode)
 
         elif isinstance(obj, CartridgeORM):
-            text = ScorableFactory.get_text(obj.title, obj.summary, obj.markdown_content, mode)
-            return Scorable(id=obj.id, text=text, target_type=ScorableType.CARTRIDGE)
+            text = ScorableFactory.get_text(
+                obj.title, obj.summary, obj.markdown_content, mode
+            )
+            return Scorable(
+                id=obj.id, text=text, target_type=ScorableType.CARTRIDGE
+            )
 
         elif isinstance(obj, HypothesisORM):
             text = obj.text or ""
-            return Scorable(id=obj.id, text=text, target_type=ScorableType.HYPOTHESIS)
+            return Scorable(
+                id=obj.id, text=text, target_type=ScorableType.HYPOTHESIS
+            )
 
         elif isinstance(obj, CartridgeTripleORM):
             text = f"{obj.subject} {obj.relation} {obj.object}"
-            return Scorable(id=obj.id, text=text, target_type=ScorableType.TRIPLE)
+            return Scorable(
+                id=obj.id, text=text, target_type=ScorableType.TRIPLE
+            )
 
         elif isinstance(obj, TheoremORM):
             text = obj.statement or ""
-            return Scorable(id=obj.id, text=text, target_type=ScorableType.THEOREM)
+            return Scorable(
+                id=obj.id, text=text, target_type=ScorableType.THEOREM
+            )
 
         elif isinstance(obj, DocumentORM):
-            text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
-            return Scorable(id=obj.id, text=text, target_type=ScorableType.DOCUMENT)
+            text = ScorableFactory.get_text(
+                obj.title, obj.summary, obj.text, mode
+            )
+            return Scorable(
+                id=obj.id, text=text, target_type=ScorableType.DOCUMENT
+            )
 
         elif isinstance(obj, DocumentSectionORM):
             text = f"{obj.section_name}\n{obj.section_text}"
-            return Scorable(id=obj.id, text=text, target_type=ScorableType.DOCUMENT_SECTION)
+            return Scorable(
+                id=obj.id, text=text, target_type=ScorableType.DOCUMENT_SECTION
+            )
 
         elif isinstance(obj, CaseORM):
-            text = ScorableFactory.get_text(obj.title, obj.summary, obj.text, mode)
-            return Scorable(id=obj.id, text=text, target_type=ScorableType.CASE)
+            text = ScorableFactory.get_text(
+                obj.title, obj.summary, obj.text, mode
+            )
+            return Scorable(
+                id=obj.id, text=text, target_type=ScorableType.CASE
+            )
 
         elif isinstance(obj, PlanTrace):
-            text = " ".join([
-                obj.plan_signature or "",
-                obj.final_output_text or "",
-            " ".join([s.output_text for s in obj.execution_steps[:3]])  # optional context
-            ])
-            return Scorable(id=obj.trace_id, text=text, target_type=ScorableType.PLAN_TRACE)
+            text = " ".join(
+                [
+                    obj.plan_signature or "",
+                    obj.final_output_text or "",
+                    " ".join(
+                        [s.output_text for s in obj.execution_steps[:3]]
+                    ),  # optional context
+                ]
+            )
+            return Scorable(
+                id=obj.trace_id, text=text, target_type=ScorableType.PLAN_TRACE
+            )
 
         elif isinstance(obj, ChatConversationORM):
-            text = "\n".join([f"{m.role}: {m.text}" for m in obj.messages]).strip()
+            text = "\n".join(
+                [f"{m.role}: {m.text}" for m in obj.messages]
+            ).strip()
             return Scorable(
                 id=str(obj.id),
                 text=text,
                 target_type=ScorableType.CONVERSATION,
-                meta=obj.to_dict(include_messages=False)
+                meta=obj.to_dict(include_messages=False),
             )
 
         elif isinstance(obj, ChatTurnORM):
             user_text = obj.user_message.text if obj.user_message else ""
-            assistant_text = obj.assistant_message.text if obj.assistant_message else ""
+            assistant_text = (
+                obj.assistant_message.text if obj.assistant_message else ""
+            )
             text = f"USER: {user_text}\nASSISTANT: {assistant_text}"
             return Scorable(
                 id=str(obj.id),
                 text=text.strip(),
                 target_type=ScorableType.CONVERSATION_TURN,
-                meta=obj.to_dict()
+                meta=obj.to_dict(),
             )
 
         elif isinstance(obj, ChatMessageORM):
@@ -186,7 +235,7 @@ class ScorableFactory:
                 id=str(obj.id),
                 text=text.strip(),
                 target_type=ScorableType.CONVERSATION_MESSAGE,
-                meta=obj.to_dict()
+                meta=obj.to_dict(),
             )
 
         elif isinstance(obj, DynamicScorableORM):
@@ -194,18 +243,22 @@ class ScorableFactory:
                 id=str(obj.id),
                 text=obj.text.strip(),
                 target_type=ScorableType.DYNAMIC,
-                meta=obj.to_dict()
+                meta=obj.to_dict(),
             )
 
-        if hasattr(obj, 'id'):
-            text = getattr(obj, 'text', '') or ''
-            return Scorable(id=str(obj.id), text=text, target_type=ScorableType.CUSTOM)
+        if hasattr(obj, "id"):
+            text = getattr(obj, "text", "") or ""
+            return Scorable(
+                id=str(obj.id), text=text, target_type=ScorableType.CUSTOM
+            )
 
         else:
             raise ValueError(f"Unsupported ORM type for scoring: {type(obj)}")
 
     @staticmethod
-    def from_prompt_pair(obj: PromptORM, mode: str = "prompt+response") -> Scorable:
+    def from_prompt_pair(
+        obj: PromptORM, mode: str = "prompt+response"
+    ) -> Scorable:
         """Handles PromptORM with different modes (prompt_only, response_only, prompt+response, summary)."""
         prompt = obj.prompt_text or ""
         response = ScorableFactory._strip_think_blocks(obj.response_text) or ""
@@ -217,7 +270,11 @@ class ScorableFactory:
             text = response
             target_type = ScorableType.RESPONSE
         elif mode == "summary":
-            snippet = (response[:200] + "...") if response else (prompt[:200] + "...")
+            snippet = (
+                (response[:200] + "...")
+                if response
+                else (prompt[:200] + "...")
+            )
             text = snippet
             target_type = ScorableType.PROMPT_RESPONSE
         elif mode == "prompt+response" or mode == "default":
@@ -229,10 +286,16 @@ class ScorableFactory:
         return Scorable(id=obj.id, text=text, target_type=target_type)
 
     @staticmethod
-    def from_dict(data: dict, target_type: ScorableType = None, mode: str = "default") -> Scorable:
+    def from_dict(
+        data: dict, target_type: ScorableType = None, mode: str = "default"
+    ) -> Scorable:
         """Convert dicts to Scorable. Supports summary vs. full text where applicable."""
         if target_type is None:
-            target_type = data.get("target_type") or data.get("scorable_type") or "document"
+            target_type = (
+                data.get("target_type")
+                or data.get("scorable_type")
+                or "document"
+            )
 
         if target_type == ScorableType.CASE_SCORABLE:
             text = ""
@@ -240,7 +303,9 @@ class ScorableFactory:
             if isinstance(meta, dict):
                 text = meta.get("text") or meta.get("content") or ""
             if not text:
-                text = f"[{data.get('role')}] {data.get('scorable_type') or ''}"
+                text = (
+                    f"[{data.get('role')}] {data.get('scorable_type') or ''}"
+                )
 
             return Scorable(
                 id=str(data.get("scorable_id") or data.get("id", "")),
@@ -250,103 +315,119 @@ class ScorableFactory:
 
         if target_type == ScorableType.VPM:
             from stephanie.scoring.vpm_scorable import VPMScorable
+
             return VPMScorable(
-                id=str(data.get("id") or data.get("vpm_id") or f"vpm:{data.get('run_id')}:{data.get('step')}"),
+                id=str(
+                    data.get("id")
+                    or data.get("vpm_id")
+                    or f"vpm:{data.get('run_id')}:{data.get('step')}"
+                ),
                 run_id=int(data.get("run_id", 0)),
                 step=int(data.get("step", 0)),
                 metric_names=data.get("metric_names", []),
                 values=data.get("values", []),
                 order_weights=data.get("order_weights"),
                 metric_weights=data.get("metric_weights"),
-                meta=data.get("metadata", {})
+                meta=data.get("metadata", {}),
             )
-
 
         # fallback to doc-like behavior
         title = data.get("title", "")
         summary = data.get("summary", "")
         in_text = data.get("text", "")
         text = ScorableFactory.get_text(title, summary, in_text, mode)
-        return Scorable(id=str(data.get("id", "")), text=text, target_type=target_type)
+        return Scorable(
+            id=str(data.get("id", "")), text=text, target_type=target_type
+        )
 
     @staticmethod
-    def from_text(text: str, target_type: ScorableType, meta: dict = {}) -> Scorable:
+    def from_text(
+        text: str, target_type: ScorableType, meta: dict = {}
+    ) -> Scorable:
         """Convert plain text to Scorable. Supports summary truncation."""
         return Scorable(id="", text=text, target_type=target_type, meta=meta)
 
     @staticmethod
-    def from_plan_trace(trace: PlanTrace, goal_text: str, mode: str = "default", step: Optional[ExecutionStep] = None) -> Scorable:
+    def from_plan_trace(
+        trace: PlanTrace,
+        goal_text: str,
+        mode: str = "default",
+        step: Optional[ExecutionStep] = None,
+    ) -> Scorable:
         """
         Convert a PlanTrace into a Scorable object for scoring.
         Mode can be used to customize how the trace is represented as text.
-        
+
         Args:
             trace: The PlanTrace object to convert
             mode: How to represent the trace ('default', 'single_step', 'full_trace')
             step: Optional ExecutionStep for single-step mode
-            
+
         Returns:
             Scorable: A scorable object representing the trace or step
         """
         if mode == "single_step" and step is not None:
             # Format a single step for scoring
             step_text = f"Step {step.step_order}: {step.step_type}\n"
-            step_text += f"Description: {step.description or 'No description'}\n"
-            
+            step_text += (
+                f"Description: {step.description or 'No description'}\n"
+            )
+
             # Add input if available
-            if hasattr(step, 'input_text') and step.input_text:
+            if hasattr(step, "input_text") and step.input_text:
                 step_text += f"Input: {step.input_text[:500]}...\n"
-            
+
             # Add output with truncation
             output_text = step.output_text or ""
             step_text += f"Output: {output_text[:1000]}"
             if len(output_text) > 1000:
                 step_text += "..."
-            
+
             # Create scorable for this step
             return Scorable(
                 id=f"{trace.trace_id}_step_{step.step_id}",
                 text=step_text,
-                target_type=ScorableType.PLAN_TRACE_STEP
+                target_type=ScorableType.PLAN_TRACE_STEP,
             )
-        
+
         elif mode == "full_trace":
             # Format the complete trace for scoring
             trace_text = f"Goal: {goal_text or 'No goal text'}\n\n"
             trace_text += "Pipeline Execution Steps:\n\n"
-            
+
             # Add all steps
             for i, step in enumerate(trace.execution_steps, 1):
-                trace_text += f"{i}. {step.step_type}: {step.description[:100]}...\n"
+                trace_text += (
+                    f"{i}. {step.step_type}: {step.description[:100]}...\n"
+                )
                 output_text = step.output_text or ""
                 trace_text += f"   Output: {output_text[:200]}"
                 if len(output_text) > 200:
                     trace_text += "...\n\n"
                 else:
                     trace_text += "\n\n"
-            
+
             # Add final output
             final_output = trace.final_output_text or ""
             trace_text += f"Final Output: {final_output[:500]}"
             if len(final_output) > 500:
                 trace_text += "..."
-            
+
             return Scorable(
                 id=trace.trace_id,
                 text=trace_text,
-                target_type=ScorableType.PLAN_TRACE
+                target_type=ScorableType.PLAN_TRACE,
             )
-        
+
         else:
             # Default mode - goal + final output
             final_output = trace.final_output_text or ""
-            
+
             return Scorable(
                 id=trace.trace_id,
                 text=f"{goal_text}\n\n{final_output}",
-                target_type=ScorableType.PLAN_TRACE
+                target_type=ScorableType.PLAN_TRACE,
             )
-        
 
     @staticmethod
     def from_id(memory, scorable_type: str, scorable_id: str):
@@ -359,27 +440,43 @@ class ScorableFactory:
         dispatch = {
             ScorableType.CONVERSATION: (memory.chats.get_conversation, int),
             ScorableType.CONVERSATION_TURN: (memory.chats.get_turn_by_id, int),
-            ScorableType.CONVERSATION_MESSAGE: (memory.chats.get_message_by_id, int),
+            ScorableType.CONVERSATION_MESSAGE: (
+                memory.chats.get_message_by_id,
+                int,
+            ),
             ScorableType.DOCUMENT: (memory.documents.get_by_id, int),
             ScorableType.HYPOTHESIS: (memory.hypotheses.get_by_id, int),
             ScorableType.CARTRIDGE: (memory.cartridges.get_by_id, int),
             ScorableType.TRIPLE: (memory.cartridge_triples.get_by_id, int),
-            ScorableType.PROMPT: (memory.prompts.get_by_id, int), 
-            ScorableType.THEOREM: (memory.theorems.get_by_id, int),  # plural fixed
+            ScorableType.PROMPT: (memory.prompts.get_by_id, int),
+            ScorableType.THEOREM: (
+                memory.theorems.get_by_id,
+                int,
+            ),  # plural fixed
             ScorableType.CASE: (memory.casebooks.get_case_by_id, int),
-            ScorableType.CASE_SCORABLE: (memory.casebooks.get_case_scorable_by_id, int),
+            ScorableType.CASE_SCORABLE: (
+                memory.casebooks.get_case_scorable_by_id,
+                int,
+            ),
             ScorableType.PLAN_TRACE: (memory.plan_traces.get_by_id, str),
-            ScorableType.PLAN_TRACE_STEP: (memory.plan_traces.get_step_by_id, str),
+            ScorableType.PLAN_TRACE_STEP: (
+                memory.plan_traces.get_step_by_id,
+                str,
+            ),
         }
 
         if scorable_type not in dispatch:
-            raise ValueError(f"Unsupported target type for text extraction: {scorable_type}")
+            raise ValueError(
+                f"Unsupported target type for text extraction: {scorable_type}"
+            )
 
         getter, caster = dispatch[scorable_type]
         orm = getter(caster(scorable_id))
 
         if orm is None:
-            raise ValueError(f"No object found for {scorable_type} id={scorable_id}")
+            raise ValueError(
+                f"No object found for {scorable_type} id={scorable_id}"
+            )
 
         return ScorableFactory.from_orm(orm)
 

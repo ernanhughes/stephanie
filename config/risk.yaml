@@ -3,10 +3,10 @@ defaults:
   - db: postgres
   - plan_monitor: disabled
   - logging: json_logger
-  - services/default
-  - scorer: gap  
+  - services: all
+  - scorer: all  
 
-
+  - agents/scorable_loader
   - agents/risk
   - agents/chat_sicql_trainer
   - agents/chat_tiny_trainer
@@ -82,6 +82,12 @@ pipeline:
        cls: stephanie.components.gap.gap.GapAgent
        enabled: false
        iterations: 1
+
+     - name: scorable_loader
+       description: "🔓 Will score the imported conversation turns"
+       cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
+       enabled: true
+       iterations: 1    
 
      - name: risk
        description: "Understanding the Gap between two models using chat conversation_turns"

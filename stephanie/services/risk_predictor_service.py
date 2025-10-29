@@ -12,17 +12,19 @@ from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.scoring.model.risk_predictor import DomainCalibratedRiskPredictor
 from stephanie.services.service_protocol import Service
 
-
 @dataclass
 class RiskServiceConfig:
     bundle_path: str = "./models/risk/bundle.joblib"
-    default_domains: tuple[str, ...] = ("science", "history", "geography", "tech", "general")
+    default_domains: tuple[str, ...] = (
+        "programming", "apis", "systems", "devops", "cloud", "security",
+        "databases", "data_science", "ml", "nlp", "vision",
+        "math", "research", "ethics", "general"
+    )
     calib_ttl_s: int = 3600
     fallback_low: float = 0.20
     fallback_high: float = 0.60
     enable_explanations: bool = False
-    # Optional direct injection
-    domain_seed_config_path: str = "config/domain/seeds.yaml"
+    domain_seed_config_path: str = "config/domain/seeds_tech.yaml"
     memcube: Any = None
 
 
@@ -251,7 +253,7 @@ class RiskPredictorService(Service):
         self._lat_ema_ms = (1 - a) * self._lat_ema_ms + a * dt_ms if self._lat_ema_ms > 0 else dt_ms
 
     async def _guess_domain_safe(self, question: str) -> str:
-        # Prefer predictor’s memcube if present
+        # Prefer predictorï¿½s memcube if present
         try:
             if self._predictor and getattr(self._predictor, "memcube", None):
                 d = await self._predictor.memcube.guess_domain(question)  # type: ignore[attr-defined]

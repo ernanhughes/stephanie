@@ -7,7 +7,7 @@ risk:
   skip_if_completed: false
 
   # I/O
-  input_keys: ["goal", "reply"]
+  input_key: scorable
   output_key: risk
   prompt_mode: none
 

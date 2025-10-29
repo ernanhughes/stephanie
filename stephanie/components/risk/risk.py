@@ -39,31 +39,32 @@ class RiskAgent(BaseAgent):
         # Keep output key explicit so callers know where to find results
         self.orchestrator = RiskOrchestrator(cfg, memory, container, logger)
         self.policy_profile = cfg.get("policy_profile", "chat.standard")
-        self.policy_overrides = cfg.get("policy_overrides")
-        self.default_model_alias = cfg.get("default_model_alias", "sicql")
+        self.policy_overrides = cfg.get("policy_overrides") 
+        self.default_model_alias = cfg.get("default_model_alias", "risk")
         self.default_monitor_alias = cfg.get("default_monitor_alias", "tiny")
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         scorables = self.get_scorables(context)
         pipeline_run_id = context.get("pipeline_run_id")
+        results = []
         for scorable in scorables:
-            goal = scorable.get("goal", "")
-            reply = scorable.get("reply", "")
+            goal = scorable.get("goal_ref", context.get("goal", {})).get("text", "")
+            reply = scorable.get("text", "")
 
-            self.logger.debug(
+            _logger.debug(
                 f"RiskAgent: evaluating run_id={pipeline_run_id} model={self.default_model_alias} monitor={self.default_monitor_alias}"
             )
 
-            rec = await self.orchestrator.evaluate(
-                run_id=pipeline_run_id,
+            rec = await self.orchestrator._evaluate_one(
+                run_id=str(pipeline_run_id),
                 goal=goal,
                 reply=reply,
                 model_alias=self.default_model_alias,
                 monitor_alias=self.default_monitor_alias,
-                policy_profile=self.policy_profile,
-                policy_overrides=self.policy_overrides,
+                context=context,
             )
+            results.append(rec)
 
-        context[self.output_key] = rec
+        context[self.output_key] = results
 
         return context
