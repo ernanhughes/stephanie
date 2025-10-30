@@ -89,3 +89,9 @@ risk:
   calib_ttl_s: 3600
   fallback_low: 0.20
   fallback_high: 0.60
+
+  scm: 
+    version: v1
+    dims: [reasoning, knowledge, clarity, faithfulness, coverage]
+    latent_dim: 128
+    use_native_scores_as_inputs: false

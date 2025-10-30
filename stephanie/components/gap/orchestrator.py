@@ -30,7 +30,8 @@ from stephanie.components.gap.processors.scoring import ScoringProcessor
 from stephanie.components.gap.processors.significance import (
     SignificanceConfig, SignificanceProcessor)
 from stephanie.core.manifest import ManifestManager
-from stephanie.services.epistemic_guard_service import EGVisualService, EpistemicGuardService
+from stephanie.services.epistemic_guard_service import EpistemicGuardService
+from stephanie.services.eg_visual_service import EGVisualService
 from stephanie.services.risk_predictor_service import RiskPredictorService
 from stephanie.services.scm_service import SCMService
 from stephanie.services.storage_service import StorageService
@@ -118,7 +119,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
     
             container.register(
                 name="ep_guard",
-                factory=lambda: EpistemicGuardService(),
+                factory=lambda: EpistemicGuardService(self.container),
                 dependencies=[],
                 init_args={"config": {"out_dir": str(cfg.base_dir / "eg"), "thresholds": (0.2, 0.6)}, "logger": logger},
             )

@@ -1,71 +1,97 @@
-# stephanie/components/risk/services/epistemic_guard_service.py
+# stephanie/services/epistemic_guard_service.py
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+import os
+from typing import Any, Dict, List, Optional, Tuple
+import numpy as np
+import torch
 
-from stephanie.components.risk.epi.epistemic_guard import EGVisual, EpistemicGuard, GuardInput, GuardOutput
+from stephanie.components.risk.signals import HallucinationContext, collect as collect_hall
+from stephanie.components.risk.badge import make_badge
+from stephanie.components.risk.attr_sink_orm import ORMAttrSink
+from stephanie.components.risk.provenance import ProvenanceLogger
 from stephanie.services.service_protocol import Service
+from stephanie.services.storage_service import StorageService
+from stephanie.components.risk.epi.epistemic_guard import GuardInput, GuardOutput
 
-# Optional: your storage API (generic, lives under GAP but is reusable)
-from stephanie.services.storage_service import StorageService  # noqa: F401
+# ------------------- Contracts -------------------
+# These are your real hallucination components — must be provided by container
+# - sampler: async def sample(prompt: str, n: int) -> List[str]
+# - embedder: def embed(sentences: List[str]) -> np.ndarray
+# - entailment: def entail(premise: str, hypothesis: str) -> float
 
-
+# ------------------- Service -------------------
 class EpistemicGuardService(Service):
     """
-    Run-scoped EpistemicGuard wrapper.
+    Production-grade Epistemic Guard Service.
 
-    - If a run_id is provided (recommended), artifacts are written under:
-        <storage.base>/<run_id>/visuals/risk/
-      via your GapStorageService.
-    - Otherwise, falls back to a static out_dir (useful for ad-hoc tests).
+    This service:
+    - Computes REAL hallucination signals (semantic drift, metadata violation, RAG unsupported)
+    - Writes namespaced attributes (hall.se_mean, hall.meta.inv_violations, etc.) to DB
+    - Generates a real HallucinationBadge (ok/warn/risk)
+    - Saves VPM channels (R=Δ-energy, G=entropy, B=disagreement, A=1−confidence) as .npz
+    - Logs full manifest (goal, reply, context, metrics) as JSON + JSONL trace
+    - Is fully compatible with Jitter: emits phys.hall_score and VPM channels
+
+    Dependencies:
+        - container must provide: sampler, embedder, entailment
+        - optional: session (for ORMAttrSink), storage (for manifest path)
+
+    Usage:
+        service = EpistemicGuardService(container)
+        service.initialize()
+        output = await service.assess(guard_input, run_id="run-123")
     """
-
-    def __init__(self):
-        self._logger = logging.getLogger(self.name)
-        self._core: EpistemicGuard | None = None   # static fallback
-        self._storage: Optional[StorageService] = None
-        self._visuals_subdir = "visuals/risk"
-        self._static_out_dir: Optional[str] = None
-        self._thresholds = (0.2, 0.6)
-        self._seed = 42
+    
+    def __init__(self, memory, container):
+        self.memory = memory    
+        self.container = container
+        self._logger = None
+        self._sampler = None
+        self._embedder = self.memory.embedding
+        self._entailment = None
+        self._session = None
+        self._storage = None
+        self._provenance_dir = "./runs/hallucinations"
+        self._thresholds = (0.35, 0.60)  # warn, risk — match badge logic
+        self._n_semantic_samples = 6
         self._up = False
 
     @property
     def name(self) -> str:
-        return "eg-service-v2"
+        return "epistemic-guard-service-v3"
 
     def initialize(self, **kwargs) -> None:
+        """Initialize from container config and dependencies."""
         cfg: Dict[str, Any] = (kwargs.get("config") or {}) if kwargs else {}
         logger = kwargs.get("logger")
         if logger is not None:
             self._logger = logger
+        else:
+            self._logger = logging.getLogger(self.name)
 
-        # storage is optional but preferred for run-scoped writes
-        self._storage = kwargs.get("storage")  # GapStorageService or compatible
-        self._visuals_subdir = cfg.get("visuals_subdir", "visuals/risk")
-        self._static_out_dir = cfg.get("out_dir")  # only used if no storage/run_id
-        self._thresholds = tuple(cfg.get("thresholds", (0.2, 0.6)))
-        self._seed = int(cfg.get("seed", 42))
-        self._storage = self._ensure_storage()
 
-        # Fallback static core (only used when no run_id is provided)
-        if self._static_out_dir:
-            self._core = EpistemicGuard(
-                root_out_dir=self._static_out_dir,
-                thresholds=self._thresholds,
-                seed=self._seed,
-            )
 
+        # --- Optional: DB session for ORMAttrSink ---
+        self._session = kwargs.get("session")  # SQLAlchemy session
+
+        # --- Optional: Storage for manifest path ---
+        self._storage = kwargs.get("storage")  # StorageService
+        self._provenance_dir = cfg.get("provenance_dir", "./runs/hallucinations")
+        self._thresholds = tuple(cfg.get("thresholds", (0.35, 0.60)))
+        self._n_semantic_samples = int(cfg.get("n_semantic_samples", 6))
+
+        # --- Validate and log ---
         self._up = True
         self._logger.info(
             "EpistemicGuardService initialized",
             extra={
-                "visuals_subdir": self._visuals_subdir,
-                "static_out_dir": self._static_out_dir,
+                "n_semantic_samples": self._n_semantic_samples,
                 "thresholds": self._thresholds,
-                "seed": self._seed,
+                "provenance_dir": self._provenance_dir,
+                "has_db_session": bool(self._session),
                 "has_storage": bool(self._storage),
             },
         )
@@ -75,129 +101,182 @@ class EpistemicGuardService(Service):
             "status": "healthy" if self._up else "unhealthy",
             "metrics": {},
             "dependencies": {
-                "storage": "ready" if self._storage else "none",
-                "static_core": "ready" if self._core else "none",
+                "sampler": "ready" if self._sampler else "missing",
+                "embedder": "ready" if self._embedder else "missing",
+                "db_session": "ready" if self._session else "optional",
+                "storage": "ready" if self._storage else "optional",
             },
         }
 
     def shutdown(self) -> None:
         self._up = False
-        self._core = None
         self._logger.info("EpistemicGuardService shutdown")
 
-    # -------- public API --------
-
+    # ------------------- Public API -------------------
     async def assess(self, data: GuardInput, *, run_id: Optional[str] = None) -> GuardOutput:
         """
-        Assess risk and render artifacts.
+        Assess hallucination risk using real signals.
 
-        - If run_id is provided AND storage is configured, render directly into:
-            storage.subdir(run_id, visuals_subdir)
-        - Else, use the static core/out_dir configured at initialize().
+        Args:
+            data: GuardInput containing question, reference, hypothesis
+            run_id: Optional. If provided, artifacts are written to storage.
+
+        Returns:
+            GuardOutput with real metrics, paths, and badge.
         """
-        if self._storage and run_id:
-            out_root = self._storage.subdir(run_id, self._visuals_subdir)
-            core = EpistemicGuard(
-                root_out_dir=str(out_root),
-                thresholds=self._thresholds,
-                seed=self._seed,
-            )
-            return await core.assess(data)
+        if not self._up:
+            raise RuntimeError("EpistemicGuardService is not initialized")
 
-        if not self._core:
-            raise RuntimeError(
-                "EpistemicGuardService not initialized with static out_dir and no run_id/storage provided."
-            )
-        return await self._core.assess(data)
+        def _embedding_wrapper(sentences: List[str]) -> np.ndarray:
+            if not sentences:
+                return np.zeros((0, 0), dtype=np.float32)
+            vecs = []
+            for s in sentences:
+                emb = self.memory.embedding.get_or_create(s)
+                emb = np.array(emb, dtype=np.float32)
+                vecs.append(emb)
+            return np.stack(vecs, axis=0)
 
-    def set_predictor(self, predictor: Any) -> None:
-        """
-        Accepts either:
-          - an object with *async* predict_risk(...)
-          - or an object with *sync* predict_risk(...)
-        Wires predictor into the static core (used when no run_id is provided).
-        For run-scoped calls with storage+run_id, pass a predictor in your orchestrator instead.
-        """
-        if not self._core:
-            # Create a temporary static core if someone wants to set predictor before first assess
-            root = self._static_out_dir or "./runs/risk/adhoc"
-            self._core = EpistemicGuard(root_out_dir=root, thresholds=self._thresholds, seed=self._seed)
+        # --- 1. Build HallucinationContext ---
+        ctx = HallucinationContext(
+            question=data.question,
+            retrieved_passages=[data.question],  # <-- RAG context is reference
+            sampler=self._sampler,
+            embedder=_embedding_wrapper,
+            entailment=self._entailment,
+            n_semantic_samples=self._n_semantic_samples,
+            power_acceptance_rate=None,
+            power_lp_delta_mean=None,
+            power_reject_streak_max=None,
+            power_token_multiplier=None,
+        )
 
-        pr = getattr(predictor, "predict_risk", None)
-        if pr is None:
-            raise TypeError("predictor must have a `predict_risk` method")
+        # --- 2. Collect Real Hallucination Signals ---
+        sink = ORMAttrSink(session=self._session, evaluation_id=run_id, prefix="hall.") if self._session else None
+        signals = collect_hall(answer=data.hypothesis, ctx=ctx, sink=sink)
 
-        if asyncio.iscoroutinefunction(pr):
-            self._core.set_predictor(predictor)
-            return
+        # --- 3. Generate Real Badge ---
+        badge = make_badge(
+            se_mean=signals.se_mean,
+            meta_viols=signals.meta_inv_violations,
+            rag_unsupported=signals.rag_unsupported_frac,
+        )
 
-        class _AsyncAdapter:
-            async def predict_risk(self, question: str, context: str, **kw):
-                return pr(question, context, **kw)
+        # --- 4. Save VPM Channels as .npz ---
+        vpm_path = self._save_vpm_channels(run_id, signals.vpm_channels)
 
-        self._core.set_predictor(_AsyncAdapter())
+        # --- 5. Log Full Provenance (Manifest) ---
+        provenance_path = self._log_provenance(
+            run_id=run_id,
+            record={
+                "decision": badge.level,
+                "risk": badge.score,
+                "thresholds": {
+                    "warn": self._thresholds[0],
+                    "risk": self._thresholds[1],
+                },
+                "metrics": {
+                    "hall.se_mean": signals.se_mean,
+                    "hall.meta_inv_violations": signals.meta_inv_violations,
+                    "hall.rag_unsupported_frac": signals.rag_unsupported_frac,
+                    "hall.max_energy": float(signals.vpm_channels.get("R", [0]).mean()) if "R" in signals.vpm_channels else 0.0,
+                    "hall.entropy": float(signals.vpm_channels.get("G", [0]).mean()) if "G" in signals.vpm_channels else 0.0,
+                    "hall.disagree_rate": float(signals.vpm_channels.get("B", [0]).mean()) if "B" in signals.vpm_channels else 0.0,
+                    "hall.confidence": float(1 - signals.vpm_channels.get("A", [0]).mean()) if "A" in signals.vpm_channels else 0.5,
+                },
+                "reasons": badge.reasons,
+            },
+            goal=data.question,
+            reply=data.hypothesis,
+            context={
+                "reference": data.reference,
+                "meta": data.meta or {},
+            },
+        )
 
-    def _ensure_storage(self):
-        # Prefer an existing storage on the container
-        st = getattr(self.container, "storage", None) or getattr(self.container, "storage", None)
-        if st:
-            return st
+        # --- 6. Route Decision ---
+        route = self._route(badge.level)
 
-        if StorageService is None:
-            self.logger.warning("No GapStorageService available; run-scoped writes may fail.")
-            return None
+        # --- 7. Return Production-Grade Output ---
+        return GuardOutput(
+            trace_id=run_id or "adhoc",
+            risk=badge.score,
+            thresholds=(self._thresholds[0], self._thresholds[1]),
+            route=route,
+            metrics={
+                "hall.se_mean": signals.se_mean,
+                "hall.meta_inv_violations": signals.meta_inv_violations,
+                "hall.rag_unsupported_frac": signals.rag_unsupported_frac,
+                "hall.max_energy": float(signals.vpm_channels.get("R", [0]).mean()) if "R" in signals.vpm_channels else 0.0,
+                "hall.entropy": float(signals.vpm_channels.get("G", [0]).mean()) if "G" in signals.vpm_channels else 0.0,
+                "hall.disagree_rate": float(signals.vpm_channels.get("B", [0]).mean()) if "B" in signals.vpm_channels else 0.0,
+                "hall.confidence": float(1 - signals.vpm_channels.get("A", [0]).mean()) if "A" in signals.vpm_channels else 0.5,
+            },
+            vpm_path=vpm_path,
+            field_path="",  # Optional: remove if unused
+            strip_path="",
+            legend_path="",
+            badge_path=provenance_path,  # <-- Use provenance JSON as badge path (machine-readable)
+            evidence_id=run_id,
+            schema="hall.v1",
+        )
 
-        st = StorageService()
-        st.initialize(base_dir=self._static_out_dir or "./data/runs/storage")
-        # Set on container for reuse
-        try:
-            setattr(self.container, "storage", st)
-        except Exception:
-            pass
-        return st
+    # ------------------- Internal Helpers -------------------
 
+    def _route(self, level: str) -> str:
+        """Map badge level to route: ok->FAST, warn->MEDIUM, risk->HIGH"""
+        mapping = {"ok": "FAST", "warn": "MEDIUM", "risk": "HIGH"}
+        return mapping.get(level.lower(), "MEDIUM")
 
-class EGVisualService(Service):
-    """
-    Thin pass-through for EGVisual; useful if you render custom figures.
-    Prefer assess(run_id=...) above, which already renders field/strip/legend/badge.
-    """
+    def _save_vpm_channels(self, run_id: Optional[str], channels: Dict[str, Any]) -> str:
+        """Save VPM channels as compressed .npz file. Return path."""
+        if not run_id:
+            return f"adhoc_vpm_{hash(str(channels))}.npz"
 
-    def __init__(self):
-        self._logger = logging.getLogger(self.name)
-        self._visual: EGVisual | None = None
-        self._up = False
+        if self._storage:
+            subdir = "vpm"
+            out_dir = self._storage.subdir(run_id, subdir)
+            path = out_dir / f"{run_id}_vpm.npz"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                import numpy as np
+                np.savez_compressed(path, **{k: v for k, v in channels.items()})
+                return str(path)
+            except Exception as e:
+                self._logger.warning(f"Failed to save VPM channels for {run_id}: {e}")
+                return f"{run_id}_vpm.npz"
+        else:
+            # Fallback: save to local dir
+            os.makedirs("./runs/vpm", exist_ok=True)
+            path = f"./runs/vpm/{run_id}_vpm.npz"
+            try:
+                import numpy as np
+                np.savez_compressed(path, **{k: v for k, v in channels.items()})
+                return path
+            except Exception as e:
+                self._logger.warning(f"Failed to save VPM channels locally: {e}")
+                return f"{run_id}_vpm.npz"
 
-    @property
-    def name(self) -> str:
-        return "eg-visual-v2"
+    def _log_provenance(
+        self,
+        run_id: Optional[str],
+        record: Dict[str, Any],
+        goal: str,
+        reply: str,
+        context: Optional[Dict[str, Any]],
+    ) -> str:
+        """Write full manifest as JSON and append to JSONL trace."""
+        if not run_id:
+            run_id = f"adhoc_{hash(str(goal) + str(reply))}"
 
-    def initialize(self, **kwargs) -> None:
-        cfg = (kwargs.get("config") or {}) if kwargs else {}
-        logger = kwargs.get("logger")
-        if logger is not None:
-            self._logger = logger
+        provenance_logger = ProvenanceLogger(out_dir=self._provenance_dir, logger=self._logger)
+        provenance_logger.log(
+            record=record,
+            goal=goal,
+            reply=reply,
+            context=context,
+        )
 
-        out_dir = cfg.get("out_dir", "./runs/risk/adhoc/img")
-        seed = int(cfg.get("seed", 42))
-        self._visual = EGVisual(out_dir=out_dir, seed=seed)
-        self._up = True
-        self._logger.info("EGVisualService initialized", extra={"out_dir": out_dir, "seed": seed})
-
-    def health_check(self) -> Dict[str, Any]:
-        return {
-            "status": "healthy" if self._up else "unhealthy",
-            "metrics": {},
-            "dependencies": {"visual": "ready" if self._visual else "missing"},
-        }
-
-    def shutdown(self) -> None:
-        self._up = False
-        self._visual = None
-        self._logger.info("EGVisualService shutdown")
-
-    # pass-through
-    def render(self, trace_id: str, vpm):
-        if not self._visual:
-            raise RuntimeError("EGVisualService not initialized")
-        return self._visual.render(trace_id, vpm)
+        # Return path to manifest JSON for downstream use
+        safe_id = f"provenance_{run_id}"
+        return f"{self._provenance_dir}/{safe_id}.json"

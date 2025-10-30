@@ -22,13 +22,11 @@ try:
 except Exception:
     umap = None
 
-try:
-    import matplotlib
+import matplotlib
 
+if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-except Exception:
-    plt = None
+import matplotlib.pyplot as plt
 
 SAFE_ID = re.compile(r"^[a-zA-Z0-9._:-]{3,128}$")
 
@@ -146,6 +144,7 @@ class EGVisual:
                 min_dist=0.05,
                 metric="euclidean",
                 random_state=self.seed,
+                n_jobs=1,
             )
             return self._umap.fit_transform(vpm)
         return self._umap.transform(vpm)
@@ -160,13 +159,6 @@ class EGVisual:
         legend = os.path.join(self.out_dir, f"{trace_id}_legend.png")
         R = self._norm(vpm[:, 0])
         proj = self._project(vpm)
-        if plt is None:
-            if Image:
-                for p in (field, strip, legend):
-                    Image.new("RGBA", (8, 8), (0, 0, 0, 0)).save(p)
-            return field, strip, legend
-        import matplotlib.pyplot as plt  # local alias
-
         plt.figure(figsize=(5.6, 4.6))
         plt.scatter(
             proj[:, 0], proj[:, 1], c=R, s=10, cmap="inferno", alpha=0.95

@@ -44,27 +44,7 @@ class RiskAgent(BaseAgent):
         self.default_monitor_alias = cfg.get("default_monitor_alias", "tiny")
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        scorables = self.get_scorables(context)
-        pipeline_run_id = context.get("pipeline_run_id")
-        results = []
-        for scorable in scorables:
-            goal = scorable.get("goal_ref", context.get("goal", {})).get("text", "")
-            reply = scorable.get("text", "")
-
-            _logger.debug(
-                f"RiskAgent: evaluating run_id={pipeline_run_id} model={self.default_model_alias} monitor={self.default_monitor_alias}"
-            )
-
-            rec = await self.orchestrator._evaluate_one(
-                run_id=str(pipeline_run_id),
-                goal=goal,
-                reply=reply,
-                model_alias=self.default_model_alias,
-                monitor_alias=self.default_monitor_alias,
-                context=context,
-            )
-            results.append(rec)
-
-        context[self.output_key] = results
+        
+        context = await self.orchestrator.execute_assessment(context)
 
         return context

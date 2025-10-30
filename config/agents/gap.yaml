@@ -6,7 +6,7 @@ gap:
   skip_if_completed: false
 
   enable_scm_head: true
-  scm:
+  scm: 
     version: v1
     dims: [reasoning, knowledge, clarity, faithfulness, coverage]
     latent_dim: 128

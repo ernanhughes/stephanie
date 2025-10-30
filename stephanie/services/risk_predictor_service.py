@@ -5,71 +5,47 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.memory.memcube_store import MemcubeStore
-from stephanie.scoring.model.risk_predictor import DomainCalibratedRiskPredictor
+from stephanie.scoring.scorable import Scorable
+from stephanie.components.risk.features.entity_domain_features import compute_entity_metrics, risk_from_features
 from stephanie.services.service_protocol import Service
+
+_logger = logging.getLogger(__name__)
 
 @dataclass
 class RiskServiceConfig:
     bundle_path: str = "./models/risk/bundle.joblib"
     default_domains: tuple[str, ...] = (
-        "programming", "apis", "systems", "devops", "cloud", "security",
-        "databases", "data_science", "ml", "nlp", "vision",
-        "math", "research", "ethics", "general"
+        "programming","apis","systems","devops","cloud","security",
+        "databases","data_science","ml","nlp","vision",
+        "math","research","ethics","general"
     )
     calib_ttl_s: int = 3600
     fallback_low: float = 0.20
     fallback_high: float = 0.60
     enable_explanations: bool = False
     domain_seed_config_path: str = "config/domain/seeds_tech.yaml"
-    memcube: Any = None
-
-
-def _coerce_cfg(cfg: Optional[Union[RiskServiceConfig, dict, Any]]) -> RiskServiceConfig:
-    """
-    Accept RiskServiceConfig, dict, or a large config object (e.g., GapConfig).
-    Try to extract a nested 'risk' or 'risk_predictor' block; otherwise use defaults.
-    """
-    if cfg is None:
-        return RiskServiceConfig()
-    if isinstance(cfg, RiskServiceConfig):
-        return cfg
-    if isinstance(cfg, dict):
-        # Allow nested shapes like {"risk": {...}} or {"risk_predictor": {...}}
-        sub = cfg.get("risk") or cfg.get("risk_predictor") or cfg
-        return RiskServiceConfig(**{k: v for k, v in sub.items() if k in RiskServiceConfig().__dict__})
-
-    # Fallback for big config objects (Hydra/OmegaConf/GapConfig)
-    # Try common attribute names
-    for attr in ("risk", "risk_predictor", "policy_risk", "eg"):
-        if hasattr(cfg, attr):
-            block = getattr(cfg, attr)
-            if isinstance(block, dict):
-                return _coerce_cfg(block)
-            # Support dataclass-like with __dict__
-            if hasattr(block, "__dict__"):
-                return _coerce_cfg(block.__dict__)
-
-    # Last resort: defaults
-    return RiskServiceConfig()
-
 
 class RiskPredictorService(Service):
-    def __init__(self, cfg: Optional[Union[RiskServiceConfig, dict, Any]], memory, logger: Optional[logging.Logger] = None):
-        self.cfg = _coerce_cfg(cfg)
+    """
+    STRICT: never guess domains.
+    - For scorables: domain must come from scorable.domains; if absent, we run the classifier explicitly.
+    - For raw text: use predict_risk_strict(question, context, domain=...).
+    """
+    def __init__(self, cfg: RiskServiceConfig, memory, container, logger):
+        self.cfg = cfg
         self.memory = memory
-        self.logger = logger or logging.getLogger("policy-risk-v2")
+        self.container = container
+        self.logger = logger
 
-        self._predictor: Optional[DomainCalibratedRiskPredictor] = None
         self.memcubes: MemcubeStore = memory.memcubes
         self._up: bool = False
         self._req_count: int = 0
         self._err_count: int = 0
         self._lat_ema_ms: float = 0.0
-
         self._th_cache: Dict[str, Tuple[float, float, float]] = {}
         self._cache_lock = asyncio.Lock()
 
@@ -78,47 +54,24 @@ class RiskPredictorService(Service):
             logger,
             self.cfg.domain_seed_config_path or "config/domain/seeds.yaml",
         )
-
         self.bus = memory.bus
+        self._bus_ready = asyncio.Event()
 
     @property
     def name(self) -> str:
-        return "policy-risk-v2"
+        return "risk-predictor-service"
 
     def initialize(self, **kwargs) -> None:
-        # Merge/override config if present
-        incoming = kwargs.get("config")
-        if incoming is not None:
-            self.cfg = _coerce_cfg(incoming)
-
-        lg = kwargs.get("logger")
-        if lg is not None:
+        if (incoming := kwargs.get("config")) is not None:
+            self.cfg = RiskServiceConfig(**incoming)
+        if (lg := kwargs.get("logger")) is not None:
             self.logger = lg
-
-        # Grab a memcube client if available:
-        # 1) explicit in config
-        # 2) memory.memcube (your store-backed client)
-        self.memcubes = self.memory.memcubes
-
-        # Instantiate predictor (pass memcube if present)
-        self._predictor = DomainCalibratedRiskPredictor(
-            bundle_path=self.cfg.bundle_path,
-            default_domains=list(self.cfg.default_domains),
-            memcube=self.memcubes,
-            domain_classifier=self.domain_classifier,
-        )
 
         self._up = True
         self.logger.info(
             "RiskPredictorService initialized",
-            extra={
-                "service": self.name,
-                "bundle_path": self.cfg.bundle_path,
-                "domains": list(self.cfg.default_domains),
-                "memcube": bool(self.memcubes),
-            },
+            extra={"service": self.name, "domains": list(self.cfg.default_domains), "memcube": bool(self.memcubes)},
         )
-
         if self.bus is not None:
             asyncio.create_task(self._subscribe_bus())
 
@@ -164,7 +117,6 @@ class RiskPredictorService(Service):
                 "domains_cached": len(self._th_cache),
             },
             "dependencies": {
-                "bundle": "loaded" if self._predictor is not None else "missing",
                 "memcube": "available" if self.memcubes is not None else "unavailable",
                 "bus": "connected" if self.bus is not None else "none",
             },
@@ -172,28 +124,94 @@ class RiskPredictorService(Service):
 
     def shutdown(self) -> None:
         self._up = False
-        self._predictor = None
         self._th_cache.clear()
         self.logger.info("RiskPredictorService shutdown complete")
 
-    # --- public API ---
-    async def predict_risk(self, question: str, context: str, *, domain_hint: Optional[str] = None) -> Tuple[float, Tuple[float, float]]:
-        if not self._predictor:
-            raise RuntimeError("RiskPredictorService not initialized")
+    # ---------------- PUBLIC: strict API ----------------
 
+    async def predict_for_scorable(
+        self,
+        scorable: Scorable,
+        reply_text: str,
+        *,
+        evidence_text: str = "",
+        min_domain_conf: float = 0.0,
+    ) -> Tuple[float, Tuple[float, float], Dict[str, Any]]:
+        """
+        Strict path: domain must be present on scorable.domains; if empty, we run the classifier (deterministic).
+        No memcube.guess_domain anywhere.
+        """
         t0 = time.perf_counter()
         try:
-            risk, (low, high) = await self._predictor.predict_risk(question, context)
-            if low is None or high is None:
-                domain = (domain_hint or await self._guess_domain_safe(question)).lower()
-                low, high = await self.get_domain_thresholds(domain)
+            # 1) Domain: from scorable, or classify deterministically if missing
+            domains = scorable.domains or []
+            if not domains:
+                # Deterministic classification (not a heuristic "guess")
+                cls = self.domain_classifier.classify(scorable.text, top_k=1, min_value=0.0)
+                domains = [{"domain": d, "score": float(s), "source": "seed"} for d, s in (cls or [])]
+            domain_used = Scorable.pick_primary_domain(domains, min_conf=min_domain_conf)
+
+            # 2) Entity metrics (NER comes from scorable)
+            ent_feats = {} # await compute_entity_metrics(self.memory, domain_used, scorable.ner or [])
+
+            # 3) Coverage / OOV / numeric checks (stubs → wire your own)
+            coverage_overlap = await self._coverage_overlap(scorable.text, evidence_text or "")
+            oov_rate = self._domain_oov_rate(domain_used, reply_text or "")
+            numeric_incons = self._numeric_inconsistency(domain_used, scorable.text or "", reply_text or "")
+
+            feats = {
+                **ent_feats,
+                "coverage_overlap": coverage_overlap,
+                "oov_rate": oov_rate,
+                "numeric_inconsistency": numeric_incons,
+            }
+
+            # 4) Deterministic risk
+            risk = risk_from_features(domain_used, feats)
+
+            # 5) Domain-calibrated thresholds (MemCube)
+            low, high = await self.get_domain_thresholds(domain_used)
+
+            # 6) Bookkeeping
             self._record_latency(t0)
             self._req_count += 1
-            return float(risk), (float(low), float(high))
+            meta = {"domain": domain_used, "features": feats}
+            return float(risk), (float(low), float(high)), meta
+
         except Exception as e:
             self._err_count += 1
-            self.logger.error(f"predict_risk failed: {e}")
-            return 0.0, (self.cfg.fallback_low, self.cfg.fallback_high)
+            self.logger.error(f"predict_for_scorable failed: {e}")
+            return 0.0, (self.cfg.fallback_low, self.cfg.fallback_high), {"error": str(e)}
+
+    async def predict_risk_strict(
+        self,
+        question: str,
+        context: str,
+        *,
+        domain: str,
+    ) -> Tuple[float, Tuple[float, float]]:
+        """
+        For callers without a Scorable but who DO know the domain.
+        Required: domain (no guessing).
+        """
+        if not domain:
+            raise ValueError("predict_risk_strict requires a domain.")
+        # Minimal deterministic baseline without entities:
+        coverage_overlap = await self._coverage_overlap(question, context)
+        feats = {
+            "entity_support_ratio": 1.0,   # unknown → default safe
+            "entity_contradiction_ratio": 0.0,
+            "entity_unresolved_ratio": 0.0,
+            "entity_ambiguity": 0.0,
+            "coverage_overlap": coverage_overlap,
+            "oov_rate": 0.0,
+            "numeric_inconsistency": 0.0,
+        }
+        risk = risk_from_features(domain, feats)
+        low, high = await self.get_domain_thresholds(domain)
+        return float(risk), (float(low), float(high))
+
+    # ---------------- THRESHOLDS ----------------
 
     async def get_domain_thresholds(self, domain: Optional[str]) -> Tuple[float, float]:
         d = (domain or "").strip().lower() or "general"
@@ -206,7 +224,9 @@ class RiskPredictorService(Service):
         low = high = None
         if self.memcubes:
             try:
-                rec = await self.memcubes.query_calibration("risk", filters={"domain": d}, sort=[("created_at", "DESC")], limit=1)
+                rec = await self.memcubes.query_calibration(
+                    "risk", filters={"domain": d}, sort=[("created_at", "DESC")], limit=1
+                )
                 if rec:
                     low = float(rec.get("low_threshold"))
                     high = float(rec.get("high_threshold"))
@@ -221,54 +241,27 @@ class RiskPredictorService(Service):
             self._th_cache[d] = (low, high, now + self.cfg.calib_ttl_s)
         return low, high
 
-    async def explain_risk(self, question: str, context: str) -> Optional[bytes]:
-        if not self.cfg.enable_explanations or not self._predictor:
-            return None
-        try:
-            if hasattr(self._predictor, "explain_to_png"):
-                loop = asyncio.get_running_loop()
-                return await loop.run_in_executor(None, lambda: self._predictor.explain_to_png(question, context))
-        except Exception as e:
-            self.logger.warning(f"explain_risk failed: {e}")
-        return None
+    # ---------------- INTERNALS ----------------
 
-    def reload_bundle(self) -> bool:
-        """Called by your trainer agent after writing a new bundle.joblib."""
-        try:
-            self._predictor = DomainCalibratedRiskPredictor(
-                bundle_path=self.cfg.bundle_path,
-                default_domains=list(self.cfg.default_domains),
-                memcube=self.memcubes,
-            )
-            self.logger.info("RiskPredictorService bundle reloaded", extra={"bundle_path": self.cfg.bundle_path})
-            return True
-        except Exception as e:
-            self.logger.error(f"reload_bundle failed: {e}")
-            return False
-
-    # --- internals ---
     def _record_latency(self, t0: float) -> None:
         dt_ms = (time.perf_counter() - t0) * 1000.0
         a = 0.05
         self._lat_ema_ms = (1 - a) * self._lat_ema_ms + a * dt_ms if self._lat_ema_ms > 0 else dt_ms
 
-    async def _guess_domain_safe(self, question: str) -> str:
-        # Prefer predictor�s memcube if present
-        try:
-            if self._predictor and getattr(self._predictor, "memcube", None):
-                d = await self._predictor.memcube.guess_domain(question)  # type: ignore[attr-defined]
-                if d:
-                    return str(d)
-        except Exception:
-            pass
-        # fallback heuristic
-        ql = (question or "").lower()
-        if any(k in ql for k in ("who", "born", "died", "year", "reign", "empire")):
-            return "history"
-        if any(k in ql for k in ("river", "border", "capital", "country", "latitude", "longitude")):
-            return "geography"
-        if any(k in ql for k in ("algorithm", "api", "software", "cpu", "gpu")):
-            return "tech"
-        if any(k in ql for k in ("cell", "atom", "physics", "chemical", "species")):
-            return "science"
-        return "general"
+    async def _coverage_overlap(self, score_text: str, evidence_text: str) -> float:
+        if not score_text or not evidence_text:
+            return 0.0
+        a = set(score_text.lower().split())
+        b = set(evidence_text.lower().split())
+        return len(a & b) / max(1, len(a))
+
+    def _domain_oov_rate(self, domain: str, text: str) -> float:
+        tokens = [t for t in (text or "").split() if t.isalpha()]
+        if not tokens:
+            return 0.0
+        known = sum(1 for t in tokens if len(t) <= 30)  # replace with your lexicon
+        return 1.0 - (known / len(tokens))
+
+    def _numeric_inconsistency(self, domain: str, goal: str, reply: str) -> float:
+        # Hook up your unit/version/date checking here (0..1)
+        return 0.0

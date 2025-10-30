@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
@@ -49,6 +49,10 @@ class ScorableType:
     REFINEMENT = "refinement"
     VPM = "vpm"
 
+class MissingDomainsError(ValueError):
+    """Raised when a Scorable has no canonical 'domains' list."""
+    pass
+
 
 class Scorable:
     def __init__(
@@ -64,7 +68,7 @@ class Scorable:
         self._text = text
         self._target_type = target_type
         self._metadata = meta or {}
-        self._domains = domains or {}
+        self._domains: List[Dict[str, Any]] = list(domains or [])
         self._ner = ner or {}
 
     @property
@@ -73,7 +77,11 @@ class Scorable:
 
     @property
     def domains(self) -> Dict[str, Any]:
-        return self._metadata
+        return self._domains
+
+    @property
+    def ner(self) -> Dict[str, Any]:
+        return self._ner
 
     @property
     def text(self) -> str:
@@ -103,6 +111,36 @@ class Scorable:
             f"Scorable(id='{self._id}', "
             f"target_type='{self._target_type}', "
             f"text_preview='{preview}...')"
+        )
+
+    def primary_domain(self) -> Tuple[str, float, str, List[Tuple[str, float, str]]]:
+        """Instance convenience wrapper around select_primary_domain."""
+        return Scorable.select_primary_domain(self._domains)
+    
+    @staticmethod
+    def pick_primary_domain(domains: List[Dict[str, Any]], *, min_conf: float = 0.0) -> str:
+        """
+        Deterministic: choose highest score, prefer 'seed' on ties.
+        domains: [{'score': float, 'domain': str, 'source': 'seed'|'meta'|'goal'|'emergent'}, ...]
+        """
+        if not domains:
+            raise ValueError("Scorable.domains empty – cannot select a domain.")
+        best = max(domains, key=lambda d: (float(d.get("score", 0.0)), d.get("source") == "seed"))
+        if float(best.get("score", 0.0)) < min_conf:
+            raise ValueError(f"No domain >= min_conf={min_conf}. Best={best}")
+        return str(best["domain"]).strip().lower()
+
+
+
+    @staticmethod
+    def from_dict(d: Dict[str, Any]) -> "Scorable":
+        return Scorable(
+            text=d.get("text", ""),
+            id=str(d.get("id") or d.get("scorable_id") or ""),
+            target_type=d.get("target_type", "custom"),
+            meta=d.get("metadata") or d.get("meta") or {},
+            domains=d.get("domains") or [],
+            ner=d.get("ner") or {},
         )
 
 
