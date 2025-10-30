@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 import json
 import re
 import time
@@ -10,6 +11,12 @@ from omegaconf import DictConfig
 from stephanie.components.ssp.types import Proposal
 from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
 from stephanie.services.service_container import ServiceContainer
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+# At the top of the file, if not already present:
+executor = ThreadPoolExecutor(max_workers=1)
 
 # --------- Parsing helpers (YAML-ish, no external deps) ---------
 
@@ -169,11 +176,12 @@ class Proposer:
     Uses PromptService via the ServiceContainer; avoids JSON in the LLM reply.
     """
 
-    def __init__(self, cfg: DictConfig | dict, container: ServiceContainer):
+    def __init__(self, cfg: DictConfig | dict, memory, container: ServiceContainer):
         root = cfg
         self.root: DictConfig = root
         self.sp: DictConfig = root.self_play
         self.cfg: DictConfig = self.sp.proposer
+        self.memory = memory
         self.container = container
 
         self.prompt_service = self.container.get("prompt")  # PromptService
@@ -183,10 +191,9 @@ class Proposer:
         self.difficulty = float(self.sp.qmax.initial_difficulty)
         self._d_lo = float(self.sp.qmax.initial_difficulty)
         self._d_hi = float(self.sp.qmax.max_difficulty)
+        self._recent_conn = deque(maxlen=20)  # Keep last 20 connection strings
 
-        # Optional: name/path for a template (if you later add a file)
         self.template_name = getattr(self.cfg, "template_name", None)
-
 
     # --- lifecycle hooks --------------------------------------------------
 
@@ -283,3 +290,22 @@ class Proposer:
         ))
 
         return prop.to_dict()
+
+    def _get_recent_connections(self) -> List[str]:
+        """
+        Return a deduplicated list of individual connection tags from recent proposals.
+        """
+        all_tags = []
+        for conn_str in self._recent_conn:
+            tags = [tag.strip() for tag in conn_str.split(",")]
+            all_tags.extend(tag for tag in tags if tag)
+        return list(dict.fromkeys(all_tags))  # Preserves order, removes duplicates
+    
+    async def generate_async(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Async wrapper around the sync generate() method.
+        Runs the sync LLM call in a thread pool to avoid blocking the event loop.
+        """
+        loop = asyncio.get_event_loop()
+        # Run the sync .generate() method in a separate thread
+        return await loop.run_in_executor(executor, self.generate, context)

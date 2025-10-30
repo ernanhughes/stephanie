@@ -127,7 +127,6 @@ class PlanTrace:
 
     # --- Core Identifiers ---
     trace_id: str # Unique identifier for this specific trace/execution
-    status: str  # e.g., "proposed", "in_progress", "completed", "failed"
     # --- Initial Context ---
     goal_text: str # The original goal or query
     goal_id: int
@@ -144,6 +143,7 @@ class PlanTrace:
     # --- Final Outcome ---
     final_output_text: str # The final output produced by the plan
 
+    status: str = "proposed" # e.g., "proposed", "in_progress", "completed", "failed"
     pipeline_run_id: Optional[int] = None
     # The scores assigned to the final output by various scorers.
     final_scores: Optional[ScoreBundle] = None

@@ -28,6 +28,15 @@ services:
       memory: ${memory}
       logger: ${logger}
 
+  event:
+    enabled: true
+    cls: stephanie.services.event_service.EventService
+    dependencies: []
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
   scoring:
     enabled: true
     cls: stephanie.services.scoring_service.ScoringService

@@ -1,54 +1,59 @@
+# stephanie/components/ssp/core/curriculum.py
 from __future__ import annotations
-
+from dataclasses import dataclass, field
+from typing import Deque, Dict, Optional, Tuple
 from collections import deque
-from typing import Deque
+import math
+import statistics as stats
 
-
+@dataclass
 class QMaxCurriculum:
     """
-    Simple Q* (Q-Max) style curriculum control:
-      - Track recent success rate in a fixed window
-      - Raise difficulty when agent is competent, lower when struggling
+    Simple, bounded-window curriculum:
+    - Track recent episode returns and success_rate
+    - Map to difficulty via target-success band
+    - Exposes a small state dict for telemetry
     """
+    window: int = 200
+    target_success: float = 0.65
+    min_diff: float = 0.1
+    max_diff: float = 1.0
+    _returns: Deque[float] = field(default_factory=lambda: deque(maxlen=200))
+    _successes: Deque[int] = field(default_factory=lambda: deque(maxlen=200))
+    _d: float = 0.3  # current difficulty (0..1)
 
-    def __init__(
-        self,
-        initial: float = 0.30,
-        step: float = 0.05,
-        maximum: float = 0.95,
-        window: int = 100,
-        min_success_rate: float = 0.60,
-    ):
-        self.difficulty = float(initial)
-        self._step = float(step)
-        self._max = float(maximum)
-        self._min = float(initial)
-        self._window = int(window)
-        self._min_success = float(min_success_rate)
-        self._hist: Deque[int] = deque(maxlen=self._window)
+    def update(self, episode_return: float, success: bool) -> None:
+        self._returns.append(float(episode_return))
+        self._successes.append(1 if success else 0)
+        self._recalc()
 
-    @property
-    def success_rate(self) -> float:
-        return (sum(self._hist) / len(self._hist)) if self._hist else 0.0
+    # Backwards-compat shim if callers use 'observe'
+    def observe(self, episode_return: float, success: bool) -> None:
+        self.update(episode_return, success)
 
-    def update(self, success: bool) -> float:
-        self._hist.append(1 if success else 0)
-        if self.success_rate >= self._min_success:
-            self.difficulty = min(self._max, self.difficulty + self._step)
+    def _recalc(self) -> None:
+        if not self._successes:
+            return
+        sr = sum(self._successes) / len(self._successes)
+        # Move difficulty toward keeping sr near target
+        err = (self.target_success - sr)
+        step = 0.15 * err  # proportional control
+        self._d = float(min(self.max_diff, max(self.min_diff, self._d + step)))
+
+    def difficulty(self) -> float:
+        return self._d
+
+    def snapshot(self) -> Dict:
+        if self._returns:
+            mean = stats.fmean(self._returns)
+            sd = stats.pstdev(self._returns) if len(self._returns) > 1 else 0.0
         else:
-            self.difficulty = max(self._min, self.difficulty - self._step)
-        return self.difficulty
-
-    def observe(self, success: bool) -> float:
-        self.history.append(1 if success else 0)
-        if not self.history:
-            return self.difficulty
-        sr = sum(self.history) / len(self.history)
-        if sr >= self.min_sr:
-            self.difficulty = min(self.max_val, self.difficulty + self.step)
-        elif sr < self.min_sr * 0.7:
-            self.difficulty = max(self.min_val, self.difficulty - self.step * 2)
-        return self.difficulty
-
-    def get(self) -> float:
-        return self.difficulty
+            mean, sd = 0.0, 0.0
+        sr = (sum(self._successes) / len(self._successes)) if self._successes else 0.0
+        return {
+            "difficulty": self._d,
+            "success_rate": sr,
+            "return_mean": mean,
+            "return_sd": sd,
+            "n": len(self._returns),
+        }

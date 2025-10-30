@@ -109,7 +109,7 @@ class SSPAgent(BaseAgent):
 
         # Initialize the core SSP orchestrator
         try:
-            self.trainer = Trainer(base_cfg, container)
+            self.trainer = Trainer(base_cfg, memory, container)
             _logger.info("SSPAgent initialized successfully with Trainer.")
         except Exception as e:
             _logger.error("Failed to initialize SSPAgent.Trainer", extra={"error": str(e)})
@@ -170,7 +170,7 @@ class SSPAgent(BaseAgent):
             })
 
             # Run one full SSP cycle: Propose → Solve → Verify → Update Curriculum
-            result = self.trainer.train_step(context)
+            result = await self.trainer.train_step(context)
 
             # Attach the result to the context under the standard key
             context[self.output_key] = result

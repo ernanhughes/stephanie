@@ -4,7 +4,9 @@ import asyncio
 import threading
 import time
 from collections import deque
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
+import traceback
+import inspect
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -17,6 +19,8 @@ from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.service_container import ServiceContainer
 from stephanie.utils.json_sanitize import sanitize
+from stephanie.data.plan_trace import PlanTrace, ExecutionStep
+from stephanie.constants import PLAN_TRACE_ID  # Assuming you have a constant for the key
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -40,25 +44,25 @@ class Trainer:
       - Emit traces and metrics
     """
 
-    def __init__(self, cfg: DictConfig | dict, container: ServiceContainer):
+    def __init__(self, cfg: DictConfig | dict, memory, container: ServiceContainer):
         root = cfg
+        self.memory = memory
         self.root = root
         self.sp = root.self_play
         self.cfg = self.sp
         self.container = container
 
         # Actors (support both sync/async run styles)
-        self.proposer = Proposer(root, container=container)
-        self.solver = Solver(root, container=container)
+        self.proposer = Proposer(root, memory, container=container)
+
+        # NEW: be compatible with both old and new Solver signatures
+        try:
+            self.solver = Solver(root, memory, container)  # (cfg, container) — new
+        except TypeError:
+            self.solver = Solver(root, memory, container=container)  # old fallback
 
         # Curriculum & reward
-        self.curriculum = QMaxCurriculum(
-            initial=float(self.sp.qmax.initial_difficulty),
-            step=float(self.sp.qmax.difficulty_step),
-            maximum=float(self.sp.qmax.max_difficulty),
-            window=int(self.sp.qmax.competence_window),
-            min_success_rate=float(self.sp.curriculum.min_success_rate),
-        )
+        self.curriculum = self._build_qmax_curriculum()
         self.rewards = EpistemicRewardCalculator(w_ext=0.6, w_lp=0.25, w_nov=0.15)
         self.trace_logger = get_trace_logger()
         self.success_hist = deque(maxlen=int(self.sp.qmax.competence_window))
@@ -68,13 +72,69 @@ class Trainer:
         self.enabled_scorers = (
             OmegaConf.select(self.sp, "verifier.scorers") or ["tiny"]
         )
-        self.dimensions = (
+        self.dimensions: List[str] = (
             OmegaConf.select(self.sp, "verifier.dimensions")
             or ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"]
         )
         self.threshold = _resolve_threshold(self.sp)
 
     # ---------------------------- helpers ---------------------------------
+
+    def _build_qmax_curriculum(self) -> QMaxCurriculum:
+        """
+        Build QMaxCurriculum regardless of whether its ctor expects
+        (initial/step/maximum/window/min_success_rate) or older/newer aliases.
+        """
+        sig = inspect.signature(QMaxCurriculum)
+        params = set(sig.parameters.keys())
+
+        # Values from config
+        v_initial = float(self.sp.qmax.initial_difficulty)
+        v_step = float(self.sp.qmax.difficulty_step)
+        v_max = float(self.sp.qmax.max_difficulty)
+        v_window = int(self.sp.qmax.competence_window)
+        v_min_succ = float(self.sp.curriculum.min_success_rate)
+
+        # Candidate name maps (left to right preference)
+        name_map = {
+            "initial": ["initial", "start", "initial_difficulty", "initial_value"],
+            "step": ["step", "delta", "difficulty_step"],
+            "maximum": ["maximum", "max", "max_difficulty", "upper"],
+            "window": ["window", "window_size", "competence_window", "history"],
+            "min_success_rate": ["min_success_rate", "target_success_rate", "success_threshold", "min_success"],
+        }
+        values = {
+            "initial": v_initial,
+            "step": v_step,
+            "maximum": v_max,
+            "window": v_window,
+            "min_success_rate": v_min_succ,
+        }
+
+        kwargs = {}
+        for logical, candidates in name_map.items():
+            for cand in candidates:
+                if cand in params:
+                    kwargs[cand] = values[logical]
+                    break
+
+        # If something critical is missing (e.g., initial), still pass sensible defaults
+        # using any remaining param names
+        for p in params:
+            if p not in kwargs:
+                # naive fallback based on type/semantics
+                if "init" in p or "start" in p:
+                    kwargs[p] = v_initial
+                elif "step" in p or "delta" in p:
+                    kwargs[p] = v_step
+                elif "max" in p or "upper" in p:
+                    kwargs[p] = v_max
+                elif "window" in p or "hist" in p:
+                    kwargs[p] = v_window
+                elif "rate" in p or "threshold" in p:
+                    kwargs[p] = v_min_succ
+
+        return QMaxCurriculum(**kwargs)
 
     @property
     def success_history(self):
@@ -125,132 +185,220 @@ class Trainer:
         return float(final), {k: float(v) for k, v in dim_avg.items()}
 
     # ---------------------------- main step --------------------------------
-
-    def train_step(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def train_step(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Execute one full Self-Play System (SSP) training step.
+        This method now creates a proper PlanTrace with multiple ExecutionSteps.
+        """
         t0 = time.time()
         ctx = dict(context or {})
-        
-        # --- START OF STEP ---
-        step_start_time = time.strftime("%H:%M:%S")
-        _logger.info(f"\n--- SSP TRAINING STEP START [{step_start_time}] ---")
+        pipeline_run_id = ctx.get("pipeline_run_id") or f"ssp-{int(time.time()*1000)}"
 
-        # 1) Propose
-        _logger.info("🔄 Generating proposal...")
-        prop_dict = self.proposer.generate(ctx) 
-        _logger.info(f"{prop_dict}\n✅")  # Success indicator
-        _logger.info(f"   🔹 Query: {prop_dict.get('query', '')[:80]}{'...' if len(prop_dict.get('query', '')) > 80 else ''}")
-        _logger.info(f"   🔹 Difficulty: {prop_dict.get('difficulty', 0):.2f}")
+        # --- START OF TRAIN_STEP ---
+        print(f"\n--- SSP TRAINING STEP START [{time.strftime('%H:%M:%S')}] ---", flush=True)
 
-        pipeline_run_id = ctx.get("pipeline_run_id") or (int(time.time()*1000) % 10_000_000)
-
-        goal = {
-            "goal_text": prop_dict.get("query", ""),
-            "description": "SSP-generated goal",
-            "meta": {
-                "difficulty": prop_dict.get("difficulty", 0),
-                "connections": prop_dict.get("connections", []),
+        # === Create the Master PlanTrace ===
+        plan_trace = PlanTrace(
+            trace_id=f"ssp-step-{pipeline_run_id}",
+            pipeline_run_id=pipeline_run_id,
+            goal_text="Self-Play Improvement Cycle",
+            goal_id=hash(pipeline_run_id),
+            input_data={
+                "initial_context_keys": list(ctx.keys()),
                 "mission": self.sp.get("mission"),
             },
-        }
-
-        # 2) Solve
-        _logger.info("🧠 Solving proposal...")
-        sol_dict = self.solver.solve(prop_dict)
-        solution = Solution(
-            answer=sol_dict.get("answer", " "),
-            reasoning_path=sol_dict.get("reasoning_path", []),
-            evidence=sol_dict.get("evidence", []),
-            search_depth=int(sol_dict.get("search_depth", 0)),
-            report=sol_dict.get("report", {}),
-            training_batch=sol_dict.get("training_batch"),
-        )
-        solve_time = int((time.time() - t0) * 1000)
-        _logger.info(f" ✅ ({solve_time}ms)")
-        _logger.info(f"   🔹 Answer preview: {solution.answer[:60]}{'...' if len(solution.answer) > 60 else ''}")
-
-        # 3) Score/Verify
-        _logger.info("🔍 Verifying solution...")
-        work_ctx = {
-            **ctx,
-            "pipeline_run_id": pipeline_run_id,
-            "goal": goal,
-            "proposal": prop_dict,
-            "solution": sol_dict,
-        }
-        final_score, dim_scores = self._score_with_container(work_ctx, solution.answer or " ")
-        verification = Verification(
-            is_valid=bool(final_score >= self.threshold and bool(solution.answer.strip())),
-            score=float(final_score),
-            dimension_scores=dim_scores,
-            evidence_count=int(len(solution.evidence)),
-            reasoning_steps=int(len(solution.reasoning_path)),
-        )
-        _logger.info(" ✅")
-
-        # 4) Rewards
-        lp = 0.0  # placeholder
-        nov = self.rewards.novelty_bonus_text(solution.answer or " ")
-        total_reward = self.rewards.blend(verification.score, lp, nov)
-
-        # 5) Curriculum update
-        success = verification.is_valid
-        self.success_hist.append(1 if success else 0)
-        new_diff = self.curriculum.update(success)
-        if hasattr(self.proposer, "set_difficulty"):
-            self.proposer.set_difficulty(new_diff)
-        else:
-            setattr(self.proposer, "difficulty", new_diff)
-
-        # --- END OF STEP ---
-        # Log summary metrics
-        _logger.info(f"✅ SUCCESS: {success}, VERIFICATION SCORE: {verification.score:.3f}, REWARD: {total_reward:.3f}")
-        _logger.info(f"📊 METRICS: difficulty={new_diff:.2f}, success_rate={self.curriculum.success_rate:.2%}, threshold={self.threshold:.2f}")
-        _logger.info(f"📈 DIMENSION SCORES: {', '.join([f'{k}={v:.2f}' for k, v in dim_scores.items()])}")
-        _logger.info(f"--- SSP TRAINING STEP END [{time.strftime('%H:%M:%S')}] ---\n")
-
-        # 6) Trace
-        episode = Episode(
-            id=f"ssp-{int(time.time()*1000)}",
-            proposal=proposal,
-            solution=solution,
-            verification=verification,
-            status=EpisodeStatus.VERIFIED if success else EpisodeStatus.FAILED,
-            metrics={
-                "reward": total_reward,
-                "verification": verification.score,
-                "novelty": nov,
-                "success_rate": self.curriculum.success_rate,
-                "difficulty": new_diff,
-                "threshold": self.threshold,
-            },
-        )
-
-        self.trace_logger.log(
-            PlanTrace_safe(
-                trace_id=f"ssp-train-{int(time.time()*1000)%1_000_000}",
-                role="trainer",
-                goal=proposal.query,
-                status="completed",
-                metadata=episode.metrics,
-                input=proposal.raw_response,
-                output=solution.answer,
-                artifacts=sanitize(
-                    {
-                        "proposal": prop_dict,
-                        "solution": sol_dict,
-                        "dimension_scores": dim_scores,
-                        "enabled_scorers": self.enabled_scorers,
-                    }
-                ),
-            )
-        )
-
-        self.last_metrics = episode.metrics | {"duration_ms": int((time.time() - t0) * 1000)}
-        return sanitize(
-            {
-                "episode_id": episode.id,
-                "success": success,
-                "metrics": episode.metrics,
-                "training_batch": solution.training_batch,  # may be None
+            plan_signature="SSP-v1",
+            execution_steps=[],
+            final_output_text="",
+            status="in_progress",
+            created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            meta={
+                "ssp_version": "1.0",
+                "start_time": t0,
+                "difficulty": getattr(self.proposer, "difficulty", 0.3),
             }
         )
+
+        # Inject the trace ID into the context so child agents can find it
+        ctx[PLAN_TRACE_ID] = plan_trace.trace_id
+
+        try:
+            # --- 1) PROPOSE PHASE ---
+            propose_start = time.time()
+            print("🔄 Generating proposal...", end="", flush=True)
+
+            in_goal_text = ((context or {}).get("goal") or {}).get("goal_text", "")
+
+            propose_step = ExecutionStep(
+                step_id="propose-1",
+                pipeline_run_id=pipeline_run_id,
+                step_order=1,
+                step_type="proposal_generation",
+                description="Generate a novel, verifiable research question.",
+                agent_name="Proposer",
+                scores={},
+                output_text="",
+                agent_role="retrieve",
+                start_time=propose_start,
+                input_text=in_goal_text,
+                meta={"connections": getattr(self.proposer, "_get_recent_connections", lambda: [])()},
+            )
+
+            prop_dict = await self.proposer.generate_async(ctx)
+            proposal = Proposal(**prop_dict)
+
+            propose_step.output_text = f"Query: {proposal.query}\nDifficulty: {proposal.difficulty:.2f}"
+            propose_step.end_time = time.time()
+            propose_step.duration = propose_step.end_time - propose_start
+            propose_step.status = "completed"
+
+            plan_trace.execution_steps.append(propose_step)
+            print(" ✅")
+
+            # --- 2) SOLVE PHASE ---
+            solve_start = time.time()
+            print("🧠 Solving proposal...", end="", flush=True)
+
+            solve_step = ExecutionStep(
+                step_id="solve-1",
+                pipeline_run_id=pipeline_run_id,
+                step_order=2,
+                step_type="problem_solving",
+                description="Use agentic search to solve the proposed query.",
+                agent_name="Solver",
+                agent_role="revise",
+                start_time=solve_start,
+                input_text=proposal.query,
+                scores={},
+                output_text="",
+                meta={"use_grpo": getattr(self.solver, "use_grpo", False)},
+            )
+
+            sol_dict = await self.solver.solve(proposal.to_dict())
+            solution = Solution(**sol_dict)
+
+            solve_step.output_text = f"Answer preview: {solution.answer[:100]}..."
+            solve_step.end_time = time.time()
+            solve_step.duration = solve_step.end_time - solve_start
+            solve_step.status = "completed"
+            solve_step.output_size = len(solution.answer or "")
+
+            plan_trace.execution_steps.append(solve_step)
+            solve_time = int((time.time() - solve_start) * 1000)
+            print(f" ✅ ({solve_time}ms)")
+
+            # --- 3) VERIFY PHASE ---
+            verify_start = time.time()
+            print("🔍 Verifying solution...", end="", flush=True)
+
+            verify_step = ExecutionStep(
+                step_id="verify-1",
+                pipeline_run_id=pipeline_run_id,
+                step_order=3,
+                step_type="solution_verification",
+                description="Score the solution across multiple dimensions for validity.",
+                agent_name="Verifier",
+                agent_role="retain",
+                start_time=verify_start,
+                input_text=solution.answer,
+                scores={},
+                output_text=solution.answer,
+                meta={"scorers_used": self.enabled_scorers, "dimensions": self.dimensions},
+            )
+
+            work_ctx = {
+                **ctx,
+                "goal": {"goal_text": proposal.query},
+                "solution": sol_dict,
+            }
+            final_score, dim_scores = self._score_with_container(work_ctx, solution.answer or " ")
+
+            verification = Verification(
+                is_valid=bool(final_score >= self.threshold and bool((solution.answer or "").strip())),
+                score=float(final_score),
+                dimension_scores=dim_scores,
+                evidence_count=int(len(solution.evidence or [])),
+                reasoning_steps=int(len(solution.reasoning_path or [])),
+            )
+
+            verify_results = "\n".join([f"{k}: {v:.3f}" for k, v in dim_scores.items()])
+            verify_step.output_text = f"Verification Score: {final_score:.3f}\n{verify_results}"
+            verify_step.end_time = time.time()
+            verify_step.duration = verify_step.end_time - verify_start
+            verify_step.status = "completed"
+
+            plan_trace.execution_steps.append(verify_step)
+            print(" ✅")
+
+            # --- POST-PROCESSING ---
+            success = verification.is_valid
+            plan_trace.final_output_text = solution.answer or ""
+            plan_trace.status = "completed" if success else "failed"
+            plan_trace.meta["total_duration"] = time.time() - t0
+            plan_trace.meta["success"] = success
+            plan_trace.meta["verification_score"] = verification.score
+            plan_trace.reward_signal = {"total_reward": float(self.rewards.blend(verification.score, 0.0, 0.0))}
+
+            # Curriculum update
+            self.success_hist.append(1 if success else 0)
+            new_diff = self.curriculum.update(success)
+            if hasattr(self.proposer, "set_difficulty"):
+                self.proposer.set_difficulty(new_diff)
+            else:
+                setattr(self.proposer, "difficulty", new_diff)
+            plan_trace.meta["new_difficulty"] = new_diff
+
+            # Logging & persistence
+            print(f"✅ SUCCESS: {success}, VERIFICATION SCORE: {verification.score:.3f}")
+            print(f"📊 METRICS: difficulty={new_diff:.2f}, success_rate={self.curriculum.success_rate:.2%}")
+            print(f"📈 DIMENSION SCORES: {', '.join([f'{k}={v:.2f}' for k, v in dim_scores.items()])}")
+            print(f"--- SSP TRAINING STEP END [{time.strftime('%H:%M:%S')}] ---\n", flush=True)
+
+            if self.container and hasattr(self.container, "get"):
+                try:
+                    memory = self.container.get("memory")
+                    if hasattr(memory, "plan_traces") and hasattr(memory.plan_traces, "upsert"):
+                        memory.plan_traces.upsert(plan_trace)
+                        print(f"💾 PlanTrace saved to memory: {plan_trace.trace_id}", flush=True)
+                    else:
+                        print("⚠️ Memory service missing 'plan_traces' repository.", flush=True)
+                except Exception as e:
+                    print(f"❌ Failed to save PlanTrace: {str(e)}", flush=True)
+
+            episode_id = plan_trace.trace_id
+            result = {
+                "episode_id": episode_id,
+                "success": success,
+                "metrics": {
+                    "reward": self.rewards.blend(verification.score, 0.0, 0.0),
+                    "verification": float(verification.score),
+                    "novelty": 0.0,
+                    "success_rate": self.curriculum.success_rate,
+                    "difficulty": new_diff,
+                    "threshold": self.threshold,
+                    "duration_ms": int((time.time() - t0) * 1000),
+                },
+                "training_batch": sol_dict.get("training_batch"),
+                "plan_trace_id": episode_id,
+            }
+
+            return result
+
+        except Exception as e:
+            plan_trace.status = "failed"
+            plan_trace.meta["error"] = {
+                "type": type(e).__name__,
+                "message": str(e),
+                "traceback": traceback.format_exc(),
+            }
+            print(f"❌ SSP training step failed: {str(e)}", flush=True)
+
+            if self.container:
+                try:
+                    memory = self.container.get("memory")
+                    if hasattr(memory, "plan_traces") and hasattr(memory.plan_traces, "upsert"):
+                        memory.plan_traces.upsert(plan_trace)
+                except Exception:
+                    pass
+
+            raise

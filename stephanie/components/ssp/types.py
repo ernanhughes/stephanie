@@ -38,6 +38,7 @@ class Solution:
     evidence: List[Dict[str, Any]] = field(default_factory=list)
     search_depth: int = 0
     report: Dict[str, Any] = field(default_factory=dict)
+    error: str = ""
     training_batch: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 

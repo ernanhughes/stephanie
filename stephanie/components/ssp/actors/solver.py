@@ -1,3 +1,4 @@
+# stephanie/components/ssp/actors/solver.py
 from __future__ import annotations
 
 import asyncio
@@ -6,10 +7,10 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
-# Optional event emitter (don’t hard-crash if it’s absent)
-from stephanie.components.ssp.search.tree_events import TreeEventEmitter
+# ✅ NEW import path: decoupled, reusable emitter from tree package
+from stephanie.components.tree.events import TreeEventEmitter
+
 from stephanie.components.ssp.util import PlanTrace_safe, get_trace_logger
-# Tree search pieces
 from stephanie.components.tree.core import AgenticTreeSearch, SolutionNode
 from stephanie.components.tree.tree_grpo import TreeGRPOAdapter, TreeGRPOConfig
 from stephanie.scoring.scorable import Scorable, ScorableType
@@ -21,21 +22,17 @@ def _maybe(val, default):
     return val if val is not None else default
 
 
-# --- LLM adapter that uses the service container's PromptService -------------
-
 class _ContainerLLMAgent:
     """
-    Minimal adapter exposing `async_call_llm(prompt, context)` so AgenticTreeSearch
-    can remain agnostic. Internally uses container.get("prompt").run_prompt(...)
+    Minimal adapter exposing async_call_llm(prompt, context) so AgenticTreeSearch
+    can remain agnostic. Internally uses container.get("prompt").run_prompt(...).
     """
-
     def __init__(self, container: ServiceContainer, sys_preamble: str | None = None):
         self.prompt_service = container.get("prompt")
         self.container = container
         self.sys_preamble = (sys_preamble or "").strip()
 
     async def async_call_llm(self, prompt: str, context: dict) -> str:
-        # prepend a short preamble to bias to crisp outputs without forcing JSON
         full_prompt = f"{self.sys_preamble}\n{prompt}" if self.sys_preamble else prompt
         return await self.prompt_service.run_prompt(full_prompt, context)
 
@@ -48,17 +45,19 @@ class Solver:
     - Optionally uses Tree-GRPO (kept intact)
     """
 
-    def __init__(self, cfg: DictConfig | dict,  container: ServiceContainer):
+    def __init__(self, cfg: DictConfig | dict, memory, container: ServiceContainer):
+
         root = cfg
         self.root: DictConfig = root
         self.sp: DictConfig = root.self_play
         self.cfg: DictConfig = self.sp.solver
+        self.memory = memory
         self.container = container
 
         # Trace logging
         self.trace_logger = get_trace_logger()
 
-        # ---- LLM agent: call through the container's PromptService
+        # ---- LLM agent
         sys_preamble = self.cfg.get("llm_preamble") or (
             "You are a careful problem solver. Think step-by-step and keep answers concise."
         )
@@ -69,6 +68,75 @@ class Solver:
                                     max(1, int(self.cfg.get("search_depth", 5)) * 4)))
         time_limit = int(_maybe(self.cfg.get("time_limit_sec"), 60))
 
+        # ---- Event emitter (publisher/memory are optional)
+        bus = self.memory.bus
+
+        # Optional tracer that mirrors events into your PlanTrace log
+        def _plantrace_tracer(event: str, rec: Dict[str, Any]) -> None:
+            try:
+                self.trace_logger.log(
+                    PlanTrace_safe(
+                        trace_id=f"tree-{event}-{int(rec.get('ts', time.time())*1000)%1_000_000}",
+                        role="tree",
+                        goal_text=str(event),
+                        goal_id=0,
+                        plan_signature="",
+                        status="event",
+                        meta={"topic": rec.get("topic", "ssp.tree")},
+                        execution_steps=[],
+                        input_data={},
+                        final_output_text="",
+                        extra_data=rec,
+                    )
+                )
+            except Exception:
+                pass
+
+        self._tree_emitter = TreeEventEmitter(
+            topic="ssp.tree",
+            publisher=bus,
+            memory=self.memory,
+            tracer=_plantrace_tracer,
+            throttle_ms=int(_maybe(self.cfg.get("throttle_ms"), 50)),
+            keep_recent=int(_maybe(self.cfg.get("emit_keep_recent"), 256)),
+        )
+
+        # ---- Adapter from AgenticTreeSearch.emit_cb(event, payload_dict)
+        async def tree_emit_adapter(event: str, payload_dict: Dict[str, Any]) -> None:
+            """
+            Core expects: emit_cb(event, payload_dict)
+            Emitter expects kwargs: emit(event, **payload)
+            """
+            try:
+                if self._tree_emitter is not None:
+                    await self._tree_emitter.emit(event, **(payload_dict or {}))
+                # Mirror a couple of useful events onto the search object for downstream reads
+                try:
+                    if event == "report":
+                        setattr(self.base, "last_report", payload_dict)
+                    elif event == "progress":
+                        setattr(self.base, "last_progress", payload_dict)
+                except Exception:
+                    pass
+            except Exception as e:
+                # Don’t break the tree on telemetry failure
+                self.trace_logger.log(
+                    PlanTrace_safe(
+                        trace_id=f"emit-error-{int(time.time()*1000)}",
+                        role="solver",
+                        goal_text="event-emission",
+                        goal_id=0,
+                        plan_signature="",
+                        status="error",
+                        meta={},
+                        execution_steps=[],
+                        input_data={"event": event},
+                        final_output_text=str(e),
+                        extra_data={"payload": sanitize(payload_dict)},
+                    )
+                )
+
+        # ---- Initialize AgenticTreeSearch WITH THE ADAPTER
         self.base = AgenticTreeSearch(
             agent=self.agent,
             max_iterations=max_iterations,
@@ -81,14 +149,11 @@ class Solver:
             progress_every=int(_maybe(self.cfg.get("progress_every"), 5)),
             heartbeat_secs=float(_maybe(self.cfg.get("heartbeat_secs"), 10.0)),
             report_top_k=int(_maybe(self.cfg.get("report_top_k"), 5)),
+            emit_cb=tree_emit_adapter,  # ← connects tree → emitter
         )
 
         if self.cfg.get("metric_policy") in ("minimize", "maximize"):
             self.base.metric_policy = self.cfg.metric_policy
-
-        # Tree events
-        self._tree_emitter = TreeEventEmitter() if TreeEventEmitter else None
-        self.base.emit_cb = self._emit_tree_event  # async callback
 
         # ---- Scoring config (used for post-hoc selection)
         self.enabled_scorers: List[str] = (
@@ -122,13 +187,8 @@ class Solver:
                 ),
             )
 
-    # ------------------------------------------------------------------ #
-    # Public API
-    # ------------------------------------------------------------------ #
-    def solve(self, proposal: Dict[str, Any]) -> Dict[str, Any]:
-        return self._run(self.solve_async(proposal))
-
-    async def solve_async(self, proposal: Dict[str, Any]) -> Dict[str, Any]:
+    async def solve(self, proposal: Dict[str, Any]) -> Dict[str, Any]:
+        """Async entry point. Runs the full solve cycle."""
         goal = str(proposal.get("query") or proposal.get("goal") or "").strip()
         if not goal:
             raise ValueError("Solver requires proposal['query'] (non-empty).")
@@ -141,15 +201,20 @@ class Solver:
                 if self.use_grpo and self.adapter:
                     forest = await self.adapter.rollout_forest(ctx)
                     best_node, best_reward = self._pick_best_from_grpo(forest)
-                    # If GRPO returns nothing robustly, fall back to post-hoc selection
                     if not best_node:
                         best_node, report = await self._posthoc_pick_best(ctx)
-                        result = self._result_payload_from_node(best_node, report,
-                                                                extra={"training_batch": forest.get("training_batch")})
+                        result = self._result_payload_from_node(
+                            best_node,
+                            report,
+                            extra={"training_batch": forest.get("training_batch")}
+                        )
                     else:
                         report = self._simple_report_from_grpo(forest, best_node, best_reward)
-                        result = self._result_payload_from_node(best_node, report,
-                                                                extra={"training_batch": forest.get("training_batch")})
+                        result = self._result_payload_from_node(
+                            best_node,
+                            report,
+                            extra={"training_batch": forest.get("training_batch")}
+                        )
                 else:
                     # Vanilla run, then pick winner via scoring service
                     await self.base.run(ctx)
@@ -162,16 +227,19 @@ class Solver:
                     PlanTrace_safe(
                         trace_id=f"solver-{abs(hash(goal)) % 1_000_000}",
                         role="solver",
-                        goal=goal,
+                        goal_text=goal,
+                        goal_id=0,
+                        plan_signature="",
                         status="completed",
-                        metadata={
+                        meta={
                             "nodes": len(self._nodes_iterable()),
                             "best_metric": (self.base.best_metric if getattr(self.base, 'best_metric', None) is not None else None),
                             "use_grpo": self.use_grpo,
                         },
-                        input=goal,
-                        output=result.get("answer", ""),
-                        artifacts=sanitize(result),
+                        execution_steps=[],
+                        input_data=goal,
+                        final_output_text=result.get("answer", ""),
+                        extra_data=sanitize(result),
                     )
                 )
                 return sanitize(result)
@@ -195,19 +263,17 @@ class Solver:
         Score a set of candidate nodes (top-K by the tree's own report if present,
         otherwise all leaves) using ScoringService; pick the winner.
         """
-        # Gather candidates
+        # Prefer leaderboard from last_report emitted by the tree
         leaderboard = self._try_get_leaderboard()
         if leaderboard:
-            # Expect items like {"node_id": ..., "reward": ...}
-            node_ids = [it.get("node_id") for it in leaderboard][: self.posthoc_top_k]
+            node_ids = [it.get("id") or it.get("node_id") for it in leaderboard]
+            node_ids = [nid for nid in node_ids if nid is not None][: self.posthoc_top_k]
             candidates = [self.base.nodes_by_id.get(nid) for nid in node_ids if nid in self.base.nodes_by_id]
         else:
-            # Fallback: take recent leaves or all nodes with text
             nodes_all = list(self._nodes_iterable())
             textful = [n for n in nodes_all if n and (getattr(n, "summary", None) or getattr(n, "output", None) or getattr(n, "plan", None))]
             candidates = textful[-self.posthoc_top_k:] if len(textful) > self.posthoc_top_k else textful
 
-        # Score each candidate
         scored: list[tuple[SolutionNode, float, dict]] = []
         for node in candidates:
             if not node:
@@ -216,7 +282,6 @@ class Solver:
             score, dim_scores = await self._score_text_async(ctx, text)
             scored.append((node, score, dim_scores))
 
-        # Choose best
         if not scored:
             return self.base.best_node, {
                 "summary": {
@@ -231,7 +296,6 @@ class Solver:
         scored.sort(key=lambda t: t[1], reverse=True)
         best_node, best_score, best_dims = scored[0]
 
-        # Build a compact report compatible with your existing shape
         lb = []
         for node, s, _dims in scored[: min(5, len(scored))]:
             lb.append({
@@ -261,7 +325,6 @@ class Solver:
         Score text using container ScoringService across enabled_scorers & dimensions.
         Returns (aggregate_score, per_dim_avg_dict).
         """
-        # Make a scorable for this candidate
         scorable = Scorable(
             id=f"cand-{int(time.time()*1_000)}",
             text=text or "",
@@ -272,12 +335,10 @@ class Solver:
         try:
             scoring = self.container.get("scoring")
         except Exception:
-            # No scoring service available; neutral fallback
             return 0.5, {d: 0.5 for d in self.dimensions}
 
         dim_bag: dict[str, List[float]] = {d: [] for d in self.dimensions}
 
-        # NOTE: scoring.score is sync in your examples; call straight through.
         for scorer_name in self.enabled_scorers:
             try:
                 bundle = scoring.score(
@@ -294,11 +355,15 @@ class Solver:
                     PlanTrace_safe(
                         trace_id=f"scorer-{int(time.time()*1000)%1_000_000}",
                         role="solver",
-                        goal="posthoc-scoring",
+                        goal_text="posthoc-scoring",
+                        goal_id=0,
+                        plan_signature="",
                         status="warning",
-                        input={"scorer": scorer_name, "dims": self.dimensions},
-                        output="scorer_error",
-                        artifacts={"error": str(e)},
+                        meta={},
+                        execution_steps=[],
+                        input_data={"scorer": scorer_name, "dims": self.dimensions},
+                        final_output_text="scorer_error",
+                        extra_data={"error": str(e)},
                     )
                 )
                 continue
@@ -315,37 +380,15 @@ class Solver:
         difficulty = float(proposal.get("difficulty", self.sp.qmax.initial_difficulty))
         value = max(0.0, min(1.0, difficulty))
 
-        ctx = {
+        return {
             "goal": {"goal_text": goal_text},
             "task_type": self.cfg.get("task_type", "prompt_improvement"),
-            # these are just hints—the post-hoc scorer is authoritative
             "scorer": self.cfg.get("scorer", (self.enabled_scorers[0] if self.enabled_scorers else "tiny")),
             "dimensions": list(self.dimensions),
             "knowledge": proposal.get("connections") or [],
             "value": value,
             "pipeline_run_id": int(time.time() * 1000) % 10_000,
         }
-        return ctx
-
-    async def _emit_tree_event(self, event: str, payload: Dict[str, Any]) -> None:
-        try:
-            if self._tree_emitter:
-                await self._tree_emitter.emit(event, payload)
-        except Exception:
-            pass
-        try:
-            self.trace_logger.log({
-                "trace_id": f"tree-{int(time.time()*1000)}",
-                "role": "tree",
-                "goal": payload.get("goal") if isinstance(payload, dict) else "",
-                "status": event,
-                "metadata": {"event": event},
-                "input": None,
-                "output": "",
-                "artifacts": payload,
-            })
-        except Exception:
-            pass
 
     def _pick_best_from_grpo(self, forest: Dict[str, Any]) -> tuple[Optional[SolutionNode], float]:
         rewards = forest.get("rewards", {}) or {}
@@ -391,7 +434,6 @@ class Solver:
             result.update(extra)
         return result
 
-    # Utility: support dict or list internal tree storage
     def _nodes_iterable(self) -> Iterable[SolutionNode]:
         tree = getattr(self.base, "tree", None)
         if isinstance(tree, dict):
@@ -402,31 +444,7 @@ class Solver:
         rep = getattr(self.base, "last_report", None)
         if isinstance(rep, dict) and "leaderboard" in rep:
             return rep["leaderboard"] or []
-        # some versions stash report in ctx; try to read from base if exposed
         ctx_report = getattr(self.base, "search_report", None)
         if isinstance(ctx_report, dict) and "leaderboard" in ctx_report:
             return ctx_report["leaderboard"] or []
         return None
-
-    # ------------------------------------------------------------------ #
-    # Runner
-    # ------------------------------------------------------------------ #
-    def _run(self, coro):
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            new_loop = asyncio.new_event_loop()
-            try:
-                return Hey new_loop.run_until_complete(coro)
-            finally:
-                new_loop.close()
-        else:
-            loop = loop or asyncio.new_event_loop()
-            try:
-                asyncio.set_event_loop(loop)
-                return loop.run_until_complete(coro)
-            finally:
-                loop.close()
