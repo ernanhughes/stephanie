@@ -18,6 +18,8 @@ from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.service_container import ServiceContainer
 from stephanie.utils.json_sanitize import sanitize
 
+import logging
+_logger = logging.getLogger(__name__)
 
 def _resolve_threshold(sp_cfg: DictConfig) -> float:
     t = OmegaConf.select(sp_cfg, "verification_threshold")
@@ -127,49 +129,55 @@ class Trainer:
     def train_step(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         t0 = time.time()
         ctx = dict(context or {})
+        
+        # --- START OF STEP ---
+        step_start_time = time.strftime("%H:%M:%S")
+        _logger.info(f"\n--- SSP TRAINING STEP START [{step_start_time}] ---")
 
         # 1) Propose
-        prop_dict = self.proposer.generate(ctx)
-        proposal = Proposal(**prop_dict)
+        _logger.info("🔄 Generating proposal...")
+        prop_dict = self.proposer.generate(ctx) 
+        _logger.info(f"{prop_dict}\n✅")  # Success indicator
+        _logger.info(f"   🔹 Query: {prop_dict.get('query', '')[:80]}{'...' if len(prop_dict.get('query', '')) > 80 else ''}")
+        _logger.info(f"   🔹 Difficulty: {prop_dict.get('difficulty', 0):.2f}")
 
         pipeline_run_id = ctx.get("pipeline_run_id") or (int(time.time()*1000) % 10_000_000)
 
         goal = {
-            "goal_text": proposal.query,                  # ← dynamic goal
+            "goal_text": prop_dict.get("query", ""),
             "description": "SSP-generated goal",
             "meta": {
-                "difficulty": proposal.difficulty,
-                "connections": proposal.connections,
+                "difficulty": prop_dict.get("difficulty", 0),
+                "connections": prop_dict.get("connections", []),
                 "mission": self.sp.get("mission"),
             },
         }
 
-
         # 2) Solve
+        _logger.info("🧠 Solving proposal...")
         sol_dict = self.solver.solve(prop_dict)
         solution = Solution(
-            answer=sol_dict.get("answer", ""),
+            answer=sol_dict.get("answer", " "),
             reasoning_path=sol_dict.get("reasoning_path", []),
             evidence=sol_dict.get("evidence", []),
             search_depth=int(sol_dict.get("search_depth", 0)),
             report=sol_dict.get("report", {}),
             training_batch=sol_dict.get("training_batch"),
         )
+        solve_time = int((time.time() - t0) * 1000)
+        _logger.info(f" ✅ ({solve_time}ms)")
+        _logger.info(f"   🔹 Answer preview: {solution.answer[:60]}{'...' if len(solution.answer) > 60 else ''}")
 
-        # 3) Score/Verify via ScoringService (container)
+        # 3) Score/Verify
+        _logger.info("🔍 Verifying solution...")
         work_ctx = {
             **ctx,
             "pipeline_run_id": pipeline_run_id,
-            "goal": goal,                     # <-- ensures _score_with_container sees goal_id
+            "goal": goal,
             "proposal": prop_dict,
             "solution": sol_dict,
         }
-        final_score, dim_scores = self._score_with_container(
-            work_ctx,
-            solution.answer or ""
-        )
-
-
+        final_score, dim_scores = self._score_with_container(work_ctx, solution.answer or " ")
         verification = Verification(
             is_valid=bool(final_score >= self.threshold and bool(solution.answer.strip())),
             score=float(final_score),
@@ -177,21 +185,28 @@ class Trainer:
             evidence_count=int(len(solution.evidence)),
             reasoning_steps=int(len(solution.reasoning_path)),
         )
+        _logger.info(" ✅")
 
-        # 4) Rewards (blend extrinsic = verification score with intrinsic signals)
-        lp = 0.0  # placeholder; wire VPM learning-progress here when available
-        nov = self.rewards.novelty_bonus_text(solution.answer or "")
+        # 4) Rewards
+        lp = 0.0  # placeholder
+        nov = self.rewards.novelty_bonus_text(solution.answer or " ")
         total_reward = self.rewards.blend(verification.score, lp, nov)
 
         # 5) Curriculum update
         success = verification.is_valid
         self.success_hist.append(1 if success else 0)
         new_diff = self.curriculum.update(success)
-        # keep proposer aligned
         if hasattr(self.proposer, "set_difficulty"):
             self.proposer.set_difficulty(new_diff)
         else:
             setattr(self.proposer, "difficulty", new_diff)
+
+        # --- END OF STEP ---
+        # Log summary metrics
+        _logger.info(f"✅ SUCCESS: {success}, VERIFICATION SCORE: {verification.score:.3f}, REWARD: {total_reward:.3f}")
+        _logger.info(f"📊 METRICS: difficulty={new_diff:.2f}, success_rate={self.curriculum.success_rate:.2%}, threshold={self.threshold:.2f}")
+        _logger.info(f"📈 DIMENSION SCORES: {', '.join([f'{k}={v:.2f}' for k, v in dim_scores.items()])}")
+        _logger.info(f"--- SSP TRAINING STEP END [{time.strftime('%H:%M:%S')}] ---\n")
 
         # 6) Trace
         episode = Episode(

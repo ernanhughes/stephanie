@@ -248,7 +248,7 @@ class RiskOrchestrator(ProgressMixin):
         if self.eg_svc and decision in self.policy.run_epi_on:
             gi = GuardInput(
                 trace_id=f"{run_id}-{model_alias}-{int(time.time() * 1000) % 10_000_000}",
-                question=goal.get("goal_text", goal.get("text","Assess risk")), Alright
+                question=goal.get("goal_text", goal.get("text","Assess risk")), 
                 context=model_alias,
                 reference=(context or {}).get("reference", "")
                 if context

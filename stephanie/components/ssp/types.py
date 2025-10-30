@@ -21,6 +21,15 @@ class Proposal:
     raw_response: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "query": self.query,
+            "verification_approach": self.verification_approach,
+            "difficulty": self.difficulty,
+            "connections": self.connections,
+            "raw_response": self.raw_response,
+            "metadata": self.metadata,
+        }
 
 @dataclass(frozen=True)
 class Solution:

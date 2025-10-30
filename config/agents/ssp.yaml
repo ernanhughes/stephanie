@@ -1,19 +1,114 @@
-# stephanie/agents/self_play/ssp_substrate/config.yaml
+# config/agents/ssp.yaml
 ssp:
+  name: ssp
   enabled: true
-  batch_size: 8
-  max_episode_length: 10
-  verification_threshold: 0.85
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+    
+  # Top-level key must be 'self_play' to match the codebase expectation
+  self_play:
+    # --- General Configuration ---
+    enabled: true
+    mission: "Improve Stephanie’s reasoning, knowledge integration, and tool usage through verifiable self-play."
+    batch_size: 8
+    max_episode_length: 10
+    verification_threshold: 0.85  # Used by Verifier and Trainer
 
-  reward:
-    w_hrm: 0.6
-    w_mars: 0.3
-    w_verifier: 0.1
-    length_penalty: 0.0
+    # --- Reward Structure ---
+    reward:
+      w_hrm: 0.6
+      w_mars: 0.3
+      w_verifier: 0.1
+      length_penalty: 0.0
 
-  snapshots:
-    keep: 5
-    update_interval: 50
+    # --- Snapshots & Persistence ---
+    snapshots:
+      keep: 5
+      update_interval: 50
 
-  jitter:
-    tick_interval: 2.0
+    # --- Jitter / Ticking Cadence ---
+    jitter:
+      tick_interval: 2.0  # seconds between auto-ticks if used
+
+    # --- Q-Max Curriculum Control ---
+    # This is CRITICAL for difficulty adaptation
+    qmax:
+      initial_difficulty: 0.3      # Starting challenge level (0.0 = easy, 1.0 = hard)
+      max_difficulty: 0.9          # Upper bound on difficulty
+      difficulty_step: 0.05        # How much to adjust difficulty per step
+      competence_window: 100       # Number of recent episodes to calculate success rate
+
+    # --- Curriculum Policy ---
+    curriculum:
+      min_success_rate: 0.65       # Target success rate; increase difficulty when above
+
+    # --- Proposer Configuration ---
+    proposer:
+      # template_name: "path/to/proposal_template.txt"  # Optional custom prompt
+      # Any other proposer-specific settings can go here
+
+    # --- Solver Configuration ---
+    solver:
+      search_iterations: 40        # Max iterations for tree search
+      time_limit_sec: 60           # Time limit for solving
+      N_init: 3                    # Initial number of plans
+      C_ucb: 1.2                   # UCB exploration constant
+      H_greedy: 0.3                # Heuristic weight for greedy selection
+      H_debug: 0.5                 # Heuristic weight for debug steps
+      no_improve_patience: 30      # Stop if no improvement after this many iterations
+      progress_every: 5            # Log progress every N iterations
+      heartbeat_secs: 10.0         # Heartbeat interval during search
+      report_top_k: 5              # Report top K candidates
+      llm_preamble: >
+        You are a meticulous problem solver. Think step-by-step, use tools when needed,
+        and provide clear, concise answers.
+      scorers: ["tiny"]            # Scoring services to use for post-hoc selection
+      dimensions:                  # Dimensions to score on during solution selection
+        - "novelty"
+        - "clarity"
+        - "relevance"
+        - "implementability"
+        - "alignment"
+      posthoc_top_k: 12            # Number of candidates to score post-hoc
+      use_grpo: false              # Whether to use GRPO rollout
+      # --- Tree-GRPO Config (only used if use_grpo: true) ---
+      tree:
+        M: 2                       # Number of rollouts
+        N: 2                       # Candidates per rollout
+        L: 1                       # Lookahead depth
+        scorer_name: "sicql"       # Scorer to use for GRPO rewards
+        dimensions: ["alignment"]  # Dimensions for GRPO scoring
+        use_zscore_intra: false    # Use intra-rollout z-scoring
+        use_zscore_inter: true     # Use inter-rollout z-scoring
+        value_alpha: 0.0           # Weight for value function (0.0 = pure policy)
+        prefer_non_buggy: true     # Prefer non-buggy solutions in ranking
+
+    # --- Verifier Configuration ---
+    verifier:
+      verification_threshold: 0.85 # Threshold for solution validity (can override global)
+      min_evidence_count: 2        # Minimum evidence count to pass
+      scorers:                     # List of scorers to consult for final verification
+        - "hrm"
+        # - "mars" 
+      dimensions:                  # Dimensions to verify on
+        - "reasoning"
+        - "knowledge"
+        - "clarity"
+        - "faithfulness"
+        - "coverage"
+        - "alignment"
+      # --- HRM-style Weights (for internal heuristic scoring if needed) ---
+      hrms:
+        - name: "coherence"
+          weight: 0.3
+        - name: "consistency"
+          weight: 0.25
+        - name: "causality"
+          weight: 0.25
+        - name: "novelty"
+          weight: 0.2

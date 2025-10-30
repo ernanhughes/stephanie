@@ -61,7 +61,7 @@ async def _too_similar(self, query: str) -> bool:
     # Simple novelty check against recent proposals via EmbeddingStore
     try:
         emb = self.container.get("embedding")
-        recent = (self.container.get("state")
+        recent = (self.container.get("ssp_state")
                   .get_ring_buffer("ssp.recent_queries", maxlen=200))  # light, in-memory
         if not recent: return False
         return any(emb.cosine_sim(query, r) > 0.92 for r in recent)  # threshold tuneable
@@ -266,15 +266,20 @@ class Proposer:
             metadata={"source": "proposer", "ctx": ctx},
         )
 
+        pipeline_run_id = ctx.get("pipeline_run_id", "unknown")
         # Trace
         self.trace_logger.log(PlanTrace_safe(
             trace_id=f"proposer-{int(time.time()*1000) % 1_000_000}",
             role="proposer",
-            goal=prop.query,
+            execution_steps=[],
+            goal_text=prop.query,
+            goal_id=context.get("goal_id", -1),
+            plan_signature=f"SSP generator Run id {pipeline_run_id}",
             status="proposed",
-            metadata={"difficulty": prop.difficulty, "connections": prop.connections},
-            input=prompt,
-            output=prop.raw_response,
-            artifacts={},
+            meta={"difficulty": prop.difficulty, "connections": prop.connections},
+            input_data={"prompt": prompt},
+            final_output_text=prop.raw_response,
+            extra_data={},
         ))
 
+        return prop.to_dict()

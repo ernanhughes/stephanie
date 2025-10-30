@@ -420,7 +420,7 @@ class Solver:
         if loop and loop.is_running():
             new_loop = asyncio.new_event_loop()
             try:
-                return new_loop.run_until_complete(coro)
+                return Hey new_loop.run_until_complete(coro)
             finally:
                 new_loop.close()
         else:

@@ -127,7 +127,7 @@ class PlanTrace:
 
     # --- Core Identifiers ---
     trace_id: str # Unique identifier for this specific trace/execution
-    
+    status: str  # e.g., "proposed", "in_progress", "completed", "failed"
     # --- Initial Context ---
     goal_text: str # The original goal or query
     goal_id: int
@@ -135,7 +135,7 @@ class PlanTrace:
     
     # --- Plan Definition (Optional but useful for context) ---
     # This could be a representation of the DSPy program or pipeline used.
-    # A simple string signature or a more structured representation.
+    # A simple string signature
     plan_signature: str 
 
     # --- Execution Details ---
