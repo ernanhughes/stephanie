@@ -4,376 +4,360 @@ from __future__ import annotations
 import time
 import traceback
 from datetime import datetime
+from typing import Any, Dict, Optional, List
 
 import torch
 from torch import nn
 import torch.nn.functional as F
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.memory.execution_step_store import ExecutionStepStore
-from stephanie.memory.plan_trace_store import PlanTraceStore
-from stephanie.models.plan_trace import ExecutionStepORM, PlanTraceORM
+# ✅ Use the dataclass layer (same as new SSP Trainer)
+from stephanie.data.plan_trace import PlanTrace, ExecutionStep
+
+# Optional: fallback stores if memory.plan_traces repo missing
+from stephanie.memory.plan_trace_store import PlanTraceStore as _FallbackPlanTraceStore  # optional
+from stephanie.memory.execution_step_store import ExecutionStepStore as _FallbackExecStore  # optional
 
 
-class GILDTraceAgent(BaseAgent): 
+class _TraceRepoAdapter:
     """
-    GILD Trainer that not only performs policy refinement but also records
-    its own process and outcome as a PlanTrace for self-analysis and improvement.
+    Small adapter that prefers memory.plan_traces.upsert(PlanTrace),
+    with a safe fallback to the older stores if needed.
     """
+    def __init__(self, memory, logger):
+        self.memory = memory
+        self.logger = logger
+
+        self.repo = getattr(memory, "plan_traces", None)
+        # Fallbacks (only used if repo doesn’t exist)
+        self._fallback_plan = None
+        self._fallback_steps = None
+        if self.repo is None and hasattr(memory, "session"):
+            try:
+                self._fallback_plan = _FallbackPlanTraceStore(memory.session, logger)
+                self._fallback_steps = _FallbackExecStore(memory.session, logger)
+            except Exception:
+                self._fallback_plan = None
+                self._fallback_steps = None
+
+    def upsert_trace(self, pt: PlanTrace) -> PlanTrace:
+        if self.repo and hasattr(self.repo, "upsert"):
+            return self.repo.upsert(pt)
+        # Fallback: best-effort upsert using stores
+        if self._fallback_plan:
+            try:
+                # The fallback store may accept dataclass; if not, convert here as needed.
+                return self._fallback_plan.upsert(pt)  # type: ignore
+            except Exception as e:
+                self.logger.log("GILDTraceFallbackUpsertError", {"error": str(e)})
+        raise RuntimeError("No plan_traces repo or fallback available")
+
+    def add_step(self, pt: PlanTrace, step: ExecutionStep) -> PlanTrace:
+        # Preferred path: just mutate and upsert again
+        pt.execution_steps = list(pt.execution_steps or []) + [step]
+        return self.upsert_trace(pt)
+
+
+class GILDTraceAgent(BaseAgent):
+    """
+    GILD Trainer that performs policy refinement and records the full run
+    as a PlanTrace via memory.plan_traces.upsert(...).
+    """
+
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        # --- Initialize Database Stores ---
-        self.plan_trace_store: PlanTraceStore = PlanTraceStore(memory.session, logger)
-        self.execution_step_store: ExecutionStepStore = ExecutionStepStore(memory.session, logger)
-        # --- GILD Specific Config (example, adjust as needed) ---
         self.beta = cfg.get("gild_beta", 1.0)
         self.epochs = cfg.get("gild_epochs", 5)
         self.batch_size = cfg.get("gild_batch_size", 32)
-        # Add other GILD hyperparameters as needed
+        self.lr = cfg.get("gild_lr", 1e-4)
+
+        # Repo adapter (prefers memory.plan_traces.upsert)
+        self._repo = _TraceRepoAdapter(memory, logger)
+
+        # Device
+        try:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        except Exception:
+            self.device = "cpu"
 
     async def run(self, context: dict) -> dict:
         """
         Executes the GILD training process and records it as a PlanTrace.
-        """ 
-        # --- 1. Initialize GILD Process Trace ---
-        gild_trace_orm = None
-        gild_step_order_counter = 1
-        goal_id = context.get("goal_id") # Assuming goal_id is passed
-        goal_text = context.get("goal_text", "Unknown Goal") # Get goal text if available
-        dimension = context.get("dimension", "Unknown Dimension") # Get dimension being updated
-        expert_scorer = context.get("expert_scorer", "Unknown Expert") # e.g., "llm", "hrm"
+        """
+        goal_id = context.get("goal_id")
+        goal_text = context.get("goal_text", "Unknown Goal")
+        dimension = context.get("dimension", "Unknown Dimension")
+        expert_scorer = context.get("expert_scorer", "Unknown Expert")
+        pipeline_run_id = context.get("pipeline_run_id") or f"gild-{int(time.time()*1000)}"
 
+        # ---------- 1) Create PlanTrace (status: in_progress) ----------
+        trace_id = f"gild-{int(time.time()*1000)}-{abs(hash(goal_text))%1_000_000}"
+        plan_trace = PlanTrace(
+            trace_id=trace_id,
+            pipeline_run_id=pipeline_run_id,
+            goal_id=goal_id if goal_id is not None else abs(hash(goal_text)) % 1_000_000_000,
+            goal_text=str(goal_text)[:1000],
+            plan_signature=f"GILD_SICQL_Pi_Head_Update[{dimension}]",
+            input_data={
+                "gild_config": {k: v for k, v in dict(self.cfg).items() if str(k).startswith("gild_")},
+                "expert_scorer": expert_scorer,
+                "dimension": dimension,
+            },
+            execution_steps=[],
+            final_output_text="",
+            status="in_progress",
+            created_at=datetime.utcnow().isoformat() + "Z",
+            meta={
+                "agent_name": self.__class__.__name__,
+                "started_at": datetime.utcnow().isoformat() + "Z",
+            },
+        )
+        plan_trace = self._repo.upsert_trace(plan_trace)
+        self.logger.log("GILDProcessTraceStarted", {"trace_id": plan_trace.trace_id})
+
+        # ---------- 2) Data Prep Step ----------
         try:
-            trace_id = f"gild_trace_{int(time.time() * 1000)}_{hash(str(context)) % 10000}" # Simple unique ID
-            gild_trace_orm = PlanTraceORM(
-                trace_id=trace_id,
-                goal_id=goal_id,
-                goal_text=goal_text[:1000], # Truncate if very long
-                plan_signature=f"GILD_SICQL_Pi_Head_Update_{dimension}_v1", # Descriptive signature
-                input_data={ # Store relevant GILD config and context
-                    "gild_config": {k: v for k, v in self.cfg.items() if k.startswith("gild_")},
-                    "expert_scorer": expert_scorer,
-                    "dimension": dimension,
-                    # Add other relevant context data if needed
-                },
-                final_output_text="", # Will be updated later
-                target_epistemic_quality=None, # Will be calculated and set later
-                target_epistemic_quality_source=None, # Will be set later
-                meta={
-                    "agent_name": self.__class__.__name__,
-                    "started_at": datetime.now().isoformat() + 'Z'
-                }
+            gild_signals = context.get("gild_signals", []) or []
+            train_loader = context.get("gild_dataloader")  # optional, prebuilt
+
+            step = ExecutionStep(
+                step_id=f"{trace_id}-data",
+                pipeline_run_id=pipeline_run_id,
+                step_order=1,
+                step_type="data_preparation",
+                description="Load and prepare GILD training data.",
+                agent_name=self.__class__.__name__,
+                agent_role="prepare",
+                input_text=f"signals={len(gild_signals)}",
+                output_text="",
+                scores={},
+                meta={},
+                start_time=time.time(),
             )
-            # Save the initial trace ORM to get its ID
-            self.plan_trace_store.session.add(gild_trace_orm)
-            self.plan_trace_store.session.flush() # Get ID without committing
-            gild_trace_db_id = gild_trace_orm.id
-            self.logger.log("GILDProcessTraceStarted", {"trace_id": trace_id, "db_id": gild_trace_db_id})
+            # If you build a loader here, do it and fill meta
+            if train_loader is not None:
+                try:
+                    blen = len(train_loader)
+                except Exception:
+                    blen = "N/A"
+            else:
+                blen = "N/A"
+
+            step.output_text = f"Prepared signals={len(gild_signals)}, batches={blen}"
+            step.end_time = time.time()
+            step.duration = (step.end_time - step.start_time)
+            step.status = "completed"
+            plan_trace = self._repo.add_step(plan_trace, step)
+            self.logger.log("GILDDataPrepared", {"num_signals": len(gild_signals), "batches": blen})
 
         except Exception as e:
-            self.logger.log("GILDProcessTraceInitError", {"error": str(e)})
-            # If trace init fails, log it but continue GILD training without tracing
-            gild_trace_orm = None
-            gild_trace_db_id = None
+            self._append_error_step(plan_trace, pipeline_run_id, trace_id, "data_preparation_error", str(e))
+            return self._fail_trace(plan_trace, context, f"Failed during data prep: {e}")
 
+        # ---------- 3) Training Loop (Pi head only) ----------
+        model = context.get("sicql_model")
+        if not model or not hasattr(model, "pi_head") or model.pi_head is None:
+            err = "SICQL model or pi_head missing in context."
+            self._append_error_step(plan_trace, pipeline_run_id, trace_id, "model_missing", err)
+            return self._fail_trace(plan_trace, context, err)
 
-        # --- 2. Log Execution Step: Data Preparation ---
+        pi_head: nn.Module = model.pi_head
+        # Freeze everything except pi_head
         try:
-            if gild_trace_orm:
-                data_prep_step = ExecutionStepORM(
-                    plan_trace_id=gild_trace_db_id,
-                    step_order=gild_step_order_counter,
-                    step_id=f"{trace_id}_step_{gild_step_order_counter}",
-                    description="Load and prepare GILD training data.",
-                    output_text="", # Will populate after data loading
-                    meta={} # Add data loading stats here later if needed
-                )
-                self.execution_step_store.insert(data_prep_step)
-                gild_step_order_counter += 1
-
-            # --- Original GILD Data Loading Logic (Conceptual) ---
-            # Assume context contains 'gild_signals' or similar data structure
-            gild_signals = context.get("gild_signals", [])
-            # Process signals into DataLoader
-            # This involves extracting embeddings, expert scores, calculating advantages, creating weights
-            # train_loader = self._prepare_gild_dataloader(gild_signals) # Implement this helper
-            # For this example, let's assume train_loader is ready
-            train_loader = context.get("gild_dataloader") # Placeholder
-            
-            if gild_trace_orm:
-                 # Update the data prep step with outcome
-                 # Find the step ORM (assuming you have a way to get it, or re-query)
-                 # For simplicity here, assume we just update the text
-                 data_prep_step.output_text = f"Loaded {len(gild_signals)} training signals. Created DataLoader with {len(train_loader) if train_loader else 'N/A'} batches."
-                 # In a real scenario, you'd update the ORM object and commit
-                 self.execution_step_store.session.commit() # Or use store method if available
-
-            self.logger.log("GILDDataPrepared", {"num_signals": len(gild_signals)})
-
+            for p in model.parameters():
+                p.requires_grad = False
+            for p in pi_head.parameters():
+                p.requires_grad = True
+            optimizer = torch.optim.AdamW(pi_head.parameters(), lr=float(self.lr))
         except Exception as e:
-             self.logger.log("GILDDataPreparationError", {"error": str(e)})
-             if gild_trace_orm:
-                 # Log error step
-                 error_step = ExecutionStepORM(
-                     plan_trace_id=gild_trace_db_id,
-                     step_order=gild_step_order_counter,
-                     step_id=f"{trace_id}_step_{gild_step_order_counter}",
-                     description="Error during data preparation.",
-                     output_text=f"Error: {str(e)}",
-                     meta={}
-                 )
-                 self.execution_step_store.insert(error_step)
-                 gild_step_order_counter += 1
-             # Decide if to continue or fail based on error severity
-             # For now, let's assume critical and return
-             context["gild_status"] = "failed"
-             context["gild_error"] = str(e)
-             if gild_trace_orm:
-                 gild_trace_orm.final_output_text = f"Failed during data prep: {e}"
-                 gild_trace_orm.meta["completed_at"] = datetime.now().isoformat() + 'Z'
-                 self.plan_trace_store.session.commit()
-             return context
+            self._append_error_step(plan_trace, pipeline_run_id, trace_id, "optimizer_error", str(e))
+            return self._fail_trace(plan_trace, context, f"Optimizer init failed: {e}")
 
-
-        # --- 3. GILD Training Loop ---
-        model = context.get("sicql_model") # Assume the model is passed in context
-        pi_head = model.pi_head # Assume access to the specific head being trained
-        optimizer = torch.optim.AdamW(pi_head.parameters(), lr=self.cfg.get("gild_lr", 1e-4))
-        
-        if not model or not pi_head:
-            error_msg = "SICQL model or Pi head not provided in context."
-            self.logger.log("GILDModelError", {"error": error_msg})
-            context["gild_status"] = "failed"
-            context["gild_error"] = error_msg
-            if gild_trace_orm:
-                gild_trace_orm.final_output_text = error_msg
-                gild_trace_orm.meta["completed_at"] = datetime.now().isoformat() + 'Z'
-                self.plan_trace_store.session.commit()
-            return context
-
-        # Freeze other parts of the model
-        for param in model.parameters():
-            param.requires_grad = False
-        for param in pi_head.parameters():
-            param.requires_grad = True
-
-        self.logger.log("GILDTrainingStarted", {"epochs": self.epochs, "batches": len(train_loader) if train_loader else 'N/A'})
-        
+        epoch_losses: List[float] = []
         try:
-            if gild_trace_orm:
-                training_start_step = ExecutionStepORM(
-                    plan_trace_id=gild_trace_db_id,
-                    step_order=gild_step_order_counter,
-                    step_id=f"{trace_id}_step_{gild_step_order_counter}",
-                    description="Start GILD policy update loop.",
-                    output_text=f"Beginning training for {self.epochs} epochs.",
-                    meta={"frozen_params": sum(not p.requires_grad for p in model.parameters()),
-                          "trainable_params_pi": sum(p.numel() for p in pi_head.parameters())}
-                )
-                self.execution_step_store.insert(training_start_step)
-                gild_step_order_counter += 1
+            start_step = ExecutionStep(
+                step_id=f"{trace_id}-train-start",
+                pipeline_run_id=pipeline_run_id,
+                step_order=2,
+                step_type="training_start",
+                description="Start GILD policy update loop.",
+                agent_name=self.__class__.__name__,
+                agent_role="train",
+                input_text=f"epochs={self.epochs}, lr={self.lr}",
+                output_text="Beginning training",
+                scores={},
+                meta={
+                    "frozen_params": int(sum(not p.requires_grad for p in model.parameters())),
+                    "trainable_params_pi": int(sum(p.numel() for p in pi_head.parameters())),
+                },
+                start_time=time.time(),
+                status="completed",
+                end_time=time.time(),
+                duration=0.0,
+            )
+            start_step.duration = start_step.end_time - start_step.start_time
+            plan_trace = self._repo.add_step(plan_trace, start_step)
 
-            # --- Training Statistics Tracking ---
-            epoch_losses = []
-            # Training loop
-            for epoch in range(self.epochs):
-                model.train()
-                total_pi_loss = 0.0
-                num_batches = 0
-                # Log start of epoch step? (Optional, might be too granular)
-                
-                if train_loader: # Check if loader exists
-                    for batch_idx, batch in enumerate(train_loader):
-                        # Move data to device
-                        # Assume batch structure from your data prep
+            # Optional: no loader, skip training gracefully
+            if not train_loader:
+                self.logger.log("GILDTrainingSkipped", {"reason": "no_train_loader"})
+            else:
+                for epoch in range(int(self.epochs)):
+                    model.train()
+                    total_pi_loss = 0.0
+                    num_batches = 0
+
+                    for batch in train_loader:
+                        # Expect these keys; adapt to your pipeline
                         ctx_emb = batch["context_emb"].to(self.device)
                         doc_emb = batch["doc_emb"].to(self.device)
-                        expert_score = batch["expert_score"].to(self.device) # LLM or HRM score
-                        # Get current SICQL prediction (Q, V, Pi)
-                        with torch.no_grad(): # Don't need gradients for base model parts
-                             outputs = model(ctx_emb, doc_emb)
-                             current_q = outputs["q_value"]
-                             current_v = outputs["state_value"]
-                             current_pi_logits = outputs["action_logits"]
+                        expert_score = batch.get("expert_score")  # optional depending on your setup
+                        if expert_score is not None and hasattr(expert_score, "to"):
+                            expert_score = expert_score.to(self.device)
 
-                        # Calculate advantage (expert - V or Q - V depending on setup)
-                        # Assuming advantage is pre-calculated and passed, or calculate here
-                        # advantage = expert_score - current_v # Example
-                        advantage = batch.get("advantage", torch.zeros_like(expert_score)).to(self.device)
-                        
-                        # Calculate weights
-                        weights = torch.exp(self.beta * advantage)
-                        weights = weights / weights.sum() # Normalize if needed (depends on AWR variant)
-                        
-                        # --- GILD Pi Loss (Advantage Weighted Regression) ---
-                        # Pass through Pi head only (it's the only part with grad enabled)
-                        # Need to ensure input to pi_head matches its expected input
-                        # This might be z_context, or a combination, depending on your model
-                        # Let's assume zsa (state-action rep) is needed, derived from ctx_emb, doc_emb
-                        # You might have an encoder or way to get zsa
-                        # zsa = model.encoder(ctx_emb, doc_emb) # Example
-                        # For now, assume zsa or equivalent input is available or derivable
-                        # Let's assume the model's forward also returns zsa or it's accessible
-                        # If not, you need to calculate it here based on your SICQL model structure.
-                        # Placeholder: Assume zsa is part of outputs or can be derived
-                        zsa = outputs.get("zsa", ctx_emb + doc_emb) # Simplified placeholder
-                        
-                        predicted_pi_logits = pi_head(zsa) # Get new logits from *trainable* pi_head
-                        
-                        # Calculate AWR loss
-                        # Negative log prob of action * weight
-                        # Assume 'action' or target policy is implicit in expert_score/advantage calculation
-                        # Or, if you have expert actions, use them.
-                        # Simplified version: treat expert_score as a target for the policy distribution
-                        # More accurately, you'd use the expert actions or derive a target distribution.
-                        # Let's assume a simplified MSE loss between logits for illustration.
-                        # A proper AWR would involve log_prob of expert actions.
-                        pi_loss = F.mse_loss(predicted_pi_logits, current_pi_logits.detach()) # Example, likely incorrect AWR
-                        # Correct AWR usually involves: -log_prob(expert_action) * weight
-                        # You need to adapt this based on your exact GILD implementation.
-                        
-                        # Apply weights (importance sampling)
-                        # This often involves summing weighted losses across the batch
-                        # weighted_loss = (weights * pi_loss).mean() # Example approach
-                        # Or, if pi_loss is already summed/averaged, apply weight differently.
-                        # Let's assume pi_loss is calculated per sample and needs weighting.
-                        # Reshape weights if necessary
-                        # weights = weights.view(-1, 1) if weights.dim() == 1 else weights
-                        # weighted_losses = weights * pi_loss # Element-wise if pi_loss is per sample
-                        # final_pi_loss = weighted_losses.sum() # Or mean?
-                        # The exact weighting depends on your AWR implementation details.
-                        # For this draft, let's use a simple average loss placeholder.
-                        final_pi_loss = pi_loss.mean() # Placeholder
-                        
-                        # --- Backward and Optimize ---
+                        with torch.no_grad():
+                            outputs: Dict[str, Any] = model(ctx_emb, doc_emb)
+                            current_pi_logits = outputs.get("action_logits")
+                            zsa = outputs.get("zsa", ctx_emb + doc_emb)
+
+                        predicted_pi_logits = pi_head(zsa)
+
+                        # NOTE: Placeholder loss; replace with proper AWR:
+                        pi_loss = F.mse_loss(predicted_pi_logits, current_pi_logits.detach())
+
                         optimizer.zero_grad()
-                        final_pi_loss.backward()
+                        pi_loss.backward()
                         optimizer.step()
-                        
-                        total_pi_loss += final_pi_loss.item()
+
+                        total_pi_loss += float(pi_loss.item())
                         num_batches += 1
-                        
-                        # Optional: Log batch loss step? (Very granular)
-                    
-                    avg_epoch_loss = total_pi_loss / num_batches if num_batches > 0 else 0.0
+
+                    avg_epoch_loss = (total_pi_loss / max(1, num_batches))
                     epoch_losses.append(avg_epoch_loss)
                     self.logger.log("GILDEpochCompleted", {"epoch": epoch, "avg_loss": avg_epoch_loss})
-                    
-                    # Log end of epoch step? (Optional)
-                    if gild_trace_orm:
-                         epoch_step = ExecutionStepORM(
-                             plan_trace_id=gild_trace_db_id,
-                             step_order=gild_step_order_counter,
-                             step_id=f"{trace_id}_step_{gild_step_order_counter}",
-                             description=f"Completed GILD training epoch {epoch}.",
-                             output_text=f"Average Pi loss: {avg_epoch_loss:.6f}",
-                             meta={"epoch": epoch, "avg_loss": avg_epoch_loss}
-                         )
-                         self.execution_step_store.insert(epoch_step)
-                         gild_step_order_counter += 1
 
-            # --- Finalize Training ---
-            final_avg_loss = sum(epoch_losses) / len(epoch_losses) if epoch_losses else 0.0
-            self.logger.log("GILDTrainingCompleted", {"final_avg_loss": final_avg_loss})
-            
-            if gild_trace_orm:
-                training_end_step = ExecutionStepORM(
-                    plan_trace_id=gild_trace_db_id,
-                    step_order=gild_step_order_counter,
-                    step_id=f"{trace_id}_step_{gild_step_order_counter}",
-                    description="GILD policy update loop completed.",
-                    output_text=f"Training finished. Final average Pi loss: {final_avg_loss:.6f}",
-                    meta={"final_avg_loss": final_avg_loss, "epochs_run": self.epochs}
-                )
-                self.execution_step_store.insert(training_end_step)
-                gild_step_order_counter += 1
+                    epoch_step = ExecutionStep(
+                        step_id=f"{trace_id}-epoch-{epoch}",
+                        pipeline_run_id=pipeline_run_id,
+                        step_order=3 + epoch,
+                        step_type="training_epoch",
+                        description=f"Completed epoch {epoch}",
+                        agent_name=self.__class__.__name__,
+                        agent_role="train",
+                        input_text=None,
+                        output_text=f"avg_pi_loss={avg_epoch_loss:.6f}",
+                        scores={},
+                        meta={"epoch": epoch, "avg_loss": avg_epoch_loss},
+                        start_time=time.time(),
+                        status="completed",
+                        end_time=time.time(),
+                        duration=0.0,
+                    )
+                    epoch_step.duration = epoch_step.end_time - epoch_step.start_time
+                    plan_trace = self._repo.add_step(plan_trace, epoch_step)
+
+            final_avg_loss = (sum(epoch_losses) / len(epoch_losses)) if epoch_losses else 0.0
+            end_step = ExecutionStep(
+                step_id=f"{trace_id}-train-end",
+                pipeline_run_id=pipeline_run_id,
+                step_order=3 + int(self.epochs),
+                step_type="training_end",
+                description="GILD training loop completed.",
+                agent_name=self.__class__.__name__,
+                agent_role="train",
+                input_text=None,
+                output_text=f"final_avg_pi_loss={final_avg_loss:.6f}",
+                scores={},
+                meta={"final_avg_loss": final_avg_loss, "epochs_run": int(self.epochs)},
+                start_time=time.time(),
+                status="completed",
+                end_time=time.time(),
+                duration=0.0,
+            )
+            end_step.duration = end_step.end_time - end_step.start_time
+            plan_trace = self._repo.add_step(plan_trace, end_step)
 
         except Exception as e:
-             self.logger.log("GILDTrainingLoopError", {"error": str(e), "traceback": traceback.format_exc()})
-             if gild_trace_orm:
-                 error_step = ExecutionStepORM(
-                     plan_trace_id=gild_trace_db_id,
-                     step_order=gild_step_order_counter,
-                     step_id=f"{trace_id}_step_{gild_step_order_counter}",
-                     description="Error during GILD training loop.",
-                     output_text=f"Error: {str(e)}",
-                     meta={}
-                 )
-                 self.execution_step_store.insert(error_step)
-                 gild_step_order_counter += 1
-             # Handle training error
-             context["gild_status"] = "failed_training"
-             context["gild_error"] = str(e)
-             if gild_trace_orm:
-                 gild_trace_orm.final_output_text = f"Failed during training: {e}"
-                 gild_trace_orm.meta["completed_at"] = datetime.now().isoformat() + 'Z'
-                 self.plan_trace_store.session.commit()
-             return context
+            self._append_error_step(plan_trace, pipeline_run_id, trace_id, "training_error", f"{e}\n{traceback.format_exc()}")
+            return self._fail_trace(plan_trace, context, f"Failed during training: {e}")
 
+        # ---------- 4) Epistemic Quality + finalize ----------
+        max_expected_loss = 0.1  # tune for your scale
+        final_avg_loss = (sum(epoch_losses) / len(epoch_losses)) if epoch_losses else 0.0
+        normalized_loss_quality = max(0.0, min(1.0, 1.0 - (final_avg_loss / max_expected_loss)))
 
-        # --- 4. Assign Epistemic Quality and Finalize Trace ---
+        plan_trace.final_output_text = (
+            f"GILD run complete. Final avg Pi loss={final_avg_loss:.6f}; "
+            f"proxy_epistemic_quality={normalized_loss_quality:.4f}"
+        )
+        plan_trace.meta = dict(plan_trace.meta or {})
+        plan_trace.meta.update({
+            "completed_at": datetime.utcnow().isoformat() + "Z",
+            "final_metrics": {
+                "final_avg_loss": final_avg_loss,
+                "proxy_epistemic_quality": normalized_loss_quality,
+                "epochs_run": int(self.epochs),
+            }
+        })
+        plan_trace.status = "completed"
+        # If your dataclass includes these fields, set them; otherwise omit:
         try:
-            # --- Calculate Proxy Epistemic Quality ---
-            # Example: 1.0 - normalized_loss (simple proxy)
-            # You need a reasonable range for loss. Assume 0.0 to 0.1 is good (1.0 to 0.0 quality)
-            # Adjust normalization factor as needed based on observed loss ranges.
-            max_expected_loss = 0.1
-            normalized_loss_quality = max(0.0, min(1.0, 1.0 - (final_avg_loss / max_expected_loss)))
-            
-            # Other proxies could be: policy change magnitude, improvement on a small val set, etc.
-            
-            if gild_trace_orm:
-                gild_trace_orm.target_epistemic_quality = normalized_loss_quality
-                gild_trace_orm.target_epistemic_quality_source = "proxy_final_loss_normalized"
-                gild_trace_orm.final_output_text = f"GILD run completed successfully. Final average Pi loss: {final_avg_loss:.6f}. Assigned proxy epistemic quality: {normalized_loss_quality:.4f}."
-                gild_trace_orm.meta["completed_at"] = datetime.now().isoformat() + 'Z'
-                gild_trace_orm.meta["final_metrics"] = {
-                    "final_avg_loss": final_avg_loss,
-                    "proxy_epistemic_quality": normalized_loss_quality,
-                    "epochs_run": self.epochs
-                }
-                # Commit all changes to the database
-                self.plan_trace_store.session.commit()
-                self.logger.log("GILDProcessTraceFinalized", {
-                    "trace_id": gild_trace_orm.trace_id,
-                    "db_id": gild_trace_db_id,
-                    "epistemic_quality": normalized_loss_quality,
-                    "final_loss": final_avg_loss
-                })
+            # Some versions of PlanTrace include these fields:
+            plan_trace.target_epistemic_quality = normalized_loss_quality  # type: ignore[attr-defined]
+            plan_trace.target_epistemic_quality_source = "proxy_final_loss_normalized"  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
-        except Exception as e:
-             self.logger.log("GILDProcessTraceFinalizationError", {"error": str(e)})
-             # Even if finalization fails, the training might have succeeded.
-             # Log the error but don't necessarily fail the whole context update.
-             if gild_trace_orm:
-                 gild_trace_orm.final_output_text += f" [Trace Finalization Error: {e}]"
-                 gild_trace_orm.meta["trace_finalization_error"] = str(e)
-                 self.plan_trace_store.session.commit() # Try to commit error info
+        plan_trace = self._repo.upsert_trace(plan_trace)
+        self.logger.log("GILDProcessTraceFinalized", {
+            "trace_id": plan_trace.trace_id,
+            "epistemic_quality": normalized_loss_quality,
+            "final_loss": final_avg_loss
+        })
 
-        # --- 5. Update Context and Return ---
-        # Indicate success in context
+        # ---------- 5) Context out ----------
         context["gild_status"] = "completed"
         context["gild_final_loss"] = final_avg_loss
-        context["gild_model_updated"] = True # Or reference to the updated model
-        if gild_trace_orm:
-            context["gild_trace_id"] = gild_trace_orm.trace_id
-            context["gild_trace_db_id"] = gild_trace_db_id
-            context["gild_epistemic_quality"] = normalized_loss_quality
-
-        self.logger.log("GILDTrainerWithTraceCompleted", {
-            "status": context["gild_status"],
-            "final_loss": context.get("gild_final_loss"),
-            "trace_recorded": gild_trace_orm is not None
-        })
-        
+        context["gild_model_updated"] = True
+        context["gild_trace_id"] = plan_trace.trace_id
+        context["gild_epistemic_quality"] = normalized_loss_quality
         return context
 
-# Note: This is a conceptual adaptation. You will need to:
-# 1. Fill in the exact data loading/preparation logic (`_prepare_gild_dataloader` or direct use of `gild_signals`).
-# 2. Correctly implement the Advantage Weighted Regression (AWR) loss calculation based on your GILD setup
-#    (this often involves expert actions or distributions, not just MSE of logits).
-# 3. Ensure correct access to the SICQL model components (encoder, pi_head) and their inputs/outputs.
-# 4. Adjust database session handling (commits, rollbacks on error) according to your memory/store patterns.
-# 5. Potentially add more detailed logging steps within the training loop if needed for trace analysis.
-# 6. Handle potential errors and edge cases more robustly.
-# 7. Ensure imports point to the correct locations in your project structure.
+    # -------------------- helpers --------------------
+
+    def _append_error_step(self, plan_trace: PlanTrace, run_id: str | int, trace_id: str, err_type: str, msg: str):
+        try:
+            step = ExecutionStep(
+                step_id=f"{trace_id}-{err_type}",
+                pipeline_run_id=run_id,
+                step_order=99,
+                step_type=err_type,
+                description=f"Error: {err_type}",
+                agent_name=self.__class__.__name__,
+                agent_role="error",
+                input_text=None,
+                output_text=str(msg),
+                scores={},
+                meta={},
+                start_time=time.time(),
+                status="failed",
+                end_time=time.time(),
+                duration=0.0,
+            )
+            self._repo.add_step(plan_trace, step)
+        except Exception as e:
+            self.logger.log("GILDTraceAppendErrorStepFailed", {"error": str(e)})
+
+    def _fail_trace(self, plan_trace: PlanTrace, context: dict, reason: str) -> dict:
+        try:
+            plan_trace.final_output_text = str(reason)
+            plan_trace.status = "failed"
+            plan_trace.meta = dict(plan_trace.meta or {})
+            plan_trace.meta["completed_at"] = datetime.utcnow().isoformat() + "Z"
+            self._repo.upsert_trace(plan_trace)
+        except Exception as e:
+            self.logger.log("GILDTraceFailPersistError", {"error": str(e)})
+
+        context["gild_status"] = "failed"
+        context["gild_error"] = reason
+        return context

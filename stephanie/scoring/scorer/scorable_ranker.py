@@ -77,15 +77,11 @@ class ScorableRanker(BaseScorer):
         return sim
 
     def _reward(self, scorable: Scorable) -> float:
-        eval_rec = (
-            self.memory.session.query(EvaluationORM)
-            .filter_by(
-                scorable_id=scorable.id, scorable_type=scorable.target_type
-            )
-            .order_by(EvaluationORM.created_at.desc())
-            .first()
+        row = self.memory.evaluations.get_latest_for_target(
+            scorable_id=str(scorable.id),
+            scorable_type=scorable.target_type,
         )
-        return float(eval_rec.scores.get("avg", 0)) if eval_rec else 0.0
+        return float((row.scores or {}).get("avg", 0)) if row else 0.0
 
     def _adaptability(self, scorable: Scorable, context: dict) -> float:
         """Enhanced adaptability signal with tool compatibility"""
@@ -408,44 +404,20 @@ class ScorableRanker(BaseScorer):
         """
         Exponential decay with a configurable half-life.
         Tries scorable.created_at → PlanTrace.created_at → latest Evaluation.created_at.
-        Returns a value in (0,1], ~1 for very recent, ~0 for very old; 0.5 if unknown.
+        Returns (0,1], ~1 for very recent, ~0 for very old; 0.5 if unknown.
         """
         halflife_days = self.cfg.get("recency_halflife_days", 30)
 
-        created_at = getattr(scorable, "created_at", None)
-
-        # Fallback 1: try PlanTrace by id
+        created_at = self.memory.evaluations.get_latest_timestamp_for_target(
+            scorable_id=str(scorable.id),
+            scorable_type=scorable.target_type,
+        )
         if created_at is None:
-            try:
-                pt = getattr(self.memory, "plan_traces", None)
-                if pt:
-                    pt_row = pt.get_by_trace_id(str(scorable.id))
-                    if pt_row and getattr(pt_row, "created_at", None):
-                        created_at = pt_row.created_at
-            except Exception:
-                pass
+            return 0.5  # neutral
+        try:
+            age_sec = time.time() - created_at.timestamp()
+        except Exception:
+            return 0.5
 
-        # Fallback 2: latest Evaluation timestamp
-        if created_at is None:
-            try:
-                eval_rec = (
-                    self.memory.session.query(EvaluationORM)
-                    .filter_by(
-                        scorable_id=str(scorable.id),
-                        scorable_type=scorable.target_type,
-                    )
-                    .order_by(EvaluationORM.created_at.desc())
-                    .first()
-                )
-                if eval_rec:
-                    created_at = eval_rec.created_at
-            except Exception:
-                pass
-
-        if created_at is None:
-            return 0.5  # neutral when we can’t tell
-
-        age_sec = time.time() - created_at.timestamp()
-        # choose tau so that score halves every halflife_days
-        tau = (halflife_days * 24 * 3600) / math.log(2)
+        tau = (halflife_days * 24 * 3600) / math.log(2)  # half-life
         return math.exp(-age_sec / tau)
