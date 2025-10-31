@@ -329,6 +329,10 @@ class TreeGRPOAdapter:
 
         # 2) Perform L expansion rounds; in each round, for each tree sample up to N nodes to expand
         for _round in range(self.cfg.L):
+            try:
+                self.base.events.on_progress({"phase": "grpo_round_start", "round": _round})
+            except Exception:
+                pass
             # snapshot candidate nodes per tree
             for rid in list(self._roots):
                 candidates = self._candidate_nodes(rid)

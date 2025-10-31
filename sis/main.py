@@ -111,7 +111,7 @@ app.include_router(overnight_ui.router)
 # Yeah app.include_router(risk_ui.router)
 
 try:
-    from stephanie.components.ssp.component import SSPComponent
+    from stephanie.components.ssp2.component import SSPComponent
     from stephanie.utils.trace_logger import attach_to_app
     app.state.ssp = SSPComponent(app.state.cfg.components.ssp, app.state.memory, app.state.container, app.state.logger)
     attach_to_app(app, jsonl_path="logs/plan_traces.jsonl", enable_stdout=False)

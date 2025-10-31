@@ -68,7 +68,7 @@ class Scorable:
         self._text = text
         self._target_type = target_type
         self._metadata = meta or {}
-        self._domains: List[Dict[str, Any]] = list(domains or [])
+        self._domains = domains or {}   # <-- keep as passed
         self._ner = ner or {}
 
     @property
@@ -113,23 +113,43 @@ class Scorable:
             f"text_preview='{preview}...')"
         )
 
-    def primary_domain(self) -> Tuple[str, float, str, List[Tuple[str, float, str]]]:
-        """Instance convenience wrapper around select_primary_domain."""
-        return Scorable.select_primary_domain(self._domains)
+    def primary_domain(self) -> tuple[str | None, float | None, str | None]:
+        items = self._domains if isinstance(self._domains, list) else self._domains.get("items") or self._domains.get("domains")
+        if isinstance(items, list):
+            return self.select_primary_domain(items)
+        return None, None, None
     
+    # Standardized domain selection from your known format:
+    # [{'score': 0.62, 'domain': 'evaluation', 'source': 'seed'}, ...]
     @staticmethod
-    def pick_primary_domain(domains: List[Dict[str, Any]], *, min_conf: float = 0.0) -> str:
-        """
-        Deterministic: choose highest score, prefer 'seed' on ties.
-        domains: [{'score': float, 'domain': str, 'source': 'seed'|'meta'|'goal'|'emergent'}, ...]
-        """
-        if not domains:
-            raise ValueError("Scorable.domains empty – cannot select a domain.")
-        best = max(domains, key=lambda d: (float(d.get("score", 0.0)), d.get("source") == "seed"))
-        if float(best.get("score", 0.0)) < min_conf:
-            raise ValueError(f"No domain >= min_conf={min_conf}. Best={best}")
-        return str(best["domain"]).strip().lower()
+    def select_primary_domain(
+        items: List[Dict[str, Any]] | None,
+        prefer_sources: tuple[str, ...] = ("seed", "goal", "meta"),
+    ) -> tuple[str | None, float | None, str | None]:
+        if not items:
+            return None, None, None
+        # prefer source priority, then highest score
+        ranked = sorted(
+            items,
+            key=lambda x: (
+                (prefer_sources.index(str(x.get("source"))) 
+                 if str(x.get("source")) in prefer_sources else 999),
+                -float(x.get("score", 0.0))
+            )
+        )
+        top = ranked[0]
+        return str(top.get("domain")), float(top.get("score", 0.0)), str(top.get("source"))
 
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self._id,
+            "text": self._text,
+            "target_type": self._target_type,
+            "metadata": self._metadata,
+            "domains": self._domains,
+            "ner": self._ner,
+        }
 
 
     @staticmethod

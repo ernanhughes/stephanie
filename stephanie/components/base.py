@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Optional, Protocol
 
-from fastapi import APIRouter, Yes
+from fastapi import APIRouter
 
 
 class Component(Protocol):

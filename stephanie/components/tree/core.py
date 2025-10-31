@@ -7,7 +7,9 @@ Fixes & Enhancements (2025-10-30):
 - Correct multi-root initialization (every root gets root_id/path/depth set)
 - Result cache typed and enforced (Dict[str, SolutionNode])
 - Robust tree_id handling (works with None/str/int)
-- SSP hooks to bias action selection using risk/hallucination signals
+- SSP hooks to bias action selection using risk/hallucination/novelty/greed signals
+- TreeEventEmitter integration for history-first reconstruction:
+  root_created, node_added, expand, backprop, best_update, progress, rollout_complete
 - Safer fallbacks and small robustness passes
 """
 
@@ -26,7 +28,6 @@ from stephanie.components.tree.plan_generator import PlanGenerator
 from stephanie.components.tree.solution_node import SolutionNode
 from stephanie.components.tree.task_executor import TaskExecutor
 from stephanie.components.tree.task_handler import TaskHandler
-
 from stephanie.components.tree.events import TreeEventEmitter
 
 
@@ -47,7 +48,7 @@ class AgenticTreeSearch:
         progress_every: int = 5,
         heartbeat_secs: float = 20.0,
         report_top_k: int = 5,
-        ssp_enabled: bool = True,
+        event_emitter: Optional[TreeEventEmitter] = None,
     ):
         # Core agent and component initialization
         self.agent = agent
@@ -101,10 +102,9 @@ class AgenticTreeSearch:
         self.result_cache: Dict[str, SolutionNode] = {}  # plan_hash -> node
         self.metric_policy = "maximize"
 
-        # SSP hooks
-        self.ssp_enabled = bool(ssp_enabled)
+        # Event emitter (safe no-op if not provided)
+        self.events = event_emitter or TreeEventEmitter(topic="tree")
 
-        # Determinism on demand
         if random_seed is not None:
             random.seed(int(random_seed))
 
@@ -120,6 +120,7 @@ class AgenticTreeSearch:
             raise ValueError("Context must contain 'goal.goal_text'")
 
         await self._emit("start", {"goal": task_description})
+        self.events.on_progress({"phase": "start", "goal": task_description})
 
         # Phase 1: initial drafts
         init_tasks = [
@@ -135,6 +136,7 @@ class AgenticTreeSearch:
             )
             self._add_node(node)
             self._update_best(node)
+            # root or child event is fired inside _add_node
             self.iteration += 1
             self.count_actions["draft"] += 1
             self._maybe_emit_progress(node)
@@ -142,6 +144,10 @@ class AgenticTreeSearch:
         # Phase 2: main loop
         while not self._should_stop():
             parent = self._select_parent_ucb()
+            if parent is not None:
+                # Structural signal for UIs/replay: which node we're expanding
+                self.events.on_expand(parent)
+
             action, target = self._choose_action(parent, context)
 
             if action == "draft" or target is None:
@@ -170,8 +176,10 @@ class AgenticTreeSearch:
         # Phase 3: report
         best = self.best_node.to_dict() if self.best_node else None
         await self._emit("progress", self._progress_payload(None, force_complete=True))
+        self.events.on_progress({"phase": "complete", **self._progress_payload(None, force_complete=True)})
         report = self._make_report(self.best_node)
         await self._emit("report", report)
+        self.events.on_rollout_complete(report)
 
         context["search_tree_size"] = len(self.tree)
         context["final_solution"] = best
@@ -275,14 +283,22 @@ class AgenticTreeSearch:
         SSP (if enabled) can force 'debug' on high risk/hallucination,
         or encourage 'draft' on high novelty exploration signals.
         """
-        # SSP override first
-        if self.ssp_enabled:
-            override = self._ssp_action_override(parent, context or {})
-            if override is not None:
-                if override == "draft":
+        # SSP override (if present)
+        if context:
+            forced = self._ssp_action_override(parent, context)
+            if forced is not None:
+                if forced == "draft":
                     return "draft", None
-                elif override in ("improve", "debug"):
-                    return override, (parent or self.best_node)
+                if forced == "debug":
+                    # Debug the selected parent; fallback to best if parent is missing
+                    return "debug", (parent or self.best_node)
+                if forced == "improve":
+                    # Prefer improving best; fallback to parent or draft
+                    if self.best_node is not None:
+                        return "improve", self.best_node
+                    if parent is not None:
+                        return "improve", parent
+                    return "draft", None
 
         # default heuristic
         if parent is None:
@@ -300,9 +316,11 @@ class AgenticTreeSearch:
     def _add_node(self, node: SolutionNode) -> None:
         """
         Adds node and maintains relationships. Fixed multi-root init:
-        any node with parent_id=None is a root and gets proper path/depth.
+        any node with parent_id=None is a root and gets proper path/depth,
+        and emits root/child structural events.
         """
-        if node.parent_id is None:
+        is_root = node.parent_id is None
+        if is_root:
             # ensure root attributes set per root, not just the first
             node.root_id = node.id
             node.depth = 0
@@ -327,6 +345,17 @@ class AgenticTreeSearch:
         if node.is_buggy:
             self.count_buggy += 1
 
+        # Structural events for history-first UI/replay
+        try:
+            if is_root:
+                self.events.on_root_created(node)
+            else:
+                parent = self.nodes_by_id.get(node.parent_id) if node.parent_id else None
+                self.events.on_node_added(parent, node)
+        except Exception:
+            # never break the search because of telemetry
+            pass
+
     def _backprop(self, leaf: SolutionNode) -> None:
         reward = self.metric_fn(leaf.metric)
         node_id = leaf.id
@@ -337,6 +366,12 @@ class AgenticTreeSearch:
             self.value[node_id] = v_prev + (reward - v_prev) / n
             node_id = self.parent_map.get(node_id)
 
+        # backprop event anchored at the leaf with computed reward
+        try:
+            self.events.on_backprop(leaf, delta=float(reward))
+        except Exception:
+            pass
+
     def _update_best(self, node: SolutionNode) -> None:
         m = self.metric_fn(node.metric)
         if self.metric_policy == "minimize":
@@ -345,6 +380,10 @@ class AgenticTreeSearch:
             self.best_metric = m
             self.best_node = node
             self.last_improve_iter = self.iteration
+            try:
+                self.events.on_best_update(node)
+            except Exception:
+                pass
 
     # ---------------------------------------------------------------------- #
     # Utility and progress
@@ -405,7 +444,12 @@ class AgenticTreeSearch:
         if not ((self.iteration % self.progress_every) == 0 or (now - self._last_progress_ts) >= self.heartbeat_secs):
             return
         self._last_progress_ts = now
-        asyncio.create_task(self._emit("progress", self._progress_payload(last_node)))
+        payload = self._progress_payload(last_node)
+        asyncio.create_task(self._emit("progress", payload))
+        try:
+            self.events.on_progress(payload)
+        except Exception:
+            pass
 
     def _make_report(self, best_node: Optional[SolutionNode]) -> Dict[str, Any]:
         leaderboard = sorted(
@@ -478,7 +522,7 @@ class AgenticTreeSearch:
     def _make_node_id(self, tree_id: str, node_depth: int, sibling_idx: int, plan_hash: Optional[str]) -> str:
         # Sortable and human-readable: TTTTTTT-DVVV-SIIII-HHHHHHHH
         return f"{tree_id}-{node_depth:03d}-{sibling_idx:04d}-{(plan_hash or '')[:8] or self._short_hash('')}"
-    
+
     def node_reward(self, node: SolutionNode) -> float:
         m = self.metric_fn(node.metric)
         return -m if self.metric_policy == "minimize" else m
@@ -499,7 +543,7 @@ class AgenticTreeSearch:
           - risk in [0,1]: high risk → 'debug'
           - hallucination in [0,1]: high → 'debug'
           - novelty in [0,1]: high → 'draft'
-          - greed in [0,1]: high → 'improve' best
+          - greed in [0,1]: high → 'improve'
         Thresholds are conservative so it only nudges when signals are clear.
         """
         ssp = context.get("ssp") or {}

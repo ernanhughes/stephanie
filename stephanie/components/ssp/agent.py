@@ -14,76 +14,8 @@ _logger = logging.getLogger(__name__)
 
 
 class SSPAgent(BaseAgent):
-    """
-    Self-Play System (SSP) Agent — Entry point for autonomous research & improvement cycles.
-
-    This agent orchestrates the full Self-Play loop:
-        Propose → Solve → Verify → Learn → Adapt Difficulty
-
-    It serves as the main interface for pipelines to initiate or integrate with Stephanie's
-    self-improvement engine. The SSP continuously generates novel, verifiable research questions,
-    solves them using agentic search, verifies solutions, and adapts its challenge level based
-    on success—driving organic growth in reasoning quality, knowledge integration, and tool use.
-
-    Key Responsibilities:
-      - Initialize and manage the SSP Trainer
-      - Execute one or more self-play training steps
-      - Inject pipeline context (e.g., mission, constraints)
-      - Return rich metrics and artifacts for monitoring and downstream use
-
-    Configurable Parameters (via `cfg`):
-        - self_play.qmax.initial_difficulty: Starting difficulty (0.0–1.0)
-        - self_play.qmax.max_difficulty: Upper bound on difficulty
-        - self_play.qmax.difficulty_step: Step size for curriculum adjustment
-        - self_play.curriculum.min_success_rate: Target for competence-based progression
-        - self_play.verifier.verification_threshold: Score threshold for solution validity
-        - self_play.proposer.mission: Global mission statement guiding proposals
-
-    Example Usage:
-        ```python
-        agent = SSPAgent(cfg, memory, container, logger)
-        context = {"pipeline_run_id": "ssp_demo_001"}
-        result = await agent.run(context)
-        # Returns: {
-        #   "ssp": {
-        #     "episode_id": "ssp-1730529840123",
-        #     "success": True,
-        #     "metrics": {
-        #       "reward": 0.87,
-        #       "verification": 0.92,
-        #       "novelty": 0.76,
-        #       "success_rate": 0.68,
-        #       "difficulty": 0.55,
-        #       "threshold": 0.85,
-        #       "duration_ms": 4823
-        #     },
-        #     "training_batch": { ... }  # GRPO batch if enabled
-        #   }
-        # }
-        ```
-
-    Key Outputs:
-        - Episode ID and success status
-        - Composite reward and per-dimension scores
-        - Current curriculum difficulty and recent success rate
-        - Training batch (for reinforcement learning updates)
-        - Structured trace logs via `trace_logger`
-    """
 
     def __init__(self, cfg: Dict[str, Any], memory, container, logger):
-        """
-        Initialize the SSP Agent with configuration and core services.
-
-        Args:
-            cfg: Configuration dictionary containing SSP parameters.
-            memory: Memory interface for state persistence (optional).
-            container: ServiceContainer providing access to LLMs, scoring, etc.
-            logger: Structured JSON logger for observability.
-
-        Initializes:
-            - The core `Trainer` orchestrating Proposer/Solver/Verifier
-            - Default output key 'ssp' for consistent result placement
-        """
         super().__init__(cfg, memory, container, logger)
 
         base_cfg = OmegaConf.create(cfg)
@@ -104,23 +36,6 @@ class SSPAgent(BaseAgent):
             },
         )
 
-
-
-        # Initialize the core SSP orchestrator
-        try:
-            self.trainer = Trainer(base_cfg, memory, container, logger)
-            _logger.info("SSPAgent initialized successfully with Trainer.")
-        except Exception as e:
-            _logger.error("Failed to initialize SSPAgent.Trainer", extra={"error": str(e)})
-            raise
-
-        # Define where results will be placed in the context
-        self.output_key = "ssp"
-
-        # Optional: Extract high-level config for quick access
-        sp_cfg = cfg.get("self_play", {})
-        self.mission = sp_cfg.get("mission", "Improve Stephanie’s reasoning & tooling.")
-        self.initial_difficulty = float(sp_cfg.get("qmax", {}).get("initial_difficulty", 0.3))
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -160,29 +75,18 @@ class SSPAgent(BaseAgent):
         """
         run_id = context.get("pipeline_run_id", "unknown")
         try:
-            # Log the beginning of the SSP step
-            self.logger.log("SSPStepStarted", {
-                "run_id": run_id,
-                "mission": self.mission,
-                "current_proposer_difficulty": getattr(self.trainer.proposer, "difficulty", "unknown"),
-                "context_keys": list(context.keys())
-            })
 
-            # Run one full SSP cycle: Propose → Solve → Verify → Update Curriculum
-            result = await self.trainer.train_step(context)
+            seeds = [
+                "permafrost thaw releasing methane increases radiative forcing",
+                "insulin enables glucose uptake in muscle and adipose tissue",
+                "backpropagation updates weights by gradient descent on loss",
+            ]
+
+            stats = Trainer(difficulty=0.3, verify_threshold=0.6).run_batch(seeds)
+            print("== Summary ==", stats)
 
             # Attach the result to the context under the standard key
-            context[self.output_key] = result
-
-            # Log successful completion
-            self.logger.log("SSPStepCompleted", {
-                "run_id": run_id,
-                "episode_id": result.get("episode_id"),
-                "success": result.get("success"),
-                "final_difficulty": result.get("metrics", {}).get("difficulty"),
-                "verification_score": result.get("metrics", {}).get("verification"),
-                "duration_ms": result.get("metrics", {}).get("duration_ms")
-            })
+            context[self.output_key] = stats
 
             return context
 
