@@ -9,11 +9,12 @@ from stephanie.components.ssp.services.state_service import StateService
 from stephanie.components.ssp.services.vpm_control_service import VPMControlService
 from stephanie.components.ssp.trainer import Trainer
 from omegaconf import OmegaConf
+from stephanie.utils.progress_mixin import ProgressMixin
 
 _logger = logging.getLogger(__name__)
 
 
-class SSPAgent(BaseAgent):
+class SSPAgent(BaseAgent, ProgressMixin):
 
     def __init__(self, cfg: Dict[str, Any], memory, container, logger):
         super().__init__(cfg, memory, container, logger)
@@ -85,7 +86,17 @@ class SSPAgent(BaseAgent):
             _logger.info(f"SSP step started for run_id={run_id}")
 
             trainer = Trainer(self.cfg, self.memory, self.container, self.logger)
+            # inside SSPAgent.run(...)
+            self._init_progress(self.container, _logger)
+            task = f"SSP:{run_id}"
+            total_steps = 1  # Example fixed step count; adjust as needed
+            self.pstart(task=task, total=total_steps, meta={"run_id": run_id})
+
             stats = await trainer.run_batch(seeds=seeds, context=context)
+
+            self.pstage(task=task, stage="complete")
+            self.pdone(task=task)
+
             print("== Summary ==", stats)
 
             # Attach the result to the context under the standard key
@@ -97,10 +108,4 @@ class SSPAgent(BaseAgent):
             # Critical failure; log details and re-raise
             error_msg = f"SSP step failed for run_id={run_id}: {str(e)}"
             _logger.exception(error_msg)  # Also logs traceback at ERROR level
-            self.logger.log("SSPStepFailed", {
-                "run_id": run_id,
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "context_snapshot": {k: str(v)[:200] for k, v in context.items()}  # Avoid huge logs
-            })
             raise RuntimeError(error_msg) from e

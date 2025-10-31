@@ -10,6 +10,17 @@ ssp:
     api_base: http://localhost:11434
     api_key: null
 
+  seeds:
+    - "A* search expands nodes by the lowest f(n)=g(n)+h(n); with an admissible h, it returns an optimal path."
+    - "PageRank ranks nodes by the stationary distribution of a random surfer with damping (teleportation)."
+    - "BM25 scores documents via term-frequency saturation and inverse document frequency with length normalization."
+  ats:
+    max_depth: 2
+    beam_width: 3
+  retrieval:
+    k: 3
+    max_chars_per_snippet: 400
+
 
   telemetry:
     enabled: true
