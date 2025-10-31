@@ -231,5 +231,3 @@ class TreeEventEmitter:
         except Exception:
             pass
 
-
-__all__ = ["TreeEventEmitter", "_node_rec", "Publisher", "TraceRepo"]

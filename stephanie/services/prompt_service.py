@@ -10,8 +10,6 @@ import litellm
 import yaml
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import (API_BASE, API_KEY, NAME, PROMPT_PATH,
-                                 SAVE_PROMPT, STRATEGY)
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
 

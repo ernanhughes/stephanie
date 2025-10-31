@@ -82,7 +82,10 @@ class SSPAgent(BaseAgent):
                 "backpropagation updates weights by gradient descent on loss",
             ]
 
-            stats = Trainer(difficulty=0.3, verify_threshold=0.6).run_batch(seeds)
+            _logger.info(f"SSP step started for run_id={run_id}")
+
+            trainer = Trainer(self.cfg, self.memory, self.container, self.logger)
+            stats = await trainer.run_batch(seeds=seeds, context=context)
             print("== Summary ==", stats)
 
             # Attach the result to the context under the standard key

@@ -2,8 +2,12 @@ from __future__ import annotations
 from typing import Tuple
 
 class Verifier:
-    def __init__(self, threshold: float = 0.6):
-        self.threshold = threshold
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+        self.threshold = cfg.get("threshold", 0.6)
 
     @staticmethod
     def _f1_ref(text_a: str, text_b: str) -> float:

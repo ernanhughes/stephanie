@@ -1,35 +1,35 @@
 from __future__ import annotations
 import time
 import uuid
-from typing import Dict, Iterable
+from typing import Any, Dict, Iterable
 
 from stephanie.components.ssp.trace import EpisodeTrace
 from stephanie.components.ssp.proposer import Proposer
-from stephanie.components.ssp.ats_solver import ATSSolver, DummySearch
+from stephanie.components.ssp.ats_solver import ATSSolver, SolutionSearch
 from stephanie.components.ssp.verifier import Verifier
-
+from stephanie.components.tree.events import TreeEventEmitter
 
 class Trainer:
-    def __init__(self, difficulty: float = 0.3, verify_threshold: float = 0.6):
-        self.difficulty = difficulty
-        self.verify = Verifier(threshold=verify_threshold)
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg =cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+        self.difficulty = cfg.get("difficulty", 0.3)
+        self.verify = Verifier(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger)
 
-    def run_episode(self, seed_answer: str) -> EpisodeTrace:
-        episode_id = f"ssp-{int(time.time() * 1000)}-{uuid.uuid4().hex[:6]}"
-        proposer = Proposer()
-        question = proposer.propose(seed_answer)
+    async def run_episode(self, seed_answer: str, context: Dict[str, Any]) -> EpisodeTrace:
+        episode_id = f"ssp-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
+        proposer = Proposer(self.cfg, memory=self.memory, container=self.container, logger=self.logger)
+        question, meta = await proposer.propose(seed_answer, context=context)
 
         # ATS‑based solver with a tiny local searcher that contains the answer in synthetic docs
-        solver = ATSSolver(
-            searcher=DummySearch(seed_answer), max_depth=2, beam_width=3
-        )
-        predicted, evidence, steps = solver.solve(
-            question, target_answer_hint=seed_answer
-        )
+        emitter = TreeEventEmitter(topic="ssp.ats")
+        solution_search = SolutionSearch(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger, event_emitter=emitter)
+        solver = ATSSolver(searcher=solution_search, max_depth=2, beam_width=3, event_emitter=emitter)
+        predicted, evidence, steps = await solver.solve(question, seed_answer=seed_answer, context=context)
 
-        ok, reward = self.verify.verify(
-            ground_truth=seed_answer, predicted=predicted
-        )
+        ok, reward = self.verify.verify(ground_truth=seed_answer, predicted=predicted)
 
         return EpisodeTrace(
             episode_id=episode_id,
@@ -44,10 +44,10 @@ class Trainer:
             meta={},
         )
 
-    def run_batch(self, seeds: Iterable[str]) -> Dict[str, float]:
+    async def run_batch(self, seeds: Iterable[str], context: Dict[str, Any]) -> Dict[str, float]:
         n, r_sum, ok_sum = 0, 0.0, 0
         for s in seeds:
-            ep = self.run_episode(s)
+            ep = await self.run_episode(s, context)
             n += 1
             r_sum += ep.reward
             ok_sum += int(ep.verified)
