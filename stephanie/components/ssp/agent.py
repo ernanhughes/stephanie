@@ -8,7 +8,6 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.ssp.services.state_service import StateService
 from stephanie.components.ssp.services.vpm_control_service import VPMControlService
 from stephanie.components.ssp.trainer import Trainer
-from stephanie.components.ssp.types import EpisodeStatus
 from omegaconf import OmegaConf
 
 _logger = logging.getLogger(__name__)
@@ -109,7 +108,7 @@ class SSPAgent(BaseAgent):
 
         # Initialize the core SSP orchestrator
         try:
-            self.trainer = Trainer(base_cfg, memory, container)
+            self.trainer = Trainer(base_cfg, memory, container, logger)
             _logger.info("SSPAgent initialized successfully with Trainer.")
         except Exception as e:
             _logger.error("Failed to initialize SSPAgent.Trainer", extra={"error": str(e)})

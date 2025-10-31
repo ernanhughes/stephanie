@@ -10,8 +10,7 @@ from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_protocol import Service
 # Reuse your existing controller (as shared earlier)
-from stephanie.zeromodel.vpm_controller import (Decision, Policy, Signal,
-                                                Thresholds, VPMController,
+from stephanie.zeromodel.vpm_controller import (Decision, Policy, Thresholds, VPMController,
                                                 VPMRow)
 
 

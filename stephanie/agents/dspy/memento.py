@@ -846,14 +846,6 @@ class MementoAgent(MCTSReasoningAgent):
         pairs_for_validation = []
         neg_texts: List[str] = []
 
-        base_pw = {
-            "dimension": dimension,
-            "goal_id": goal_id,
-            "pipeline_run_id": int(pipeline_run_id),
-            "agent_name": agent_name,
-            "source": "memento",
-        }
-
         # Pairwise per negative; collect negatives for pointwise later
         for r in ranked[1:]:
             neg_text = r.get("text", "") or ""
@@ -870,49 +862,55 @@ class MementoAgent(MCTSReasoningAgent):
             )
 
             try:
-                self.memory.training_events.insert_pairwise(
-                    data={
-                        **base_pw,
-                        "model_key": model_key_ranker,
-                        "query_text": goal_text,
-                        "pos_text": pos_text,
-                        "neg_text": neg_text,
-                        "weight": float(pair_w),
-                        "trust": float(neg_w),
-                        "meta": {"run_id": pipeline_run_id},
-                    }
-                )
+                self.memory.training_events.insert_pairwise({
+                    "model_key": model_key_ranker,
+                    "dimension": dimension,
+                    "query_text": goal_text,
+                    "pos_text": pos_text,
+                    "neg_text": neg_text,
+                    "weight": pair_w,
+                    "trust": neg_w,
+                    "goal_id": goal_id,
+                    "pipeline_run_id": pipeline_run_id,
+                    "agent_name": agent_name,
+                    "source": "memento",
+                    "meta": {"run_id": pipeline_run_id},
+                })
             except Exception as e:
                 self.logger.log(
                     "TrainStoreAddPairwiseError", {"error": str(e)}
                 )
 
             try:
-                self.memory.training_events.insert_pointwise(
-                    data={
-                        **base_pw,
-                        "model_key": model_key_retriever,
-                        "query_text": goal_text,
-                        "cand_text": pos_text,
-                        "label": 1,
-                        "weight": float(pos_w),
-                        "trust": float(pos_w),
-                        "meta": {"run_id": pipeline_run_id},
-                    }
-                )
+                self.memory.training_events.insert_pointwise({
+                    "model_key": model_key_retriever,
+                    "dimension": dimension,
+                    "query_text": goal_text,
+                    "cand_text": pos_text,
+                    "label": 1,
+                    "weight": pos_w,
+                    "trust": pos_w,
+                    "goal_id": goal_id,
+                    "pipeline_run_id": pipeline_run_id,
+                    "agent_name": agent_name,
+                    "source": "memento",
+                    "meta": {"run_id": pipeline_run_id},
+                })
                 for nt in neg_texts:
-                    self.memory.training_events.insert_pointwise(
-                        data={
-                            **base_pw,
-                            "model_key": model_key_retriever,
-                            "query_text": goal_text,
-                            "cand_text": nt,
-                            "label": 0,
-                            "weight": 0.5,
-                            "trust": 0.0,
-                            "meta": {"run_id": pipeline_run_id},
-                        }
-                    )
+                    self.memory.training_events.insert_pointwise({
+                        "model_key": model_key_retriever,
+                        "dimension": dimension,
+                        "query_text": goal_text,
+                        "cand_text": nt,
+                        "label": 0,
+                        "weight": 0.5,
+                        "trust": 0.0,
+                        "goal_id": goal_id,
+                        "pipeline_run_id": pipeline_run_id,
+                        "agent_name": agent_name,
+                        "source": "memento",
+                        "meta": {"run_id": pipeline_run_id},
+                    })
             except Exception as e:
                 self.logger.log(
                     "TrainStoreAddPointwiseError", {"error": str(e)}

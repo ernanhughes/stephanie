@@ -14,11 +14,14 @@ class EpisodeStatus(str, Enum):
 
 @dataclass(frozen=True)
 class Proposal:
+    id: str
     query: str
-    verification_approach: str
+    text: str
     difficulty: float
     connections: List[str] = field(default_factory=list)
+    verification_approach: str = ""
     raw_response: str = ""
+    meta: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:

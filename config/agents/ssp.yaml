@@ -9,7 +9,17 @@ ssp:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
-    
+
+
+  telemetry:
+    enabled: true
+    persist: true           # also write into bus_events store if present
+    sample: 1.0
+    subject_root: ssp
+    extra:
+      app: stephanie
+      component: ssp
+  
   # Top-level key must be 'self_play' to match the codebase expectation
   self_play:
     # --- General Configuration ---
@@ -90,6 +100,11 @@ ssp:
 
     # --- Verifier Configuration ---
     verifier:
+      adaptive: true
+      start: 0.55
+      max: 0.85
+      rise_per_100: 0.06
+
       verification_threshold: 0.85 # Threshold for solution validity (can override global)
       min_evidence_count: 2        # Minimum evidence count to pass
       scorers:                     # List of scorers to consult for final verification

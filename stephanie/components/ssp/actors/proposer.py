@@ -1,311 +1,85 @@
+# stephanie/components/ssp/actors/proposer.py
 from __future__ import annotations
 
-from collections import deque
-import json
-import re
-import time
-from typing import Optional, Dict, Any, List
+import hashlib
+import uuid
+from typing import Any, Dict, List, Optional
 
-from omegaconf import DictConfig
-
-from stephanie.components.ssp.types import Proposal
-from stephanie.components.ssp.util import get_trace_logger, PlanTrace_safe
-from stephanie.services.service_container import ServiceContainer
-
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-
-# At the top of the file, if not already present:
-executor = ThreadPoolExecutor(max_workers=1)
-
-# --------- Parsing helpers (YAML-ish, no external deps) ---------
-
-_CODE_FENCE = re.compile(r"^```[^\n]*\n|\n```$", re.MULTILINE)
-
-# Matches:
-# query: ...
-# verification: ...
-# difficulty: 0.42
-# connections:
-# - tag one
-# - tag two
-_PLAIN_KV = re.compile(
-    r"(?is)\bquery\s*:\s*(?P<query>.+?)\n+"
-    r"\b(?:verification|verification_approach)\s*:\s*(?P<verif>.+?)\n+"
-    r"\bdifficulty\s*:\s*(?P<diff>[-+]?\d*\.?\d+)\s*\n+"
-    r"\bconnections\s*:\s*(?P<rest>.*)$"
-)
-
-# When connections are inline:
-# connections: tag1, tag2, tag3
-_INLINE_CONN = re.compile(r"(?i)\bconnections\s*:\s*(.+)")
-
-# Bullet list items after "connections:" block
-_BULLETS = re.compile(r"(?m)^\s*[-*+]\s*(.+?)\s*$")
+from stephanie.components.ssp.services.telemetry import SSPTelemetry
 
 
-def _strip_fences(text: str) -> str:
-    if not text:
-        return ""
-    return _CODE_FENCE.sub("", text).strip()
+def _sid(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
 
-def _mission_ctx(self) -> dict:
-    # global mission/themes; keep short and stable
-    mission = (self.sp.get("mission") or "Improve Stephanie’s reasoning & tooling.")
-    return {"mission": mission, "constraints": ["verifiable", "implementable", "novel"]}
-
-def _default_prompt(self, context: Optional[Dict[str, Any]]) -> str:
-    ctx = {**(context or {}), **self._mission_ctx()}
-    ctx_str = json.dumps(ctx, ensure_ascii=False)
-    return (
-        "You generate research questions that are verifiable and implementable.\n"
-        f"Difficulty (0..1): {self.difficulty:.2f}\n"
-        f"Context JSON: {ctx_str}\n\n"
-        f"{FORMAT_INSTR}"
-    )
-
-async def _too_similar(self, query: str) -> bool:
-    # Simple novelty check against recent proposals via EmbeddingStore
-    try:
-        emb = self.container.get("embedding")
-        recent = (self.container.get("ssp_state")
-                  .get_ring_buffer("ssp.recent_queries", maxlen=200))  # light, in-memory
-        if not recent: return False
-        return any(emb.cosine_sim(query, r) > 0.92 for r in recent)  # threshold tuneable
-    except Exception:
-        return False
-
-def _parse_connections(block: str) -> List[str]:
-    """
-    Accept:
-      - bullet list under a 'connections:' block
-      - or a single line 'connections: a, b, c'
-    """
-    if not block:
-        return []
-    # First try bullet lines within the block
-    bullets = _BULLETS.findall(block)
-    if bullets:
-        return [b.strip() for b in bullets if b.strip()]
-
-    # Else try inline CSV after "connections:"
-    m = _INLINE_CONN.search(block)
-    if m:
-        items = [x.strip() for x in m.group(1).split(",")]
-        return [x for x in items if x]
-
-    # Fallback: split on newlines/commas
-    raw = [x.strip() for x in re.split(r"[,;\n]+", block)]
-    return [x for x in raw if x]
-
-
-def _clamp(v: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, v))
-
-
-def parse_proposal_text(raw: str) -> dict:
-    """
-    Robustly parse the LLM response in this plain-text schema:
-
-    query: <one line>
-    verification: <1-3 sentences>
-    difficulty: <0.0..1.0>
-    connections:
-    - tag1
-    - tag2
-    - tag3
-
-    Also accepts:
-      connections: tag1, tag2, tag3
-
-    Raises ValueError on failure.
-    """
-    text = _strip_fences(raw)
-    m = _PLAIN_KV.search(text)
-    if not m:
-        # Very last-ditch: try to salvage JSON if the model ignored instructions
-        j = _salvage_json(raw)
-        if j:
-            return j
-        raise ValueError("Could not parse proposer output")
-
-    query = (m.group("query") or "").strip()
-    verif = (m.group("verif") or "").strip()
-    diff = float(m.group("diff"))
-    rest = m.group("rest") or ""
-    conns = _parse_connections(rest)
-
-    return {
-        "query": query,
-        "verification_approach": verif,
-        "difficulty": diff,
-        "connections": conns,
-    }
-
-
-# Minimal JSON salvage if the model returns JSON anyway
-_JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
-def _salvage_json(text: str) -> Optional[dict]:
-    try:
-        return json.loads(text)
-    except Exception:
-        m = _JSON_BLOCK.search(text or "")
-        if not m:
-            return None
-        try:
-            return json.loads(m.group(0))
-        except Exception:
-            return None
-
-
-# --------- Proposer actor ---------
-
-FORMAT_INSTR = (
-    "Return ONLY in this exact format (no extra text, no markdown):\n"
-    "query: <one line question>\n"
-    "verification: <how to verify—1-3 sentences>\n"
-    "difficulty: <0.0..1.0>\n"
-    "connections:\n"
-    "- <tag1>\n"
-    "- <tag2>\n"
-)
 
 class Proposer:
     """
-    Generates novel, verifiable queries at the current curriculum difficulty.
-    Uses PromptService via the ServiceContainer; avoids JSON in the LLM reply.
+    SSP Proposer actor (bus-events only).
+
+    Responsibilities:
+      - Generate candidate proposals for the current goal/context.
+      - Emit structured telemetry to bus/Arena (no PlanTrace writes).
     """
 
-    def __init__(self, cfg: DictConfig | dict, memory, container: ServiceContainer):
-        root = cfg
-        self.root: DictConfig = root
-        self.sp: DictConfig = root.self_play
-        self.cfg: DictConfig = self.sp.proposer
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg = cfg or {}
         self.memory = memory
         self.container = container
+        self.logger = logger
+        self.telemetry = SSPTelemetry(self.cfg.get("telemetry", {}), memory, logger, subject_root="ssp")
+        self.max_proposals: int = int(self.cfg.get("max_proposals", 6))
 
-        self.prompt_service = self.container.get("prompt")  # PromptService
-        self.trace_logger = get_trace_logger()
-
-        # curriculum-driven difficulty (bounded by cfg)
-        self.difficulty = float(self.sp.qmax.initial_difficulty)
-        self._d_lo = float(self.sp.qmax.initial_difficulty)
-        self._d_hi = float(self.sp.qmax.max_difficulty)
-        self._recent_conn = deque(maxlen=20)  # Keep last 20 connection strings
-
-        self.template_name = getattr(self.cfg, "template_name", None)
-
-    # --- lifecycle hooks --------------------------------------------------
-
-    def set_difficulty(self, value: float) -> None:
-        self.difficulty = _clamp(float(value), self._d_lo, self._d_hi)
-
-    def update_difficulty(self, success_rate: float) -> None:
-        target = 0.7
-        k_p = 0.5 * float(self.sp.qmax.difficulty_step)
-        delta = k_p * (target - float(success_rate))
-        self.set_difficulty(self.difficulty + delta)
-
-    # --- prompting --------------------------------------------------------
-
-    def _default_prompt(self, context: Optional[Dict[str, Any]]) -> str:
-        # Short and strict → higher parse rate
-        ctx = context or {}
-        ctx_str = json.dumps(ctx, ensure_ascii=False)
-        return (
-            "You are a research proposal generator. Produce a novel, verifiable question "
-            "appropriate for the requested difficulty and context.\n\n"
-            f"Difficulty (0..1): {self.difficulty:.2f}\n"
-            f"Context JSON: {ctx_str}\n\n"
-            f"{FORMAT_INSTR}"
-        )
-
-    # --- public API -------------------------------------------------------
-
-    def generate(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def propose(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Asks the LLM for a proposal (plain text schema), parses it, clamps difficulty,
-        returns a Proposal dict your trainer can consume.
+        Produce a list of proposal dicts:
+          { "id": str, "text": str, "meta": {...} }
         """
-        ctx = context or {}
-        prompt = self._default_prompt(ctx)
+        async with self.telemetry.span(context={**context, "actor": "proposer"}, name="actor.propose"):
+            goal = (context.get("goal") or {})
+            goal_text: str = (goal.get("goal_text") or "").strip()
 
-        # Give the model one shot; if parsing fails, tighten and retry once
-        attempts = 0
-        parsed = None
-        last_raw = ""
-        while attempts < 2 and parsed is None:
-            last_raw = self.prompt_service.call_llm(prompt)
-            try:
-                data = parse_proposal_text(last_raw)
-                parsed = data
-            except Exception:
-                # Tighten follow-up instruction
-                prompt = FORMAT_INSTR
-                attempts += 1
+            # Source material for proposals: goal_text + any hints supplied in context.
+            hints: List[str] = []
+            if isinstance(context.get("hints"), list):
+                hints = [str(h) for h in context["hints"] if h]
 
-        if parsed is None:
-            # Guaranteed fallback
-            parsed = {
-                "query": "What measurable improvement does the VPM evolver give to HRM on matched cases?",
-                "verification_approach": "A/B compare HRM pre/post on aligned cases; bootstrap confidence intervals.",
-                "difficulty": float(self.difficulty),
-                "connections": ["VPM", "HRM"],
-            }
+            seeds: List[str] = []
+            if goal_text:
+                seeds.append(goal_text)
+            seeds.extend(hints)
 
-        # Normalize + clamp difficulty, ensure list for connections
-        try:
-            diff = float(parsed.get("difficulty", self.difficulty))
-        except Exception:
-            diff = self.difficulty
-        diff = _clamp(diff, self._d_lo, self._d_hi)
+            # De-duplicate and cap by max_proposals
+            seen, deduped = set(), []
+            for s in seeds:
+                s2 = s.strip()
+                if not s2 or s2 in seen:
+                    continue
+                seen.add(s2)
+                deduped.append(s2)
+                if len(deduped) >= self.max_proposals:
+                    break
 
-        conns = parsed.get("connections") or []
-        if not isinstance(conns, list):
-            conns = [str(conns)]
+            if not deduped and goal_text:
+                deduped = [goal_text]
 
-        prop = Proposal(
-            query=parsed.get("query", "").strip(),
-            verification_approach=parsed.get("verification_approach", "").strip(),
-            difficulty=float(diff),
-            connections=[str(c).strip() for c in conns if str(c).strip()],
-            raw_response=_strip_fences(last_raw) if last_raw else json.dumps(parsed, ensure_ascii=False),
-            metadata={"source": "proposer", "ctx": ctx},
-        )
+            proposals: List[Dict[str, Any]] = []
+            for text in deduped:
+                proposals.append(
+                    {
+                        "id": _sid(text),
+                        "text": text,
+                        "meta": {
+                            "ssp_actor": "proposer",
+                            "from": "goal_or_hints",
+                            "goal_id": goal.get("id"),
+                        },
+                    }
+                )
 
-        pipeline_run_id = ctx.get("pipeline_run_id", "unknown")
-        # Trace
-        self.trace_logger.log(PlanTrace_safe(
-            trace_id=f"proposer-{int(time.time()*1000) % 1_000_000}",
-            role="proposer",
-            execution_steps=[],
-            goal_text=prop.query,
-            goal_id=context.get("goal_id", -1),
-            plan_signature=f"SSP generator Run id {pipeline_run_id}",
-            status="proposed",
-            meta={"difficulty": prop.difficulty, "connections": prop.connections},
-            input_data={"prompt": prompt},
-            final_output_text=prop.raw_response,
-            extra_data={},
-        ))
+            await self.telemetry.publish(
+                "ssp.actor.propose.result",
+                {"count": len(proposals), "ids": [p["id"] for p in proposals]},
+                context={**context, "actor": "proposer"},
+            )
 
-        return prop.to_dict()
-
-    def _get_recent_connections(self) -> List[str]:
-        """
-        Return a deduplicated list of individual connection tags from recent proposals.
-        """
-        all_tags = []
-        for conn_str in self._recent_conn:
-            tags = [tag.strip() for tag in conn_str.split(",")]
-            all_tags.extend(tag for tag in tags if tag)
-        return list(dict.fromkeys(all_tags))  # Preserves order, removes duplicates
-    
-    async def generate_async(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Async wrapper around the sync generate() method.
-        Runs the sync LLM call in a thread pool to avoid blocking the event loop.
-        """
-        loop = asyncio.get_event_loop()
-        # Run the sync .generate() method in a separate thread
-        return await loop.run_in_executor(executor, self.generate, context)
+            return proposals
