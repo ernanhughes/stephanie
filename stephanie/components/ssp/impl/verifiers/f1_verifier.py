@@ -1,4 +1,7 @@
+# stephanie/components/ssp/impl/verifiers/f1_verifier.py
+
 from __future__ import annotations
+
 from typing import Tuple
 
 class Verifier:

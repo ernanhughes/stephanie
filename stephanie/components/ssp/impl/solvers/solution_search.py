@@ -1,4 +1,4 @@
-# stephanie/agents/ssp_mvp/solution_search.py
+# stephanie/components/ssp/solution_search.py
 from __future__ import annotations
 
 import asyncio

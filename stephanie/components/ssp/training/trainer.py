@@ -1,12 +1,13 @@
+# stephanie/components/ssp/trainer.py
 from __future__ import annotations
 import time
 import uuid
 from typing import Any, Dict, Iterable
 
-from stephanie.components.ssp.trace import EpisodeTrace
-from stephanie.components.ssp.proposer import Proposer
-from stephanie.components.ssp.ats_solver import ATSSolver, SolutionSearch
-from stephanie.components.ssp.verifier import Verifier
+from stephanie.components.ssp.utils.trace import EpisodeTrace
+from stephanie.components.ssp.impl.proposers.searching_proposer import SearchingProposer
+from stephanie.components.ssp.impl.solvers.ats_solver import ATSSolver, SolutionSearch
+from stephanie.components.ssp.impl.verifiers.f1_verifier import Verifier
 from stephanie.components.tree.events import TreeEventEmitter
 
 class Trainer:
@@ -20,7 +21,7 @@ class Trainer:
 
     async def run_episode(self, seed_answer: str, context: Dict[str, Any]) -> EpisodeTrace:
         episode_id = f"ssp-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
-        proposer = Proposer(self.cfg, memory=self.memory, container=self.container, logger=self.logger)
+        proposer = SearchingProposer(self.cfg, memory=self.memory, container=self.container, logger=self.logger)
         question, meta = await proposer.propose(seed_answer, context=context)
 
         # ATS‑based solver with a tiny local searcher that contains the answer in synthetic docs

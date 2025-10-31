@@ -2,7 +2,7 @@ from __future__ import annotations
 
 if __name__ == "__main__":
     # Minimal smoke test with three seeds (serve as ground truths)
-    from stephanie.components.ssp.trainer import Trainer
+    from stephanie.components.ssp.training.trainer import Trainer
 
     seeds = [
         "permafrost thaw releasing methane increases radiative forcing",

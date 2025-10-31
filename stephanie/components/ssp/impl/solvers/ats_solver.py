@@ -1,10 +1,11 @@
-# stephanie/components/ssp/ats_solver.py
+# stephanie/components/ssp/impl/solvers/ats_solver.py
+
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.components.tree.events import TreeEventEmitter
-from stephanie.components.ssp.solution_search import SolutionSearch
+from stephanie.components.ssp.impl.solvers.solution_search import SolutionSearch
 from stephanie.utils.progress_mixin import ProgressMixin
 
 @dataclass

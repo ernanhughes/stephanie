@@ -22,7 +22,7 @@ prompt_service:
   save_context: false
   skip_if_completed: false
   model:
-    name: ollama/qwen3
+    name: ollama/qwen:0.5b
     api_base: http://localhost:11434
     api_key: null
   input_keys: ["goal"]

@@ -1,17 +1,17 @@
+# stephanie/components/ssp/impl/proposers/searching_proposer.py
 from __future__ import annotations
 import asyncio
 import time
 import logging
-from typing import Any, Dict, Optional, Tuple, Callable
-
+from typing import Any, Dict, Optional, Tuple
+import re
+from stephanie.components.ssp.core.roles.proposer import Proposer
 from stephanie.prompts.prompt_loader import PromptLoader
 from stephanie.components.tree.events import TreeEventEmitter  # optional sink
 
 _logger = logging.getLogger(__name__)
 
 # -------------------- parser (your original, kept) --------------------
-import re
-from typing import Optional
 
 _LINE_RE = re.compile(r'^\s*"?(?P<key>[A-Za-z_]+)"?\s*[:=]\s*(?P<val>.+?)\s*,?\s*$')
 
@@ -73,7 +73,7 @@ def parse_proposer_lines(text: str) -> Dict[str, Any]:
     return out
 
 # -------------------- prompt (your current inline) --------------------
-PROMPT = """
+PROPOSER_PROMPT = """
 SYSTEM:
 You are building an SSP dataset. Given the canonical mechanism (SEED_ANSWER), write ONE precise, verifiable question whose correct answer is that mechanism.
 
@@ -93,7 +93,7 @@ question: <the single best question>
 """
 
 # -------------------- improved Proposer --------------------
-class Proposer:
+class SearchingProposer:
     """
     SSP Proposer (async).
     - Loads a small line-by-line prompt (inline by default, or from file if you want).
@@ -109,7 +109,7 @@ class Proposer:
         logger: Optional[logging.Logger] = None,
         *,
         event_emitter: Optional[TreeEventEmitter] = None,
-        prompt_text: Optional[str] = PROMPT,            # or None to force file
+        prompt_text: Optional[str] = PROPOSER_PROMPT,            # or None to force file
         prompt_name: Optional[str] = None,              # e.g. "ssp_proposer_lines"
         retries: int = 1,                               # light retry for transient errors
         backoff_sec: float = 0.5,
@@ -151,7 +151,7 @@ class Proposer:
             prompt = self.prompt_loader.from_file(f"{self._prompt_name}.txt", self.cfg, merged_context)
             psrc = f"file:{self._prompt_name}.txt"
         else:
-            prompt = self.prompt_loader.from_text(self._prompt_text or PROMPT, merged_context)
+            prompt = self.prompt_loader.from_text(self._prompt_text or PROPOSER_PROMPT, merged_context)
             psrc = "inline"
 
         _logger.debug("Proposer: loaded prompt (%s)", psrc)

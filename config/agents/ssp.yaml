@@ -5,6 +5,7 @@ ssp:
   save_prompt: true
   save_context: false
   skip_if_completed: false
+
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
@@ -14,13 +15,45 @@ ssp:
     - "A* search expands nodes by the lowest f(n)=g(n)+h(n); with an admissible h, it returns an optimal path."
     - "PageRank ranks nodes by the stationary distribution of a random surfer with damping (teleportation)."
     - "BM25 scores documents via term-frequency saturation and inverse document frequency with length normalization."
-  ats:
+
+  
+  proposer:
+    rewrites: 3
+    max_snippets: 6
+    min_question_len: 20
+    forbid_answer_leak: true
+    prompt_name: "searching_proposer"  # Or inline prompt
+    
+  verify:
+    min_question_len: 20
+    forbid_answer_leak: true
+    min_evidence_count: 1
+    pass_threshold: 0.75
+    
+  solver:
     max_depth: 2
     beam_width: 3
+    
   retrieval:
     k: 3
     max_chars_per_snippet: 400
-
+    
+  vpm_viz:
+    output_dir: "./runs/vpm_visualizations"
+    tl_fracs: [0.25, 0.16, 0.36, 0.09]
+    delta: 0.02
+    dimensions: [
+      "verifier_f1", "difficulty", "steps_norm", "evidence_cnt",
+      "coverage", "correctness", "coherence", "citation_support", "entity_consistency"
+    ]
+    metric_ranges:
+      verifier_f1: [0.0, 1.0]
+      difficulty: [0.0, 1.0]
+      steps_norm: [0.0, 1.0]
+      evidence_cnt: [0.0, 1.0]
+  ats:
+    max_depth: 2
+    beam_width: 3
 
   telemetry:
     enabled: true

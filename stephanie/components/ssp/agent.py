@@ -7,8 +7,11 @@ from typing import Any, Dict
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.ssp.services.state_service import StateService
 from stephanie.components.ssp.services.vpm_control_service import VPMControlService
-from stephanie.components.ssp.trainer import Trainer
+from stephanie.components.ssp.services.vpm_visualization_service import VPMVisualizationService
+from stephanie.components.ssp.training.trainer import Trainer
+
 from omegaconf import OmegaConf
+
 from stephanie.utils.progress_mixin import ProgressMixin
 
 _logger = logging.getLogger(__name__)
@@ -18,8 +21,7 @@ class SSPAgent(BaseAgent, ProgressMixin):
 
     def __init__(self, cfg: Dict[str, Any], memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-
-        base_cfg = OmegaConf.create(cfg)
+        self.seeds = cfg.get("seeds", [])
 
         container.register(
             name="ssp_state",
@@ -36,6 +38,15 @@ class SSPAgent(BaseAgent, ProgressMixin):
             init_args={
             },
         )
+
+        # in SSPAgent.__init__
+        container.register(
+            name="ssp_vpm_viz",
+            factory=lambda: VPMVisualizationService(cfg=cfg, memory=memory, logger=logger, container=container),
+            dependencies=[],
+            init_args={}
+        )
+
 
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -76,13 +87,6 @@ class SSPAgent(BaseAgent, ProgressMixin):
         """
         run_id = context.get("pipeline_run_id", "unknown")
         try:
-
-            seeds = [
-                "permafrost thaw releasing methane increases radiative forcing",
-                "insulin enables glucose uptake in muscle and adipose tissue",
-                "backpropagation updates weights by gradient descent on loss",
-            ]
-
             _logger.info(f"SSP step started for run_id={run_id}")
 
             trainer = Trainer(self.cfg, self.memory, self.container, self.logger)
@@ -92,7 +96,7 @@ class SSPAgent(BaseAgent, ProgressMixin):
             total_steps = 1  # Example fixed step count; adjust as needed
             self.pstart(task=task, total=total_steps, meta={"run_id": run_id})
 
-            stats = await trainer.run_batch(seeds=seeds, context=context)
+            stats = await trainer.run_batch(seeds=self.seeds, context=context)
 
             self.pstage(task=task, stage="complete")
             self.pdone(task=task)

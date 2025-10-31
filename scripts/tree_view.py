@@ -79,7 +79,7 @@ def print_tree(root_path, file_obj=sys.stdout, indent="", is_top_level=True):
             print_tree(path, file_obj, indent + extension, is_top_level=False)
 
 if __name__ == "__main__":
-    base_dir = "."  # Replace with your actual base path
+    base_dir = ".\stephanie\components\ssp"  # Replace with your actual base path
     output_filename = "file_view.log"
     
     if not os.path.exists(base_dir):
