@@ -2,6 +2,7 @@
 .paper_cache/
 outputs/
 /models/
+/artifacts/
 /logs/
 /reports/
 /worldviews/

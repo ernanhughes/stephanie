@@ -12,9 +12,12 @@ ssp:
     api_key: null
 
   seeds:
-    - "Binary search"
+    - "Explain why BM25 is better than TF-IDF for short queries."
+    - "How does gradient clipping prevent exploding gradients in RNNs?"
+    - "What's the key insight behind the PageRank algorithm?"
     - "ReLU (Rectified Linear Unit)"
     - "Hash map"
+    - "Gradient Descent"
   
   proposer:
     rewrites: 3
@@ -30,8 +33,10 @@ ssp:
     pass_threshold: 0.75
     
   solver:
-    max_depth: 2
-    beam_width: 3
+    max_depth: 4
+    beam_width: 4
+    progress_every: 1      # snapshot EVERY step
+    snapshot_early: true   # also snapshot at depth boundaries
     
   retrieval:
     k: 3
@@ -40,6 +45,12 @@ ssp:
   vpm_viz:
     output_dir: "./runs/vpm_visualizations"
     tl_fracs: [0.25, 0.16, 0.36, 0.09]
+    grid_side: 32
+    fixed_scale: true        # keep global 0..1 scale (no auto-stretch)
+    filmstrip:
+      rows: 2
+      cols: 10
+      dpi: 300
     delta: 0.02
     dimensions: [
       "verifier_f1", "difficulty", "steps_norm", "evidence_cnt",
@@ -50,6 +61,7 @@ ssp:
       difficulty: [0.0, 1.0]
       steps_norm: [0.0, 1.0]
       evidence_cnt: [0.0, 1.0]
+
   ats:
     max_depth: 2
     beam_width: 3

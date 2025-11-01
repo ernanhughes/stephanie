@@ -1,26 +1,27 @@
 # stephanie/components/ssp/impl/solvers/ats_solver.py
 """
 ATSSolver with two modes:
-- solve(): deep search (default, paper "solver" path)
+- solve(..., use_search=True): deep search (paper solver path) + VPM snapshots
 - solve_with_evidence(): no-search answer using proposer evidence (verification aid)
 """
 
 from __future__ import annotations
 
-import asyncio
-import heapq
 import re
-import time
+import pandas as pd
 import uuid
-from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.utils.progress_mixin import ProgressMixin
 from stephanie.components.ssp.core.roles.solver import Solver
-from stephanie.components.ssp.core.protocols import EpisodeContext, VerificationResult
+from stephanie.components.ssp.core.protocols import (
+    EpisodeContext,
+    VerificationResult,
+)
 from stephanie.components.tree.events import TreeEventEmitter
 from stephanie.prompts.prompt_loader import PromptLoader
+
 
 # Minimal node record (use your canonical Node if available)
 @dataclass
@@ -36,6 +37,7 @@ class Node:
     context: str
     task_description: Optional[str] = None
 
+
 SOLVER_PROMPT_TMPL = """Your task: answer the question using ONLY the provided evidence (short snippets).
 Return EXACTLY three lines in this order, no extra text:
 
@@ -50,7 +52,8 @@ EVIDENCE:
 {evidence}
 """
 
-_LINE = re.compile(r'^\s*([a-zA-Z_]+)\s*:\s*(.+?)\s*$')
+_LINE = re.compile(r"^\s*([a-zA-Z_]+)\s*:\s*(.+?)\s*$", re.IGNORECASE)
+
 
 def _parse_three_lines(text: str) -> Dict[str, str]:
     out = {"rationale": "", "score": "", "result": ""}
@@ -72,7 +75,7 @@ class ATSSolver(Solver, ProgressMixin):
         container: Any,
         logger: Any,
         *,
-        searcher,                       # SolutionSearch instance
+        searcher,  # SolutionSearch instance
         event_emitter: Optional[TreeEventEmitter] = None,
     ):
         self.cfg = cfg or {}
@@ -85,17 +88,24 @@ class ATSSolver(Solver, ProgressMixin):
         # services
         self.prompt = container.get("prompt")
         self.prompt_loader = PromptLoader(memory=memory, logger=logger)
+        self.vpm = container.get("ssp_vpm_viz")  # for progress snapshots
 
         # knobs
-        sp = (self.cfg.get("self_play") or {})
-        self.solver_model = sp.get("solver_model", {"name": "ollama/qwen:0.5b", "api_base": "http://localhost:11434"})
+        sp = self.cfg.get("self_play") or {}
+        self.solver_model = sp.get(
+            "solver_model",
+            {"name": "ollama/qwen:0.5b", "api_base": "http://localhost:11434"},
+        )
         self.sys_preamble = "Follow the 3-line output format exactly."
 
-        # tree search settings
-        self.max_depth = int(self.cfg.get("max_depth", 2))
-        self.beam_width = int(self.cfg.get("beam_width", 3))
-
-        # progress
+        sv = self.cfg.get("solver") or {}
+        self.max_depth = int(sv.get("max_depth", self.cfg.get("max_depth", 2)))
+        self.beam_width = int(
+            sv.get("beam_width", self.cfg.get("beam_width", 3))
+        )
+        self.progress_every = int(sv.get("progress_every", 1))
+        self.snapshot_early = bool(sv.get("snapshot_early", True))
+        self.vpm = container.get("ssp_vpm_viz")
         self._init_progress(container, logger)
 
     # ------------------------------------------------------------------
@@ -106,13 +116,26 @@ class ATSSolver(Solver, ProgressMixin):
         self,
         question: str,
         seed_answer: str,
+        *,
         context: Optional[EpisodeContext] = None,
+        use_search: bool = True,
+        evidence_snippets: Optional[List[str]] = None,
     ) -> Tuple[str, List[str], int, Dict[str, Any]]:
         """
-        Default solver path = deep search (paper solver).
+        Main entry:
+          - If use_search=True: run deep search (paper solver path).
+          - Else: answer using ONLY `evidence_snippets` (verification helper).
         Returns: predicted_answer, evidence_docs, steps, meta
         """
-        return await self._deep_search(question, seed_answer, context or {})
+        if use_search:
+            return await self._deep_search(
+                question, seed_answer, context or {}
+            )
+        return await self.solve_with_evidence(
+            question=question,
+            evidence_snippets=evidence_snippets or [],
+            context=context,
+        )
 
     async def solve_with_evidence(
         self,
@@ -136,11 +159,11 @@ class ATSSolver(Solver, ProgressMixin):
             params={"temperature": 0.1},
         )
         parsed = _parse_three_lines(txt)
-        result = parsed["result"].strip()
+        result = (parsed["result"] or "").strip()
         meta = {
             "model": self.solver_model,
-            "rationale": parsed["rationale"],
-            "raw_score": parsed["score"],
+            "rationale": parsed.get("rationale", ""),
+            "raw_score": parsed.get("score", ""),
             "mode": "evidence_only",
         }
         # steps=1: single-shot LLM
@@ -166,7 +189,9 @@ class ATSSolver(Solver, ProgressMixin):
             question, evidence_snippets, context={"verify": True}
         )
         score = self._f1(seed_answer, predicted)
-        threshold = float((self.cfg.get("verify") or {}).get("pass_threshold", 0.75))
+        threshold = float(
+            (self.cfg.get("verify") or {}).get("pass_threshold", 0.75)
+        )
         is_valid = score >= threshold
 
         return VerificationResult(
@@ -174,12 +199,40 @@ class ATSSolver(Solver, ProgressMixin):
             score=score,
             reason=f"Verification {'passed' if is_valid else 'failed'} (score={score:.2f})",
             filter_results={"evidence_usage": True},
-            verification_details={"predicted": predicted, "threshold": threshold},
+            verification_details={
+                "predicted": predicted,
+                "threshold": threshold,
+            },
         )
 
     # ------------------------------------------------------------------
     # INTERNALS
     # ------------------------------------------------------------------
+
+    def _dims_for_snapshot(
+        self,
+        *,
+        question: str,
+        best_score: float,
+        steps: int,
+        ev_count: int,
+        difficulty: float,
+        answer_text: Optional[str] = None,
+    ) -> Dict[str, float]:
+        # Preview-friendly dims in [0,1]
+        q_len = min(128.0, float(len((question or "").split())))
+        a_len = min(128.0, float(len((answer_text or "").split())))
+        return {
+            "verifier_score": float(
+                max(0.0, min(1.0, best_score))
+            ),  # proxy until judged
+            "verified": 0.0,
+            "difficulty": float(max(0.0, min(1.0, difficulty))),
+            "question_len": q_len / 128.0,
+            "answer_len": a_len / 128.0,
+            "evidence_count": min(1.0, ev_count / 8.0),
+            "solver_steps": min(1.0, steps / 64.0),
+        }
 
     async def _deep_search(
         self,
@@ -187,11 +240,33 @@ class ATSSolver(Solver, ProgressMixin):
         seed_answer: str,
         context: EpisodeContext,
     ) -> Tuple[str, List[str], int, Dict[str, Any]]:
-        task_key = f"ATS:{hash(question) & 0xffff:04x}"
+        task_key = f"ATS-{hash(question) & 0xFFFF:04x}"
+        # stable + filename-safe unit (no colons/slashes)
+        raw_unit = context.get("vpm_unit") or f"search-{task_key.lower()}"
+        unit = re.sub(r'[^a-zA-Z0-9_.-]+', "_", raw_unit)
+        difficulty = float((context or {}).get("difficulty", 0.0))
+
         rewrites_per_parent = len(self._rewrite(question))
         total_steps = self._estimate_total_steps(rewrites_per_parent)
         self.pstart(task=task_key, total=total_steps)
         self.pstage(task=task_key, stage="root")
+
+        # EARLY snapshot (depth 0)
+        if self.vpm and self.snapshot_early:
+            dims0 = self._dims_for_snapshot(
+                question=question,
+                best_score=0.0,
+                steps=0,
+                ev_count=0,
+                difficulty=difficulty,
+                answer_text=None,
+            )
+            try:
+                self.vpm.snapshot_progress(
+                    unit=unit, dims=dims0, step_idx=0, tag="depth0"
+                )
+            except Exception:
+                pass
 
         root = Node(
             id=f"root-{uuid.uuid4().hex[:6]}",
@@ -205,13 +280,15 @@ class ATSSolver(Solver, ProgressMixin):
             context="",
             task_description=question,
         )
+
         if self.events:
             self.events.on_root_created(root)
 
         best = root
         steps = 0
         done = 0
-
+        ev_count = 0
+        last_ev_batch = 0
         for depth in range(1, self.max_depth + 1):
             self.pstage(task=task_key, stage=f"depth-{depth}")
 
@@ -220,7 +297,13 @@ class ATSSolver(Solver, ProgressMixin):
                 rewrites = self._rewrite(parent.query)
                 for i, q2 in enumerate(rewrites):
                     # Retrieve snippets (search)
-                    results = await self.searcher.search(q2, seed_answer=seed_answer, context=context)
+                    try:
+                        results = await self.searcher.search(
+                            q2, seed_answer=seed_answer, context=context
+                        )
+                    except Exception:
+                        results = []
+                    last_ev_batch = len(results)
                     for snippet in results:
                         sc = self._overlap_score(snippet, seed_answer)
                         child = Node(
@@ -239,14 +322,86 @@ class ATSSolver(Solver, ProgressMixin):
                             self.events.on_node_added(parent, child)
                             self.events.on_backprop(child, delta=float(sc))
 
+                        # --- VPM snapshot for this step ---
+                        if self.vpm:
+                            # use the stable, sanitized `unit` computed above
+                            prev_best = float(best.score)
+                            # quick helpers
+                            def _n01(x, hi): return max(0.0, min(1.0, (x/hi) if hi else 0.0))
+                            def _jac(a: str, b: str) -> float:
+                                A, B = set(a.lower().split()), set(b.lower().split())
+                                return 1.0 - (len(A & B) / max(len(A | B), 1))
+                            dims = {
+                                # canonical slots used by earlier code
+                                "verifier_score": prev_best,            # proxy until judge; “how good so far”
+                                "verified": 0.0,                        # 0 during search
+                                "difficulty": float((context or {}).get("difficulty", 0.3)),
+                                "question_len": _n01(len(q2.split()), 128),
+                                "answer_len":  _n01(len((snippet or '').split()), 128),
+                                "evidence_count": _n01(last_ev_batch, 8),
+                                "solver_steps": _n01(steps, self._estimate_total_steps(len(self._rewrite(question)))),
+                                # extra thinking channels (new, will render now)
+                                "score": sc,
+                                "best_score": prev_best,
+                                "improvement": max(0.0, sc - prev_best),
+                                "depth": _n01(depth, self.max_depth),
+                                "novelty": _jac(snippet or "", best.context or ""),
+                            }
+                            self.vpm.snapshot_progress(unit=unit, dims=dims, step_idx=steps, tag=f"depth{depth}")
+
                         if sc > best.score:
                             best = child
                             if self.events:
                                 self.events.on_best_update(best)
+                            # snapshot explicit improvements
+                            if self.vpm:
+                                dims["best_score"] = float(best.score)
+                                dims["improvement"] = max(0.0, float(best.score) - float(prev_best))
+                                self.vpm.snapshot_progress(unit=unit, dims=dims, step_idx=steps, tag=f"improved_d{depth}")                                
+                                try:
+                                    dims = self._dims_for_snapshot(
+                                        question=question,
+                                        best_score=best.score,
+                                        steps=steps,
+                                        ev_count=last_ev_batch,
+                                        difficulty=difficulty,
+                                        answer_text=best.context,
+                                    )
+                                    self.vpm.snapshot_progress(
+                                        unit=unit,
+                                        dims=dims,
+                                        step_idx=steps,
+                                        tag=f"improved_d{depth}",
+                                    )
+                                except Exception:
+                                    pass
 
                         steps += 1
+                        ev_count += 1
                         done += 1
                         self.ptick(task=task_key, done=done, total=total_steps)
+
+                        # Snapshot cadence
+                        if self.vpm and (
+                            steps % max(1, self.progress_every) == 0
+                        ):
+                            try:
+                                dims = self._dims_for_snapshot(
+                                    question=question,
+                                    best_score=best.score,
+                                    steps=steps,
+                                    ev_count=last_ev_batch,
+                                    difficulty=difficulty,
+                                    answer_text=best.context,
+                                )
+                                self.vpm.snapshot_progress(
+                                    unit=unit,
+                                    dims=dims,
+                                    step_idx=steps,
+                                    tag=f"depth{depth}",
+                                )
+                            except Exception:
+                                pass
 
             self._prune_to_beam(root)
 
@@ -255,19 +410,105 @@ class ATSSolver(Solver, ProgressMixin):
         predicted_answer = best.context if best.context else seed_answer
         evidence = best.context.splitlines() if best.context else []
         if self.events:
-            self.events.on_progress({"phase": "ats_solve_complete", "steps": steps, "best_score": best.score})
+            self.events.on_progress(
+                {
+                    "phase": "ats_solve_complete",
+                    "steps": steps,
+                    "best_score": best.score,
+                }
+            )
             self.events.on_rollout_complete(
-                {"best": {"id": best.id, "score": best.score, "query": best.query, "depth": best.depth}, "steps": steps}
+                {
+                    "best": {
+                        "id": best.id,
+                        "score": best.score,
+                        "query": best.query,
+                        "depth": best.depth,
+                    },
+                    "steps": steps,
+                }
             )
 
-        meta = {"best_score": best.score, "search_depth": best.depth, "evidence_count": len(evidence), "mode": "search"}
+        meta = {
+            "best_score": best.score,
+            "search_depth": best.depth,
+            "evidence_count": len(evidence),
+            "mode": "search",
+            "vpm_unit": unit,
+        }
+        # Optional: immediately render RAW/PHOS now that history exists
+        try:
+            run_id = (context or {}).get("pipeline_run_id")
+            if self.vpm and run_id:
+                self.vpm.set_run_id(str(run_id))
+            if self.vpm:
+                self.vpm.generate_raw_vpm_image(unit=unit)
+                self.vpm.generate_phos_image(unit=unit)
+        except Exception:
+            pass
+
         return predicted_answer, evidence, steps, meta
+
+    # ---- VPM snapshot helper ------------------------------------------------
+
+    def _snapshot_vpm(
+        self,
+        *,
+        unit: str,
+        score: float,
+        verified: bool,
+        difficulty: float,
+        question: str,
+        answer_text: str,
+        evidence_lines: int,
+        steps: int,
+        step_idx: int,
+        tag: str,
+    ) -> None:
+        """
+        Push a single progress frame to the VPM viz service.
+        Maps ATS-local stats onto the common 7-dim vector used by EpisodeTrace.to_vpm_features().
+        """
+        try:
+            if not self.vpm:
+                return
+            dims = {
+                "verifier_score": max(
+                    0.0, min(1.0, float(score))
+                ),  # reuse overlap as "score-ish"
+                "verified": 1.0 if verified else 0.0,
+                "difficulty": float(difficulty or 0.0),
+                "question_len": min(
+                    1.0, len((question or "").split()) / 128.0
+                ),
+                "answer_len": min(
+                    1.0, len((answer_text or "").split()) / 128.0
+                ),
+                "evidence_count": min(1.0, float(evidence_lines) / 8.0),
+                "solver_steps": min(1.0, float(steps) / 64.0),
+            }
+            self.vpm.snapshot_progress(
+                unit=unit, dims=dims, step_idx=step_idx, tag=tag
+            )
+        except Exception as e:
+            # keep failures non-fatal
+            try:
+                self.logger.warning(
+                    "VPM snapshot failed",
+                    extra={"error": str(e), "unit": unit, "tag": tag},
+                )
+            except Exception:
+                pass
 
     # ---- small helpers ----
 
     @staticmethod
     def _rewrite(query: str) -> List[str]:
-        return [query, query.replace("explain", "describe"), query + " in practical terms"]
+        return [
+            query,
+            query.replace("explain", "describe"),
+            query + " in practical terms",
+        ]
 
     @staticmethod
     def _overlap_score(text: str, target: str) -> float:
@@ -282,16 +523,17 @@ class ATSSolver(Solver, ProgressMixin):
         nodes_at_depth = 1
         for _ in range(1, self.max_depth + 1):
             steps += nodes_at_depth * rewrites_per_parent
-            nodes_at_depth = min(self.beam_width, nodes_at_depth * rewrites_per_parent)
+            nodes_at_depth = min(
+                self.beam_width, nodes_at_depth * rewrites_per_parent
+            )
         return steps
 
     def _get_candidates(self, root: Node, depth: int) -> List[Node]:
-        # For the MVP we just re-expand the previous frontier (root).
-        # You can keep a real tree and return children of prior layer for accuracy.
-        return [root] if depth == 1 else [root]
+        # MVP: re-expand root at each depth; swap in a real frontier for full tree search.
+        return [root]
 
     def _prune_to_beam(self, root: Node) -> None:
-        # Hook for real pruning if you build an explicit tree
+        # Hook for pruning when you maintain a full tree.
         pass
 
     @staticmethod
@@ -301,11 +543,15 @@ class ATSSolver(Solver, ProgressMixin):
         if not gt_words or not pred_words:
             return 0.0
         common = gt_words & pred_words
-        precision = len(common) / len(pred_words)
-        recall = len(common) / len(gt_words)
+        precision = len(common) / len(pred_words) if pred_words else 0.0
+        recall = len(common) / len(gt_words) if gt_words else 0.0
         if precision + recall == 0:
             return 0.0
         return 2 * (precision * recall) / (precision + recall)
 
     def get_capabilities(self) -> Dict[str, Any]:
-        return {"supports_verification_mode": True, "max_search_depth": self.max_depth, "beam_width": self.beam_width}
+        return {
+            "supports_verification_mode": True,
+            "max_search_depth": self.max_depth,
+            "beam_width": self.beam_width,
+        }

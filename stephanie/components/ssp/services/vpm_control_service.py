@@ -59,7 +59,6 @@ class VPMControlService(Service):
         container: Optional[Any] = None,
         logger: Optional[JSONLogger] = None,
     ):
-        # Keep signature compatible with SSPAgent(cfg=..., memory=..., container=..., logger=...)
         self.cfg = cfg or {}
         self.memory = memory
         self.container = container

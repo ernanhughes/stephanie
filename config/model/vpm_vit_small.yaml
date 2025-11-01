@@ -1,0 +1,40 @@
+# configs/model/vpm_vit_small.yaml
+
+model:
+  name: vpm-vit-small
+  # direct class not needed (we instantiate VPMViT)
+  params:
+    in_ch: 1
+    num_reg_targets: 5   # reasoning, knowledge, clarity, faithfulness, coverage
+    num_risk_classes: 3  # OK, WATCH, RISK
+    d_model: 384
+    depth: 6
+    n_heads: 6
+    patch: 8
+    mlp_ratio: 4.0
+    p: 0.1
+    use_mpm: true
+
+optimizer:
+  class: torch.optim.AdamW
+  params:
+    lr: 3.0e-4
+    weight_decay: 0.05
+    betas: [0.9, 0.999]
+
+scheduler:
+  class: torch.optim.lr_scheduler.CosineAnnealingLR
+  params:
+    T_max: 100
+    eta_min: 1.0e-7
+
+training:
+  batch_size: 32
+  epochs: 100
+  grad_clip: 1.0
+  mask_ratio: 0.15
+  num_workers: 0
+  loss_weights:
+    reg: 1.0
+    cls: 0.5
+    mpm: 0.5

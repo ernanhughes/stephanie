@@ -72,8 +72,13 @@ class SSPAlgorithm:
         """
         ctx = context or {}
         episode_id = f"ssp-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
-        t0 = time.time()
-
+        start_time = time.time()
+        ctx["vpm_unit"] = episode_id
+        if self.vpm_visualization and ctx.get("pipeline_run_id"):
+            try:
+                self.vpm_visualization.set_run_id(str(ctx["pipeline_run_id"]))
+            except Exception:
+                pass
         try:
             # 1) Proposer: produce a question (and, if available, proposer_evidence)
             # Expected: (question, proposer_evidence, proposer_meta)
@@ -101,14 +106,23 @@ class SSPAlgorithm:
                 verifier_meta=judge_details,
                 solver_meta=solver_meta,
                 timestamp=datetime.now(),
-                episode_duration=time.time() - t0,
+                episode_duration=time.time() - start_time,
             )
-
-            names, vals = ep.to_vpm_features()
-            _logger.info("VPM features: %s", dict(zip(names, [round(x,4) for x in vals])))
-            arr = np.clip(np.asarray(vals, np.float32), 0.0, 1.0)
-            _logger.info("VPM vector", extra={"features": dict(zip(names, vals)),
-                                                "min": float(arr.min()), "max": float(arr.max())})
+            # Initial snapshot for the blog's “proposed → solved” narrative
+            if self.vpm_visualization:
+                names, vals = ep.to_vpm_features()
+                dims = {k: float(v) for k, v in zip(names, vals)}
+                self.vpm_visualization.snapshot_progress(
+                    unit=episode_id, dims=dims, step_idx=0, tag="proposed"
+                )
+                _logger.info(
+                    "Episode proposed snapshot saved",
+                    extra={
+                        "episode_id": episode_id,
+                        "question": ep.question,
+                        "dims": {k: round(float(v), 4) for k, v in dims.items()},
+                    },
+                )
 
             # 5) Rewards: compute on verified only (paper’s game signal)
             if ep.verified:
@@ -121,10 +135,26 @@ class SSPAlgorithm:
             # 7) VPM visualization (optional)
             if self.vpm_visualization:
                 try:
+                    # Route outputs under data/ssp/{pipeline_run_id}/...
+                    run_id = (ctx or {}).get("pipeline_run_id")
+                    if run_id:
+                        self.vpm_visualization.set_run_id(str(run_id))
+
+                    # Minimal bar (1×F) for the post
                     self.vpm_visualization.generate_episode_visualization(
                         unit=episode_id,
                         episode=ep,
                     )
+
+                    # Build RAW & PHOS using the step snapshots collected during search
+                    raw_path  = self.vpm_visualization.generate_raw_vpm_image(unit=episode_id)
+                    phos_path = self.vpm_visualization.generate_phos_image(unit=episode_id)
+                    film_path = self.vpm_visualization.generate_filmstrip(unit=episode_id)
+                    gif_path  = self.vpm_visualization.finalize_progress(unit=episode_id)
+
+                    _logger.info("VPM artifacts",
+                        extra={"unit": episode_id, "raw": raw_path, "phos": phos_path,
+                               "filmstrip": film_path, "gif": gif_path})
                 except Exception:
                     # Keep the loop resilient
                     pass
@@ -152,7 +182,7 @@ class SSPAlgorithm:
                 verifier_meta={"error": str(e)},
                 solver_meta={"error": str(e)},
                 timestamp=datetime.now(),
-                episode_duration=time.time() - t0,
+                episode_duration=time.time() - start_time,
             )
 
     async def train_step(
@@ -164,8 +194,22 @@ class SSPAlgorithm:
         Run multiple episodes in parallel (one per seed), then compute summary rewards/metrics.
         """
         ctx = context or {}
+        # Run episodes concurrently
         tasks = [self.run_episode(seed, ctx) for seed in seed_answers]
         episodes: List[EpisodeTrace] = await asyncio.gather(*tasks)
+
+        # Build a filmstrip per episode (uses frames emitted during solver search)
+        if self.vpm_visualization:
+            for ep in episodes:
+                unit = (
+                    (ep.solver_meta or {}).get("vpm_unit")
+                    or ep.episode_id
+                )
+                try:
+                    film_path = self.vpm_visualization.generate_filmstrip(unit=unit)
+                    _logger.info("Filmstrip ready", extra={"unit": unit, "path": film_path})
+                except Exception as e:
+                    _logger.warning("Filmstrip generation skipped", extra={"unit": unit, "error": str(e)})
 
         verified = [ep for ep in episodes if ep.verified]
         unverified = len(episodes) - len(verified)

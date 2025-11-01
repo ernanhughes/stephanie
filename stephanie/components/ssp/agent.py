@@ -7,14 +7,22 @@ from typing import Any, Dict, List
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.ssp.core.algorithm import SSPAlgorithm
 from stephanie.components.ssp.services.state_service import StateService
-from stephanie.components.ssp.services.vpm_control_service import VPMControlService
-from stephanie.components.ssp.services.vpm_visualization_service import VPMVisualizationService
+from stephanie.components.ssp.services.vpm_control_service import (
+    VPMControlService,
+)
+from stephanie.components.ssp.services.vpm_visualization_service import (
+    VPMVisualizationService,
+)
 
 # Impl bindings
-from stephanie.components.ssp.impl.proposers.searching_proposer import SearchingProposer
+from stephanie.components.ssp.impl.proposers.searching_proposer import (
+    SearchingProposer,
+)
 from stephanie.components.ssp.impl.solvers.ats_solver import ATSSolver
 from stephanie.components.ssp.impl.verifiers.rag_verifier import RAGVerifier
-from stephanie.components.ssp.impl.solvers.solution_search import SolutionSearch
+from stephanie.components.ssp.impl.solvers.solution_search import (
+    SolutionSearch,
+)
 from stephanie.components.tree.events import TreeEventEmitter
 
 from stephanie.utils.progress_mixin import ProgressMixin
@@ -36,39 +44,70 @@ class SSPAgent(BaseAgent, ProgressMixin):
         # Register supporting services (as before)
         container.register(
             name="ssp_state",
-            factory=lambda: StateService(cfg=cfg, memory=memory, container=container, logger=logger),
+            factory=lambda: StateService(
+                cfg=cfg, memory=memory, container=container, logger=logger
+            ),
             dependencies=[],
             init_args={},
         )
         container.register(
             name="vpm_control",
-            factory=lambda: VPMControlService(cfg=cfg, memory=memory, container=container, logger=logger),
-            dependencies=[],
-            init_args={},
-        )
-        container.register(
-            name="ssp_vpm_viz",
-            factory=lambda: VPMVisualizationService(cfg=cfg, memory=memory, logger=logger, container=container),
+            factory=lambda: VPMControlService(
+                cfg=cfg, memory=memory, container=container, logger=logger
+            ),
             dependencies=[],
             init_args={},
         )
 
-        emitter = TreeEventEmitter(topic="ssp.ats")
-        solution_search = SolutionSearch(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger, event_emitter=emitter)
-
-        # Construct SSPAlgorithm with concrete roles
-        self._algorithm = SSPAlgorithm(
-            proposer=SearchingProposer(cfg=cfg, memory=memory, container=container, logger=logger, solution_search=solution_search),
-            solver=ATSSolver(cfg=cfg, memory=memory, container=container, logger=logger, searcher=solution_search, event_emitter=emitter),
-            verifier=RAGVerifier(container=container, logger=logger, memory=memory, cfg=cfg),
-            vpm_visualization=container.get("ssp_vpm_viz"),
-        )
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute one SSP training step using the algorithm (paper-aligned A vs B).
         """
         run_id = context.get("pipeline_run_id", "unknown")
+        self.container.register(
+            name="ssp_vpm_viz",
+            factory=lambda: VPMVisualizationService(
+                cfg=self.cfg,
+                memory=self.memory,
+                logger=self.logger,
+                container=self.container,
+            ),
+            dependencies=[],
+            init_args={},
+        )
+
+        emitter = TreeEventEmitter(topic="ssp.ats")
+        solution_search = SolutionSearch(
+            cfg=self.cfg,
+            memory=self.memory,
+            container=self.container,
+            logger=self.logger,
+            event_emitter=emitter,
+        )
+
+        # Construct SSPAlgorithm with concrete roles
+        self._algorithm = SSPAlgorithm(
+            proposer=SearchingProposer(
+                cfg=self.cfg,
+                memory=self.memory,
+                container=self.container,
+                logger=self.logger,
+                solution_search=solution_search,
+            ),
+            solver=ATSSolver(
+                cfg=self.cfg,
+                memory=self.memory,
+                container=self.container,
+                logger=self.logger,
+                searcher=solution_search,
+                event_emitter=emitter,
+            ),
+            verifier=RAGVerifier(
+                container=self.container, logger=self.logger, memory=self.memory, cfg=self.cfg
+            ),
+            vpm_visualization=self.container.get("ssp_vpm_viz"),
+        )
         try:
             _logger.info("SSP step started for run_id=%s", run_id)
             self._init_progress(self.container, _logger)
@@ -82,10 +121,14 @@ class SSPAgent(BaseAgent, ProgressMixin):
                 ]
 
             task = f"SSP:{run_id}"
-            self.pstart(task=task, total=len(self.seeds), meta={"run_id": run_id})
+            self.pstart(
+                task=task, total=len(self.seeds), meta={"run_id": run_id}
+            )
 
             # Train step (parallel per-seed)
-            stats = await self._algorithm.train_step(seed_answers=self.seeds, context=context)
+            stats = await self._algorithm.train_step(
+                seed_answers=self.seeds, context=context
+            )
 
             # Mark progress done
             self.pstage(task=task, stage="complete")

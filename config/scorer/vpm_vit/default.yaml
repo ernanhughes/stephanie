@@ -1,0 +1,41 @@
+# conf/scoring/vpm_vit/default.yaml
+name: vpm_vit
+enabled: true
+
+cls: stephanie.scoring.scorer.vpm_vit_scorer.VPMViTScorer
+
+# --- Model weights ---
+# Path to the checkpoint saved by VPMViTTrainer (contains state_dict + config + dims + risk_labels)
+weights_path: models/vpm_vit_final.pth
+
+# --- Inference / preprocessing ---
+# The scorer can ingest arbitrary HxW; it will resize if target_size is set.
+preprocess:
+  target_size: 256         # null to keep native size; otherwise resized before patching
+  resize_method: bilinear  # bilinear | nearest | bicubic
+  expect_channels: 1       # 1 for grayscale VPMs; set 3 if you export RGB VPMs
+
+# --- Output mapping (overrides checkpoint metadata if provided) ---
+# Order matters for composite calculations elsewhere.
+dims:
+  - reasoning
+  - knowledge
+  - clarity
+  - faithfulness
+  - coverage
+
+risk_labels: [OK, WATCH, RISK]
+
+# Optional thresholds for downstream gating (verifier or guards can read these)
+thresholds:
+  verification_min: 0.85     # pass/fail bar for composite/regression usage
+  risk_warn_class: WATCH      # class label that starts warning state
+  risk_fail_class: RISK       # class label that triggers fail/guard
+
+# --- Runtime ---
+device: auto                # auto | cpu | cuda
+batch_size: 1               # inference batch size (kept small; images vary in size)
+
+# --- Debug / logging ---
+log_attention: false        # set true later if you add attention dumps
+strict_load: true           # state_dict must match exactly
