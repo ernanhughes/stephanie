@@ -99,7 +99,7 @@ class SSPAgent(BaseAgent, ProgressMixin):
             self.pstage(task=task, stage="complete")
             self.pdone(task=task)
 
-            print("== Summary ==", stats)
+            _logger.info("== Summary ==\n%s", stats)
 
             # Attach the result to the context under the standard key
             context[self.output_key] = stats

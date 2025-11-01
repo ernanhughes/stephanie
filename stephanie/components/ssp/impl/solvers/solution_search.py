@@ -110,7 +110,7 @@ class SolutionSearch:
                 break
             except Exception as e:
                 attempt += 1
-                self.logger.exception("SolutionSearch prompt call failed (attempt %d): %s", attempt, e)
+                _logger.warning("SolutionSearch prompt call failed (attempt %d): %s", attempt, e)
                 self._emit("error", {"where": "solution_search.run_prompt", "error": str(e), "attempt": attempt})
                 if attempt > self.retries:
                     snippets = self._fallback_snippets(query, seed_answer, self.k)
@@ -144,7 +144,7 @@ class SolutionSearch:
             "proposer_score": parsed.get("score", 35.0),
             "raw": parsed.get("raw", ""),
         }
-        print(f"Parsed question: {question} | meta: {meta}")
+        _logger.debug(f"Parsed question: {question} | meta: {meta}")
         return  [question]
 
 

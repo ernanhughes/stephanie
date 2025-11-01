@@ -238,7 +238,7 @@ class SearchingProposer(Proposer):
                 break
             except Exception as e:
                 attempt += 1
-                self.logger.exception("Proposer prompt call failed (attempt %d): %s", attempt, e)
+                _logger.warning("Proposer prompt call failed (attempt %d): %s", attempt, e)
                 if attempt > self.retries:
                     return "", {
                         "rationale": "Failed to generate question after retries",
