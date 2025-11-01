@@ -2,14 +2,20 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.ssp.core.algorithm import SSPAlgorithm
 from stephanie.components.ssp.services.state_service import StateService
 from stephanie.components.ssp.services.vpm_control_service import VPMControlService
 from stephanie.components.ssp.services.vpm_visualization_service import VPMVisualizationService
-from stephanie.components.ssp.training.trainer import Trainer
 
+# Impl bindings
+from stephanie.components.ssp.impl.proposers.searching_proposer import SearchingProposer
+from stephanie.components.ssp.impl.solvers.ats_solver import ATSSolver
+from stephanie.components.ssp.impl.verifiers.rag_verifier import RAGVerifier
+from stephanie.components.ssp.impl.solvers.solution_search import SolutionSearch
+from stephanie.components.tree.events import TreeEventEmitter
 
 from stephanie.utils.progress_mixin import ProgressMixin
 
@@ -17,97 +23,84 @@ _logger = logging.getLogger(__name__)
 
 
 class SSPAgent(BaseAgent, ProgressMixin):
+    """
+    High-level entrypoint for SSP. Wires Proposer/Solver/Verifier into SSPAlgorithm,
+    then runs a single training step over the configured seeds.
+    """
 
     def __init__(self, cfg: Dict[str, Any], memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.seeds = cfg.get("seeds", [])
 
+        self.seeds: List[str] = list(cfg.get("seeds", []))
+
+        # Register supporting services (as before)
         container.register(
             name="ssp_state",
             factory=lambda: StateService(cfg=cfg, memory=memory, container=container, logger=logger),
             dependencies=[],
-            init_args={
-            },
+            init_args={},
         )
-
         container.register(
             name="vpm_control",
             factory=lambda: VPMControlService(cfg=cfg, memory=memory, container=container, logger=logger),
             dependencies=[],
-            init_args={
-            },
+            init_args={},
         )
-
-        # in SSPAgent.__init__
         container.register(
             name="ssp_vpm_viz",
             factory=lambda: VPMVisualizationService(cfg=cfg, memory=memory, logger=logger, container=container),
             dependencies=[],
-            init_args={}
+            init_args={},
         )
 
+        emitter = TreeEventEmitter(topic="ssp.ats")
+        solution_search = SolutionSearch(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger, event_emitter=emitter)
 
+        # Construct SSPAlgorithm with concrete roles
+        self._algorithm = SSPAlgorithm(
+            proposer=SearchingProposer(cfg=cfg, memory=memory, container=container, logger=logger, solution_search=solution_search),
+            solver=ATSSolver(cfg=cfg, memory=memory, container=container, logger=logger, searcher=solution_search, event_emitter=emitter),
+            verifier=RAGVerifier(container=container, logger=logger, memory=memory, cfg=cfg),
+            vpm_visualization=container.get("ssp_vpm_viz"),
+        )
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute one step of the Self-Play loop within the given pipeline context.
-
-        This is the main entry point called by the Stephanie pipeline. It:
-        1. Logs the start of the SSP episode
-        2. Runs a single `train_step` through the Trainer
-        3. Handles errors gracefully with structured logging
-        4. Attaches results under `context['ssp']` for downstream consumption
-
-        Args:
-            context: Pipeline execution context. May contain:
-                - pipeline_run_id: Unique identifier for this pipeline run
-                - Additional metadata or constraints to guide proposal generation
-
-        Returns:
-            The input `context` dictionary updated with SSP results under `context['ssp']`.
-            The structure is:
-            {
-                "ssp": {
-                    "episode_id": str,           # Unique ID for this SSP cycle
-                    "success": bool,             # Whether the solution passed verification
-                    "metrics": dict,             # Detailed performance and state metrics
-                    "training_batch": dict|null  # Batch data for RL training (if GRPO enabled)
-                }
-            }
-
-        Raises:
-            RuntimeError: If the trainer fails catastrophically.
-            Any exception from underlying components (Proposer, Solver, ScoringService).
-
-        Logs:
-            - "SSPStepStarted": When the training step begins
-            - "SSPStepCompleted": On successful completion with outcome and metrics
-            - "SSPStepFailed": If an error occurs during the step
+        Execute one SSP training step using the algorithm (paper-aligned A vs B).
         """
         run_id = context.get("pipeline_run_id", "unknown")
         try:
-            _logger.info(f"SSP step started for run_id={run_id}")
-
-            trainer = Trainer(self.cfg, self.memory, self.container, self.logger)
+            _logger.info("SSP step started for run_id=%s", run_id)
             self._init_progress(self.container, _logger)
+
+            # Sensible default seeds if none provided (keeps agent runnable)
+            if not self.seeds:
+                self.seeds = [
+                    "photosynthesis converts light energy into chemical energy via the Calvin cycle",
+                    "insulin signaling promotes GLUT4 translocation to increase glucose uptake",
+                    "backpropagation updates network weights by gradient descent on loss",
+                ]
+
             task = f"SSP:{run_id}"
-            total_steps = 1  # Example fixed step count; adjust as needed
-            self.pstart(task=task, total=total_steps, meta={"run_id": run_id})
+            self.pstart(task=task, total=len(self.seeds), meta={"run_id": run_id})
 
-            stats = await trainer.run_batch(seeds=self.seeds, context=context)
+            # Train step (parallel per-seed)
+            stats = await self._algorithm.train_step(seed_answers=self.seeds, context=context)
 
+            # Mark progress done
             self.pstage(task=task, stage="complete")
             self.pdone(task=task)
 
-            _logger.info("== Summary ==\n%s", stats)
+            _logger.info("== SSP Summary ==\n%s", stats)
 
-            # Attach the result to the context under the standard key
-            context[self.output_key] = stats
-
+            # Attach under standard output key for downstream pipeline stages
+            context[self.output_key] = {
+                "stats": stats,
+                "metrics": self._algorithm.get_metrics().__dict__,
+            }
             return context
 
         except Exception as e:
-            # Critical failure; log details and re-raise
             error_msg = f"SSP step failed for run_id={run_id}: {str(e)}"
-            _logger.exception(error_msg)  # Also logs traceback at ERROR level
+            _logger.exception(error_msg)
             raise RuntimeError(error_msg) from e

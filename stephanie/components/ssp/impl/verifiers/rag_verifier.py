@@ -1,203 +1,290 @@
-"""
-RAG-Gated Verifier Implementation
-
-This implementation performs the critical RAG-gated verification step
-from the SSP paper:
-1. Applies rule-based filters to the question
-2. Runs verification using the solver in NO-SEARCH mode with proposer's evidence
-3. Determines if the question should be accepted for deep search
-"""
+# stephanie/components/ssp/impl/verifiers/rag_verifier.py
+from __future__ import annotations
 
 import asyncio
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.components.ssp.core.roles import Verifier
-from stephanie.components.ssp.core.protocols import EpisodeContext, VerificationResult
-from stephanie.components.ssp.utils.filters import (
-    check_question_length,
-    check_answer_leakage,
-    check_evidence_usage,
-    check_tool_usage,
-    check_format
-)
+try:
+    # Optional: integrate with your protocol dataclass
+    from stephanie.components.ssp.core.protocols import VerificationResult
+except Exception:  # pragma: no cover
+    VerificationResult = None  # type: ignore
 
 
-class RAGVerifier(Verifier):
+class RAGVerifier:
     """
-    Verifier implementation that performs RAG-gated verification.
-    
-    This implements the paper's verification process:
-    1. Apply rule-based filters
-    2. Run verification using Solver with ONLY proposer's evidence
-    3. Determine if question should be accepted
+    Adversarial verifier (paper-style judge):
+    Compares Proposer's SEED_ANSWER (A) vs Solver's predicted answer (B),
+    judged by one or more LLMs using a strict 3-line output format.
+
+    Primary API (paper-style):
+        verify(question, seed_answer, predicted_answer, evidence, context)
+          -> (solver_wins: bool, score_1_to_100: float, details: Dict)
+
+    Optional adapter (protocol-friendly):
+        verify_as_result(...) -> VerificationResult
     """
-    
-    def __init__(
-        self,
-        cfg: Dict[str, Any],
-        memory: Any,
-        container: Any,
-        logger: Any = None,
-        solver: Any = None
-    ):
-        """
-        Initialize the RAGVerifier.
-        
-        Args:
-            cfg: Configuration dictionary
-            memory: Memory tool
-            container: Dependency container
-            logger: Logger instance
-            solver: Optional pre-configured Solver instance
-        """
-        self.cfg = cfg
-        self.memory = memory
+
+    _WIN_RE  = re.compile(r"^\s*winner\s*:\s*([ab])\s*$", re.IGNORECASE | re.MULTILINE)
+    _CONF_RE = re.compile(r"^\s*confidence\s*:\s*([\d]+(?:\.\d+)?)\s*$", re.IGNORECASE | re.MULTILINE)
+    _RAT_RE  = re.compile(r"^\s*rationale\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+
+    def __init__(self, container, logger, memory, cfg: Optional[Dict[str, Any]] = None):
         self.container = container
         self.logger = logger
-        self.solver = solver or container.get("solver")
-        
-        if not self.solver:
-            raise ValueError("Solver is required for verification")
-        
-        # Configuration parameters
-        self.min_question_len = cfg.get("verify", {}).get("min_question_len", 20)
-        self.forbid_answer_leak = cfg.get("verify", {}).get("forbid_answer_leak", True)
-        self.min_evidence_count = cfg.get("verify", {}).get("min_evidence_count", 1)
-        self.pass_threshold = cfg.get("verify", {}).get("pass_threshold", 0.75)
-    
-    def apply_filters(
-        self,
-        question: str,
-        evidence_snippets: List[str],
-        seed_answer: str
-    ) -> Tuple[bool, List[str]]:
-        """
-        Apply rule-based filters to a question.
-        
-        Args:
-            question: Question to filter
-            evidence_snippets: Evidence gathered by the Proposer
-            seed_answer: Ground truth answer
-            
-        Returns:
-            Tuple of (is_valid, list_of_failed_rules)
-        """
-        failed_rules = []
-        
-        # Check question length
-        if not check_question_length(question, self.min_question_len):
-            failed_rules.append(f"question_too_short (< {self.min_question_len} chars)")
-        
-        # Check for answer leakage
-        if self.forbid_answer_leak and check_answer_leakage(question, seed_answer):
-            failed_rules.append("answer_leakage_detected")
-        
-        # Check evidence usage
-        if not check_evidence_usage(evidence_snippets, self.min_evidence_count):
-            failed_rules.append(f"insufficient_evidence (< {self.min_evidence_count})")
-        
-        # Check tool usage (evidence must come from search)
-        if not check_tool_usage(evidence_snippets):
-            failed_rules.append("no_tool_usage_detected")
-        
-        # Check format
-        if not check_format(question):
-            failed_rules.append("invalid_format")
-        
-        return len(failed_rules) == 0, failed_rules
-    
+        self.memory = memory
+        self.cfg = cfg or {}
+        self.prompt_service = container.get("prompt")
+
+        vcfg = self.cfg.get("verifier", self.cfg) or {}
+        # Models used to judge A vs B
+        self.judge_models: List[Any] = list(vcfg.get("judge_models", ["ollama/qwen3"]))
+        self.max_evidence: int = int(vcfg.get("max_evidence", 5))
+        self.auto_win_on_exact_match: bool = bool(vcfg.get("auto_win_on_exact_match", True))
+
+    # --------------------------- public API ---------------------------
+
     async def verify(
         self,
         question: str,
         seed_answer: str,
-        evidence_snippets: List[str],
-        context: Optional[EpisodeContext] = None
-    ) -> VerificationResult:
+        predicted_answer: str,
+        evidence: List[str],
+        context: Dict[str, Any],
+    ) -> Tuple[bool, float, Dict[str, Any]]:
         """
-        Verify a question meets all criteria for deep search.
-        
-        This implements the paper's RAG-gated verification:
-        1. Apply rule-based filters
-        2. Run verification using Solver with ONLY proposer's evidence
-        3. Determine if question should be accepted
-        
-        Args:
-            question: Question to verify
-            seed_answer: Ground truth answer
-            evidence_snippets: Evidence gathered by the Proposer
-            context: Additional context for verification
-            
+        Run an adversarial judgment between two answers.
+
         Returns:
-            VerificationResult object with verification outcome
+            (solver_wins, confidence_1_to_100, details)
         """
-        # 1. Apply rule-based filters
-        filters_valid, failed_rules = self.apply_filters(
-            question, 
-            evidence_snippets,
-            seed_answer
-        )
-        
-        if not filters_valid:
-            return VerificationResult(
-                is_valid=False,
-                score=0.0,
-                reason=f"Failed rule-based filters: {', '.join(failed_rules)}",
-                filter_results={rule.split('(')[0]: False for rule in failed_rules},
-                verification_details={"failed_rules": failed_rules}
-            )
-        
-        # 2. Run RAG-gated verification (solver with no search)
-        verification_result = await self.solver.verify_answer(
-            question,
-            seed_answer,
-            evidence_snippets
-        )
-        
-        # 3. Determine if question should be accepted
-        is_valid = verification_result.is_valid
-        
-        return VerificationResult(
-            is_valid=is_valid,
-            score=verification_result.score,
-            reason=verification_result.reason,
-            filter_results={rule.split('(')[0]: True for rule in failed_rules} if filters_valid else 
-                         {rule.split('(')[0]: False for rule in failed_rules},
-            verification_details=verification_result.verification_details
-        )
-    
-    def get_filter_rules(self) -> List[Dict[str, Any]]:
-        """Return the current filter rules configuration."""
-        return [
-            {
-                "name": "question_length",
-                "description": f"Question must be at least {self.min_question_len} characters",
-                "enabled": True,
-                "min_length": self.min_question_len
-            },
-            {
-                "name": "answer_leakage",
-                "description": "Question must not contain the seed answer",
-                "enabled": self.forbid_answer_leak
-            },
-            {
-                "name": "evidence_usage",
-                "description": f"Must have at least {self.min_evidence_count} evidence snippets",
-                "enabled": True,
-                "min_count": self.min_evidence_count
-            },
-            {
-                "name": "tool_usage",
-                "description": "Evidence must come from search tool usage",
-                "enabled": True
-            },
-            {
-                "name": "format",
-                "description": "Question must be properly formatted",
-                "enabled": True
+        # Guard: no prediction → proposer wins by default with low confidence
+        if not predicted_answer or not str(predicted_answer).strip():
+            return False, 0.0, {"winner": "A", "reason": "empty_prediction"}
+
+        # Optional fast-path: exact match
+        if self.auto_win_on_exact_match and str(predicted_answer).strip() == str(seed_answer).strip():
+            details = {
+                "winner": "B",
+                "votes": {"A": 0, "B": 1},
+                "confidences": {"exact_match": 100.0},
+                "avg_confidence": 100.0,
+                "rationales": {"exact_match": "Predicted answer equals the ground truth seed."},
+                "raw_outputs": {"exact_match": "rationale: identical\nwinner: B\nconfidence: 100"},
+                "models": ["exact_match"],
+                "evidence_used": min(len(evidence), self.max_evidence),
             }
-        ]
-    
-    def get_verification_threshold(self) -> float:
-        """Return the current verification score threshold."""
-        return self.pass_threshold
+            return True, 100.0, details
+
+        prompt = self._build_prompt(
+            question=question,
+            seed_answer=seed_answer,
+            predicted_answer=predicted_answer,
+            evidence_subset=evidence[: self.max_evidence],
+        )
+
+        try:
+            # Prefer multi-model competition so PromptService can log pairwise/pointwise training events
+            if hasattr(self.prompt_service, "run_prompt_multi"):
+                # Supply a judge callback so TrainingEventStore logs labels & pairs
+                raw = await self.prompt_service.run_prompt_multi(
+                    prompt_text=prompt,
+                    models=self.judge_models,
+                    judge=self._judge_callback,  # <— enables TrainingEventStore logging
+                    context=context,
+                    dimension="answer_quality",
+                    goal_id=(context or {}).get("goal_id"),
+                    pipeline_run_id=(context or {}).get("pipeline_run_id"),
+                    agent_name="rag-verifier",
+                )
+                # run_prompt_multi returns {"outputs": {model: text}, "winner": key|None, "scores": {key: score}}
+                outputs: Dict[str, str] = raw.get("outputs", {}) if isinstance(raw, dict) else {}
+            else:
+                # Fallback: ask each judge independently
+                async def ask(model: Any) -> Tuple[str, str]:
+                    out = await self.prompt_service.run_prompt(
+                        prompt_text=prompt,
+                        context={**(context or {}), "judge_model": (getattr(model, "name", None) or model)},
+                        model=(model if isinstance(model, (str, dict)) else None),
+                    )
+                    key = getattr(model, "name", None) or str(model)
+                    return key, out
+
+                pairs = await asyncio.gather(*[ask(m) for m in self.judge_models])
+                outputs = {m: out for (m, out) in pairs}
+
+            # Parse each judge’s 3-line verdict
+            winners: Dict[str, str] = {}
+            confidences: Dict[str, float] = {}
+            rationales: Dict[str, str] = {}
+            for model_key, txt in outputs.items():
+                w, c, r = self._parse_single_judgment(str(txt))
+                if w is None:
+                    w, c, r = "A", 50.0, r or "unparsed"
+                winners[model_key] = w
+                confidences[model_key] = c
+                rationales[model_key] = r
+
+            # Aggregate decision (majority vote; tie -> higher avg confidence)
+            a_votes = sum(1 for w in winners.values() if w.upper() == "A")
+            b_votes = sum(1 for w in winners.values() if w.upper() == "B")
+            avg_conf = sum(confidences.values()) / max(len(confidences), 1)
+
+            if b_votes > a_votes:
+                winner = "B"
+            elif a_votes > b_votes:
+                winner = "A"
+            else:
+                avg_b = self._avg_conf_for(winners, confidences, "B")
+                avg_a = self._avg_conf_for(winners, confidences, "A")
+                winner = "B" if avg_b > avg_a else "A"
+
+            solver_wins = (winner.upper() == "B")
+            score_1_to_100 = float(max(0.0, min(100.0, avg_conf)))
+
+            details = {
+                "winner": winner,
+                "votes": {"A": a_votes, "B": b_votes},
+                "confidences": confidences,
+                "avg_confidence": score_1_to_100,
+                "rationales": rationales,
+                "raw_outputs": outputs,
+                "models": [getattr(m, "name", m) for m in self.judge_models],
+                "evidence_used": min(len(evidence), self.max_evidence),
+            }
+            return solver_wins, score_1_to_100, details
+
+        except Exception as e:
+            self.logger.error("RAGVerifier exception", extra={"error": str(e)})
+            return False, 0.0, {"error": str(e), "winner": "A", "reason": "exception"}
+
+    # -------- Optional adapter to your VerificationResult dataclass --------
+
+    async def verify_as_result(
+        self,
+        question: str,
+        seed_answer: str,
+        predicted_answer: str,
+        evidence: List[str],
+        context: Dict[str, Any],
+    ):
+        """
+        Same as `verify`, but returns a VerificationResult (if available).
+        Useful when the rest of the pipeline expects the protocol object.
+        """
+        ok, score, details = await self.verify(
+            question=question,
+            seed_answer=seed_answer,
+            predicted_answer=predicted_answer,
+            evidence=evidence,
+            context=context,
+        )
+        if VerificationResult is None:  # Protocol class not available
+            return {
+                "is_valid": ok,
+                "score": score,
+                "reason": details.get("winner", "A"),
+                "filter_results": {},
+                "verification_details": details,
+            }
+        return VerificationResult(
+            is_valid=ok,
+            score=score,
+            reason=details.get("winner", "A"),
+            filter_results={},
+            verification_details=details,
+        )
+
+    # --------------------------- internals ---------------------------
+
+    def _build_prompt(
+        self,
+        question: str,
+        seed_answer: str,
+        predicted_answer: str,
+        evidence_subset: List[str],
+    ) -> str:
+        ev = "\n".join(f"- {e}" for e in evidence_subset)
+        return (
+            "You are a fair and rigorous judge. Two AIs answered the same question.\n"
+            "Decide which answer is better based on factual accuracy, clarity, and support from the EVIDENCE.\n\n"
+            f"Question:\n{question}\n\n"
+            f"EVIDENCE:\n{ev}\n\n"
+            "---\nAnswer A (Proposer's Seed Answer):\n"
+            f"{seed_answer}\n\n"
+            "---\nAnswer B (Solver's Predicted Answer):\n"
+            f"{predicted_answer}\n\n"
+            "OUTPUT FORMAT — EXACTLY THREE LINES (no extra text):\n"
+            "rationale: <1–2 sentences explaining the decision>\n"
+            "winner: A | B\n"
+            "confidence: <1–100>\n"
+        )
+
+    def _parse_single_judgment(self, text: str) -> Tuple[Optional[str], float, str]:
+        """Parse one model's output into (winner 'A'/'B'/None, confidence(1..100), rationale)."""
+        winner: Optional[str] = None
+        conf: float = 50.0
+        rat: str = ""
+
+        m_w = self._WIN_RE.search(text or "")
+        if m_w:
+            w = m_w.group(1).upper()
+            if w in ("A", "B"):
+                winner = w
+
+        m_c = self._CONF_RE.search(text or "")
+        if m_c:
+            try:
+                conf = float(m_c.group(1))
+                conf = max(0.0, min(100.0, conf))
+            except Exception:
+                conf = 50.0
+
+        m_r = self._RAT_RE.search(text or "")
+        if m_r:
+            rat = m_r.group(1).strip()
+
+        return winner, conf, rat
+
+    @staticmethod
+    def _avg_conf_for(winners: Dict[str, str], confidences: Dict[str, float], label: str) -> float:
+        vals = [confidences[m] for m, w in winners.items() if w.upper() == label.upper()]
+        return sum(vals) / len(vals) if vals else 0.0
+
+    # --------------------------- judge callback ---------------------------
+
+    def _judge_callback(self, outputs: Dict[str, str]) -> Tuple[Optional[str], Dict[str, float]]:
+        """
+        Judge callback passed to PromptService.run_prompt_multi so it can:
+          - pick a winner key
+          - emit pointwise/pairwise training events using the returned scores
+        Returns: (winner_key or None, {model_key: score_0_1})
+        We convert 1..100 confidences to 0..1 for the TrainingEventStore's trust field.
+        """
+        winners: Dict[str, str] = {}
+        confidences: Dict[str, float] = {}
+        for key, txt in outputs.items():
+            w, c, _ = self._parse_single_judgment(txt or "")
+            if w is None:
+                w, c = "A", 50.0
+            winners[key] = w
+            confidences[key] = c
+
+        # Decide winner (majority; tie → higher avg confidence; if still tie → first key)
+        a_votes = sum(1 for w in winners.values() if w.upper() == "A")
+        b_votes = sum(1 for w in winners.values() if w.upper() == "B")
+        if b_votes > a_votes:
+            winner_key = next((k for k, w in winners.items() if w.upper() == "B"), None)
+        elif a_votes > b_votes:
+            winner_key = next((k for k, w in winners.items() if w.upper() == "A"), None)
+        else:
+            # tie → pick the side with higher mean confidence; if perfect tie, pick first model deterministically
+            avg_b = self._avg_conf_for(winners, confidences, "B")
+            avg_a = self._avg_conf_for(winners, confidences, "A")
+            target = "B" if avg_b > avg_a else "A"
+            winner_key = next((k for k, w in winners.items() if w.upper() == target), next(iter(outputs.keys()), None))
+
+        # Convert confidences from 1..100 → 0..1 for trust
+        scores_0_1 = {k: max(0.0, min(1.0, c / 100.0)) for k, c in confidences.items()}
+        return winner_key, scores_0_1

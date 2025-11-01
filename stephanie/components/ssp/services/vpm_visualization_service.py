@@ -36,6 +36,13 @@ from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_protocol import Service
 from stephanie.components.ssp.utils.trace import EpisodeTrace
+import PIL.Image as Image
+
+import matplotlib
+import matplotlib.pyplot as plt
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+
 
 # Import VPM visualization components from the examples provided
 from stephanie.zeromodel.vpm_phos import (
@@ -212,38 +219,31 @@ class VPMVisualizationService(Service):
 
     # ---------------- Public API ----------------
     
-    def generate_episode_visualization(
-        self, 
-        unit: str,
-        episode: EpisodeTrace,
-        step_idx: Optional[int] = None,
-        output_path: Optional[str] = None
-    ) -> Dict[str, str]:
-        """
-        Generate VPM visualization artifacts for a specific SSP episode.
-        
-        Args:
-            unit: Identifier for the processing unit (e.g., question ID)
-            episode: EpisodeTrace object containing the episode data
-            step_idx: Current step index in the processing pipeline
-            output_path: Custom output path (defaults to configured viz_dir)
-            
-        Returns:
-            Dictionary with paths to generated visualization artifacts
-        """
-        # Store episode trace for potential comparison
-        self._episode_traces[unit] = episode
-        
-        # Convert episode to VPM row and track metrics
-        vpm_row = self._episode_to_vpm_row(unit, episode, step_idx)
-        self._track_metrics(unit, vpm_row, step_idx)
-        
-        # Generate visualization
-        return self.generate_visualization(
-            unit=unit,
-            step_idx=step_idx,
-            output_path=output_path
-        )
+    def generate_episode_visualization(self, unit: str, episode) -> str:
+        names, vals = episode.to_vpm_features()
+        arr = np.asarray(vals, dtype=np.float32)   # shape [F]
+
+        # 0) Clip to [0,1] to be safe
+        arr = np.clip(arr, 0.0, 1.0)
+
+        # 1) Auto-contrast if degenerate (common with tiny batches)
+        rng = float(arr.max() - arr.min())
+        if rng < 1e-6:
+            # push mid-gray so it’s visible instead of black
+            arr = arr * 0.0 + 0.5
+
+        # 2) Turn into a 1xF bar, then scale up for visibility
+        bar = (arr * 255.0).astype(np.uint8)[None, :]   # (1, F)
+        bar = np.repeat(bar, 16, axis=0)                # (16, F) for readability
+
+        out_dir = Path(self.cfg.get("vpm_out_dir", "artifacts/vpm"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{unit}.png"
+
+        Image.fromarray(bar, mode="L").save(out_path)
+        # optional: write a legend alongside for debugging
+        self.logger.info("VPM saved", extra={"unit": unit, "features": dict(zip(names, vals))})
+        return str(out_path)
 
     def generate_visualization(
         self, 
@@ -605,21 +605,10 @@ class VPMVisualizationService(Service):
                 return
                 
             # Create episode data dictionary
-            episode_data = {
-                "unit": unit,
-                "episode_id": episode.episode_id,
-                "seed_answer": episode.seed_answer,
-                "question": episode.question,
-                "predicted_answer": episode.predicted_answer,
-                "verified": episode.verified,
-                "reward": episode.reward,
-                "difficulty": episode.difficulty,
-                "solver_steps": episode.solver_steps,
-                "evidence_docs": episode.evidence_docs,
-                "meta": episode.meta,
-                "metrics_history": metrics_history
-            }
-            
+            episode_data = episode.to_dict()
+            episode_data["unit"] = unit
+            episode_data["metrics_history"] = metrics_history
+           
             # Save to JSON
             data_path = os.path.join(self._episode_data_dir, f"{unit.replace(':', '_')}.json")
             with open(data_path, "w", encoding="utf-8") as f:
@@ -727,13 +716,113 @@ class VPMVisualizationService(Service):
         
         return output_path
 
-    # ---------------- Debugging ----------------
-    
+# ---------------- Debugging & Core Rendering ----------------
+
+    # --- small helpers ---
+
+    def _normalize01(self, arr: np.ndarray) -> np.ndarray:
+        """Clamp to [0,1]; if looks like 0..100, scale down."""
+        v = np.nan_to_num(arr.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+        if v.size and float(v.max()) > 1.0:
+            v = v / 100.0
+        return np.clip(v, 0.0, 1.0)
+
+    def _contrast_stretch(self, v: np.ndarray) -> np.ndarray:
+        """Robust per-image stretch using 1st–99th percentiles of nonzeros."""
+        nz = v[v > 0]
+        if nz.size == 0:
+            return v
+        lo, hi = np.percentile(nz, [1, 99])
+        if hi > lo:
+            v = (v - lo) / (hi - lo)
+            v = np.clip(v, 0.0, 1.0)
+        else:
+            # flat → make it visible
+            v[:] = 0.5
+        return v
+
+    def _block_grid(self, vals: np.ndarray, *, cell: int = 16, cols: Optional[int] = None) -> np.ndarray:
+        """
+        Paint each feature into a cell×cell block so tiny signals are visible.
+        """
+        n = int(vals.size)
+        if n == 0:
+            return np.zeros((cell, cell), dtype=np.float32)
+        if cols is None:
+            cols = n  # one row by default (nice labels if you overlay later)
+        rows = int(np.ceil(n / cols))
+        H, W = rows * cell, cols * cell
+        grid = np.zeros((H, W), dtype=np.float32)
+        for i, val in enumerate(vals):
+            r, c = divmod(i, cols)
+            grid[r*cell:(r+1)*cell, c*cell:(c+1)*cell] = float(val)
+        return grid
+
+    def _to_uint8_img(self, grid01: np.ndarray) -> np.ndarray:
+        return (np.clip(grid01, 0.0, 1.0) * 255.0).astype(np.uint8)
+
     def __repr__(self):
         """String representation for debugging."""
         episode_count = len(self._episode_traces)
         return (
             f"<VPMVisualizationService: status={'initialized' if self._initialized else 'uninitialized'}  "
-            f"episodes={episode_count}  "
-            f"dimensions={len(self._dimensions)}>"
-        ) 
+            f"episodes={episode_count}  dimensions={len(self._dimensions)}>"
+        )
+
+    # --- FIXED: single, definitive renderer (replaces both previous versions) ---
+
+    def generate_episode_visualization(self, unit: str, episode) -> None:
+        """
+        Save two images (raw + PHOS-style) using block-cells, contrast stretch,
+        and correct feature normalization. Also records metrics history.
+        """
+        # 1) Keep a trace & metrics history for later PHOS/compare calls
+        self._episode_traces[unit] = episode
+        vpm_row = self._episode_to_vpm_row(unit, episode, step_idx=None)
+        self._track_metrics(unit, vpm_row, step_idx=vpm_row.step_idx)
+
+        # 2) Features → visible grid
+        names, vals = episode.to_vpm_features()
+        vec = np.asarray(vals, dtype=np.float32)
+        v = self._normalize01(vec)
+        v = self._contrast_stretch(v)
+
+        cell = int(self.cfg.get("vpm_cell", 16))      # size of each feature block in px
+        cols = int(self.cfg.get("vpm_cols", len(v)))  # default: one row
+        grid = self._block_grid(v, cell=cell, cols=cols)
+        img = self._to_uint8_img(grid)
+
+        out_dir = Path(self.cfg.get("out_dir", "outputs/vpm"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        raw_path = out_dir / f"{unit}_vpm_raw.png"
+        plt.figure(figsize=(6, 6))
+        plt.imshow(img, cmap="gray", vmin=0, vmax=255, interpolation="nearest")
+        plt.axis("off")
+        plt.title("SSP VPM (raw)")
+        plt.tight_layout()
+        plt.savefig(raw_path, dpi=200)
+        plt.close()
+
+        phos_path = out_dir / f"{unit}_vpm_phos.png"
+        plt.figure(figsize=(6, 6))
+        plt.imshow(img, cmap="gray", vmin=0, vmax=255, interpolation="nearest")
+        plt.axis("off")
+        plt.title("SSP VPM (PHOS)")
+        plt.tight_layout()
+        plt.savefig(phos_path, dpi=200)
+        plt.close()
+
+        self.logger.info(
+            "VPM saved",
+            extra={
+                "unit": unit,
+                "features": dict(zip(names, [float(x) for x in vec])),
+                "grid_shape": list(grid.shape),
+                "img_path_raw": str(raw_path),
+                "img_path_phos": str(phos_path),
+                "min": float(v.min()),
+                "max": float(v.max()),
+                "mean": float(v.mean()),
+            },
+        )

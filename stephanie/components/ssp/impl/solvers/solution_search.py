@@ -96,7 +96,7 @@ class SolutionSearch:
         self.cfg = cfg or {}
         self.memory = memory
         self.container = container
-        self.logger = logger or _logger
+        self.logger = logger
         self.events = event_emitter
 
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)

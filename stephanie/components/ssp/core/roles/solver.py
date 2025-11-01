@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.components.ssp.core.protocols import EpisodeContext
+from stephanie.components.ssp.core.protocols import VerificationResult
 
 
 class Solver(ABC):

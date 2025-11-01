@@ -2,159 +2,141 @@
 """
 Main SSP (Self-Play System) Algorithm
 
-This module implements the complete SSP algorithm as described in the paper,
-coordinating the interaction between Proposer, Solver, and Verifier components.
+Implements the complete SSP loop (paper-aligned):
+1) Proposer generates a question (optionally with evidence)
+2) Solver answers the question with search
+3) RAGVerifier adjudicates Proposer's seed (A) vs Solver's answer (B)
+4) Rewards are computed and attached
+5) (Optional) VPM visualization
+
+This version expects a RAG-style verifier with:
+  verify(question, seed_answer, predicted_answer, evidence_docs, context)
+    -> (solver_wins: bool, score_1_to_100: float, details: dict)
 """
 from __future__ import annotations
 
 import asyncio
 import time
-import datetime
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+import numpy as np
 
-from stephanie.components.ssp.core.roles.proposer import Proposer 
-from stephanie.components.ssp.core.roles.solver import Solver 
+from stephanie.components.ssp.core.roles.proposer import Proposer
+from stephanie.components.ssp.core.roles.solver import Solver
 from stephanie.components.ssp.core.roles.verifier import Verifier
 
 from stephanie.components.ssp.core.protocols import EpisodeContext, SSPMetrics
 from stephanie.components.ssp.utils.trace import EpisodeTrace
 from stephanie.components.ssp.training.rewards import (
     calculate_self_play_rewards,
-    update_episode_with_rewards
+    update_episode_with_rewards,
 )
-from stephanie.components.ssp.services.vpm_visualization_service import VPMVisualizationService
+from stephanie.components.ssp.services.vpm_visualization_service import (
+    VPMVisualizationService,
+)
 
+import logging
+_logger = logging.getLogger(__name__)
 
 class SSPAlgorithm:
     """
-    Implementation of the SSP algorithm that coordinates the interaction
-    between Proposer, Solver, and Verifier components.
-    
-    This implements the full SSP loop:
-    1. Proposer generates a question from a seed answer WITH EVIDENCE GATHERING
-    2. Verifier applies rule-based filters and RAG-gated verification
-    3. If verified, Solver performs deep search to answer the question
-    4. Rewards are calculated for both Proposer and Solver
-    5. Components may be updated based on the rewards
+    Paper-aligned SSP orchestrator (A vs B adjudication happens AFTER solving).
     """
-    
+
     def __init__(
         self,
         proposer: Proposer,
         solver: Solver,
         verifier: Verifier,
         vpm_visualization: Optional[VPMVisualizationService] = None,
-        **kwargs
+        **kwargs: Any,
     ):
-        """
-        Initialize the SSP algorithm with concrete component implementations.
-        
-        Args:
-            proposer: Proposer implementation
-            solver: Solver implementation
-            verifier: Verifier implementation
-            vpm_visualization: VPM visualization service
-            **kwargs: Additional configuration parameters
-        """
         self.proposer = proposer
         self.solver = solver
         self.verifier = verifier
         self.vpm_visualization = vpm_visualization
         self.metrics = SSPMetrics()
-        self.episode_history = []
-    
+        self.episode_history: List[EpisodeTrace] = []
+
+    # ------------------------- public API -------------------------
+
     async def run_episode(
         self,
         seed_answer: str,
-        context: Optional[EpisodeContext] = None
+        context: Optional[EpisodeContext] = None,
     ) -> EpisodeTrace:
         """
-        Run a single SSP episode starting from a seed answer.
-        
-        Args:
-            seed_answer: Ground truth answer to build a question around
-            context: Additional context for the episode
-            
-        Returns:
-            EpisodeTrace containing the full episode data
+        Run one SSP episode from a SEED_ANSWER.
+        Returns a fully populated EpisodeTrace (with rewards attached if verified).
         """
+        ctx = context or {}
         episode_id = f"ssp-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
-        start_time = time.time()
-        
+        t0 = time.time()
+
         try:
-            # 1. Proposer generates question WITH EVIDENCE GATHERING
-            question, proposer_evidence, proposer_meta = await self.proposer.propose(
-                seed_answer, 
-                context=context
-            )
-            
-            # 2. Verifier applies rule-based filters and RAG-gated verification
-            verification_result = await self.verifier.verify(
-                question,
-                seed_answer,
-                proposer_evidence,
-                context=context
-            )
-            
-            # 3. If verified, Solver performs deep search
-            predicted_answer = ""
-            evidence_docs = []
-            solver_steps = 0
-            solver_meta = {}
-            
-            if verification_result.is_valid:
-                predicted_answer, evidence_docs, solver_steps, solver_meta = await self.solver.solve(
-                    question,
-                    seed_answer,
-                    context=context,
-                    use_search=True
-                )
-            
-            # 4. Create episode trace
-            episode = EpisodeTrace(
+            # 1) Proposer: produce a question (and, if available, proposer_evidence)
+            # Expected: (question, proposer_evidence, proposer_meta)
+            q, prop_evidence, prop_meta = await self._call_proposer(seed_answer, ctx)
+
+            # 2) Solver: answer with search (returns predicted_answer + evidence_docs)
+            pred, evidence_docs, solver_steps, solver_meta = await self._call_solver(q, seed_answer, ctx)
+
+            # 3) Verifier (adversarial A vs B, RAG-style): did solver beat the seed?
+            solver_wins, judge_score, judge_details = await self._call_verifier(q, seed_answer, pred, evidence_docs, ctx)
+
+            # 4) Build episode
+            ep = EpisodeTrace(
                 episode_id=episode_id,
                 seed_answer=seed_answer,
-                question=question,
-                proposer_evidence=proposer_evidence,
-                predicted_answer=predicted_answer,
+                question=q,
+                proposer_evidence=prop_evidence,
+                predicted_answer=pred,
                 evidence_docs=evidence_docs,
-                verified=verification_result.is_valid,
-                verifier_score=verification_result.score,
-                solver_steps=solver_steps,
-                difficulty=proposer_meta.get("difficulty", 0.5),
-                proposer_meta=proposer_meta,
-                verifier_meta={
-                    "reason": verification_result.reason,
-                    "filter_results": verification_result.filter_results,
-                    **verification_result.verification_details
-                },
-                solver_meta=solver_meta
+                verified=bool(solver_wins),
+                verifier_score=float(judge_score),
+                solver_steps=int(solver_steps),
+                difficulty=float(prop_meta.get("difficulty", 0.5)),
+                proposer_meta=prop_meta,
+                verifier_meta=judge_details,
+                solver_meta=solver_meta,
+                timestamp=datetime.now(),
+                episode_duration=time.time() - t0,
             )
-            
-            # 5. Calculate rewards
-            self._calculate_and_apply_rewards([episode], 0)
-            
-            # 6. Update metrics
-            self._update_metrics(episode)
-            
-            # 7. Generate VPM visualization if service is available
+
+            names, vals = ep.to_vpm_features()
+            _logger.info("VPM features: %s", dict(zip(names, [round(x,4) for x in vals])))
+            arr = np.clip(np.asarray(vals, np.float32), 0.0, 1.0)
+            _logger.info("VPM vector", extra={"features": dict(zip(names, vals)),
+                                                "min": float(arr.min()), "max": float(arr.max())})
+
+            # 5) Rewards: compute on verified only (paper’s game signal)
+            if ep.verified:
+                self._calculate_and_apply_rewards([ep], unverified_count=0)
+
+            # 6) Metrics + history
+            self._update_metrics(ep)
+            self.episode_history.append(ep)
+
+            # 7) VPM visualization (optional)
             if self.vpm_visualization:
-                self.vpm_visualization.generate_episode_visualization(
-                    unit=episode_id,
-                    episode=episode
-                )
-            
-            # 8. Record episode duration
-            episode.episode_duration = time.time() - start_time
-            
-            return episode
-            
+                try:
+                    self.vpm_visualization.generate_episode_visualization(
+                        unit=episode_id,
+                        episode=ep,
+                    )
+                except Exception:
+                    # Keep the loop resilient
+                    pass
+
+            return ep
+
         except Exception as e:
+            # Count the episode, update pass rate, and emit a safe trace
             self.metrics.total_episodes += 1
-            self.metrics.verification_pass_rate = self.metrics.verified_episodes / max(self.metrics.total_episodes, 1)
-            
-            # Return error episode
+            self.metrics.verification_pass_rate = (
+                self.metrics.verified_episodes / max(self.metrics.total_episodes, 1)
+            )
             return EpisodeTrace(
                 episode_id=episode_id,
                 seed_answer=seed_answer,
@@ -168,143 +150,154 @@ class SSPAlgorithm:
                 difficulty=0.0,
                 proposer_meta={"error": str(e)},
                 verifier_meta={"error": str(e)},
-                solver_meta={"error": str(e)}
+                solver_meta={"error": str(e)},
+                timestamp=datetime.now(),
+                episode_duration=time.time() - t0,
             )
-    
+
     async def train_step(
         self,
         seed_answers: List[str],
-        context: Optional[EpisodeContext] = None
+        context: Optional[EpisodeContext] = None,
     ) -> Dict[str, Any]:
         """
-        Run a training step with multiple seed answers.
-        
-        Args:
-            seed_answers: List of ground truth answers to process
-            context: Additional context for the training step
-            
-        Returns:
-            Dictionary of training metrics and results
+        Run multiple episodes in parallel (one per seed), then compute summary rewards/metrics.
         """
-        verified_episodes = []
-        unverified_count = 0
-        
-        # Run episodes in parallel
-        tasks = [self.run_episode(seed, context) for seed in seed_answers]
-        episodes = await asyncio.gather(*tasks)
-        
-        # Process results
-        for episode in episodes:
-            if episode.verified:
-                verified_episodes.append(episode)
-            else:
-                unverified_count += 1
-        
-        # Calculate rewards
-        rewards = calculate_self_play_rewards(verified_episodes, unverified_count)
-        
-        # Store episodes for potential training updates
+        ctx = context or {}
+        tasks = [self.run_episode(seed, ctx) for seed in seed_answers]
+        episodes: List[EpisodeTrace] = await asyncio.gather(*tasks)
+
+        verified = [ep for ep in episodes if ep.verified]
+        unverified = len(episodes) - len(verified)
+
+        # Rewards summary across verified episodes (for reporting)
+        rewards = calculate_self_play_rewards(verified, unverified)
+
+        # Keep for future analysis / training
         self.episode_history.extend(episodes)
-        
-        # Return metrics
+
         return {
             **rewards,
             "total_episodes": len(episodes),
-            "verified_count": len(verified_episodes),
-            "unverified_count": unverified_count,
-            "metrics": self.get_metrics().__dict__
+            "verified_count": len(verified),
+            "unverified_count": unverified,
+            "metrics": self.get_metrics().__dict__,
         }
-    
-    def _calculate_and_apply_rewards(
+
+    def get_metrics(self) -> SSPMetrics:
+        return self.metrics
+
+    def reset(self) -> None:
+        self.metrics = SSPMetrics()
+        self.episode_history.clear()
+
+    def is_initialized(self) -> bool:
+        return all([self.proposer is not None, self.solver is not None, self.verifier is not None])
+
+    # ------------------------- internals -------------------------
+
+    async def _call_proposer(self, seed_answer: str, ctx: EpisodeContext):
+        out = await self.proposer.propose(seed_answer, context=ctx)
+        # Backward compatibility: handle (question, meta) form
+        if isinstance(out, tuple) and len(out) == 3:
+            return out  # (question, proposer_evidence, proposer_meta)
+        elif isinstance(out, tuple) and len(out) == 2:
+            q, meta = out
+            evid = meta.get("evidence_snippets", []) if isinstance(meta, dict) else []
+            return q, evid, (meta or {})
+        else:
+            # Extreme fallback
+            return str(out), [], {}
+
+    async def _call_solver(self, question: str, seed_answer: str, ctx: EpisodeContext):
+        """
+        Expected solver API:
+          solve(question, seed_answer, context, use_search=True)
+            -> predicted_answer, evidence_docs, solver_steps, solver_meta
+        """
+        out = await self.solver.solve(question, seed_answer, context=ctx)
+        # Backward compatibility for (pred, evid, steps)
+        if isinstance(out, tuple) and len(out) == 4:
+            return out 
+        elif isinstance(out, tuple) and len(out) == 3:
+            pred, evid, steps = out
+            return pred, evid, steps, {}
+        # Worst case: only answer came back
+        return str(out), [], 0, {}
+
+    async def _call_verifier(
         self,
-        verified_episodes: List[EpisodeTrace],
-        unverified_count: int
-    ) -> None:
-        """Calculate and apply rewards to episodes."""
+        question: str,
+        seed_answer: str,
+        predicted_answer: str,
+        evidence_docs: List[str],
+        ctx: EpisodeContext,
+    ):
+        """
+        Expected verifier API (RAG-style judge):
+          verify(question, seed_answer, predicted_answer, evidence_docs, context)
+            -> (solver_wins: bool, score_1_to_100: float, details: dict)
+        """
+        out = await self.verifier.verify(
+            question=question,
+            seed_answer=seed_answer,
+            predicted_answer=predicted_answer,
+            evidence=evidence_docs,
+            context=ctx,
+        )
+        # Backward compatibility: allow VerificationResult-like objects
+        if isinstance(out, tuple) and len(out) == 3:
+            return out
+        elif hasattr(out, "is_valid"):
+            return bool(out.is_valid), float(getattr(out, "score", 0.0)), dict(getattr(out, "verification_details", {}))
+        return False, 0.0, {"error": "unsupported verifier return"}
+
+    def _calculate_and_apply_rewards(self, verified_episodes: List[EpisodeTrace], unverified_count: int) -> None:
         rewards = calculate_self_play_rewards(verified_episodes, unverified_count)
-        
-        for episode in verified_episodes:
-            update_episode_with_rewards(
-                episode,
-                rewards["solver_reward"],
-                rewards["proposer_reward"]
-            )
-    
-    def _update_metrics(self, episode: EpisodeTrace) -> None:
-        """Update system metrics based on episode outcome."""
+        for ep in verified_episodes:
+            update_episode_with_rewards(ep, rewards.get("solver_reward", 0.0), rewards.get("proposer_reward", 0.0))
+
+    def _update_metrics(self, ep: EpisodeTrace) -> None:
         self.metrics.total_episodes += 1
-        
-        if episode.verified:
+        if ep.verified:
             self.metrics.verified_episodes += 1
-            
-            # Update proposer metrics
-            self.metrics.proposer_success_rate = self.metrics.verified_episodes / self.metrics.total_episodes
+
+            # Proposer metrics
+            self.metrics.proposer_success_rate = self.metrics.verified_episodes / max(self.metrics.total_episodes, 1)
             self.metrics.avg_question_difficulty = (
-                (self.metrics.avg_question_difficulty * (self.metrics.verified_episodes - 1) + episode.difficulty) 
-                / self.metrics.verified_episodes
+                (self.metrics.avg_question_difficulty * max(self.metrics.verified_episodes - 1, 0) + ep.difficulty)
+                / max(self.metrics.verified_episodes, 1)
             )
-            
-            # Update solver metrics
+
+            # Solver metrics
+            solved_correct = 1.0 if (ep.predicted_answer or "").strip() == (ep.seed_answer or "").strip() else 0.0
             self.metrics.solver_accuracy = (
-                (self.metrics.solver_accuracy * (self.metrics.verified_episodes - 1) + (1.0 if episode.predicted_answer == episode.seed_answer else 0.0)) 
-                / self.metrics.verified_episodes
+                (self.metrics.solver_accuracy * max(self.metrics.verified_episodes - 1, 0) + solved_correct)
+                / max(self.metrics.verified_episodes, 1)
             )
             self.metrics.avg_solver_steps = (
-                (self.metrics.avg_solver_steps * (self.metrics.verified_episodes - 1) + episode.solver_steps) 
-                / self.metrics.verified_episodes
+                (self.metrics.avg_solver_steps * max(self.metrics.verified_episodes - 1, 0) + ep.solver_steps)
+                / max(self.metrics.verified_episodes, 1)
             )
-            
-            # Update verification metrics
-            self.metrics.verification_pass_rate = self.metrics.verified_episodes / self.metrics.total_episodes
+
+            # Verification metrics
+            self.metrics.verification_pass_rate = self.metrics.verified_episodes / max(self.metrics.total_episodes, 1)
             self.metrics.avg_verification_score = (
-                (self.metrics.avg_verification_score * (self.metrics.verified_episodes - 1) + episode.verifier_score) 
-                / self.metrics.verified_episodes
+                (self.metrics.avg_verification_score * max(self.metrics.verified_episodes - 1, 0) + ep.verifier_score)
+                / max(self.metrics.verified_episodes, 1)
             )
-        
-        # Update self-play metrics
-        if episode.proposer_reward is not None and episode.solver_reward is not None:
+
+        # Self-play rewards (if attached)
+        if getattr(ep, "proposer_reward", None) is not None and getattr(ep, "solver_reward", None) is not None:
             self.metrics.proposer_adversarial_reward = (
-                (self.metrics.proposer_adversarial_reward * (self.metrics.total_episodes - 1) + episode.proposer_reward) 
-                / self.metrics.total_episodes
+                (self.metrics.proposer_adversarial_reward * max(self.metrics.total_episodes - 1, 0) + ep.proposer_reward)
+                / max(self.metrics.total_episodes, 1)
             )
             self.metrics.solver_cooperative_reward = (
-                (self.metrics.solver_cooperative_reward * (self.metrics.total_episodes - 1) + episode.solver_reward) 
-                / self.metrics.total_episodes
+                (self.metrics.solver_cooperative_reward * max(self.metrics.total_episodes - 1, 0) + ep.solver_reward)
+                / max(self.metrics.total_episodes, 1)
             )
-        
-        # Update curriculum difficulty
-        self.metrics.curriculum_difficulty = (
-            self.metrics.curriculum_difficulty * 0.9 + 
-            episode.difficulty * 0.1
-        )
-        
+
+        # Curriculum smoothing
+        self.metrics.curriculum_difficulty = (self.metrics.curriculum_difficulty * 0.9) + (ep.difficulty * 0.1)
         self.metrics.last_updated = datetime.now()
-    
-    def get_metrics(self) -> SSPMetrics:
-        """
-        Get current performance metrics for the SSP system.
-        
-        Returns:
-            SSPMetrics object with current system metrics
-        """
-        return self.metrics
-    
-    def reset(self) -> None:
-        """
-        Reset the algorithm state (for fresh training runs).
-        """
-        self.metrics = SSPMetrics()
-        self.episode_history = []
-    
-    def is_initialized(self) -> bool:
-        """
-        Check if the algorithm has been properly initialized.
-        
-        Returns:
-            True if initialized, False otherwise
-        """
-        return all([
-            self.proposer is not None,
-            self.solver is not None,
-            self.verifier is not None
-        ])
