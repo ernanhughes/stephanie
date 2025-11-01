@@ -85,7 +85,7 @@ class SearchingProposer(Proposer):
             raise ValueError("SolutionSearch is required for evidence gathering")
             
         # Get VPM control service for decision making
-        self.vpm_control = container.get("vpm_control_service")
+        self.vpm_control = container.get("vpm_control")
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
         self.prompt_service = container.get("prompt")
 

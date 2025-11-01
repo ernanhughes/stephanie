@@ -85,9 +85,9 @@ class ATSSolver(Solver, ProgressMixin):
         self.topic = cfg.get("topic", "ssp.ats")
         
         # Get VPM control service
-        self.vpm_control = container.get("vpm_control_service")
+        self.vpm_control = container.get("vpm_control")
         self._init_progress(container, logger=logger)
-    
+
     async def solve(
         self,
         question: str,

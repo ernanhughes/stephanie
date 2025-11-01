@@ -37,7 +37,7 @@ class Trainer:
         print(f"🧠 Predicted answer: {predicted} | using {len(evidence)} evidence docs.")
         ok, verifier_score = self.verify.verify(ground_truth=seed_answer, predicted=predicted)
 
-        return EpisodeTrace(
+        ep = EpisodeTrace(
             episode_id=episode_id,
             seed_answer=seed_answer,
             question=question,
@@ -50,6 +50,11 @@ class Trainer:
             evidence_docs=evidence,
             solver_meta=solver_meta,
         )
+        vpm_control = self.container.get("vpm_control")
+        vmeta = await vpm_control.generate_for_episode(ep)
+        ep.solver_meta["vpm_png"] = vmeta["file"]
+        ep.solver_meta["vpm_features"] = vmeta["features"]
+        return ep
 
     async def run_batch(self, seeds: Iterable[str], context: Dict[str, Any]) -> Dict[str, float]:
         n, r_sum, ok_sum = 0, 0.0, 0

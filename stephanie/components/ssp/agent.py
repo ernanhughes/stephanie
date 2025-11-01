@@ -31,7 +31,7 @@ class SSPAgent(BaseAgent, ProgressMixin):
         )
 
         container.register(
-            name="vpm_control_service",
+            name="vpm_control",
             factory=lambda: VPMControlService(cfg=cfg, memory=memory, container=container, logger=logger),
             dependencies=[],
             init_args={

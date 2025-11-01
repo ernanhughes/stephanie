@@ -52,3 +52,75 @@ class EpisodeTrace:
             return max(0.0, min(1.0, w_pr * pr_ + w_vs * vs_ + w_sr * sr_))
 
         return 1.0 if self.verified else 0.0
+
+    def to_vpm_features(self) -> tuple[list[str], list[float]]:
+        """
+        Produce a stable, fixed-order feature vector for VPM encoding.
+        All values normalized to [0,1].
+        """
+        import math
+
+        q_len = float(len((self.question or "").split()))
+        a_len = float(len((self.predicted_answer or "").split()))
+        ev_count = float(len(self.evidence_docs or []))
+        steps = float(self.solver_steps or 0)
+
+        # Simple bounded normalizers
+        def n01(x, hi):    # clamp to [0, hi] then scale to [0,1]
+            return max(0.0, min(1.0, (x / hi) if hi > 0 else 0.0))
+
+        def nlog(x, hi):   # log1p scale for counts
+            return max(0.0, min(1.0, math.log1p(x) / math.log1p(hi))) if hi > 0 else 0.0
+
+        names = [
+            "verifier_score",
+            "verified",
+            "difficulty",
+            "question_len",
+            "answer_len",
+            "evidence_count",
+            "solver_steps",
+        ]
+        vals = [
+            float(self.verifier_score or 0.0),         # already [0,1] in your pipeline
+            1.0 if self.verified else 0.0,
+            float(self.difficulty or 0.0),
+            n01(q_len, 128.0),
+            n01(a_len, 128.0),
+            nlog(ev_count, 64.0),
+            nlog(steps, 64.0),
+        ]
+        return names, vals
+
+
+        q_len = float(len((self.question or "").split()))
+        a_len = float(len((self.predicted_answer or "").split()))
+        ev_count = float(len(self.evidence_docs or []))
+        steps = float(self.solver_steps or 0)
+
+        # Simple bounded normalizers
+        def n01(x, hi):    # clamp to [0, hi] then scale to [0,1]
+            return max(0.0, min(1.0, (x / hi) if hi > 0 else 0.0))
+
+        def nlog(x, hi):   # log1p scale for counts
+            return max(0.0, min(1.0, math.log1p(x) / math.log1p(hi))) if hi > 0 else 0.0
+
+        names = [
+            "verifier_score",
+            "verified",
+            "difficulty",
+            "question_len",
+            "answer_len",
+            "evidence_count",
+            "solver_steps",
+        ]
+        vals = [
+            float(self.verifier_score or 0.0),         # already [0,1] in your pipeline
+            1.0 if self.verified else 0.0,
+            float(self.difficulty or 0.0),
+            n01(q_len, 128.0),
+            n01(a_len, 128.0),
+            nlog(ev_count, 64.0),
+            nlog(steps, 64.0),
+        ]
+        return names, vals
