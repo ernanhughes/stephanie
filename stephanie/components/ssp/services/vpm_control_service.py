@@ -276,7 +276,7 @@ class VPMControlService(Service):
         
         # Emit and persist decision
         self._publish(unit, dec)
-        self._persist_trace(unit, row, dec)
+        # self._persist_trace(unit, row, dec)
         
         # Generate visualization if needed
         if step_idx is not None and step_idx % 5 == 0:  # Every 5 steps

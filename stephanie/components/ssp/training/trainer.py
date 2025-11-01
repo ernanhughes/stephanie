@@ -6,7 +6,8 @@ from typing import Any, Dict, Iterable
 
 from stephanie.components.ssp.utils.trace import EpisodeTrace
 from stephanie.components.ssp.impl.proposers.searching_proposer import SearchingProposer
-from stephanie.components.ssp.impl.solvers.ats_solver import ATSSolver, SolutionSearch
+from stephanie.components.ssp.impl.solvers.ats_solver import ATSSolver
+from stephanie.components.ssp.impl.solvers.solution_search import SolutionSearch
 from stephanie.components.ssp.impl.verifiers.f1_verifier import Verifier
 from stephanie.components.tree.events import TreeEventEmitter
 
@@ -21,16 +22,20 @@ class Trainer:
 
     async def run_episode(self, seed_answer: str, context: Dict[str, Any]) -> EpisodeTrace:
         episode_id = f"ssp-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
-        proposer = SearchingProposer(self.cfg, memory=self.memory, container=self.container, logger=self.logger)
-        question, meta = await proposer.propose(seed_answer, context=context)
-
-        # ATS‑based solver with a tiny local searcher that contains the answer in synthetic docs
         emitter = TreeEventEmitter(topic="ssp.ats")
         solution_search = SolutionSearch(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger, event_emitter=emitter)
-        solver = ATSSolver(searcher=solution_search, max_depth=2, beam_width=3, event_emitter=emitter)
-        predicted, evidence, steps = await solver.solve(question, seed_answer=seed_answer, context=context)
+        proposer = SearchingProposer(self.cfg, memory=self.memory, container=self.container, logger=self.logger, solution_search=solution_search)
+        question, proposer_evidence, solver_meta = await proposer.propose(seed_answer, context=context)
+        if not question:
+            print(f"⚠️  No question proposed for seed answer: {seed_answer}")
+            question = f"What is the question for this answer {seed_answer}?"
 
-        ok, reward = self.verify.verify(ground_truth=seed_answer, predicted=predicted)
+        # ATS‑based solver with a tiny local searcher that contains the answer in synthetic docs
+        solver = ATSSolver(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger,
+            searcher=solution_search, event_emitter=emitter)
+        predicted, evidence, solver_steps, solver_meta = await solver.solve(question, seed_answer=seed_answer, context=context, evidence_snippets=proposer_evidence)
+        print(f"🧠 Predicted answer: {predicted} | using {len(evidence)} evidence docs.")
+        ok, verifier_score = self.verify.verify(ground_truth=seed_answer, predicted=predicted)
 
         return EpisodeTrace(
             episode_id=episode_id,
@@ -38,11 +43,12 @@ class Trainer:
             question=question,
             predicted_answer=predicted,
             verified=ok,
-            reward=reward,
+            proposer_evidence=proposer_evidence,
+            verifier_score=verifier_score,
             difficulty=self.difficulty,
-            solver_steps=steps,
+            solver_steps=solver_steps,
             evidence_docs=evidence,
-            meta={},
+            solver_meta=solver_meta,
         )
 
     async def run_batch(self, seeds: Iterable[str], context: Dict[str, Any]) -> Dict[str, float]:

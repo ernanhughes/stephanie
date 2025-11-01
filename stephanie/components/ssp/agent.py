@@ -10,7 +10,6 @@ from stephanie.components.ssp.services.vpm_control_service import VPMControlServ
 from stephanie.components.ssp.services.vpm_visualization_service import VPMVisualizationService
 from stephanie.components.ssp.training.trainer import Trainer
 
-from omegaconf import OmegaConf
 
 from stephanie.utils.progress_mixin import ProgressMixin
 
@@ -32,7 +31,7 @@ class SSPAgent(BaseAgent, ProgressMixin):
         )
 
         container.register(
-            name="vpm_control",
+            name="vpm_control_service",
             factory=lambda: VPMControlService(cfg=cfg, memory=memory, container=container, logger=logger),
             dependencies=[],
             init_args={
@@ -90,7 +89,6 @@ class SSPAgent(BaseAgent, ProgressMixin):
             _logger.info(f"SSP step started for run_id={run_id}")
 
             trainer = Trainer(self.cfg, self.memory, self.container, self.logger)
-            # inside SSPAgent.run(...)
             self._init_progress(self.container, _logger)
             task = f"SSP:{run_id}"
             total_steps = 1  # Example fixed step count; adjust as needed

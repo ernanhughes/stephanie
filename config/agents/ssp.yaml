@@ -12,10 +12,9 @@ ssp:
     api_key: null
 
   seeds:
-    - "A* search expands nodes by the lowest f(n)=g(n)+h(n); with an admissible h, it returns an optimal path."
-    - "PageRank ranks nodes by the stationary distribution of a random surfer with damping (teleportation)."
-    - "BM25 scores documents via term-frequency saturation and inverse document frequency with length normalization."
-
+    - "Binary search"
+    - "ReLU (Rectified Linear Unit)"
+    - "Hash map"
   
   proposer:
     rewrites: 3

@@ -29,7 +29,6 @@ from typing import (
     Iterable,
     Sequence,
     Tuple,
-    Awaitable,
     runtime_checkable,
 )
 

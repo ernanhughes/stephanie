@@ -1,81 +1,27 @@
-# stephanie/components/ssp/impl/proposers/searching_proposer.py
-from __future__ import annotations
+"""
+Searching Proposer Implementation
+
+This implementation adds the critical "search while proposing" capability
+described in the SSP paper. The proposer actively gathers evidence while
+crafting the question, which is then used in the RAG-gated verification.
+"""
+
 import asyncio
-import time
-import logging
-from typing import Any, Dict, Optional, Tuple
 import re
+from typing import Any, Dict, List, Optional, Tuple
+import time
+
 from stephanie.components.ssp.core.roles.proposer import Proposer
+from stephanie.components.ssp.core.protocols import EpisodeContext
+from stephanie.components.ssp.utils.parser import parse_proposer_lines
 from stephanie.prompts.prompt_loader import PromptLoader
-from stephanie.components.tree.events import TreeEventEmitter  # optional sink
+import logging
 
-_logger = logging.getLogger(__name__)
 
-# -------------------- parser (your original, kept) --------------------
-
-_LINE_RE = re.compile(r'^\s*"?(?P<key>[A-Za-z_]+)"?\s*[:=]\s*(?P<val>.+?)\s*,?\s*$')
-
-def _clean_text(val: str) -> str:
-    s = val.strip()
-    if (len(s) >= 2) and (
-        (s[0] == s[-1] == '"')
-        or (s[0] == s[-1] == "'")
-        or (s[0] in "“”" and s[-1] in "“”")
-        or (s[0] in "‘’" and s[-1] in "‘’")
-    ):
-        s = s[1:-1].strip()
-    return s
-
-def _int_in(val: str) -> Optional[int]:
-    m = re.search(r"(-?\d+)", val)
-    if not m:
-        return None
-    try:
-        return int(m.group(1))
-    except Exception:
-        return None
-
-def parse_proposer_lines(text: str) -> Dict[str, Any]:
-    raw = (text or "").strip()
-    out: Dict[str, Any] = {
-        "rationale": "",
-        "difficulty": 0,
-        "verifiability": 0,
-        "question": "",
-        "raw": raw,
-        "ok": False,
-    }
-    if not raw:
-        return out
-
-    lines = [ln for ln in raw.splitlines() if ln.strip()]
-    for ln in lines:
-        m = _LINE_RE.match(ln)
-        if not m:
-            continue
-        key = m.group("key").strip().lower()
-        val = m.group("val").strip()
-
-        if key == "rationale" and not out["rationale"]:
-            out["rationale"] = _clean_text(val)
-        elif key == "difficulty" and out["difficulty"] == 0:
-            v = _int_in(val)
-            if v is not None:
-                out["difficulty"] = max(0, min(100, v))
-        elif key == "verifiability" and out["verifiability"] == 0:
-            v = _int_in(val)
-            if v is not None:
-                out["verifiability"] = max(0, min(100, v))
-        elif key == "question" and not out["question"]:
-            out["question"] = _clean_text(val)
-
-    out["ok"] = bool(out["question"])
-    return out
-
-# -------------------- prompt (your current inline) --------------------
-PROPOSER_PROMPT = """
+SEARCHING_PROPOSER_PROMPT = """
 SYSTEM:
-You are building an SSP dataset. Given the canonical mechanism (SEED_ANSWER), write ONE precise, verifiable question whose correct answer is that mechanism.
+You are building an SSP dataset. Given this result the (SEED_ANSWER), 
+write ONE precise, verifiable question whose correct answer is that result.
 
 SEED_ANSWER:
 {{ answer }}
@@ -92,138 +38,250 @@ verifiability: <integer 0-100>
 question: <the single best question>
 """
 
-# -------------------- improved Proposer --------------------
-class SearchingProposer:
-    """
-    SSP Proposer (async).
-    - Loads a small line-by-line prompt (inline by default, or from file if you want).
-    - Calls PromptService, parses robustly, emits telemetry.
-    - Returns: (question, meta) where meta={rationale, difficulty, verifiability, raw_ok}.
-    """
+_logger = logging.getLogger(__name__)
 
+class SearchingProposer(Proposer):
+    """
+    Proposer implementation that gathers evidence WHILE crafting questions.
+    
+    This implements the "searching proposer" from the SSP paper:
+    1. Takes a seed answer
+    2. Generates query rewrites
+    3. Performs retrieval for each rewrite
+    4. Crafts a question using the gathered evidence
+    5. Returns both question and evidence
+    """
+    
     def __init__(
         self,
         cfg: Dict[str, Any],
         memory: Any,
         container: Any,
-        logger: Optional[logging.Logger] = None,
-        *,
-        event_emitter: Optional[TreeEventEmitter] = None,
-        prompt_text: Optional[str] = PROPOSER_PROMPT,            # or None to force file
-        prompt_name: Optional[str] = None,              # e.g. "ssp_proposer_lines"
-        retries: int = 1,                               # light retry for transient errors
-        backoff_sec: float = 0.5,
-        question_max_chars: int = 300,
+        logger: Any,
+        solution_search
     ):
-        self.cfg = cfg or {}
+        """
+        Initialize the SearchingProposer.
+        
+        Args:
+            cfg: Configuration dictionary
+            memory: Memory tool
+            container: Dependency container
+            logger: Logger instance
+            solution_search: Optional pre-configured SolutionSearch instance
+        """
+        self.cfg = cfg
         self.memory = memory
         self.container = container
         self.logger = logger
-
+        self._prompt_name = cfg.get("proposer", {}).get("prompt_name", "proposer")
+        self._prompt_text = cfg.get("proposer", {}).get("prompt_text")
+        self._backoff = cfg.get("proposer", {}).get("backoff_sec", 0.5)
+        self.retries = cfg.get("proposer", {}).get("retries", 2)
+        
+        # Get solution search for evidence gathering
+        self.solution_search = solution_search
+        if not self.solution_search:
+            raise ValueError("SolutionSearch is required for evidence gathering")
+            
+        # Get VPM control service for decision making
+        self.vpm_control = container.get("vpm_control_service")
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
         self.prompt_service = container.get("prompt")
 
-        self.events = event_emitter or TreeEventEmitter(topic="ssp.proposer")
-
-        # prompt source
-        self._prompt_text = prompt_text
-        self._prompt_name = prompt_name  # if set, load from file
-
-        # runtime knobs
-        self._retries = max(0, int(retries))
-        self._backoff = float(backoff_sec)
-        self._qmax = int(question_max_chars)
-
+        # Configuration parameters
+        self.rewrites = cfg.get("proposer", {}).get("rewrites", 3)
+        self.max_snippets = cfg.get("proposer", {}).get("max_snippets", 6)
+        self.min_question_len = cfg.get("proposer", {}).get("min_question_len", 20)
+        self.forbid_answer_leak = cfg.get("proposer", {}).get("forbid_answer_leak", True)
+    
     async def propose(
-        self, seed_answer: str, context: Dict[str, Any]
-    ) -> Tuple[str, Dict[str, Any]]:
+        self,
+        seed_answer: str,
+        context: Optional[EpisodeContext] = None
+    ) -> Tuple[str, List[str], Dict[str, Any]]:
+        """
+        Generate a question from a seed answer WITH EVIDENCE GATHERING.
+        
+        Args:
+            seed_answer: Ground truth answer to build a question around
+            context: Additional context for the proposal
+            
+        Returns:
+            Tuple of (question, evidence_snippets, metadata)
+        """
         t0 = time.time()
-        self._emit("start", {"seed_answer": seed_answer})
-
+        
+        # 1. Generate query rewrites for evidence gathering
+        rewrites = self._generate_query_rewrites(seed_answer)
+        
+        # 2. Gather evidence using each rewrite
+        all_evidence = []
+        for rewrite in rewrites:
+            # Search for evidence related to this rewrite
+            snippets = await self.solution_search.search(
+                rewrite, 
+                seed_answer=seed_answer,
+                context=context
+            )
+            all_evidence.extend(snippets)
+            
+            # Deduplicate evidence
+            all_evidence = list(dict.fromkeys(all_evidence))
+            
+            # Limit total evidence
+            if len(all_evidence) >= self.max_snippets:
+                break
+        
+        # 3. Craft question using the gathered evidence
+        question, meta = await self._craft_question(
+            seed_answer, 
+            all_evidence,
+            context
+        )
+        
+        # 4. Apply basic validation
+        if not question or len(question) < self.min_question_len:
+            return "", all_evidence, {
+                "rationale": "Question too short after validation",
+                "difficulty": 0,
+                "verifiability": 0,
+                "raw_ok": False
+            }
+        
+        # 5. Record metrics for VPM
+        dt = round(time.time() - t0, 3)
+        if self.vpm_control:
+            self.vpm_control.decide(
+                unit=f"proposer:{hash(seed_answer) & 0xffff:04x}",
+                kind="text",
+                dims={
+                    "evidence_quality": len(all_evidence) / self.max_snippets,
+                    "question_length": min(1.0, len(question) / 100),
+                },
+                step_idx=context.get("step_idx", 0) if context else 0,
+                meta={
+                    "seed_answer": seed_answer,
+                    "evidence_count": len(all_evidence),
+                    "question_length": len(question),
+                }
+            )
+        
+        return question, all_evidence, meta
+    
+    def _generate_query_rewrites(self, seed_answer: str) -> List[str]:
+        """
+        Generate query rewrites for evidence gathering.
+        
+        Args:
+            seed_answer: Ground truth answer
+            
+        Returns:
+            List of query rewrites
+        """
+        # Base rewrites - could be enhanced with LLM-based rewrites
+        rewrites = [
+            f"What is {seed_answer}?",
+            f"Explain {seed_answer} in detail",
+            f"How does {seed_answer} work?"
+        ]
+        
+        # Add more rewrites based on configuration
+        additional = self.cfg.get("proposer", {}).get("additional_rewrites", [])
+        for pattern in additional:
+            rewrites.append(pattern.format(seed_answer=seed_answer))
+            
+        return rewrites[:self.rewrites]  # Limit to configured number
+    
+    async def _craft_question(
+        self,
+        seed_answer: str,
+        evidence: List[str],
+        context: Optional[EpisodeContext] = None
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Craft a question using the gathered evidence.
+        
+        Args:
+            seed_answer: Ground truth answer
+            evidence: Evidence snippets gathered
+            context: Additional context
+            
+        Returns:
+            Tuple of (question, metadata)
+        """
+        # Prepare context for prompt
         merged_context = {
-            **(context or {}),
-            "answer": seed_answer,
-            "now_ts": int(time.time()),
+            "seed_answer": seed_answer,
+            "evidence": "\n".join(evidence),
+            **(context or {})
         }
+        
+        prompt = self.prompt_loader.from_text(SEARCHING_PROPOSER_PROMPT, merged_context)
 
-        # Load prompt (prefer file if prompt_name provided)
-        if self._prompt_name:
-            prompt = self.prompt_loader.from_file(f"{self._prompt_name}.txt", self.cfg, merged_context)
-            psrc = f"file:{self._prompt_name}.txt"
-        else:
-            prompt = self.prompt_loader.from_text(self._prompt_text or PROPOSER_PROMPT, merged_context)
-            psrc = "inline"
-
-        _logger.debug("Proposer: loaded prompt (%s)", psrc)
-
-        # Call model with light retry
-        response: str = ""
+        # # Load prompt
+        # if self._prompt_name:
+        #     prompt = self.prompt_loader.from_file(f"{self._prompt_name}.txt", self.cfg, merged_context)
+        #     psrc = f"file:{self._prompt_name}.txt"
+        # else:
+        #     prompt = self.prompt_loader.from_text(self._prompt_text or PROPOSER_PROMPT, merged_context)
+        #     psrc = "inline"
+        
+        _logger.debug("Proposer: loaded prompt (%s)", prompt)
+        
+        # Call model with retry logic
+        response = ""
         attempt = 0
-        while True:
+        while attempt <= self.retries:
             try:
                 response = await self.prompt_service.run_prompt(prompt, merged_context)
                 break
             except Exception as e:
                 attempt += 1
-                _logger.exception("Proposer prompt call failed (attempt %d): %s", attempt, e)
-                self._emit("error", {"where": "proposer.run_prompt", "error": str(e), "attempt": attempt})
-                if attempt > self._retries:
-                    # Hard fail: return empty but consistent shape
-                    dt = round(time.time() - t0, 3)
-                    self._emit("results", {
-                        "seed_answer": seed_answer, "ok": False, "latency_sec": dt, "response_len": 0
-                    })
-                    return "", {"rationale": "", "difficulty": 0, "verifiability": 0, "raw_ok": False}
+                self.logger.exception("Proposer prompt call failed (attempt %d): %s", attempt, e)
+                if attempt > self.retries:
+                    return "", {
+                        "rationale": "Failed to generate question after retries",
+                        "difficulty": 0,
+                        "verifiability": 0,
+                        "raw_ok": False
+                    }
                 await asyncio.sleep(self._backoff * attempt)
-
-        _logger.debug("Proposer LLM response (first 160 chars): %s", (response or "").replace("\n", " ")[:160])
-
-        # Parse & normalize
+        
+        # Parse response
+        _logger.debug("Proposer LLM response (first 160 chars): %s", 
+                         (response or " ").replace("\n", " ")[:160])
         parsed = parse_proposer_lines(response)
+        
+        # Normalize and validate question
         question = self._normalize_question(parsed.get("question", ""))
-
         meta = {
             "rationale": parsed.get("rationale", ""),
             "difficulty": int(parsed.get("difficulty", 0) or 0),
             "verifiability": int(parsed.get("verifiability", 0) or 0),
             "raw_ok": bool(parsed.get("ok", False)),
         }
-
-        dt = round(time.time() - t0, 3)
-        self._emit("results", {
-            "seed_answer": seed_answer,
-            "ok": bool(question),
-            "latency_sec": dt,
-            "response_len": len(response or ""),
-            "question_len": len(question),
-        })
-
+        
         return question, meta
-
-    # -------------------- helpers --------------------
-    def _normalize_question(self, q: str) -> str:
-        """Trim, collapse whitespace, strip quotes, enforce trailing '?', length cap."""
-        q = (q or "").strip().strip('"\''"“”‘’").strip()
-        q = re.sub(r"\s+", " ", q)
-        if q and not q.endswith("?"):
-            q += "?"
-        if len(q) > self._qmax:
-            q = q[: self._qmax].rstrip()
-            if not q.endswith("?"):
-                q += "?"
-        return q
-
-    def _emit(self, event: str, payload: Dict[str, Any]) -> None:
-        """Non-fatal telemetry: emits via TreeEventEmitter if available; else logs."""
-        try:
-            if event == "error":
-                self.events.on_error(payload.get("error", ""), "proposer", payload)
-            elif event == "start":
-                self.events.on_progress({"phase": "proposer_start", **payload})
-            elif event == "results":
-                self.events.on_progress({"phase": "proposer_results", **payload})
-            else:
-                self.events.on_progress({"phase": f"proposer_{event}", **payload})
-        except Exception:
-            # never crash on telemetry
-            pass
+    
+    def _normalize_question(self, text: str) -> str:
+        """Clean and normalize the generated question."""
+        if not text:
+            return ""
+        
+        # Remove trailing question marks if duplicated
+        text = re.sub(r"\?+", "?", text)
+        text = text.strip()
+        
+        # Ensure it ends with a question mark
+        if text and not text.endswith("?"):
+            text += "?"
+            
+        return text
+    
+    def get_capabilities(self) -> Dict[str, Any]:
+        return {
+            "supports_search_during_proposal": True,
+            "max_evidence_snippets": self.max_snippets,
+            "min_question_length": self.min_question_len
+        }

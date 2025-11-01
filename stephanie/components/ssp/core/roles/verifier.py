@@ -7,14 +7,13 @@ proceed to deep search. In the SSP methodology, the Verifier:
 - Applies rule-based filters to questions
 - Runs the RAG-gated verification (using Solver in no-search mode)
 - Determines if a question should be accepted or rejected
-- May provide feedback to the Proposer
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.components.ssp.core.protocols import EpisodeContext, VerificationResult
+from stephanie.components.ssp.core.protocols import EpisodeContext
 
 
 class Verifier(ABC):
@@ -26,12 +25,32 @@ class Verifier(ABC):
     """
     
     @abstractmethod
-    def verify(
+    def apply_filters(
+        self,
+        question: str,
+        evidence_snippets: List[str],
+        seed_answer: str
+    ) -> Tuple[bool, List[str]]:
+        """
+        Apply rule-based filters to a question.
+        
+        Args:
+            question: Question to filter
+            evidence_snippets: Evidence gathered by the Proposer
+            seed_answer: Ground truth answer
+            
+        Returns:
+            Tuple of (is_valid, list_of_failed_rules)
+        """
+        pass
+    
+    @abstractmethod
+    async def verify(
         self,
         question: str,
         seed_answer: str,
         evidence_snippets: List[str],
-        context: Dict[str, Any],
+        context: Optional[EpisodeContext] = None
     ) -> VerificationResult:
         """
         Verify a question meets all criteria for deep search.
@@ -49,24 +68,6 @@ class Verifier(ABC):
             
         Returns:
             VerificationResult object with verification outcome
-        """
-        pass
-    
-    @abstractmethod
-    def apply_filters(
-        self,
-        question: str,
-        evidence_snippets: List[str]
-    ) -> Tuple[bool, List[str]]:
-        """
-        Apply rule-based filters to a question.
-        
-        Args:
-            question: Question to filter
-            evidence_snippets: Evidence gathered by the Proposer
-            
-        Returns:
-            Tuple of (is_valid, list_of_failed_rules)
         """
         pass
     

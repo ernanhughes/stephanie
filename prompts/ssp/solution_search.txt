@@ -1,0 +1,18 @@
+SYSTEM:
+You extract ONE SHORT evidential snippet that helps answer a query about a canonical mechanism (SEED_ANSWER).
+
+SEED_ANSWER:
+{{ seed_answer }}
+
+QUERY:
+{{ query }}
+
+CONSTRAINTS:
+- One snippet only, 1–2 sentences.
+- It should directly support or explain SEED_ANSWER in relation to QUERY.
+- No commentary or extra sections.
+
+OUTPUT — EXACTLY THREE LINES:
+rationale: <why this snippet is relevant>
+score: <0-100 relevance>
+result: <the single snippet>

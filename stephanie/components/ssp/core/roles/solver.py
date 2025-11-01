@@ -3,13 +3,9 @@
 Solver Role Interface
 
 The Solver is responsible for answering questions using deep search.
-In the SSP methodology, the Solver:
-- Takes a question and attempts to answer it
-- Uses retrieval and tree search (like ATS) to find evidence
-- May have two modes: 
-  1. Verification mode (no search, using only proposer's evidence)
-  2. Deep search mode (full search for final answer)
-- Returns the predicted answer and evidence used
+In the SSP methodology, the Solver has TWO MODES:
+1. Verification mode: answers using ONLY the proposer's evidence (NO SEARCH)
+2. Deep search mode: performs full search to find the best answer
 """
 from __future__ import annotations
 
@@ -34,10 +30,10 @@ class Solver(ABC):
         self,
         question: str,
         seed_answer: str,
-        context: Dict[str, Any],
+        context: Optional[EpisodeContext] = None,
         use_search: bool = True,
         evidence_snippets: Optional[List[str]] = None
-    ) -> Tuple[str, List[str], int]:
+    ) -> Tuple[str, List[str], int, Dict[str, Any]]:
         """
         Solve a question using the appropriate search strategy.
         
@@ -49,7 +45,7 @@ class Solver(ABC):
             evidence_snippets: Optional evidence to use (for verification mode)
             
         Returns:
-            Tuple of (predicted_answer, evidence_used, steps_taken)
+            Tuple of (predicted_answer, evidence_used, steps_taken, metadata)
         """
         pass
     
@@ -59,7 +55,7 @@ class Solver(ABC):
         question: str,
         seed_answer: str,
         evidence_snippets: List[str]
-    ) -> Tuple[bool, float, Dict[str, Any]]:
+    ) -> VerificationResult:
         """
         Verify an answer using ONLY the provided evidence (no search).
         
@@ -71,7 +67,7 @@ class Solver(ABC):
             evidence_snippets: Evidence gathered by the Proposer
             
         Returns:
-            Tuple of (is_correct, score, metadata)
+            VerificationResult object with verification outcome
         """
         pass
     
@@ -84,6 +80,5 @@ class Solver(ABC):
             Dictionary describing capabilities like:
             - supports_verification_mode: bool
             - max_search_depth: int
-            - etc.
         """
         pass

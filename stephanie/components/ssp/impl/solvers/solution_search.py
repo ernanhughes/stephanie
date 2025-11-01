@@ -8,6 +8,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
+from stephanie.components.ssp.utils.parser import parse_three_lines
 from stephanie.components.tree.events import TreeEventEmitter
 from stephanie.prompts.prompt_loader import PromptLoader
 
@@ -16,21 +17,20 @@ _logger = logging.getLogger(__name__)
 # ------------------------ Retrieval prompt (line-by-line) ------------------------
 PROMPT_SOLUTION_SEARCH_LINES = """
 SYSTEM:
-You retrieve SHORT evidence snippets that help answer a query about a canonical mechanism (SEED_ANSWER).
+You author ONE precise, verifiable question whose correct answer equals the SEED_ANSWER.
 
 SEED_ANSWER:
 {{ seed_answer }}
 
-QUERY:
-{{ query }}
-
 CONSTRAINTS:
-- Provide concise, factual snippets (1–2 sentences each).
-- Prefer content that directly supports or explains SEED_ANSWER in relation to QUERY.
-- No commentary or extra sections.
+- Return exactly one short question (no lists, no markdown).
+- If unsure, fall back to: “What is {{ seed_answer }}?”
+- Keep it concrete and answerable.
 
-OUTPUT FORMAT — WRITE EXACTLY {{ top_k }} LINES:
-snippet: <short evidence snippet>
+OUTPUT — EXACTLY THREE LINES:
+rationale: <why this question targets that answer, 1 sentence>
+score: <0-100 difficulty you expect>
+result: <the single question>
 """
 
 class SolutionSearch:
@@ -122,7 +122,7 @@ class SolutionSearch:
         _logger.debug("SolutionSearch LLM response (first 160 chars): %s", (response or "").replace("\n", " ")[:160])
 
         # Parse + postprocess
-        snippets = self._parse_snippets(response, self.k)
+        snippets = self._parse_three_lines(response, seed_answer)
         snippets = self._postprocess(snippets, self.k) or self._fallback_snippets(query, seed_answer, self.k)
 
         dt = round(time.time() - t0, 3)
@@ -130,6 +130,23 @@ class SolutionSearch:
         return snippets
 
     # ----------------------- internals -----------------------
+
+    def _parse_three_lines(self, text: str, seed_answer: str) -> Dict[str, Any]:
+        parsed = parse_three_lines(text, default_score=35.0)
+        question = parsed["result"].strip() if parsed["ok"] else ""
+        if not question:
+            # hard fallback: never empty
+            seed = (seed_answer or "").strip()
+            question = f"What is {seed}?" if seed else "What is the mechanism?"
+
+        meta = {
+            "proposer_rationale": parsed.get("rationale", ""),
+            "proposer_score": parsed.get("score", 35.0),
+            "raw": parsed.get("raw", ""),
+        }
+        print(f"Parsed question: {question} | meta: {meta}")
+        return  [question]
+
 
     def _parse_snippets(self, response: str, k: int) -> List[str]:
         """
