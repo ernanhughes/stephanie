@@ -34,6 +34,7 @@ from stephanie.zeromodel.vpm_controller import (
     VPMController as CoreVPMController,
 )
 from stephanie.zeromodel.vpm_phos import build_vpm_phos_artifacts
+from stephanie.utils.json_sanitize import sanitize, dumps_safe  # ← reuse your utils
 
 
 class VPMControlService(Service):
@@ -474,12 +475,20 @@ class VPMControlService(Service):
 
     def _publish_decision(self, unit: str, dec: Decision) -> None:
         try:
-            payload = {"unit": unit, **asdict(dec)}
-            if self._bus and hasattr(self._bus, "publish"):
-                res = self._bus.publish("vpm.control.decision", payload)
+            raw_payload = {
+                "unit": unit,
+                **asdict(dec),             # may include Enums, numpy, etc.
+            }
+            sig = getattr(dec, "signal", None)
+            if sig is not None:
+                raw_payload["signal"] = getattr(sig, "name", str(sig))
+
+            payload = sanitize(raw_payload)  # ← JSON-safe dict
+
+            res = self._bus.publish("vpm.control.decision", payload)
                 # tolerate async or sync
-                if asyncio.iscoroutine(res):
-                    asyncio.create_task(res)
+            if asyncio.iscoroutine(res):
+                asyncio.create_task(res)
             if hasattr(self.memory, "bus_events"):
                 self.memory.bus_events.insert("vpm.control.decision", payload)
         except Exception as e:

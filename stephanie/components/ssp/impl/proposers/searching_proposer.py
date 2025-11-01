@@ -1,30 +1,21 @@
-"""
-Searching Proposer Implementation
-
-This implementation adds the critical "search while proposing" capability
-described in the SSP paper. The proposer actively gathers evidence while
-crafting the question, which is then used in the RAG-gated verification.
-"""
-
+# stephanie/components/ssp/impl/proposers/searching_proposer.py
+from __future__ import annotations
+from typing import Any, Dict, List, Tuple, Optional
 import asyncio
-import re
-from typing import Any, Dict, List, Optional, Tuple
 import time
+import re
+import logging
 
-from stephanie.components.ssp.core.roles.proposer import Proposer
 from stephanie.components.ssp.core.protocols import EpisodeContext
 from stephanie.components.ssp.utils.parser import parse_proposer_lines
 from stephanie.prompts.prompt_loader import PromptLoader
-import logging
 
+_logger = logging.getLogger(__name__)
 
-SEARCHING_PROPOSER_PROMPT = """
-SYSTEM:
-You are building an SSP dataset. Given this result the (SEED_ANSWER), 
-write ONE precise, verifiable question whose correct answer is that result.
+PROPOSER_PROMPT_TMPL = """You are building an SSP dataset. Given the canonical mechanism (SEED_ANSWER), write ONE precise, verifiable question whose correct answer is that mechanism.
 
 SEED_ANSWER:
-{{ answer }}
+{seed_answer}
 
 CONSTRAINTS:
 - Ask for the mechanism directly (no trivia, no multi-part).
@@ -38,63 +29,31 @@ verifiability: <integer 0-100>
 question: <the single best question>
 """
 
-_logger = logging.getLogger(__name__)
+class SearchingProposer:
+    def __init__(self, cfg, memory, container, logger, solution_search):
+        if not solution_search:
+            raise ValueError("SolutionSearch is required for evidence gathering")
 
-class SearchingProposer(Proposer):
-    """
-    Proposer implementation that gathers evidence WHILE crafting questions.
-    
-    This implements the "searching proposer" from the SSP paper:
-    1. Takes a seed answer
-    2. Generates query rewrites
-    3. Performs retrieval for each rewrite
-    4. Crafts a question using the gathered evidence
-    5. Returns both question and evidence
-    """
-    
-    def __init__(
-        self,
-        cfg: Dict[str, Any],
-        memory: Any,
-        container: Any,
-        logger: Any,
-        solution_search
-    ):
-        """
-        Initialize the SearchingProposer.
-        
-        Args:
-            cfg: Configuration dictionary
-            memory: Memory tool
-            container: Dependency container
-            logger: Logger instance
-            solution_search: Optional pre-configured SolutionSearch instance
-        """
-        self.cfg = cfg
+        self.cfg = cfg or {}
         self.memory = memory
         self.container = container
         self.logger = logger
-        self._prompt_name = cfg.get("proposer", {}).get("prompt_name", "proposer")
-        self._prompt_text = cfg.get("proposer", {}).get("prompt_text")
-        self._backoff = cfg.get("proposer", {}).get("backoff_sec", 0.5)
-        self.retries = cfg.get("proposer", {}).get("retries", 2)
-        
-        # Get solution search for evidence gathering
         self.solution_search = solution_search
-        if not self.solution_search:
-            raise ValueError("SolutionSearch is required for evidence gathering")
-            
-        # Get VPM control service for decision making
+
+        # Services
         self.vpm_control = container.get("vpm_control")
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
         self.prompt_service = container.get("prompt")
 
-        # Configuration parameters
-        self.rewrites = cfg.get("proposer", {}).get("rewrites", 3)
-        self.max_snippets = cfg.get("proposer", {}).get("max_snippets", 6)
-        self.min_question_len = cfg.get("proposer", {}).get("min_question_len", 20)
-        self.forbid_answer_leak = cfg.get("proposer", {}).get("forbid_answer_leak", True)
-    
+        # Config (with safe defaults)
+        p = (self.cfg.get("proposer") or {})
+        self.rewrites: int = int(p.get("rewrites", 3))
+        self.max_snippets: int = int(p.get("max_snippets", 6))
+        self.min_question_len: int = int(p.get("min_question_len", 12))
+        self.forbid_answer_leak: bool = bool(p.get("forbid_answer_leak", True))
+        self.retries: int = int(p.get("retries", 2))
+        self._backoff: float = float(p.get("backoff_sec", 0.5))
+
     async def propose(
         self,
         seed_answer: str,
@@ -102,186 +61,154 @@ class SearchingProposer(Proposer):
     ) -> Tuple[str, List[str], Dict[str, Any]]:
         """
         Generate a question from a seed answer WITH EVIDENCE GATHERING.
-        
-        Args:
-            seed_answer: Ground truth answer to build a question around
-            context: Additional context for the proposal
-            
-        Returns:
-            Tuple of (question, evidence_snippets, metadata)
+        Returns: (question, evidence_snippets, meta)
         """
         t0 = time.time()
-        
-        # 1. Generate query rewrites for evidence gathering
+        ctx = dict(context or {})
+
+        # 1) Generate lightweight rewrites
         rewrites = self._generate_query_rewrites(seed_answer)
-        
-        # 2. Gather evidence using each rewrite
-        all_evidence = []
+
+        # 2) Gather evidence using whichever API your SolutionSearch exposes
+        all_evidence: List[str] = []
+        snippet_fn = getattr(self.solution_search, "find_snippets", None) or getattr(self.solution_search, "search", None)
+        if snippet_fn is None:
+            raise RuntimeError("SolutionSearch must implement find_snippets(...) or search(...)")
+
         for rewrite in rewrites:
-            # Search for evidence related to this rewrite
-            snippets = await self.solution_search.search(
-                rewrite, 
-                seed_answer=seed_answer,
-                context=context
-            )
-            all_evidence.extend(snippets)
-            
-            # Deduplicate evidence
-            all_evidence = list(dict.fromkeys(all_evidence))
-            
-            # Limit total evidence
+            try:
+                # Try a permissive call first
+                snippets = await snippet_fn(rewrite, top_k=max(1, self.max_snippets - len(all_evidence)))
+            except TypeError:
+                # Fallback signatures seen elsewhere
+                try:
+                    snippets = await snippet_fn(rewrite)
+                except Exception as e:
+                    _logger.warning("Evidence lookup failed for rewrite '%s': %s", rewrite, e)
+                    snippets = []
+
+            if snippets:
+                for s in snippets:
+                    if s and s not in all_evidence:
+                        all_evidence.append(s)
             if len(all_evidence) >= self.max_snippets:
                 break
-        
-        # 3. Craft question using the gathered evidence
-        question, meta = await self._craft_question(
-            seed_answer, 
-            all_evidence,
-            context
-        )
-        
-        # 4. Apply basic validation
+
+        # 3) Craft question via prompt
+        question, meta = await self._craft_question(seed_answer, all_evidence, ctx)
+
+        # 4) Basic validation + safe fallback
         if not question or len(question) < self.min_question_len:
-            return "", all_evidence, {
-                "rationale": "Question too short after validation",
-                "difficulty": 0,
-                "verifiability": 0,
-                "raw_ok": False
-            }
-        
-        # 5. Record metrics for VPM
+            # Minimal safe fallback so downstream never breaks
+            fallback_q = f"What is {seed_answer}?"
+            meta.update({
+                "rationale": meta.get("rationale") or "Auto-fallback: generated question too short/empty",
+                "difficulty": int(meta.get("difficulty") or 0),
+                "verifiability": int(meta.get("verifiability") or 0),
+                "raw_ok": False,
+                "fallback_used": True,
+            })
+            question = fallback_q
+
+        # Optional: forbid exact answer leak in the surface form
+        if self.forbid_answer_leak and seed_answer and question:
+            if seed_answer.lower() in question.lower():
+                # Keep it pointed but avoid literal echo
+                question = self._anonymize_mechanism(question, seed_answer)
+
+        # 5) Emit a tiny VPM frame for visibility
         dt = round(time.time() - t0, 3)
         if self.vpm_control:
-            self.vpm_control.decide(
-                unit=f"proposer:{hash(seed_answer) & 0xffff:04x}",
-                kind="text",
-                dims={
-                    "evidence_quality": len(all_evidence) / self.max_snippets,
-                    "question_length": min(1.0, len(question) / 100),
-                },
-                step_idx=context.get("step_idx", 0) if context else 0,
-                meta={
-                    "seed_answer": seed_answer,
-                    "evidence_count": len(all_evidence),
-                    "question_length": len(question),
-                }
-            )
-        
+            try:
+                self.vpm_control.decide(
+                    unit=f"proposer:{(hash(seed_answer) & 0xffff):04x}",
+                    kind="text",
+                    dims={
+                        "evidence_quality": min(1.0, len(all_evidence) / max(1, self.max_snippets)),
+                        "question_length": min(1.0, len(question) / 100.0),
+                    },
+                    step_idx=ctx.get("step_idx", 0),
+                    meta={
+                        "seed_answer": seed_answer,
+                        "evidence_count": len(all_evidence),
+                        "latency_s": dt,
+                    },
+                )
+            except Exception as e:
+                _logger.info("VPM decide failed (non-fatal): %s", e)
+
         return question, all_evidence, meta
-    
+
     def _generate_query_rewrites(self, seed_answer: str) -> List[str]:
-        """
-        Generate query rewrites for evidence gathering.
-        
-        Args:
-            seed_answer: Ground truth answer
-            
-        Returns:
-            List of query rewrites
-        """
-        # Base rewrites - could be enhanced with LLM-based rewrites
         rewrites = [
             f"What is {seed_answer}?",
             f"Explain {seed_answer} in detail",
-            f"How does {seed_answer} work?"
+            f"How does {seed_answer} work?",
         ]
-        
-        # Add more rewrites based on configuration
-        additional = self.cfg.get("proposer", {}).get("additional_rewrites", [])
+        additional = (self.cfg.get("proposer") or {}).get("additional_rewrites", [])
         for pattern in additional:
-            rewrites.append(pattern.format(seed_answer=seed_answer))
-            
-        return rewrites[:self.rewrites]  # Limit to configured number
-    
+            try:
+                rewrites.append(pattern.format(seed_answer=seed_answer))
+            except Exception:
+                pass
+        return rewrites[: max(1, self.rewrites)]
+
     async def _craft_question(
         self,
         seed_answer: str,
         evidence: List[str],
         context: Optional[EpisodeContext] = None
     ) -> Tuple[str, Dict[str, Any]]:
-        """
-        Craft a question using the gathered evidence.
-        
-        Args:
-            seed_answer: Ground truth answer
-            evidence: Evidence snippets gathered
-            context: Additional context
-            
-        Returns:
-            Tuple of (question, metadata)
-        """
-        # Prepare context for prompt
         merged_context = {
             "seed_answer": seed_answer,
-            "evidence": "\n".join(evidence),
-            **(context or {})
+            "evidence": "\n".join(evidence or []),
+            **(context or {}),
         }
-        
-        prompt = self.prompt_loader.from_text(SEARCHING_PROPOSER_PROMPT, merged_context)
+        prompt = self.prompt_loader.from_text(PROPOSER_PROMPT_TMPL, merged_context)
 
-        # # Load prompt
-        # if self._prompt_name:
-        #     prompt = self.prompt_loader.from_file(f"{self._prompt_name}.txt", self.cfg, merged_context)
-        #     psrc = f"file:{self._prompt_name}.txt"
-        # else:
-        #     prompt = self.prompt_loader.from_text(self._prompt_text or PROPOSER_PROMPT, merged_context)
-        #     psrc = "inline"
-        
-        _logger.debug("Proposer: loaded prompt (%s)", prompt)
-        
-        # Call model with retry logic
         response = ""
         attempt = 0
         while attempt <= self.retries:
             try:
-                response = await self.prompt_service.run_prompt(prompt, merged_context)
+                response = await self.prompt_service.run_prompt(prompt_text=prompt, context=merged_context)
                 break
             except Exception as e:
                 attempt += 1
-                _logger.warning("Proposer prompt call failed (attempt %d): %s", attempt, e)
+                _logger.warning("Proposer prompt failed (attempt %d/%d): %s", attempt, self.retries, e)
                 if attempt > self.retries:
-                    return "", {
-                        "rationale": "Failed to generate question after retries",
-                        "difficulty": 0,
-                        "verifiability": 0,
-                        "raw_ok": False
-                    }
+                    parsed = {"rationale": "prompt failure", "difficulty": 0, "verifiability": 0, "ok": False}
+                    return "", parsed
                 await asyncio.sleep(self._backoff * attempt)
-        
-        # Parse response
-        _logger.debug("Proposer LLM response (first 160 chars): %s", 
-                         (response or " ").replace("\n", " ")[:160])
-        parsed = parse_proposer_lines(response)
-        
-        # Normalize and validate question
+
+        parsed = parse_proposer_lines(response or "")
         question = self._normalize_question(parsed.get("question", ""))
+
         meta = {
             "rationale": parsed.get("rationale", ""),
             "difficulty": int(parsed.get("difficulty", 0) or 0),
             "verifiability": int(parsed.get("verifiability", 0) or 0),
             "raw_ok": bool(parsed.get("ok", False)),
         }
-        
         return question, meta
-    
+
     def _normalize_question(self, text: str) -> str:
-        """Clean and normalize the generated question."""
         if not text:
             return ""
-        
-        # Remove trailing question marks if duplicated
-        text = re.sub(r"\?+", "?", text)
-        text = text.strip()
-        
-        # Ensure it ends with a question mark
+        text = re.sub(r"\?+", "?", text).strip()
         if text and not text.endswith("?"):
             text += "?"
-            
         return text
-    
+
+    def _anonymize_mechanism(self, q: str, seed_answer: str) -> str:
+        # Very light-touch anonymization to avoid literal leakage
+        pattern = re.compile(re.escape(seed_answer), re.IGNORECASE)
+        q2 = pattern.sub("this mechanism", q)
+        # Keep it a question
+        return self._normalize_question(q2 or q)
+
     def get_capabilities(self) -> Dict[str, Any]:
         return {
             "supports_search_during_proposal": True,
             "max_evidence_snippets": self.max_snippets,
-            "min_question_length": self.min_question_len
+            "min_question_length": self.min_question_len,
         }

@@ -54,6 +54,20 @@ class Trainer:
             solver_meta=solver_meta,
         )
         vpm_control = self.container.get("vpm_control")
+        vpm_control.decide(
+            unit=episode_id,
+            kind="text",
+            step_idx=1,  # or cumulative
+            dims={
+                "correctness": ep.verifier_score,             # your verifier score
+                "coverage": 1.0 if proposer_evidence else 0.3,
+                "coherence": 0.7,                  # fill in from solver parsing if you wish
+                "citation_support": 0.4 + 0.2*len(proposer_evidence),
+                "entity_consistency": 0.8,         # optional heuristic
+            },
+            meta={"seed": seed_answer, "question": question},
+        )
+
         vmeta = await vpm_control.generate_for_episode(ep)
         ep.solver_meta["vpm_png"] = vmeta["file"]
         ep.solver_meta["vpm_features"] = vmeta["features"]

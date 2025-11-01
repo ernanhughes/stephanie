@@ -11,110 +11,83 @@ import uuid
 from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+import re
+import time
+
 
 from stephanie.components.ssp.core.roles.solver import Solver 
 from stephanie.utils.similarity_utils import overlap_score
 from stephanie.components.ssp.core.protocols import EpisodeContext, VerificationResult
 from stephanie.utils.progress_mixin import ProgressMixin
 from stephanie.components.ssp.core.node import Node
+from stephanie.services.prompt_service import PromptService
 
 # System prompt for verification mode (NO SEARCH)
-PROMPT_VERIFICATION = """
-SYSTEM:
-You are verifying if a question can be answered using ONLY the provided evidence.
-DO NOT PERFORM ANY SEARCH. Use ONLY the evidence snippets provided below.
+SOLVER_PROMPT_TMPL = """Your task: answer the question using the provided evidence (short snippets).
+Return EXACTLY three lines in this order, no extra text:
 
-EVIDENCE:
-{evidence}
+rationale: <1-2 sentences that justify your answer>
+score: <integer 0-100 representing confidence>
+result: <ONE-LINE final answer>
 
 QUESTION:
 {question}
 
-INSTRUCTIONS:
-1. Analyze if the evidence contains sufficient information to answer the question
-2. If yes, provide the answer based on the evidence
-3. If no, state that the evidence is insufficient
-4. DO NOT INVENT INFORMATION NOT IN THE EVIDENCE
-
-OUTPUT FORMAT:
-answer: [your answer or "INSUFFICIENT EVIDENCE"]
-rationale: [brief explanation]
+EVIDENCE:
+{evidence}
 """
 
+_line = re.compile(r'^\s*([a-zA-Z_]+)\s*:\s*(.+?)\s*$')
 
-@dataclass
-class ATSSolver(Solver, ProgressMixin):
-    """
-    Agentic Tree Search Solver with verification mode.
-    
-    This implements the ATS solver from the SSP paper with two modes:
-    1. Verification mode: answers using ONLY proposer's evidence (no search)
-    2. Deep search mode: performs full search to find the best answer
-    """
-    
-    def __init__(
-        self,
-        cfg: Dict[str, Any],
-        memory: Any,
-        container: Any,
-        logger: Any,
-        searcher: Any,  # Should be SolutionSearch
-        *,
-        event_emitter: Optional[Any] = None,
-    ):
-        """
-        Initialize the ATSSolver.
-        
-        Args:
-            searcher: SolutionSearch instance for retrieval
-            max_depth: Maximum search depth
-            beam_width: Width of the beam search
-            event_emitter: Event emitter for telemetry
-            topic: Topic prefix for events
-            container: Dependency container
-            logger: Logger instance
-        """
+def _parse_three_lines(text: str) -> Dict[str, str]:
+    out = {"rationale":"", "score":"", "result":""}
+    for line in (text or "").splitlines():
+        m = _line.match(line.strip())
+        if not m: 
+            continue
+        k, v = m.group(1).lower(), m.group(2).strip()
+        if k in out:
+            out[k] = v
+    return out
+
+
+class ATSSolver:
+    def __init__(self, cfg, memory, container, logger, searcher, event_emitter):
         self.cfg = cfg
-        self.container = container
         self.memory = memory
+        self.container = container
         self.logger = logger
-        self.events = event_emitter
         self.searcher = searcher
-        self.max_depth = cfg.get("max_depth", 2)
-        self.beam_width = cfg.get("beam_width", 3)
-        self.topic = cfg.get("topic", "ssp.ats")
-        
-        # Get VPM control service
-        self.vpm_control = container.get("vpm_control")
-        self._init_progress(container, logger=logger)
+        self.event_emitter = event_emitter
+        self.prompt: PromptService = container.get("prompt")
+        sp = (cfg.get("self_play") or {})
+        self.solver_model = sp.get("solver_model", {"name":"ollama/qwen:0.5b","api_base":"http://localhost:11434"})
+        self.sys_preamble = "Follow the 3-line output format exactly."
 
     async def solve(
         self,
         question: str,
+        *,
         seed_answer: str,
-        context: Optional[EpisodeContext] = None,
-        use_search: bool = True,
-        evidence_snippets: Optional[List[str]] = None
-    ) -> Tuple[str, List[str], int, Dict[str, Any]]:
-        """
-        Solve a question using the appropriate search strategy.
-        
-        Args:
-            question: Question to answer
-            seed_answer: Ground truth answer (for search guidance)
-            context: Additional context for solving
-            use_search: Whether to perform search (False for verification mode)
-            evidence_snippets: Optional evidence to use (for verification mode)
-            
-        Returns:
-            Tuple of (predicted_answer, evidence_used, steps_taken, metadata)
-        """
-        if not use_search and evidence_snippets:
-            # Verification mode: answer using ONLY the provided evidence
-            return await self._verify_with_evidence(question, seed_answer, evidence_snippets)
-        
-        # Deep search mode: perform full search
-        return await self._deep_search(question, seed_answer, context)
+        context: Dict[str, Any],
+        evidence_snippets: List[str]
+    ) -> Tuple[str, List[str], int]:
+        ev = "\n".join([f"- {s}" for s in (evidence_snippets or [])])
+        prompt = SOLVER_PROMPT_TMPL.format(question=question, evidence=ev)
+        txt = await self.prompt.run_prompt(
+            prompt_text=prompt,
+            model=self.solver_model,
+            sys_preamble=self.sys_preamble,
+            params={"temperature": 0.1},
+            context=context
+        )
+        parsed = _parse_three_lines(txt)
+        result = parsed["result"] or ""
+        steps = 1  # single LLM shot; if you later add search iterations, increment
+        evidence_docs = [result] if result else []
+        # you can also emit bus events here if desired
+        meta = {"evidence_docs": evidence_docs, "model": self.solver_model}
+        return result, evidence_docs, steps, meta
     
     async def verify_answer(
         self,
@@ -198,7 +171,7 @@ class ATSSolver(Solver, ProgressMixin):
         
         # Load verification prompt
         prompt = self.container.get("prompt_loader").from_text(
-            PROMPT_VERIFICATION,
+            SOLVER_PROMPT_TMPL,
             merged_context
         )
         
