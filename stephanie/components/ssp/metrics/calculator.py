@@ -50,11 +50,11 @@ class SSPMetricsCalculator:
         vmap["ssp.solver_steps"] = _clamp01(steps / max(1, self.max_steps))
 
         # 8) score  (optional)
-        score = _to01((s.meta or {}).get("score"))
+        score = s.score
         vmap["ssp.score"] = _clamp01(_fallback(score, 0.0))
 
         # 9) best_score (optional)
-        best_score = _to01((s.meta or {}).get("best_score"))
+        best_score = s.best_score
         vmap["ssp.best_score"] = _clamp01(_fallback(best_score, vmap["ssp.score"]))
 
         # 10) improvement (derived, monotone in [0,1])

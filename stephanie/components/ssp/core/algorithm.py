@@ -110,19 +110,7 @@ class SSPAlgorithm:
             )
 
             # ---- Canonical SSP metrics (single source) ----
-            reward = float(judge_score) / 100.0 if judge_score is not None else 0.0
-            difficulty = float(prop_meta.get("difficulty", 0.0)) / 100.0 if prop_meta.get("difficulty", None) and prop_meta["difficulty"] > 1 else float(prop_meta.get("difficulty", 0.0))
-            scorable = SSPScorable(
-                episode_id=episode_id,
-                question=q,
-                seed_answer=seed_answer,
-                predicted_answer=pred,
-                evidence_docs=evidence_docs,
-                solver_steps=int(solver_steps),
-                difficulty=difficulty,
-                reward=reward,
-                verified=1.0 if solver_wins else 0.0,
-            )
+            scorable = SSPScorable.from_episode_trace(ep)
             ssp_metrics = self._ssp_scorer.score(scorable)  # {'names','values','vector'}
 
             # Attach for downstream consumers (manifest, storage, VPM, etc.)
