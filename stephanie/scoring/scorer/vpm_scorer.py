@@ -1,15 +1,15 @@
 # stephanie/scoring/scorer/vpm_scorer.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
+import logging
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.vpm_model import (AttentionMap,
-                                               TinyVisionTransformer,
+from stephanie.scoring.model.vpm_model import (TinyVisionTransformer,
                                                VPMDimension)
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer

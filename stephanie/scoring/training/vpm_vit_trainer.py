@@ -133,11 +133,11 @@ class VPMViTTrainer(BaseAgent):
         self.model.to(self.device)
 
         # Optimizer
-        opt_cls = self._resolve(self.opt_cfg.class)
+        opt_cls = self._resolve(self.opt_cfg["class"])
         self.optimizer = opt_cls(self.model.parameters(), **self.opt_cfg.params)
 
         # Scheduler
-        sched_cls = self._resolve(self.sched_cfg.class)
+        sched_cls = self._resolve(self.sched_cfg["class"])
         self.scheduler = sched_cls(self.optimizer, **self.sched_cfg.params)
 
         # Losses

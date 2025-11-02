@@ -429,13 +429,13 @@ class ATSSolver(Solver, ProgressMixin):
         predicted_answer = best.context if best.context else seed_answer
         evidence = best.context.splitlines() if best.context else []
         
-        reward = self.reward_head.compute_reward(
+        reward_results = self.reward_head.compute_reward(
             question=question,
             predicted_answer=predicted_answer,
             seed_answer=seed_answer,
             evidence_docs=evidence,
         )
-        verified = bool(reward.get("reward",) >= self.verify_threshold)
+        verified = bool(reward_results.get("reward",) >= self.verify_threshold)
         
         if self.events:
             self.events.on_progress(
@@ -463,18 +463,50 @@ class ATSSolver(Solver, ProgressMixin):
             "evidence_count": len(evidence),
             "mode": "search",
             "vpm_unit": unit,
-            "reward": reward.get("reward", 0),
+            "reward": reward_results.get("reward", 0),
             "verified": verified,
-            "f1": reward.get("f1", 0),
-            "coverage": reward.get("coverage", 0),
-            "len_reward": reward.get("len_reward", 0),
-            "resp_len": reward.get("resp_len", 0),
+            "f1": reward_results.get("f1", 0),
+            "coverage": reward_results.get("coverage", 0),
+            "len_reward": reward_results.get("len_reward", 0),
+            "resp_len": reward_results.get("resp_len", 0),
         }
 
+        def _n01(x, hi): return max(0.0, min(1.0, (x/hi) if hi else 0.0))
+        def _jac(a: str, b: str) -> float:
+            A, B = set((a or "").lower().split()), set((b or "").lower().split())
+            return 1.0 - (len(A & B) / max(len(A | B), 1))
+        
+        reward_val = reward_results.get("reward", 0)
+        if reward_val > best.score:
+            best = child
+            best.score = reward_val  # let “best_score” track the head’s reward
+            if self.events:
+                self.events.on_best_update(best)
+        dims = {
+            "reward": reward_val,      # ← primary channel now
+            "verified": verified,                        # during search
+            "difficulty": float((context or {}).get("difficulty", 0.3)),
+            "score": sc,
+            "f1": reward_results.get("f1", 0),
+            "coverage": reward_results.get("coverage", 0),
+            "len_reward": reward_results.get("len_reward", 0),
+            "resp_len": reward_results.get("resp_len", 0),
+            "question_len": _n01(len(q2.split()), 128),
+            "answer_len":  _n01(len((snippet or '').split()), 128),
+            "evidence_count": _n01(len(results), 8),
+            "solver_steps": _n01(steps, self._estimate_total_steps(len(self._rewrite(question)))),
+            "best_score": float(best.score),
+            "improvement": max(0.0, reward_results.get("reward", 0) - float(best.score)),
+            "depth": _n01(depth, self.max_depth),
+            "novelty": _jac(snippet or "", best.context or ""),
+        }
+        # IMPORTANT: this is the new sink you added above
+        self.vpm.record_step(unit=unit, dims=dims, step_idx=steps)
 
         self.vpm.generate_raw_vpm_image(unit=unit)
         self.vpm.generate_phos_image(unit=unit)
-
+    
+        self.vpm.finalize_progress(unit=unit, gif_name=f"{unit}_progress.gif", fps=2)
         return predicted_answer, evidence, steps, meta
 
     # ---- VPM snapshot helper ------------------------------------------------
