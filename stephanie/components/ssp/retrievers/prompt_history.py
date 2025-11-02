@@ -1,9 +1,11 @@
 # stephanie/components/ssp/retrievers/prompt_history.py
 from __future__ import annotations
+
 import asyncio
 from typing import Any, Dict, List, Optional
 
 from .base import BaseRetriever
+
 
 def _maybe_sync(x):
     # await coroutine or return sync result

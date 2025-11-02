@@ -1,9 +1,11 @@
 # stephanie/components/ssp/metrics/scorer.py
 from __future__ import annotations
-from typing import Dict, Any
+
+from typing import Any, Dict
 
 from stephanie.components.ssp.metrics.calculator import SSPMetricsCalculator
 from stephanie.components.ssp.metrics.scorable import SSPScorable
+
 
 class SSPScorer:
     """Uniform interface: returns names, values, vector, version."""

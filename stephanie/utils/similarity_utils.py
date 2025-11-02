@@ -22,12 +22,13 @@ Notes:
 """
 
 from __future__ import annotations
-import itertools
-import numpy as np
-import re
-import math
-from typing import Sequence, Union, Optional, Tuple, List
 
+import itertools
+import math
+import re
+from typing import List, Optional, Sequence, Tuple, Union
+
+import numpy as np
 
 TextLike = Union[str, Sequence[str]]
 

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 # ---------- utils ----------
 def _build_2d_sincos_pos_embed(h: int, w: int, d: int, cls_token: bool = True, device=None):

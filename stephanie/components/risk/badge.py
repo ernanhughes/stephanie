@@ -1,7 +1,9 @@
 # stephanie/components/hallucinations/badge.py
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Dict, List
+
 
 @dataclass
 class HallucinationBadge:

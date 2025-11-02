@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Callable, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
-from stephanie.components.arena.scoring.aggregate import WeightedAggregator
 from stephanie.components.arena.plugins.registry import list_scorers
-
+from stephanie.components.arena.scoring.aggregate import WeightedAggregator
 
 EmitFn = Callable[[Dict[str, Any]], Any]  # accepts event dict; may be sync or async
 

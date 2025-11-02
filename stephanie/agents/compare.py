@@ -6,6 +6,7 @@ import json
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.reporting.comparison import ComparisonReporter
 
+
 class CompareAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)

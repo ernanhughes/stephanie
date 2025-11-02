@@ -1,6 +1,7 @@
 # stephanie/rules/rule_tuner.py
 from __future__ import annotations
 
+
 class RuleTuner:
     """
     Provides utilities to modify or tune symbolic rules based on performance analytics.

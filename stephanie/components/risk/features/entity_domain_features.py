@@ -1,7 +1,9 @@
 # stephanie/components/risk/features/entity_domain_features.py
 from __future__ import annotations
-from typing import Dict, Any, List
+
 import math
+from typing import Any, Dict, List
+
 
 def _safe_div(a: float, b: float) -> float:
     return 0.0 if b <= 0 else a / b

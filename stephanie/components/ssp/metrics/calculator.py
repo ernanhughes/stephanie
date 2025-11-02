@@ -1,15 +1,20 @@
 # stephanie/components/ssp/metrics/calculator.py
 from __future__ import annotations
 
-from typing import Dict, Any
 import math
+import re
+from typing import Any, Dict
 
-from stephanie.components.ssp.metrics.registry import SSP_METRIC_ORDER, SSP_METRIC_VERSION, MetricVector
+from stephanie.components.ssp.metrics.registry import (SSP_METRIC_ORDER,
+                                                       SSP_METRIC_VERSION,
+                                                       MetricVector)
 from stephanie.components.ssp.metrics.scorable import SSPScorable
+
 
 class SSPMetricsCalculator:
     """
     Deterministic, versioned SSP metrics in [0,1]. Always returns the same order.
+    Enhanced with paper-proven metrics that track capability growth.
     """
 
     def __init__(self, cfg: Dict[str, Any] | None = None):
@@ -19,6 +24,7 @@ class SSPMetricsCalculator:
         self.max_evidence       = int(c.get("max_evidence", 8))
         self.max_steps          = int(c.get("max_steps", 64))
         self.max_depth          = int(c.get("max_depth", 16))
+        self.noise_docs_count   = int(c.get("noise_docs_count", 4))  # From SSP paper Table 3
 
     def score(self, s: SSPScorable) -> MetricVector:
         names = list(SSP_METRIC_ORDER)
@@ -76,6 +82,32 @@ class SSPMetricsCalculator:
         # 12) novelty (optional)
         novelty = _to01((s.meta or {}).get("novelty"))
         vmap["ssp.novelty"] = _clamp01(_fallback(novelty, 0.0))
+        
+        # === NEW METRICS FROM SSP PAPER ===
+        # 13) search_turns - directly from paper Figure 4a
+        # Tracks actual search tool calls (not just solver steps)
+        search_turns = self._count_search_turns(s)
+        vmap["ssp.search_turns"] = _clamp01(search_turns / max(1, self.max_steps))
+        
+        # 14) f1_score - from paper's LLM-as-a-judge evaluation
+        # Critical for tracking lexical accuracy without verification
+        f1 = self._calculate_f1(s.predicted_answer, s.seed_answer)
+        vmap["ssp.f1_score"] = _clamp01(f1)
+        
+        # 15) format_compliance - from paper Section 4.4 rule-based filtering
+        # Must have <question> tags and not contain the answer
+        format_ok = self._check_format_compliance(s)
+        vmap["ssp.format_compliance"] = 1.0 if format_ok else 0.0
+        
+        # 16) noise_tolerance - from paper Table 3 (4 noisy documents optimal)
+        # Measures robustness to irrelevant information
+        noise_tolerance = self._calculate_noise_tolerance(s)
+        vmap["ssp.noise_tolerance"] = _clamp01(noise_tolerance)
+        
+        # 17) rag_verification - from paper's RAG verification process
+        # Critical for ensuring questions are answerable with provided evidence
+        rag_verified = self._check_rag_verification(s)
+        vmap["ssp.rag_verification"] = 1.0 if rag_verified else 0.0
 
         # Assemble fixed-order values
         values = [float(vmap.get(k, 0.0)) for k in names]
@@ -85,6 +117,100 @@ class SSPMetricsCalculator:
             values=values,
             vector=vmap,
         )
+    
+    def _count_search_turns(self, s: SSPScorable) -> int:
+        """Count actual search tool invocations from evidence or metadata"""
+        # If evidence_docs contains search results, count them
+        if s.evidence_docs and len(s.evidence_docs) > 0:
+            return len(s.evidence_docs)
+        
+        # Check if metadata has search_turns info
+        if s.meta and "search_turns" in s.meta:
+            return int(s.meta["search_turns"])
+            
+        # Fallback to solver_steps (less accurate)
+        return s.solver_steps or 0
+    
+    def _calculate_f1(self, response: str, ground_truth: str) -> float:
+        """Lexical F1 calculation as used in paper's LLM-as-a-judge evaluation"""
+        if not ground_truth or not response:
+            return 0.0
+            
+        # Clean and tokenize
+        gt_tokens = set(re.findall(r'\w+', ground_truth.lower()))
+        resp_tokens = set(re.findall(r'\w+', response.lower()))
+        
+        if not gt_tokens or not resp_tokens:
+            return 0.0
+            
+        common = len(gt_tokens & resp_tokens)
+        precision = common / len(resp_tokens) if resp_tokens else 0.0
+        recall = common / len(gt_tokens) if gt_tokens else 0.0
+        
+        if precision + recall == 0:
+            return 0.0
+            
+        return (2 * precision * recall) / (precision + recall)
+    
+    def _check_format_compliance(self, s: SSPScorable) -> bool:
+        """
+        Check if response follows required format per SSP paper Section 4.4:
+        - Must not contain original answer in question
+        - Must have proper structure (e.g.,  tags)
+        - Must require search (not answerable from general knowledge)
+        """
+        # Rule 1: No original answer in question
+        if s.seed_answer and s.seed_answer.lower() in s.question.lower():
+            return False
+            
+        # Rule 2: Must have proper answer tags (if using SSP format)
+        if "" not in s.predicted_answer or "" not in s.predicted_answer:
+            return False
+            
+        # Rule 3: Evidence must be non-empty (requires search)
+        if not s.evidence_docs or len(s.evidence_docs) == 0:
+            return False
+            
+        # Rule 4: Question must be sufficiently long
+        if _word_count(s.question) < 5:
+            return False
+            
+        return True
+    
+    def _calculate_noise_tolerance(self, s: SSPScorable) -> float:
+        """
+        Calculate how well the system handles noisy evidence.
+        Based on paper's finding that 4 noisy documents is optimal.
+        """
+        if not s.meta:
+            return 0.0
+            
+        # Look for noise-related metrics in metadata
+        noise_count = s.meta.get("noise_doc_count", 0)
+        noise_success = s.meta.get("noise_success", 0.0)
+        
+        # If we have specific noise tolerance data
+        if noise_count > 0:
+            return noise_success
+            
+        # Fallback: if we know how many noise docs were added
+        if noise_count >= self.noise_docs_count:
+            # Higher score if it succeeded with the optimal noise count
+            return 1.0 if s.verified else 0.5
+            
+        return 1.0 if s.verified else 0.0
+    
+    def _check_rag_verification(self, s: SSPScorable) -> bool:
+        """
+        Check if RAG verification passed per SSP paper methodology.
+        This is the critical quality gate for generated problems.
+        """
+        # If we have explicit RAG verification result
+        if s.meta and "rag_verified" in s.meta:
+            return bool(s.meta["rag_verified"])
+            
+        # Default: if verified and has evidence, assume RAG passed
+        return s.verified and bool(s.evidence_docs and len(s.evidence_docs) > 0)
 
 def _word_count(text: str) -> int:
     if not text: return 0

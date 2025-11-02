@@ -16,8 +16,8 @@ maintaining the autopoietic system's organizationally closed production.
 from __future__ import annotations
 
 from .energy import EnergyPools
-from .metabolic_pathways import MetabolicPathways
 from .energy_optimizer import EnergyOptimizer
+from .metabolic_pathways import MetabolicPathways
 
 __all__ = [
     'EnergyPools',

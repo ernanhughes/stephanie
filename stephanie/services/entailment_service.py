@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
+
 from stephanie.services.service_protocol import Service
 
 # Optional: if you have a dedicated NLI model service

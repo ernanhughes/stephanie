@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Tuple
 
+
 class Verifier:
     def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg

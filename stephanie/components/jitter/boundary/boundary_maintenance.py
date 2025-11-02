@@ -16,17 +16,17 @@ This module implements the organizationally closed production of boundary compon
 """
 from __future__ import annotations
 
-
-from typing import Dict, Any, List
-import numpy as np
 import logging
 import time
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
 from enum import Enum
 from functools import wraps
+from typing import Any, Dict, List
 
-from .membrane import Membrane, BoundaryState, MembraneSnapshot
+import numpy as np
+from pydantic import BaseModel, Field, validator
+
+from .membrane import BoundaryState, Membrane, MembraneSnapshot
 
 log = logging.getLogger("stephanie.jitter.boundary.maintenance")
 

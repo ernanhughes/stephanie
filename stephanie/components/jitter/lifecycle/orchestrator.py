@@ -21,30 +21,42 @@ Key Features:
 """
 from __future__ import annotations
 
-from typing import Dict, Any, Optional, List
+import asyncio
 import logging
 import time
-import asyncio
 import uuid
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from stephanie.components.jitter.boundary import Membrane, BoundaryMaintenance
-from stephanie.components.jitter.cognition.attention_manager import AttentionManager
-from stephanie.components.jitter.cognition.sense_making import SenseMakingEngine
+from pydantic import BaseModel, Field, validator
+
+from stephanie.components.jitter.boundary import BoundaryMaintenance, Membrane
+from stephanie.components.jitter.cognition.attention_manager import \
+    AttentionManager
+from stephanie.components.jitter.cognition.sense_making import \
+    SenseMakingEngine
 from stephanie.components.jitter.cognition.triune import TriuneCognition
 from stephanie.components.jitter.core.energy import EnergyPools
-from stephanie.components.jitter.lifecycle.lifecycle_agent import JASLifecycleAgent
-from stephanie.components.jitter.metabolism import MetabolicPathways, EnergyOptimizer
-from stephanie.components.jitter.production.closed_production import ProductionNetwork
-from stephanie.components.jitter.regulation.homeostasis.controller import PIDController
-from stephanie.components.jitter.regulation.homeostasis.adaptive_setpoints import AdaptiveSetpoints
-from stephanie.components.jitter.regulation.homeostasis.crisis_detector import CrisisDetector
+from stephanie.components.jitter.lifecycle.lifecycle_agent import \
+    JASLifecycleAgent
+from stephanie.components.jitter.metabolism import (EnergyOptimizer,
+                                                    MetabolicPathways)
+from stephanie.components.jitter.production.closed_production import \
+    ProductionNetwork
 from stephanie.components.jitter.regulation.apoptosis import ApoptosisSystem
-from stephanie.components.jitter.regulation.reproduction.reproduction_system import ReproductionSystem
-from stephanie.components.jitter.regulation.reproduction.quality_control import QualityControlledReproduction
-from stephanie.components.jitter.regulation.reproduction.heritage_manager import HeritageManager
+from stephanie.components.jitter.regulation.homeostasis.adaptive_setpoints import \
+    AdaptiveSetpoints
+from stephanie.components.jitter.regulation.homeostasis.controller import \
+    PIDController
+from stephanie.components.jitter.regulation.homeostasis.crisis_detector import \
+    CrisisDetector
+from stephanie.components.jitter.regulation.reproduction.heritage_manager import \
+    HeritageManager
+from stephanie.components.jitter.regulation.reproduction.quality_control import \
+    QualityControlledReproduction
+from stephanie.components.jitter.regulation.reproduction.reproduction_system import \
+    ReproductionSystem
 
 log = logging.getLogger("stephanie.jitter.lifecycle.orchestrator")
 

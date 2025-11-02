@@ -1,11 +1,14 @@
 # stephanie/components/risk/attr_sink_orm.py
 from __future__ import annotations
 
-from typing import List, Tuple, Optional
-from sqlalchemy.orm import Session
 from datetime import datetime
+from typing import List, Optional, Tuple
 
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM  # keep your actual import
+from sqlalchemy.orm import Session
+
+from stephanie.models.evaluation_attribute import \
+    EvaluationAttributeORM  # keep your actual import
+
 
 class ORMAttrSink:
     def __init__(self, session: Session, evaluation_id: int, prefix: str = "hall."):

@@ -8,7 +8,7 @@ SSP self-play dynamics as described in the paper:
 - Proposer reward: 1 - solver accuracy (adversarial)
 """
 
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from stephanie.components.ssp.utils.trace import EpisodeTrace
 

@@ -9,12 +9,11 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from stephanie.core.manifest import Manifest
 from stephanie.components.gap.models import GapConfig, TripleSample
-from stephanie.services.scm_service import (SCM_FEATURE_KEYS,
-                                                           SCMService)
+from stephanie.core.manifest import Manifest
 from stephanie.core.shared_scm import SCM_COLUMNS
 from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.services.scm_service import SCM_FEATURE_KEYS, SCMService
 from stephanie.services.storage_service import StorageService
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline

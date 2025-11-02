@@ -1,7 +1,6 @@
 # stephanie/agents/knowledge/dimension_generator.py
 from __future__ import annotations
 
-
 import re
 
 from stephanie.agents.base_agent import BaseAgent

@@ -19,7 +19,6 @@ comparison between HRM and Tiny models in the GAP analysis pipeline.
 """
 from __future__ import annotations
 
-
 import logging
 import re
 

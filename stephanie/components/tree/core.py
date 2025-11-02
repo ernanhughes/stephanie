@@ -23,12 +23,12 @@ import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.tree.events import TreeEventEmitter
 from stephanie.components.tree.output_verifier import OutputVerifier
 from stephanie.components.tree.plan_generator import PlanGenerator
 from stephanie.components.tree.solution_node import SolutionNode
 from stephanie.components.tree.task_executor import TaskExecutor
 from stephanie.components.tree.task_handler import TaskHandler
-from stephanie.components.tree.events import TreeEventEmitter
 
 
 class AgenticTreeSearch:

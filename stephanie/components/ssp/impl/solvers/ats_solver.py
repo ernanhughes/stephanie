@@ -8,19 +8,20 @@ ATSSolver with two modes:
 from __future__ import annotations
 
 import re
-import pandas as pd
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.utils.progress_mixin import ProgressMixin
+import pandas as pd
+
+from stephanie.components.ssp.core.protocols import (EpisodeContext,
+                                                     VerificationResult)
 from stephanie.components.ssp.core.roles.solver import Solver
-from stephanie.components.ssp.core.protocols import (
-    EpisodeContext,
-    VerificationResult,
-)
+from stephanie.components.ssp.reward.heads.naive_quarkish import \
+    NaiveQuarkishReward
 from stephanie.components.tree.events import TreeEventEmitter
 from stephanie.prompts.prompt_loader import PromptLoader
+from stephanie.utils.progress_mixin import ProgressMixin
 
 
 # Minimal node record (use your canonical Node if available)
@@ -106,6 +107,9 @@ class ATSSolver(Solver, ProgressMixin):
         self.progress_every = int(sv.get("progress_every", 1))
         self.snapshot_early = bool(sv.get("snapshot_early", True))
         self.vpm = container.get("ssp_vpm_viz")
+
+        self.verify_threshold = float(cfg.get("verify_threshold", 0.75))
+        self.reward_head = NaiveQuarkishReward()
         self._init_progress(container, logger)
 
     # ------------------------------------------------------------------
@@ -160,11 +164,26 @@ class ATSSolver(Solver, ProgressMixin):
         )
         parsed = _parse_three_lines(txt)
         result = (parsed["result"] or "").strip()
+        reward = self.reward_head.compute_reward(
+            question=question,
+            predicted_answer=result,
+            seed_answer=(context or {}).get("seed_answer") or "",
+            evidence_docs=list(evidence_docs),
+            meta_in={"mode": "evidence_only"},
+        )
+        verified = bool(reward.get("reward",) >= self.verify_threshold)
+
         meta = {
             "model": self.solver_model,
             "rationale": parsed.get("rationale", ""),
             "raw_score": parsed.get("score", ""),
             "mode": "evidence_only",
+            "reward": reward.get("reward", 0),
+            "verified": verified,
+            "f1": reward.get("f1", 0),
+            "coverage": reward.get("coverage", 0),
+            "len_reward": reward.get("len_reward", 0),
+            "resp_len": reward.get("resp_len", 0),
         }
         # steps=1: single-shot LLM
         return result, list(evidence_docs), 1, meta
@@ -409,6 +428,15 @@ class ATSSolver(Solver, ProgressMixin):
 
         predicted_answer = best.context if best.context else seed_answer
         evidence = best.context.splitlines() if best.context else []
+        
+        reward = self.reward_head.compute_reward(
+            question=question,
+            predicted_answer=predicted_answer,
+            seed_answer=seed_answer,
+            evidence_docs=evidence,
+        )
+        verified = bool(reward.get("reward",) >= self.verify_threshold)
+        
         if self.events:
             self.events.on_progress(
                 {
@@ -435,7 +463,14 @@ class ATSSolver(Solver, ProgressMixin):
             "evidence_count": len(evidence),
             "mode": "search",
             "vpm_unit": unit,
+            "reward": reward.get("reward", 0),
+            "verified": verified,
+            "f1": reward.get("f1", 0),
+            "coverage": reward.get("coverage", 0),
+            "len_reward": reward.get("len_reward", 0),
+            "resp_len": reward.get("resp_len", 0),
         }
+
 
         self.vpm.generate_raw_vpm_image(unit=unit)
         self.vpm.generate_phos_image(unit=unit)

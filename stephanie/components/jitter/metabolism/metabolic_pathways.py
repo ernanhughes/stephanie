@@ -15,20 +15,20 @@ This module implements the organizationally closed production of energy pathways
 """
 from __future__ import annotations
 
-
-from typing import Dict, Any, List, Tuple, Optional
-import numpy as np
 import logging
 import time
-import torch
-import torch.nn as nn
+import uuid
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
 from enum import Enum
 from functools import wraps
-import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
-from .energy import EnergyPools, EnergyPool
+import numpy as np
+import torch
+import torch.nn as nn
+from pydantic import BaseModel, Field, validator
+
+from .energy import EnergyPool, EnergyPools
 
 log = logging.getLogger("stephanie.jitter.metabolism.pathways")
 

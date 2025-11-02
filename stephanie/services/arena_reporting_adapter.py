@@ -6,7 +6,6 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 
-
 def _sf(v: Any):
     if hasattr(v, "item"):
         v = v.item()

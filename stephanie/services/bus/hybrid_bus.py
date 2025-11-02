@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import inspect
 import logging
 from typing import Any, Callable, Dict, List, Optional
-import inspect
 
 from .bus_protocol import BusProtocol
-from .errors import (BusConnectionError, BusPublishError, BusRequestError)
+from .errors import BusConnectionError, BusPublishError, BusRequestError
 from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
 from .nats_bus import NatsKnowledgeBus

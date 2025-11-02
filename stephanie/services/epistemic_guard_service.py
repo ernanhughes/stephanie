@@ -5,16 +5,19 @@ import asyncio
 import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 import torch
 
-from stephanie.components.risk.signals import HallucinationContext, collect as collect_hall
-from stephanie.components.risk.badge import make_badge
 from stephanie.components.risk.attr_sink_orm import ORMAttrSink
+from stephanie.components.risk.badge import make_badge
+from stephanie.components.risk.epi.epistemic_guard import (GuardInput,
+                                                           GuardOutput)
 from stephanie.components.risk.provenance import ProvenanceLogger
+from stephanie.components.risk.signals import HallucinationContext
+from stephanie.components.risk.signals import collect as collect_hall
 from stephanie.services.service_protocol import Service
 from stephanie.services.storage_service import StorageService
-from stephanie.components.risk.epi.epistemic_guard import GuardInput, GuardOutput
 
 # ------------------- Contracts -------------------
 # These are your real hallucination components — must be provided by container

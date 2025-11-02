@@ -1,10 +1,14 @@
 # stephanie/components/jitter/sensors/halluc_sensor.py
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional, List, Dict
-from stephanie.components.risk.signals import HallucinationContext, collect as collect_hall
+from typing import Dict, List, Optional
+
 from stephanie.components.risk.badge import make_badge
+from stephanie.components.risk.signals import HallucinationContext
+from stephanie.components.risk.signals import collect as collect_hall
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
+
 
 @dataclass
 class HallucSensorConfig:

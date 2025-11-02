@@ -1,7 +1,6 @@
 # stephanie/agents/knowledge/knowledge_db_loader.py
 from __future__ import annotations
 
-
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
 

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from stephanie.services.service_protocol import Service
 from stephanie.tools.time_utils import now_iso
 
+
 # --- Utility Functions ---
 def _truncate(v, max_len=400):
     if isinstance(v, str):

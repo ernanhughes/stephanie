@@ -15,9 +15,9 @@ new organisms while maintaining genetic diversity and quality standards.
 """
 from __future__ import annotations
 
-from .reproduction_system import ReproductionSystem
-from .quality_control import QualityControlledReproduction
 from .heritage_manager import HeritageManager
+from .quality_control import QualityControlledReproduction
+from .reproduction_system import ReproductionSystem
 
 __all__ = [
     'ReproductionSystem',

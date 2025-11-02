@@ -1,18 +1,22 @@
 # stephanie/agents/trainers/vpm_vit_trainer.py
 from __future__ import annotations
-import os, json, importlib
-from pathlib import Path
-from typing import Dict, Any, List, Tuple
-import numpy as np
-from PIL import Image
 
+import importlib
+import json
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
 from omegaconf import DictConfig
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.model.vpm_vit import VPMViT
+
 
 # Optional viz service (safe to no-op if missing)
 def _get_viz(container):

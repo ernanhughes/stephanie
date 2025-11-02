@@ -4,19 +4,20 @@ from __future__ import annotations
 import time
 import traceback
 from datetime import datetime
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 from stephanie.agents.base_agent import BaseAgent
 # ✅ Use the dataclass layer (same as new SSP Trainer)
-from stephanie.data.plan_trace import PlanTrace, ExecutionStep
-
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.memory.execution_step_store import \
+    ExecutionStepStore as _FallbackExecStore  # optional
 # Optional: fallback stores if memory.plan_traces repo missing
-from stephanie.memory.plan_trace_store import PlanTraceStore as _FallbackPlanTraceStore  # optional
-from stephanie.memory.execution_step_store import ExecutionStepStore as _FallbackExecStore  # optional
+from stephanie.memory.plan_trace_store import \
+    PlanTraceStore as _FallbackPlanTraceStore  # optional
 
 
 class _TraceRepoAdapter:

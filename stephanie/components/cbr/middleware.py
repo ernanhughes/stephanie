@@ -1,7 +1,6 @@
 # stephanie/components/cbr/middleware.py
 from __future__ import annotations
 
-
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import numpy as np

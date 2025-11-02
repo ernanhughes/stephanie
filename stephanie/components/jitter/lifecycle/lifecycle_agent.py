@@ -19,10 +19,11 @@ Key Features:
 """
 from __future__ import annotations
 
-from typing import Dict, Any, Optional, List
-import time
-import logging
 import asyncio
+import logging
+import time
+from typing import Any, Dict, List, Optional
+
 import torch
 from pydantic import BaseModel, Field, validator
 
@@ -30,9 +31,9 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.jitter.boundary import BoundaryMaintenance
 from stephanie.components.jitter.cognition.triune import TriuneCognition
 from stephanie.components.jitter.core.energy import EnergyPools
-from stephanie.components.jitter.telemetry.telemetry import JASTelemetry
 from stephanie.components.jitter.telemetry.jaf import JitterArtifactV0
-from stephanie.components.jitter.telemetry.telemetry import VitalSigns
+from stephanie.components.jitter.telemetry.telemetry import (JASTelemetry,
+                                                             VitalSigns)
 
 log = logging.getLogger("stephanie.jitter.lifecycle.agent")
 

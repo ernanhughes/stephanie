@@ -1,7 +1,6 @@
 # stephanie/agents/scorable_domain.py
 from __future__ import annotations
 
-
 import traceback
 from typing import List, Optional, Tuple
 

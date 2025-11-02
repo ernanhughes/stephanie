@@ -1,17 +1,20 @@
 # stephanie/components/ssp/trainer.py
 from __future__ import annotations
+
+import logging
 import time
 import uuid
 from typing import Any, Dict, Iterable
 
-from stephanie.components.ssp.utils.trace import EpisodeTrace
-from stephanie.components.ssp.impl.proposers.searching_proposer import SearchingProposer
+from stephanie.components.ssp.impl.proposers.searching_proposer import \
+    SearchingProposer
 from stephanie.components.ssp.impl.solvers.ats_solver import ATSSolver
-from stephanie.components.ssp.impl.solvers.solution_search import SolutionSearch
+from stephanie.components.ssp.impl.solvers.solution_search import \
+    SolutionSearch
 from stephanie.components.ssp.impl.verifiers.f1_verifier import Verifier
+from stephanie.components.ssp.utils.trace import EpisodeTrace
 from stephanie.components.tree.events import TreeEventEmitter
 
-import logging
 _logger = logging.getLogger(__name__)
 
 class Trainer:

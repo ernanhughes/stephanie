@@ -23,12 +23,13 @@ Key Features:
 """
 from __future__ import annotations
 
-from typing import Dict, Any, List
-import time
 import logging
+import time
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
 from functools import wraps
+from typing import Any, Dict, List
+
+from pydantic import BaseModel, Field, validator
 
 log = logging.getLogger("stephanie.jitter.integration.ssp")
 

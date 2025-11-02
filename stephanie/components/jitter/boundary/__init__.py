@@ -15,8 +15,8 @@ with the environment.
 """
 from __future__ import annotations
 
-from .membrane import Membrane
 from .boundary_maintenance import BoundaryMaintenance
+from .membrane import Membrane
 
 __all__ = [
     'Membrane',

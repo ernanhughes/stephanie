@@ -1,7 +1,6 @@
 # stephanie/agents/knowledge/paper_score.py
 from __future__ import annotations
 
-
 import logging
 import time
 from typing import Dict

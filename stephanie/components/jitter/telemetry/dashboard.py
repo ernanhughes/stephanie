@@ -20,13 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 import logging
-from typing import Dict, Any, List
+import time
+from typing import Any, Dict, List
+
 import pandas as pd
 import streamlit as st
-from stephanie.services.bus.nats_client import get_js # async JetStream helper
+
 from stephanie.components.jitter.telemetry.jas_telemetry import VitalSigns
+from stephanie.services.bus.nats_client import get_js  # async JetStream helper
 
 log = logging.getLogger("stephanie.jitter.dashboard")
 

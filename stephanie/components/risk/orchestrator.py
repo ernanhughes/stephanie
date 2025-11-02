@@ -7,25 +7,18 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from stephanie.components.risk.epi.epistemic_guard import (GuardInput,
+                                                           GuardOutput)
 from stephanie.core.manifest import ManifestManager
 from stephanie.scoring.scorable import Scorable
-from stephanie.services.scm_service import SCMService
-from stephanie.utils.progress_mixin import ProgressMixin
-from stephanie.services.risk_predictor_service import (
-    RiskPredictorService,
-    RiskServiceConfig,
-)
-from stephanie.services.epistemic_guard_service import EpistemicGuardService
 from stephanie.services.eg_visual_service import EGVisualService
-
-from stephanie.components.risk.epi.epistemic_guard import (
-    GuardInput,
-    GuardOutput,
-)
-
-from stephanie.services.storage_service import (
-    StorageService,
-)  # your FS-backed store
+from stephanie.services.epistemic_guard_service import EpistemicGuardService
+from stephanie.services.risk_predictor_service import (RiskPredictorService,
+                                                       RiskServiceConfig)
+from stephanie.services.scm_service import SCMService
+from stephanie.services.storage_service import \
+    StorageService  # your FS-backed store
+from stephanie.utils.progress_mixin import ProgressMixin
 
 _logger = logging.getLogger(__file__)
 

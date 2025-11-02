@@ -1,6 +1,7 @@
 # stephanie/cbr/champion_promoter.py
 from __future__ import annotations
 
+
 class DefaultChampionPromoter:
     def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg

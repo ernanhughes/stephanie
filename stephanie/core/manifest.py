@@ -1,10 +1,13 @@
 # stephanie/core/manifest.py
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Optional
-from stephanie.tools.time_utils import now_iso
+
 import os
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Optional
+
+from stephanie.tools.time_utils import now_iso
 from stephanie.utils.json_sanitize import dumps_safe
+
 
 @dataclass
 class Manifest:

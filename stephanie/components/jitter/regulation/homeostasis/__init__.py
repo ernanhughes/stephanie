@@ -15,8 +15,8 @@ physiological stability through feedback control mechanisms.
 """
 from __future__ import annotations
 
-from .controller import PIDController
 from .adaptive_setpoints import AdaptiveSetpoints
+from .controller import PIDController
 from .crisis_detector import CrisisDetector
 
 __all__ = [

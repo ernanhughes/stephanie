@@ -16,10 +16,10 @@ from initialization through execution to termination.
 """
 from __future__ import annotations
 
-from .orchestrator import JASOrchestrator
-from .lifecycle_agent import JASLifecycleAgent
-from .integration.ssp_integration import SSPIntegration
 from .integration.reward_shaper import RewardShaper
+from .integration.ssp_integration import SSPIntegration
+from .lifecycle_agent import JASLifecycleAgent
+from .orchestrator import JASOrchestrator
 
 __all__ = [
     'JASOrchestrator',

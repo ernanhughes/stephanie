@@ -7,11 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseORM
-from stephanie.models.chat import (
-    ChatConversationORM,
-    ChatMessageORM,
-    ChatTurnORM,
-)
+from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
+                                   ChatTurnORM)
 from stephanie.models.document import DocumentORM
 from stephanie.models.document_section import DocumentSectionORM
 from stephanie.models.dynamic_scorable import DynamicScorableORM

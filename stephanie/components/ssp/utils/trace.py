@@ -7,12 +7,12 @@ for self-play rewards and VPM visualization.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
+
+import logging
+import math
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-import logging
-
-import math
 
 _logger = logging.getLogger(__name__)
 
@@ -35,7 +35,8 @@ class EpisodeTrace:
     timestamp: datetime = field(default_factory=datetime.now)
     episode_duration: float = 0.0
     proposer_reward: Optional[float] = None   # expected 0–1
-    solver_reward: Optional[float] = None     # expected 0–1
+    solver_reward: Optional[float] = None     # expected 
+    meta: Dict[str, Any] = field(default_factory=dict)  # extra data
 
     # ---------------------- helpers & properties ----------------------
 

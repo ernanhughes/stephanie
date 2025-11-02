@@ -1,7 +1,6 @@
 # stephanie/agents/knowledge/cartridge.py
 from __future__ import annotations
 
-
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent

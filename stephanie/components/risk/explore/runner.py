@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from stephanie.components.gap.risk.orchestrator import GapRiskOrchestrator
 from stephanie.components.gap.risk.explore.triggers import apply_triggers
+from stephanie.components.gap.risk.orchestrator import GapRiskOrchestrator
 
 
 class ExplorationRunner:

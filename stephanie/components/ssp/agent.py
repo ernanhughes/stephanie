@@ -6,25 +6,19 @@ from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.ssp.core.algorithm import SSPAlgorithm
-from stephanie.components.ssp.services.state_service import StateService
-from stephanie.components.ssp.services.vpm_control_service import (
-    VPMControlService,
-)
-from stephanie.components.ssp.services.vpm_visualization_service import (
-    VPMVisualizationService,
-)
-
 # Impl bindings
-from stephanie.components.ssp.impl.proposers.searching_proposer import (
-    SearchingProposer,
-)
+from stephanie.components.ssp.impl.proposers.searching_proposer import \
+    SearchingProposer
 from stephanie.components.ssp.impl.solvers.ats_solver import ATSSolver
+from stephanie.components.ssp.impl.solvers.solution_search import \
+    SolutionSearch
 from stephanie.components.ssp.impl.verifiers.rag_verifier import RAGVerifier
-from stephanie.components.ssp.impl.solvers.solution_search import (
-    SolutionSearch,
-)
+from stephanie.components.ssp.services.state_service import StateService
+from stephanie.components.ssp.services.vpm_control_service import \
+    VPMControlService
+from stephanie.components.ssp.services.vpm_visualization_service import \
+    VPMVisualizationService
 from stephanie.components.tree.events import TreeEventEmitter
-
 from stephanie.utils.progress_mixin import ProgressMixin
 
 _logger = logging.getLogger(__name__)

@@ -19,18 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Protocol,
-    TypedDict,
-    Iterable,
-    Sequence,
-    Tuple,
-    runtime_checkable,
-)
+from typing import (Any, Dict, Iterable, List, Optional, Protocol, Sequence,
+                    Tuple, TypedDict, runtime_checkable)
 
 # ---------------------------------------------------------------------
 # Type aliases

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 
-
 class StrategyMutationPass:
     def __init__(self, cfg: dict, compiler=None, evaluator=None, logger=None):
         self.cfg = cfg

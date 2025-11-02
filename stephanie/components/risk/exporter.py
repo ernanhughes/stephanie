@@ -1,7 +1,9 @@
 # stephanie/components/risk/exporter.py
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Dict, Optional
+
 
 class HighRiskExporter:
     """

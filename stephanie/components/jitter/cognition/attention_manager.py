@@ -17,15 +17,15 @@ This module implements:
 
 from __future__ import annotations
 
-
-from typing import Dict, Any, List, Optional
-import numpy as np
 import logging
 import time
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
 from enum import Enum
 from functools import wraps
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+from pydantic import BaseModel, Field, validator
 
 log = logging.getLogger("stephanie.jitter.cognition.attention")
 

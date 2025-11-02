@@ -1,5 +1,6 @@
 # stephanie/components/risk/epi/epistemic_guard.py
 from __future__ import annotations
+
 import json
 import math
 import os
@@ -10,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
+
 from stephanie.tools.time_utils import now_iso
 
 try:

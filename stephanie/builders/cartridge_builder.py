@@ -1,7 +1,6 @@
 # stephanie/builders/cartridge_builder.py
 from __future__ import annotations
 
-
 from datetime import datetime
 
 from stephanie.models.theorem import CartridgeORM

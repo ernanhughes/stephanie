@@ -1,6 +1,8 @@
 # stephanie/scoring/scorer/vpm_vit_scorer.py
 from __future__ import annotations
+
 from typing import Any, Dict, List
+
 import numpy as np
 import torch
 from PIL import Image
@@ -10,6 +12,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.model.vpm_vit import VPMViT
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
+
 
 class VPMViTScorer(BaseScorer):
     """

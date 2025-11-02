@@ -16,11 +16,10 @@ its internal state to external systems and humans.
 """
 from __future__ import annotations
 
-
-from .jaf import JitterArtifactV0
-from .telemetry import JASTelemetry
-from .structured_logger import StructuredLogger
 from .dashboard import JASDashboard
+from .jaf import JitterArtifactV0
+from .structured_logger import StructuredLogger
+from .telemetry import JASTelemetry
 
 __all__ = [
     'JitterArtifactV0',

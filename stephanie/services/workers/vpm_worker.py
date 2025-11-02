@@ -5,8 +5,8 @@ import json
 import logging
 import traceback
 from typing import Any, Dict, Optional
+
 import numpy as np
-from typing import Dict, Optional
 
 from stephanie.services.zeromodel_service import ZeroModelService
 

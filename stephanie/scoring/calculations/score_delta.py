@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from stephanie.memory.evaluation_store import EvaluationStore
 
+
 class ScoreDeltaCalculator:
     def __init__(self, cfg: dict, evaluation_store: EvaluationStore, container, logger=None):
         self.cfg = cfg

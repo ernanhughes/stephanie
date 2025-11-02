@@ -1,6 +1,7 @@
 # stephanie/evaluator/evaluator_loader.py
 from __future__ import annotations
 
+
 def get_evaluator(cfg, memory=None, call_llm=None, logger=None):
     if cfg["judge"] == "llm":
         from stephanie.evaluator.llm_judge_evaluator import LLMJudgeEvaluator

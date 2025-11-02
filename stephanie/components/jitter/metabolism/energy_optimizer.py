@@ -15,16 +15,17 @@ This module implements the energy optimization system with:
 """
 from __future__ import annotations
 
-from typing import Dict, Any, List
-import numpy as np
 import logging
 import time
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
 from enum import Enum
 from functools import wraps
+from typing import Any, Dict, List
 
-from .energy import EnergyPools, EnergyPool
+import numpy as np
+from pydantic import BaseModel, Field, validator
+
+from .energy import EnergyPool, EnergyPools
 from .metabolic_pathways import MetabolicPathways, PathwayType
 
 log = logging.getLogger("stephanie.jitter.metabolism.optimizer")

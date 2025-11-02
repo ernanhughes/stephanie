@@ -1,13 +1,15 @@
 # stephanie/components/ssp/impl/proposers/searching_proposer.py
 from __future__ import annotations
-from typing import Any, Dict, List, Tuple, Optional
+
 import asyncio
-import time
-import re
 import logging
+import re
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.components.ssp.core.protocols import EpisodeContext
-from stephanie.components.ssp.impl.solvers.solution_search import SolutionSearch
+from stephanie.components.ssp.impl.solvers.solution_search import \
+    SolutionSearch
 from stephanie.components.ssp.utils.parser import parse_proposer_lines
 from stephanie.prompts.prompt_loader import PromptLoader
 

@@ -18,18 +18,17 @@ Key Features:
 """
 from __future__ import annotations
 
-
-from typing import Dict, Any, List, Tuple, Optional
-import numpy as np
+import asyncio
 import logging
 import time
-import asyncio
+import uuid
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
 from enum import Enum
 from functools import wraps
-import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
+from pydantic import BaseModel, Field, validator
 
 log = logging.getLogger("stephanie.jitter.regulation.apoptosis")
 

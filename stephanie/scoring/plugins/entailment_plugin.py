@@ -1,9 +1,13 @@
 # stephanie/scoring/plugins/entailment_plugin.py
 from __future__ import annotations
+
 import math
 from typing import Any, Dict, Optional
-from .registry import register
+
 import torch
+
+from .registry import register
+
 
 @register("entailment")
 class EntailmentPlugin:

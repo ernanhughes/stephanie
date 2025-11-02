@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 
-
 class PromptMutator:
     """
     A utility class to generate mutated versions of a prompt using symbolic or structural transformations.

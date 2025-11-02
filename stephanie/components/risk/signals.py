@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
 import math
-import numpy as np
 import re
+from dataclasses import asdict, dataclass
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
+
+import numpy as np
 import torch
 
 # ---------------------------------------------------------------------------

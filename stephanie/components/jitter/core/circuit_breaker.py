@@ -1,10 +1,10 @@
 # stephanie/components/jitter/core/circuit_breaker.py
 from __future__ import annotations
 
-import time
 import logging
-from typing import Callable, Any, Dict
+import time
 from functools import wraps
+from typing import Any, Callable, Dict
 
 log = logging.getLogger("stephanie.jitter.circuit_breaker")
 

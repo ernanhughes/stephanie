@@ -1,6 +1,7 @@
 # stephanie/reports/report_generator.py
 from __future__ import annotations
 
+
 class ReportGenerator:
     def generate(self, cartridge):
         """Generate comprehensive research report"""

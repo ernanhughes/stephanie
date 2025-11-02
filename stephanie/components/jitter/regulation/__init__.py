@@ -16,13 +16,13 @@ reproduction or death.
 """
 from __future__ import annotations
 
-from .homeostasis.controller import PIDController
-from .homeostasis.adaptive_setpoints import AdaptiveSetpoints
-from .homeostasis.crisis_detector import CrisisDetector
 from .apoptosis import ApoptosisSystem
-from .reproduction.reproduction_system import ReproductionSystem
-from .reproduction.quality_control import QualityControlledReproduction
+from .homeostasis.adaptive_setpoints import AdaptiveSetpoints
+from .homeostasis.controller import PIDController
+from .homeostasis.crisis_detector import CrisisDetector
 from .reproduction.heritage_manager import HeritageManager
+from .reproduction.quality_control import QualityControlledReproduction
+from .reproduction.reproduction_system import ReproductionSystem
 
 __all__ = [
     'PIDController',

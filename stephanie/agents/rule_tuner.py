@@ -1,7 +1,6 @@
 # stephanie/agents/rule_tuner.py
 from __future__ import annotations
 
-
 from tabulate import tabulate
 
 from stephanie.agents.base_agent import BaseAgent

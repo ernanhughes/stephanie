@@ -25,20 +25,21 @@ Key Features:
 """
 from __future__ import annotations
 
-from typing import Dict, Any, Tuple, Optional, List
-import time
 import logging
-import numpy as np
-import torch
+import time
+import uuid
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, validator
 from enum import Enum
 from functools import wraps
-import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
-from .sense_making import SenseMakingEngine, MeaningType
-from ...production.closed_production import ProductionNetwork
+import numpy as np
+import torch
+from pydantic import BaseModel, Field, validator
+
 from ...coupling.structural_coupling import StructuralCoupling
+from ...production.closed_production import ProductionNetwork
+from .sense_making import MeaningType, SenseMakingEngine
 
 log = logging.getLogger("stephanie.jitter.cognition.triune")
 

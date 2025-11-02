@@ -16,7 +16,8 @@ _logger = logging.getLogger(__name__)
 # Try to use shared parser if available; otherwise use local fallback.
 try:
     # Expected to return: {"rationale": str, "score": float|int, "result": str, "ok": bool, "raw": str}
-    from stephanie.components.ssp.utils.parser import parse_three_lines as _parse_three_lines_ext  # type: ignore
+    from stephanie.components.ssp.utils.parser import \
+        parse_three_lines as _parse_three_lines_ext  # type: ignore
 except Exception:  # pragma: no cover
     _parse_three_lines_ext = None  # type: ignore
 

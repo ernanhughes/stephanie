@@ -1,6 +1,7 @@
 # stephanie/agents/learning/progress.py
 from __future__ import annotations
 
+
 class ProgressAdapter:
     def __init__(self, agent_progress, cfg):
         self.core = agent_progress  # reuse AgentProgress you already create

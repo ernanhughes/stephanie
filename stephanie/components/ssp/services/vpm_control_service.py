@@ -6,12 +6,12 @@ VPM Control Service - Manages Vectorized Performance Map decision-making for SSP
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import time
-import json
-import asyncio
-from pathlib import Path
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -24,17 +24,14 @@ except Exception:  # pragma: no cover
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_protocol import Service
-
+from stephanie.utils.json_sanitize import (dumps_safe,  # ← reuse your utils
+                                           sanitize)
 # Optional ZeroModel/PHOS imports (kept as in your existing file)
-from stephanie.zeromodel.vpm_controller import (
-    Thresholds,
-    Policy,
-    VPMRow,
-    Decision,
-    VPMController as CoreVPMController,
-)
+from stephanie.zeromodel.vpm_controller import Decision, Policy, Thresholds
+from stephanie.zeromodel.vpm_controller import \
+    VPMController as CoreVPMController
+from stephanie.zeromodel.vpm_controller import VPMRow
 from stephanie.zeromodel.vpm_phos import build_vpm_phos_artifacts
-from stephanie.utils.json_sanitize import sanitize, dumps_safe  # ← reuse your utils
 
 
 class VPMControlService(Service):

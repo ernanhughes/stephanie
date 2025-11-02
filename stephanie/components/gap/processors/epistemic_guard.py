@@ -22,17 +22,21 @@ import re
 import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
-# --- ADD THESE IMPORTS AT THE TOP ---
-from stephanie.components.risk.signals import HallucinationContext, collect as collect_hall
-from stephanie.components.risk.badge import make_badge
-from stephanie.components.risk.attr_sink_orm import ORMAttrSink  # For provenance
-from stephanie.components.risk.provenance import ProvenanceLogger  # For manifest
-from stephanie.components.risk.epi.epistemic_guard import RiskPredictor  # For risk prediction
-
-from stephanie.tools.time_utils import now_iso
 
 # --------------------------- Safe imports / light deps --------------------------- #
 import numpy as np
+
+from stephanie.components.risk.attr_sink_orm import \
+    ORMAttrSink  # For provenance
+from stephanie.components.risk.badge import make_badge
+from stephanie.components.risk.epi.epistemic_guard import \
+    RiskPredictor  # For risk prediction
+from stephanie.components.risk.provenance import \
+    ProvenanceLogger  # For manifest
+# --- ADD THESE IMPORTS AT THE TOP ---
+from stephanie.components.risk.signals import HallucinationContext
+from stephanie.components.risk.signals import collect as collect_hall
+from stephanie.tools.time_utils import now_iso
 
 try:
     from PIL import Image, ImageDraw, ImageFont

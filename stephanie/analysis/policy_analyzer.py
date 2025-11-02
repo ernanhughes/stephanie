@@ -5,9 +5,10 @@ import json
 import logging
 from typing import Any, Dict, List
 
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt

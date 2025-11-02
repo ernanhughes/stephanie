@@ -25,12 +25,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+import joblib
 import numpy as np
 
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.memcube.memcube_client import MemCubeClient
-
-import joblib
 
 _logger = logging.getLogger(__name__)
 

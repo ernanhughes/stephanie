@@ -15,15 +15,15 @@ must recursively produce the components that define the system itself, with:
 """
 from __future__ import annotations
 
-
-from typing import Dict, Any, List, Tuple, Optional
-import numpy as np
 import logging
 import time
 from dataclasses import dataclass
-from pydantic import BaseModel, Field, validator, root_validator
 from enum import Enum
 from functools import wraps
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+from pydantic import BaseModel, Field, root_validator, validator
 
 log = logging.getLogger("stephanie.jitter.production")
 

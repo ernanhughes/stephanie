@@ -1,7 +1,6 @@
 # stephanie/agents/mixins/ethics_scoring_mixin.py
 from __future__ import annotations
 
-
 from stephanie.analysis.paper_score_evaluator import PaperScoreEvaluator
 
 

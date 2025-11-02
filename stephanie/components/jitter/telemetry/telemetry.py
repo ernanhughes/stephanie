@@ -18,22 +18,22 @@ Key Features:
 """
 from __future__ import annotations
 
-
-from typing import Dict, Any, List, Optional, Tuple
+import asyncio
 import json
-import time
 import logging
-import numpy as np
-from dataclasses import dataclass, asdict, field
-from pydantic import BaseModel, Field, validator
+import time
+import uuid
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from functools import wraps
-import asyncio
-import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
+from pydantic import BaseModel, Field, validator
+
+from stephanie.components.jitter.telemetry.jaf import JitterArtifactV0
 from stephanie.services.bus.nats_client import get_js
 from stephanie.utils.serialization import compress_data
-from stephanie.components.jitter.telemetry.jaf import JitterArtifactV0
 
 log = logging.getLogger("stephanie.jitter.telemetry")
 

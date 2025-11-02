@@ -22,35 +22,30 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import imageio.v2 as imageio
+import matplotlib
 import numpy as np
 import pandas as pd
 import PIL.Image as Image
 
-import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from stephanie.components.ssp.utils.trace import EpisodeTrace
 from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_protocol import Service
-from stephanie.components.ssp.utils.trace import EpisodeTrace
-
-from stephanie.zeromodel.vpm_phos import (
-    build_vpm_phos_artifacts,
-    build_compare_guarded,
-    robust01,
-    save_img,
-    vpm_vector_from_df,
-    to_square,
-    phos_sort_pack,
-)
 from stephanie.zeromodel.vpm_controller import VPMRow
+from stephanie.zeromodel.vpm_phos import (build_compare_guarded,
+                                          build_vpm_phos_artifacts,
+                                          phos_sort_pack, robust01, save_img,
+                                          to_square, vpm_vector_from_df)
 
 _logger = logging.getLogger(__name__)
 
@@ -264,8 +259,52 @@ class VPMVisualizationService(Service):
 
         out_path = self._raw_viz_dir / f"{self._sanitize_unit(unit)}.png"
         Image.fromarray(bar, mode="L").save(out_path)
-        self.logger.log("VPM saved", extra={"unit": unit, "features": dict(zip(names, values))})
+        self.logger.log("VPM saved", {"unit": unit, "features": dict(zip(names, values))})
         return str(out_path)
+
+    def record_step(self, unit: str, dims: Dict[str, float], step_idx: int) -> None:
+        """
+        Append a single step’s metrics for `unit` into the history used by RAW/PHOS.
+        Also captures a tiny grayscale frame for the filmstrip.
+        """
+        # Normalize/alias legacy keys -> canonical keys
+        mapped = { _KEY_MAP.get(k, k): float(v) for k, v in (dims or {}).items() }
+
+        # Track history (this is what RAW/PHOS pull from)
+        rec = {"step_idx": int(step_idx), **mapped}
+        self._metrics_history.setdefault(unit, []).append(rec)
+
+        # Build a stable feature order per-unit so frames align
+        order = self._feature_order.setdefault(unit, [])
+        for k in mapped.keys():
+            if k not in order:
+                order.append(k)
+
+        # Make a tiny grayscale tile per step so filmstrip is never blank
+        import matplotlib.pyplot as plt
+        import numpy as np
+        vec = np.array([mapped.get(k, 0.0) for k in order], dtype=np.float32)
+        vec = np.nan_to_num(vec, nan=0.0, posinf=1.0, neginf=0.0)
+        vec = np.clip(vec, 0.0, 1.0)
+
+        # square-ish grid for visibility
+        side = int(np.ceil(np.sqrt(max(1, vec.size))))
+        pad  = side*side - vec.size
+        if pad > 0: vec = np.pad(vec, (0,pad))
+        img = (vec.reshape(side, side) * 255).astype(np.uint8)
+
+        unit_dir = self._progress_root / unit
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        frame_path = unit_dir / f"{unit}_step{step_idx:04d}.png"
+
+        plt.figure(figsize=(2.5, 2.5))
+        plt.imshow(img, cmap="gray", vmin=0, vmax=255, interpolation="nearest")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(frame_path, dpi=200)
+        plt.close()
+
+        self._progress_frames.setdefault(unit, []).append(str(frame_path))
 
     def generate_visualization(
         self,
@@ -483,41 +522,41 @@ class VPMVisualizationService(Service):
             self.logger.log("VPMVisualizationError", {"event": "episode_data_save_failed", "unit": unit, "error": str(e)})
 
     def _convert_to_dataframe(self, metrics_history: List[Dict]) -> pd.DataFrame:
-        """Convert metrics history into wide DF (node_id x dims)."""
         try:
-            rows: List[Dict[str, Any]] = []
+            rows = []
             for rec in metrics_history:
-                step_idx = int(rec.get("step_idx", 0))
+                step_idx = rec.get("step_idx", 0)
                 for k, v in rec.items():
                     if k == "step_idx":
                         continue
-                    dim = _KEY_MAP.get(k, k)
-                    try:
-                        val = float(v)
-                    except Exception:
-                        continue
-                    rows.append({"node_id": step_idx, "dimension": dim, "ssp": val})
-
-            if not rows:
-                return pd.DataFrame({"node_id": [], **{d: [] for d in self._dimensions}})
+                    k2 = _KEY_MAP.get(k, k)  # legacy -> canonical
+                    rows.append({"node_id": str(step_idx), "ssp": float(v), "dimension": k2})
 
             df = pd.DataFrame(rows)
-            df = df.groupby(["node_id", "dimension"], as_index=False, sort=True).agg({"ssp": "last"})
-            wide = (
-                df.pivot_table(index="node_id", columns="dimension", values="ssp", aggfunc="last", fill_value=0.0)
-                .sort_index()
-                .reset_index()
-            )
+            if df.empty:
+                return pd.DataFrame({"node_id": [], **{d: [] for d in self._dimensions}})
 
-            for dim in self._dimensions:
-                if dim not in wide.columns:
-                    wide[dim] = 0.0
+            # Handle duplicates robustly
+            df = pd.pivot_table(
+                df,
+                index="node_id",
+                columns="dimension",
+                values="ssp",
+                aggfunc="last",
+            ).reset_index()
 
-            return wide
+            # ensure configured-but-missing dims exist
+            for d in self._dimensions:
+                if d not in df.columns:
+                    df[d] = 0.0
+
+            return df
         except Exception as e:
             self.logger.log("VPMVisualizationError", {"event": "dataframe_conversion_failed", "error": str(e)})
-            n = len(metrics_history)
-            return pd.DataFrame({"node_id": list(range(n)), **{d: [0.0] * n for d in self._dimensions}})
+            return pd.DataFrame(
+                {"node_id": [str(i) for i in range(len(metrics_history))],
+                **{d: [0.0]*len(metrics_history) for d in self._dimensions}}
+            )
 
     def _with_model_prefixed_columns(self, df: pd.DataFrame, model: str, dims: List[str]) -> Tuple[pd.DataFrame, List[str]]:
         """Ensure df has columns like 'ssp.dim' for each dim in `dims`."""
@@ -713,3 +752,47 @@ class VPMVisualizationService(Service):
             f"<VPMVisualizationService status={'initialized' if self._initialized else 'uninitialized'} "
             f"viz_dir={self._viz_dir} dims={len(self._dimensions)} episodes={len(self._episode_traces)}>"
         )
+
+    def generate_raw_vpm_image(self, unit: str, output_path: Optional[str] = None) -> str:
+        metrics_history = self._metrics_history.get(unit, [])
+        if not metrics_history: return ""
+        df = self._convert_to_dataframe(metrics_history)
+
+        dims_to_use = [d for d in self._dimensions if d in df.columns]
+        if not dims_to_use: return ""
+
+        vec = vpm_vector_from_df(
+            df, model="ssp", dimensions=dims_to_use,
+            interleave=self._raw_vpm_interleave, weights=self._raw_vpm_weights,
+        )
+        vec = np.asarray(vec, np.float32)
+        # nudge flat vectors so image isn’t all black
+        if not np.isfinite(vec).any() or float(vec.max() - vec.min()) < 1e-6:
+            vec = np.full_like(vec, 0.5, dtype=np.float32)
+
+        img, _ = to_square(vec)
+
+        if output_path is None:
+            output_path = os.path.join(self._raw_viz_dir, f"{unit}_raw_vpm.png")
+
+        save_img(img, output_path, title=f"SSP VPM (Raw) - {unit}")
+        return output_path
+
+
+    def generate_phos_image(self, unit: str, output_path: Optional[str] = None, tl_frac: Optional[float] = None) -> str:
+        metrics_history = self._metrics_history.get(unit, [])
+        if not metrics_history: return ""
+        df = self._convert_to_dataframe(metrics_history)
+
+        vec = vpm_vector_from_df(
+            df, model="ssp", dimensions=self._dimensions,
+            interleave=self._phos_interleave, weights=self._phos_weights,
+        )
+        tl_frac = tl_frac if tl_frac is not None else self._phos_tl_frac
+        img = phos_sort_pack(vec, tl_frac=tl_frac)
+
+        if output_path is None:
+            output_path = os.path.join(self._phos_viz_dir, f"{unit}_phos_vpm.png")
+
+        save_img(img, output_path, title=f"SSP VPM (PHOS) - {unit}")
+        return output_path

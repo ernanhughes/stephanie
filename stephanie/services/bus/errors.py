@@ -1,6 +1,7 @@
 # stephanie/services/bus/errors.
 from __future__ import annotations
 
+
 class BusError(Exception):
     """Base exception for all bus-related errors."""
     pass

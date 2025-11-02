@@ -1,9 +1,12 @@
 # stephanie/services/eg_visual_service.py
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict, Optional
+
 from stephanie.components.risk.epi.epistemic_guard import EGVisual
 from stephanie.services.service_protocol import Service
+
 
 class EGVisualService(Service):
     """

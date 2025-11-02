@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
-import uuid
-import numpy as np
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, field
 import time
+import uuid
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 
 log = logging.getLogger("stephanie.jitter.reproduction.quality")
 
