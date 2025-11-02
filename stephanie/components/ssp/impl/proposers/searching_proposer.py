@@ -7,6 +7,7 @@ import re
 import logging
 
 from stephanie.components.ssp.core.protocols import EpisodeContext
+from stephanie.components.ssp.impl.solvers.solution_search import SolutionSearch
 from stephanie.components.ssp.utils.parser import parse_proposer_lines
 from stephanie.prompts.prompt_loader import PromptLoader
 
@@ -38,7 +39,7 @@ class SearchingProposer:
         self.memory = memory
         self.container = container
         self.logger = logger
-        self.solution_search = solution_search
+        self.solution_search: SolutionSearch = solution_search
 
         # Services
         self.vpm_control = container.get("vpm_control")
@@ -71,21 +72,8 @@ class SearchingProposer:
 
         # 2) Gather evidence using whichever API your SolutionSearch exposes
         all_evidence: List[str] = []
-        snippet_fn = getattr(self.solution_search, "find_snippets", None) or getattr(self.solution_search, "search", None)
-        if snippet_fn is None:
-            raise RuntimeError("SolutionSearch must implement find_snippets(...) or search(...)")
-
         for rewrite in rewrites:
-            try:
-                # Try a permissive call first
-                snippets = await snippet_fn(rewrite, top_k=max(1, self.max_snippets - len(all_evidence)))
-            except TypeError:
-                # Fallback signatures seen elsewhere
-                try:
-                    snippets = await snippet_fn(rewrite)
-                except Exception as e:
-                    _logger.warning("Evidence lookup failed for rewrite '%s': %s", rewrite, e)
-                    snippets = []
+            snippets = await self.solution_search.find_snippets(rewrite, top_k=max(1, self.max_snippets - len(all_evidence)))
 
             if snippets:
                 for s in snippets:

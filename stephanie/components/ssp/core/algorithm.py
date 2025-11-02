@@ -36,6 +36,11 @@ from stephanie.components.ssp.services.vpm_visualization_service import (
     VPMVisualizationService,
 )
 
+from stephanie.components.ssp.metrics.scorer import SSPScorer
+from stephanie.components.ssp.metrics.scorable import SSPScorable
+
+
+
 import logging
 _logger = logging.getLogger(__name__)
 
@@ -57,6 +62,7 @@ class SSPAlgorithm:
         self.verifier = verifier
         self.vpm_visualization = vpm_visualization
         self.metrics = SSPMetrics()
+        self._ssp_scorer = SSPScorer()
         self.episode_history: List[EpisodeTrace] = []
 
     # ------------------------- public API -------------------------
@@ -74,11 +80,6 @@ class SSPAlgorithm:
         episode_id = f"ssp-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
         start_time = time.time()
         ctx["vpm_unit"] = episode_id
-        if self.vpm_visualization and ctx.get("pipeline_run_id"):
-            try:
-                self.vpm_visualization.set_run_id(str(ctx["pipeline_run_id"]))
-            except Exception:
-                pass
         try:
             # 1) Proposer: produce a question (and, if available, proposer_evidence)
             # Expected: (question, proposer_evidence, proposer_meta)
@@ -108,10 +109,29 @@ class SSPAlgorithm:
                 timestamp=datetime.now(),
                 episode_duration=time.time() - start_time,
             )
+
+            # ---- Canonical SSP metrics (single source) ----
+            verifier01 = float(judge_score) / 100.0 if judge_score is not None else 0.0
+            scorable = SSPScorable(
+                episode_id=episode_id,
+                question=q,
+                seed_answer=seed_answer,
+                predicted_answer=pred,
+                evidence_snippets=evidence_docs,
+                solver_steps=int(solver_steps),
+                difficulty01=float(prop_meta.get("difficulty", 0.0)) / 100.0 if prop_meta.get("difficulty", None) and prop_meta["difficulty"] > 1 else float(prop_meta.get("difficulty", 0.0)),
+                verifier_score01=verifier01,
+                verified01=1.0 if solver_wins else 0.0,
+            )
+            ssp_metrics = self._ssp_scorer.score(scorable)  # {'names','values','vector'}
+
+            # Attach for downstream consumers (manifest, storage, VPM, etc.)
+            ep.solver_meta = (ep.solver_meta or {})
+            ep.solver_meta["ssp_metrics"] = ssp_metrics
+
             # Initial snapshot for the blog's “proposed → solved” narrative
             if self.vpm_visualization:
-                names, vals = ep.to_vpm_features()
-                dims = {k: float(v) for k, v in zip(names, vals)}
+                dims = ssp_metrics["vector"]  # already 0..1 and canonical
                 self.vpm_visualization.snapshot_progress(
                     unit=episode_id, dims=dims, step_idx=0, tag="proposed"
                 )
@@ -135,15 +155,9 @@ class SSPAlgorithm:
             # 7) VPM visualization (optional)
             if self.vpm_visualization:
                 try:
-                    # Route outputs under data/ssp/{pipeline_run_id}/...
-                    run_id = (ctx or {}).get("pipeline_run_id")
-                    if run_id:
-                        self.vpm_visualization.set_run_id(str(run_id))
-
                     # Minimal bar (1×F) for the post
                     self.vpm_visualization.generate_episode_visualization(
-                        unit=episode_id,
-                        episode=ep,
+                        unit=episode_id, episode=ep, dims_override=ssp_metrics["vector"]
                     )
 
                     # Build RAW & PHOS using the step snapshots collected during search
@@ -162,6 +176,8 @@ class SSPAlgorithm:
             return ep
 
         except Exception as e:
+            _logger.error("SSP episode failed", extra={"episode_id": episode_id, "error": str(e)})
+
             # Count the episode, update pass rate, and emit a safe trace
             self.metrics.total_episodes += 1
             self.metrics.verification_pass_rate = (

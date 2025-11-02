@@ -72,6 +72,7 @@ class SSPAgent(BaseAgent, ProgressMixin):
                 memory=self.memory,
                 logger=self.logger,
                 container=self.container,
+                run_id=context.get("pipeline_run_id"),
             ),
             dependencies=[],
             init_args={},

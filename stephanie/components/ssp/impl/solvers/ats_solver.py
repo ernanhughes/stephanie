@@ -436,16 +436,9 @@ class ATSSolver(Solver, ProgressMixin):
             "mode": "search",
             "vpm_unit": unit,
         }
-        # Optional: immediately render RAW/PHOS now that history exists
-        try:
-            run_id = (context or {}).get("pipeline_run_id")
-            if self.vpm and run_id:
-                self.vpm.set_run_id(str(run_id))
-            if self.vpm:
-                self.vpm.generate_raw_vpm_image(unit=unit)
-                self.vpm.generate_phos_image(unit=unit)
-        except Exception:
-            pass
+
+        self.vpm.generate_raw_vpm_image(unit=unit)
+        self.vpm.generate_phos_image(unit=unit)
 
         return predicted_answer, evidence, steps, meta
 
