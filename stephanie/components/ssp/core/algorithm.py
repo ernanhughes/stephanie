@@ -70,26 +70,25 @@ class SSPAlgorithm:
     async def run_episode(
         self,
         seed_answer: str,
-        context: Optional[EpisodeContext] = None,
+        context: Dict[str, Any],
     ) -> EpisodeTrace:
         """
         Run one SSP episode from a SEED_ANSWER.
         Returns a fully populated EpisodeTrace (with rewards attached if verified).
         """
-        ctx = context or {}
         episode_id = f"ssp-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
         start_time = time.time()
-        ctx["vpm_unit"] = episode_id
+        context["vpm_unit"] = episode_id
         try:
             # 1) Proposer: produce a question (and, if available, proposer_evidence)
             # Expected: (question, proposer_evidence, proposer_meta)
-            q, prop_evidence, prop_meta = await self._call_proposer(seed_answer, ctx)
+            q, prop_evidence, prop_meta = await self.proposer.propose(seed_answer, context=context)
 
             # 2) Solver: answer with search (returns predicted_answer + evidence_docs)
-            pred, evidence_docs, solver_steps, solver_meta = await self._call_solver(q, seed_answer, ctx)
+            pred, evidence_docs, solver_steps, solver_meta = await self.solver.solve(question=q, seed_answer=seed_answer, context=context)
 
             # 3) Verifier (adversarial A vs B, RAG-style): did solver beat the seed?
-            solver_wins, judge_score, judge_details = await self._call_verifier(q, seed_answer, pred, evidence_docs, ctx)
+            solver_wins, judge_score, judge_details = await self.verifier.verify(q, seed_answer, pred, evidence_docs, context)
 
             # 4) Build episode
             ep = EpisodeTrace(
@@ -100,7 +99,7 @@ class SSPAlgorithm:
                 predicted_answer=pred,
                 evidence_docs=evidence_docs,
                 verified=bool(solver_wins),
-                verifier_score=float(judge_score),
+                reward=float(judge_score),
                 solver_steps=int(solver_steps),
                 difficulty=float(prop_meta.get("difficulty", 0.5)),
                 proposer_meta=prop_meta,
@@ -111,17 +110,18 @@ class SSPAlgorithm:
             )
 
             # ---- Canonical SSP metrics (single source) ----
-            verifier01 = float(judge_score) / 100.0 if judge_score is not None else 0.0
+            reward = float(judge_score) / 100.0 if judge_score is not None else 0.0
+            difficulty = float(prop_meta.get("difficulty", 0.0)) / 100.0 if prop_meta.get("difficulty", None) and prop_meta["difficulty"] > 1 else float(prop_meta.get("difficulty", 0.0))
             scorable = SSPScorable(
                 episode_id=episode_id,
                 question=q,
                 seed_answer=seed_answer,
                 predicted_answer=pred,
-                evidence_snippets=evidence_docs,
+                evidence_docs=evidence_docs,
                 solver_steps=int(solver_steps),
-                difficulty01=float(prop_meta.get("difficulty", 0.0)) / 100.0 if prop_meta.get("difficulty", None) and prop_meta["difficulty"] > 1 else float(prop_meta.get("difficulty", 0.0)),
-                verifier_score01=verifier01,
-                verified01=1.0 if solver_wins else 0.0,
+                difficulty=difficulty,
+                reward=reward,
+                verified=1.0 if solver_wins else 0.0,
             )
             ssp_metrics = self._ssp_scorer.score(scorable)  # {'names','values','vector'}
 
@@ -157,7 +157,7 @@ class SSPAlgorithm:
                 try:
                     # Minimal bar (1×F) for the post
                     self.vpm_visualization.generate_episode_visualization(
-                        unit=episode_id, episode=ep, dims_override=ssp_metrics["vector"]
+                        unit=episode_id, episode=ep, names=ssp_metrics["names"], values=ssp_metrics["values"]
                     )
 
                     # Build RAW & PHOS using the step snapshots collected during search
@@ -191,7 +191,7 @@ class SSPAlgorithm:
                 predicted_answer="",
                 evidence_docs=[],
                 verified=False,
-                verifier_score=0.0,
+                reward=0.0,
                 solver_steps=0,
                 difficulty=0.0,
                 proposer_meta={"error": str(e)},
@@ -204,14 +204,13 @@ class SSPAlgorithm:
     async def train_step(
         self,
         seed_answers: List[str],
-        context: Optional[EpisodeContext] = None,
+        context: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Run multiple episodes in parallel (one per seed), then compute summary rewards/metrics.
         """
-        ctx = context or {}
         # Run episodes concurrently
-        tasks = [self.run_episode(seed, ctx) for seed in seed_answers]
+        tasks = [self.run_episode(seed, context) for seed in seed_answers]
         episodes: List[EpisodeTrace] = await asyncio.gather(*tasks)
 
         # Build a filmstrip per episode (uses frames emitted during solver search)
@@ -256,62 +255,6 @@ class SSPAlgorithm:
 
     # ------------------------- internals -------------------------
 
-    async def _call_proposer(self, seed_answer: str, ctx: EpisodeContext):
-        out = await self.proposer.propose(seed_answer, context=ctx)
-        # Backward compatibility: handle (question, meta) form
-        if isinstance(out, tuple) and len(out) == 3:
-            return out  # (question, proposer_evidence, proposer_meta)
-        elif isinstance(out, tuple) and len(out) == 2:
-            q, meta = out
-            evid = meta.get("evidence_snippets", []) if isinstance(meta, dict) else []
-            return q, evid, (meta or {})
-        else:
-            # Extreme fallback
-            return str(out), [], {}
-
-    async def _call_solver(self, question: str, seed_answer: str, ctx: EpisodeContext):
-        """
-        Expected solver API:
-          solve(question, seed_answer, context, use_search=True)
-            -> predicted_answer, evidence_docs, solver_steps, solver_meta
-        """
-        out = await self.solver.solve(question, seed_answer, context=ctx)
-        # Backward compatibility for (pred, evid, steps)
-        if isinstance(out, tuple) and len(out) == 4:
-            return out 
-        elif isinstance(out, tuple) and len(out) == 3:
-            pred, evid, steps = out
-            return pred, evid, steps, {}
-        # Worst case: only answer came back
-        return str(out), [], 0, {}
-
-    async def _call_verifier(
-        self,
-        question: str,
-        seed_answer: str,
-        predicted_answer: str,
-        evidence_docs: List[str],
-        ctx: EpisodeContext,
-    ):
-        """
-        Expected verifier API (RAG-style judge):
-          verify(question, seed_answer, predicted_answer, evidence_docs, context)
-            -> (solver_wins: bool, score_1_to_100: float, details: dict)
-        """
-        out = await self.verifier.verify(
-            question=question,
-            seed_answer=seed_answer,
-            predicted_answer=predicted_answer,
-            evidence=evidence_docs,
-            context=ctx,
-        )
-        # Backward compatibility: allow VerificationResult-like objects
-        if isinstance(out, tuple) and len(out) == 3:
-            return out
-        elif hasattr(out, "is_valid"):
-            return bool(out.is_valid), float(getattr(out, "score", 0.0)), dict(getattr(out, "verification_details", {}))
-        return False, 0.0, {"error": "unsupported verifier return"}
-
     def _calculate_and_apply_rewards(self, verified_episodes: List[EpisodeTrace], unverified_count: int) -> None:
         rewards = calculate_self_play_rewards(verified_episodes, unverified_count)
         for ep in verified_episodes:
@@ -343,7 +286,7 @@ class SSPAlgorithm:
             # Verification metrics
             self.metrics.verification_pass_rate = self.metrics.verified_episodes / max(self.metrics.total_episodes, 1)
             self.metrics.avg_verification_score = (
-                (self.metrics.avg_verification_score * max(self.metrics.verified_episodes - 1, 0) + ep.verifier_score)
+                (self.metrics.avg_verification_score * max(self.metrics.verified_episodes - 1, 0) + ep.reward)
                 / max(self.metrics.verified_episodes, 1)
             )
 

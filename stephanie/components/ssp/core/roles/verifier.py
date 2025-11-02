@@ -29,7 +29,7 @@ class Verifier(ABC):
     def apply_filters(
         self,
         question: str,
-        evidence_snippets: List[str],
+        evidence_docs: List[str],
         seed_answer: str
     ) -> Tuple[bool, List[str]]:
         """
@@ -37,7 +37,7 @@ class Verifier(ABC):
         
         Args:
             question: Question to filter
-            evidence_snippets: Evidence gathered by the Proposer
+            evidence_docs: Evidence gathered by the Proposer
             seed_answer: Ground truth answer
             
         Returns:
@@ -50,7 +50,7 @@ class Verifier(ABC):
         self,
         question: str,
         seed_answer: str,
-        evidence_snippets: List[str],
+        evidence_docs: List[str],
         context: Optional[EpisodeContext] = None
     ) -> VerificationResult:
         """
@@ -64,7 +64,7 @@ class Verifier(ABC):
         Args:
             question: Question to verify
             seed_answer: Ground truth answer
-            evidence_snippets: Evidence gathered by the Proposer
+            evidence_docs: Evidence gathered by the Proposer
             context: Additional context for verification
             
         Returns:

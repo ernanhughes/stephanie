@@ -38,8 +38,8 @@ class Proposer(ABC):
             context: Additional context for the proposal
             
         Returns:
-            Tuple of (question, evidence_snippets, metadata) where:
-            - evidence_snippets: Evidence gathered DURING question creation
+            Tuple of (question, evidence_docs, metadata) where:
+            - evidence_docs: Evidence gathered DURING question creation
             - metadata should include difficulty, etc.
         """
         pass
@@ -52,6 +52,6 @@ class Proposer(ABC):
         Returns:
             Dictionary describing capabilities like:
             - supports_search_during_proposal: bool (should be True)
-            - max_evidence_snippets: int
+            - max_evidence_docs: int
         """
         pass

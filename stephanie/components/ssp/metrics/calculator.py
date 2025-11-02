@@ -24,8 +24,8 @@ class SSPMetricsCalculator:
         names = list(SSP_METRIC_ORDER)
         vmap: Dict[str, float] = {}
 
-        # 1) verifier_score
-        vmap["ssp.verifier_score"] = _clamp01(_fallback(s.reward, 0.0))
+        # 1) reward
+        vmap["ssp.reward"] = _clamp01(_fallback(s.reward, 0.0))
 
         # 2) verified
         vmap["ssp.verified"] = 1.0 if s.verified else 0.0

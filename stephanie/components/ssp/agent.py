@@ -50,15 +50,6 @@ class SSPAgent(BaseAgent, ProgressMixin):
             dependencies=[],
             init_args={},
         )
-        container.register(
-            name="vpm_control",
-            factory=lambda: VPMControlService(
-                cfg=cfg, memory=memory, container=container, logger=logger
-            ),
-            dependencies=[],
-            init_args={},
-        )
-
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -66,13 +57,25 @@ class SSPAgent(BaseAgent, ProgressMixin):
         """
         run_id = context.get("pipeline_run_id", "unknown")
         self.container.register(
+            name="vpm_control",
+            factory=lambda: VPMControlService(
+                cfg=self.cfg,
+                memory=self.memory,
+                container=self.container,
+                logger=self.logger,
+                run_id=run_id,
+            ),
+            dependencies=[],
+            init_args={},
+        )
+        self.container.register(
             name="ssp_vpm_viz",
             factory=lambda: VPMVisualizationService(
                 cfg=self.cfg,
                 memory=self.memory,
                 logger=self.logger,
                 container=self.container,
-                run_id=context.get("pipeline_run_id"),
+                run_id=run_id,
             ),
             dependencies=[],
             init_args={},
@@ -105,21 +108,16 @@ class SSPAgent(BaseAgent, ProgressMixin):
                 event_emitter=emitter,
             ),
             verifier=RAGVerifier(
-                container=self.container, logger=self.logger, memory=self.memory, cfg=self.cfg
+                container=self.container,
+                logger=self.logger,
+                memory=self.memory,
+                cfg=self.cfg,
             ),
             vpm_visualization=self.container.get("ssp_vpm_viz"),
         )
         try:
             _logger.info("SSP step started for run_id=%s", run_id)
             self._init_progress(self.container, _logger)
-
-            # Sensible default seeds if none provided (keeps agent runnable)
-            if not self.seeds:
-                self.seeds = [
-                    "photosynthesis converts light energy into chemical energy via the Calvin cycle",
-                    "insulin signaling promotes GLUT4 translocation to increase glucose uptake",
-                    "backpropagation updates network weights by gradient descent on loss",
-                ]
 
             task = f"SSP:{run_id}"
             self.pstart(

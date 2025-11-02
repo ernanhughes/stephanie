@@ -39,6 +39,7 @@ class RAGVerifier:
 
         vcfg = self.cfg.get("verifier", self.cfg) or {}
         # Models used to judge A vs B
+        # Note need larger models with good instruction-following ability
         self.judge_models: List[Any] = list(vcfg.get("judge_models", ["ollama/qwen3"]))
         self.max_evidence: int = int(vcfg.get("max_evidence", 5))
         self.auto_win_on_exact_match: bool = bool(vcfg.get("auto_win_on_exact_match", True))

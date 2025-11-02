@@ -56,14 +56,14 @@ _logger = logging.getLogger(__name__)
 
 # Back-compat mapping: old -> new canonical names
 _KEY_MAP = {
-    "verifier_f1": "verifier_score",
+    "verifier_f1": "reward",
     "steps_norm": "solver_steps",
     "evidence_cnt": "evidence_count",
 }
 
 # Canonical dimensions we snapshot during search
 _CANON_DIMS = [
-    "verifier_score",
+    "reward",
     "verified",
     "difficulty",
     "question_len",
@@ -253,10 +253,9 @@ class VPMVisualizationService(Service):
         )
         return str(gif_path)
 
-    def generate_episode_visualization(self, unit: str, episode: EpisodeTrace) -> str:
+    def generate_episode_visualization(self, unit: str, names: List[str], values: List[float]) -> str:
         """Legacy 1xF bar render for a single EpisodeTrace (saved under raw/)."""
-        names, vals = episode.to_vpm_features()
-        arr = np.clip(np.asarray(vals, dtype=np.float32), 0.0, 1.0)
+        arr = np.clip(np.asarray(values, dtype=np.float32), 0.0, 1.0)
         if float(arr.max() - arr.min()) < 1e-6:
             arr[:] = 0.5
 
@@ -265,10 +264,7 @@ class VPMVisualizationService(Service):
 
         out_path = self._raw_viz_dir / f"{self._sanitize_unit(unit)}.png"
         Image.fromarray(bar, mode="L").save(out_path)
-        try:
-            self.logger.info("VPM saved", extra={"unit": unit, "features": dict(zip(names, vals))})
-        except Exception:
-            pass
+        self.logger.log("VPM saved", extra={"unit": unit, "features": dict(zip(names, values))})
         return str(out_path)
 
     def generate_visualization(
@@ -691,7 +687,7 @@ class VPMVisualizationService(Service):
 
     def episode_to_dims(self, ep: EpisodeTrace) -> Dict[str, float]:
         dims = {
-            "verifier_score": float(ep.reward or 0.0),
+            "reward": float(ep.reward or 0.0),
             "verified": 1.0 if ep.verified else 0.0,
             "difficulty": float(ep.difficulty or 0.0),
             "question_len": min(1.0, len((ep.question or "").split()) / 128.0),

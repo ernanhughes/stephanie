@@ -36,9 +36,9 @@ class Trainer:
         # ATS‑based solver with a tiny local searcher that contains the answer in synthetic docs
         solver = ATSSolver(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger,
             searcher=solution_search, event_emitter=emitter)
-        predicted, evidence, solver_steps, solver_meta = await solver.solve(question, seed_answer=seed_answer, context=context, evidence_snippets=proposer_evidence)
+        predicted, evidence, solver_steps, solver_meta = await solver.solve(question, seed_answer=seed_answer, context=context, evidence_docs=proposer_evidence)
         _logger.info(f"🧠 Predicted answer: {predicted} | using {len(evidence)} evidence docs.")
-        ok, verifier_score = self.verify.verify(ground_truth=seed_answer, predicted=predicted)
+        ok, reward = self.verify.verify(ground_truth=seed_answer, predicted=predicted)
 
         ep = EpisodeTrace(
             episode_id=episode_id,
@@ -47,7 +47,7 @@ class Trainer:
             predicted_answer=predicted,
             verified=ok,
             proposer_evidence=proposer_evidence,
-            verifier_score=verifier_score,
+            reward=reward,
             difficulty=self.difficulty,
             solver_steps=solver_steps,
             evidence_docs=evidence,
@@ -59,7 +59,7 @@ class Trainer:
             kind="text",
             step_idx=1,  # or cumulative
             dims={
-                "correctness": ep.verifier_score,             # your verifier score
+                "correctness": ep.reward,             # your verifier score
                 "coverage": 1.0 if proposer_evidence else 0.3,
                 "coherence": 0.7,                  # fill in from solver parsing if you wish
                 "citation_support": 0.4 + 0.2*len(proposer_evidence),

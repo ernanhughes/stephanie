@@ -39,14 +39,14 @@ def check_answer_leakage(question: str, seed_answer: str) -> bool:
     return False
 
 
-def check_evidence_usage(evidence_snippets: List[str], min_count: int = 1) -> bool:
+def check_evidence_usage(evidence_docs: List[str], min_count: int = 1) -> bool:
     """Check if sufficient evidence snippets were gathered."""
-    return len(evidence_snippets) >= min_count
+    return len(evidence_docs) >= min_count
 
 
-def check_tool_usage(evidence_snippets: List[str]) -> bool:
+def check_tool_usage(evidence_docs: List[str]) -> bool:
     """Check if evidence comes from actual tool usage (not empty)."""
-    return bool(evidence_snippets) and any(snippet.strip() for snippet in evidence_snippets)
+    return bool(evidence_docs) and any(snippet.strip() for snippet in evidence_docs)
 
 
 def check_format(question: str) -> bool:

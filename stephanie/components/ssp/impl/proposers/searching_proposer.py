@@ -62,7 +62,7 @@ class SearchingProposer:
     ) -> Tuple[str, List[str], Dict[str, Any]]:
         """
         Generate a question from a seed answer WITH EVIDENCE GATHERING.
-        Returns: (question, evidence_snippets, meta)
+        Returns: (question, evidence_docs, meta)
         """
         t0 = time.time()
         ctx = dict(context or {})
@@ -197,6 +197,6 @@ class SearchingProposer:
     def get_capabilities(self) -> Dict[str, Any]:
         return {
             "supports_search_during_proposal": True,
-            "max_evidence_snippets": self.max_snippets,
+            "max_evidence_docs": self.max_snippets,
             "min_question_length": self.min_question_len,
         }

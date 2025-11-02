@@ -88,7 +88,7 @@ class EpisodeResult:
     evidence_docs: List[Snippet]
     proposer_evidence: List[Snippet]
     verified: bool
-    verifier_score: float
+    reward: float
     solver_steps: int
     difficulty: Difficulty
     proposer_meta: Dict[str, Any]
@@ -137,7 +137,7 @@ class Proposer(Protocol):
     """
     Searching proposer: crafts a single question from a seed mechanism (answer),
     optionally collecting evidence O(τ) while proposing.
-    Returns: (question, meta, evidence_snippets)
+    Returns: (question, meta, evidence_docs)
     """
     async def propose(self, seed_answer: Answer, context: EpisodeContext) -> Tuple[Question, Dict[str, Any], List[Snippet]]: ...
 
@@ -163,7 +163,7 @@ class Verifier(Protocol):
 class Solver(Protocol):
     """
     Deep search solver (e.g., ATS) that can use full retrieval.
-    Returns: (predicted_answer, evidence_snippets, steps, meta)
+    Returns: (predicted_answer, evidence_docs, steps, meta)
     """
     async def solve(self, question: Question, context: EpisodeContext) -> Tuple[Answer, List[Snippet], int, Dict[str, Any]]: ...
 
@@ -223,7 +223,7 @@ class VPMEncoder(Protocol):
     Encodes per-episode metrics into a VPM artifact (PNG/JSON).
     Returns the artifact path.
     """
-    def encode(self, episode_id: EpisodeID, node_scores: List[float], judge_score: int, evidence_snippets: List[str]) -> str: ...
+    def encode(self, episode_id: EpisodeID, node_scores: List[float], judge_score: int, evidence_docs: List[str]) -> str: ...
 
 
 # ---------------------------------------------------------------------

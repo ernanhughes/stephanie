@@ -111,7 +111,7 @@ def save_json_result(log_path: str, result: dict):
 if __name__ == "__main__":
     # Suppress HTTPX logs
     logging.getLogger().addFilter(lambda record: len(record.getMessage().strip()) > 10)
-    for name in ("numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "hnswlib", "matplotlib", "urllib3", "asyncio", "stephanie.services.bus.nats_bus"):
+    for name in ("numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "hnswlib", "matplotlib", "urllib3", "asyncio","PIL", "stephanie.services.bus.nats_bus"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
         logging.getLogger(name).propagate = False
     run()

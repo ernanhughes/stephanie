@@ -31,9 +31,9 @@ class Solver(ABC):
         self,
         question: str,
         seed_answer: str,
-        context: Optional[EpisodeContext] = None,
+        context: Dict[str, Any],
         use_search: bool = True,
-        evidence_snippets: Optional[List[str]] = None
+        evidence_docs: Optional[List[str]] = None
     ) -> Tuple[str, List[str], int, Dict[str, Any]]:
         """
         Solve a question using the appropriate search strategy.
@@ -43,7 +43,7 @@ class Solver(ABC):
             seed_answer: Ground truth answer (for search guidance)
             context: Additional context for solving
             use_search: Whether to perform search (False for verification mode)
-            evidence_snippets: Optional evidence to use (for verification mode)
+            evidence_docs: Optional evidence to use (for verification mode)
             
         Returns:
             Tuple of (predicted_answer, evidence_used, steps_taken, metadata)
@@ -55,7 +55,7 @@ class Solver(ABC):
         self,
         question: str,
         seed_answer: str,
-        evidence_snippets: List[str]
+        evidence_docs: List[str]
     ) -> VerificationResult:
         """
         Verify an answer using ONLY the provided evidence (no search).
@@ -65,7 +65,7 @@ class Solver(ABC):
         Args:
             question: Question to answer
             seed_answer: Ground truth answer to verify against
-            evidence_snippets: Evidence gathered by the Proposer
+            evidence_docs: Evidence gathered by the Proposer
             
         Returns:
             VerificationResult object with verification outcome

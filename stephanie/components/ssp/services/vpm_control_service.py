@@ -56,13 +56,15 @@ class VPMControlService(Service):
         self,
         cfg: Dict[str, Any],
         memory: MemoryTool,
-        container: Optional[Any] = None,
-        logger: Optional[JSONLogger] = None,
+        container: Optional[Any],
+        logger: Optional[JSONLogger],
+        run_id: int
     ):
         self.cfg = cfg or {}
         self.memory = memory
         self.container = container
         self.logger = logger or getattr(container, "logger", None)  # soft fallback
+        self.run_id = run_id
 
         self._initialized = False
         self._controllers: Dict[str, CoreVPMController] = {}
@@ -157,16 +159,12 @@ class VPMControlService(Service):
 
     def _setup_visualization_paths(self) -> None:
         c = (self.cfg.get("vpm_control") or {})
-        self._viz_dir = c.get("viz_dir", "./runs/vpm_visualizations")
-        os.makedirs(self._viz_dir, exist_ok=True)
+        base = Path(c.get("viz_dir", "./runs/vpm_visualizations"))
+        self._viz_dir: Path = self._ensure_dir(base / self.run_id)
 
-        self._raw_viz_dir = os.path.join(self._viz_dir, "raw")
-        self._phos_viz_dir = os.path.join(self._viz_dir, "phos")
-        self._compare_viz_dir = os.path.join(self._viz_dir, "comparison")
-
-        os.makedirs(self._raw_viz_dir, exist_ok=True)
-        os.makedirs(self._phos_viz_dir, exist_ok=True)
-        os.makedirs(self._compare_viz_dir, exist_ok=True)
+        self._raw_viz_dir = self._ensure_dir(self._viz_dir / "raw")
+        self._phos_viz_dir = self._ensure_dir(self._viz_dir / "phos")
+        self._compare_viz_dir = self._ensure_dir(self._viz_dir / "comparison")
 
         self._tl_fracs = c.get("tl_fracs", [0.25, 0.16, 0.36, 0.09])
         self._delta = c.get("delta", 0.02)
@@ -262,6 +260,10 @@ class VPMControlService(Service):
         self._log("VPMGenerated", meta)
         return meta
 
+    def _ensure_dir(self, p: Path) -> Path:
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
     def _episode_features(self, episode: Any) -> Tuple[List[str], List[float]]:
         """
         Prefer EpisodeTrace.to_vpm_features(); otherwise produce a compact fallback.
@@ -271,10 +273,10 @@ class VPMControlService(Service):
             return episode.to_vpm_features()
 
         # Fallback: minimal trio
-        vs = float(getattr(episode, "verifier_score", 0.0) or 0.0)
+        vs = float(getattr(episode, "reward", 0.0) or 0.0)
         verified = 1.0 if getattr(episode, "verified", False) else 0.0
         diff = float(getattr(episode, "difficulty", 0.0) or 0.0)
-        return ["verifier_score", "verified", "difficulty"], [vs, verified, diff]
+        return ["reward", "verified", "difficulty"], [vs, verified, diff]
 
     def _encode_simple_vpm(self, values: List[float], size: int = 256) -> np.ndarray:
         """

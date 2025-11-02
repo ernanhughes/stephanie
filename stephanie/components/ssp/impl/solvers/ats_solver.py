@@ -119,12 +119,12 @@ class ATSSolver(Solver, ProgressMixin):
         *,
         context: Optional[EpisodeContext] = None,
         use_search: bool = True,
-        evidence_snippets: Optional[List[str]] = None,
+        evidence_docs: Optional[List[str]] = None,
     ) -> Tuple[str, List[str], int, Dict[str, Any]]:
         """
         Main entry:
           - If use_search=True: run deep search (paper solver path).
-          - Else: answer using ONLY `evidence_snippets` (verification helper).
+          - Else: answer using ONLY `evidence_docs` (verification helper).
         Returns: predicted_answer, evidence_docs, steps, meta
         """
         if use_search:
@@ -133,14 +133,14 @@ class ATSSolver(Solver, ProgressMixin):
             )
         return await self.solve_with_evidence(
             question=question,
-            evidence_snippets=evidence_snippets or [],
+            evidence_docs=evidence_docs or [],
             context=context,
         )
 
     async def solve_with_evidence(
         self,
         question: str,
-        evidence_snippets: List[str],
+        evidence_docs: List[str],
         *,
         context: Optional[EpisodeContext] = None,
     ) -> Tuple[str, List[str], int, Dict[str, Any]]:
@@ -148,7 +148,7 @@ class ATSSolver(Solver, ProgressMixin):
         No-search answer using ONLY the provided evidence (verification helper).
         Returns: predicted_answer, evidence_used, steps, meta
         """
-        ev = "\n".join(f"- {s}" for s in (evidence_snippets or []))
+        ev = "\n".join(f"- {s}" for s in (evidence_docs or []))
         prompt = SOLVER_PROMPT_TMPL.format(question=question, evidence=ev)
 
         txt = await self.prompt.run_prompt(
@@ -167,16 +167,16 @@ class ATSSolver(Solver, ProgressMixin):
             "mode": "evidence_only",
         }
         # steps=1: single-shot LLM
-        return result, list(evidence_snippets), 1, meta
+        return result, list(evidence_docs), 1, meta
 
     async def verify_answer(
         self,
         question: str,
         seed_answer: str,
-        evidence_snippets: List[str],
+        evidence_docs: List[str],
     ) -> VerificationResult:
         """Optional helper if you want to keep a gate before full search."""
-        if not evidence_snippets:
+        if not evidence_docs:
             return VerificationResult(
                 is_valid=False,
                 score=0.0,
@@ -186,7 +186,7 @@ class ATSSolver(Solver, ProgressMixin):
             )
 
         predicted, _, _, _ = await self.solve_with_evidence(
-            question, evidence_snippets, context={"verify": True}
+            question, evidence_docs, context={"verify": True}
         )
         score = self._f1(seed_answer, predicted)
         threshold = float(
@@ -223,7 +223,7 @@ class ATSSolver(Solver, ProgressMixin):
         q_len = min(128.0, float(len((question or "").split())))
         a_len = min(128.0, float(len((answer_text or "").split())))
         return {
-            "verifier_score": float(
+            "reward": float(
                 max(0.0, min(1.0, best_score))
             ),  # proxy until judged
             "verified": 0.0,
@@ -333,7 +333,7 @@ class ATSSolver(Solver, ProgressMixin):
                                 return 1.0 - (len(A & B) / max(len(A | B), 1))
                             dims = {
                                 # canonical slots used by earlier code
-                                "verifier_score": prev_best,            # proxy until judge; “how good so far”
+                                "reward": prev_best,            # proxy until judge; “how good so far”
                                 "verified": 0.0,                        # 0 during search
                                 "difficulty": float((context or {}).get("difficulty", 0.3)),
                                 "question_len": _n01(len(q2.split()), 128),
@@ -466,7 +466,7 @@ class ATSSolver(Solver, ProgressMixin):
             if not self.vpm:
                 return
             dims = {
-                "verifier_score": max(
+                "reward": max(
                     0.0, min(1.0, float(score))
                 ),  # reuse overlap as "score-ish"
                 "verified": 1.0 if verified else 0.0,
