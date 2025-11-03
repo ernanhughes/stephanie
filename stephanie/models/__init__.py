@@ -1,4 +1,6 @@
 # stephanie/models/__init__.py
+from __future__ import annotations
+
 from .base import Base
 from .belief_cartridge import BeliefCartridgeORM
 from .cartridge_domain import CartridgeDomainORM

@@ -1,8 +1,11 @@
-# stephanie/pipeline/stages/casebook_preparation.py
+# stephanie/agents/pacs/skill_extraction.py
+from __future__ import annotations
+
 from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE
+from stephanie.dataloaders.casebook_to_rlvr import CaseBookToRLVRDataset
 
 
 class CaseBookPreparationAgent(BaseAgent):
@@ -24,7 +27,6 @@ class CaseBookPreparationAgent(BaseAgent):
                 raise ValueError(f"CaseBook '{self.casebook_name}' not found")
 
             # 2. Build RLVR dataset from CaseBook
-            from stephanie.scoring. import CaseBookToRLVRDataset
             dataset_builder = CaseBookToRLVRDataset(
                 memory=self.memory,   # use memory tool, not raw session
                 casebook=casebook

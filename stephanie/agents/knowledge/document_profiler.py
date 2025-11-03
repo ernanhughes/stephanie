@@ -11,7 +11,7 @@ Key Features:
     - Multi-method document parsing (unstructured parsing + LLM fallback)
     - Section-based document analysis (title, abstract, methods, results, etc.)
     - Domain classification for document sections
-    - Content quality evaluation and selection
+Any exercise again    - Content quality evaluation and selection
     - Persistent storage of structured document sections
     - Comprehensive error handling and reporting
 
@@ -39,6 +39,7 @@ Usage:
     Typically used after document loading to structure and categorize documents
     for further analysis, hypothesis generation, or knowledge extraction.
 """
+from __future__ import annotations
 
 import re
 

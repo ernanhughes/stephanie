@@ -1,4 +1,6 @@
 # stephanie/models/model_version.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import JSON, TIMESTAMP, Boolean, Column, Integer, Text

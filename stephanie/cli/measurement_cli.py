@@ -1,4 +1,6 @@
 # stephanie/cli/measurement_cli.py
+from __future__ import annotations
+
 import click
 
 from stephanie.measurement.registry import measurement_registry

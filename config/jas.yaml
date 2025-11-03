@@ -1,0 +1,84 @@
+defaults:
+  - _self_
+  - db: postgres
+  - plan_monitor: disabled
+  - bus: nats   
+  - logging/json_logger
+  - services/default
+  - scorer: all  
+
+  - agents/jas_pipeline
+  - agents/risk_trainer
+  - agents/chat_scorer
+  - agents/scorer
+  - agents/gap
+
+embeddings:
+  backend: hnet
+
+
+goal:
+  goal_text: I want to build an AI that can teach itself to solve complex problems better over time.
+  goal_type: "tactical"
+  goal_category: "meta_learning"
+  focus_area: "self_improvement"
+  strategy: "stepwise_decomposition"
+  difficulty: "medium-high"
+  expected_formats:
+    - "symbolic_prompt_plan"
+    - "stepwise_reasoning_trace"
+    - "annotated_score_vector"
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+pipeline:
+  name: chat training
+  tag: chat_training
+  description: "Uses chat history to train models. Different dynamics than traditional training."
+
+  stages:
+     - name: jas_pipeline
+       description: "Trains a risk model using chat conversations"
+       cls: stephanie.components.jitter.jas.JASAgent
+       enabled: true
+       iterations: 1
+
+     - name: chat_sicql_trainer
+       description: "Trains a SICQL model using chat conversations"
+       cls: stephanie.agents.maintenance.sicql_trainer.SICQLTrainerAgent
+       enabled: false
+       iterations: 1
+
+     - name: chat_hrm_trainer
+       description: "Train a HRM model to predict values usin chat conversation_turns"
+       cls: stephanie.agents.maintenance.hrm_trainer.HRMTrainerAgent
+       enabled: false
+       iterations: 1
+
+     - name: chat_tiny_trainer
+       description: "Train a Tiny model to predict values using chat conversation_turns"
+       cls: stephanie.agents.maintenance.tiny_trainer.TinyTrainerAgent
+       enabled: false
+       iterations: 1
+
+     - name: chat_scorer
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false
+       iterations: 1
+
+     - name: gap
+       description: "Understanding the Gap between two models using chat conversation_turns"
+       cls: stephanie.agents.gap.GapAgent
+       enabled: false
+       iterations: 1
+
+     - name: gap
+       description: "Understanding the Gap between two models using chat conversation_turns"
+       cls: stephanie.components.gap.gap.GapAgent
+       enabled: false
+       iterations: 1

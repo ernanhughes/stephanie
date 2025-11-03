@@ -1,4 +1,5 @@
 # stephanie/compiler/prompt_tuning_signature.py
+from __future__ import annotations
 
 from dspy import InputField, OutputField, Signature
 

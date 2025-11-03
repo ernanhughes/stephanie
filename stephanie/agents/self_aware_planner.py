@@ -1,5 +1,5 @@
 # stephanie/agents/self_aware_planner.py
-# --- agents/self_aware_planner_agent.py ---
+from __future__ import annotations
 
 import copy
 

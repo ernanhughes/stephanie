@@ -9,12 +9,12 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from stephanie.components.gap.io.manifest import GapRunManifest
 from stephanie.components.gap.models import GapConfig, TripleSample
-from stephanie.components.gap.services.scm_service import (SCM_FEATURE_KEYS,
-                                                           SCMService)
-from stephanie.components.gap.shared_scm import (SCM_COLUMNS)
+from stephanie.core.manifest import Manifest
+from stephanie.core.shared_scm import SCM_COLUMNS
 from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.services.scm_service import SCM_FEATURE_KEYS, SCMService
+from stephanie.services.storage_service import StorageService
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.utils.progress_mixin import ProgressMixin
@@ -67,7 +67,7 @@ class ScoringProcessor(ProgressMixin):
         self,
         triples_data: Dict[str, List[TripleSample]],
         run_id: str,
-        manifest: GapRunManifest,
+        manifest: Manifest,
     ) -> Dict[str, Any]:
         scoring_service = self.container.get("scoring")
 
@@ -75,7 +75,7 @@ class ScoringProcessor(ProgressMixin):
         total_rows = sum(len(v) for v in triples_data.values())
 
         # 1) Start stage (let stage_start set started_at itself)
-        manifest.stage_start(
+        manifest.add_stage(
             "scoring",
             total=total_rows,
             run_id=run_id,  # fine as metadata
@@ -83,7 +83,7 @@ class ScoringProcessor(ProgressMixin):
         )
 
         # helper to tick progress into the manifest every so often
-        storage = self.container.get("gap_storage")
+        storage = self.container.get("storage")
 
         hrm_worker = MetricsWorkerInline(
             scoring_service, self.config.hrm_scorers, self.config.dimensions
@@ -124,7 +124,7 @@ class ScoringProcessor(ProgressMixin):
 
         # Optional: keep your quick snapshot (debug aid)
         storage.save_json(
-            run_id, "metrics", "scoring_stage.json", manifest.to_dict()
+            run_id, subdir="metrics", name="scoring_stage.json", obj=manifest.to_dict()
         )
 
         return result
@@ -140,7 +140,7 @@ class ScoringProcessor(ProgressMixin):
     ) -> Dict[str, Any]:
         """Score ALL samples with ONE model to avoid VRAM thrash."""
         zm = self.container.get("zeromodel")
-        storage = self.container.get("gap_storage")  # you already do this later; keep one reference
+        storage = self.container.get("storage")  # you already do this later; keep one reference
 
         vpm_worker = VPMWorkerInline(zm, self.logger)
         scm_service: SCMService = self.container.get("scm_service")
@@ -250,7 +250,8 @@ class ScoringProcessor(ProgressMixin):
                 # --- EpistemicGuard per-row evidence (optional; only if enabled)
                 if ep_guard:
                     try:
-                        from stephanie.components.gap.processors.epistemic_guard import GuardInput
+                        from stephanie.components.gap.processors.epistemic_guard import \
+                            GuardInput
                         eg_in = GuardInput(
                             trace_id=triple.node_id,
                             question=triple.goal_text,
@@ -263,7 +264,8 @@ class ScoringProcessor(ProgressMixin):
                         eg_out_one = await ep_guard.assess(eg_in)
 
                         # copy EG images into this run’s visuals dir so they travel with the run
-                        import shutil, os
+                        import os
+                        import shutil
                         def _copy(p):
                             if not p: return None
                             if not os.path.exists(p): return None
@@ -342,7 +344,7 @@ class ScoringProcessor(ProgressMixin):
         # Save an index of EG artifacts for this pass
         eg_index_path = None
         if ep_guard and eg_records:
-            eg_index_path = OK Where am I storage.save_json(
+            eg_index_path = storage.save_json(
                 run_id=timeline_id.split("_")[0],      # same run root as other artifacts
                 subdir="visuals",
                 name="eg_index.json",
@@ -468,12 +470,12 @@ class ScoringProcessor(ProgressMixin):
             k for k in canonical_order if k in pref_hrm and k in pref_tny
         ]
         if not shared:
-            storage = self.container.get("gap_storage")
+            storage = self.container.get("storage")
             storage.save_json(
                 run_id,
-                "metrics",
-                "name_alignment_debug.json",
-                {
+                subdir="metrics",
+                name="name_alignment_debug.json",
+                obj={
                     "hrm_names": hrm_names,
                     "tiny_names": tiny_names,
                     "alias_a": alias_a,
@@ -529,7 +531,7 @@ class ScoringProcessor(ProgressMixin):
         tiny_gif = tiny_res["gif"]
 
         # Persist artifacts (same locations & tags as before)
-        storage = self.container.get("gap_storage")
+        storage = self.container.get("storage")
         storage.save_matrix(hrm_matrix, shared, run_id, tag=alias_a)
         storage.save_matrix(tiny_matrix, shared, run_id, tag=alias_b)
         storage.save_matrix(
@@ -560,7 +562,7 @@ class ScoringProcessor(ProgressMixin):
                     "output_text": t.output_text,
                 }
             )
-        storage.save_json(run_id, "raw", "row_provenance.json", provenance)
+        storage.save_json(run_id, subdir="raw", name="row_provenance.json", obj=provenance)
 
         # Labels
         scoring_service = self.container.get("scoring")
@@ -842,6 +844,25 @@ class ScoringProcessor(ProgressMixin):
         # Finally, ask CUDA/GC to give memory back
         self._free_accelerator_memory()
 
+    def _ensure_storage(self, base_dir: str) -> StorageService | None:
+        # Prefer an existing storage on the container
+        st = getattr(self.container, "storage", None) or getattr(self.container, "storage", None)
+        if st:
+            return st
+
+        if StorageService is None:
+            self.logger.warning("No GapStorageService available; run-scoped writes may fail.")
+            return None
+        
+        st = StorageService()
+        st.initialize(base_dir=base_dir)
+        # Set on container for reuse
+        try:
+            setattr(self.container, "storage", st)
+        except Exception:
+            pass
+        return st
+
     def _free_accelerator_memory(self):
         try:
             import gc
@@ -1029,3 +1050,4 @@ def _normalize_for_vpm(payload: dict, *, per_frame: bool = True) -> dict:
         "values": out,
         "vector": {c: x for c, x in zip(cols, out)},
     }
+

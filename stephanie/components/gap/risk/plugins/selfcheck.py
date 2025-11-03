@@ -1,17 +1,11 @@
 from __future__ import annotations
+
 import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Protocol,
-    runtime_checkable,
-)
+from typing import (Any, Dict, List, Optional, Protocol, Tuple,
+                    runtime_checkable)
 
 
 # Contract from monitor.py

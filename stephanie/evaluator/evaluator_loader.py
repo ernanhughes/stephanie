@@ -1,4 +1,5 @@
 # stephanie/evaluator/evaluator_loader.py
+from __future__ import annotations
 
 
 def get_evaluator(cfg, memory=None, call_llm=None, logger=None):

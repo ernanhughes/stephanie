@@ -1,3 +1,6 @@
+# stephanie/memcube/goal_directed_planner.py
+from __future__ import annotations
+
 from typing import List
 
 from stephanie.memcube.world_model import WorldModel

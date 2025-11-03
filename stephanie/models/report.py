@@ -1,3 +1,6 @@
+# stephanie/models/report.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text

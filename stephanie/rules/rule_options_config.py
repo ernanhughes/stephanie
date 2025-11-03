@@ -1,4 +1,6 @@
 # stephanie/rules/rule_options_config.py
+from __future__ import annotations
+
 import yaml
 
 

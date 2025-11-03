@@ -1,4 +1,6 @@
 # stephanie/agents/rule_refiner.py
+from __future__ import annotations
+
 import statistics
 
 from stephanie.agents.base_agent import BaseAgent

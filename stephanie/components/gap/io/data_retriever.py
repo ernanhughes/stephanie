@@ -120,11 +120,11 @@ class DataRetriever:
         limit: int,
     ) -> Dict[str, List[TripleSample]]:
         import json
-        want = {d: limit for d in dimensions}
+        want = dict.fromkeys(dimensions, limit)
         got: Dict[str, List[TripleSample]] = {d: [] for d in dimensions}
 
         with open(jsonl_path, "r", encoding="utf-8") as f:
-            idx_by_dim = {d: 0 for d in dimensions}
+            idx_by_dim = dict.fromkeys(dimensions, 0)
             for line in f:
                 if all(len(got[d]) >= want[d] for d in dimensions):
                     break
@@ -156,7 +156,7 @@ class DataRetriever:
         import pandas as pd
         df = pd.read_parquet(parquet_path)
 
-        want = {d: limit for d in dimensions}
+        want = dict.fromkeys(dimensions, limit)
         got: Dict[str, List[TripleSample]] = {d: [] for d in dimensions}
 
         for d in dimensions:

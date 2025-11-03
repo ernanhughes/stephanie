@@ -1,4 +1,4 @@
-# stephanie/memcube/memcube_client.py
+# stephanie/models/memcube/memcube_client.py
 from __future__ import annotations
 
 import asyncio
@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy import text
 
-from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.memcube.memcube_factory import MemCubeFactory
 from stephanie.scoring.scorable import Scorable, ScorableType
 

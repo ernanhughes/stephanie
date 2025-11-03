@@ -1,4 +1,6 @@
 # stephanie/agents/refiner.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, HYPOTHESES, PIPELINE, PIPELINE_RUN_ID
 from stephanie.utils.parser_utils import extract_hypotheses

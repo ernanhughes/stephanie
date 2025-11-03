@@ -1,4 +1,5 @@
 # stephanie/rules/rule_tuner.py
+from __future__ import annotations
 
 
 class RuleTuner:

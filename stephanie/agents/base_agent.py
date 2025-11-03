@@ -23,10 +23,7 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
 from stephanie.models import PromptORM
 from stephanie.prompts import PromptLoader
 from stephanie.services.scoring_service import ScoringService
-
-
-def remove_think_blocks(text: str) -> str:
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+from stephanie.utils.llm_utils import remove_think_blocks
 
 
 class BaseAgent(ABC):
@@ -62,7 +59,8 @@ class BaseAgent(ABC):
         self.scorable_details = {}
         self.is_scorable = False  # default
 
-        self.rule_applier = self.container.get("rules")
+        if self.container:
+            self.rule_applier = self.container.get("rules")
         self.prompt_loader = PromptLoader(memory=self.memory, logger=self.logger)
 
         self.logger.log(

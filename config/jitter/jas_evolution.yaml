@@ -1,0 +1,19 @@
+arena:
+  subjects:
+    birth: arena.jitter.birth
+    death: arena.jitter.death
+    telemetry: arena.jitter.telemetry
+
+reproduction:
+  reserve_threshold: 60
+  boundary_threshold: 0.7
+  min_vpms: 10
+  reproduction_tax: 15
+  inherit_vpms: 20
+  mutation_rate: 0.1
+
+apoptosis:
+  boundary_crisis: 0.2
+  energy_crisis: 10
+  cognitive_crisis: 0.3
+  max_crisis: 3

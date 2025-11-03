@@ -1,3 +1,6 @@
+# stephanie/agents/mixins/memcube_trainer_mixin.py
+from __future__ import annotations
+
 from sqlalchemy import text
 
 

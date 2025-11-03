@@ -1,4 +1,6 @@
 # stephanie/agents/belief_cartridge_builder.py
+from __future__ import annotations
+
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -143,7 +145,7 @@ class BeliefCartridgeBuilder(BaseAgent):
             
             # Generate idea using EBT refinement
             if self.cfg.get("use_ebt_refinement", True):
-                ebt_scorer = self._get_scorer("ebt", scorable.embedding_type)
+                ebt_scorer = self.container.get_scorer("ebt", scorable.embedding_type)
                 scorable.text = await ebt_scorer.refine(scorable.text)
             
             return self._format_idea(goal, scorable, scores)

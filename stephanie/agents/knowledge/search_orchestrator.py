@@ -1,4 +1,6 @@
 # stephanie/agents/knowledge/search_orchestrator.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.automind_knowledge_collector import \
     AutoMindKnowledgeCollector

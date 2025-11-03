@@ -1,4 +1,5 @@
 # stephanie/agents/task_generator_agent.py
+from __future__ import annotations
 
 import json
 import random

@@ -1,4 +1,6 @@
 # stephanie/models/learning_evidence.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String

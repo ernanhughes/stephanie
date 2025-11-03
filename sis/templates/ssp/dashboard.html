@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">🧠 SSP Control</h2>
+    <div class="btn-group">
+      <button id="btn-start" class="btn btn-sm btn-success">Start</button>
+      <button id="btn-stop"  class="btn btn-sm btn-outline-danger">Stop</button>
+      <button id="btn-tick"  class="btn btn-sm btn-primary">Manual Tick</button>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <h5 class="card-title">Status</h5>
+      <pre id="status" class="mb-0" style="white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">Loading…</pre>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title">Last Tick Payload</h5>
+      <pre id="tick" class="mb-0" style="white-space:pre-wrap; font-family: ui-monospace;">—</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const $status = document.getElementById('status');
+const $tick   = document.getElementById('tick');
+const $start  = document.getElementById('btn-start');
+const $stop   = document.getElementById('btn-stop');
+const $tickBtn= document.getElementById('btn-tick');
+
+async function getStatus() {
+  try {
+    const r = await fetch('/ssp/status');
+    const j = await r.json();
+    $status.textContent = JSON.stringify(j, null, 2);
+  } catch (e) {
+    $status.textContent = 'Error: ' + (e?.message || e);
+  }
+}
+
+async function postJson(url, body) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : null});
+  return await r.json();
+}
+
+$start.onclick = async () => { 
+  const j = await postJson('/ssp/start', null); 
+  await getStatus();
+};
+
+$stop.onclick  = async () => { 
+  const j = await postJson('/ssp/stop', null);
+  await getStatus();
+};
+
+$tickBtn.onclick = async () => {
+  const j = await postJson('/ssp/tick', null);
+  $tick.textContent = typeof j === 'string' ? j : JSON.stringify(j, null, 2);
+  await getStatus();
+};
+
+setInterval(getStatus, 1500);
+getStatus();
+</script>
+{% endblock %}

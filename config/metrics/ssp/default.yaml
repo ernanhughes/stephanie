@@ -1,0 +1,6 @@
+# SSP metrics normalizers
+max_question_words: 128
+max_answer_words: 128
+max_evidence: 8
+max_steps: 64
+max_depth: 16

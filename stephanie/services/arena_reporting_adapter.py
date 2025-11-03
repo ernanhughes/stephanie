@@ -5,8 +5,6 @@ import math
 import uuid
 from typing import Any, Dict, List, Optional
 
-from stephanie.utils.emit_utils import prepare_emit  # at top
-
 
 def _sf(v: Any):
     if hasattr(v, "item"):

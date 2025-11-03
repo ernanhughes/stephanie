@@ -9,27 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Defer importing pyplot until used (helps in headless envs)
+import matplotlib
 import numpy as np
 
-try:
-    # Defer importing pyplot until used (helps in headless envs)
-    import matplotlib
-    if matplotlib.get_backend().lower() != "agg":
-        matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-except Exception:
-    plt = None  # We'll guard where needed
+if matplotlib.get_backend().lower() != "agg":
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
-
-# Optional import (not required here, but kept for type hints)
-try:
-    from stephanie.services.zero_model import ZeroModelService
-except Exception:
-    from typing import TYPE_CHECKING
-    if TYPE_CHECKING:
-        from stephanie.services.zero_model import ZeroModelService
-    else:
-        ZeroModelService = None  # type: ignore
+from stephanie.services.zeromodel_service import ZeroModelService
 
 
 # -------------------------

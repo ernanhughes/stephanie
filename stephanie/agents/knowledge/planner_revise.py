@@ -1,4 +1,6 @@
 # stephanie/agents/quality/plan_revise_agent.py
+from __future__ import annotations
+
 import re
 from typing import Any, List
 

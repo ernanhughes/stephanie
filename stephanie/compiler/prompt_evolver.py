@@ -1,4 +1,6 @@
 # stephanie/compiler/prompt_evolver.py
+from __future__ import annotations
+
 import dspy
 from dspy import BootstrapFewShot, Example, Predict
 

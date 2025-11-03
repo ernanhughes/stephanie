@@ -1,4 +1,5 @@
 # stephanie/scoring/verifiers.py
+from __future__ import annotations
 
 import contextlib
 import io

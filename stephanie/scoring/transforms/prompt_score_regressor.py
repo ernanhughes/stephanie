@@ -1,4 +1,6 @@
 # stephanie/scoring/transforms/prompt_score_regressor.py
+from __future__ import annotations
+
 import os
 
 import joblib

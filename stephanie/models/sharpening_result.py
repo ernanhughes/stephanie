@@ -1,4 +1,6 @@
 # stephanie/models/sharpening_result.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, String, Text

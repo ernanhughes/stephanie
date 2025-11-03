@@ -1,4 +1,6 @@
 # stephanie/prompts/prompt_loader.py
+from __future__ import annotations
+
 import logging
 import os
 
@@ -71,6 +73,14 @@ class PromptLoader:
         merged = self._merge_context(config, context)
         try:
             return Template(prompt_text).render(**merged)
+        except KeyError as e:
+            _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
+            return prompt_text  # Fallback: return raw
+
+    def from_text(self, prompt_text: str, context: dict) -> str:
+        """Load prompt directly from context variable."""
+        try:
+            return Template(prompt_text).render(**context)
         except KeyError as e:
             _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
             return prompt_text  # Fallback: return raw

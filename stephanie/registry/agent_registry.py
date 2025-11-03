@@ -1,4 +1,5 @@
 # stephanie/registry/agent_registry.py
+from __future__ import annotations
 
 from stephanie.agents.automind import AutoMindAgent
 from stephanie.agents.self_aware_planner import SelfAwarePlannerAgent

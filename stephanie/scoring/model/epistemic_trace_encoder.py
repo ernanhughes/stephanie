@@ -1,3 +1,6 @@
+# stephanie/scoring/model/epistemic_trace_encoder.py
+from __future__ import annotations
+
 from typing import Callable, Dict
 
 import numpy as np

@@ -1,3 +1,6 @@
+# stephanie/reporting/comparison.py
+from __future__ import annotations
+
 from typing import Dict, List
 
 from sqlalchemy.orm import Session

@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from .orchestrator import GapRiskOrchestrator
-
 
 # ------------------------- Pydantic Models ----------------------------------
 
@@ -68,13 +68,3 @@ def create_router(container: Any, *, default_profile: str = "chat.standard") -> 
 
     return router
 
-
-# --------------------------- Default Router (optional) ----------------------
-# If you prefer importing a module-level router without DI, you can replace
-# `None` below with a real container or wrap this in your app factory.
-try:
-    _null_container = object()  # replace in your app with a real container
-    router = create_router(_null_container)  # noqa: F401
-except Exception:
-    # In case DI is mandatory in your setup, expose no default router.
-    pass

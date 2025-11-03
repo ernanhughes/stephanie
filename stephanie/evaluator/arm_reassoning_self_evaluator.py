@@ -1,4 +1,6 @@
 # stephanie/evaluator/arm_reassoning_self_evaluator.py
+from __future__ import annotations
+
 import json
 from copy import deepcopy
 

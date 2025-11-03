@@ -1,3 +1,4 @@
+# stephanie/models/ner_retriever.py
 """
 NER Retriever Module
 
@@ -25,6 +26,7 @@ Typical Usage:
 Dependencies:
 - PyTorch, Transformers, Annoy, Numpy
 """
+from __future__ import annotations
 
 import json
 import logging
@@ -170,9 +172,10 @@ class NERRetrieverEmbedder:
 
     def __init__(
         self,
-        model_name="meta-llama/Llama-3.2-1B-Instruct",
+        model_name="dslim/bert-base-NER",
         layer=17,
-        device="cuda" if torch.cuda.is_available() else "cpu",
+        # device="cuda" if torch.cuda.is_available() else "cpu",
+        device="cpu",
         embedding_dim=2048,
         index_path="data/ner_retriever/index",
         projection_enabled=False,

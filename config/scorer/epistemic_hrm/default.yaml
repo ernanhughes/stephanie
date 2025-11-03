@@ -1,4 +1,4 @@
-# config/scorer/epistemic_hrm.yaml
+# conf/scoring/epistemic_hrm/default.yaml
 name: epistemic_hrm
 input_dim: 256
 h_dim: 256

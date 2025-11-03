@@ -85,3 +85,17 @@ def hash_text(text: str, algorithm: str = "sha256") -> str:
     hasher = hashlib.new(algorithm)
     hasher.update(text.encode("utf-8"))
     return hasher.hexdigest()
+
+def file_hash(path: str) -> str:
+    """
+    Compute SHA256 hash of a file's contents.
+    
+    Args:
+        path: Path to the file to hash
+        
+    Returns:
+        SHA256 hash of file contents
+    """
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+

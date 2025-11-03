@@ -2,12 +2,12 @@ defaults:
   - _self_
   - db: postgres
   - plan_monitor: disabled
-  - bus: disabled   
+  - bus: nats   
   - logging/json_logger
   - services/default
   - scorer: gap  
 
-
+  - agents/jas_pipeline
   - agents/risk_trainer
   - agents/chat_scorer
   - agents/scorer
@@ -40,10 +40,11 @@ pipeline:
   name: chat training
   tag: chat_training
   description: "Uses chat history to train models. Different dynamics than traditional training."
+
   stages:
-     - name: risk_trainer
+     - name: jas_pipeline
        description: "Trains a risk model using chat conversations"
-       cls: stephanie.agents.maintenance.risk_trainer.RiskTrainerAgent
+       cls: stephanie.components.jitter.jas_pipeline_agent.JASPipelineAgent
        enabled: false
        iterations: 1
 

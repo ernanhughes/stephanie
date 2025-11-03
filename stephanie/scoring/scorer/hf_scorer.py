@@ -1,3 +1,4 @@
+# stephanie/scoring/scorer/hf_scorer.py
 """
 HuggingFace Scorer Module
 
@@ -20,11 +21,8 @@ The scorer computes basic statistics including:
 - Bits-per-byte (BPB) for information-theoretic analysis
 - Token distribution analysis for interpretability
 
-Author: Stephanie AI Team
-Version: 1.0
 """
 
-# stephanie/scoring/scorer/huggingface_scorer.py
 from __future__ import annotations
 
 import gc

@@ -1,0 +1,97 @@
+# config/agents/risk.yaml
+risk:
+  name: risk
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  # I/O
+  input_key: scorable
+  output_key: risk
+  prompt_mode: none
+
+  # Orchestrator defaults
+  policy_profile: chat.standard
+  default_model_alias: chat
+  default_monitor_alias: tiny
+  policy_overrides: {}
+
+  # Storage & visuals
+  runs_base_dir: data/risk_runs
+  visuals_subdir: visuals/risk
+
+  # Exporter policy (copy only high risk)
+  export:
+    subdir: ${..visuals_subdir}              # <- relative to risk.*
+    index_name: risk_index.json
+    copy:
+      field: true
+      strip: true
+      legend: false
+      badge: true
+    risk_threshold: 0.80
+    # If you want to align with orchestrator decisions, use WATCH/RISK:
+    allowed_labels: ["WATCH", "RISK"]        # was ["high","critical","hallucination"]
+    top_k_per_metric: 5
+    filename_pattern: "{triple_id}.{metric}.{kind}{ext}"
+
+  # Decision thresholds & hysteresis
+  thresholds:
+    risk_low: 0.20
+    risk_high: 0.60
+    hysteresis:
+      up: 0.05
+      down: 0.03
+
+  # Streams
+  streams:
+    nats_url: nats://nats:4222
+    sub_topics: ["qa.scored", "trace.completed"]
+    pub_badge_topic: sis.sentinel.badge
+    pub_alerts_topic: alerts.risk
+    durable: risk_agent_worker
+
+  # Memory / provenance
+  mem:
+    push_evidence: true
+    evidence_type: risk_event
+    store_calibration: true
+
+  # Models & calibration
+  models:
+    risk_model: xgb_isotonic
+    use_domain_calibration: true
+    domain_calib_ttl_s: 3600
+    halvis_model: halvis_v1
+    topo_checkpoint: ./models/topo/best.ckpt
+
+  # Monitors (detectors)
+  monitors:
+    available: [tiny, hrm, selfcheck, cove]
+    default: ${..default_monitor_alias}      # <- relative ref
+
+  # Badge (UI)
+  badge:
+    enabled: true
+    style: sentinel
+    show_risk_band: true
+    show_hrm_verified: true
+    show_topo_signal: true
+    show_history_span: 50
+    color_low: green
+    color_med: orange
+    color_high: red
+
+  # Bundle & fallbacks
+  bundle_path: ${hydra:runtime.cwd}/models/risk/bundle.joblib
+  default_domains: [science, history, geography, tech, general]
+  calib_ttl_s: 3600
+  fallback_low: 0.20
+  fallback_high: 0.60
+
+  scm: 
+    version: v1
+    dims: [reasoning, knowledge, clarity, faithfulness, coverage]
+    latent_dim: 128
+    use_native_scores_as_inputs: false

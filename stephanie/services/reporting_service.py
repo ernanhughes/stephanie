@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from stephanie.services.service_protocol import Service
+from stephanie.tools.time_utils import now_iso
 
 
 # --- Utility Functions ---
@@ -285,7 +286,6 @@ class ReportingService(Service):
         reports = ctx.setdefault("REPORTS", [])
         stage_name = event.get("stage") or "stage"
         agent = event.get("agent") or "UnknownAgent"
-        now_iso = datetime.now(timezone.utc).isoformat()
 
         row = None
         for r in reports:
@@ -299,7 +299,7 @@ class ReportingService(Service):
                 "agent": agent,
                 "status": status or "running",
                 "summary": summary or "",
-                "start_time": now_iso,
+                "start_time": now_iso(),
                 "end_time": None,
                 "entries": [],
             }
@@ -319,6 +319,6 @@ class ReportingService(Service):
             **entry_payload
         })
 
-        row["end_time"] = now_iso
+        row["end_time"] = now_iso()
         if finalize:
             row["status"] = status or row.get("status") or "done"

@@ -1,4 +1,5 @@
 # stephanie/evaluator/llm_judge_evaluator.py
+from __future__ import annotations
 
 import re
 

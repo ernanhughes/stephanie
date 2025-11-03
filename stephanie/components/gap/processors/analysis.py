@@ -193,7 +193,7 @@ class AnalysisProcessor(ProgressMixin):
             scm_names = scoring_results.get("scm_names", [])
 
             if hrm_scm is None or tiny_scm is None or not scm_names:
-                storage = self.container.get("gap_storage") 
+                storage = self.container.get("storage") 
                 aligned = storage.base_dir / run_id / "aligned"
                 hrm_scm = np.load(aligned / f"{alias_a}_scm_matrix.npy")
                 tiny_scm = np.load(aligned / f"{alias_b}_scm_matrix.npy")
@@ -430,7 +430,7 @@ class AnalysisProcessor(ProgressMixin):
 
     def _prepare_phos_data(self, run_id: str):
         import pandas as pd
-        storage = self.container.get("gap_storage")
+        storage = self.container.get("storage")
         raw_dir = storage.base_dir / run_id / "raw"
         pq = raw_dir / "rows_for_df.parquet"
         csv = raw_dir / "rows_for_df.csv"

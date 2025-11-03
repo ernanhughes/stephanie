@@ -1,6 +1,8 @@
 # stephanie/measurement/cartridge_metrics.py
+from __future__ import annotations
+
 from stephanie.measurement.decorators import measure
-from stephanie.models.cartridge import CartridgeORM
+from stephanie.models.theorem import CartridgeORM
 
 
 @measure("Cartridge", "domain_tags")

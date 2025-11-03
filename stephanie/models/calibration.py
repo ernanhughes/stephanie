@@ -1,5 +1,6 @@
 # stephanie/models/calibration.py
-# stephanie/models/calibration.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, Integer,

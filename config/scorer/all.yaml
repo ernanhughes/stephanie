@@ -13,3 +13,5 @@ defaults:
   - svm/default
   - tiny/default
   - contrastive_ranker/default
+  - vpm/default
+  - zero/default

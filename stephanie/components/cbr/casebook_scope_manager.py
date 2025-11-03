@@ -1,4 +1,6 @@
 # stephanie/cbr/casebook_scope_manager.py
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional
 
 from stephanie.constants import GOAL, PIPELINE_RUN_ID

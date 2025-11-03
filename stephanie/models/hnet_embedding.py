@@ -1,4 +1,5 @@
 # stephanie/models/embedding.py
+from __future__ import annotations
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Column, DateTime, Integer, Text

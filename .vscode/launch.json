@@ -26,6 +26,18 @@
             }
         },
         {
+            "name": "ssp",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "ssp",
+            ]
+        },
+        {
             "name": "hal",
             "type": "debugpy",
             "request": "launch",
@@ -35,6 +47,42 @@
             "args": [
                 "--config-name",
                 "hal",
+            ]
+        },
+        {
+            "name": "chat",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "chat",
+            ]
+        },
+        {
+            "name": "risk",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "risk",
+            ]
+        },
+        {
+            "name": "jas",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "jas",
             ]
         },
         {

@@ -1,5 +1,5 @@
 # stephanie/models/score.py
-
+from __future__ import annotations
 
 from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship

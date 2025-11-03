@@ -1,4 +1,6 @@
 # stephanie/models/unified_mrq.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String, Text

@@ -1,4 +1,6 @@
 # stephanie/measurement/decorators.py
+from __future__ import annotations
+
 from functools import wraps
 
 from stephanie.measurement.registry import measurement_registry

@@ -258,13 +258,16 @@ from __future__ import annotations
 
 import asyncio
 import math
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Callable, DefaultDict
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import (Any, Callable, DefaultDict, Dict, Iterable, List, Optional,
+                    Tuple)
+
 import numpy as np
 
 from stephanie.components.tree.core import AgenticTreeSearch, SolutionNode
 from stephanie.components.tree.plan_generator import PlanGenerator
+
 
 @dataclass
 class TreeGRPOConfig:
@@ -326,6 +329,10 @@ class TreeGRPOAdapter:
 
         # 2) Perform L expansion rounds; in each round, for each tree sample up to N nodes to expand
         for _round in range(self.cfg.L):
+            try:
+                self.base.events.on_progress({"phase": "grpo_round_start", "round": _round})
+            except Exception:
+                pass
             # snapshot candidate nodes per tree
             for rid in list(self._roots):
                 candidates = self._candidate_nodes(rid)

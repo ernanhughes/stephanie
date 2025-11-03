@@ -1,4 +1,5 @@
 # stephanie/scoring/model/pacs_optimizer.py
+from __future__ import annotations
 
 from typing import Optional
 

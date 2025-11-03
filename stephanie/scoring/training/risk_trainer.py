@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,14 +13,13 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
-from sklearn.metrics import average_precision_score, roc_auc_score, log_loss
+from sklearn.metrics import average_precision_score, log_loss, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from xgboost import XGBClassifier
 
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
-import logging
 _logger = logging.getLogger(__name__)
 
 @dataclass

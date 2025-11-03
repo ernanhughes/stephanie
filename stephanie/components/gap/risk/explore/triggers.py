@@ -1,6 +1,9 @@
 from __future__ import annotations
-import random, textwrap
+
+import random
+import textwrap
 from typing import List
+
 
 def t_counterfactual(goal:str)->str:
     return f"{goal}\n\nAssume one key premise is false. Under that counterfactual, reason to a plausible answer."

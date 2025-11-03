@@ -18,11 +18,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-
 @dataclass
 class EgBadgeConfig:
     """Controls the live risk/hallucination badge in SIS."""
@@ -173,7 +168,7 @@ class GapConfig:
         "latent_dim": 128,  # Dimension of SCM latent space projections
     })
 
-    enable_epistemic_guard: bool = True
+    enable_epistemic_guard: bool = False  # Whether to run Epistemic Guard
     eg: EgConfig = field(default_factory=EgConfig)
     risk: Dict[str, Any] = field(default_factory=lambda: {
         "bundle_path": "/models/risk/bundle.joblib",  # Path to pre-bundled artifacts (if any)

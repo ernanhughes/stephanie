@@ -1,0 +1,339 @@
+domains:
+  symbolic:
+    description: "Symbolic reasoning, planning, and logic-guided AI."
+    seeds:
+      - "symbolic planning in AI"
+      - "rule-based inference engines"
+      - "knowledge graphs and symbolic ontologies"
+      - "first-order logic and theorem proving"
+      - "formal reasoning in multi-agent systems"
+      - "neuro-symbolic integration"
+      - "constraint satisfaction problems"
+
+  alignment:
+    description: "Scalable oversight, alignment, and safety of AI behavior."
+    seeds:
+      - "scalable oversight and alignment strategies"
+      - "goal misgeneralization"
+      - "AI safety and red-teaming"
+      - "helpful harmless honest alignment"
+      - "reward modeling for safety"
+      - "constitutional AI principles"
+      - "human feedback for alignment"
+
+  planning:
+    description: "Strategic action planning with language and decision models."
+    seeds:
+      - "hierarchical reinforcement learning"
+      - "tree search and MCTS planning"
+      - "goal decomposition into sub-tasks"
+      - "transformer-based planning"
+      - "task scheduling with LLMs"
+      - "strategic policy search"
+      - "adaptive planning in uncertain environments"
+
+  training:
+    description: "Supervised and reinforcement-based methods to improve models."
+    seeds:
+      - "instruction tuning and finetuning"
+      - "DPO and preference optimization"
+      - "reinforcement learning with human feedback"
+      - "contrastive preference learning"
+      - "self-improvement with synthetic data"
+      - "continual learning approaches"
+      - "curriculum learning for LLMs"
+
+  reasoning:
+    description: "Structured and unstructured inference using language models."
+    seeds:
+      - "multi-step chain-of-thought reasoning"
+      - "self-reflection and self-verification"
+      - "automated scientific hypothesis generation"
+      - "reasoning trace evaluation"
+      - "abductive and inductive reasoning"
+      - "zero-shot and few-shot reasoning"
+      - "uncertainty-aware inference"
+
+  retrieval:
+    description: "Augmenting LLMs with external information and memory."
+    seeds:
+      - "retrieval augmented generation (RAG)"
+      - "embedding and similarity search"
+      - "memory-augmented transformers"
+      - "document indexing for inference"
+      - "long-context retrieval"
+      - "selective context injection"
+      - "sparse and dense retrievers"
+
+  meta_reasoning:
+    description: "Reflective, self-aware, and dynamic adaptation techniques."
+    seeds:
+      - "self-reflection and repair"
+      - "pipeline introspection"
+      - "dynamic strategy selection"
+      - "meta-learning loops"
+      - "internal consistency evaluation"
+      - "self-evaluation scoring"
+      - "adaptive reasoning strategies"
+
+  hypothesis:
+    description: "Scientific inquiry and hypothesis-driven learning."
+    seeds:
+      - "hypothesis generation"
+      - "hypothesis testing and validation"
+      - "scientific reasoning"
+      - "novelty and relevance of hypotheses"
+      - "hypothesis-driven search"
+      - "argument construction from evidence"
+      - "iterative hypothesis refinement"
+
+  evaluation:
+    description: "Scoring, ranking, and understanding model outputs."
+    seeds:
+      - "rubric-based evaluation"
+      - "pairwise preference scoring"
+      - "clarity, novelty, relevance evaluation"
+      - "multi-dimensional quality evaluation"
+      - "reward models for evaluation"
+      - "automatic feedback generation"
+      - "benchmarking outputs for quality"
+
+  agency:
+    description: "Capabilities related to autonomy, memory, and coordination."
+    seeds:
+      - "autonomous task execution"
+      - "multi-agent collaboration"
+      - "delegation and negotiation in agents"
+      - "persistent memory tracking"
+      - "goal management for agents"
+      - "coordination among multiple LLMs"
+      - "self-organizing agent systems"
+
+  # --- New Domains for Case-Based Reasoning (CBR) ---
+  cbr:
+    description: "Case-Based Reasoning: storing, retrieving, reusing, revising, and retaining past cases."
+    seeds:
+      - "case-based reasoning systems"
+      - "retrieve reuse revise retain"
+      - "adapting past solutions to new problems"
+      - "experience-based learning"
+      - "reasoning traces as reusable cases"
+      - "case similarity and adaptation"
+      - "memory-based reasoning agents"
+
+  memory:
+    description: "Long-term storage, indexing, and reuse of reasoning traces."
+    seeds:
+      - "episodic memory for AI"
+      - "semantic memory in neural networks"
+      - "memory-based reasoning"
+      - "plan trace storage"
+      - "vector memory and embeddings"
+      - "memory replay in reinforcement learning"
+      - "case libraries for reasoning"
+
+  reuse:
+    description: "Adapting and reapplying knowledge, cases, and strategies."
+    seeds:
+      - "plan reuse and adaptation"
+      - "case adaptation strategies"
+      - "solution reuse in problem solving"
+      - "knowledge transfer between tasks"
+      - "reuse links in reasoning traces"
+      - "case modification and adaptation"
+      - "cross-domain reuse of strategies"
+
+  retention:
+    description: "Policies and strategies for what knowledge to keep or discard."
+    seeds:
+      - "retention policies in CBR"
+      - "case pruning strategies"
+      - "knowledge retention in memory systems"
+      - "balancing memory growth and quality"
+      - "forgetting mechanisms in AI"
+      - "case retention and pruning"
+      - "experience selection for learning"
+
+  # --- Technical Dimensions ---
+  reinforcement:
+    description: "Learning from rewards, signals, and feedback."
+    seeds:
+      - "q-learning and policy iteration"
+      - "actor-critic methods"
+      - "policy gradient optimization"
+      - "reward shaping techniques"
+      - "advantage estimation"
+      - "exploration vs exploitation balance"
+
+  stability:
+    description: "Methods to stabilize learning and reasoning."
+    seeds:
+      - "gradient clipping"
+      - "q-value smoothing"
+      - "stability constraints in learning"
+      - "variance reduction in RL"
+      - "robust optimization"
+      - "catastrophic forgetting mitigation"
+
+  loss_term:
+    description: "Loss functions and penalties in optimization."
+    seeds:
+      - "loss function design"
+      - "penalty functions"
+      - "regularization terms"
+      - "objective shaping"
+      - "KL divergence penalties"
+      - "auxiliary loss signals"
+
+  representation:
+    description: "Representation learning and embedding spaces."
+    seeds:
+      - "embedding spaces and latent codes"
+      - "feature transforms"
+      - "manifold learning"
+      - "contextualized representations"
+      - "vector space similarity"
+      - "representation alignment"
+      - "disentangled representations"
+
+  optimizer:
+    description: "Optimization strategies and learning dynamics."
+    seeds:
+      - "adaptive learning rates"
+      - "momentum updates"
+      - "Adam, RMSProp, SGD"
+      - "second-order optimization"
+      - "trust-region methods"
+      - "meta-optimization strategies"
+
+  mathematics:
+    description: "Mathematical reasoning, proofs, and symbolic problem solving."
+    seeds:
+      - "algebraic equation solving"
+      - "mathematical proof generation"
+      - "combinatorics and counting problems"
+      - "geometry reasoning"
+      - "probability and statistics"
+      - "calculus and differentiation"
+      - "number theory applications"
+
+  programming:
+    description: "Code generation, debugging, and reasoning about software systems."
+    seeds:
+      - "python code generation"
+      - "unit test generation"
+      - "code synthesis from natural language"
+      - "program repair and debugging"
+      - "algorithm design in code"
+      - "static code analysis"
+      - "runtime error detection"
+
+  scientific_discovery:
+    description: "Using AI to assist in scientific research and hypothesis formation."
+    seeds:
+      - "literature review automation"
+      - "knowledge extraction from research papers"
+      - "simulation-based hypothesis testing"
+      - "cross-domain scientific reasoning"
+      - "automated experiment design"
+      - "evidence synthesis across studies"
+      - "replication and reproducibility analysis"
+
+  medicine:
+    description: "Medical reasoning, diagnosis, and clinical knowledge extraction."
+    seeds:
+      - "disease diagnosis reasoning"
+      - "clinical guideline summarization"
+      - "drug-drug interaction detection"
+      - "biomedical literature mining"
+      - "radiology report analysis"
+      - "electronic health record reasoning"
+      - "precision medicine recommendations"
+
+  finance:
+    description: "Financial reasoning, market analysis, and quantitative trading."
+    seeds:
+      - "risk assessment in trading"
+      - "portfolio optimization"
+      - "derivatives pricing models"
+      - "market sentiment analysis"
+      - "financial time-series prediction"
+      - "fraud detection in finance"
+      - "algorithmic trading strategies"
+
+  law:
+    description: "Legal reasoning, case law retrieval, and compliance."
+    seeds:
+      - "case law retrieval"
+      - "legal document summarization"
+      - "contract clause analysis"
+      - "regulatory compliance checking"
+      - "legal reasoning with precedents"
+      - "statutory interpretation"
+      - "argument extraction from legal text"
+
+  ethics:
+    description: "Ethical reasoning, bias detection, and responsible AI."
+    seeds:
+      - "fairness and bias detection"
+      - "AI ethics guidelines"
+      - "bias mitigation techniques"
+      - "ethical dilemma reasoning"
+      - "value alignment in AI"
+      - "transparency and explainability"
+      - "responsible deployment of AI"
+
+  multimodal:
+    description: "Reasoning across text, vision, and audio modalities."
+    seeds:
+      - "image-text alignment"
+      - "vision-language grounding"
+      - "speech-to-text reasoning"
+      - "cross-modal retrieval"
+      - "multimodal embeddings"
+      - "audio-visual scene understanding"
+      - "video question answering"
+
+  creativity:
+    description: "Generative tasks involving creativity, design, and art."
+    seeds:
+      - "story generation with consistency"
+      - "poetry generation"
+      - "music composition with AI"
+      - "visual art generation"
+      - "creative brainstorming"
+      - "design ideation assistance"
+      - "humor generation in AI"
+
+  explanation:
+    description: "Interpretability and explainability in AI reasoning."
+    seeds:
+      - "saliency maps in NLP"
+      - "explainable AI methods"
+      - "rationale extraction"
+      - "transparent decision-making"
+      - "interpretability of deep networks"
+      - "counterfactual explanations"
+      - "post-hoc model explanation"
+
+  communication:
+    description: "Dialogue, conversation management, and interactive reasoning."
+    seeds:
+      - "multi-turn dialogue coherence"
+      - "conversation memory management"
+      - "clarification question generation"
+      - "task-oriented dialogue"
+      - "empathetic response generation"
+      - "interactive reasoning agents"
+      - "goal-driven conversation"
+
+  knowledge_graphs:
+    description: "Knowledge graph construction, reasoning, and querying."
+    seeds:
+      - "knowledge graph completion"
+      - "graph neural networks for reasoning"
+      - "triple extraction from text"
+      - "ontology alignment"
+      - "graph-based question answering"
+      - "schema induction"
+      - "multi-hop graph reasoning"

@@ -1,4 +1,5 @@
 # stephanie/models/plan_trace.py (or a suitable path in your models directory)
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional

@@ -165,12 +165,24 @@ def dumps_safe(obj: Any, **kwargs) -> str:
     json.dumps with full recursive sanitization for NumPy, Decimal, Enum, UUID,
     datetime, and dataclasses. Handles numpy.int64 keys correctly.
     """
-    try:
-        sanitized = _sanitize_any(obj)
-        return json.dumps(sanitized, ensure_ascii=False, default=_json_default, **kwargs)
-    except Exception as e:
-        # last-resort fallback (never crash serialization)
-        return json.dumps(str(obj), ensure_ascii=False)
+    sanitized = sanitize(obj)
+    # Avoid duplicate kwargs by only setting defaults if absent
+    kwargs = dict(kwargs)  # copy so we don't mutate caller's dict
+    kwargs.setdefault("ensure_ascii", False)
+    kwargs.setdefault("default", _json_default)
+    return json.dumps(sanitized, **kwargs)
+
+def dumps_pretty(obj, **kwargs) -> str:
+    """Pretty JSON via dumps_safe."""
+    kwargs = dict(kwargs)
+    kwargs.setdefault("indent", 2)
+    return dumps_safe(obj, **kwargs)
+
+def dumps_compact(obj, **kwargs) -> str:
+    """Compact JSON via dumps_safe."""
+    kwargs = dict(kwargs)
+    kwargs.setdefault("separators", (",", ":"))
+    return dumps_safe(obj, **kwargs)
 
 
 def sanitize(obj: Any) -> Any:

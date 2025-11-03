@@ -1,4 +1,6 @@
 # stephanie/models/belief_tune.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String

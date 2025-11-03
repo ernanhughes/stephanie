@@ -1,4 +1,6 @@
 # stephanie/models/pipeline_stage_orm.py
+from __future__ import annotations
+
 from datetime import datetime
 from uuid import uuid4
 

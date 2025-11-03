@@ -1,5 +1,6 @@
 # stephanie/models/mrq_memory_entry.py
-# models/mrq_memory_entry.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text

@@ -1,4 +1,6 @@
 # stephanie/agents/review.py
+from __future__ import annotations
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 

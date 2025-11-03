@@ -24,7 +24,7 @@ class SearchHitStore(BaseSQLAlchemyStore):
             s.refresh(hit)
             return hit
 
-        return self._run(op) commit=True)
+        return self._run(op)
 
     def bulk_add_hits(self, hit_data_list: list[dict]) -> list[SearchHitORM]:
         """Insert multiple search hits at once."""
@@ -34,7 +34,7 @@ class SearchHitStore(BaseSQLAlchemyStore):
             s.flush()
             return hits
 
-        return self._run(op) commit=True)
+        return self._run(op)    
 
     def get_by_id(self, hit_id: int) -> Optional[SearchHitORM]:
         """Fetch a search hit by its ID."""
@@ -59,4 +59,4 @@ class SearchHitStore(BaseSQLAlchemyStore):
                 return True
             return False
 
-        return self._run(op) commit=True)
+        return self._run(op)

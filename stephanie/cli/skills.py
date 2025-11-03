@@ -1,3 +1,6 @@
+# stephanie/cli/skills.py
+from __future__ import annotations
+
 import click
 import numpy as np
 import torch

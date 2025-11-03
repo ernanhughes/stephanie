@@ -9,9 +9,24 @@ services:
       memory: ${memory}
       logger: ${logger}
 
+  storage:
+    enabled: true
+    cls: stephanie.services.storage_service.StorageService
+    dependencies: []
+    args:
+
   rules:
     enabled: true
     cls: stephanie.services.rules_service.RulesService
+    dependencies: []
+    args:
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
+  knowledge_graph:
+    enabled: true
+    cls: stephanie.services.knowledge_graph_service.KnowledgeGraphService
     dependencies: []
     args:
       cfg: ${cfg}
@@ -108,7 +123,6 @@ services:
       memory: ${memory}
       logger: ${logger}
       container: ${container}
-
 
   kbase:
     enabled: true

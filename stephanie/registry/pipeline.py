@@ -1,4 +1,5 @@
 # stephanie/registry/pipeline.py
+from __future__ import annotations
 
 import copy
 from pathlib import Path

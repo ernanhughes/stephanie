@@ -1,5 +1,6 @@
 # stephanie/models/search_result.py
-# models/search_result.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer, String,

@@ -1,4 +1,6 @@
 # stephanie/agents/score_analysis.py
+from __future__ import annotations
+
 import pandas as pd
 
 from stephanie.agents.base_agent import BaseAgent

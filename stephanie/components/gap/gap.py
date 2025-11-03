@@ -7,9 +7,12 @@ from pathlib import Path
 from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.gap.models import GapConfig
+from stephanie.components.gap.models import (EgBadgeConfig, EgBaselineConfig,
+                                             EgConfig, EgMemConfig,
+                                             EgModelConfig, EgRenderConfig,
+                                             EgStreams, EgThresholds,
+                                             GapConfig)
 from stephanie.components.gap.orchestrator import GapAnalysisOrchestrator
-from stephanie.components.gap.models import GapConfig, EgConfig, EgBadgeConfig, EgRenderConfig, EgThresholds, EgStreams, EgMemConfig, EgModelConfig, EgBaselineConfig
 
 _logger = logging.getLogger(__name__)
 

@@ -1,4 +1,6 @@
 # stephanie/cbr/rank_and_analyze.py
+from __future__ import annotations
+
 from typing import Dict, List, Tuple
 
 from stephanie.constants import GOAL

@@ -1,4 +1,4 @@
-# config/scorer/hrm.yaml
+# conf/scoring/hrm/default.yaml
 name: hrm
 model_type: hrm
 model_alias: HRM

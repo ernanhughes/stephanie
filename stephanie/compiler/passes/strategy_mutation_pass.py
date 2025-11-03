@@ -1,4 +1,5 @@
 # stephanie/compiler/passes/strategy_mutation_pass.py
+from __future__ import annotations
 
 
 class StrategyMutationPass:

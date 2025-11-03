@@ -491,6 +491,82 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
+
+    def get_cases_for_goal_in_casebook(
+        self,
+        casebook_id: int,
+        goal_id: str | int,
+        *,
+        limit: int = 200,
+    ) -> list[CaseORM]:
+        """
+        Return cases for a given (casebook_id, goal_id), newest first.
+        """
+        def op(s):
+            q = (
+                s.query(CaseORM)
+                .filter(
+                    CaseORM.casebook_id == casebook_id,
+                    CaseORM.goal_id == goal_id,
+                )
+            )
+            order_col = getattr(CaseORM, "created_at", None)
+            q = q.order_by(order_col.desc() if order_col is not None else CaseORM.id.desc())
+            return q.limit(limit).all()
+
+        return self._run(op)
+
+    def get_cases_for_goal_scoped(
+        self,
+        goal_id: str | int,
+        scopes: list[tuple[Optional[int], Optional[str], str]],
+        *,
+        limit: int = 500,
+    ) -> list[CaseORM]:
+        """
+        Return newest cases for a goal across one or more scopes (pipeline_run_id, agent_name, tag).
+        Dedupes per case using ROW_NUMBER() OVER (PARTITION BY cases.id ORDER BY created_at DESC).
+        """
+        def op(s):
+            base = (
+                s.query(
+                    CaseORM.id.label("case_id"),
+                    func.row_number().over(
+                        partition_by=CaseORM.id,
+                        order_by=(CaseORM.created_at.desc(), CaseORM.id.desc()),
+                    ).label("rn"),
+                )
+                .join(CaseBookORM, CaseBookORM.id == CaseORM.casebook_id)
+                .filter(CaseORM.goal_id == goal_id)
+            )
+
+            # OR of ANDed scope conditions
+            scope_conds = []
+            for (prid, agent_name, tag) in (scopes or []):
+                cond_parts = []
+                if prid is not None:
+                    cond_parts.append(CaseBookORM.pipeline_run_id == prid)
+                if agent_name is not None:
+                    cond_parts.append(CaseBookORM.agent_name == agent_name)
+                cond_parts.append(CaseBookORM.tags.contains([tag]))
+                scope_conds.append(and_(*cond_parts))
+
+            if scope_conds:
+                base = base.filter(or_(*scope_conds))
+
+            sub = base.subquery()
+
+            q = (
+                s.query(CaseORM)
+                .join(sub, sub.c.case_id == CaseORM.id)
+                .filter(sub.c.rn == 1)
+                .order_by(CaseORM.created_at.desc(), CaseORM.id.desc())
+                .limit(limit)
+            )
+            return q.all()
+
+        return self._run(op)
+
     def bump_run_ix(self, casebook_id: int, goal_id: str) -> int:
         def op(s):
             state = (

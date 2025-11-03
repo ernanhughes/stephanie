@@ -36,6 +36,7 @@ def split_conversation_batches(input_path, output_dir, batch_size=10):
         print(f"✅ Wrote {out_path} with {len(batch)} conversations")
 
 
+# python .\scripts\split_json.py --input  .\data\conversations.json --output .\data\chats\
 def main():
     parser = argparse.ArgumentParser(description="Split a JSON file of conversations into separate files.")
     parser.add_argument("--input", required=True, help="Path to input JSON file (e.g. data/chats/conversation.json)")

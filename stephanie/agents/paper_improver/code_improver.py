@@ -1,7 +1,6 @@
 # stephanie/agents/paper_improver/code_improver.py
+from __future__ import annotations
 
-# code_improver.py — spec → tests → stub → verify → edit → log → PR-ready
-# Enhanced with: real metrics, safe execution, AST denylist, edit-policy rules, VPM, DPO pairs.
 import ast
 import hashlib
 import json

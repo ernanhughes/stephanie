@@ -9,7 +9,7 @@ from typing import Dict, List
 import networkx as nx
 import torch
 
-from stephanie.agents.inference.ebt_inference import DocumentEBTInferenceAgent
+from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
 from stephanie.memcube.memcube import MemCube
 from stephanie.memcube.theorem import Theorem
 from stephanie.models.belief import BeliefORM
@@ -23,7 +23,7 @@ class WorldModel:
     Integrates belief graph, contradiction resolution, and theorem extraction
     """
     
-    def __init__(self, goal: str, ebt_scorer: DocumentEBTInferenceAgent):
+    def __init__(self, goal: str, ebt_scorer: EBTInferenceAgent):
         """
         Args:
             goal: Primary objective for knowledge organization

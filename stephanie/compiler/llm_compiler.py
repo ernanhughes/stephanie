@@ -1,4 +1,6 @@
 # stephanie/compiler/llm_compiler.py
+from __future__ import annotations
+
 from jinja2 import BaseLoader, Environment
 
 from stephanie.models.prompt_program import PromptProgramORM

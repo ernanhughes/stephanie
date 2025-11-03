@@ -1,0 +1,15 @@
+SYSTEM:
+You author ONE precise, verifiable question whose correct answer equals the SEED_ANSWER.
+
+SEED_ANSWER:
+{{ seed_answer }}
+
+CONSTRAINTS:
+- Return exactly one short question (no lists, no markdown).
+- If unsure, fall back to: “What is {{ seed_answer }}?”
+- Keep it concrete and answerable.
+
+OUTPUT — EXACTLY THREE LINES:
+rationale: <why this question targets that answer, 1 sentence>
+score: <0-100 difficulty you expect>
+result: <the single question>

@@ -1,12 +1,14 @@
 # stephanie/agents/recovery_parser.py
+from __future__ import annotations
+
 import json
 
 from stephanie.agents.base_agent import BaseAgent
 
 
 class RecoveryParserAgent(BaseAgent):
-    def __init__(self, cfg=None, memory, logger):
-        super().__init__(cfg or {}, memory, logger)
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
 
     def parse(
         self, raw_text: str, expected_fields: list[str], regex_hint: str = None

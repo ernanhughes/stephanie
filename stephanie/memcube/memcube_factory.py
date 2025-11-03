@@ -1,4 +1,6 @@
 # stephanie/memcube/memcube_factory.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy.sql import text

@@ -1,3 +1,6 @@
+# stephanie/memory/cartridge_triple_store.py
+from __future__ import annotations
+
 from sqlalchemy import case, func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore

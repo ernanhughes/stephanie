@@ -1,3 +1,6 @@
+# stephanie/models/fragment.py
+from __future__ import annotations
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql as pg
 

@@ -1,4 +1,5 @@
 # stephanie/agents/reflection_delta.py
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.reflection_delta import compute_pipeline_delta

@@ -1,4 +1,4 @@
-# stephanie/scoring/plugins/factory.py Container logger
+# stephanie/scoring/plugins/factory.py
 from __future__ import annotations
 
 import importlib

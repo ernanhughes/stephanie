@@ -6,7 +6,7 @@ defaults:
   - bus: enabled   
   - logging/json_logger
   - mars/default
-  - services/default
+  - services: default
   - scorer: all  
 
   - agents/learning_from_learning_fast

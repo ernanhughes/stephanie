@@ -1,4 +1,6 @@
 # stephanie/memory/document_domain_section_store.py
+from __future__ import annotations
+
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore

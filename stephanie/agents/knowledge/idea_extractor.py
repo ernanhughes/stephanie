@@ -1,6 +1,5 @@
-# File: stephanie/agents/knowledge/learnable_idea_extractor.py
-
-
+# stephanie/agents/knowledge/idea_extractor.py
+from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier

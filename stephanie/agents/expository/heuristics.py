@@ -1,5 +1,6 @@
 # stephanie/expository/heuristics.py
-import math
+from __future__ import annotations
+
 import re
 from typing import Dict
 

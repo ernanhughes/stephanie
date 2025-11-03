@@ -1,4 +1,6 @@
 # stephanie/agents/master_pupil/evaluator.py
+from __future__ import annotations
+
 import torch
 from sklearn.metrics.pairwise import cosine_similarity
 

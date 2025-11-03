@@ -1,4 +1,6 @@
 # stephanie/analysis/rubric_clusterer.py
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 from sklearn.cluster import AgglomerativeClustering

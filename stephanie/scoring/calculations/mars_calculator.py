@@ -1,4 +1,5 @@
 # stephanie/scoring/calculations/mars_calculator.py
+from __future__ import annotations
 
 import json
 import math

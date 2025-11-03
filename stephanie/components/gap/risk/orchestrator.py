@@ -11,6 +11,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import yaml  # PyYAML
 
+from .aligner import Aligner
+from .badge_renderer import BadgeRenderer
 # --- Required sibling services (keep these names stable across files) -------
 # Implemented in:
 #   stephanie/components/gap/risk/monitor.py         -> class MonitorService
@@ -19,10 +21,8 @@ import yaml  # PyYAML
 #   stephanie/components/gap/risk/badge_renderer.py  -> class BadgeRenderer
 #   stephanie/components/gap/risk/provenance.py      -> class ProvenanceLogger
 from .monitor import MonitorService
-from .aligner import Aligner
-from .risk_engine import RiskEngine
-from .badge_renderer import BadgeRenderer
 from .provenance import ProvenanceLogger
+from .risk_engine import RiskEngine
 
 
 def _utc_now_run_id() -> str:

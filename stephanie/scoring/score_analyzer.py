@@ -1,5 +1,6 @@
 # stephanie/scoring/score_analyzer.py
-# analysis/score_analyzer.py
+from __future__ import annotations
+
 import matplotlib
 
 if matplotlib.get_backend().lower() != "agg":

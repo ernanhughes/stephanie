@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import inspect
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from .bus_protocol import BusProtocol
-from .errors import (BusConnectionError, BusPublishError, BusRequestError,
-                     BusSubscribeError)
+from .errors import BusConnectionError, BusPublishError, BusRequestError
 from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
 from .nats_bus import NatsKnowledgeBus
@@ -141,7 +142,7 @@ class HybridKnowledgeBus(BusProtocol):
             self._connected = False
     # --------------- API ---------------
 
-    async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
+    async def publish(self, subject: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> None:
         _logger.debug(f"Publishing to {subject}: {payload}")
         if self._bus is None and not self._disabled:
             ok = await self.connect()
@@ -150,15 +151,54 @@ class HybridKnowledgeBus(BusProtocol):
         if self._bus is None:  # disabled
             return
         try:
-            await self._bus.publish(subject, payload)
+            try:
+                await self._bus.publish(subject, payload, headers=headers) 
+            except TypeError:
+                await self._bus.publish(subject, payload)
         except Exception as e:
             _logger.error(f"Failed to publish to {subject}: {e}")
             raise BusPublishError(f"Failed to publish to {subject}") from e
+        except Exception as e:
+            _logger.error(f"Failed to publish to {subject}: {e}")
+            raise BusPublishError(f"Failed to publish to {subject}") from e
+
+
+    async def publish_raw(
+        self,
+        subject: str,
+        body: bytes,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """
+        Publish raw bytes if the backend supports it; otherwise wrap in a base64 envelope.
+        """
+        if self._bus is None and not self._disabled:
+            ok = await self.connect()
+            if not ok:
+                raise BusConnectionError("No bus connection available")
+        if self._bus is None:  # disabled
+            return
+        # If backend has publish_raw, prefer it
+        if hasattr(self._bus, "publish_raw"):
+            try:
+                await getattr(self._bus, "publish_raw")(subject, body, headers=headers)  # type: ignore[misc]
+                return
+            except TypeError:
+                await getattr(self._bus, "publish_raw")(subject, body)                   # type: ignore[misc]
+                return
+
+        # Fallback: JSON envelope (safe across all backends)
+        env = {
+            "__binary__": True,
+            "data_b64": base64.b64encode(body).decode("ascii"),
+        }
+        await self.publish(subject, env, headers=headers)
 
     async def subscribe(
         self,
         subject: str,
         handler: Callable[[Dict[str, Any]], None],
+        **kwargs: Any,                      
     ) -> None:
         if self._bus is None and not self._disabled:
             ok = await self.connect()
@@ -166,11 +206,27 @@ class HybridKnowledgeBus(BusProtocol):
                 raise BusConnectionError("No bus connection available")
         if self._bus is None:
             return
+
+        # ---- normalize arg names once here ----
+        norm = dict(kwargs)
+        # prefer JetStream term 'deliver_group'; accept common aliases
+        if "queue_group" in norm and "deliver_group" not in norm:
+            norm["deliver_group"] = norm.pop("queue_group")
+        if "group" in norm and "deliver_group" not in norm:
+            norm["deliver_group"] = norm.pop("group")
+
+        # ---- filter to what the underlying bus supports ----
         try:
-            return await self._bus.subscribe(subject, handler)
-        except Exception as e:
-            _logger.error(f"Failed to subscribe to {subject}: {e}")
-            raise BusSubscribeError(f"Failed to subscribe to {subject}") from e
+            sig = inspect.signature(self._bus.subscribe)  # type: ignore[attr-defined]
+            filtered = {k: v for k, v in norm.items() if k in sig.parameters}
+        except Exception:
+            filtered = norm  # best effort
+
+        try:
+            return await self._bus.subscribe(subject, handler, **filtered)  # type: ignore[misc]
+        except TypeError:
+            # absolute fallback
+            return await self._bus.subscribe(subject, handler)  # type: ignore[misc]
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         if self._bus is None and not self._disabled:

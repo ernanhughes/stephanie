@@ -355,3 +355,26 @@ class EvaluationStore(BaseSQLAlchemyStore):
             else {},
             "created_at": row.created_at,
         }
+
+    def get_latest_for_target(
+        self, *, scorable_id: str, scorable_type: str
+    ) -> Optional[EvaluationORM]:
+        def op(s):
+            return (
+                s.query(EvaluationORM)
+                .filter(
+                    EvaluationORM.scorable_id == scorable_id,
+                    EvaluationORM.scorable_type == scorable_type,
+                )
+                .order_by(EvaluationORM.created_at.desc())
+                .first()
+            )
+        return self._run(op)
+
+    def get_latest_timestamp_for_target(
+        self, *, scorable_id: str, scorable_type: str
+    ):
+        row = self.get_latest_for_target(
+            scorable_id=scorable_id, scorable_type=scorable_type
+        )
+        return getattr(row, "created_at", None) if row else None

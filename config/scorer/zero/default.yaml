@@ -1,0 +1,10 @@
+# conf/scoring/zero/default.yaml
+name: zero
+dimensions: ["clarity","coherence","alignment","confidence","novelty","contradiction","complexity","vpm_overall"]
+dimension_order: ["clarity","coherence","alignment","confidence"]
+dimension_weights:
+  clarity: 1.25
+  coherence: 1.15
+  alignment: 1.10
+  confidence: 1.00
+order_decay: 0.92

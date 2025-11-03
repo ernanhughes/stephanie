@@ -314,6 +314,9 @@ class ScoringService(Service):
                 from stephanie.scoring.scorer.knowledge_scorer import \
                     KnowledgeScorer
                 return KnowledgeScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
+            if name == "vpm":
+                from stephanie.scoring.scorer.vpm_scorer import VPMScorer
+                return VPMScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name in ("contrastive_ranker", "contrastive", "reward"):
                 # We allow "reward" to be an alias for contrastive pairwise scorer.
                 from stephanie.scoring.scorer.contrastive_ranker_scorer import \

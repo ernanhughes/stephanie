@@ -2,8 +2,8 @@ defaults:
   - _self_
   - db: postgres
   - plan_monitor: disabled
-  - logging/json_logger
-  - services/default
+  - logging: json_logger
+  - services: all
   - scorer: gap  
 
 
@@ -15,7 +15,7 @@ defaults:
   - agents/gap
 
 embeddings:
-  backend: mxbai
+  backend: hnet
 
 
 goal:

@@ -1,4 +1,6 @@
 # stephanie/agents/mixins/ebt_mixin.py
+from __future__ import annotations
+
 import os
 from typing import Dict, List, Optional, Union
 

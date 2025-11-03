@@ -1,4 +1,5 @@
-from typing import Dict, List
+# stephanie/models/memcube/belief_graph.py
+from __future__ import annotations
 
 import networkx as nx
 

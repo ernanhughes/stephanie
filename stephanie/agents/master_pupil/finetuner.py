@@ -1,7 +1,8 @@
 # stephanie/agents/master_pupil/finetuner.py
+from __future__ import annotations
+
 import logging
 
-import torch
 import torch.nn as nn
 import torch.optim as optim
 

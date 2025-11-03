@@ -1,4 +1,6 @@
 # stephanie/measurement/workers.py
+from __future__ import annotations
+
 from celery import shared_task
 
 from stephanie.models.base import SessionLocal

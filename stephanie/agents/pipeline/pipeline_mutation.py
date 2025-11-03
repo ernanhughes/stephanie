@@ -1,4 +1,6 @@
 # stephanie/agents/pipeline/pipeline_mutation.py
+from __future__ import annotations
+
 import copy
 from datetime import datetime
 

@@ -1,0 +1,82 @@
+# JAS Pipeline Agent Configuration
+jas_pipeline:
+  # Core operation parameters
+  duration: null                # Run until explicitly stopped (in seconds)
+  auto_start: true              # Start automatically when initialized
+  graceful_shutdown_timeout: 30.0  # Max time for graceful shutdown (seconds)
+  
+  # JAS configuration
+  jas_config_path: "config/jitter/jitter_v1.yaml"  # Path to JAS configuration
+  jas_reproduction_enabled: true  # Enable reproduction system
+  jas_max_runtime: null         # Maximum runtime in seconds (null = no limit)
+  
+  # Monitoring and telemetry
+  telemetry_interval: 1.0       # Telemetry publish interval in seconds
+  health_check_interval: 5.0    # Health check interval in seconds
+  
+  # Reproduction and legacy
+  max_offspring: 5              # Maximum number of offspring to create
+  legacy_preservation: true     # Preserve legacy on shutdown
+
+  # jas.lifecycle.yaml (or your JAS agent config file)
+  vpm_scoring:
+    enabled: true
+    # Dimensions to request from the scorer (composite is auto-added by the scorer if weights/order present)
+    dimensions: ["clarity","coherence","alignment","confidence","novelty","contradiction","complexity","vpm_overall"]
+    # Importance & order (most→least important). The scorer applies weights and geometric order decay.
+    dimension_weights:
+      clarity: 1.25
+      coherence: 1.15
+      alignment: 1.10
+      confidence: 1.00
+    dimension_order: ["clarity","coherence","alignment","confidence"]
+    resize_method: "bilinear"
+    save_results: true
+    force_rescore: false
+
+# JAS Configuration (will be merged with jas_config_path)
+jitter_v1:
+  core:
+    membrane:
+      thickness: 1.0
+      initial_integrity: 0.6
+    energy_metabolism:
+      initial_cognitive: 50.0
+      initial_metabolic: 50.0
+      initial_reserve: 10.0
+  
+  triune:
+    reptilian_weight: 0.3
+    mammalian_weight: 0.3
+    primate_weight: 0.4
+    reptilian_veto_threshold: 0.7
+    mammalian_veto_threshold: 0.6
+    energy_gain_factor: 1.0
+  
+  homeostasis:
+    energy_kp: 1.0
+    energy_ki: 0.1
+    energy_kd: 0.05
+    energy_setpoint: 1.0
+    boundary_kp: 2.0
+    boundary_ki: 0.2
+    boundary_kd: 0.1
+    boundary_setpoint: 0.8
+    crisis_threshold: 0.5
+    max_crisis: 10
+  
+  reproduction:
+    ready_threshold: 80.0
+    variation_rate: 0.1
+    reproduction_interval: 1000
+  
+  apoptosis:
+    boundary_threshold: 0.1
+    energy_threshold: 1.0
+    max_crisis_ticks: 50
+  
+  telemetry:
+    telemetry_interval: 1.0
+    telemetry_subject: "arena.jitter.telemetry"
+  
+  tick_interval: 1.0

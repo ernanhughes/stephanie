@@ -1,4 +1,6 @@
 # stephanie/scoring/calculations/weighted_average.py
+from __future__ import annotations
+
 from stephanie.scoring.calculations.base_calculator import BaseScoreCalculator
 
 

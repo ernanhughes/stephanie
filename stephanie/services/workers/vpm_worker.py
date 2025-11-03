@@ -6,9 +6,12 @@ import logging
 import traceback
 from typing import Any, Dict, Optional
 
+import numpy as np
+
 from stephanie.services.zeromodel_service import ZeroModelService
 
 _logger = logging.getLogger(__name__)
+
 
 class VPMWorkerInline:
     """Simplified in-process timeline writer (no bus)."""
@@ -46,6 +49,57 @@ class VPMWorkerInline:
             self.logger.log("TopologyProgress", {"stage": stage, "i": i, "total": total, "pct": pct})
         except Exception:
             pass
+
+    def add_channels(self, run_id: str, channels: Dict[str, np.ndarray], namespace: str = "hall"):
+        """
+        Append a batch of VPM channels as timeline columns.
+
+        Args:
+            run_id (str): The run identifier.
+            channels (Dict[str, np.ndarray]): Dictionary of named 1D arrays (e.g., {"R": [...], "G": [...]})
+                Each array must be 1D and of the same length (timesteps).
+            namespace (str): Prefix for column names (e.g., "hall" → "hall.R", "hall.G").
+
+        Example:
+            add_channels("run-123", {"R": [0.1, 0.8], "G": [0.3, 0.2]}, "hall")
+            → Appends two rows:
+                Row 0: {"hall.R": 0.1, "hall.G": 0.3}
+                Row 1: {"hall.R": 0.8, "hall.G": 0.2}
+        """
+        if not channels:
+            self.logger.warning(f"[VPMWorkerInline] No channels provided for run {run_id}")
+            return
+
+        # Validate: all channels must be 1D numpy arrays of same length
+        lengths = [len(arr) for arr in channels.values() if isinstance(arr, np.ndarray)]
+        if not lengths:
+            self.logger.warning(f"[VPMWorkerInline] No valid numpy arrays in channels for run {run_id}")
+            return
+
+        n_timesteps = lengths[0]
+        if not all(l == n_timesteps for l in lengths):
+            raise ValueError(
+                f"All channels must have the same length. Got lengths: {dict(zip(channels.keys(), lengths))}"
+            )
+
+        # Build column names with namespace prefix
+        cols = [f"{namespace}.{k}" for k in channels.keys()]
+
+        # Convert arrays to list of floats
+        vals_list = []
+        for i in range(n_timesteps):
+            row_vals = [float(channels[k][i]) for k in channels.keys()]
+            vals_list.append(row_vals)
+
+        # Append each timestep as a row
+        for i, vals in enumerate(vals_list):
+            self.append(
+                run_id=run_id,
+                node_id=f"vpm.{namespace}.{i}",  # Optional: node_id to trace position
+                metrics={"columns": cols, "values": vals},
+            )
+
+        self.logger.info(f"[VPMWorkerInline] Added {n_timesteps} timesteps of {len(channels)} channels under namespace '{namespace}' for run {run_id}")
 
 class VPMWorker:
     """

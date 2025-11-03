@@ -1,3 +1,6 @@
+# stephanie/scoring/ebt/srft_collate.py
+from __future__ import annotations
+
 from typing import List
 
 import torch

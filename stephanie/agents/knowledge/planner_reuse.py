@@ -1,4 +1,6 @@
 # stephanie/agents/planning/planner_reuse.py
+from __future__ import annotations
+
 import logging
 import re
 

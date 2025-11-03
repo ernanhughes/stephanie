@@ -1,4 +1,5 @@
 # stephanie/registry/models.py
+from __future__ import annotations
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,
                         String, func)

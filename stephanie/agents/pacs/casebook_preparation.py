@@ -1,4 +1,6 @@
 # stephanie/pipeline/stages/casebook_preparation.py
+from __future__ import annotations
+
 from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent

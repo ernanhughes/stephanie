@@ -1,0 +1,213 @@
+# config/agents/ssp.yaml
+ssp:
+  name: ssp
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  seeds:
+    - "Explain why BM25 is better than TF-IDF for short queries."
+    - "How does gradient clipping prevent exploding gradients in RNNs?"
+    - "What's the key insight behind the PageRank algorithm?"
+    - "ReLU (Rectified Linear Unit)"
+    - "Hash map"
+    - "Gradient Descent"
+  
+  proposer:
+    rewrites: 3
+    max_snippets: 6
+    min_question_len: 20
+    forbid_answer_leak: true
+    prompt_name: "searching_proposer"  # Or inline prompt
+    
+  verify:
+    min_question_len: 20
+    forbid_answer_leak: true
+    min_evidence_count: 1
+    pass_threshold: 0.75
+    
+  solver:
+    max_depth: 4
+    beam_width: 4
+    progress_every: 1      # snapshot EVERY step
+    snapshot_early: true   # also snapshot at depth boundaries
+    
+  retrieval:
+    k: 3
+    max_chars_per_snippet: 400
+    
+  vpm_viz:
+    raw_render: bar           # "bar" | "square"
+    progress_render: bar      # "bar" | "square"
+    bar_height: 12            # pixels (set to 1 if you want literal 1px)
+    grid_side: 32             # kept for square mode
+    fixed_scale: true
+    # Optional: explicitly list the 17 metrics in order
+    dimensions:
+      - reward
+      - verified
+      - curriculum_difficulty
+      - question_len
+      - answer_len
+      - evidence_count
+      - solver_steps
+      - score
+      - best_score
+      - improvement
+      - depth
+      - novelty
+      - search_turns
+      - f1_score
+      - format_compliance
+      - noise_tolerance
+      - rag_verification
+    output_dir: "./runs/vpm_visualizations"
+    tl_fracs: [0.25, 0.16, 0.36, 0.09]
+    filmstrip:
+      rows: 2
+      cols: 10
+      dpi: 300
+    delta: 0.02
+    metric_ranges:
+      verifier_f1: [0.0, 1.0]
+      difficulty: [0.0, 1.0]
+      steps_norm: [0.0, 1.0]
+      evidence_cnt: [0.0, 1.0]
+
+  filmstrip:
+    rows: 2
+    cols: 10
+    dpi: 300
+    border_px: 3
+    border_color: 255   # white in L-mode
+    label_on: false
+    label_pos: tl       # tl|tr|bl|br
+    label_color: 255
+    label_bg: 0         # black bg for contrast (set to null/None to disable)
+
+  ats:
+    max_depth: 2
+    beam_width: 3
+
+  telemetry:
+    enabled: true
+    persist: true           # also write into bus_events store if present
+    sample: 1.0
+    subject_root: ssp
+    extra:
+      app: stephanie
+      component: ssp
+  
+  # Top-level key must be 'self_play' to match the codebase expectation
+  self_play:
+    # --- General Configuration ---
+    enabled: true
+    mission: "Improve Stephanie’s reasoning, knowledge integration, and tool usage through verifiable self-play."
+    batch_size: 8
+    max_episode_length: 10
+    verification_threshold: 0.85  # Used by Verifier and Trainer
+
+    # --- Reward Structure ---
+    reward:
+      w_hrm: 0.6
+      w_mars: 0.3
+      w_verifier: 0.1
+      length_penalty: 0.0
+
+    # --- Snapshots & Persistence ---
+    snapshots:
+      keep: 5
+      update_interval: 50
+
+    # --- Jitter / Ticking Cadence ---
+    jitter:
+      tick_interval: 2.0  # seconds between auto-ticks if used
+
+    # --- Q-Max Curriculum Control ---
+    # This is CRITICAL for difficulty adaptation
+    qmax:
+      initial_difficulty: 0.3      # Starting challenge level (0.0 = easy, 1.0 = hard)
+      max_difficulty: 0.9          # Upper bound on difficulty
+      difficulty_step: 0.05        # How much to adjust difficulty per step
+      competence_window: 100       # Number of recent episodes to calculate success rate
+
+    # --- Curriculum Policy ---
+    curriculum:
+      min_success_rate: 0.65       # Target success rate; increase difficulty when above
+
+    # --- Proposer Configuration ---
+    proposer:
+      # template_name: "path/to/proposal_template.txt"  # Optional custom prompt
+      # Any other proposer-specific settings can go here
+
+    # --- Solver Configuration ---
+    solver:
+      search_iterations: 40        # Max iterations for tree search
+      time_limit_sec: 60           # Time limit for solving
+      N_init: 3                    # Initial number of plans
+      C_ucb: 1.2                   # UCB exploration constant
+      H_greedy: 0.3                # Heuristic weight for greedy selection
+      H_debug: 0.5                 # Heuristic weight for debug steps
+      no_improve_patience: 30      # Stop if no improvement after this many iterations
+      progress_every: 5            # Log progress every N iterations
+      heartbeat_secs: 10.0         # Heartbeat interval during search
+      report_top_k: 5              # Report top K candidates
+      llm_preamble: >
+        You are a meticulous problem solver. Think step-by-step, use tools when needed,
+        and provide clear, concise answers.
+      scorers: ["tiny"]            # Scoring services to use for post-hoc selection
+      dimensions:                  # Dimensions to score on during solution selection
+        - "novelty"
+        - "clarity"
+        - "relevance"
+        - "implementability"
+        - "alignment"
+      posthoc_top_k: 12            # Number of candidates to score post-hoc
+      use_grpo: false              # Whether to use GRPO rollout
+      # --- Tree-GRPO Config (only used if use_grpo: true) ---
+      tree:
+        M: 2                       # Number of rollouts
+        N: 2                       # Candidates per rollout
+        L: 1                       # Lookahead depth
+        scorer_name: "sicql"       # Scorer to use for GRPO rewards
+        dimensions: ["alignment"]  # Dimensions for GRPO scoring
+        use_zscore_intra: false    # Use intra-rollout z-scoring
+        use_zscore_inter: true     # Use inter-rollout z-scoring
+        value_alpha: 0.0           # Weight for value function (0.0 = pure policy)
+        prefer_non_buggy: true     # Prefer non-buggy solutions in ranking
+
+    # --- Verifier Configuration ---
+    verifier:
+      adaptive: true
+      start: 0.55
+      max: 0.85
+      rise_per_100: 0.06
+
+      verification_threshold: 0.85 # Threshold for solution validity (can override global)
+      min_evidence_count: 2        # Minimum evidence count to pass
+      scorers:                     # List of scorers to consult for final verification
+        - "hrm"
+        # - "mars" 
+      dimensions:                  # Dimensions to verify on
+        - "reasoning"
+        - "knowledge"
+        - "clarity"
+        - "faithfulness"
+        - "coverage"
+        - "alignment"
+      # --- HRM-style Weights (for internal heuristic scoring if needed) ---
+      hrms:
+        - name: "coherence"
+          weight: 0.3
+        - name: "consistency"
+          weight: 0.25
+        - name: "causality"
+          weight: 0.25
+        - name: "novelty"
+          weight: 0.2

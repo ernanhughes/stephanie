@@ -35,7 +35,7 @@ class BusProtocol(ABC):
         pass
 
     @abstractmethod
-    async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
+    async def publish(self, subject: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> None:
         """
         Publish a message to the specified subject.
 

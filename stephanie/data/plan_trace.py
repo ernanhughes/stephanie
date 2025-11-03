@@ -1,4 +1,6 @@
 # stephanie/data/plan_trace.py
+from __future__ import annotations
+
 import json
 import os
 from dataclasses import dataclass, field
@@ -125,7 +127,6 @@ class PlanTrace:
 
     # --- Core Identifiers ---
     trace_id: str # Unique identifier for this specific trace/execution
-    
     # --- Initial Context ---
     goal_text: str # The original goal or query
     goal_id: int
@@ -133,7 +134,7 @@ class PlanTrace:
     
     # --- Plan Definition (Optional but useful for context) ---
     # This could be a representation of the DSPy program or pipeline used.
-    # A simple string signature or a more structured representation.
+    # A simple string signature
     plan_signature: str 
 
     # --- Execution Details ---
@@ -142,9 +143,12 @@ class PlanTrace:
     # --- Final Outcome ---
     final_output_text: str # The final output produced by the plan
 
+    status: str = "proposed" # e.g., "proposed", "in_progress", "completed", "failed"
     pipeline_run_id: Optional[int] = None
     # The scores assigned to the final output by various scorers.
     final_scores: Optional[ScoreBundle] = None
+
+    role : Optional[str] = None  # e.g., "planner", "executor"
 
     # --- Epistemic Labels ---
     # --- Target for Epistemic Plan HRM Training ---

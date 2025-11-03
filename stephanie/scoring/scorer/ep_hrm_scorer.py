@@ -1,4 +1,5 @@
 # stephanie/scoring/hrm/hrm_scorer.py
+from __future__ import annotations
 
 import os
 

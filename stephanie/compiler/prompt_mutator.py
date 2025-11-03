@@ -1,4 +1,5 @@
 # stephanie/compiler/prompt_mutator.py
+from __future__ import annotations
 
 
 class PromptMutator:

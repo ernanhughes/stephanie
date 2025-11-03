@@ -1,4 +1,6 @@
 # stephanie/services/bus/kv_sync.py
+from __future__ import annotations
+
 import asyncio
 import threading
 from typing import Optional

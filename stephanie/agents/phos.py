@@ -385,7 +385,7 @@ class PhosAgent(BaseAgent):
             try:
                 await self.emit_cb(event, payload)
             except Exception as e:
-                self.logger.debug(f"[PhosAgent] EmitBroadcaster failed: {e}")
+                _logger.warning(f"[PhosAgent] EmitBroadcaster failed: {e}")
 
     async def _timeline_sink(
         self, event: str, payload: Dict[str, Any]

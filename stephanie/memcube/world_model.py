@@ -1,5 +1,7 @@
-import torch
+# stephanie/memcube/world_model.py
+from __future__ import annotations
 
+import torch
 
 
 class WorldModel:

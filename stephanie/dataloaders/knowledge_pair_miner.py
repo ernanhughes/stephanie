@@ -1,4 +1,6 @@
 # stephanie/dataloaders/knowledge_pair_miner.py
+from __future__ import annotations
+
 import random
 from itertools import islice
 

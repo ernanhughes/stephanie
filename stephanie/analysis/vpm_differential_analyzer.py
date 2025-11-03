@@ -1,4 +1,6 @@
 # stephanie/analysis/vpm_differential_analyzer.py
+from __future__ import annotations
+
 import os
 from pathlib import Path
 from tkinter import Image

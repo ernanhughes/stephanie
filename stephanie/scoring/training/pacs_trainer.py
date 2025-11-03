@@ -102,7 +102,7 @@ class WeightedBCEWithLogits(nn.Module):
 # Hybrid SICQL Adapter (Critical Component)
 # ==============================
 
-I class HybridSICQLAdapter:
+class HybridSICQLAdapter:
     def __init__(self, memory, actor_lm, tokenizer, critic_head=None, device=None):
         self._device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.memory = memory

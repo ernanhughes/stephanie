@@ -1,4 +1,6 @@
 # stephanie/models/scorable_entity.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import (Column, DateTime, Float, Integer, String, Text,

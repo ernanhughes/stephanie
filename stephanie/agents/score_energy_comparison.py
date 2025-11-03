@@ -1,4 +1,5 @@
 # stephanie/agents/score_energy_comparison.py
+from __future__ import annotations
 
 import os
 from datetime import datetime

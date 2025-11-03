@@ -1,4 +1,6 @@
 # stephanie/models/scoring_history.py
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import (JSON, TIMESTAMP, Boolean, Column, Float, ForeignKey,

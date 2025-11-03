@@ -1,5 +1,5 @@
 # stephanie/memory/__init__.py
-"""Memory management and embedding tools"""
+from __future__ import annotations
 
 from .belief_cartridge_store import BeliefCartridgeStore
 from .cartridge_domain_store import CartridgeDomainStore

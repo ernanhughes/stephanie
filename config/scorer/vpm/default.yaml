@@ -1,0 +1,16 @@
+# conf/scoring/vpm/default.yaml
+name: vpm
+img_size: 64
+patch_size: 8
+in_channels: 3
+embed_dim: 128
+depth: 4
+num_heads: 8
+mlp_ratio: 4.0
+dropout: 0.1
+learning_rate: 1e-4
+batch_size: 16
+epochs: 100
+weights_path: null
+max_resolution: 256
+resize_method: bilinear

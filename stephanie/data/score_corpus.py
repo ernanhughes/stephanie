@@ -1,4 +1,6 @@
 # stephanie/scoring/score_corpus.py
+from __future__ import annotations
+
 import warnings
 from collections import defaultdict
 from typing import Any, Dict, List, Set, Tuple

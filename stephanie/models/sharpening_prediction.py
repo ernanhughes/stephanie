@@ -1,5 +1,6 @@
 # stephanie/models/sharpening_prediction.py
-# models/sharpening_prediction.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String

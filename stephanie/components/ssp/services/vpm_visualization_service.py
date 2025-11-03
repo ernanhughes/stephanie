@@ -1,0 +1,911 @@
+# stephanie/components/ssp/services/vpm_visualization_service.py
+"""
+VPM Visualization Service - Generates Vectorized Performance Map images for SSP episodes
+
+All filesystem paths are centralized in `_setup_visualization_paths()`.
+Every method writes ONLY under those paths. No ad-hoc dirs elsewhere.
+
+Structure:
+  _viz_dir/
+    raw/
+    phos/
+    comparison/
+    episode_data/
+    progress/
+      <unit>/
+        frames...
+        <unit>_progress.gif
+        <unit>_filmstrip.png
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import imageio.v2 as imageio
+import matplotlib
+import numpy as np
+import pandas as pd
+import PIL.Image as Image
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+from stephanie.components.ssp.utils.trace import EpisodeTrace
+from stephanie.logging.json_logger import JSONLogger
+from stephanie.memory.memory_tool import MemoryTool
+from stephanie.services.service_protocol import Service
+from stephanie.zeromodel.vpm_controller import VPMRow
+from stephanie.zeromodel.vpm_phos import (build_compare_guarded,
+                                          build_vpm_phos_artifacts,
+                                          phos_sort_pack, robust01, save_img,
+                                          to_square, vpm_vector_from_df)
+
+_logger = logging.getLogger(__name__)
+
+# Back-compat mapping: old -> new canonical names
+_KEY_MAP = {
+    "verifier_f1": "reward",
+    "steps_norm": "solver_steps",
+    "evidence_cnt": "evidence_count",
+}
+
+# Canonical dimensions we snapshot during search
+_CANON_DIMS = [
+    "reward",
+    "verified",
+    "curriculum_difficulty",
+    "question_len",
+    "answer_len",
+    "evidence_count",
+    "solver_steps",
+    "score",
+    "best_score",
+    "improvement",
+    "depth",
+    "novelty",
+    "search_turns",
+    "f1_score",
+    "format_compliance",
+    "noise_tolerance",
+    "rag_verification",
+]
+
+
+class VPMVisualizationService(Service):
+    """
+    Service for generating VPM visualization artifacts from SSP episode data.
+
+    NOTE: All paths are defined in `_setup_visualization_paths`. Do not write elsewhere.
+    """
+
+    def __init__(
+        self,
+        cfg: Dict[str, Any],
+        memory: MemoryTool,
+        logger: JSONLogger,
+        container: Optional[Any],
+        run_id: Optional[str],
+    ):
+        self.cfg = cfg or {}
+        self.memory = memory
+        self.logger = logger
+        self.container = container
+        self.run_id = run_id or f"run_{int(time.time())}"
+
+        self._initialized = False
+
+        # state
+        self._feature_order: Dict[str, List[str]] = {}
+        self._metrics_history: Dict[str, List[Dict[str, float]]] = {}
+        self._episode_traces: Dict[str, EpisodeTrace] = {}
+        self._progress_frames: Dict[str, List[Path]] = {}  # unit -> list of frame paths (Path)
+
+        # dirs + metrics/vpm params
+        self._setup_visualization_paths()
+        self._setup_metrics()
+        self._setup_vpm_parameters()
+
+    # ----------------------------- paths ---------------------------------
+
+    def _ensure_dir(self, p: Path) -> Path:
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def _sanitize_unit(self, unit: str) -> str:
+        # Keep filenames clean & cross-platform
+        return "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "_" for ch in str(unit))
+
+    def _progress_unit_dir(self, unit: str) -> Path:
+        """Per-unit folder under progress/ (auto-created)."""
+        return self._ensure_dir(self._progress_root / self._sanitize_unit(unit))
+
+    def _setup_visualization_paths(self) -> None:
+        """Configure base and subdirectories (Path objects)."""
+        c = self.cfg.get("vpm_viz") or {}
+        base = Path(c.get("output_dir", "./runs/vpm_visualizations"))
+        self._viz_dir: Path = self._ensure_dir(base / self.run_id)
+
+        # subdirs
+        self._raw_viz_dir: Path = self._ensure_dir(self._viz_dir / "raw")
+        self._phos_viz_dir: Path = self._ensure_dir(self._viz_dir / "phos")
+        self._compare_viz_dir: Path = self._ensure_dir(self._viz_dir / "comparison")
+        self._episode_data_dir: Path = self._ensure_dir(self._viz_dir / "episode_data")
+        self._progress_root: Path = self._ensure_dir(self._viz_dir / "progress")
+
+        # sweep config
+        self._tl_fracs = c.get("tl_fracs", [0.25, 0.16, 0.36, 0.09])
+        self._delta = c.get("delta", 0.02)
+
+        # dimensions
+        dims_cfg = c.get("dimensions")
+        self._dimensions = [_KEY_MAP.get(d, d) for d in dims_cfg] if dims_cfg else list(_CANON_DIMS)
+
+        _logger.info(
+            "VPMVisualizationService paths initialized",
+            extra={
+                "viz_dir": str(self._viz_dir),
+                "raw_dir": str(self._raw_viz_dir),
+                "phos_dir": str(self._phos_viz_dir),
+                "compare_dir": str(self._compare_viz_dir),
+                "episode_data_dir": str(self._episode_data_dir),
+                "progress_root": str(self._progress_root),
+                "dimensions": self._dimensions,
+            },
+        )
+
+    # ----------------------------- metrics/vpm params ---------------------
+
+    def _setup_metrics(self) -> None:
+        self._metric_ranges = {
+            "verifier_f1": (0.0, 1.0),
+            "difficulty": (0.0, 1.0),
+            "steps_norm": (0.0, 1.0),
+            "evidence_cnt": (0.0, 1.0),
+            "coverage": (0.0, 1.0),
+            "correctness": (0.0, 1.0),
+            "coherence": (0.0, 1.0),
+            "citation_support": (0.0, 1.0),
+            "entity_consistency": (0.0, 1.0),
+        }
+        metric_cfg = self.cfg.get("vpm_viz", {}).get("metric_ranges", {})
+        for metric, rng in metric_cfg.items():
+            try:
+                self._metric_ranges[metric] = (float(rng[0]), float(rng[1]))
+            except Exception:
+                pass
+
+    def _setup_vpm_parameters(self) -> None:
+        c = self.cfg.get("vpm_viz") or {}
+        self._phos_tl_frac = float(c.get("phos_tl_frac", 0.25))
+        self._phos_interleave = bool(c.get("phos_interleave", False))
+        self._phos_weights = c.get("phos_weights", None)
+
+        # NEW: render modes
+        self._raw_render = (c.get("raw_render") or "square").lower()      # "bar" | "square"
+        self._progress_render = (c.get("progress_render") or "square").lower()
+        self._bar_height = int(c.get("bar_height", 12))
+
+        self._raw_vpm_interleave = bool(c.get("raw_vpm_interleave", False))
+        self._raw_vpm_weights = c.get("raw_vpm_weights", None)
+
+        self._compare_models = c.get("compare_models", ["current", "baseline"])
+        self._compare_tl_fracs = c.get("compare_tl_fracs", self._tl_fracs)
+        self._compare_delta = float(c.get("compare_delta", self._delta))
+
+    # ---------------- Service Protocol Implementation ----------------
+
+    def initialize(self, **kwargs) -> None:
+        if self._initialized:
+            return
+        self._initialized = True
+        self.logger.log(
+            "VPMVisualizationServiceInit",
+            {
+                "viz_dir": str(self._viz_dir),
+                "tl_fracs": self._tl_fracs,
+                "delta": self._delta,
+                "dimensions": self._dimensions,
+                "metric_ranges": self._metric_ranges,
+            },
+        )
+
+    def shutdown(self) -> None:
+        self._metrics_history.clear()
+        self._episode_traces.clear()
+        self._progress_frames.clear()
+        self._initialized = False
+        self.logger.log("VPMVisualizationServiceShutdown", {})
+
+    def health_check(self) -> Dict[str, Any]:
+        return {
+            "status": "healthy" if self._initialized else "uninitialized",
+            "episode_count": len(self._episode_traces),
+            "traced_dimensions": len(self._metrics_history),
+            "timestamp": time.time(),
+            "viz_dir": str(self._viz_dir),
+            "active_dimensions": self._dimensions,
+        }
+
+    @property
+    def name(self) -> str:
+        return "ssp-vpm-visualization"
+
+    # ------------------------- Public API -------------------------------
+
+    def finalize_progress(self, unit: str, *, gif_name: Optional[str] = None, fps: int = 2) -> str:
+        frames = self._progress_frames.get(unit, [])
+        if not frames:
+            return ""
+        unit_dir = self._progress_unit_dir(unit)
+        gif_path = unit_dir / (gif_name or f"{self._sanitize_unit(unit)}_progress.gif")
+
+        # Read -> grayscale -> collect sizes
+        raw_imgs = []
+        max_h = max_w = 0
+        for p in frames:
+            arr = imageio.imread(str(p))
+            # to grayscale 2D uint8
+            if arr.ndim == 3:
+                arr = arr[..., 0]  # take one channel
+            arr = np.asarray(arr, dtype=np.uint8)
+            h, w = arr.shape[:2]
+            max_h = max(max_h, h)
+            max_w = max(max_w, w)
+            raw_imgs.append(arr)
+
+        # Pad all to (max_h, max_w)
+        imgs = []
+        for arr in raw_imgs:
+            h, w = arr.shape[:2]
+            if h == max_h and w == max_w:
+                imgs.append(arr)
+                continue
+            pad_h = max_h - h
+            pad_w = max_w - w
+            # pad bottom/right with zeros (black)
+            arr_pad = np.pad(arr, ((0, pad_h), (0, pad_w)), mode="constant", constant_values=0)
+            imgs.append(arr_pad)
+
+        duration = 1.0 / max(1, int(fps))
+        imageio.mimsave(str(gif_path), imgs, duration=duration)
+
+        self.logger.log("VPMProgressGIFSaved", {"unit": unit, "gif": str(gif_path), "frames": len(imgs)})
+        return str(gif_path)
+
+    def generate_episode_visualization(self, unit: str, names: List[str], values: List[float]) -> str:
+        arr = np.clip(np.asarray(values, dtype=np.float32), 0.0, 1.0)
+        if float(arr.max() - arr.min()) < 1e-6:
+            arr[:] = 0.5
+
+        bar_h = max(1, self._bar_height)
+        bar = (arr * 255.0).astype(np.uint8)[None, :]
+        if bar_h > 1:
+            bar = np.repeat(bar, bar_h, axis=0)
+
+        out_path = self._raw_viz_dir / f"{self._sanitize_unit(unit)}.png"
+        Image.fromarray(bar, mode="L").save(out_path)
+        self.logger.log("VPM saved", {"unit": unit, "features": dict(zip(names, values))})
+        return str(out_path)
+
+    def record_step(self, unit: str, dims: Dict[str, float], step_idx: int) -> None:
+        """
+        Append a single step’s metrics for `unit` into the history used by RAW/PHOS.
+        Also captures a tiny grayscale frame for the filmstrip.
+        """
+        # Normalize/alias legacy keys -> canonical keys
+        mapped = { _KEY_MAP.get(k, k): float(v) for k, v in (dims or {}).items() }
+
+        # Track history (this is what RAW/PHOS pull from)
+        rec = {"step_idx": int(step_idx), **mapped}
+        self._metrics_history.setdefault(unit, []).append(rec)
+
+        # Build a stable feature order per-unit so frames align
+        order = self._feature_order.setdefault(unit, [])
+        for k in mapped.keys():
+            if k not in order:
+                order.append(k)
+
+        # Make a tiny grayscale tile per step so filmstrip is never blank
+        import matplotlib.pyplot as plt
+        import numpy as np
+        vec = np.array([mapped.get(k, 0.0) for k in order], dtype=np.float32)
+        vec = np.nan_to_num(vec, nan=0.0, posinf=1.0, neginf=0.0)
+        vec = np.clip(vec, 0.0, 1.0)
+
+        # square-ish grid for visibility
+        side = int(np.ceil(np.sqrt(max(1, vec.size))))
+        pad  = side*side - vec.size
+        if pad > 0: vec = np.pad(vec, (0,pad))
+        img = (vec.reshape(side, side) * 255).astype(np.uint8)
+
+        unit_dir = self._progress_root / unit
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        frame_path = unit_dir / f"{unit}_step{step_idx:04d}.png"
+
+        plt.figure(figsize=(2.5, 2.5))
+        plt.imshow(img, cmap="gray", vmin=0, vmax=255, interpolation="nearest")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(frame_path, dpi=200)
+        plt.close()
+
+        self._progress_frames.setdefault(unit, []).append(str(frame_path))
+
+    def generate_visualization(
+        self,
+        unit: str,
+        step_idx: Optional[int] = None,
+        output_path: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """PHOS + RAW montages for the given unit from accumulated metrics."""
+        metrics_history = self._metrics_history.get(unit, [])
+        if not metrics_history:
+            return {}
+
+        df = self._convert_to_dataframe(metrics_history)
+        df, _dims_pref = self._with_model_prefixed_columns(df, "ssp", self._dimensions)
+
+        base_name = self._sanitize_unit(unit)
+        out_prefix_phos = Path(output_path) if output_path else (self._phos_viz_dir / base_name)
+        out_prefix_raw = self._raw_viz_dir / base_name
+
+        artifacts = build_vpm_phos_artifacts(
+            df,
+            model="ssp",
+            dimensions=self._dimensions,
+            out_prefix=str(out_prefix_phos),
+            tl_frac=self._phos_tl_frac,
+            interleave=self._phos_interleave,
+            weights=self._phos_weights,
+        )
+        raw_artifacts = build_vpm_phos_artifacts(
+            df,
+            model="ssp",
+            dimensions=self._dimensions,
+            out_prefix=str(out_prefix_raw),
+            tl_frac=0.0,
+            interleave=self._raw_vpm_interleave,
+            weights=self._raw_vpm_weights,
+        )
+
+        self._save_episode_data(unit, metrics_history)
+
+        return {
+            "raw": raw_artifacts["paths"]["raw"],
+            "phos": artifacts["paths"]["phos"],
+            "metrics": json.dumps(artifacts["metrics"]),
+            "episode_data": str(self._episode_data_dir / f"{base_name}.json"),
+        }
+
+    def generate_comparison_visualization(
+        self,
+        unit: str,
+        model_a: str,
+        model_b: str,
+        output_path: Optional[str] = None,
+    ) -> Dict[str, str]:
+        base_name = f"{self._sanitize_unit(unit)}_{model_a}_vs_{model_b}"
+        out_prefix = Path(output_path) if output_path else (self._compare_viz_dir / base_name)
+
+        artifacts = build_compare_guarded(
+            df=self._get_comparison_dataframe(unit, model_a, model_b),
+            dimensions=self._dimensions,
+            out_prefix=str(out_prefix),
+            model_A=model_a,
+            model_B=model_b,
+            tl_fracs=self._compare_tl_fracs,
+            delta=self._compare_delta,
+            interleave=self._phos_interleave,
+            weights=self._phos_weights,
+        )
+
+        return {
+            "summary": artifacts.get("summary", {}),
+            "sweep": artifacts.get("sweep", {}),
+            "diff_range": artifacts.get("diff_range"),
+            "diff_image": f"{str(out_prefix)}_vpm_chosen_diff.png",
+            "model_a_chosen": artifacts["sweep"].get(model_a, [{}])[-1].get("phos_path", ""),
+            "model_b_chosen": artifacts["sweep"].get(model_b, [{}])[-1].get("phos_path", ""),
+        }
+
+    def generate_curriculum_visualization(self, output_path: Optional[str] = None) -> Dict[str, str]:
+        all_metrics = []
+        for unit, metrics in self._metrics_history.items():
+            for metric in metrics:
+                all_metrics.append({"unit": unit, **metric})
+        if not all_metrics:
+            return {}
+
+        df = pd.DataFrame(all_metrics)
+        ts_name = f"curriculum_progression_{int(time.time())}"
+        out_prefix = Path(output_path) if output_path else (self._phos_viz_dir / ts_name)
+
+        artifacts = build_vpm_phos_artifacts(
+            df,
+            model="curriculum",
+            dimensions=self._dimensions,
+            out_prefix=str(out_prefix),
+            tl_frac=self._phos_tl_frac,
+            interleave=self._phos_interleave,
+            weights=self._phos_weights,
+        )
+
+        return {
+            "curriculum_phos": artifacts["paths"]["phos"],
+            "curriculum_raw": artifacts["paths"]["raw"],
+            "metrics": json.dumps(artifacts["metrics"]),
+        }
+
+    def generate_raw_vpm_image(
+        self,
+        unit: str,
+        step_idx: Optional[int] = None,
+        output_path: Optional[str] = None,
+    ) -> str:
+        metrics_history = self._metrics_history.get(unit, [])
+        if not metrics_history:
+            return ""
+
+        df = self._convert_to_dataframe(metrics_history)
+        dims_to_use = [d for d in self._dimensions if d in df.columns]
+        if not dims_to_use:
+            df, dims_pref = self._with_model_prefixed_columns(df, "ssp", self._dimensions)
+            dims_to_use = [d for d in dims_pref if d in df.columns]
+            if not dims_to_use:
+                self.logger.log("VPMVisualizationError", {
+                    "event": "no_dims_found",
+                    "unit": unit,
+                    "df_cols": list(df.columns)
+                })
+                return ""
+
+        df, dims_pref = self._with_model_prefixed_columns(df, "ssp", dims_to_use)
+        vec = vpm_vector_from_df(
+            df, model="ssp", dimensions=dims_to_use,
+            interleave=self._raw_vpm_interleave, weights=self._raw_vpm_weights
+        )
+
+        self.logger.log("VPMDebug", {
+            "unit": unit,
+            "step_idx": step_idx,
+            "vector_shape": getattr(vec, "shape", None),
+            "vector_min": float(np.min(vec)) if len(vec) else 0.0,
+            "vector_max": float(np.max(vec)) if len(vec) else 0.0,
+        })
+
+        vec = robust01(np.asarray(vec, np.float32))
+        if not np.isfinite(vec).any() or float(vec.max() - vec.min()) < 1e-6:
+            vec = np.full_like(vec, 0.5, dtype=np.float32)
+
+        img, _ = to_square(vec)
+        base_name = self._sanitize_unit(unit)
+        out_path = Path(output_path) if output_path else (self._raw_viz_dir / f"{base_name}_raw_vpm_{int(time.time())}.png")
+        save_img(img, str(out_path), title=f"SSP VPM (Raw) - {unit}")
+        return str(out_path)
+
+    def generate_phos_image(
+        self,
+        unit: str,
+        step_idx: Optional[int] = None,
+        output_path: Optional[str] = None,
+        tl_frac: Optional[float] = None,
+    ) -> str:
+        metrics_history = self._metrics_history.get(unit, [])
+        if not metrics_history:
+            return ""
+
+        df = self._convert_to_dataframe(metrics_history)
+        dims_to_use = [d for d in self._dimensions if d in df.columns]
+        if not dims_to_use:
+            self.logger.log("VPMVisualizationError", {
+                "event": "no_dims_found_phos",
+                "unit": unit, "df_cols": list(df.columns)
+            })
+            return ""
+
+        df, _ = self._with_model_prefixed_columns(df, "ssp", dims_to_use)
+        vec = vpm_vector_from_df(
+            df, model="ssp", dimensions=dims_to_use,
+            interleave=self._phos_interleave, weights=self._phos_weights
+        )
+
+        self.logger.log("VPMDebug", {
+            "unit": unit,
+            "step_idx": step_idx,
+            "vector_shape": getattr(vec, "shape", None),
+            "vector_min": float(np.min(vec)) if len(vec) else 0.0,
+            "vector_max": float(np.max(vec)) if len(vec) else 0.0,
+        })
+
+        vec = robust01(np.asarray(vec, np.float32))
+        if not np.isfinite(vec).any() or float(vec.max() - vec.min()) < 1e-6:
+            vec = np.full_like(vec, 0.5, dtype=np.float32)
+
+        tl = float(tl_frac if tl_frac is not None else self._phos_tl_frac)
+        img = phos_sort_pack(vec, tl_frac=tl)
+
+        base_name = self._sanitize_unit(unit)
+        out_path = Path(output_path) if output_path else (self._phos_viz_dir / f"{base_name}_phos_vpm_{int(time.time())}.png")
+        save_img(img, str(out_path), title=f"SSP VPM (PHOS) - {unit}")
+        return str(out_path)
+
+    # ------------------------- internals ---------------------------------
+
+    def _save_episode_data(self, unit: str, metrics_history: List[Dict]) -> None:
+        """Save episode metrics under episode_data/."""
+        try:
+            episode = self._episode_traces.get(unit)
+            if not episode:
+                return
+            data = episode.to_dict()
+            data["unit"] = unit
+            data["metrics_history"] = metrics_history
+
+            out = self._episode_data_dir / f"{self._sanitize_unit(unit)}.json"
+            out.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        except Exception as e:
+            self.logger.log("VPMVisualizationError", {"event": "episode_data_save_failed", "unit": unit, "error": str(e)})
+
+    def _convert_to_dataframe(self, metrics_history: List[Dict]) -> pd.DataFrame:
+        try:
+            rows = []
+            for rec in metrics_history:
+                step_idx = rec.get("step_idx", 0)
+                for k, v in rec.items():
+                    if k == "step_idx":
+                        continue
+                    k2 = _KEY_MAP.get(k, k)  # legacy -> canonical
+                    rows.append({"node_id": str(step_idx), "ssp": float(v), "dimension": k2})
+
+            df = pd.DataFrame(rows)
+            if df.empty:
+                return pd.DataFrame({"node_id": [], **{d: [] for d in self._dimensions}})
+
+            # Handle duplicates robustly
+            df = pd.pivot_table(
+                df,
+                index="node_id",
+                columns="dimension",
+                values="ssp",
+                aggfunc="last",
+            ).reset_index()
+
+            # ensure configured-but-missing dims exist
+            for d in self._dimensions:
+                if d not in df.columns:
+                    df[d] = 0.0
+
+            return df
+        except Exception as e:
+            self.logger.log("VPMVisualizationError", {"event": "dataframe_conversion_failed", "error": str(e)})
+            return pd.DataFrame(
+                {"node_id": [str(i) for i in range(len(metrics_history))],
+                **{d: [0.0]*len(metrics_history) for d in self._dimensions}}
+            )
+
+    def _with_model_prefixed_columns(self, df: pd.DataFrame, model: str, dims: List[str]) -> Tuple[pd.DataFrame, List[str]]:
+        """Ensure df has columns like 'ssp.dim' for each dim in `dims`."""
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return df, [f"{model}.{d}" for d in dims]
+
+        df2 = df.copy()
+        prefixed = []
+        for d in dims:
+            col_pref = f"{model}.{d}"
+            if col_pref not in df2.columns and d in df2.columns:
+                df2[col_pref] = df2[d]
+            prefixed.append(col_pref)
+        return df2, prefixed
+
+    # ------------------------- rendering & snapshots ----------------------
+
+    def _to_uint8_img(self, vec: np.ndarray, *, grid_side: int = 32, fixed_scale: bool = True) -> np.ndarray:
+        v = np.nan_to_num(vec.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+        v = np.clip(v, 0.0, 1.0)
+
+        if not fixed_scale:
+            vmin, vmax = float(v.min()), float(v.max())
+            if vmax > vmin:
+                v = (v - vmin) / (vmax - vmin)
+            else:
+                v[:] = 0.5
+
+        n = v.shape[0]
+        side = int(grid_side)
+        if side * side < n:
+            side = int(np.ceil(np.sqrt(n)))
+        pad = side * side - n
+        if pad > 0:
+            v = np.pad(v, (0, pad), constant_values=0.0)
+        return (v.reshape(side, side) * 255.0).astype(np.uint8)
+
+    def _to_bar_img(self, vec: np.ndarray, height: int = 1) -> np.ndarray:
+        v = np.nan_to_num(vec.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+        v = np.clip(v, 0.0, 1.0)
+        row = (v * 255.0).astype(np.uint8)[None, :]  # (1, F)
+        if height > 1:
+            row = np.repeat(row, height, axis=0)     # (H, F)
+        return row  # grayscale uint8
+
+    def snapshot_progress(self, *, unit: str, dims: Dict[str, float], step_idx: int, tag: str = "") -> str:
+        # FIXED order: use configured dimensions, not a growing per-unit list
+        order = list(self._dimensions)
+
+        vec = np.array([float(dims.get(k, 0.0)) for k in order], dtype=np.float32)
+        vec = np.nan_to_num(vec, nan=0.0, posinf=1.0, neginf=0.0)
+        vec = np.clip(vec, 0.0, 1.0)
+
+        unit_dir = self._progress_unit_dir(unit)
+        fname = f"{self._sanitize_unit(unit)}_step{step_idx:04d}{'_' + tag if tag else ''}.png"
+        out_path = unit_dir / fname
+
+        if self._progress_render == "bar":      # your new mode
+            img = self._to_bar_img(vec, height=max(1, self._bar_height))  # (H, F)
+            Image.fromarray(img, mode="L").save(out_path)
+        else:
+            # square mode: side derived from constant len(order)
+            side = int(np.ceil(np.sqrt(len(order))))
+            img = self._to_uint8_img(vec, grid_side=side, fixed_scale=True)
+            plt.figure(figsize=(4, 4))
+            plt.imshow(img, interpolation="nearest", cmap="gray", vmin=0, vmax=255)
+            plt.axis("off")
+            plt.title(f"{unit} • {tag or 'frame'} • {step_idx}")
+            plt.tight_layout()
+            plt.savefig(out_path, dpi=200)
+            plt.close()
+
+        # Track metrics (unchanged)
+        try:
+            vpm_row = VPMRow(
+                unit=unit,
+                kind="text",
+                timestamp=time.time(),
+                step_idx=step_idx,
+                dims={k: float(dims.get(k, 0.0)) for k in order},
+                meta={"tag": tag},
+            )
+            self._track_metrics(unit, vpm_row, step_idx)
+        except Exception:
+            pass
+
+        self._progress_frames.setdefault(unit, []).append(str(out_path))
+        return str(out_path)
+
+    def generate_filmstrip(self, unit: str, *, rows: int = None, cols: int = None, dpi: int = None) -> str:
+        from PIL import ImageDraw, ImageFont
+        import re
+
+        cfg = self.cfg.get("filmstrip", self.cfg.get("vpm_viz", {}).get("filmstrip", {}))
+        rows = rows or int(cfg.get("rows", 3))
+        cols = cols or int(cfg.get("cols", 10))
+        dpi  = dpi  or int(cfg.get("dpi", 500))
+
+        # New styling options (all optional)
+        border_px    = int(cfg.get("border_px", 5))          # frame thickness (pixels)
+        border_color = int(cfg.get("border_color", 255))     # 0..255 (L-mode), 255 = white
+        label_on     = bool(cfg.get("label_on", False))
+        label_pos    = str(cfg.get("label_pos", "tl"))       # tl | tr | bl | br
+        label_color  = int(cfg.get("label_color", 255))
+        label_bg     = cfg.get("label_bg", 0)                # 0..255 (solid background); set to None to disable
+
+        unit_dir = self._progress_unit_dir(unit)
+        frames = sorted(unit_dir.glob(f"{self._sanitize_unit(unit)}_step*.png"))
+        if not frames:
+            raise FileNotFoundError(f"No frames found for unit {unit} in {unit_dir}")
+
+        imgs = [Image.open(p).convert("L") for p in frames[: rows * cols]]
+        w, h = imgs[0].size
+        grid = Image.new("L", (cols * w, rows * h), 0)
+        draw = ImageDraw.Draw(grid)
+        try:
+            font = ImageFont.load_default()
+        except Exception:
+            font = None
+
+        def _draw_rect_with_width(x0, y0, x1, y1, width, color):
+            # PIL's width arg isn't always available; emulate width by insetting
+            for i in range(width):
+                draw.rectangle((x0 + i, y0 + i, x1 - i, y1 - i), outline=color)
+
+        for idx, im in enumerate(imgs):
+            r, c = divmod(idx, cols)
+            x, y = c * w, r * h
+            grid.paste(im, (x, y))
+
+            # Frame around the tile
+            if border_px > 0:
+                _draw_rect_with_width(x, y, x + w - 1, y + h - 1, border_px, border_color)
+
+            # Label = step number (parsed from filename if present, else idx+1)
+            if label_on:
+                # Try to read step #### from filename
+                m = re.search(r"_step(\d+)", frames[idx].name)
+                label = int(m.group(1)) if m else (idx + 1)
+                txt = str(label)
+
+                # Measure text box
+                if font:
+                    tw, th = draw.textlength(txt, font=font), font.getbbox(txt)[3] - font.getbbox(txt)[1]
+                else:
+                    tw, th = draw.textlength(txt), 10  # fallback
+
+                pad = 4
+                if label_pos == "tr":
+                    tx, ty = x + w - tw - pad - 1, y + pad
+                elif label_pos == "bl":
+                    tx, ty = x + pad, y + h - th - pad - 1
+                elif label_pos == "br":
+                    tx, ty = x + w - tw - pad - 1, y + h - th - pad - 1
+                else:  # "tl"
+                    tx, ty = x + pad, y + pad
+
+                # Optional solid background for contrast
+                if label_bg is not None:
+                    draw.rectangle((tx - 2, ty - 1, tx + tw + 2, ty + th + 1), fill=int(label_bg))
+
+                draw.text((tx, ty), txt, fill=label_color, font=font)
+
+        film_path = unit_dir / f"{self._sanitize_unit(unit)}_filmstrip.png"
+        grid.save(film_path, dpi=(dpi, dpi))
+        try:
+            self.logger.info("VPM filmstrip saved", extra={"unit": unit, "path": str(film_path), "frames": len(imgs)})
+        except Exception:
+            pass
+        return str(film_path)
+
+    # ------------------------- metrics history ----------------------------
+
+    def _track_metrics(self, unit: str, vpm_row: VPMRow, step_idx: Optional[int]) -> None:
+        if unit not in self._metrics_history:
+            self._metrics_history[unit] = []
+        record = {"step_idx": step_idx if step_idx is not None else len(self._metrics_history[unit]),
+                  **{k: float(v) for k, v in vpm_row.dims.items()}}
+        self._metrics_history[unit].append(record)
+
+        max_history = int(self.cfg.get("vpm_viz", {}).get("max_metrics_history", 100))
+        if len(self._metrics_history[unit]) > max_history:
+            self._metrics_history[unit] = self._metrics_history[unit][-max_history:]
+
+    # ------------------------- comparison helpers -------------------------
+
+    def _get_comparison_dataframe(self, unit: str, model_a: str, model_b: str) -> pd.DataFrame:
+        model_a_metrics = self._get_model_metrics(unit, model_a)
+        model_b_metrics = self._get_model_metrics(unit, model_b)
+
+        df_a = self._convert_to_dataframe(model_a_metrics)
+        df_b = self._convert_to_dataframe(model_b_metrics)
+
+        df = df_a.merge(df_b, on="node_id", suffixes=("_a", "_b"))
+        for dim in self._dimensions:
+            a_col, b_col = f"{dim}_a", f"{dim}_b"
+            if a_col in df.columns and b_col in df.columns:
+                df[f"{model_a}.{dim}"] = df[a_col]
+                df[f"{model_b}.{dim}"] = df[b_col]
+                df.drop([a_col, b_col], axis=1, inplace=True)
+        return df
+
+    def _get_model_metrics(self, unit: str, model: str) -> List[Dict]:
+        if model == "current" and unit in self._metrics_history:
+            return self._metrics_history[unit]
+        # Placeholder: add retrieval for baselines if needed
+        return []
+
+    # ------------------------- episode conversion -------------------------
+
+    def _episode_to_vpm_row(self, unit: str, episode: EpisodeTrace, step_idx: Optional[int] = None) -> VPMRow:
+        return VPMRow(
+            unit=unit,
+            kind="text",
+            timestamp=time.time(),
+            step_idx=step_idx,
+            dims=self.episode_to_dims(episode),
+            meta={
+                "episode_id": episode.episode_id,
+                "verified": episode.verified,
+                "question": episode.question,
+                "predicted_answer": episode.predicted_answer,
+                "solver_steps": episode.solver_steps,
+                "evidence_count": len(episode.evidence_docs),
+                "difficulty": episode.difficulty,
+            },
+        )
+
+    def episode_to_dims(self, ep: EpisodeTrace) -> Dict[str, float]:
+        dims = {
+            "reward": float(ep.reward or 0.0),
+            "verified": 1.0 if ep.verified else 0.0,
+            "difficulty": float(ep.difficulty or 0.0),
+            "question_len": min(1.0, len((ep.question or "").split()) / 128.0),
+            "answer_len": min(1.0, len((ep.predicted_answer or "").split()) / 128.0),
+            "evidence_count": min(1.0, float(len(ep.evidence_docs or [])) / 8.0),
+            "solver_steps": min(1.0, float(ep.solver_steps or 0) / 64.0),
+        }
+        m = getattr(ep, "meta", {}) or {}
+        for k in ("score", "best_score", "improvement", "depth", "novelty",
+                  "coverage", "correctness", "coherence", "citation_support", "entity_consistency"):
+            if k in m:
+                try:
+                    v = float(m[k])
+                    dims[k] = max(0.0, min(1.0, v))
+                except Exception:
+                    pass
+        for d in self._dimensions:
+            dims.setdefault(d, 0.0)
+        return dims
+
+    def __repr__(self):
+        return (
+            f"<VPMVisualizationService status={'initialized' if self._initialized else 'uninitialized'} "
+            f"viz_dir={self._viz_dir} dims={len(self._dimensions)} episodes={len(self._episode_traces)}>"
+        )
+
+    def generate_raw_vpm_image(
+        self,
+        unit: str,
+        step_idx: Optional[int] = None,
+        output_path: Optional[str] = None,
+    ) -> str:
+        metrics_history = self._metrics_history.get(unit, [])
+        if not metrics_history:
+            return ""
+
+        df = self._convert_to_dataframe(metrics_history)
+        dims_to_use = [d for d in self._dimensions if d in df.columns]
+        if not dims_to_use:
+            df, dims_pref = self._with_model_prefixed_columns(df, "ssp", self._dimensions)
+            dims_to_use = [d for d in dims_pref if d in df.columns]
+            if not dims_to_use:
+                self.logger.log("VPMVisualizationError", {
+                    "event": "no_dims_found",
+                    "unit": unit,
+                    "df_cols": list(df.columns)
+                })
+                return ""
+
+        df, dims_pref = self._with_model_prefixed_columns(df, "ssp", dims_to_use)
+        vec = vpm_vector_from_df(
+            df, model="ssp", dimensions=dims_to_use,
+            interleave=self._raw_vpm_interleave, weights=self._raw_vpm_weights
+        )
+        vec = robust01(np.asarray(vec, np.float32))
+        if not np.isfinite(vec).any() or float(vec.max() - vec.min()) < 1e-6:
+            vec = np.full_like(vec, 0.5, dtype=np.float32)
+
+        base_name = self._sanitize_unit(unit)
+        out_path = Path(output_path) if output_path else (self._raw_viz_dir / f"{base_name}_raw_vpm_{int(time.time())}.png")
+
+        if self._raw_render == "bar":
+            img = self._to_bar_img(vec, height=max(1, self._bar_height))  # (H, F)
+            Image.fromarray(img, mode="L").save(out_path)
+        else:
+            # keep current square/PHOS-friendly rendering
+            img, _ = to_square(vec)
+            save_img(img, str(out_path), title=f"SSP VPM (Raw) - {unit}")
+
+        return str(out_path)
+
+
+    def generate_phos_image(self, unit: str, output_path: Optional[str] = None, tl_frac: Optional[float] = None) -> str:
+        metrics_history = self._metrics_history.get(unit, [])
+        if not metrics_history: return ""
+        df = self._convert_to_dataframe(metrics_history)
+
+        vec = vpm_vector_from_df(
+            df, model="ssp", dimensions=self._dimensions,
+            interleave=self._phos_interleave, weights=self._phos_weights,
+        )
+        tl_frac = tl_frac if tl_frac is not None else self._phos_tl_frac
+        img = phos_sort_pack(vec, tl_frac=tl_frac)
+
+        if output_path is None:
+            output_path = os.path.join(self._phos_viz_dir, f"{unit}_phos_vpm.png")
+
+        save_img(img, output_path, title=f"SSP VPM (PHOS) - {unit}")
+        return output_path

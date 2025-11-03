@@ -1,12 +1,18 @@
 # stephanie/scoring/calculations/score_delta.py
+from __future__ import annotations
+
+from stephanie.memory.evaluation_store import EvaluationStore
+
+
 class ScoreDeltaCalculator:
-    def __init__(self, cfg: dict, memory, logger=None):
+    def __init__(self, cfg: dict, evaluation_store: EvaluationStore, container, logger=None):
         self.cfg = cfg
-        self.memory = memory
+        self.evaluation_store = evaluation_store
+        self.container = container
         self.logger = logger
 
     def log_score_delta(self, scorable, new_score, goal_id=None):
-        prev = self.memory.evaluations.get_latest_score(
+        prev = self.evaluation_store.get_latest_score(
             scorable, agent_name=self.cfg.get("name")
         )
         if prev is not None:

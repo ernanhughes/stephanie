@@ -1,5 +1,6 @@
 # stephanie/agents/rule_generator.py
-import statistics
+from __future__ import annotations
+
 from collections import defaultdict
 
 from stephanie.agents.base_agent import BaseAgent

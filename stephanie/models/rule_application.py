@@ -1,5 +1,5 @@
 # stephanie/models/rule_application.py
-# models/rule_application.py
+from __future__ import annotations
 
 from datetime import datetime, timezone
 

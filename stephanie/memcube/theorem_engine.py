@@ -1,3 +1,6 @@
+# stephanie/memcube/theorem_engine.py
+from __future__ import annotations
+
 from stephanie.memcubes.theorem import Theorem
 from stephanie.memcubes.theorem_validator import TheoremValidator
 

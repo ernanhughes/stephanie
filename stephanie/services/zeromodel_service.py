@@ -1811,6 +1811,163 @@ class ZeroModelService(Service):
             "col_intensities": col_int.tolist(),
         }
 
+    # --- inside ZeroModelService -------------------------------------------------
+
+    def score_vpm_image(
+        self,
+        vpm_img: np.ndarray,
+        *,
+        dims: list[str],
+        weights: dict[str, float] | None = None,
+        order: list[str] | None = None,
+        order_decay: float = 0.92,
+    ) -> dict:
+        """
+        Central VPM scorer (service side). Computes simple, stable metrics directly
+        from the VPM image (np.ndarray in [0,1] or [0,255]). Returns:
+            {
+            "scores": {dim: float, ...},
+            "overall": float,
+            "meta": {...}
+            }
+        """
+        if vpm_img is None:
+            return {"scores": {}, "overall": 0.5, "meta": {"reason": "no_image"}}
+
+        img = np.asarray(vpm_img)
+        if img.ndim == 3 and img.shape[-1] in (1,3):
+            img = img[..., 0] if img.shape[-1] == 1 else np.mean(img, axis=-1)
+        img = img.astype(np.float32)
+        if img.max() > 1.0:
+            img /= 255.0
+        img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+        h, w = img.shape
+
+        # helpers
+        def _robust01(x):
+            x = np.asarray(x, dtype=np.float32).ravel()
+            if x.size == 0: return 0.0
+            lo, hi = np.percentile(x, [5, 95])
+            if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+                return 0.0
+            v = (np.mean(x) - lo) / (hi - lo)
+            return float(np.clip(v, 0.0, 1.0))
+
+        # gradients (simple structure cues)
+        gy, gx = np.gradient(img)
+        grad = np.hypot(gx, gy)                           # edge/complexity signal in [0, ~]
+        grad_n = grad / (grad.max() + 1e-8)
+
+        # local entropy (clarity proxy; lower entropy → clearer)
+        # compute on 8x8 windows (vectorized-ish)
+        ws = max(4, min(h, w) // 16)
+        if ws % 2 == 1: ws += 1
+        if ws < 4: ws = 4
+        # downsampled blocks
+        bh = max(1, h // ws)
+        bw = max(1, w // ws)
+        ent_blocks = []
+        for i in range(bh):
+            for j in range(bw):
+                block = img[i*ws:(i+1)*ws, j*ws:(j+1)*ws]
+                hist, _ = np.histogram(block, bins=32, range=(0.0, 1.0), density=True)
+                p = hist + 1e-9
+                p = p / p.sum()
+                ent = -np.sum(p * np.log(p))
+                ent_blocks.append(ent)
+        ent_blocks = np.array(ent_blocks, dtype=np.float32)
+        # normalize entropy to [0,1] (low entropy ⇒ clarity high)
+        ent_z = (ent_blocks - ent_blocks.min()) / (ent_blocks.max() - ent_blocks.min() + 1e-8)
+        clarity = float(1.0 - np.mean(ent_z))
+
+        # coherence: how aligned gradients are (anisotropy of structure tensor)
+        Ixx, Iyy, Ixy = (gx*gx).mean(), (gy*gy).mean(), (gx*gy).mean()
+        trace = Ixx + Iyy
+        det = Ixx*Iyy - Ixy*Ixy
+        # eigenvalues of [[Ixx,Ixy],[Ixy,Iyy]]
+        tmp = np.sqrt(max(trace*trace - 4*det, 0.0))
+        l1 = 0.5*(trace + tmp) + 1e-8
+        l2 = 0.5*(trace - tmp) + 1e-8
+        anisotropy = float((l1 - l2) / (l1 + l2))        # 0..1
+        coherence = anisotropy
+
+        # coverage / sparsity
+        coverage = float(img.mean())                     # how much "mass" is present
+        sparsity = 1.0 - coverage
+
+        # complexity: average normalized gradient magnitude
+        complexity = float(grad_n.mean())
+
+        # contradiction: local sign-change / roughness proxy
+        # (for binary-like vpms this approximates “conflicting regions”)
+        diff_h = np.abs(np.diff(img, axis=1)).mean()
+        diff_v = np.abs(np.diff(img, axis=0)).mean()
+        contradiction = float(_robust01([diff_h, diff_v, grad_n.var()]))
+
+        # confidence: strong, consistent activation & clear edges (not noisy)
+        confidence = float(np.clip(0.6*coverage + 0.4*(clarity*(1.0 - contradiction)), 0.0, 1.0))
+
+        # novelty: if you want true novelty vs bank, wire a reference here.
+        novelty = 0.5
+
+        # alignment: prefer strong directional structure and clarity
+        alignment = float(np.clip(0.5*anisotropy + 0.5*clarity, 0.0, 1.0))
+
+        # coherence already computed; include “relevance” if requested (fallback to coverage)
+        candidates = {
+            "clarity": clarity,
+            "novelty": novelty,
+            "confidence": confidence,
+            "contradiction": contradiction,
+            "coherence": coherence,
+            "complexity": complexity,
+            "alignment": alignment,
+            "coverage": coverage,
+            "sparsity": sparsity,
+            "relevance": coverage,
+        }
+
+        scores = {d: float(np.clip(candidates.get(d, 0.5), 0.0, 1.0)) for d in dims}
+
+        # weighted & order-aware overall
+        overall = self._aggregate_dimension_scores(scores, weights=weights or {}, order=order or [], decay=order_decay)
+
+        return {
+            "scores": scores,
+            "overall": overall,
+            "meta": {
+                "h": int(h), "w": int(w),
+                "grad_mean": float(grad_n.mean()),
+                "entropy_mean": float(np.mean(ent_blocks)) if ent_blocks.size else None,
+                "ws": int(ws),
+            }
+        }
+
+    def _aggregate_dimension_scores(
+        self,
+        scores: dict[str, float],
+        *,
+        weights: dict[str, float],
+        order: list[str],
+        decay: float = 0.92,
+    ) -> float:
+        """
+        Combine per-dimension scores with:
+        - explicit weights per dim (default 1.0)
+        - geometric decay by importance order (first is most important)
+        """
+        if not scores:
+            return 0.5
+        # geometric order bonus (first gets 1.0, next *decay, etc.)
+        order_boost = {dim: (decay**rank) for rank, dim in enumerate(order)} if order else {}
+        wsum = 0.0
+        ssum = 0.0
+        for dim, val in scores.items():
+            w = float(weights.get(dim, 1.0)) * float(order_boost.get(dim, 1.0))
+            wsum += w
+            ssum += w * float(val)
+        return float(ssum / (wsum + 1e-8))
+
 def _finite_mask(a: np.ndarray) -> np.ndarray:
     a = np.asarray(a, dtype=np.float32)
     return np.isfinite(a)
