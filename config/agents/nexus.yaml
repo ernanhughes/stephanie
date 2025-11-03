@@ -1,0 +1,96 @@
+nexus:
+  name: nexus
+  enabled: true
+  save_prompt: false
+  save_context: true
+  skip_if_completed: false
+
+  # ——— Core ———
+  embeddings:
+    # Uses your global switch; keeps Nexus consistent with the rest of Stephanie
+    backend: ${embeddings.backend}     # e.g., "hnet"
+
+  # Nodes come from scorables you load (chat turns, goals, VPMs…)
+  loader:
+    role_filter: "assistant"           # only assistant turns, or null for all
+    limit: 5000                        # cap for big first runs
+    min_text_len: 80
+
+  indexer:
+    batch_size: 128
+    normalize_l2: true
+    persist: true
+    faiss:
+      use_gpu: true
+      nprobe: 32
+    knn:
+      k: 12
+      edge_threshold: 0.35             # drop edges below this similarity
+    cap:
+      max_nodes: 50000
+      max_edges_per_node: 32
+
+  # Scoring a node for path search (weights match what we discussed)
+  pathfinder:
+    beam_width: 6
+    max_path_len: 24
+    min_path_len: 3
+    backtrack: true
+    start_strategy: "nearest_to_goal"   # "nearest_to_goal" | "seed_node"
+    weights:
+      alpha_text: 0.55       # semantic similarity to query/current
+      beta_goal: 0.20        # goal embedding alignment
+      gamma_stability: 0.15  # low hallucination/uncertainty preferred
+      zeta_agreement: 0.05   # HRM↔Tiny agreement bonus
+      delta_domain: 0.03     # domain match boost (from scorable_domains)
+      epsilon_entity: 0.02   # entity match boost (from scorable_entities)
+    penalties:
+      revisit: 0.10          # discourage cycles
+      long_hop: 0.05         # discourage big embed jumps
+    stops:
+      max_total_cost: 9999
+      target_hit_threshold: 0.82
+
+  # Stability / agreement sources (optional; Nexus will read these if present)
+  signals:
+    use_hallucination: true    # read from GAP/Hallucination metrics if available
+    use_uncertainty: true
+    use_agreement: true        # HRM vs Tiny (or others) agreement
+
+  # Telemetry
+  telemetry:
+    enabled: true
+    subject_root: nexus
+    sample: 1.0
+    persist: true
+    extra:
+      app: stephanie
+      component: nexus
+
+  # ——— Helper: ScorableAnnotateAgent ———
+  annotate:
+    seed_config: "config/domain/seeds.yaml"
+    goal_config: "config/domain/goal_prompt.yaml"
+    max_domains_per_source: 3
+    min_confidence: 0.10
+    only_missing: true
+    force: false
+    progress: true
+    filter_role: true
+    scorable_role: "assistant"
+
+  # ——— Helper: ChatAnalyzeAgent ———
+  analyze:
+    limit: 10000
+    force_rescore: false
+    prompt_dir: "${paths.prompts}/chat_analyze"   # expects reasoning.txt, knowledge.txt, clarity.txt, faithfulness.txt, coverage.txt
+    dimensions:
+      - reasoning
+      - knowledge
+      - clarity
+      - faithfulness
+      - coverage
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
