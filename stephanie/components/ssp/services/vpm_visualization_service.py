@@ -60,7 +60,7 @@ _KEY_MAP = {
 _CANON_DIMS = [
     "reward",
     "verified",
-    "difficulty",
+    "curriculum_difficulty",
     "question_len",
     "answer_len",
     "evidence_count",
@@ -70,6 +70,11 @@ _CANON_DIMS = [
     "improvement",
     "depth",
     "novelty",
+    "search_turns",
+    "f1_score",
+    "format_compliance",
+    "noise_tolerance",
+    "rag_verification",
 ]
 
 
@@ -182,6 +187,11 @@ class VPMVisualizationService(Service):
         self._phos_interleave = bool(c.get("phos_interleave", False))
         self._phos_weights = c.get("phos_weights", None)
 
+        # NEW: render modes
+        self._raw_render = (c.get("raw_render") or "square").lower()      # "bar" | "square"
+        self._progress_render = (c.get("progress_render") or "square").lower()
+        self._bar_height = int(c.get("bar_height", 12))
+
         self._raw_vpm_interleave = bool(c.get("raw_vpm_interleave", False))
         self._raw_vpm_weights = c.get("raw_vpm_weights", None)
 
@@ -230,32 +240,54 @@ class VPMVisualizationService(Service):
     # ------------------------- Public API -------------------------------
 
     def finalize_progress(self, unit: str, *, gif_name: Optional[str] = None, fps: int = 2) -> str:
-        """Build an animated GIF from collected frames for `unit`."""
         frames = self._progress_frames.get(unit, [])
         if not frames:
             return ""
         unit_dir = self._progress_unit_dir(unit)
         gif_path = unit_dir / (gif_name or f"{self._sanitize_unit(unit)}_progress.gif")
 
-        imgs = [imageio.imread(str(p)) for p in frames]
-        # duration per frame (s)
+        # Read -> grayscale -> collect sizes
+        raw_imgs = []
+        max_h = max_w = 0
+        for p in frames:
+            arr = imageio.imread(str(p))
+            # to grayscale 2D uint8
+            if arr.ndim == 3:
+                arr = arr[..., 0]  # take one channel
+            arr = np.asarray(arr, dtype=np.uint8)
+            h, w = arr.shape[:2]
+            max_h = max(max_h, h)
+            max_w = max(max_w, w)
+            raw_imgs.append(arr)
+
+        # Pad all to (max_h, max_w)
+        imgs = []
+        for arr in raw_imgs:
+            h, w = arr.shape[:2]
+            if h == max_h and w == max_w:
+                imgs.append(arr)
+                continue
+            pad_h = max_h - h
+            pad_w = max_w - w
+            # pad bottom/right with zeros (black)
+            arr_pad = np.pad(arr, ((0, pad_h), (0, pad_w)), mode="constant", constant_values=0)
+            imgs.append(arr_pad)
+
         duration = 1.0 / max(1, int(fps))
         imageio.mimsave(str(gif_path), imgs, duration=duration)
 
-        self.logger.log(
-            "VPMProgressGIFSaved",
-            {"unit": unit, "gif": str(gif_path), "frames": len(frames)},
-        )
+        self.logger.log("VPMProgressGIFSaved", {"unit": unit, "gif": str(gif_path), "frames": len(imgs)})
         return str(gif_path)
 
     def generate_episode_visualization(self, unit: str, names: List[str], values: List[float]) -> str:
-        """Legacy 1xF bar render for a single EpisodeTrace (saved under raw/)."""
         arr = np.clip(np.asarray(values, dtype=np.float32), 0.0, 1.0)
         if float(arr.max() - arr.min()) < 1e-6:
             arr[:] = 0.5
 
-        bar = (arr * 255.0).astype(np.uint8)[None, :]  # (1, F)
-        bar = np.repeat(bar, 16, axis=0)               # thicken
+        bar_h = max(1, self._bar_height)
+        bar = (arr * 255.0).astype(np.uint8)[None, :]
+        if bar_h > 1:
+            bar = np.repeat(bar, bar_h, axis=0)
 
         out_path = self._raw_viz_dir / f"{self._sanitize_unit(unit)}.png"
         Image.fromarray(bar, mode="L").save(out_path)
@@ -594,34 +626,42 @@ class VPMVisualizationService(Service):
             v = np.pad(v, (0, pad), constant_values=0.0)
         return (v.reshape(side, side) * 255.0).astype(np.uint8)
 
+    def _to_bar_img(self, vec: np.ndarray, height: int = 1) -> np.ndarray:
+        v = np.nan_to_num(vec.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+        v = np.clip(v, 0.0, 1.0)
+        row = (v * 255.0).astype(np.uint8)[None, :]  # (1, F)
+        if height > 1:
+            row = np.repeat(row, height, axis=0)     # (H, F)
+        return row  # grayscale uint8
+
     def snapshot_progress(self, *, unit: str, dims: Dict[str, float], step_idx: int, tag: str = "") -> str:
-        """Save a progress frame under progress/<unit>/ and track metrics."""
-        # maintain feature order
-        order = self._feature_order.setdefault(unit, [])
-        for k in dims.keys():
-            if k not in order:
-                order.append(k)
+        # FIXED order: use configured dimensions, not a growing per-unit list
+        order = list(self._dimensions)
 
         vec = np.array([float(dims.get(k, 0.0)) for k in order], dtype=np.float32)
-        grid_side = int(self.cfg.get("grid_side", self.cfg.get("vpm_viz", {}).get("grid_side", 32)))
-        fixed_scale = bool(self.cfg.get("fixed_scale", self.cfg.get("vpm_viz", {}).get("fixed_scale", True)))
-        img = self._to_uint8_img(vec, grid_side=grid_side, fixed_scale=fixed_scale)
+        vec = np.nan_to_num(vec, nan=0.0, posinf=1.0, neginf=0.0)
+        vec = np.clip(vec, 0.0, 1.0)
 
         unit_dir = self._progress_unit_dir(unit)
         fname = f"{self._sanitize_unit(unit)}_step{step_idx:04d}{'_' + tag if tag else ''}.png"
         out_path = unit_dir / fname
 
-        plt.figure(figsize=(4, 4))
-        plt.imshow(img, interpolation="nearest", cmap="gray", vmin=0, vmax=255)
-        plt.axis("off")
-        plt.title(f"{unit} • {tag or 'frame'} • {step_idx}")
-        plt.tight_layout()
-        plt.savefig(out_path, dpi=200)
-        plt.close()
+        if self._progress_render == "bar":      # your new mode
+            img = self._to_bar_img(vec, height=max(1, self._bar_height))  # (H, F)
+            Image.fromarray(img, mode="L").save(out_path)
+        else:
+            # square mode: side derived from constant len(order)
+            side = int(np.ceil(np.sqrt(len(order))))
+            img = self._to_uint8_img(vec, grid_side=side, fixed_scale=True)
+            plt.figure(figsize=(4, 4))
+            plt.imshow(img, interpolation="nearest", cmap="gray", vmin=0, vmax=255)
+            plt.axis("off")
+            plt.title(f"{unit} • {tag or 'frame'} • {step_idx}")
+            plt.tight_layout()
+            plt.savefig(out_path, dpi=200)
+            plt.close()
 
-        _logger.info(f"VPM snapshot saved unit={unit}, step_idx={step_idx}, tag={tag}, path={str(out_path)}")
-
-        # track metrics once
+        # Track metrics (unchanged)
         try:
             vpm_row = VPMRow(
                 unit=unit,
@@ -632,20 +672,28 @@ class VPMVisualizationService(Service):
                 meta={"tag": tag},
             )
             self._track_metrics(unit, vpm_row, step_idx)
-        except Exception as e:
-            try:
-                self.logger.log("VPMVisualizationError", {"event": "track_metrics_failed", "error": str(e)})
-            except Exception:
-                pass
+        except Exception:
+            pass
 
-        self._progress_frames.setdefault(unit, []).append(out_path)
+        self._progress_frames.setdefault(unit, []).append(str(out_path))
         return str(out_path)
 
     def generate_filmstrip(self, unit: str, *, rows: int = None, cols: int = None, dpi: int = None) -> str:
+        from PIL import ImageDraw, ImageFont
+        import re
+
         cfg = self.cfg.get("filmstrip", self.cfg.get("vpm_viz", {}).get("filmstrip", {}))
-        rows = rows or int(cfg.get("rows", 2))
+        rows = rows or int(cfg.get("rows", 3))
         cols = cols or int(cfg.get("cols", 10))
-        dpi = dpi or int(cfg.get("dpi", 300))
+        dpi  = dpi  or int(cfg.get("dpi", 500))
+
+        # New styling options (all optional)
+        border_px    = int(cfg.get("border_px", 5))          # frame thickness (pixels)
+        border_color = int(cfg.get("border_color", 255))     # 0..255 (L-mode), 255 = white
+        label_on     = bool(cfg.get("label_on", False))
+        label_pos    = str(cfg.get("label_pos", "tl"))       # tl | tr | bl | br
+        label_color  = int(cfg.get("label_color", 255))
+        label_bg     = cfg.get("label_bg", 0)                # 0..255 (solid background); set to None to disable
 
         unit_dir = self._progress_unit_dir(unit)
         frames = sorted(unit_dir.glob(f"{self._sanitize_unit(unit)}_step*.png"))
@@ -654,10 +702,55 @@ class VPMVisualizationService(Service):
 
         imgs = [Image.open(p).convert("L") for p in frames[: rows * cols]]
         w, h = imgs[0].size
-        grid = Image.new("L", (cols * w, rows * h))
+        grid = Image.new("L", (cols * w, rows * h), 0)
+        draw = ImageDraw.Draw(grid)
+        try:
+            font = ImageFont.load_default()
+        except Exception:
+            font = None
+
+        def _draw_rect_with_width(x0, y0, x1, y1, width, color):
+            # PIL's width arg isn't always available; emulate width by insetting
+            for i in range(width):
+                draw.rectangle((x0 + i, y0 + i, x1 - i, y1 - i), outline=color)
+
         for idx, im in enumerate(imgs):
             r, c = divmod(idx, cols)
-            grid.paste(im, (c * w, r * h))
+            x, y = c * w, r * h
+            grid.paste(im, (x, y))
+
+            # Frame around the tile
+            if border_px > 0:
+                _draw_rect_with_width(x, y, x + w - 1, y + h - 1, border_px, border_color)
+
+            # Label = step number (parsed from filename if present, else idx+1)
+            if label_on:
+                # Try to read step #### from filename
+                m = re.search(r"_step(\d+)", frames[idx].name)
+                label = int(m.group(1)) if m else (idx + 1)
+                txt = str(label)
+
+                # Measure text box
+                if font:
+                    tw, th = draw.textlength(txt, font=font), font.getbbox(txt)[3] - font.getbbox(txt)[1]
+                else:
+                    tw, th = draw.textlength(txt), 10  # fallback
+
+                pad = 4
+                if label_pos == "tr":
+                    tx, ty = x + w - tw - pad - 1, y + pad
+                elif label_pos == "bl":
+                    tx, ty = x + pad, y + h - th - pad - 1
+                elif label_pos == "br":
+                    tx, ty = x + w - tw - pad - 1, y + h - th - pad - 1
+                else:  # "tl"
+                    tx, ty = x + pad, y + pad
+
+                # Optional solid background for contrast
+                if label_bg is not None:
+                    draw.rectangle((tx - 2, ty - 1, tx + tw + 2, ty + th + 1), fill=int(label_bg))
+
+                draw.text((tx, ty), txt, fill=label_color, font=font)
 
         film_path = unit_dir / f"{self._sanitize_unit(unit)}_filmstrip.png"
         grid.save(film_path, dpi=(dpi, dpi))
@@ -753,30 +846,50 @@ class VPMVisualizationService(Service):
             f"viz_dir={self._viz_dir} dims={len(self._dimensions)} episodes={len(self._episode_traces)}>"
         )
 
-    def generate_raw_vpm_image(self, unit: str, output_path: Optional[str] = None) -> str:
+    def generate_raw_vpm_image(
+        self,
+        unit: str,
+        step_idx: Optional[int] = None,
+        output_path: Optional[str] = None,
+    ) -> str:
         metrics_history = self._metrics_history.get(unit, [])
-        if not metrics_history: return ""
+        if not metrics_history:
+            return ""
+
         df = self._convert_to_dataframe(metrics_history)
-
         dims_to_use = [d for d in self._dimensions if d in df.columns]
-        if not dims_to_use: return ""
+        if not dims_to_use:
+            df, dims_pref = self._with_model_prefixed_columns(df, "ssp", self._dimensions)
+            dims_to_use = [d for d in dims_pref if d in df.columns]
+            if not dims_to_use:
+                self.logger.log("VPMVisualizationError", {
+                    "event": "no_dims_found",
+                    "unit": unit,
+                    "df_cols": list(df.columns)
+                })
+                return ""
 
+        df, dims_pref = self._with_model_prefixed_columns(df, "ssp", dims_to_use)
         vec = vpm_vector_from_df(
             df, model="ssp", dimensions=dims_to_use,
-            interleave=self._raw_vpm_interleave, weights=self._raw_vpm_weights,
+            interleave=self._raw_vpm_interleave, weights=self._raw_vpm_weights
         )
-        vec = np.asarray(vec, np.float32)
-        # nudge flat vectors so image isn’t all black
+        vec = robust01(np.asarray(vec, np.float32))
         if not np.isfinite(vec).any() or float(vec.max() - vec.min()) < 1e-6:
             vec = np.full_like(vec, 0.5, dtype=np.float32)
 
-        img, _ = to_square(vec)
+        base_name = self._sanitize_unit(unit)
+        out_path = Path(output_path) if output_path else (self._raw_viz_dir / f"{base_name}_raw_vpm_{int(time.time())}.png")
 
-        if output_path is None:
-            output_path = os.path.join(self._raw_viz_dir, f"{unit}_raw_vpm.png")
+        if self._raw_render == "bar":
+            img = self._to_bar_img(vec, height=max(1, self._bar_height))  # (H, F)
+            Image.fromarray(img, mode="L").save(out_path)
+        else:
+            # keep current square/PHOS-friendly rendering
+            img, _ = to_square(vec)
+            save_img(img, str(out_path), title=f"SSP VPM (Raw) - {unit}")
 
-        save_img(img, output_path, title=f"SSP VPM (Raw) - {unit}")
-        return output_path
+        return str(out_path)
 
 
     def generate_phos_image(self, unit: str, output_path: Optional[str] = None, tl_frac: Optional[float] = None) -> str:

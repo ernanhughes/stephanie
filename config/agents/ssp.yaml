@@ -43,24 +43,53 @@ ssp:
     max_chars_per_snippet: 400
     
   vpm_viz:
+    raw_render: bar           # "bar" | "square"
+    progress_render: bar      # "bar" | "square"
+    bar_height: 12            # pixels (set to 1 if you want literal 1px)
+    grid_side: 32             # kept for square mode
+    fixed_scale: true
+    # Optional: explicitly list the 17 metrics in order
+    dimensions:
+      - reward
+      - verified
+      - curriculum_difficulty
+      - question_len
+      - answer_len
+      - evidence_count
+      - solver_steps
+      - score
+      - best_score
+      - improvement
+      - depth
+      - novelty
+      - search_turns
+      - f1_score
+      - format_compliance
+      - noise_tolerance
+      - rag_verification
     output_dir: "./runs/vpm_visualizations"
     tl_fracs: [0.25, 0.16, 0.36, 0.09]
-    grid_side: 32
-    fixed_scale: true        # keep global 0..1 scale (no auto-stretch)
     filmstrip:
       rows: 2
       cols: 10
       dpi: 300
     delta: 0.02
-    dimensions: [
-      "verifier_f1", "difficulty", "steps_norm", "evidence_cnt",
-      "coverage", "correctness", "coherence", "citation_support", "entity_consistency"
-    ]
     metric_ranges:
       verifier_f1: [0.0, 1.0]
       difficulty: [0.0, 1.0]
       steps_norm: [0.0, 1.0]
       evidence_cnt: [0.0, 1.0]
+
+  filmstrip:
+    rows: 2
+    cols: 10
+    dpi: 300
+    border_px: 3
+    border_color: 255   # white in L-mode
+    label_on: false
+    label_pos: tl       # tl|tr|bl|br
+    label_color: 255
+    label_bg: 0         # black bg for contrast (set to null/None to disable)
 
   ats:
     max_depth: 2
