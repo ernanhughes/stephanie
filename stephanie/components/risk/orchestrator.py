@@ -155,7 +155,7 @@ class RiskOrchestrator(ProgressMixin):
             models={"chat": context.get("model_alias", "chat")},
         )
 
-        items = context.get("scorable")
+        items = context.get("scorables")
 
 
         self.pstart(

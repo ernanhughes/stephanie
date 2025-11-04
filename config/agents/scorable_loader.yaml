@@ -10,6 +10,6 @@ scorable_loader:
     api_key: null
   input_keys: ["goal"]
   input_key: goal
-  output_key: scorable
+  output_key: scorables
   prompt_mode: file
   prompt_file: scorable_loader.txt

@@ -1,22 +1,19 @@
+# stephanie/components/nexus/agent.py
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Iterable, List, Tuple, Optional
-
 import numpy as np
-
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.chat_analyze import ChatAnalyzeAgent
 from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
 from stephanie.utils.progress_mixin import ProgressMixin
-
-from stephanie.components.nexus.service.nexus_service import NexusService
+from stephanie.components.nexus.services.graph_layout import NexusService
 
 _logger = logging.getLogger(__name__)
 
 # Type aliases for readability
 ScorableTuple = Tuple[str, str, str, dict]  # (node_id, scorable_type, scorable_id, meta)
-
 
 class NexusAgent(BaseAgent, ProgressMixin):
     """
@@ -24,8 +21,8 @@ class NexusAgent(BaseAgent, ProgressMixin):
     - Builds/updates the Nexus graph index from scorables and/or VPMs.
     - Finds a best path given a start node and (optional) goal text/vector.
     - Returns a standard output payload under self.output_key for downstream stages.
-
-        Expected context keys (flexible; provide whichever you have):
+    
+    Expected context keys (flexible; provide whichever you have):
       - "nexus_scorables": List[ScorableTuple]
       - "nexus_vpms": List[ScorableTuple]    # use scorable_type="vpm"
       - "nexus_start_node_id": str           # required to run path-finding
@@ -56,7 +53,7 @@ class NexusAgent(BaseAgent, ProgressMixin):
             # ----------------------------
             # 1) Collect inputs
             # ----------------------------
-            scorables: List[ScorableTuple] = list(context.get("nexus_scorables", []))
+            scorables: List[ScorableTuple] = list(context.get("scorables", []))
             vpms: List[ScorableTuple] = list(context.get("nexus_vpms", []))
 
             # Validate tuple shapes early (nice-to-have)

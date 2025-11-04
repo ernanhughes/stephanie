@@ -4,7 +4,7 @@ from __future__ import annotations
 from __future__ import annotations
 from typing import Dict, Any
 
-from ..service.nexus_service import NexusService
+from ..services.graph_layout import NexusService
 
 class NexusProtocol:
     def __init__(self, cfg: Dict, memory, bus=None) -> None:

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.tools.time_utils import now_iso
 from stephanie.utils.json_sanitize import dumps_safe
-
+import numpy as np
 
 @dataclass
 class Manifest:
@@ -76,6 +76,13 @@ class Manifest:
             if st.get("name") == name:
                 return st
         return None
+
+    def log_vpm_artifacts(self, vpms: List[np.ndarray], metas: List[dict]):
+        """Logs multi-layout VPMs + metadata to artifact store."""
+        for i, (vpm, meta) in enumerate(zip(vpms, metas)):
+            layout_id = f"{meta['layout']}_{meta['seed']}"
+            self.log_artifact(f"vpm_{layout_id}", vpm) 
+            self.log_metadata(f"vpm_meta_{layout_id}", meta)
 
 
 class ManifestManager:

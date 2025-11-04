@@ -8,12 +8,8 @@ defaults:
 
   - agents/nexus
   - agents/scorable_loader
-  - agents/risk
-  - agents/chat_sicql_trainer
-  - agents/chat_tiny_trainer
-  - agents/chat_scorer
-  - agents/scorer
-  - agents/gap
+  - agents/chat_analyze
+  - agents/universal_scorer
 
 embeddings:
   backend: hnet
@@ -46,8 +42,18 @@ pipeline:
      - name: scorable_loader
        description: "🔓 Loads a large amount of conversation turns"
        cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
-       enabled: false
+       enabled: true
        iterations: 1    
+
+     - name: chat_analyze
+       description: "Analyze chat history for relevant information"
+       cls: stephanie.agents.knowledge.chat_analyze.ChatAnalyzeAgent
+       enabled: true
+
+     - name: universal_scorer
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: false 
+       iterations: 1
 
      - name: nexus
        description: "Generate a memory graph"

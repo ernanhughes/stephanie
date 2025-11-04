@@ -313,16 +313,16 @@ class ContextManager:
 
                 
         # Save to ORM
-        context_orm = ContextStateORM(
-            run_id=self.run_id,
-            stage_name=stage_dict.get("name", "unknown"),
-            context=json.dumps(processed_context_state),
-            trace=serializable_context.get("trace", []), # Make sure trace is handled correctly
-            token_count=serializable_context["metadata"].get("token_count", 0),
-            extra_data=json.dumps(stage_dict)
-        )
-        self.memory.session.add(context_orm)
-        self.memory.session.commit()
+        stage_name = stage_dict.get("name", "unknown")
+        context_dict = {
+            "run_id": self.run_id,
+            "stage_name": stage_name,
+            "context": json.dumps(processed_context_state),
+            "trace": serializable_context.get("trace", []), # Make sure trace is handled correctly
+            "token_count": serializable_context["metadata"].get("token_count", 0),
+            "extra_data": json.dumps(stage_dict)
+        }
+        self.memory.contexts.save(self.run_id, stage_name, context_dict)
         return True
 
     def stringify_tuple_keys(self, d):

@@ -26,6 +26,8 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable, ScorableType
+# stephanie/agents/chat_analyze_agent.py (inside run loop, after you get user_text/assistant_text)
+from stephanie.utils.prompt_sanitizer import clean_text_for_prompt, is_likely_code_goal
 
 _logger = logging.getLogger(__name__)
 
@@ -180,8 +182,19 @@ class ChatAnalyzeAgent(BaseAgent):
             )
             _logger.debug(f"Goal created/retrieved: {goal.id}")
 
+            clean_cfg = self.cfg.get("prompt_cleaning", {})
+            code_goal = is_likely_code_goal(context.get("goal", {}).get("goal_text", ""))
+
+            user_text_clean = clean_text_for_prompt(user_text, clean_cfg, is_code_goal=code_goal)
+            assistant_text_clean = clean_text_for_prompt(assistant_text, clean_cfg, is_code_goal=code_goal)
+            goal_text_clean = clean_text_for_prompt(goal.goal_text, clean_cfg, is_code_goal=code_goal)
+
+
             # Merge context for LLM prompt evaluation
-            merged_context = {**row, **context}
+            merged_context = {"user_text": user_text_clean, 
+                              "assistant_text": assistant_text_clean,
+                              "goal_text": goal_text_clean, 
+                              **context}
 
             # Step 2: Evaluate across all reasoning dimensions
             dimension_results = {}
@@ -350,7 +363,7 @@ def parse_knowledge_judge_text(raw: str) -> dict:
         ms = re.search(r"(?im)score\s*:\s*([0-9]{1,3})", text)
         if not ms:
             _logger.warning(f"Could not find score in response: {text[:100]}...")
-            raise ParseError("Could not find score")
+            
         score = int(ms.group(1))
         rationale = text[: ms.start()].strip()
         _logger.debug(f"Used fallback parsing: score={score}")

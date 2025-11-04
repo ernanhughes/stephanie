@@ -10,7 +10,7 @@ USER QUESTION:
 ASSISTANT ANSWER:
 {{ assistant_text }}
 
-{% if context %}OK
+{% if context %}
 OPTIONAL CONTEXT:
 {{ context }}
 {% endif %}
