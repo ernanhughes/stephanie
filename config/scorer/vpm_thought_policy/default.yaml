@@ -1,0 +1,9 @@
+model:
+  in_channels: 3
+  hidden_dim: 512
+  goal_dim: 128
+  n_ops: 5
+  param_dim: 8
+  dropout: 0.1
+device: cpu
+weights: models/vpm_thought/vpm_thought_final.pt

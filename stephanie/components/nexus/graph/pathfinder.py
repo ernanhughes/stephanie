@@ -1,11 +1,7 @@
-# stephanie/components/nexus/graph/pathfinder.py
-from __future__ import annotations
-
 from __future__ import annotations
 from typing import Callable, List, Tuple
 import math
 import numpy as np
-
 from ..store.dict_store import NexusGraphStore
 from ..types import NexusNode, NexusPath
 
@@ -76,7 +72,7 @@ class NexusPathFinder:
 
         def _stability(n: NexusNode) -> float:
             hall = float(n.metrics.get("hall", 0.0))
-            ent  = float(n.metrics.get("uncertainty", 0.0))
+            ent = float(n.metrics.get("uncertainty", 0.0))
             return -(hall + ent)
 
         def _agreement(n: NexusNode) -> float:

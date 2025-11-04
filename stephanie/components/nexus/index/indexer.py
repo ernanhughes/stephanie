@@ -1,10 +1,6 @@
-# stephanie/components/nexus/index/indexer.py
-from __future__ import annotations
-
 from __future__ import annotations
 from typing import Iterable, List, Tuple
 import numpy as np
-
 from ..types import NexusEdge, NexusNode
 from ..store.dict_store import NexusGraphStore
 
@@ -40,7 +36,7 @@ class NexusIndexer:
             # Optional enrichment: only if risky (keeps embed space stable)
             m = meta.get("metrics") or {}
             hall = float(m.get("hall", 0.0))
-            ent  = float(m.get("uncertainty", 0.0))
+            ent = float(m.get("uncertainty", 0.0))
             if hall > 0.3 or ent > 0.4:
                 base_text += (
                     f"\n\n[METRICS]\nHallucination Risk: {hall:.3f}\n"

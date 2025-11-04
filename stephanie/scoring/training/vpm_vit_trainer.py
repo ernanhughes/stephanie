@@ -83,7 +83,10 @@ class VPMFrameDataset(Dataset):
 
     def __getitem__(self, idx: int):
         p = self.paths[idx]
-        x = self._load_frame(p) / (255.0 if x_max(x:=None) else 1.0)  # see helper below
+        x = self._load_frame(p)
+        if x.max() > 1.0:
+            x = x / 255.0
+
 
         C, H, W = x.shape
         # ensure channel count
@@ -109,8 +112,6 @@ class VPMFrameDataset(Dataset):
 
         return torch.from_numpy(x), torch.from_numpy(reg), torch.tensor(cls, dtype=torch.long), torch.from_numpy(m)
 
-def x_max(x):  # tiny helper to branch 255-scale vs 0-1 inputs
-    return None
 
 # ---------------- Trainer ----------------
 class VPMViTTrainer(BaseAgent):

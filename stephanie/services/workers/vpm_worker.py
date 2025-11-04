@@ -1,24 +1,46 @@
-from __future__ import annotations
+# stephanie/services/workers/vpm_worker.py
 
-import asyncio
+from __future__ import annotations
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+import io
 import json
 import logging
 import traceback
-from typing import Any, Dict, Optional
+import asyncio
 
 import numpy as np
+from PIL import Image
+
 
 from stephanie.services.zeromodel_service import ZeroModelService
 
 _logger = logging.getLogger(__name__)
 
 
-class VPMWorkerInline:
-    """Simplified in-process timeline writer (no bus)."""
-    def __init__(self, zm: ZeroModelService, logger=None):
-        self.zm = zm
-        self.logger = logger or _logger
 
+@dataclass
+class VPMWorkerInline:
+    """
+    Simplified in-process VPM/filmstrip writer (no bus).
+    Writes timeline rows via ZeroModelService and saves image artifacts next to the run.
+
+    Conventions:
+      - 'append'   : single row of named metrics
+      - 'add_channels': multi-row timeseries (namespace-prefixed columns)
+      - 'add_vpm'  : save VPM as RGB composite + optional per-channel PNGs
+      - 'add_frame': push a single filmstrip frame (later saved by 'save_gif')
+      - 'save_gif' : finalize a filmstrip.gif
+    """
+    zm: Any
+    logger: Any = None
+
+    def __post_init__(self):
+        self.logger = self.logger or _logger
+        self._frames: Dict[str, List[np.ndarray]] = {}  # run_id -> frames (H,W,3 uint8)
+
+    # -------- timeline rows (numbers) --------
     def append(self, run_id: str, node_id: str, metrics: Dict[str, Any]):
         cols = metrics.get("columns")
         vals = metrics.get("values")
@@ -28,78 +50,93 @@ class VPMWorkerInline:
             cols = list(vec.keys())
             vals = [float(vec[k]) for k in cols]
 
-        self.zm.timeline_append_row(
-            run_id,
-            metrics_columns=cols,
-            metrics_values=vals,
-        )
-        self.logger.log(f"[VPMWorkerInline] Row appended for node {node_id} in run {run_id}")
+        self.zm.timeline_append_row(run_id, metrics_columns=cols, metrics_values=vals)
+        if self.logger:
+            self.logger.info(f"[VPMWorkerInline] Row appended for node {node_id} in run {run_id}")
 
-    async def finalize(self, run_id: str, out_path: str):
-        res = await self.zm.timeline_finalize(
-            run_id,
-            out_path=out_path,
-        )
-        self.logger.info(f"[VPMWorkerInline] Timeline finalized for run {run_id}")
-        return res
-
-    def _log_progress(self, stage, i, total):
-        try:
-            pct = int(100 * i / max(total,1))
-            self.logger.log("TopologyProgress", {"stage": stage, "i": i, "total": total, "pct": pct})
-        except Exception:
-            pass
-
-    def add_channels(self, run_id: str, channels: Dict[str, np.ndarray], namespace: str = "hall"):
-        """
-        Append a batch of VPM channels as timeline columns.
-
-        Args:
-            run_id (str): The run identifier.
-            channels (Dict[str, np.ndarray]): Dictionary of named 1D arrays (e.g., {"R": [...], "G": [...]})
-                Each array must be 1D and of the same length (timesteps).
-            namespace (str): Prefix for column names (e.g., "hall" → "hall.R", "hall.G").
-
-        Example:
-            add_channels("run-123", {"R": [0.1, 0.8], "G": [0.3, 0.2]}, "hall")
-            → Appends two rows:
-                Row 0: {"hall.R": 0.1, "hall.G": 0.3}
-                Row 1: {"hall.R": 0.8, "hall.G": 0.2}
-        """
+    def add_channels(self, run_id: str, channels: Dict[str, np.ndarray], namespace: str = "vpm"):
         if not channels:
-            self.logger.warning(f"[VPMWorkerInline] No channels provided for run {run_id}")
+            if self.logger: self.logger.warning(f"[VPMWorkerInline] No channels provided for run {run_id}")
             return
-
-        # Validate: all channels must be 1D numpy arrays of same length
         lengths = [len(arr) for arr in channels.values() if isinstance(arr, np.ndarray)]
         if not lengths:
-            self.logger.warning(f"[VPMWorkerInline] No valid numpy arrays in channels for run {run_id}")
+            if self.logger: self.logger.warning(f"[VPMWorkerInline] No valid numpy arrays in channels for run {run_id}")
             return
-
         n_timesteps = lengths[0]
         if not all(l == n_timesteps for l in lengths):
-            raise ValueError(
-                f"All channels must have the same length. Got lengths: {dict(zip(channels.keys(), lengths))}"
-            )
+            raise ValueError(f"All channels must share length. Got: { {k:len(v) for k,v in channels.items()} }")
 
-        # Build column names with namespace prefix
         cols = [f"{namespace}.{k}" for k in channels.keys()]
-
-        # Convert arrays to list of floats
-        vals_list = []
+        keys = list(channels.keys())
         for i in range(n_timesteps):
-            row_vals = [float(channels[k][i]) for k in channels.keys()]
-            vals_list.append(row_vals)
+            row_vals = [float(channels[k][i]) for k in keys]
+            self.append(run_id=run_id, node_id=f"{namespace}.{i}", metrics={"columns": cols, "values": row_vals})
+        if self.logger:
+            self.logger.info(f"[VPMWorkerInline] Added {n_timesteps}×{len(channels)} channels under '{namespace}'")
 
-        # Append each timestep as a row
-        for i, vals in enumerate(vals_list):
-            self.append(
-                run_id=run_id,
-                node_id=f"vpm.{namespace}.{i}",  # Optional: node_id to trace position
-                metrics={"columns": cols, "values": vals},
-            )
+    # -------- image artifacts --------
+    def _ensure_dir(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.logger.info(f"[VPMWorkerInline] Added {n_timesteps} timesteps of {len(channels)} channels under namespace '{namespace}' for run {run_id}")
+    def add_vpm(self, run_id: str, vpm: np.ndarray, out_dir: Path, name: str, save_channels: bool = False):
+        """
+        vpm: [C,H,W] (uint8 or float in [0,1])
+        Saves: <out_dir>/<name>.png (RGB composite)
+               optionally: <out_dir>/<name>_ch{k}.png (per channel)
+        """
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        X = vpm.astype(np.float32)
+        if X.max() <= 1.0: X = X * 255.0
+        X = np.clip(X, 0, 255).astype(np.uint8)
+
+        # Compose RGB from first 3 channels (pad if needed)
+        C, H, W = X.shape
+        rgb = np.zeros((H, W, 3), dtype=np.uint8)
+        for i in range(min(3, C)):
+            ch = X[i]
+            cmin, cmax = ch.min(), ch.max()
+            if cmax > cmin:
+                ch = ((ch - cmin) * 255.0 / (cmax - cmin)).astype(np.uint8)
+            rgb[..., i] = ch
+
+        Image.fromarray(rgb).save(out_dir / f"{name}.png")
+
+        if save_channels:
+            for k in range(C):
+                Image.fromarray(X[k]).save(out_dir / f"{name}_ch{k}.png")
+
+        if self.logger:
+            self.logger.info(f"[VPMWorkerInline] Saved VPM composite '{name}.png' (C={C}) to {out_dir}")
+
+    def add_frame(self, run_id: str, frame_rgb: np.ndarray):
+        """frame_rgb: (H,W,3) uint8"""
+        self._frames.setdefault(run_id, []).append(frame_rgb)
+
+    def save_gif(self, run_id: str, out_path: Path, fps: int = 1):
+        """
+        Saves collected frames to an animated GIF.
+        Requires imageio; we avoid importing unless needed.
+        """
+        from imageio.v2 import mimsave
+        frames = self._frames.get(run_id, [])
+        if not frames:
+            if self.logger: self.logger.warning(f"[VPMWorkerInline] No frames to save for run {run_id}")
+            return None
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        mimsave(out_path, frames, fps=fps, loop=0)
+        if self.logger:
+            self.logger.info(f"[VPMWorkerInline] Filmstrip saved: {out_path}")
+        return str(out_path)
+
+    # -------- finalize / helpers --------
+    async def finalize(self, run_id: str, out_path: str):
+        res = await self.zm.timeline_finalize(run_id, out_path=out_path)
+        if self.logger:
+            self.logger.info(f"[VPMWorkerInline] Timeline finalized for run {run_id}")
+        return res
 
 class VPMWorker:
     """
