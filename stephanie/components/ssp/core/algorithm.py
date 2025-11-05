@@ -148,15 +148,11 @@ class SSPAlgorithm:
                 self.vpm_visualization.snapshot_progress(
                     unit=episode_id, dims=dims, step_idx=0, tag="proposed"
                 )
-                logo(
-                    "Episode proposed snapshot saved",
-                    extra={
-                        "episode_id": episode_id,
-                        "question": ep.question,
-                        "dims": {
-                            k: round(float(v), 4) for k, v in dims.items()
-                        },
-                    },
+                log.debug(
+                    "Episode proposed snapshot saved episode_id:%s question:%s dims:%s",
+                    episode_id,
+                    ep.question,
+                    str({k: round(float(v), 4) for k, v in dims.items()}),
                 )
 
             # 5) Rewards: compute on verified only (paper’s game signal)

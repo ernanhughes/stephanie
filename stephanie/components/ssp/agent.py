@@ -110,7 +110,7 @@ class SSPAgent(BaseAgent, ProgressMixin):
             vpm_visualization=self.container.get("ssp_vpm_viz"),
         )
         try:
-            logo("SSP step started for run_id=%s", run_id)
+            log.debug("SSP step started for run_id=%s", run_id)
             self._init_progress(self.container, log)
 
             task = f"SSP:{run_id}"
