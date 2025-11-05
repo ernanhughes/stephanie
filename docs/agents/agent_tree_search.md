@@ -119,7 +119,7 @@ import json, time, aiofiles
 
 async def arena_logger(event: str, payload: dict):
     async with aiofiles.open("arena_stream.jsonl", "a") as f:
-        await f.write(json.dumps({"ts": time.time(), "event": event, **payload}) + "\n")
+        await f.write(dumps_safe({"ts": time.time(), "event": event, **payload}) + "\n")
 
 ats = AgenticTreeSearch(agent=agent, emit_cb=arena_logger)
 ```

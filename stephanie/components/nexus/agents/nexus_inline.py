@@ -4,6 +4,7 @@ from typing import Any, Dict
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.scoring.scorable_processor import ScorableFeatures
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.services.scoring_service import ScoringService
 from stephanie.services.workers.nexus_workers import NexusVPMWorkerInline, NexusMetricsWorkerInline
@@ -13,8 +14,9 @@ import json
 import time
 from stephanie.components.nexus.viewer.exporters import export_pyvis_html
 # add to imports at the top
-from stephanie.components.nexus.graph.builder import build_nodes_from_manifest, build_edges
-from stephanie.components.nexus.viewer.cytoscape import to_cytoscape_elements  # small helper; see below
+from stephanie.components.nexus.graph.builder import build_nodes_from_manifest, build_edges_enhanced
+from stephanie.components.nexus.viewer.cytoscape import to_cytoscape_elements
+from stephanie.utils.json_sanitize import dumps_safe  # small helper; see below
 
 
 class NexusInlineAgent(BaseAgent):
@@ -57,6 +59,7 @@ class NexusInlineAgent(BaseAgent):
         for idx, s in enumerate(scorables):
             goal = s.get("goal_ref") or context.get("goal")
             merged_context = {**context, "goal": goal}
+            features = ScorableFeatures.from_dict(s)  # validate
             sc = Scorable.from_dict(s)
 
             # A) dense text metrics row (vector + columns)
@@ -105,7 +108,7 @@ class NexusInlineAgent(BaseAgent):
 
             # optional: dump per-item JSON for quick inspection
             with (item_dir / "metrics.json").open("w", encoding="utf-8") as f:
-                json.dump({
+                f.write(dumps_safe({
                     "item": item.item_id,
                     "scores": mx.get("scores", {}),
                     "metrics_columns": item.metrics_columns,
@@ -115,7 +118,7 @@ class NexusInlineAgent(BaseAgent):
                     "domains": item.domains,
                     "entities": item.entities,
                     "rollout": item.rollout,
-                }, f, indent=2)
+                }, f, indent=2))
 
             manifest.append(item)
 
@@ -133,7 +136,7 @@ class NexusInlineAgent(BaseAgent):
 
         # 2) Build edges (KNN + temporal) from items (pass the raw list/dicts)
         items_list = [mi.to_dict() for mi in manifest.items]   # or manifest.as_dict()["items"]
-        edges = build_edges(
+        edges = build_edges_enhanced(
             nodes=nodes,
             items=items_list,
             knn_k=int(self.cfg.get("indexer", {}).get("knn", {}).get("k", 12)),

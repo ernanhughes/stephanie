@@ -1,7 +1,231 @@
+# stephanie/components/nexus/graph/builder.py
 from __future__ import annotations
-from typing import Dict, List, Optional, Tuple, Set, Dict, Any, Iterable, Optional, Union
+from typing import DefaultDict, List, Tuple, Set, Dict, Any, Iterable, Optional, Union
 import numpy as np
 from stephanie.components.nexus.types import NexusEdge, NexusNode
+from collections import defaultdict
+import math
+
+
+# stephanie/components/nexus/graph/builder.py  (patch)
+
+def _topk_indices_desc(row: np.ndarray, k: int, exclude_self: int) -> np.ndarray:
+    # returns indices of the largest k entries (descending), excluding self
+    # uses argpartition for O(N) selection then sorts that small set
+    N = row.shape[0]
+    k_eff = min(k + 1, N)  # (+1) because we may exclude self
+    idx = np.argpartition(-row, kth=k_eff-1)[:k_eff]
+    # full sort of the small slice
+    idx = idx[np.argsort(-row[idx])]
+    # drop self if present
+    if exclude_self in idx:
+        idx = idx[idx != exclude_self]
+    return idx[:k]
+
+def build_edges_enhanced(
+    nodes: Dict[str, Any],
+    items: List[Dict[str, Any]],
+    *,
+    run_id: Optional[str],
+    # KNN blend
+    knn_k: int = 8,
+    sim_threshold: float = 0.35,
+    max_edges_per_node: int = 24,
+    # channel weights
+    weights: Optional[Dict[str, float]] = None,
+    # per-type caps (extra safety)
+    caps: Optional[Dict[str, int]] = None,
+    # structure helpers
+    add_temporal: bool = True,
+    add_mst_backbone: bool = True,
+    # optional extra edge families
+    add_domain_edges: bool = True,
+    add_entity_edges: bool = True,
+    max_domain_edges_per_node: int = 6,
+    max_entity_edges_per_node: int = 6,
+) -> List[NexusEdge]:
+    ids = list(nodes.keys())
+    if not ids:
+        return []
+
+    # weights (don’t need to sum to 1; final S renormalized)
+    w = {
+        "embed": 0.50,
+        "metrics": 0.25,
+        "lexical": 0.10,
+        "domains": 0.08,
+        "entities": 0.05,
+        "agreement": 0.02,
+        "stability": 0.00,
+        **(weights or {}),
+    }
+
+    S, C = _pairwise_blend(ids, nodes, w)
+
+    edges: List[NexusEdge] = []
+    seen: Set[Tuple[str, str, str]] = set()       # (src,dst,type)
+    degree = defaultdict(int)                     # node -> deg cap
+    per_type_count = defaultdict(int)
+    cap = {
+        "knn_blend": 10**9,
+        "temporal_next": 10**9,
+        "backbone_mst": 10**9,
+        "shared_domain": 100000,
+        "shared_entity": 100000,
+        **(caps or {}),
+    }
+
+    # ---------- blended KNN (fast top-k per row) ----------
+    N = len(ids)
+    for i, src in enumerate(ids):
+        row = S[i]
+        if row.max(initial=0.0) < sim_threshold:
+            continue
+        nbr_idx = _topk_indices_desc(row, k=knn_k, exclude_self=i)
+        for j in nbr_idx:
+            sim = float(row[j])
+            if sim < sim_threshold:
+                continue
+            dst = ids[j]
+            if degree[src] >= max_edges_per_node: break
+            if degree[dst] >= max_edges_per_node: continue
+            if per_type_count["knn_blend"] >= cap["knn_blend"]:
+                break
+            key = (src, dst, "knn_blend")
+            if key in seen or src == dst:
+                continue
+
+            ch = {k: float(C[k][i, j]) for k in C.keys()}
+            edges.append(NexusEdge(src, dst, "knn_blend", sim, channels=ch))
+            seen.add(key)
+            degree[src] += 1
+            degree[dst] += 1
+            per_type_count["knn_blend"] += 1
+
+    # ---------- temporal chain ----------
+    if add_temporal:
+        t_edges = _temporal_edges(items, nodes, run_id)
+        for e in t_edges:
+            if e.src == e.dst:
+                continue
+            key = (e.src, e.dst, e.type)
+            if key in seen:
+                continue
+            if per_type_count["temporal_next"] >= cap["temporal_next"]:
+                break
+            if degree[e.src] >= max_edges_per_node or degree[e.dst] >= max_edges_per_node:
+                continue
+            edges.append(e)
+            seen.add(key)
+            degree[e.src] += 1
+            degree[e.dst] += 1
+            per_type_count["temporal_next"] += 1
+
+    # ---------- optional domain/entity cliques (bounded) ----------
+    if (add_domain_edges or add_entity_edges) and items:
+        # Build quick maps: item_id -> node_id
+        item_to_node = {}
+        for nid in ids:
+            tail = nid.rsplit("/", 1)[-1]
+            item_to_node[tail] = nid
+
+        # Domains
+        if add_domain_edges:
+            dmap: DefaultDict[str, List[str]] = defaultdict(list)
+            for it in items:
+                iid = it.get("item_id")
+                nid = item_to_node.get(iid)
+                if not nid: continue
+                for d in it.get("domains") or []:
+                    dmap[str(d)].append(nid)
+
+            for domain, nids in dmap.items():
+                if len(nids) <= 1:
+                    continue
+                # create a light clique with per-node edge cap
+                for a_i, src in enumerate(nids):
+                    added = 0
+                    if degree[src] >= max_edges_per_node:
+                        continue
+                    # connect to next few neighbors only (to avoid O(m^2))
+                    for dst in nids[a_i+1:a_i+1+max_domain_edges_per_node]:
+                        if src == dst:
+                            continue
+                        if degree[src] >= max_edges_per_node or degree[dst] >= max_edges_per_node:
+                            continue
+                        if per_type_count["shared_domain"] >= cap["shared_domain"]:
+                            break
+                        key = (src, dst, "shared_domain")
+                        if key in seen:
+                            continue
+                        edges.append(NexusEdge(src, dst, "shared_domain", 0.5, channels={"domain": domain}))
+                        seen.add(key)
+                        degree[src] += 1
+                        degree[dst] += 1
+                        per_type_count["shared_domain"] += 1
+                        added += 1
+                        if added >= max_domain_edges_per_node:
+                            break
+
+        # Entities
+        if add_entity_edges:
+            emap: DefaultDict[str, List[str]] = defaultdict(list)
+            for it in items:
+                iid = it.get("item_id")
+                nid = item_to_node.get(iid)
+                if not nid: continue
+                ents = it.get("entities") or []
+                if isinstance(ents, dict):
+                    ents = list(ents.keys())
+                for ent in ents:
+                    emap[str(ent)].append(nid)
+
+            for ent, nids in emap.items():
+                if len(nids) <= 1:
+                    continue
+                for a_i, src in enumerate(nids):
+                    added = 0
+                    if degree[src] >= max_edges_per_node:
+                        continue
+                    for dst in nids[a_i+1:a_i+1+max_entity_edges_per_node]:
+                        if src == dst:
+                            continue
+                        if degree[src] >= max_edges_per_node or degree[dst] >= max_edges_per_node:
+                            continue
+                        if per_type_count["shared_entity"] >= cap["shared_entity"]:
+                            break
+                        key = (src, dst, "shared_entity")
+                        if key in seen:
+                            continue
+                        edges.append(NexusEdge(src, dst, "shared_entity", 0.45, channels={"entity": ent}))
+                        seen.add(key)
+                        degree[src] += 1
+                        degree[dst] += 1
+                        per_type_count["shared_entity"] += 1
+                        added += 1
+                        if added >= max_entity_edges_per_node:
+                            break
+
+    # ---------- MST backbone (guarantee connectivity) ----------
+    if add_mst_backbone:
+        mst = _mst_edges(ids, S)
+        for e in mst:
+            if e.src == e.dst:
+                continue
+            key = (e.src, e.dst, e.type)
+            if key in seen:
+                continue
+            if per_type_count["backbone_mst"] >= cap["backbone_mst"]:
+                break
+            if degree[e.src] >= max_edges_per_node or degree[e.dst] >= max_edges_per_node:
+                continue
+            edges.append(e)
+            seen.add(key)
+            degree[e.src] += 1
+            degree[e.dst] += 1
+            per_type_count["backbone_mst"] += 1
+
+    return edges
 
 
 def _as_manifest_dict(m: Any) -> Dict[str, Any]:
@@ -287,4 +511,153 @@ def build_edges(
                         edges.append(NexusEdge(src=src, dst=dst, type="temporal_next", weight=1.0))
                         seen.add(key)
 
+    return edges
+
+def _cos(a: Optional[np.ndarray], b: Optional[np.ndarray]) -> float:
+    if a is None or b is None: return 0.0
+    na = float(np.linalg.norm(a)); nb = float(np.linalg.norm(b))
+    if na <= 1e-9 or nb <= 1e-9: return 0.0
+    return float(np.dot(a, b) / (na * nb))
+
+def _z(x: Optional[np.ndarray]) -> Optional[np.ndarray]:
+    if x is None: return None
+    x = np.asarray(x, dtype=np.float32)
+    if x.size == 0: return x
+    mu = x.mean(); sd = x.std() + 1e-8
+    return (x - mu) / sd
+
+def _jaccard_list(a: Optional[List[str]], b: Optional[List[str]]) -> float:
+    if not a and not b: return 0.0
+    A, B = set(a or []), set(b or [])
+    u = len(A | B); i = len(A & B)
+    return 0.0 if u == 0 else i / u
+
+def _char_shingles_jaccard(a: Optional[str], b: Optional[str], k: int = 5, max_len: int = 4000) -> float:
+    if not a or not b: return 0.0
+    # limit to keep it fast
+    a = a[:max_len]; b = b[:max_len]
+    Sa = {a[i:i+k] for i in range(0, max(0, len(a)-k+1))}
+    Sb = {b[i:i+k] for i in range(0, max(0, len(b)-k+1))}
+    if not Sa and not Sb: return 0.0
+    return len(Sa & Sb) / max(1, len(Sa | Sb))
+
+def _norm01_rowwise(S: np.ndarray) -> np.ndarray:
+    # normalize each row to 0..1 to make thresholds robust across corpora
+    out = S.copy()
+    for i in range(out.shape[0]):
+        r = out[i]
+        mn, mx = r.min(initial=0.0), r.max(initial=0.0)
+        denom = (mx - mn) if (mx - mn) > 1e-8 else 1.0
+        out[i] = (r - mn) / denom
+    # keep symmetric
+    return (out + out.T) / 2.0
+
+# ---------- composite scoring ----------
+
+def _pairwise_blend(ids: List[str], nodes: Dict[str, Any], w: Dict[str, float]) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+    """
+    Returns:
+      S : [N,N] blended similarity in [0,1]
+      C : per-channel score matrices keyed by channel name
+    Channels: embed, metrics, lexical, domains, entities, agreement, stability
+    """
+    N = len(ids)
+    S = np.zeros((N, N), dtype=np.float32)
+    C: Dict[str, np.ndarray] = {
+        "embed": np.zeros((N, N), dtype=np.float32),
+        "metrics": np.zeros((N, N), dtype=np.float32),
+        "lexical": np.zeros((N, N), dtype=np.float32),
+        "domains": np.zeros((N, N), dtype=np.float32),
+        "entities": np.zeros((N, N), dtype=np.float32),
+        "agreement": np.zeros((N, N), dtype=np.float32),
+        "stability": np.zeros((N, N), dtype=np.float32),
+    }
+
+    E = [nodes[i].embed_global if hasattr(nodes[i], "embed_global") else None for i in ids]
+    M = [np.asarray(getattr(nodes[i], "metrics_values", []), dtype=np.float32) for i in ids]
+    Mz = [(_z(m) if m.size else None) for m in M]
+    T = [getattr(nodes[i], "text", None) for i in ids]
+    D = [getattr(nodes[i], "domains", []) for i in ids]
+    G = [getattr(nodes[i], "entities", []) for i in ids]
+    A = [getattr(nodes[i], "agreement", None) for i in ids]
+    U = [getattr(nodes[i], "stability", None) for i in ids]
+
+    for i in range(N):
+        for j in range(i+1, N):
+            s_embed   = _cos(E[i], E[j])
+            s_metrics = _cos(Mz[i], Mz[j]) if (Mz[i] is not None and Mz[j] is not None) else 0.0
+            s_lex     = _char_shingles_jaccard(T[i], T[j], k=5)
+            s_dom     = _jaccard_list(D[i], D[j])
+            s_ent     = _jaccard_list(G[i], G[j])
+
+            # agreement/stability: use *min* to propagate weakest link
+            s_agree   = min(A[i], A[j]) if (A[i] is not None and A[j] is not None) else 0.0
+            s_stab    = min(U[i], U[j]) if (U[i] is not None and U[j] is not None) else 0.0
+
+            C["embed"][i, j]    = C["embed"][j, i]    = s_embed
+            C["metrics"][i, j]  = C["metrics"][j, i]  = s_metrics
+            C["lexical"][i, j]  = C["lexical"][j, i]  = s_lex
+            C["domains"][i, j]  = C["domains"][j, i]  = s_dom
+            C["entities"][i, j] = C["entities"][j, i] = s_ent
+            C["agreement"][i, j]= C["agreement"][j, i]= s_agree
+            C["stability"][i, j]= C["stability"][j, i]= s_stab
+
+    # blend (pre-normalize rows for stability, then weight)
+    for k in C.keys():
+        C[k] = _norm01_rowwise(C[k])
+
+    S = (
+        w.get("embed",0)*C["embed"] +
+        w.get("metrics",0)*C["metrics"] +
+        w.get("lexical",0)*C["lexical"] +
+        w.get("domains",0)*C["domains"] +
+        w.get("entities",0)*C["entities"] +
+        w.get("agreement",0)*C["agreement"] +
+        w.get("stability",0)*C["stability"]
+    )
+    # re-normalize after blend for robust thresholding
+    S = _norm01_rowwise(S)
+    return S, C
+
+def _temporal_edges(items: List[Dict[str, Any]], nodes: Dict[str, Any], run_id: Optional[str]) -> List[NexusEdge]:
+    edges: List[NexusEdge] = []
+    chats: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for it in items:
+        if it.get("chat_id") and it.get("turn_index") is not None:
+            chats[it["chat_id"]].append(it)
+    for _, arr in chats.items():
+        arr.sort(key=lambda x: x["turn_index"])
+        for a, b in zip(arr, arr[1:]):
+            src = f"vpm://{run_id}/{a['item_id']}" if run_id else f"vpm://{a.get('run_id','')}/{a['item_id']}"
+            dst = f"vpm://{run_id}/{b['item_id']}" if run_id else f"vpm://{b.get('run_id','')}/{b['item_id']}"
+            if src in nodes and dst in nodes:
+                edges.append(NexusEdge(src, dst, "temporal_next", 1.0))
+    return edges
+
+def _mst_edges(ids: List[str], S: np.ndarray) -> List[NexusEdge]:
+    """
+    Minimum Spanning Tree over distance = 1 - S (Prim's algorithm).
+    Guarantees global connectivity across disparate chats.
+    """
+    N = len(ids)
+    if N <= 1: return []
+    dist = 1.0 - S
+    in_tree = np.zeros(N, dtype=bool)
+    in_tree[0] = True
+    best = dist[0].copy()
+    parent = np.full(N, -1, dtype=int)
+    parent[0] = 0
+    edges: List[NexusEdge] = []
+    for _ in range(N-1):
+        j = np.argmin(np.where(in_tree, np.inf, best))
+        if math.isinf(best[j]): break
+        i = parent[j]
+        if i >= 0:
+            w = float(S[i, j])
+            edges.append(NexusEdge(ids[i], ids[j], "backbone_mst", w))
+        in_tree[j] = True
+        for k in range(N):
+            if not in_tree[k] and dist[j, k] < best[k]:
+                best[k] = dist[j, k]
+                parent[k] = j
     return edges
