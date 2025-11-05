@@ -232,7 +232,7 @@ class RiskPredictorService(Service):
                     low = float(rec.get("low_threshold"))
                     high = float(rec.get("high_threshold"))
             except Exception as e:
-                self.logger.warning(f"MemCube calibration fetch failed: {e}")
+                _logger.warning(f"MemCube calibration fetch failed: {e}")
 
         if low is None or high is None:
             low = self.cfg.fallback_low

@@ -63,7 +63,7 @@ class VerifyClaimsKGWorker:
             }
             self.bus.publish(self.RESULT_TOPIC, payload)
         except Exception as e:
-            self.logger.warning(f"VerifyClaimsKGWorker failed: {e}", exc_info=True)
+            _logger.warning(f"VerifyClaimsKGWorker failed: {e}", exc_info=True)
 
     # ---------- verification ----------
 

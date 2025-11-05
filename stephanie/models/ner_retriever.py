@@ -619,7 +619,7 @@ class NERRetrieverEmbedder:
         all_spans = [[(a, b) for a, b, _ in spans] for spans in spans_list]
         batched_vecs = self.embed_entities_for_batch(
             texts, all_spans
-        )  # new batched method
+        )  
 
         for s, spans, vecs in zip(scorables, spans_list, batched_vecs):
             for (start, end, etype), emb in zip(spans, vecs):

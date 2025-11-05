@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import json
 from typing import Any
-from sqlalchemy.types import TypeDecorator, TEXT
+
+from sqlalchemy.types import TEXT, TypeDecorator
+
 
 class JsonSafe(TypeDecorator):
     """Dialect-agnostic JSON storage.

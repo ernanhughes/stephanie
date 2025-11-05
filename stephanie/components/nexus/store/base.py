@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from ..types import NexusNode, NexusEdge, NodeId  # was .types
+
+from ..types import NexusEdge, NexusNode, NodeId  # was .types
+
 
 class GraphStore(ABC):
     @abstractmethod

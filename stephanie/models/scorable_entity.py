@@ -16,11 +16,11 @@ class ScorableEntityORM(Base):
     scorable_id = Column(String, nullable=False, index=True)
     scorable_type = Column(String, nullable=False, index=True)
     entity_text = Column(Text, nullable=False)
-    entity_text_norm = Column(String, nullable=False, index=True)  # NEW
+    entity_text_norm = Column(String, nullable=False, index=True) 
     entity_type = Column(String, nullable=True)
     start = Column(Integer, nullable=True)
     end = Column(Integer, nullable=True)
-    ner_confidence = Column(Float, nullable=True)  # NEW
+    ner_confidence = Column(Float, nullable=True) 
     similarity = Column(Float, nullable=True)
     source_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)

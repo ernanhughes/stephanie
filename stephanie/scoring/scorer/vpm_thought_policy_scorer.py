@@ -1,12 +1,17 @@
 from __future__ import annotations
+
 from typing import Any, Dict, List
+
 import numpy as np
 import torch
-from stephanie.scoring.scorer.base_scorer import BaseScorer
-from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.model.vpm_thought_policy import VPMThoughtPolicy, VPMThoughtModelConfig
+
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.model.vpm_thought_policy import (VPMThoughtModelConfig,
+                                                        VPMThoughtPolicy)
+from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorer.base_scorer import BaseScorer
+
 
 class VPMThoughtPolicyScorer(BaseScorer):
     """

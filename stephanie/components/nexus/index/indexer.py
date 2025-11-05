@@ -1,12 +1,16 @@
 from __future__ import annotations
+
 from typing import Iterable, List, Tuple
+
 import numpy as np
-from ..types import NexusEdge, NexusNode
-from ..store.dict_store import NexusGraphStore
 
 # Your real factory + embeddings
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.tools.hnet_embedder import get_embedding
+
+from ..store.dict_store import NexusGraphStore
+from ..types import NexusEdge, NexusNode
+
 
 class NexusIndexer:
     def __init__(self, store: NexusGraphStore, cfg: dict, memory) -> None:

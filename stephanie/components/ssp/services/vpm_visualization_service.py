@@ -186,7 +186,6 @@ class VPMVisualizationService(Service):
         self._phos_interleave = bool(c.get("phos_interleave", False))
         self._phos_weights = c.get("phos_weights", None)
 
-        # NEW: render modes
         self._raw_render = (c.get("raw_render") or "square").lower()      # "bar" | "square"
         self._progress_render = (c.get("progress_render") or "square").lower()
         self._bar_height = int(c.get("bar_height", 12))
@@ -678,15 +677,15 @@ class VPMVisualizationService(Service):
         return str(out_path)
 
     def generate_filmstrip(self, unit: str, *, rows: int = None, cols: int = None, dpi: int = None) -> str:
-        from PIL import ImageDraw, ImageFont
         import re
+
+        from PIL import ImageDraw, ImageFont
 
         cfg = self.cfg.get("filmstrip", self.cfg.get("vpm_viz", {}).get("filmstrip", {}))
         rows = rows or int(cfg.get("rows", 3))
         cols = cols or int(cfg.get("cols", 10))
         dpi  = dpi  or int(cfg.get("dpi", 500))
 
-        # New styling options (all optional)
         border_px    = int(cfg.get("border_px", 5))          # frame thickness (pixels)
         border_color = int(cfg.get("border_color", 255))     # 0..255 (L-mode), 255 = white
         label_on     = bool(cfg.get("label_on", False))

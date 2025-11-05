@@ -56,11 +56,11 @@ class VPMWorkerInline:
 
     def add_channels(self, run_id: str, channels: Dict[str, np.ndarray], namespace: str = "vpm"):
         if not channels:
-            if self.logger: self.logger.warning(f"[VPMWorkerInline] No channels provided for run {run_id}")
+            _logger.warning(f"[VPMWorkerInline] No channels provided for run {run_id}")
             return
         lengths = [len(arr) for arr in channels.values() if isinstance(arr, np.ndarray)]
         if not lengths:
-            if self.logger: self.logger.warning(f"[VPMWorkerInline] No valid numpy arrays in channels for run {run_id}")
+            _logger.warning(f"[VPMWorkerInline] No valid numpy arrays in channels for run {run_id}")
             return
         n_timesteps = lengths[0]
         if not all(l == n_timesteps for l in lengths):
@@ -122,7 +122,7 @@ class VPMWorkerInline:
         from imageio.v2 import mimsave
         frames = self._frames.get(run_id, [])
         if not frames:
-            if self.logger: self.logger.warning(f"[VPMWorkerInline] No frames to save for run {run_id}")
+            _logger.warning(f"[VPMWorkerInline] No frames to save for run {run_id}")
             return None
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -213,7 +213,7 @@ class VPMWorker:
             run_id = payload.get("run_id")
             node_id = payload.get("node_id")
             if not run_id or not node_id:
-                self.logger.warning(f"[VPMWorker] ⚠️ Missing run_id/node_id in payload: {payload}")
+                _logger.warning(f"[VPMWorker] ⚠️ Missing run_id/node_id in payload: {payload}")
                 return
 
             # 🧩 Gracefully handle incomplete payloads

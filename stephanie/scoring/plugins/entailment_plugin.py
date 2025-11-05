@@ -1,13 +1,15 @@
 # stephanie/scoring/plugins/entailment_plugin.py
 from __future__ import annotations
 
+import logging
 import math
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 
 from .registry import register
 
+_logger = logging.getLogger(__name__)
 
 @register("entailment")
 class EntailmentPlugin:
@@ -132,7 +134,7 @@ class EntailmentPlugin:
 
         except Exception as e:
             if self.logger:
-                self.logger.warning(
+                _logger.warning(
                     "EntailmentPlugin failed; returning neutral score", extra={"error": str(e)}
                 )
             return {"entailment.score01": 0.5, "entailment.risk01": 0.5}

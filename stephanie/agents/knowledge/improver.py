@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import random
 import re
@@ -17,10 +18,12 @@ from stephanie.agents.paper_improver.goals import GoalScorer
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import ScorableType
-from stephanie.services.knowledge_bus import KnowledgeBus
+from stephanie.services.bus.knowledge_bus import KnowledgeBus
 from stephanie.utils.json_sanitize import safe_json
 
 from ..paper_improver.faithfulness import FaithfulnessBot
+
+_logger = logging.getLogger(__name__)
 
 FACTUAL_KWS = (
     "show",
@@ -80,7 +83,6 @@ class Improver:
         self.kb = kb or KnowledgeBus()
         self.casebooks = casebooks or CaseBookStore()
 
-        # NEW: logger + calibration wiring
         self.logger = logger
         self.calibration = calibration or CalibrationManager(
             cfg=self.cfg.get("calibration", {}),  # pass calibration sub-config
@@ -328,7 +330,7 @@ class Improver:
                 entity_type=None,
             )
         except Exception as e:
-            self.logger.warning("CalibrationEventLogFailed", {"error": str(e)})
+            _logger.warning("CalibrationEventLogFailed", {"error": str(e)})
 
 
 

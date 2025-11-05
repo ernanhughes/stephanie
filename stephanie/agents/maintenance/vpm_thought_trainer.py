@@ -1,15 +1,20 @@
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any, Dict
+
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 from omegaconf import DictConfig, OmegaConf
+from torch.utils.data import DataLoader
 
+from scripts.train_vpm_thought_model import (  # reuse your iterable + loop
+    GRPOTrainer, VPMThoughtDataset)
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.model.vpm_thought_policy import VPMThoughtPolicy, VPMThoughtModelConfig
-from scripts.train_vpm_thought_model import VPMThoughtDataset, GRPOTrainer  # reuse your iterable + loop
+from stephanie.scoring.model.vpm_thought_policy import (VPMThoughtModelConfig,
+                                                        VPMThoughtPolicy)
+
 
 class VPMThoughtTrainerAgent(BaseAgent):
     """

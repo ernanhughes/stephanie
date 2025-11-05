@@ -254,7 +254,7 @@ REASONING = {
     "RuleApplicationCount": "🔢🧩",  # Rule applications counted
     "RuleApplicationsScored": "🎯🧩",  # Rule applications scored
     "NoSymbolicAgentRulesApplied": "🚫🧩",  # No rules applied
-    "SymbolicAgentNewKey": "🔑🧠",  # New symbolic key
+    "SymbolicAgentNewKey": "🔑🧠",  # symbolic key
     "SymbolicPipelineSuggestion": "💡🧩",  # Symbolic pipeline suggestion
 }
 

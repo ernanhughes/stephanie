@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -19,6 +20,7 @@ from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.services.service_protocol import Service
 
+log = logging.getLogger(__name__)
 
 def _normalize_text(t: str) -> str:
     # Minimal normalization; extend with NFC, ZWSP stripping as needed
@@ -256,7 +258,7 @@ class KnowledgeGraphService(Service):
                         )  # implement if missing
                         text = getattr(row, "text", None)
             except Exception as e:
-                self.logger.warning(
+                log.warning(
                     f"KG: fetch text by scorable_id failed: {e}"
                 )
 
@@ -264,7 +266,7 @@ class KnowledgeGraphService(Service):
                 text = payload.get("text")
 
             if not text:
-                self.logger.error(
+                log.error(
                     "KG: no text available for scorable_id=%s", scorable_id
                 )
                 await self.publish(
@@ -305,7 +307,7 @@ class KnowledgeGraphService(Service):
                             )
                     else:
                         # If we can’t recover, skip this entity (or you can run a lightweight NER here)
-                        self.logger.warning(
+                        _logger.warning(
                             "KG: skipping entity with invalid offsets and no surface: %s",
                             ent,
                         )

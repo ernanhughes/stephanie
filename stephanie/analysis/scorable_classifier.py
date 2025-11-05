@@ -26,7 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import time  # NEW
+import time
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
@@ -149,7 +149,7 @@ class ScorableClassifier:
                 # For now, we'll just return None to force recomputation
                 return None
         except Exception as e:
-            self.logger.warning(f"Cache lookup failed: {str(e)}")
+            _logger.warning(f"Cache lookup failed: {str(e)}")
             
         return None
 
@@ -163,7 +163,7 @@ class ScorableClassifier:
             await self.idempotency_store.mark(key)
             # In a real implementation, you'd store the results here
         except Exception as e:
-            self.logger.warning(f"Failed to cache results: {str(e)}")
+            _logger.warning(f"Failed to cache results: {str(e)}")
 
 
     def classify(

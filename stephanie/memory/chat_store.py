@@ -639,9 +639,9 @@ class ChatStore(BaseSQLAlchemyStore):
                     "star": int(getattr(t, "star", 0) or 0),
                     "user_text": t.user_message.text if t.user_message else "—",
                     "assistant_text": t.assistant_message.text if t.assistant_message else "—",
-                    "ner": t.ner or [],                 # NEW
-                    "domains": t.domains or [],         # NEW
-                    "ai_knowledge_score": t.ai_knowledge_score,   # NEW
+                    "ner": t.ner or [],               
+                    "domains": t.domains or [],       
+                    "ai_knowledge_score": t.ai_knowledge_score, 
                     "ai_knowledge_score_norm": (
                         None if t.ai_knowledge_score is None
                         else max(0.0, min(1.0, float(t.ai_knowledge_score)/100.0))
@@ -690,7 +690,6 @@ class ChatStore(BaseSQLAlchemyStore):
                 .filter(ChatTurnORM.conversation_id == conv_id)
             )
 
-            # NEW: filter for missing annotations
             if only_missing == "ner":
                 q = q.filter(ChatTurnORM.ner.is_(None))
             elif only_missing == "domains":
@@ -893,12 +892,12 @@ class ChatStore(BaseSQLAlchemyStore):
             # Unsupported filters on this model (log once)
             if goal_id is not None and not warned_missing["goal"]:
                 try:
-                    self.logger and self.logger.warning("list_turns: goal_id filter ignored (not on ChatTurnORM)")
+                    self.logger and _logger.warning("list_turns: goal_id filter ignored (not on ChatTurnORM)")
                 finally:
                     warned_missing["goal"] = True
             if casebook_id is not None and not warned_missing["casebook"]:
                 try:
-                    self.logger and self.logger.warning("list_turns: casebook_id filter ignored (not on ChatTurnORM)")
+                    self.logger and _logger.warning("list_turns: casebook_id filter ignored (not on ChatTurnORM)")
                 finally:
                     warned_missing["casebook"] = True
 

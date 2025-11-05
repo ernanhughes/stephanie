@@ -27,7 +27,8 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable, ScorableType
 # stephanie/agents/chat_analyze_agent.py (inside run loop, after you get user_text/assistant_text)
-from stephanie.utils.prompt_sanitizer import clean_text_for_prompt, is_likely_code_goal
+from stephanie.utils.prompt_sanitizer import (clean_text_for_prompt,
+                                              is_likely_code_goal)
 
 _logger = logging.getLogger(__name__)
 

@@ -25,10 +25,10 @@ External Dependencies
 This module is intentionally dependency-light and pure-Python friendly.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-import math
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 

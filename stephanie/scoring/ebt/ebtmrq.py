@@ -102,7 +102,7 @@ class EnergyTunedMRQ:
             llm_score = llm_scorer.score(context, refined_text if refined else text, dimension)
             final_score = llm_score["score"]
             source = "llm"
-            self.logger.warning("LLMFallbackUsed", {
+            _logger.warning("LLMFallbackUsed", {
                 "dimension": dimension,
                 "refined": refined,
                 "final_energy": energy_trace[-1] if energy_trace else energy

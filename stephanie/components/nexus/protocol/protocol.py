@@ -1,10 +1,10 @@
 # stephanie/components/nexus/protocol/protocol.py
 from __future__ import annotations
 
-from __future__ import annotations
-from typing import Dict, Any
+from typing import Any, Dict
 
 from ..services.graph_layout import NexusService
+
 
 class NexusProtocol:
     def __init__(self, cfg: Dict, memory, bus=None) -> None:

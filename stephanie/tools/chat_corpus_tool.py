@@ -152,7 +152,7 @@ def build_chat_corpus_tool(
         weights: Optional[Dict[str, float]] = None,
         candidate_multiplier: int = 3,
         include_text: bool = True,
-        tags: Optional[List[str]] = None,   # NEW
+        tags: Optional[List[str]] = None,  
     ) -> Dict[str, Any]:
         qt = (query_text or "").strip()
         if not qt:

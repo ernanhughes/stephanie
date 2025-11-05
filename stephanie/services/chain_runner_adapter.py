@@ -1,8 +1,12 @@
 # stephanie/services/chain_runner_adapter.py
 from __future__ import annotations
-from typing import Optional, Callable
+
+from typing import Callable, Optional
+
 from PIL import Image
-from stephanie.services.chain_sampler import ChainResult, ChainStep, default_visual_bootstrap_ops
+
+from stephanie.services.chain_sampler import (ChainResult, ChainStep,
+                                              default_visual_bootstrap_ops)
 from stephanie.utils.visual_thought import VisualThoughtOp
 
 

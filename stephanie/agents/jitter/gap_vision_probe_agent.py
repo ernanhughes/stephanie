@@ -1,11 +1,15 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.services.gap_probe_service import run_default_suite, run_probe, make_sbm, make_ring_of_cliques, make_barbell
-from stephanie.services.gap_probe_service import probe_safe_name
+from stephanie.services.gap_probe_service import (make_barbell,
+                                                  make_ring_of_cliques,
+                                                  make_sbm, probe_safe_name,
+                                                  run_default_suite, run_probe)
 from stephanie.utils.progress_mixin import ProgressMixin
+
 
 class GapVisionProbeAgent(BaseAgent, ProgressMixin):
     """

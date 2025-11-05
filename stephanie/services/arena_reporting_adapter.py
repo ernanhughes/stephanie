@@ -127,7 +127,6 @@ class ArenaReporter:
         if args and isinstance(args[0], dict) and (
             "event" in args[0] or "round" in args[0] or "best_overall" in args[0]
         ):
-            # new style payload
             payload = args[0]
             p = {"run_id": self.run_id, **self.meta, **payload}
             # normalize numerics

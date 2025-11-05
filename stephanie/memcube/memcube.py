@@ -16,7 +16,7 @@ class MemCubeType(Enum):
     THEOREM = "theorem"
     TRIPLE = "triple"
     CARTRIDGE = "cartridge"
-    REFINEMENT = "refinement"  # New for SRFT-style usage
+    REFINEMENT = "refinement"  
 
 
 class MemCube:

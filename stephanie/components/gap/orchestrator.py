@@ -325,7 +325,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
             return st
 
         if StorageService is None:
-            self.logger.warning("No GapStorageService available; run-scoped writes may fail.")
+            _logger.warning("No GapStorageService available; run-scoped writes may fail.")
             return None
 
         st = StorageService()

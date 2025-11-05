@@ -120,7 +120,7 @@ class CircuitBreaker:
                     self.state = CircuitBreakerState.HALF_OPEN
                     self.half_open_successes = 0
                 else:
-                    self.logger.warning(
+                    log.warning(
                         "Circuit breaker is OPEN - skipping call"
                     )
                     return None
@@ -152,7 +152,7 @@ class CircuitBreaker:
 
                 # Transition to OPEN state if threshold reached
                 if self.failures >= self.failure_threshold:
-                    self.logger.warning(
+                    log .warning(
                         "Circuit breaker transitioning to OPEN state"
                     )
                     self.state = CircuitBreakerState.OPEN

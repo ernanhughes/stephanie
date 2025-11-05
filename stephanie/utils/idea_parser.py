@@ -117,7 +117,7 @@ class IdeaParser:
         current = {}
 
         for line in lines:
-            if re.match(r"^\d+\.", line):  # New idea starts
+            if re.match(r"^\d+\.", line):
                 if current:
                     ideas.append(current)
                     current = {}

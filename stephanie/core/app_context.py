@@ -2,16 +2,20 @@
 # FILE: stephanie/app/context.py
 # -------------------------------
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from stephanie.core.manifest import Manifest
+from omegaconf import OmegaConf
+
 from stephanie.core.logging.json_logger import JSONLogger
+from stephanie.core.manifest import Manifest
 from stephanie.memory.memory_tool import MemoryTool
+from stephanie.services.registry_loader import (_finalize_args, _load_object,
+                                                _materialize_callables,
+                                                _resolve_values)
 from stephanie.services.service_container import ServiceContainer
 
-from stephanie.services.registry_loader import _finalize_args, _load_object, _materialize_callables, _resolve_values
-from omegaconf import OmegaConf
 
 @dataclass
 class AppContext:

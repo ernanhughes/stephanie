@@ -1,12 +1,12 @@
 # stephanie/components/nexus/service/nexus_service.py
 from __future__ import annotations
 
-from __future__ import annotations
 from typing import Dict, Iterable, Tuple
 
-from ..store.dict_store import NexusGraphStore
-from ..index.indexer import NexusIndexer
 from ..graph.pathfinder import NexusPathFinder
+from ..index.indexer import NexusIndexer
+from ..store.dict_store import NexusGraphStore
+
 
 class NexusService:
     def __init__(self, cfg: Dict, memory=None) -> None:

@@ -376,7 +376,7 @@ class PhosAgent(BaseAgent):
             elif event == "report":
                 await self.zm.timeline_finalize(run_id)
         except Exception as e:
-            self.logger.warning(
+            _logger.warning(
                 f"[PhosAgent] ZeroModel timeline emit failed: {e}"
             )
 
@@ -401,7 +401,7 @@ class PhosAgent(BaseAgent):
                 try:
                     await self._emit("node", node)
                 except Exception as e:
-                    self.logger.warning(
+                    _logger.warning(
                         f"[PhosAgent] ZeroModel emit failed: {e}"
                     )
 

@@ -36,7 +36,6 @@ prefer = [
 
 logger = logging.getLogger(__name__)
 
-
 class ScoringProcessor(ProgressMixin):
     """Minimal, readable scoring + alignment pipeline with SCM injection."""
 
@@ -851,7 +850,7 @@ class ScoringProcessor(ProgressMixin):
             return st
 
         if StorageService is None:
-            self.logger.warning("No GapStorageService available; run-scoped writes may fail.")
+            logger.warning("No GapStorageService available; run-scoped writes may fail.")
             return None
         
         st = StorageService()

@@ -1,11 +1,12 @@
 # stephanie/components/nexus/cli/commands.py
 from __future__ import annotations
 
-from __future__ import annotations
 import json
+
 import click
 
 from stephanie.components.nexus.protocol.protocol import NexusProtocol
+
 
 @click.group()
 def cli():

@@ -22,7 +22,6 @@ class SymbolicRuleORM(Base):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-    # New design: generalized rules
     target = Column(
         String, nullable=False
     )  # e.g., 'goal', 'agent', 'prompt', 'pipeline', 'hypothesis'

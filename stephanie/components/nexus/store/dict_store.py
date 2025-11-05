@@ -1,9 +1,10 @@
 # stephanie/components/nexus/store/dict_store.py
 from __future__ import annotations
 
-from __future__ import annotations
 from typing import Dict, List
-from ..types import NexusNode, NexusEdge, NodeId
+
+from ..types import NexusEdge, NexusNode, NodeId
+
 
 class NexusGraphStore:
     """In-memory store (swap to SQLAlchemy later)."""

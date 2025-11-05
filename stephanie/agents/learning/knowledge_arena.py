@@ -5,7 +5,6 @@ import asyncio
 import logging
 import math
 import time
-import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from stephanie.utils.emit_utils import prepare_emit
@@ -122,7 +121,7 @@ class KnowledgeArena:
                 s = self.score_candidate(text, section_text)
             return _norm_score(s)
         except Exception as e:
-            self.logger.warning("Arena.score_candidate failed; zeroing score: %s", e)
+            _logger.warning("Arena.score_candidate failed; zeroing score: %s", e)
             return _norm_score(None)
 
     async def _call_improve(self, text: str, improve_ctx: Dict[str, Any]) -> str:
@@ -133,7 +132,7 @@ class KnowledgeArena:
                 out = self.improve(text, improve_ctx)
             return out if isinstance(out, str) and out else text
         except Exception as e:
-            self.logger.warning("Arena.improve failed; keeping original: %s", e)
+            _logger.warning("Arena.improve failed; keeping original: %s", e)
             return text
 
     # ---- emitter that supports fn or events object ----

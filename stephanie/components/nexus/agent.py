@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterable, List, Tuple, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
 import numpy as np
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.chat_analyze import ChatAnalyzeAgent
 from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
-from stephanie.utils.progress_mixin import ProgressMixin
 from stephanie.components.nexus.services.graph_layout import NexusService
+from stephanie.utils.progress_mixin import ProgressMixin
 
 _logger = logging.getLogger(__name__)
 

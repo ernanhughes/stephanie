@@ -66,8 +66,10 @@ import torch
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
-from stephanie.knowledge.casebook_store import CaseBookStore
+from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
+
+_logger = logging.getLogger(__name__)
 
 # Constants from the new analysis
 _MIN_INSIGHT_SCORE = 0.70
@@ -304,7 +306,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             )
             self.logger.info("Entity extraction components initialized")
         except Exception as e:
-            self.logger.warning("EntityExtractionInitFailed", {
+            _logger.warning("EntityExtractionInitFailed", {
                 "error": str(e),
                 "message": "Falling back to heuristic entity extraction"
             })
@@ -417,7 +419,6 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                         except Exception:
                             pass
             else:
-                # new entity
                 eid = ent.get("id") or f"ent_{uuid.uuid4().hex[:8]}"
                 ent["id"] = eid
                 all_entities.append(ent)
@@ -786,7 +787,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                 })
         except Exception as e:
             # fallback: regex heuristic for proper nouns/acronyms
-            self.logger.warning("EntityExtractionFallback", {"error": str(e)})
+            _logger.warning("error: %s", str(e))
             matches = re.findall(r"\b([A-Z][A-Za-z0-9\-]{2,})\b", text)
             for m in set(matches):
                 entities.append({
@@ -901,7 +902,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                     )
                     kv.put(tree_hash, json.dumps(job).encode("utf-8"))
                 except Exception as e:
-                    self.logger.warning("VerificationKVStoreError", {
+                    _logger.warningrificationKVStoreError", {
                         "error": str(e),
                         "job_id": tree_hash
                     })
@@ -921,7 +922,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                 "paper_id": tree["paper_id"]
             })
         except Exception as e:
-            self.logger.warning("TreePublishFailed", {
+            _logger.warning("TreePublishFailed", {
                 "error": str(e),
                 "section": tree.get("section_name")
             })

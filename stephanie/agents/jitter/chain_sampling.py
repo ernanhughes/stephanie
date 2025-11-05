@@ -1,10 +1,14 @@
 # stephanie/agents/chain_sampling_agent.py
 from __future__ import annotations
+
 from typing import Any, Dict, Optional
+
 from PIL import Image
+
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.services.chain_sampler import diversified_samples
 from stephanie.services.chain_runner_adapter import make_run_chain_fn
+from stephanie.services.chain_sampler import diversified_samples
+
 
 class ChainSamplingAgent(BaseAgent):
     """
@@ -26,7 +30,8 @@ class ChainSamplingAgent(BaseAgent):
         selector = self.container.get("chain_selector")  # or import basic selector
         # fallback:
         if selector is None:
-            from stephanie.services.chain_sampler import basic_selector_sicql_hrm_mars
+            from stephanie.services.chain_sampler import \
+                basic_selector_sicql_hrm_mars
             selector = basic_selector_sicql_hrm_mars
 
         winner, cands = diversified_samples(

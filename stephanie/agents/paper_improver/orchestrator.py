@@ -71,7 +71,6 @@ def run_paper_section(
     backend: str = "torch",
     create_pr: bool = False,
     repo_root: str = "../..",
-    # new knobs
     goals_yaml: Optional[str] = None,
     goal_key: Tuple[str, str] = ("text", "academic_summary"),  # (kind, name)
     gate_pr_on_goal: bool = True,

@@ -34,7 +34,6 @@ import plotly.subplots as sp
 from stephanie.services.graph_layout import render_multi_layout_vpm
 from stephanie.services.graph_vision_scorer import VisionScorer
 
-
 # --------------------------- Helpers ---------------------------
 
 def _mean_pairwise(M: np.ndarray) -> float:

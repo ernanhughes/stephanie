@@ -192,8 +192,8 @@ class ExperimentStore(BaseSQLAlchemyStore):
         pipeline_run_id: Optional[str] = None,
         domain: Optional[str] = None,
         meta: Optional[Dict[str, Any]] = None,
-        experiment_group: Optional[str] = None,        # new
-        tags_used: Optional[List[str]] = None,         # new
+        experiment_group: Optional[str] = None,      
+        tags_used: Optional[List[str]] = None,       
     ) -> TrialORM:
         def op(s: Session):
             trial = (

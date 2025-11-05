@@ -11,7 +11,8 @@ _logger = logging.getLogger(__name__)
 # Optional base import (degrade gracefully if not present)
 # -----------------------------------------------------------------------------
 try:
-    from stephanie.services.daimon.epistemic_guard import EpistemicGuard  # your base class
+    from stephanie.services.daimon.epistemic_guard import \
+        EpistemicGuard  # your base class
 except Exception:  # pragma: no cover
     class EpistemicGuard:  # minimal shim
         def __init__(self, config: Dict[str, Any] | None = None):
@@ -24,7 +25,8 @@ except Exception:  # pragma: no cover
 # Risk tier (Enum-like). Keep consistent with rest of Daimon.
 # -----------------------------------------------------------------------------
 try:
-    from stephanie.services.daimon.risk_types import RiskTier  # canonical enum if you have it
+    from stephanie.services.daimon.risk_types import \
+        RiskTier  # canonical enum if you have it
 except Exception:  # pragma: no cover
     class RiskTier:
         LOW, MEDIUM, HIGH, CRITICAL = range(4)

@@ -1,9 +1,13 @@
 from __future__ import annotations
-from typing import Callable, List, Tuple
+
 import math
+from typing import Callable, List, Tuple
+
 import numpy as np
+
 from ..store.dict_store import NexusGraphStore
 from ..types import NexusNode, NexusPath
+
 
 class NexusPathFinder:
     def __init__(self, store: NexusGraphStore, cfg: dict) -> None:

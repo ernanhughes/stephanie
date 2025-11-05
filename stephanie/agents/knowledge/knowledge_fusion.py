@@ -1021,13 +1021,13 @@ class CalibrationTrainer:
 
             # Train with fallback if single class; require balance for full model
             if pos < 1 or neg < 1:
-                self.logger.warning("CalibrationTrainer: one-class data — using fallback",
+                _logger.warning("CalibrationTrainer: one-class data — using fallback",
                                     extra={"domain": domain, "pos": pos, "neg": neg})
                 trained_any |= self.calibration.train_model(domain, allow_fallback=True)
                 continue
 
             if pos < MIN_POS or neg < MIN_NEG:
-                self.logger.warning("CalibrationTrainer: skipping — insufficient class balance",
+                _logger.warning("CalibrationTrainer: skipping — insufficient class balance",
                                     extra={"domain": domain, "pos": pos, "neg": neg,
                                         "need_pos": MIN_POS, "need_neg": MIN_NEG})
                 continue
@@ -1057,6 +1057,6 @@ class CalibrationTrainer:
                 since = datetime.now() - timedelta(hours=hours)
                 return self.memory.calibration_events.get_recent_domains(since=since)
         except Exception as e:
-            self.logger.warning(f"CalibrationTrainer: failed to fetch recent domains: {e}")
+            _logger.warning(f"CalibrationTrainer: failed to fetch recent domains: {e}")
 
         return ["general"]

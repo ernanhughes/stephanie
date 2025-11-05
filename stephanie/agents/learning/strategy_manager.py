@@ -311,8 +311,8 @@ class StrategyManager:
                     pipeline_run_id=(context or {}).get("pipeline_run_id"),
                     domain=self.domain,
                     meta={"section_iters": len(iterations)},
-                    experiment_group=(context or {}).get("experiment_group"),     # NEW
-                    tags_used=(context or {}).get("corpus_tags", []),             # NEW
+                    experiment_group=(context or {}).get("experiment_group"),   
+                    tags_used=(context or {}).get("corpus_tags", []),           
                 )
                 # one trial per case; you can keep or clear the assignment
                 # del self._assignments[case_id]

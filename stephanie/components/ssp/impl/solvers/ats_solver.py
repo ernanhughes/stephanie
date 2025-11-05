@@ -7,6 +7,7 @@ ATSSolver with two modes:
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from stephanie.components.tree.events import TreeEventEmitter
 from stephanie.prompts.prompt_loader import PromptLoader
 from stephanie.utils.progress_mixin import ProgressMixin
 
+log = logging.getLogger(__name__)
 
 # Minimal node record (use your canonical Node if available)
 @dataclass
@@ -553,7 +555,7 @@ class ATSSolver(Solver, ProgressMixin):
         except Exception as e:
             # keep failures non-fatal
             try:
-                self.logger.warning(
+                log.warning(
                     "VPM snapshot failed",
                     extra={"error": str(e), "unit": unit, "tag": tag},
                 )

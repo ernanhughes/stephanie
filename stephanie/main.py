@@ -12,8 +12,8 @@ import hydra
 import yaml
 from omegaconf import DictConfig, OmegaConf
 
-from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.core.logging import JSONLogger
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.supervisor import Supervisor
 from stephanie.utils.file_utils import save_to_timestamped_file

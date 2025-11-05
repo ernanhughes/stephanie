@@ -7,7 +7,6 @@ from typing import Dict, Union
 import numpy as np
 import torch
 
-
 _logger = logging.getLogger(__name__)
 
 class EpistemicMetrics:

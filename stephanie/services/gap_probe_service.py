@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ import numpy as np
 from PIL import Image
 
 from stephanie.services.graph_layout import render_multi_layout_vpm
+
 
 # ---------- Utils ----------
 def _normalize_positions(positions: Dict[str, Tuple[float, float]]) -> Dict[str, Tuple[float, float]]:

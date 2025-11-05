@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Optional
 
 import psycopg2
@@ -74,6 +75,7 @@ from stephanie.models.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
 
+log = logging.getLogger(__name__)
 
 class MemoryTool:
     def __init__(self, cfg: dict, logger: Any):
@@ -228,7 +230,7 @@ class MemoryTool:
                 return
 
         # failed to connect
-        self.logger.warning("KnowledgeBusConnectFailed", {"required": required})
+        log.warning("KnowledgeBusConnectFailed", {"required": required})
         if required:
             raise RuntimeError("Knowledge bus failed to connect")
         # else: continue without a bus (backend = "none")

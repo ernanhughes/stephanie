@@ -378,8 +378,8 @@ class HRMTrainer(BaseTrainer):
             "t_steps": self.t_steps,
             "lr": self.lr,
             "epochs": self.epochs,
-            "apply_sigmoid": self.apply_sigmoid,                 # NEW
-            "target_scale": {                                   # NEW
+            "apply_sigmoid": self.apply_sigmoid,               
+            "target_scale": {                                 
                 "method": "robust_minmax",
                 "p_lo": self.scaler_p_lo,
                 "p_hi": self.scaler_p_hi,

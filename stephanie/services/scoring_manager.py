@@ -7,12 +7,14 @@ from typing import Any, Dict, Optional
 
 import networkx as nx
 
-from stephanie.data.plan_trace import PlanTrace  # adjust import if your path differs
+from stephanie.data.plan_trace import \
+    PlanTrace  # adjust import if your path differs
 from stephanie.services.graph_vision_scorer import VisionScorer
 
 # Daimon (risk) is optional; we degrade gracefully if not wired
 try:
-    from stephanie.services.daimon.guards import StructuralGuard, RiskTier  # your patch earlier
+    from stephanie.services.daimon.guards import (  # your patch earlier
+        RiskTier, StructuralGuard)
 except Exception:  # pragma: no cover
     StructuralGuard = object  # type: ignore
 
@@ -139,13 +141,12 @@ class ScoringManager:
         gnn_sym = float(base_scores.get("gnn_symmetry", 0.5))
 
         # Symmetry blend (70/30 per prior probe validation)
-        #   new gnn_symmetry = 0.7 * old + 0.3 * vision_symmetry
+        #   gnn_symmetry = 0.7 * old + 0.3 * vision_symmetry
         fused["gnn_symmetry"] = (
             self.cfg.base_symmetry_weight * gnn_sym
             + self.cfg.vision_symmetry_blend * v_sym
         )
 
-        # New bottleneck channel
         fused[self.cfg.bridge_channel_key] = float(vision_scores.get("vision_bridge_proxy", 0.0))
 
         # Feed-through spectral gap bucket (integer)
