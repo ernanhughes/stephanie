@@ -1,1 +1,168 @@
-# stephanie/components/nexus/config/vision_scorer.yaml Is that open all Thank you do not turn on the None
+vision_scorer:
+  name: vision_scorer
+  enabled: true
+  save_context: true
+  skip_if_completed: false
+
+  # ------------------------------------------------------------------
+  # 🧠 Model / Backbone
+  # ------------------------------------------------------------------
+  model:
+    backbone: mobilenet_v3_small         # (matches code)
+    pretrained: true
+    freeze_backbone: true
+    head_hidden_dim: 64
+    layouts:                              # multi-layout VPM ensemble
+      - forceatlas2
+      - spectral
+
+  # ------------------------------------------------------------------
+  # 🖼️ Input / Rendering
+  # ------------------------------------------------------------------
+  input:
+    img_size: 256
+    channels:                             # rendered by graph_layout → 3-channel VPM
+      - node_density
+      - edge_density
+      - degree_heatmap
+    normalize_mean: [0.485, 0.456, 0.406] # ImageNet stats
+    normalize_std:  [0.229, 0.224, 0.225]
+
+  # ------------------------------------------------------------------
+  # 🏋️ Training on Synthetic Probes
+  # ------------------------------------------------------------------
+  training:
+    enabled: false                        # flip to true to (re)train
+    probe_types:                          # used by generate_probe()
+      - sbm
+      - ring_of_cliques
+      - barbell
+    n_samples_per_probe: 500
+    batch_size: 32
+    lr: 1e-3
+    epochs: 10
+    device: cpu                           # small; runs on CPU
+    save_path: models/graph_vision_scorer.pt
+    seed: 7
+    # optional: dump per-epoch loss/metrics
+    log_interval: 50
+    out_dir: runs/vision_scorer/train
+
+  # ------------------------------------------------------------------
+  # 🔎 Inference
+  # ------------------------------------------------------------------
+  inference:
+    device: cpu                           # tiny & fast
+    timeout_s: 2.0
+    cache_dir: .vision_scorer_cache
+    model_path: null                      # override to load a trained .pt
+    layouts: ${vision_scorer.model.layouts}
+    img_size: ${vision_scorer.input.img_size}
+
+  # ------------------------------------------------------------------
+  # 🔌 Integration Points
+  # ------------------------------------------------------------------
+  integration:
+    # Use ZeroModel renderer for VPMs when called outside of render_multi_layout_vpm
+    zeromodel:
+      service_name: zeromodel-service-v2
+      pipeline:
+        - { stage: normalize }
+        - { stage: feature_engineering }
+        - { stage: organization, params: { strategy: spatial } }
+    # Nexus/GAP can ask VisionScorer to attach signals to their nodes
+    signals:
+      export:
+        vision_symmetry: true
+        vision_bridge_proxy: true
+        vision_spectral_gap_bucket: true
+      attach_to:
+        - nexus
+        - gap
+        - daimon
+
+  # ------------------------------------------------------------------
+  # 🧪 Probes / Tools (for quick sanity checks)
+  # ------------------------------------------------------------------
+  probes:
+    out_dir: vpm_probes
+    default_layouts: ["forceatlas2", "spectral"]
+    montage_scale: 2
+    save_metrics_json: true
+
+  # ------------------------------------------------------------------
+  # 🛰️ Bus (optional event mode)
+  # ------------------------------------------------------------------
+  bus:
+    enabled: false
+    subjects:
+      request: arena.vision_scorer.request
+      ready:   arena.vision_scorer.ready
+    timeout_s: 4.0
+
+  # ------------------------------------------------------------------
+  # 🧾 Telemetry / Persistence
+  # ------------------------------------------------------------------
+  telemetry:
+    enabled: true
+    persist: true
+    subject_root: vision_scorer
+    sample: 1.0
+    extra:
+      app: stephanie
+      component: vision_scorer
+
+  # ------------------------------------------------------------------
+  # ⚙️ Service Wiring Hints (for container)
+  # ------------------------------------------------------------------
+  service:
+    class_path: stephanie.services.graph_vision_scorer.VisionScorer
+    # kwargs forwarded to VisionScorer(**kwargs)
+    kwargs:
+      config_ref: ${vision_scorer}        # pass this whole node
+
+  # ------------------------------------------------------------------
+  # ✅ Output Schema (what this service returns)
+  # ------------------------------------------------------------------
+  outputs:
+    - name: vision_symmetry
+      type: float
+      range: [0.0, 1.0]
+      description: "Symmetry score inferred from fused multi-layout features."
+    - name: vision_bridge_proxy
+      type: float
+      range: [0.0, 1.0]
+      description: "Proxy for inter-cluster bridge density / bottleneck-ness."
+    - name: vision_spectral_gap_bucket
+      type: int
+      values: [0, 1, 2]
+      description: "Coarse spectral gap bucket (0=low,1=mid,2=high)."
+
+  # ------------------------------------------------------------------
+  # 🧷 Nexus Binding (optional automatic attach)
+  # ------------------------------------------------------------------
+  nexus:
+    autowire: true
+    write_to_node_meta: true
+    write_to_node_vector: true
+    vector_prefix: "vision"
+    weights:
+      use_in_pathfinder: true
+      alpha_text: 0.55
+      beta_goal: 0.20
+      gamma_stability: 0.15
+      zeta_agreement: 0.05
+      delta_domain: 0.03
+      epsilon_entity: 0.02
+
+  # ------------------------------------------------------------------
+  # 🔒 Safety / Timeouts
+  # ------------------------------------------------------------------
+  safety:
+    max_graph_nodes: 20000
+    max_render_ms: 1200
+    fail_open: true                  # if scorer times out, return neutral scores
+    neutral_scores:
+      vision_symmetry: 0.5
+      vision_bridge_proxy: 0.5
+      vision_spectral_gap_bucket: 1

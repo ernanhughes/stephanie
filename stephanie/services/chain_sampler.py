@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image
 
-from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
+from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
 
 __all__ = [
     "ChainStep",

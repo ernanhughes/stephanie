@@ -1,10 +1,15 @@
-import argparse, json
-from pathlib import Path
-import numpy as np, torch, networkx as nx
+# stripts/eval_vpm_thought_model.py
+from __future__ import annotations
+
+import argparse
+import json
+import numpy as np 
+import torch 
+import networkx as nx
 from omegaconf import OmegaConf
 from stephanie.services.graph_layout import render_multi_layout_vpm
 from stephanie.zeromodel.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
-from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
+from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
 from train_vpm_thought_model import VPMThoughtModel, DEFAULT_CONFIG  # reuse defs
 
 def load_model(ckpt_path: str, device: str):

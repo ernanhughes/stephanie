@@ -28,6 +28,8 @@ from stephanie.zeromodel.vpm_phos import robust01
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 
+from PIL import Image
+
 log = logging.getLogger(__name__)
 
 _DEFAULT_PIPELINE = [
@@ -73,6 +75,7 @@ def _rank_intensity(vec: np.ndarray, names: list[str] | None = None):
         labeled = [{"metric": f"metric_{i}", "mean_abs": float(vec[i]), "rank": r+1}
                    for r, i in enumerate(idx)]
     return idx.tolist(), labeled
+
 
 def _column_intensity(M: np.ndarray) -> np.ndarray:
     M = np.asarray(M, dtype=np.float64)
@@ -145,6 +148,9 @@ def _pad_square_top_left(img: np.ndarray, side: int) -> np.ndarray:
     out = np.zeros((side, side), dtype=img.dtype)
     out[:h, :w] = img  # keep TL structure; pad BR
     return out
+
+
+
 
 def _save_field_image(
     mat: np.ndarray,
@@ -546,6 +552,98 @@ class ZeroModelService(Service):
             "summary_path": summary_path,
         }
 
+    def run_scorables_vpm_demo(
+        self,
+        scorables: list,
+        *,
+        run_id: str,
+        out_dir: Optional[str] = None,
+        steps_per_item: int = 3,
+        dims_for_score: list[str] = ("clarity","coherence","complexity","alignment","coverage"),
+    ) -> dict:
+        """
+        For each Scorable:
+        - Scorable → VPM (uint8)
+        - Per-step 'visual thought' (zoom heuristic)
+        - score_vpm_image() each step on gray composite for a compact scalar vector
+        - Append to ZeroModel timeline (columns = dims_for_score)
+        - Emit per-item frames + GIF + metrics.json
+        Returns a manifest with paths.
+        """
+        out_dir = out_dir or self._out_dir
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        item_root = Path(out_dir) / f"nexus_{run_id}"
+        item_root.mkdir(parents=True, exist_ok=True)
+
+        self.timeline_open(run_id, metrics=list(dims_for_score), out_dir=str(item_root))
+
+        manifest = {"run_id": run_id, "items": []}
+
+        for idx, s in enumerate(scorables):
+            item_id = f"{idx:03d}"
+            idir = item_root / item_id
+            idir.mkdir(parents=True, exist_ok=True)
+
+            vpm_u8, meta = self._scorable_to_vpm(s, str(idir))
+            frames = [np.transpose(vpm_u8, (1,2,0))]  # HWC for GIF writer
+            metrics_rows = []
+
+            # step 0 score
+            comp = vpm_u8.mean(axis=0)  # simple composite for score_vpm_image
+            step0 = self.score_vpm_image(comp, dims=list(dims_for_score))
+            self.timeline_append_row(run_id, metrics_columns=list(dims_for_score),
+                                    metrics_values=[step0["scores"][d] for d in dims_for_score])
+            metrics_rows.append({"step": 0, **step0})
+
+            cur = vpm_u8.copy()
+            for step in range(1, steps_per_item + 1):
+                thought = self._next_thought(step, cur)
+                if thought["op"] == "zoom":
+                    cur = self._apply_zoom(cur, thought["center"], thought["scale"])
+                comp = cur.mean(axis=0)
+                sc = self.score_vpm_image(comp, dims=list(dims_for_score))
+                self.timeline_append_row(run_id, metrics_columns=list(dims_for_score),
+                                        metrics_values=[sc["scores"][d] for d in dims_for_score])
+                frames.append(np.transpose(cur, (1,2,0)))
+                metrics_rows.append({"step": step, "thought": thought, **sc})
+
+            # save frames + gif + metrics
+            import imageio.v2 as iio
+            gif_path = idir / "filmstrip.gif"
+            iio.mimsave(gif_path, frames, fps=1, loop=0)
+
+            with open(idir / "metrics.json", "w", encoding="utf-8") as f:
+                f.write(dumps_safe({
+                    "scorable_id": getattr(s, "id", ""),
+                    "target_type": getattr(s, "target_type", "custom"),
+                    "adapter_meta": meta,
+                    "dims": list(dims_for_score),
+                    "rollout": metrics_rows,
+                    "gif": str(gif_path.as_posix()),
+                    "frames": [str((idir / f"frame_{i:02d}.png").as_posix()) for i in range(len(frames))],
+                }, indent=2))
+
+            # also write numbered PNG frames for blog selection
+            for fi, arr in enumerate(frames):
+                Image.fromarray(arr).save(idir / f"frame_{fi:02d}.png")
+
+            manifest["items"].append({
+                "item_id": item_id,
+                "gif": str(gif_path.as_posix()),
+                "metrics_json": str((idir / "metrics.json").as_posix()),
+            })
+
+        # finalize the global timeline to produce your ZeroModel GIF + static summary
+        loop = asyncio.get_event_loop()
+        finalize = loop.run_until_complete(self.timeline_finalize(
+            run_id,
+            out_path=str(item_root),
+            datestamp=True
+        ))
+        manifest["timeline"] = finalize
+        with open(item_root / "manifest.json", "w", encoding="utf-8") as f:
+            f.write(dumps_safe(manifest, indent=2))
+        return manifest
 
     def build_intensity_report(
         self,
@@ -1340,6 +1438,101 @@ class ZeroModelService(Service):
             f.write(dumps_safe(meta, indent=2))
         return meta
 
+
+    def _scorable_to_vpm(self, scorable, out_dir: str, img_size: int = 256) -> tuple[np.ndarray, dict]:
+        """
+        Returns (vpm_uint8 [3,H,W], meta). Tries, in order:
+        - scorable.meta['vpm_path'] (assumed HxW(L/RGB) png → 3ch)
+        - scorable.meta['image_path'] (load L, tile to 3ch)
+        - synthesize Text-VPM from scorable.text (3 channels)
+        """
+        from PIL import Image
+        import numpy as np
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        meta = {"source": getattr(scorable, "target_type", "custom"), "scorable_id": getattr(scorable, "id", "")}
+
+        vpm_path = (getattr(scorable, "meta", {}) or {}).get("vpm_path")
+        if vpm_path:
+            im = Image.open(vpm_path)
+            if im.mode != "L":
+                im = im.convert("L")
+            im = im.resize((img_size, img_size), Image.BILINEAR)
+            g = np.array(im, dtype=np.uint8)
+            return np.stack([g, g, g], axis=0), {**meta, "adapter": "existing_vpm_path"}
+
+        img_path = (getattr(scorable, "meta", {}) or {}).get("image_path")
+        if img_path:
+            im = Image.open(img_path)
+            if im.mode != "L":
+                im = im.convert("L")
+            im = im.resize((img_size, img_size), Image.BILINEAR)
+            g = np.array(im, dtype=np.uint8)
+            return np.stack([g, g, g], axis=0), {**meta, "adapter": "image_to_vpm_gray3"}
+
+        # --- Text → lightweight Text-VPM (density / breaks / emphasis) ---
+        text = getattr(scorable, "text", "") or ""
+        H = W = img_size
+        heat = np.zeros((H, W), dtype=np.float32)
+        brks = np.zeros_like(heat)
+        emph = np.zeros_like(heat)
+
+        gh = gw = 64
+        ch = H // gh
+        cw = W // gw
+        lines = text.splitlines()[:512] or [text[:2048]]
+        for li, line in enumerate(lines[:gh]):
+            y = min(gh - 1, li)
+            dens = min(1.0, len(line) / 200.0)
+            xcells = min(gw, max(1, len(line) // 4))
+            heat[y*ch:(y+1)*ch, :xcells*cw] += dens
+            brks[y*ch:(y+1)*ch, :] += 1.0
+            if line:
+                caps = sum(1 for c in line if c.isupper())
+                punc = sum(1 for c in line if c in "!?;:.")
+                ratio = min(1.0, 0.5*caps/len(line) + 0.5*punc/len(line))
+                emph[y*ch:(y+1)*ch, : int(ratio * W)] += ratio
+
+        def _u8(a):
+            a = a - a.min()
+            m = a.max() or 1.0
+            return (255.0 * (a / m)).astype(np.uint8)
+
+        vpm = np.stack([_u8(heat), _u8(brks), _u8(emph)], axis=0)
+        return vpm, {**meta, "adapter": "text_to_vpm", "text_len": len(text)}
+
+    # --- Visual Thought (demo heuristic) ------------------------------------
+    def _apply_zoom(self, vpm: np.ndarray, center: tuple[int,int], scale: float) -> np.ndarray:
+        """
+        vpm: [C,H,W] uint8; returns same shape uint8 after zoom into (center, scale).
+        """
+        from PIL import Image
+        C, H, W = vpm.shape
+        cx, cy = center
+        cx = int(np.clip(cx, 0, W-1))
+        cy = int(np.clip(cy, 0, H-1))
+
+        box_w = int(max(8, W / max(scale, 1.0)))
+        box_h = int(max(8, H / max(scale, 1.0)))
+        x0 = int(np.clip(cx - box_w//2, 0, W - box_w))
+        y0 = int(np.clip(cy - box_h//2, 0, H - box_h))
+
+        out = np.zeros_like(vpm)
+        for c in range(C):
+            crop = Image.fromarray(vpm[c, y0:y0+box_h, x0:x0+box_w], mode="L")
+            crop = crop.resize((W, H), Image.BILINEAR)
+            out[c] = np.array(crop, dtype=np.uint8)
+        return out
+
+    def _next_thought(self, step: int, vpm_u8: np.ndarray) -> dict:
+        """
+        Returns a simple 'thought' dict: {"op": "zoom", "center": (x,y), "scale": float}
+        Heuristic center = global max over channel 0.
+        """
+        ch0 = vpm_u8[0]
+        y, x = np.unravel_index(int(np.argmax(ch0)), ch0.shape)
+        scale = 2.0 if step == 1 else 1.5
+        return {"op": "zoom", "center": (x, y), "scale": scale}
+
     def render_frontier_map(
         self,
         A, B,
@@ -1811,7 +2004,51 @@ class ZeroModelService(Service):
             "col_intensities": col_int.tolist(),
         }
 
-    # --- inside ZeroModelService -------------------------------------------------
+    def vpm_from_scorable(self, scorable, *, img_size: int = 256) -> tuple[np.ndarray, dict]:
+        """
+        Public, stable wrapper for Scorable -> VPM (uint8[3,H,W]) + adapter meta.
+        Keeps the 'how' inside ZeroModel.
+        """
+        out_dir = self._out_dir
+        vpm_u8, meta = self._scorable_to_vpm(scorable, out_dir=out_dir, img_size=img_size)
+        return vpm_u8, meta
+
+    def vpm_rollout(self,
+        vpm_u8: np.ndarray,
+        *,
+        steps: int = 0,
+        dims: list[str] = ("clarity","coherence","complexity","alignment","coverage"),
+        strategy: str = "none",
+    ) -> tuple[list[np.ndarray], list[dict]]:
+        """
+        Returns (frames_rgb, step_summaries). Intelligence lives here.
+        - frames_rgb: list of HxWx3 uint8 images (for filmstrip)
+        - step_summaries: list of dicts, each has {scores:{dim:float...}, overall:float, meta:{...}}
+        Default strategy='none' → just score the initial VPM composite (fast, deterministic).
+        """
+        frames, summaries = [], []
+        # initial composite & score
+        comp = vpm_u8.mean(axis=0)                   # gray composite
+        s0 = self.score_vpm_image(comp, dims=list(dims))
+        frames.append(np.transpose(vpm_u8, (1,2,0))) # HWC
+        summaries.append({**s0, "step": 0, "thought": {"op": "none"}})
+
+        if steps <= 0 or strategy == "none":
+            return frames, summaries
+
+        # optional: minimal deterministic zoom strategy
+        cur = vpm_u8.copy()
+        for i in range(1, steps + 1):
+            if strategy == "zoom_max":
+                thought = self._next_thought(i, cur)  # uses your existing helper
+                if thought.get("op") == "zoom":
+                    cur = self._apply_zoom(cur, thought["center"], thought["scale"])
+            comp = cur.mean(axis=0)
+            si = self.score_vpm_image(comp, dims=list(dims))
+            frames.append(np.transpose(cur, (1,2,0)))
+            summaries.append({**si, "step": i, "thought": thought if strategy != "none" else {"op":"none"}})
+
+        return frames, summaries
 
     def score_vpm_image(
         self,

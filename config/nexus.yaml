@@ -48,7 +48,7 @@ pipeline:
      - name: chat_analyze
        description: "Analyze chat history for relevant information"
        cls: stephanie.agents.knowledge.chat_analyze.ChatAnalyzeAgent
-       enabled: true
+       enabled: false
 
      - name: universal_scorer
        cls: stephanie.agents.universal_scorer.UniversalScorerAgent
@@ -57,6 +57,6 @@ pipeline:
 
      - name: nexus
        description: "Generate a memory graph"
-       cls: stephanie.components.nexus.agent.NexusAgent
-       enabled: true
+       cls: stephanie.components.nexus.agents.nexus_inline.NexusInlineAgent
+       enabled: false
        iterations: 1

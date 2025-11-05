@@ -7,7 +7,7 @@ from PIL import Image
 
 from stephanie.services.chain_sampler import (ChainResult, ChainStep,
                                               default_visual_bootstrap_ops)
-from stephanie.utils.visual_thought import VisualThoughtOp
+from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp
 
 
 def run_chain_with_visual_injection(

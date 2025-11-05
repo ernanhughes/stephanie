@@ -1,0 +1,188 @@
+vpm_thought:
+  name: vpm_thought
+  enabled: true
+  save_prompt: false
+  save_context: true
+  skip_if_completed: false
+
+  # ------------------------------------------------------------
+  # Sources → what we convert into metric rows (Scorables)
+  # ------------------------------------------------------------
+  sources:
+    # Scorable loader (chat turns, goals, docs, etc.)
+    role_filter: "assistant"         # null for all
+    min_text_len: 80
+    limit: 2000
+    # Optional: restrict to recent
+    recent_days: 90
+    # If provided, only these scorable types are pulled
+    allow_types: ["conversation_turn", "prompt_response", "document_section", "dynamic"]
+
+  # ------------------------------------------------------------
+  # Visual Thought Policy (how we build the timeline)
+  # ------------------------------------------------------------
+  thoughts:
+    # Each "thought" emits one or more metric rows into the timeline.
+    steps:
+      - name: seed_row
+        from: "scorable"             # scorable → metric vector via NexusMetricsWorkerInline
+        use_goal_alignment: true
+        normalize: robust01
+      - name: refine_row
+        from: "aggregate"            # combine prior rows (rolling stats)
+        ops:
+          - mean
+          - zscore
+          - delta_prev
+      - name: vision_probe
+        from: "graph_probe"          # optional: vision scorer for structural graphs
+        enabled: false               # toggle when you feed graphs
+    order:
+      - seed_row
+      - refine_row
+      - vision_probe
+    # Importance order for overall score (used by ZeroModelService._aggregate_dimension_scores)
+    importance_order: ["alignment","clarity","coherence","confidence","coverage","novelty"]
+
+  # ------------------------------------------------------------
+  # Metrics extraction (NexusMetricsWorkerInline)
+  # ------------------------------------------------------------
+  metrics:
+    # Scorers to turn a Scorable → (columns, values)
+    scorers: ["sicql","hrm","tiny"]  # names registered in ScoringService
+    dimensions:
+      - alignment
+      - clarity
+      - relevance
+      - implementability
+      - novelty
+      - reasoning
+      - knowledge
+      - faithfulness
+      - coverage
+    persist: false                    # let GAP persist; here we keep it light
+    # Optional attribute exports (flattened into vector with prefixes)
+    export_attributes: true
+    attr_prefix: "attr"
+
+  # ------------------------------------------------------------
+  # ZeroModel timeline / rendering
+  # ------------------------------------------------------------
+  zeromodel:
+    service_name: "zeromodel-service-v2"
+    output_dir: "runs/vpm_thought"
+    fps: 8
+    max_frames: 1024
+    timeline_scale_mode: "robust01"  # passthrough | clip01 | percent_0_100 | robust01
+    # pipeline used by ZeroModelService.render_timeline_from_matrix
+    pipeline:
+      - { stage: normalize }
+      - { stage: feature_engineering }
+      - { stage: organization, params: { strategy: spatial } }
+
+    filmstrip:
+      enabled: true
+      datestamp: true
+
+    summary_png:
+      enabled: true
+      cmap: "viridis"
+
+    epistemic_field:
+      enabled: true
+      output_dir: "runs/vpm_thought/epistemic_fields"
+      alpha: 0.97
+      Kc: 40
+      Kr: 100
+      cmap: "seismic"
+      # If you stream two models (HRM vs Tiny), first half rows treated as pos
+      split_mode: "halves"           # halves | explicit
+      save_individual: true
+
+  # ------------------------------------------------------------
+  # Worker wiring (inline) — mirrors VPMWorkerInline/metrics_worker style
+  # ------------------------------------------------------------
+  workers:
+    vpm_inline:
+      class_path: stephanie.services.workers.vpm_worker.VPMWorkerInline
+      args:
+        zm_service_ref: ${vpm_thought.zeromodel.service_name}
+    metrics_inline:
+      class_path: stephanie.services.workers.nexus_metrics_worker.NexusMetricsWorkerInline
+      args:
+        scorers: ${vpm_thought.metrics.scorers}
+        dimensions: ${vpm_thought.metrics.dimensions}
+        persist: ${vpm_thought.metrics.persist}
+
+    # Event/bus variants (optional)
+    bus:
+      enabled: false
+      subjects:
+        vpm_request: "arena.vpm.request"
+        vpm_ready:   "arena.vpm.ready"
+        metrics_request: "arena.metrics.request"
+        metrics_ready:   "arena.metrics.ready"
+      timeout_s: 5.0
+
+  # ------------------------------------------------------------
+  # Pathfinding hooks (optional, if you want live Nexus guidance)
+  # ------------------------------------------------------------
+  pathfinder:
+    enabled: true
+    beam_width: 5
+    max_path_len: 20
+    use_goal_vector: true
+    weights:
+      alpha_text: 0.55
+      beta_goal: 0.20
+      gamma_stability: 0.15
+      zeta_agreement: 0.05
+      delta_domain: 0.03
+      epsilon_entity: 0.02
+    penalties:
+      revisit: 0.10
+      long_hop: 0.05
+    stops:
+      max_total_cost: 9999
+      target_hit_threshold: 0.82
+
+  # ------------------------------------------------------------
+  # Telemetry
+  # ------------------------------------------------------------
+  telemetry:
+    enabled: true
+    persist: true
+    sample: 1.0
+    subject_root: vpm_thought
+    extra:
+      app: stephanie
+      component: vpm_thought
+
+  # ------------------------------------------------------------
+  # Safety / Limits
+  # ------------------------------------------------------------
+  safety:
+    max_rows: 2000
+    max_cols: 2048
+    max_secs: 60
+    fail_open: true
+    neutral_row_strategy: "zeros"   # zeros | mean | prev
+
+  # ------------------------------------------------------------
+  # Outputs (artifacts and JSONs produced by a run)
+  # ------------------------------------------------------------
+  outputs:
+    timeline_gif: true
+    summary_png: true
+    field_png: true
+    field_gif: true
+    intensity_json: true
+    meta_json: true
+
+  # ------------------------------------------------------------
+  # Runner defaults
+  # ------------------------------------------------------------
+  run:
+    run_id_prefix: "VPMT"
+    out_dir: ${vpm_thought.zeromodel.output_dir}
+    datestamp: true

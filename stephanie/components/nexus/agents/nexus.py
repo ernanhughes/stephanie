@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import json, time, uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +40,92 @@ class NexusAgent(BaseAgent):
         )
         self.zm: ZeroModelService = self.container.get("zeromodel")
 
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        self.zm.initialize()
+        scorables = context.get("scorables", [])
+        
+        # --- NEW: Initialize the Graph Substrate ---
+        # For simplicity, take the first scorable as the seed.
+        if not scorables:
+            return context
+            
+        seed_scorable = Scorable.from_dict(scorables[0])
+        
+        # 1. Use ZeroModel to create the initial VPM from the scorable
+        initial_vpm, adapter_meta = self.zm.vpm_from_scorable(seed_scorable, img_size=256)
+        
+        # 2. Create the initial state
+        initial_state = VPMState(
+            vpm=initial_vpm,
+            scorable=seed_scorable,
+            history=[],
+            metadata={"adapter": adapter_meta}
+        )
+        
+        # 3. Define a goal (e.g., maximize clarity and coverage)
+        goal = VPMGoal(dimensions=["clarity", "coverage"], target_value=0.9)
+        
+        # 4. Start the thought execution loop
+        final_state = await self._execute_thought_loop(initial_state, goal)
+        
+        # 5. Log the final result
+        context["nexus_final_state"] = final_state
+        return context
+
+    async def _execute_thought_loop(self, state: VPMState, goal: VPMGoal) -> VPMState:
+        max_steps = 10
+        for step in range(max_steps):
+            # Compute progress towards goal (phi)
+            phi = compute_phi(state, goal)
+            
+            # Check if goal is achieved
+            if phi >= 1.0:
+                self.logger.info(f"🎯 Goal achieved in {step} steps.")
+                break
+                
+            # Choose the next thought
+            thought = self.executor.select_thought(state, goal, step)
+            if not thought:
+                self.logger.info("No valid thought selected. Stopping.")
+                break
+                
+            # Apply the thought's operations
+            new_vpm = state.vpm
+            for op in thought.ops:
+                # Delegate the visual operation to ZeroModel
+                new_vpm = self.zm.apply_visual_op(new_vpm, op)
+                
+            # Create a new scorable? Or keep track of the modification?
+            # This depends on whether the op creates new semantic content.
+            new_scorable = self._update_scorable(state.scorable, thought) 
+            
+            # Create the new state
+            new_state = VPMState(
+                vpm=new_vpm,
+                scorable=new_scorable,
+                history=state.history + [thought],
+                metadata={**state.metadata, f"thought_{step}": thought.to_dict()}
+            )
+            
+            # Score the new state's VPM
+            # This could use the VisionScorer via ZeroModel
+            vision_scores = self.zm.score_vpm_image(new_vpm, goal.dimensions)
+            new_state.metadata["vision_scores"] = vision_scores
+            
+            # Update state for next iteration
+            state = new_state
+            
+            # Yield control
+            await asyncio.sleep(0)
+            
+        return state
+        
+    def _update_scorable(self, scorable: Scorable, thought: Thought) -> Scorable:
+        # Placeholder: In reality, a ZOOM op might not change the text,
+        # but a complex operation might generate new content.
+        # For now, return the same scorable.
+        return scorable
+    
     def _greedy_thought(self, state: VPMState, goal: VPMGoal, step: int) -> Thought:
         # For the demo tonight: use a deterministic zoom on densest region
         # (simple heuristic — can swap for self.model if loaded)

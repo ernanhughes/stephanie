@@ -17,7 +17,7 @@ from omegaconf import OmegaConf, DictConfig
 from PIL import Image
 
 from stephanie.services.graph_layout import render_multi_layout_vpm
-from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
+from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
 from stephanie.zeromodel.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
 from scripts.train_vpm_thought_model import VPMThoughtModel, DEFAULT_CONFIG  # Reuse model definition
 

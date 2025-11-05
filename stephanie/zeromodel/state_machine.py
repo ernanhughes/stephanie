@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
+from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
 
 
 # ---------------------------------------------------------------------

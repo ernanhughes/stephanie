@@ -1,0 +1,168 @@
+daimon:
+  name: daimon
+  enabled: true
+  save_prompt: false
+  save_context: true
+  skip_if_completed: false
+
+  # ------------------------------------------------------------------
+  # 🧠 Core Identity
+  # ------------------------------------------------------------------
+  mission: "Monitor reasoning integrity, detect hallucination or OOD risk, and safeguard self-play."
+  mode: "guardian"        # "guardian" | "observer" | "trainer"
+  interval_s: 3.0          # poll rate for internal risk updates
+  persist: true            # write to risk store
+
+  # ------------------------------------------------------------------
+  # ⚙️ Risk Models (ZeroModel / Graph / Gap / HRM)
+  # ------------------------------------------------------------------
+  models:
+    hrm:
+      enabled: true
+      weights:
+        coherence: 0.25
+        consistency: 0.25
+        causality: 0.25
+        novelty: 0.25
+      min_threshold: 0.5
+      decay: 0.98
+    tiny:
+      enabled: true
+      agreement_weight: 0.3
+    zero_model:
+      enabled: true
+      service: zeromodel
+      pipeline:
+        - { stage: "normalize" }
+        - { stage: "feature_engineering" }
+        - { stage: "risk_surface" }
+      epistemic_field:
+        enabled: true
+        alpha: 0.97
+        Kc: 40
+        Kr: 100
+        fps: 8
+        cmap: "seismic"
+
+  # ------------------------------------------------------------------
+  # 🧮 Metrics Inputs (from other agents)
+  # ------------------------------------------------------------------
+  inputs:
+    from_gap: true
+    from_nexus: true
+    from_ssp: true
+    pull_interval_s: 10.0
+    expected_columns:
+      - hrm.alignment.score01
+      - sicql.relevance.score01
+      - mars.uncertainty01
+      - tiny.agreement
+      - vision_symmetry
+      - vision_bridge_proxy
+      - vision_spectral_gap_bucket
+
+  # ------------------------------------------------------------------
+  # ⚖️ Risk Dimensions (monitored per run)
+  # ------------------------------------------------------------------
+  dimensions:
+    - hallucination
+    - uncertainty
+    - ood_risk
+    - ethical_compliance
+    - clarity_drift
+    - stability
+    - novelty
+    - contribution_index
+
+  thresholds:
+    hallucination: 0.35       # lower is better
+    uncertainty: 0.40
+    ood_risk: 0.45
+    ethical_compliance: 0.70  # higher is better
+    stability: 0.50
+    clarity_drift: 0.60
+
+  decay:
+    rate: 0.97                # exponential smoothing factor for temporal stability
+
+  # ------------------------------------------------------------------
+  # 🛡️ Guards & Policies
+  # ------------------------------------------------------------------
+  guards:
+    enabled: true
+    stop_on_risk: true
+    auto_patch_on_violation: true
+    auto_patch_mode: "rewrite"     # "rewrite" | "clarify" | "simplify"
+    ignore_roles:
+      - "system"
+    watch_roles:
+      - "assistant"
+    watch_metrics:
+      - hallucination
+      - uncertainty
+      - ood_risk
+      - ethical_compliance
+
+  # ------------------------------------------------------------------
+  # 📈 Telemetry / Logging
+  # ------------------------------------------------------------------
+  telemetry:
+    enabled: true
+    subject_root: daimon
+    persist: true
+    sample: 1.0
+    extra:
+      app: stephanie
+      component: daimon
+
+  # ------------------------------------------------------------------
+  # 🧩 Worker Integration (inline or event)
+  # ------------------------------------------------------------------
+  workers:
+    metrics_inline:
+      scorers: ["hrm", "sicql", "mars"]
+      dimensions:
+        - reasoning
+        - knowledge
+        - clarity
+        - faithfulness
+        - coverage
+      persist: false
+    vpm_inline:
+      fps: 8
+      save_channels: false
+      timeline_scale_mode: "robust01"
+      output_dir: "./runs/vpm/daimon"
+
+  # ------------------------------------------------------------------
+  # 🚦 Event Bus Integration
+  # ------------------------------------------------------------------
+  bus:
+    risk:
+      request: "arena.daimon.risk.request"
+      ready:   "arena.daimon.risk.ready"
+    metrics:
+      request: "arena.daimon.metrics.request"
+      ready:   "arena.daimon.metrics.ready"
+    vpm:
+      request: "arena.daimon.vpm.request"
+      ready:   "arena.daimon.vpm.ready"
+
+  # ------------------------------------------------------------------
+  # 🔍 Reporting / Dashboard Hooks
+  # ------------------------------------------------------------------
+  reporting:
+    output_dir: "./runs/daimon/reports"
+    auto_generate_html: true
+    include_timelines: true
+    include_heatmaps: true
+    color_scheme: "riskmap"
+
+  # ------------------------------------------------------------------
+  # 🧰 Developer Tools
+  # ------------------------------------------------------------------
+  dev:
+    dry_run: false
+    save_debug_json: true
+    log_level: INFO
+    validate_thresholds: true
