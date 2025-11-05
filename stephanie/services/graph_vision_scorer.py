@@ -13,7 +13,7 @@ import numpy as np
 
 from .graph_layout import render_multi_layout_vpm
 
-try:
+Oh try:
     import torch  # optional; used only if a jit model is supplied
     TORCH_AVAILABLE = True
 except Exception:

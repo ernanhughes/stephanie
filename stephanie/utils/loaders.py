@@ -5,8 +5,8 @@ import os
 
 from omegaconf import OmegaConf
 
-from stephanie.logging import JSONLogger
-from stephanie.memory import MemoryTool
+from stephanie.core.logging import JSONLogger
+from stephanie.memory.memory_tool import MemoryTool
 
 
 def get_memory(config_name: str = "db/postgres") -> MemoryTool:

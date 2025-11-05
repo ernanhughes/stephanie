@@ -8,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List
 
-from stephanie.logging.icons import get_event_icon
+from stephanie.core.logging.icons import get_event_icon
 
 
 class JSONLineFormatter(logging.Formatter):

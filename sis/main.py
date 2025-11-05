@@ -6,20 +6,17 @@ from venv import logger
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from stephanie.logging.json_logger import JSONLogger
+from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from sis.routes import arena, db, pipelines, models, logs, plan_traces, documents, mars, learning
 from sis.routes import casebooks as casebooks_routes
 from sis.routes import chats, cards
-from stephanie.components.gap.risk.api import create_router as create_gap_risk_router
-from sis.routes import risk_ui # (new router below)
 from sis.routes import explore_ui  # add with other route imports
 from sis.routes import overnight_ui
 from sis.routes import ssp
 from sis.utils.date_utls import short_dt, datetimeformat
 from stephanie.services.service_container import ServiceContainer
 from stephanie.services.registry_loader import load_services_profile
-from omegaconf import OmegaConf
 # sis/main.py (or wherever you load the cfg)
 from hydra import initialize, compose
 
@@ -27,9 +24,6 @@ def load_sis_cfg(overrides: list[str] | None = None):
     with initialize(version_base=None, config_path="../config"):  # path containing sis.yaml
         cfg = compose(config_name="sis", overrides=overrides or [])
     return cfg
-
-
-
 
 app = FastAPI(title="Stephanie Insight System (SIS)")
 

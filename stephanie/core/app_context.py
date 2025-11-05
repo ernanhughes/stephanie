@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from stephanie.core.manifest import Manifest
-from stephanie.logging.json_logger import JSONLogger
+from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_container import ServiceContainer
 

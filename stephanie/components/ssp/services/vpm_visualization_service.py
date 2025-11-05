@@ -38,7 +38,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from stephanie.components.ssp.utils.trace import EpisodeTrace
-from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_protocol import Service
 from stephanie.zeromodel.vpm_controller import VPMRow
@@ -89,7 +88,7 @@ class VPMVisualizationService(Service):
         self,
         cfg: Dict[str, Any],
         memory: MemoryTool,
-        logger: JSONLogger,
+        logger,
         container: Optional[Any],
         run_id: Optional[str],
     ):

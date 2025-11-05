@@ -8,7 +8,6 @@ import psycopg2
 from pgvector.psycopg2 import register_vector
 from sqlalchemy.orm import sessionmaker
 
-from stephanie.logging import JSONLogger
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
 from stephanie.memory.bus_event_store import BusEventStore
 from stephanie.memory.calibration_event_store import CalibrationEventStore
@@ -77,7 +76,7 @@ from stephanie.services.bus.knowledge_bus import KnowledgeBus
 
 
 class MemoryTool:
-    def __init__(self, cfg: dict, logger: Optional[JSONLogger] = None):
+    def __init__(self, cfg: dict, logger: Any):
         self.cfg = cfg
         self.logger = logger
         self._stores = {}
