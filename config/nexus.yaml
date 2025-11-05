@@ -58,5 +58,5 @@ pipeline:
      - name: nexus
        description: "Generate a memory graph"
        cls: stephanie.components.nexus.agents.nexus_inline.NexusInlineAgent
-       enabled: false
+       enabled: true
        iterations: 1

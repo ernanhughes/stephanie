@@ -227,3 +227,13 @@ nexus:
     dry_run: false
     log_level: INFO
     save_step_json: true
+
+  vpm_out: "./runs/nexus_vpm"
+  rollout_steps: 0
+  rollout_strategy: "none"
+  target_type: "conversation_turn"
+
+  graph_build:
+    embed_key: "global"
+    knn_k: 12
+    sim_threshold: 0.35
