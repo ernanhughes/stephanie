@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-from sis.routes import arena, db, pipelines, models, logs, plan_traces, documents, mars, learning
+from sis.routes import arena, db, nexus, pipelines, models, logs, plan_traces, documents, mars, learning
 from sis.routes import casebooks as casebooks_routes
 from sis.routes import chats, cards
 from sis.routes import explore_ui  # add with other route imports
@@ -76,6 +76,7 @@ app.include_router(cards.router)
 app.include_router(learning.router)
 app.include_router(explore_ui.router)
 app.include_router(overnight_ui.router)
+app.include_router(nexus.router)
 
 # # After app = FastAPI(...)
 # class SISContainer:
@@ -104,13 +105,13 @@ app.include_router(overnight_ui.router)
 # Mount SIS UI for risk
 # Yeah app.include_router(risk_ui.router)
 
-try:
-    from stephanie.components.ssp2.component import SSPComponent
-    from stephanie.utils.trace_logger import attach_to_app
-    app.state.ssp = SSPComponent(app.state.cfg.components.ssp, app.state.memory, app.state.container, app.state.logger)
-    attach_to_app(app, jsonl_path="logs/plan_traces.jsonl", enable_stdout=False)
-except Exception as e:
-    # Don't crash SIS if SSP isn't ready; you can still turn it on later
-    app.state.ssp = None
-    logger.info({"msg": "SSP not initialized at boot", "error": str(e)})
+# try:
+#     from stephanie.components.ssp.component import SSPComponent
+#     from stephanie.utils.trace_logger import attach_to_app
+#     app.state.ssp = SSPComponent(app.state.cfg.components.ssp, app.state.memory, app.state.container, app.state.logger)
+#     attach_to_app(app, jsonl_path="logs/plan_traces.jsonl", enable_stdout=False)
+# except Exception as e:
+#     # Don't crash SIS if SSP isn't ready; you can still turn it on later
+#     app.state.ssp = None
+#     logger.info({"msg": "SSP not initialized at boot", "error": str(e)})
 app.include_router(ssp.router, prefix="/ssp")   # ← add prefix

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -11,7 +10,7 @@ import numpy as np
 
 from stephanie.components.gap.models import GapConfig
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class CalibrationProcessor:

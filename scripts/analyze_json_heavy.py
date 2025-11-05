@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-# analyze_json_heavy.py
+# scripts/analyze_json_heavy.py
 """
 Stream-inspect a huge JSON file and report what's taking up space.
 

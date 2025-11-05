@@ -1,7 +1,172 @@
 from __future__ import annotations
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set, Dict, Any, Iterable, Optional, Union
 import numpy as np
 from stephanie.components.nexus.types import NexusEdge, NexusNode
+
+
+def _as_manifest_dict(m: Any) -> Dict[str, Any]:
+    """
+    Accepts NexusRunManifest or dict and returns a plain dict:
+      { "run_id": str, "items": [ { ...item fields... } ], "extras": {...} }
+    """
+    if isinstance(m, dict):
+        return m
+
+    # Likely NexusRunManifest
+    out = {
+        "run_id": getattr(m, "run_id", None),
+        "items": [],
+        "extras": getattr(m, "extras", {}) or {},
+    }
+    items: Iterable[Any] = getattr(m, "items", []) or []
+    for it in items:
+        if hasattr(it, "to_dict"):
+            out["items"].append(it.to_dict())
+        else:
+            # Try dataclass-like attributes
+            out["items"].append({
+                "item_id": getattr(it, "item_id", None),
+                "scorable_id": getattr(it, "scorable_id", None),
+                "scorable_type": getattr(it, "scorable_type", None),
+                "turn_index": getattr(it, "turn_index", None),
+                "chat_id": getattr(it, "chat_id", None),
+                "domains": getattr(it, "domains", None),
+                "entities": getattr(it, "entities", None),
+                "near_identity": getattr(it, "near_identity", None),
+                "metrics_columns": getattr(it, "metrics_columns", None),
+                "metrics_values": getattr(it, "metrics_values", None),
+                "metrics_vector": getattr(it, "metrics_vector", None),
+                "embeddings": getattr(it, "embeddings", None),
+                "vpm_png": getattr(it, "vpm_png", None),
+                "rollout": getattr(it, "rollout", None),
+            })
+    return out
+
+
+def _make_node(node_id: str, scorable_id: str, scorable_type: str) -> NexusNode:
+    """
+    Construct a NexusNode regardless of the constructor signature.
+    Prefers NexusNode(id=...), falls back to NexusNode(node_id).
+    """
+    return NexusNode(node_id=node_id, scorable_id=scorable_id, scorable_type=scorable_type)  # type: ignore
+
+
+def _pick_title_text(item: Dict[str, Any]) -> tuple[str, str]:
+    """
+    Choose a human label and a longer text for the node from near_identity /
+    scorable hints. Falls back to item_id.
+    """
+    near = item.get("near_identity") or {}
+    title = (near.get("title") or near.get("summary") or item.get("scorable_id")
+             or item.get("item_id") or "item")
+    text = (near.get("text") or near.get("body") or near.get("snippet")
+            or title)
+    return str(title), str(text)
+
+
+def _pick_embed_global(emb: Optional[Dict[str, Any]]) -> Optional[np.ndarray]:
+    """
+    Return a float32 numpy vector if available. Prefers 'global', otherwise the
+    first numeric vector found.
+    """
+    if not emb:
+        return None
+    if "global" in emb and isinstance(emb["global"], (list, tuple)):
+        try:
+            v = np.asarray(emb["global"], dtype=np.float32)
+            return v if v.size else None
+        except Exception:
+            pass
+    # fallback: first numeric
+    for k, v in emb.items():
+        if isinstance(v, (list, tuple)):
+            try:
+                vec = np.asarray(v, dtype=np.float32)
+                if vec.size:
+                    return vec
+            except Exception:
+                continue
+    return None
+
+
+def build_nodes_from_manifest(
+    manifest: Union[Dict[str, Any], Any],
+    *,
+    namespace: str = "vpm",
+) -> Dict[str, NexusNode]:
+    """
+    Build {node_id -> NexusNode} from a Nexus manifest.
+
+    Node id scheme:  f"{namespace}://{run_id}/{item_id}"
+      - Ensures uniqueness across runs
+      - Matches what your edge builder expects
+
+    Populated attributes (if NexusNode supports dynamic attrs):
+      - id, run_id, item_id, scorable_id, target_type
+      - chat_id, turn_index
+      - domains, entities, near_identity
+      - metrics_columns, metrics_values, metrics_vector
+      - embeddings, embed_global (np.ndarray or None)
+      - title, text, degree (init 0)
+      - vpm_png, rollout
+    """
+    m = _as_manifest_dict(manifest)
+    run_id = str(m.get("run_id") or "")
+    items = list(m.get("items") or [])
+    nodes: Dict[str, NexusNode] = {}
+
+    for it in items:
+        item_id = it.get("item_id") or it.get("scorable_id") or ""
+        node_id = f"{namespace}://{run_id}/{item_id}"
+        scorable_type = it.get("scorable_type") or "unknown"
+        scorable_id = it.get("scorable_id") or item_id
+        node = _make_node(node_id, scorable_id=scorable_id, scorable_type=scorable_type)
+
+        # Core ids
+        setattr(node, "id", node_id)
+        setattr(node, "run_id", run_id)
+        setattr(node, "item_id", item_id)
+        setattr(node, "scorable_id", it.get("scorable_id"))
+
+        # Label + body text
+        title, text = _pick_title_text(it)
+        setattr(node, "title", title)
+        setattr(node, "text", text)
+
+        # Type / indices
+        setattr(node, "target_type", it.get("scorable_type") or "unknown")
+        setattr(node, "chat_id", it.get("chat_id"))
+        setattr(node, "turn_index", it.get("turn_index"))
+
+        # Semantic/contextual tags
+        setattr(node, "domains", it.get("domains") or [])
+        # entities can be list or dict keys
+        ents = it.get("entities")
+        if isinstance(ents, dict):
+            ents = list(ents.keys())
+        setattr(node, "entities", ents or [])
+        setattr(node, "near_identity", it.get("near_identity") or {})
+
+        # Metrics
+        setattr(node, "metrics_columns", it.get("metrics_columns") or [])
+        setattr(node, "metrics_values", it.get("metrics_values") or [])
+        setattr(node, "metrics_vector", it.get("metrics_vector") or {})
+
+        # Embeddings
+        embs = it.get("embeddings") or {}
+        setattr(node, "embeddings", embs)
+        setattr(node, "embed_global", _pick_embed_global(embs))
+
+        # VPM / rollout artifacts
+        setattr(node, "vpm_png", it.get("vpm_png"))
+        setattr(node, "rollout", it.get("rollout") or {})
+
+        # Degree starts at 0; router JS recomputes from edges
+        setattr(node, "degree", 0)
+
+        nodes[node_id] = node
+
+    return nodes
 
 def build_edges(
     nodes: Dict[str, NexusNode],

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">🧭 Nexus Runs Index</h2>
+    <small class="text-muted">{{ base_dir }}</small>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Run</th>
+            <th>Modified</th>
+            <th class="text-end">Nodes</th>
+            <th class="text-end">Edges</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in runs %}
+          <tr>
+            <td><code>{{ r.id }}</code></td>
+            <td>{{ r.mtime }}</td>
+            <td class="text-end">{{ r.manifest.counts.nodes if r.manifest and r.manifest.counts else "—" }}</td>
+            <td class="text-end">{{ r.manifest.counts.edges if r.manifest and r.manifest.counts else "—" }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-primary" href="/nexus/run/{{ r.id }}">Open</a>
+              <a class="btn btn-sm btn-outline-secondary" href="/nexus/run/{{ r.id }}/manifest" target="_blank">Manifest</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-4">No runs found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

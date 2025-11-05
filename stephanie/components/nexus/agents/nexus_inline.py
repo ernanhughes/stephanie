@@ -11,6 +11,11 @@ from stephanie.components.nexus.manifest import NexusRunManifest, ManifestItem
 from pathlib import Path
 import json
 import time
+from stephanie.components.nexus.viewer.exporters import export_pyvis_html
+# add to imports at the top
+from stephanie.components.nexus.graph.builder import build_nodes_from_manifest, build_edges
+from stephanie.components.nexus.viewer.cytoscape import to_cytoscape_elements  # small helper; see below
+
 
 class NexusInlineAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
@@ -24,7 +29,7 @@ class NexusInlineAgent(BaseAgent):
         self.vpmw = NexusVPMWorkerInline(self.zm, logger=logger)
         self.mxw  = NexusMetricsWorkerInline(
             scoring=self.scoring,
-            scorers=["sicql","hrm", "tiny"],
+            scorers=["sicql", "hrm", "tiny"],
             dimensions=["alignment","clarity","relevance","coverage","faithfulness"],
             persist=False
         )
@@ -119,6 +124,42 @@ class NexusInlineAgent(BaseAgent):
 
         # write manifest.json
         manifest.save(out_dir)
+
+                # -----------------------------
+        # Build & persist the graph
+        # -----------------------------
+        # 1) Build nodes from the manifest
+        nodes = build_nodes_from_manifest(manifest)  # {id -> NexusNode}
+
+        # 2) Build edges (KNN + temporal) from items (pass the raw list/dicts)
+        items_list = [mi.to_dict() for mi in manifest.items]   # or manifest.as_dict()["items"]
+        edges = build_edges(
+            nodes=nodes,
+            items=items_list,
+            knn_k=int(self.cfg.get("indexer", {}).get("knn", {}).get("k", 12)),
+            add_temporal=bool(self.cfg.get("pathfinder", {}).get("backtrack", True)),  # or True if you always want temporal
+            sim_threshold=float(self.cfg.get("indexer", {}).get("knn", {}).get("edge_threshold", 0.35)),
+        )
+
+        # 3) Save graph.json for the Cytoscape UI
+        cy_graph = to_cytoscape_elements(nodes, edges)
+        (out_dir / "graph.json").write_text(json.dumps(cy_graph, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # 4) Optional: quick PyVis HTML (nice for ad-hoc viewing)
+        try:
+            export_pyvis_html(
+                output_path=(out_dir / "graph.html").as_posix(),
+                nodes=nodes,
+                edges=edges,
+                title=f"Nexus Graph — {run_id}"
+            )
+        except Exception as e:
+            self.logger.warning("PyVis export failed: %s", e)
+
+        # 5) Hand paths to the router / pipeline
+        context["nexus_graph_json"] = (out_dir / "graph.json").as_posix()
+        context["nexus_graph_html"] = (out_dir / "graph.html").as_posix()
+
 
         # echo paths for the pipeline
         context["nexus_manifest_path"] = str((out_dir / "manifest.json").as_posix())

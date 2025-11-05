@@ -78,7 +78,12 @@ nexus:
   # Used by NexusMetricsWorkerInline
   # ------------------------------------------------------------------
   scoring:
-    scorers: ["sicql", "hrm"]         # extend with "mars", "ebt", etc.
+    scorers: 
+      - sicql
+      - hrm
+      - tiny
+      - ebt
+      - knowledge
     dimensions:
       - alignment
       - clarity
@@ -86,6 +91,7 @@ nexus:
       - coverage
       - faithfulness
       - novelty
+      - implementability
     persist: false
 
   # ------------------------------------------------------------------

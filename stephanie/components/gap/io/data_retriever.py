@@ -1,3 +1,4 @@
+# stephanie/components/gap/io/data_retriever.py
 from __future__ import annotations
 
 import logging
@@ -38,7 +39,7 @@ class DataRetriever:
 
     def __init__(self, container, logger, retriever_cfg: RetrieverConfig | None = None):
         self.container = container
-        self.logger = logger or _logger
+        self.logger = logger
         self.cfg = retriever_cfg or RetrieverConfig()
 
     async def get_triples_by_dimension(

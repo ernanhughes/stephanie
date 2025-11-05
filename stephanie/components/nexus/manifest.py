@@ -31,6 +31,10 @@ class ManifestItem:
     vpm_channels: List[str] = field(default_factory=list)
     rollout: Dict[str, Any] = field(default_factory=dict)  # steps, delta, gif, frames
 
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)  
+
 @dataclass
 class NexusRunManifest:
     run_id: str
