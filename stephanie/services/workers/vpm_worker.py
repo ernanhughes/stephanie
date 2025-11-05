@@ -16,7 +16,7 @@ from PIL import Image
 
 from stephanie.services.zeromodel_service import ZeroModelService
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 
@@ -37,7 +37,7 @@ class VPMWorkerInline:
     logger: Any = None
 
     def __post_init__(self):
-        self.logger = self.logger or _logger
+        self.logger = self.logger or log
         self._frames: Dict[str, List[np.ndarray]] = {}  # run_id -> frames (H,W,3 uint8)
 
     # -------- timeline rows (numbers) --------
@@ -56,11 +56,11 @@ class VPMWorkerInline:
 
     def add_channels(self, run_id: str, channels: Dict[str, np.ndarray], namespace: str = "vpm"):
         if not channels:
-            _logger.warning(f"[VPMWorkerInline] No channels provided for run {run_id}")
+            log.warning(f"[VPMWorkerInline] No channels provided for run {run_id}")
             return
         lengths = [len(arr) for arr in channels.values() if isinstance(arr, np.ndarray)]
         if not lengths:
-            _logger.warning(f"[VPMWorkerInline] No valid numpy arrays in channels for run {run_id}")
+            log.warning(f"[VPMWorkerInline] No valid numpy arrays in channels for run {run_id}")
             return
         n_timesteps = lengths[0]
         if not all(l == n_timesteps for l in lengths):
@@ -122,7 +122,7 @@ class VPMWorkerInline:
         from imageio.v2 import mimsave
         frames = self._frames.get(run_id, [])
         if not frames:
-            _logger.warning(f"[VPMWorkerInline] No frames to save for run {run_id}")
+            log.warning(f"[VPMWorkerInline] No frames to save for run {run_id}")
             return None
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -195,13 +195,13 @@ class VPMWorker:
             self._subscription_retry_count += 1
             if self._subscription_retry_count <= self._max_retries:
                 delay = self._retry_delay * (2 ** (self._subscription_retry_count - 1))
-                _logger.warning(
+                log.warning(
                     "Subscription failed for %s (retry %d/%d): %r", subject, self._subscription_retry_count, self._max_retries, e
                 )
                 await asyncio.sleep(delay)
                 await self._subscribe_with_retry(subject, handler)
             else:
-                _logger.error(
+                log.error(
                     f"Failed to subscribe to {subject} after {self._max_retries} retries"
                 )
 
@@ -213,7 +213,7 @@ class VPMWorker:
             run_id = payload.get("run_id")
             node_id = payload.get("node_id")
             if not run_id or not node_id:
-                _logger.warning(f"[VPMWorker] ⚠️ Missing run_id/node_id in payload: {payload}")
+                log.warning(f"[VPMWorker] ⚠️ Missing run_id/node_id in payload: {payload}")
                 return
 
             # 🧩 Gracefully handle incomplete payloads
@@ -230,11 +230,11 @@ class VPMWorker:
                         if "aggregate" in result:
                             names.append(f"{scorer}.aggregate")
                             values.append(result["aggregate"])
-                    _logger.info(
+                    log.info(
                         f"[VPMWorker] 🧩 Fallback metrics built for node {node_id} ({len(names)} metrics)"
                     )
                 else:
-                    _logger.warning(
+                    log.warning(
                         f"[VPMWorker] ⚠️ No metrics found for node {node_id}, skipping."
                     )
                     return  # nothing to append
@@ -245,10 +245,10 @@ class VPMWorker:
                 metrics_columns=names,
                 metrics_values=values,
             )
-            _logger.info(f"[VPMWorker] ✅ Row appended for node {node_id}")
+            log.info(f"[VPMWorker] ✅ Row appended for node {node_id}")
 
         except Exception as e:
-            _logger.error(
+            log.error(
                 f"[VPMWorker] ❌ handle_metrics_ready failed: {e} | payload={payload}"
             )
 
@@ -260,11 +260,11 @@ class VPMWorker:
             try:
                 payload = json.loads(payload)
             except json.JSONDecodeError:
-                _logger.error("Invalid JSON payload")
+                log.error("Invalid JSON payload")
                 return
 
         if not isinstance(payload, dict):
-            _logger.error("Payload must be dict or JSON string")
+            log.error("Payload must be dict or JSON string")
             return
 
         run_id = str(payload.get("run_id") or "")
@@ -277,11 +277,11 @@ class VPMWorker:
                 await self.zm.initialize()
 
             res = await self.zm.timeline_finalize(run_id, out_path=payload.get("out_path"))
-            _logger.info("VPMFinalized run_id %s %s", run_id, str(res))
+            log.info("VPMFinalized run_id %s %s", run_id, str(res))
             self._open_runs.discard(run_id)
 
         except Exception as e:
-            _logger.error(
+            log.error(
                 "VPMFinalizeError error %s | trace:%s | run_id: %s", str(e),  traceback.format_exc(), run_id
             )
 
@@ -312,10 +312,10 @@ class VPMWorker:
                 
                 # Log with color-coded status
                 if status :
-                    _logger.debug("BUS HEALTH: 🟢 %s - %s | %s", bus_type, status, details_str)
+                    log.debug("BUS HEALTH: 🟢 %s - %s | %s", bus_type, status, details_str)
                 elif status == "disconnected":
-                    _logger.warning("BUS HEALTH: 🔴 %s - %s | %s", bus_type, status, details_str)
+                    log.warning("BUS HEALTH: 🔴 %s - %s | %s", bus_type, status, details_str)
                 await asyncio.sleep(30)
             except Exception as e:
-                _logger.error("BUS HEALTH CHECK FAILED: %s", str(e))
+                log.error("BUS HEALTH CHECK FAILED: %s", str(e))
                 await asyncio.sleep(10)

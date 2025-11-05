@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class Domain2VecNERIntegrator:
     """
@@ -101,7 +101,7 @@ class Domain2VecNERIntegrator:
         """
         # Find relevant domains
         relevant_domains = self.find_relevant_domains(query)
-        _logger.debug("DomainEntitiesRetrieval"
+        log.debug("DomainEntitiesRetrieval"
             f"query: {query}"
             f"relevant_domains: {[d[0] for d in relevant_domains]}"
         )

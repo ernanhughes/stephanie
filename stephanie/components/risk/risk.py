@@ -7,7 +7,7 @@ from typing import Any, Dict
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.risk.orchestrator import RiskOrchestrator
 
-_logger = logging.getLogger(__file__)
+log = logging.getLogger(__file__)
 
 
 class RiskAgent(BaseAgent):

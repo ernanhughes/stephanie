@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple
 
 from .risk_types import RiskAssessment, RiskTier
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 # ------------------------------- Integration APIs -------------------------------
@@ -94,7 +94,7 @@ class EpistemicGuard(abc.ABC):
                     meta={"reasons": reasons} if reasons else None,
                 )
         except Exception as e:  # pragma: no cover
-            _logger.debug("MemCube flag log failed: %s", e)
+            log.debug("MemCube flag log failed: %s", e)
 
     # ----------------------------- Orchestration helpers -----------------------------
 
@@ -120,7 +120,7 @@ class EpistemicGuard(abc.ABC):
             try:
                 self.escalate(trace_id, assessment.tier, list(assessment.reasons))
             except Exception as e:  # pragma: no cover
-                _logger.warning("Guard escalation failed: %s", e)
+                log.warning("Guard escalation failed: %s", e)
 
         return assessment
 
@@ -134,7 +134,7 @@ class EpistemicGuard(abc.ABC):
                     self.memcube.log_flag(trace_id=trace_id, flag="RISK_REASONS",
                                           meta={"reasons": list(assessment.reasons)})
         except Exception as e:  # pragma: no cover
-            _logger.debug("MemCube metric log failed: %s", e)
+            log.debug("MemCube metric log failed: %s", e)
 
 
 # -------------------------------- Guard Registry --------------------------------

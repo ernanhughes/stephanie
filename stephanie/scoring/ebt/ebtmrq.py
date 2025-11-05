@@ -7,7 +7,7 @@ from typing import Dict, List
 import torch
 from torch.nn.functional import sigmoid
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class EnergyTunedMRQ:
     """
@@ -62,7 +62,7 @@ class EnergyTunedMRQ:
         energy = self.ebt.get_energy(context, text, dimension)
         uncertainty = sigmoid(torch.tensor(energy)).item()
         
-        _logger.debug("InitialScore"
+        log.debug("InitialScore"
             f"dimension: {dimension}"
             f"mrq_score: {raw_score}"
             f"energy: {energy}"
@@ -102,7 +102,7 @@ class EnergyTunedMRQ:
             llm_score = llm_scorer.score(context, refined_text if refined else text, dimension)
             final_score = llm_score["score"]
             source = "llm"
-            _logger.warning("LLMFallbackUsed", {
+            log.warning("LLMFallbackUsed", {
                 "dimension": dimension,
                 "refined": refined,
                 "final_energy": energy_trace[-1] if energy_trace else energy

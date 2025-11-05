@@ -43,7 +43,7 @@ from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.json_sanitize import dumps_safe
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # Candidate suffixes to “discover” metric columns in loose payloads
 CAND_SUFFIXES = ["", ".score", ".aggregate", ".raw", ".value"]

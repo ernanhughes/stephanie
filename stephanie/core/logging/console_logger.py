@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 from datetime import datetime, timezone
 
-from stephanie.logging.icons import get_event_icon
+from stephanie.core.logging.icons import get_event_icon
 
 
 class ConsoleLogger:

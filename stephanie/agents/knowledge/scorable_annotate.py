@@ -26,7 +26,7 @@ from tqdm import tqdm
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class ScorableAnnotateAgent(BaseAgent):
     """
@@ -76,17 +76,17 @@ class ScorableAnnotateAgent(BaseAgent):
         # Get scorables from context
         scorables = context.get("scorables", [])
         if not scorables:
-            _logger.debug("No scorables found in context to annotate")
+            log.debug("No scorables found in context to annotate")
             return context
         
         # Filter scorables by role if specified
         if self.scorable_role and self.filter_role:
             original_count = len(scorables)
             scorables = [s for s in scorables if s.get("role") == self.scorable_role]
-            _logger.debug(f"Filtered {original_count} → {len(scorables)} scorables by role='{self.scorable_role}'")
+            log.debug(f"Filtered {original_count} → {len(scorables)} scorables by role='{self.scorable_role}'")
             
             if not scorables:
-                _logger.warning("No scorables with role='%s' found in context", self.scorable_role)
+                log.warning("No scorables with role='%s' found in context", self.scorable_role)
                 return context
 
         # Pre-count scorables that need processing
@@ -95,9 +95,9 @@ class ScorableAnnotateAgent(BaseAgent):
         
         for scorable in scorables:
             domains = self.memory.scorable_domains.get_domains(scorable.get("id"), scorable.get("scorable_type"))
-            _logger.debug(f"Scorable {scorable.get('id')} domains: {domains}")
+            log.debug(f"Scorable {scorable.get('id')} domains: {domains}")
             ner = self.memory.scorable_entities.get_by_scorable(scorable.get("id"), scorable.get("scorable_type"))
-            _logger.debug(f"Scorable {scorable.get('id')} NER: {ner}")
+            log.debug(f"Scorable {scorable.get('id')} NER: {ner}")
             if self.only_missing and not self.force: 
                 if not domains or not ner:
                     to_annotate += 1
@@ -139,7 +139,7 @@ class ScorableAnnotateAgent(BaseAgent):
             # Get text and goal from scorable
             text = scorable.get("text", "")
             if not text:
-                _logger.debug(f"Skipping scorable {scorable.get('id')} - empty text")
+                log.debug(f"Skipping scorable {scorable.get('id')} - empty text")
                 annotated_scorables.append(scorable)
                 continue
             goal_text = scorable.get("goal_text", context.get("goal", {}).get("goal_text", ""))
@@ -152,7 +152,7 @@ class ScorableAnnotateAgent(BaseAgent):
             # Check if already annotated (if only_missing is True)
             domains = self.memory.scorable_domains.get_domains(scorable_id, scorable_type)
             if self.only_missing and not self.force and domains:
-                _logger.debug(f"Skipping scorable {scorable_id} - domains already annotated")
+                log.debug(f"Skipping scorable {scorable_id} - domains already annotated")
                 stats["skipped"] += 1
             else:
                 # Annotate domains
@@ -271,7 +271,7 @@ class ScorableAnnotateAgent(BaseAgent):
                     "role": "assistant"  # Default role for scorables
                 } for e in entities]
             except Exception as e:
-                _logger.warning("Knowledge Graph NER failed: %s", str(e))
+                log.warning("Knowledge Graph NER failed: %s", str(e))
         
         # Fallback to simple entity extraction if KG not available
         # This is a simplified version - in production you'd use a proper NER model
@@ -334,7 +334,7 @@ class ScorableAnnotateAgent(BaseAgent):
                     store.insert(payload)
                     saved += 1
         except Exception as ex:
-            _logger.error("ScorableAnnotateAgent.persist_ner_entities: DB insert failed: %s", str(ex))
+            log.error("ScorableAnnotateAgent.persist_ner_entities: DB insert failed: %s", str(ex))
 
         # --- 2) Immediate ANN indexing (optional, same embedder space as retriever)
         if immediate_index:
@@ -367,7 +367,7 @@ class ScorableAnnotateAgent(BaseAgent):
                         if new_embs:
                             retr.index.add(np.asarray(new_embs, dtype=np.float32), new_meta, save=True)
             except Exception as ex:
-                _logger.warning("ScorableAnnotateAgent.persist_ner_entities: immediate index skipped: %s", str(ex))
+                log.warning("ScorableAnnotateAgent.persist_ner_entities: immediate index skipped: %s", str(ex))
 
         # --- 3) Publish to KG so it adds nodes/edges (optional)
         if publish_to_kg:
@@ -384,7 +384,7 @@ class ScorableAnnotateAgent(BaseAgent):
                                     (scorable.get("meta", {}).get("domains", []) if isinstance(scorable := locals().get("scorable", {}), dict) else []))
                     })
             except Exception as ex:
-                _logger.warning("ScorableAnnotateAgent.persist_ner_entities: KG publish failed: %s", str(ex))
+                log.warning("ScorableAnnotateAgent.persist_ner_entities: KG publish failed: %s", str(ex))
 
         return saved
     

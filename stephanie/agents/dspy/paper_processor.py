@@ -32,7 +32,7 @@ from stephanie.utils.paper_utils import (build_paper_goal_meta,
                                          section_goal_text, section_quality,
                                          system_guidance_from_goal)
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # DSPy Signatures for each step in the processing pipeline
 class ClaimExtractionSignature(dspy.Signature):
@@ -180,16 +180,16 @@ class LoggingLM(dspy.LM):
             prompt = kwargs.get("prompt")
             messages = kwargs.get("messages")
             if prompt:
-                _logger.debug(
+                log.debug(
                     "=== DSPy PROMPT ===\n%s\n====================", prompt
                 )
             if messages:
-                _logger.debug(
+                log.debug(
                     "=== DSPy MESSAGES ===\n%s\n====================", messages
                 )
         result = super().__call__(*args, **kwargs)
         if self._debug_prompts:
-            _logger.debug(
+            log.debug(
                 "=== DSPy RESPONSE ===\n%s\n====================", result
             )
         return result
@@ -311,7 +311,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             structured_data = self.memory.document_sections.get_by_document(doc_id)
             if not structured_data:
                 self.report({"event": "doc.skip", "agent": self.name, "reason": "no_structured_sections", "doc_id": doc_id, "elapsed_ms": self._ms_since(dt0)})
-                _logger.warning("No structured data for document %s", doc_id)
+                log.warning("No structured data for document %s", doc_id)
                 continue
 
             self.report({"event": "doc.sections", "agent": self.name, "doc_id": doc_id, "sections_count": len(structured_data)})
@@ -402,7 +402,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                     })
 
                 except Exception as e:
-                    _logger.error(f"Error processing section {section_name} for doc {doc_id}: {str(e)}")
+                    log.error(f"Error processing section {section_name} for doc {doc_id}: {str(e)}")
                     traceback.print_exc()
                     self.report({"event": "section.error", "agent": self.name, "doc_id": doc_id, "section_name": section_name, "error": str(e)})
 

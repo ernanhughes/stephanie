@@ -12,7 +12,7 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class PaperScoreAgent(BaseAgent):
     """
@@ -35,7 +35,7 @@ class PaperScoreAgent(BaseAgent):
         # Initialize MARS calculator
         self.enabled_scorers = cfg.get("enabled_scorers", [])
 
-        _logger.debug(
+        log.debug(
             "PaperScoreAgentInitialized:"
             f"dimensions={self.dimensions}, "
             f"scorers={self.enabled_scorers}, "

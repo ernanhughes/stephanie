@@ -9,7 +9,7 @@ from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
 from stephanie.agents.learning.attribution import AttributionTracker
 from stephanie.tools.chat_corpus_tool import build_chat_corpus_tool
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class CorpusRetriever:
@@ -135,7 +135,7 @@ class CorpusRetriever:
             res = self.chat_corpus(section_text, **tool_kwargs)
         except TypeError:
             # Old tool signature, retry without unsupported kwargs
-            _logger.debug("chat_corpus tool does not support filters/corpus_id; falling back to local filtering.")
+            log.debug("chat_corpus tool does not support filters/corpus_id; falling back to local filtering.")
             tool_kwargs.pop("filters", None)
             tool_kwargs.pop("corpus_id", None)
             res = self.chat_corpus(section_text, **tool_kwargs)
@@ -201,6 +201,6 @@ class CorpusRetriever:
             if self.analyze:
                 await self.analyze.run(context={"chats": items})
         except Exception as e:
-            _logger.warning("Corpus annotate/analyze skipped: %s", e)
+            log.warning("Corpus annotate/analyze skipped: %s", e)
 
         return items

@@ -16,7 +16,7 @@ def get_memory(config_name: str = "db/postgres") -> MemoryTool:
     return MemoryTool(cfg, JSONLogger(log_path="memory_log.jsonl"))
 
 
-def get_logger(file_path: str = "log.jsonl") -> object:
+def getlog(file_path: str = "log.jsonl") -> object:
     """Return a logger instance with the specified name."""
     return JSONLogger(file_path)
 

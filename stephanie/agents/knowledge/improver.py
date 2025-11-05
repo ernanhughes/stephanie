@@ -23,7 +23,7 @@ from stephanie.utils.json_sanitize import safe_json
 
 from ..paper_improver.faithfulness import FaithfulnessBot
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 FACTUAL_KWS = (
     "show",
@@ -330,7 +330,7 @@ class Improver:
                 entity_type=None,
             )
         except Exception as e:
-            _logger.warning("CalibrationEventLogFailed", {"error": str(e)})
+            log.warning("CalibrationEventLogFailed", {"error": str(e)})
 
 
 

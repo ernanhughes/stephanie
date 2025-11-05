@@ -39,7 +39,7 @@ from stephanie.components.ssp.training.rewards import (
     calculate_self_play_rewards, update_episode_with_rewards)
 from stephanie.components.ssp.utils.trace import EpisodeTrace
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class SSPAlgorithm:
@@ -148,7 +148,7 @@ class SSPAlgorithm:
                 self.vpm_visualization.snapshot_progress(
                     unit=episode_id, dims=dims, step_idx=0, tag="proposed"
                 )
-                _logger.info(
+                logo(
                     "Episode proposed snapshot saved",
                     extra={
                         "episode_id": episode_id,
@@ -191,7 +191,7 @@ class SSPAlgorithm:
                         unit=episode_id
                     )
 
-                    _logger.info(
+                    log.info(
                         "VPM artifacts",
                         extra={
                             "unit": episode_id,
@@ -208,7 +208,7 @@ class SSPAlgorithm:
             return ep
 
         except Exception as e:
-            _logger.error(
+            log.error(
                 "SSP episode failed",
                 extra={"episode_id": episode_id, "error": str(e)},
             )
@@ -257,12 +257,12 @@ class SSPAlgorithm:
                     film_path = self.vpm_visualization.generate_filmstrip(
                         unit=unit
                     )
-                    _logger.info(
+                    log.info(
                         "Filmstrip ready",
                         extra={"unit": unit, "path": film_path},
                     )
                 except Exception as e:
-                    _logger.warning(
+                    log.warning(
                         "Filmstrip generation skipped",
                         extra={"unit": unit, "error": str(e)},
                     )

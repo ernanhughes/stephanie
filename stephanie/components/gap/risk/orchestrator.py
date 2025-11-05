@@ -16,7 +16,7 @@ from .monitor import MonitorService
 from .provenance import ProvenanceLogger
 from .risk_engine import RiskEngine
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 def _utc_now_run_id() -> str:
     # example: 2025-10-23T20:58:41Z/35841
@@ -158,7 +158,7 @@ class GapRiskOrchestrator:
             try:
                 self._publisher.publish(self._publish_topic, record)
             except Exception as e:
-                _logger.warning("Badge publish failed (topic=%s): %s", self._publish_topic, e)
+                log.warning("Badge publish failed (topic=%s): %s", self._publish_topic, e)
 
         return record
 

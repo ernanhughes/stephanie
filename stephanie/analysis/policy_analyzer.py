@@ -18,7 +18,7 @@ from stephanie.models.evaluation import EvaluationORM
 from stephanie.models.evaluation_attribute import EvaluationAttributeORM
 from stephanie.models.score import ScoreORM
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class PolicyAnalyzer:
     def __init__(self, session_or_maker, logger=None):
@@ -289,7 +289,7 @@ class PolicyAnalyzer:
         ref_scores = [d[1]["score"] for d in matched_data]
         
         if len(sicql_scores) < 5:
-            _logger.warning("""Low sample count for correlation
+            log.warning("""Low sample count for correlation
                 source: %s
                 sample_count: %d
                 dimension: %s

@@ -12,7 +12,7 @@ from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
 from stephanie.components.nexus.services.graph_layout import NexusService
 from stephanie.utils.progress_mixin import ProgressMixin
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # Type aliases for readability
 ScorableTuple = Tuple[str, str, str, dict]  # (node_id, scorable_type, scorable_id, meta)
@@ -49,8 +49,8 @@ class NexusAgent(BaseAgent, ProgressMixin):
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         run_id = context.get("pipeline_run_id", "unknown")
         try:
-            _logger.info("Nexus step started for run_id=%s", run_id)
-            self._init_progress(self.container, _logger)
+            log.info("Nexus step started for run_id=%s", run_id)
+            self._init_progress(self.container, log)
 
             # ----------------------------
             # 1) Collect inputs
@@ -106,7 +106,7 @@ class NexusAgent(BaseAgent, ProgressMixin):
                     goal_text=goal_text,
                 )
             else:
-                _logger.info("Nexus: no 'nexus_start_node_id' provided; skipping path search.")
+                log.info("Nexus: no 'nexus_start_node_id' provided; skipping path search.")
 
             # ----------------------------
             # 4) Finalize
@@ -120,10 +120,10 @@ class NexusAgent(BaseAgent, ProgressMixin):
                 "path": path_out,
                 "run_id": run_id,
             }
-            _logger.info("== Nexus Summary ==\nindexed=%s path=%s", indexed_count, path_out)
+            log.info("== Nexus Summary ==\nindexed=%s path=%s", indexed_count, path_out)
             return context
 
         except Exception as e:
             error_msg = f"Nexus step failed for run_id={run_id}: {str(e)}"
-            _logger.exception(error_msg)
+            log.exception(error_msg)
             raise RuntimeError(error_msg) from e

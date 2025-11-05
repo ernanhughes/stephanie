@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import hnswlib
 import numpy as np
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class HNSWIndex:
     """Robust wrapper for hnswlib index with metadata management and deduplication."""
@@ -46,7 +46,7 @@ class HNSWIndex:
         self.meta_file = f"{self.index_prefix}_metadata.json"
         self.keymap_file = f"{self.index_prefix}_keymap.json"
         Path(self.index_prefix).parent.mkdir(parents=True, exist_ok=True)
-        _logger.debug(f"HNSWIndex prefix resolved to: {self.index_prefix}")
+        log.debug(f"HNSWIndex prefix resolved to: {self.index_prefix}")
 
         # Core state
         self.index: Optional[hnswlib.Index] = None
@@ -113,27 +113,27 @@ class HNSWIndex:
                 # Validate label↔metadata alignment
                 cur = self.index.get_current_count()
                 if cur != len(self.metadata):
-                    _logger.error(f"HNSW label/metadata mismatch: index_count={cur}, meta_len={len(self.metadata)}. "
+                    log.error(f"HNSW label/metadata mismatch: index_count={cur}, meta_len={len(self.metadata)}. "
                                   f"Refusing to proceed to avoid misaligned search results.")
                     # safest route: rebuild fresh
                     self.index = self._new_index()
                     self.metadata = []
                     self.entity_key_to_idx = {}
-                    _logger.warning("Started a NEW empty index due to mismatch.")
+                    log.warning("Started a NEW empty index due to mismatch.")
                 else:
-                    _logger.debug(f"Loaded HNSW index with {len(self.metadata)} items (max={self.index.get_max_elements()})")
+                    log.debug(f"Loaded HNSW index with {len(self.metadata)} items (max={self.index.get_max_elements()})")
 
                 self.initiated = True
                 return
             except Exception as e:
-                _logger.exception(f"Failed to load HNSW index; starting fresh. Reason: {e}")
+                log.exception(f"Failed to load HNSW index; starting fresh. Reason: {e}")
 
         # Fresh index
         self.index = self._new_index()
         self.initiated = True
         self.metadata = []
         self.entity_key_to_idx = {}
-        _logger.debug("Created new HNSW index (no existing data found)")
+        log.debug("Created new HNSW index (no existing data found)")
 
     
     # ---------- Keys & dedup ----------
@@ -185,7 +185,7 @@ class HNSWIndex:
         # Guard against label/meta misalignment
         cur = self.index.get_current_count()
         if cur != len(self.metadata):
-            _logger.error(f"Refusing to add: label/meta mismatch (index={cur}, meta={len(self.metadata)}).")
+            log.error(f"Refusing to add: label/meta mismatch (index={cur}, meta={len(self.metadata)}).")
             return 0
 
         new_embeddings = []
@@ -206,7 +206,7 @@ class HNSWIndex:
         if not new_embeddings:
             if dups:
                 self.stats["duplicates_skipped"] += dups
-                _logger.debug(f"Skipped {dups} duplicates")
+                log.debug(f"Skipped {dups} duplicates")
             return 0
 
         new_embeddings = np.vstack(new_embeddings).astype(np.float32)
@@ -217,9 +217,9 @@ class HNSWIndex:
             new_max = int(max(self.index.get_max_elements() * 1.2, cur + needed * 2))
             try:
                 self.index.resize_index(new_max)
-                _logger.debug(f"Resized HNSW index to {new_max} elements")
+                log.debug(f"Resized HNSW index to {new_max} elements")
             except Exception as e:
-                _logger.error(f"Failed to resize index: {e}")
+                log.error(f"Failed to resize index: {e}")
 
         # Assign labels to match metadata index positions
         start_label = len(self.metadata)
@@ -237,7 +237,7 @@ class HNSWIndex:
         if save and self.persistent:
             self._save_index()
 
-        _logger.debug(
+        log.debug(
             f"HNSW index updated with {needed} new items "
             f"({dups} duplicates skipped) (total={len(self.metadata)})"
         )
@@ -314,10 +314,10 @@ class HNSWIndex:
             self._atomic_json_dump(self.keymap_file, {k: int(v) for k, v in self.entity_key_to_idx.items()})
             self.stats["last_save_time"] = now
             self.stats["save_count"] += 1
-            _logger.debug(f"Saved HNSW index to {self.index_bin} ({len(self.metadata)} items, saves={self.stats['save_count']})")
+            log.debug(f"Saved HNSW index to {self.index_bin} ({len(self.metadata)} items, saves={self.stats['save_count']})")
             return True
         except Exception as e:
-            _logger.exception(f"Failed to save HNSW index: {e}")
+            log.exception(f"Failed to save HNSW index: {e}")
             return False
 
     def flush(self) -> None:
@@ -344,22 +344,22 @@ class HNSWIndex:
         if self.initiated and len(self.metadata) > 0:
             try:
                 self.index.reorder()
-                _logger.debug("HNSW index optimized")
+                log.debug("HNSW index optimized")
             except Exception as e:
-                _logger.exception(f"Failed to optimize index: {e}")
+                log.exception(f"Failed to optimize index: {e}")
 
     def reset(self) -> None:
         self.index = self._new_index()
         self.metadata = []
         self.entity_key_to_idx = {}
         self.stats.update({"total_adds": 0, "duplicates_skipped": 0, "updates": 0, "last_save_time": 0.0, "save_count": 0})
-        _logger.debug("HNSW index completely reset")
+        log.debug("HNSW index completely reset")
         for f in (self.index_bin, self.meta_file, self.keymap_file):
             try:
                 if os.path.exists(f):
                     os.remove(f)
             except Exception as e:
-                _logger.error(f"Failed to delete {f}: {e}")
+                log.error(f"Failed to delete {f}: {e}")
 
     def set_query_params(self, ef_search: int = 50) -> None:
         self.ef_search = int(ef_search)

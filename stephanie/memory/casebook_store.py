@@ -19,7 +19,7 @@ from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable import ScorableType
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class CaseBookStore(BaseSQLAlchemyStore):

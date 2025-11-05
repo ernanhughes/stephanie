@@ -179,6 +179,7 @@ class GapConfig:
         "domain_seed_config_path": "config/domain/seeds.yaml"
     })
 
+    domain_seed_config_path: str = "config/domain/seeds.yaml"
 
 
 @dataclass

@@ -15,7 +15,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.utils.file_utils import load_json  # To load meta file
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class HRMScorer(BaseScorer):
     """ I actually believe it's here
@@ -223,7 +223,7 @@ class HRMScorer(BaseScorer):
                     weight=1.0,
                     attributes=attributes,
                 )
-                _logger.debug(
+                logug(
                     "HRMScorerEvaluated "
                     f"dimension={dimension} goal_id={goal.get('id', 'unknown')} "
                     f"scorable_id={scorable.id} raw_score={raw_score} "

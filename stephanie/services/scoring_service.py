@@ -37,7 +37,7 @@ from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.services.service_protocol import Service
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class ScoringService(Service):
@@ -93,7 +93,7 @@ class ScoringService(Service):
         # register configs only (no model loading yet)
         self._register_cfgs(self.enabled_scorer_names)
 
-        _logger.debug(
+        log.debug(
             "ScoringServiceInitialized(lazy): enabled=%s available_cfgs=%s",
             self.enabled_scorer_names, list(self._scorer_cfgs.keys())
         )

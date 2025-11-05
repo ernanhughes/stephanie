@@ -20,7 +20,7 @@ from stephanie.scoring.score_display import ScoreDisplay
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 from stephanie.utils.db_scope import session_scope
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class UniversalScorerAgent(BaseAgent):
 
@@ -77,7 +77,7 @@ class UniversalScorerAgent(BaseAgent):
         )
         self.ranker = ScorableRanker(cfg, memory=self.memory, container=self.container, logger=self.logger)
 
-        _logger.debug(
+        log.debug(
             f"AgentScorerInitialized: "
             f"enabled_scorers={self.enabled_scorers}, "
             f"include_mars={self.include_mars}, "

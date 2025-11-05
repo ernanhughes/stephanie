@@ -33,7 +33,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class RMSNorm(nn.Module):
@@ -191,7 +191,7 @@ class HRMModel(nn.Module):
 
     def __init__(self, cfg: Dict[str, Any], logger: Optional[logging.Logger] = None):
         super().__init__()
-        self.logger = logger or _logger
+        self.logger = logger or log
 
         # Model hyperparameters with type conversion and defaults
         self.input_dim = int(cfg.get("input_dim", 2048))  # Input embedding dimension

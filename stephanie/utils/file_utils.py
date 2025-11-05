@@ -7,7 +7,7 @@ import os
 import re
 from datetime import datetime
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 def save_to_timestamped_file(data, file_prefix:str = "config", file_extension: str = "yaml", output_dir="logs"):
     os.makedirs(output_dir, exist_ok=True)
@@ -15,7 +15,7 @@ def save_to_timestamped_file(data, file_prefix:str = "config", file_extension: s
     filepath = os.path.join(output_dir, timestamped_name)
     with open(filepath, "w", encoding="utf-8") as f:  
         f.write(data)
-    _logger.debug(f"🔧 Saved config to {filepath}")
+    log.debug(f"🔧 Saved config to {filepath}")
     return filepath
 
 
@@ -34,9 +34,9 @@ def write_text_to_file(path: str, text: str):
     try:
         with open(path, "w", encoding="utf-8") as file:
             file.write(text)
-        _logger.debug(f"✅ Successfully wrote to {path}")
+        log.debug(f"✅ Successfully wrote to {path}")
     except Exception as e:
-        _logger.error(f"❌ Failed to write to {path}: {e}")
+        log.error(f"❌ Failed to write to {path}: {e}")
 
 
 def save_json(data, path: str):
@@ -46,9 +46,9 @@ def save_json(data, path: str):
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-        _logger.debug(f"✅ Successfully saved JSON to {path}")
+        log.debug(f"✅ Successfully saved JSON to {path}")
     except Exception as e:
-        _logger.error(f"❌ Failed to save JSON to {path}: {e}")
+        log.error(f"❌ Failed to save JSON to {path}: {e}")
 
 
 def load_json(path: str):
@@ -58,13 +58,13 @@ def load_json(path: str):
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        _logger.debug(f"✅ Successfully loaded JSON from {path}")
+        log.debug(f"✅ Successfully loaded JSON from {path}")
         return data
     except FileNotFoundError:
-        _logger.error(f"❌ File not found: {path}")
+        log.error(f"❌ File not found: {path}")
         return None
     except json.JSONDecodeError as e:
-        _logger.error(f"❌ Failed to decode JSON from {path}: {e}")
+        log.error(f"❌ Failed to decode JSON from {path}: {e}")
         return None
 
 

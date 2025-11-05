@@ -26,7 +26,7 @@ from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class AgentScorerAgent(BaseAgent):
@@ -57,7 +57,7 @@ class AgentScorerAgent(BaseAgent):
         )
         self.ranker = ScorableRanker(cfg, memory, self.container, logger)
 
-        _logger.debug(
+        logug(
             f"AgentScorerInitialized: "
             f"enabled_scorers={self.enabled_scorers}, "
             f"include_mars={self.include_mars}, "
@@ -145,7 +145,7 @@ class AgentScorerAgent(BaseAgent):
                 },
             )
 
-            _logger.debug(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
+            log.debug(f"Time taken for scoring: {time.time() - start_time:.2f} seconds")
             return context
 
         except Exception as e:

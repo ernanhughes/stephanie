@@ -32,7 +32,7 @@ SCM_FEATURE_KEYS: List[str] = [
     "scm.agree_hat01",
 ]
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class SCMService(Service):
@@ -63,10 +63,10 @@ class SCMService(Service):
     def initialize(self, **kwargs) -> None:
         """Initialize the service (kept for parity with other services)."""
         self._initialized = True
-        _logger.info("SCMService initialized (in_dim=%d, device=%s)", self.in_dim, self.device)
+        log.info("SCMService initialized (in_dim=%d, device=%s)", self.in_dim, self.device)
 
     def shutdown(self) -> None:
-        _logger.debug("SCMService shutdown complete")
+        log.debug("SCMService shutdown complete")
 
     @property
     def name(self) -> str:
@@ -98,7 +98,7 @@ class SCMService(Service):
         # acquire host
         host = tap_output.get("host", None) or getattr(self, "host", None)
         if host is None:
-            _logger.warning("SCMService.post_process: missing 'host' in tap_output; cannot compute ll_stats.")
+            log.warning("SCMService.post_process: missing 'host' in tap_output; cannot compute ll_stats.")
             return {}
 
         goal = tap_output.get("goal_text", "") or ""
@@ -111,14 +111,14 @@ class SCMService(Service):
         model = getattr(host, "model", None)
         max_seq_len = int(getattr(host, "max_seq_len", 4096))
         if tok is None or model is None:
-            _logger.warning("SCMService.post_process: host lacks tok/model; aborting.")
+            log.warning("SCMService.post_process: host lacks tok/model; aborting.")
             return {}
 
         # Compute teacher-forced stats
         try:
             stats = self.ll_stats(model, tok, goal, resp, max_seq_len)
         except Exception as e:
-            _logger.warning("SCMService.post_process: ll_stats failed: %s", e)
+            log.warning("SCMService.post_process: ll_stats failed: %s", e)
             return {}
 
         # Optional calibration from host

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.scoring.scorable import ScorableType
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def build_chat_corpus_tool(
@@ -77,7 +77,7 @@ def build_chat_corpus_tool(
                     {_norm(e.get("text")) for e in ents if e.get("text")}
                 )
         except Exception as e:
-            _logger.warning("Entity detection failed: %s", e)
+            log.warning("Entity detection failed: %s", e)
         toks = re.findall(r"\b[A-Z][A-Za-z0-9\-\_]{2,}\b", text or "")
         return sorted({_norm(t) for t in toks})
 
@@ -111,7 +111,7 @@ def build_chat_corpus_tool(
                     if isinstance(name, str)
                 ]
         except Exception as e:
-            _logger.warning("domain classify failed: %s", e)
+            log.warning("domain classify failed: %s", e)
 
         # Fallback: very conservative heuristics -> empty (or add your own simple rules)
         return []
@@ -119,7 +119,7 @@ def build_chat_corpus_tool(
     def _embedding_candidates(text: str, k: int) -> List[Dict[str, Any]]:
         emb = getattr(memory, "embedding", None)
         if not emb:
-            _logger.warning("Embedding index unavailable; no candidates.")
+            log.warning("Embedding index unavailable; no candidates.")
             return []
         try:
             cands = emb.search_related_scorables(
@@ -129,7 +129,7 @@ def build_chat_corpus_tool(
                 top_k=int(k),
             )
         except Exception as e:
-            _logger.warning("Embedding search failed: %s", e)
+            log.warning("Embedding search failed: %s", e)
             return []
         out = []
         for c in cands or []:

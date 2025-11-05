@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import yaml  # optional: only needed for load_yaml
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # ----------------------------- data models -----------------------------
 
@@ -378,7 +378,7 @@ class GoalScorer:
             )
 
             if self.logger:
-                _logger.debug("GoalTemplateCreated"
+                log.debug("GoalTemplateCreated"
                     f"kind: {kind}"
                     f"goal: {goal}"
                     f"dims: {dims}"
@@ -401,16 +401,16 @@ class GoalScorer:
                     if isinstance(v, (int, float)) and not isinstance(v, bool):
                         dims[k] = v
                     else:
-                        _logger.debug("JudgeReturnedNonNumeric"
+                        log.debug("JudgeReturnedNonNumeric"
                             f"metric: {k}"
                             f"value: {v}"
                             f"type: {type(v).__name__}"
                             f"warning: Judge returned non-numeric value; skipping"
                         )
             except Exception as e:
-                _logger.error(f"Judge execution failed: {e}")
+                log.error(f"Judge execution failed: {e}")
 
-        _logger.debug(
+        log.debug(
             "ScoringInputDims | "
             f"numeric_dims={list(dims.keys())} | "
             f"ignored_keys={[k for k in vpm_row.keys() if k not in dims]} | "
@@ -421,7 +421,7 @@ class GoalScorer:
 
         expl = tpl.explain(dims)
 
-        _logger.debug("ScoringOutput "
+        log.debug("ScoringOutput "
             f"score={round(float(score),4)} "
             f"normalized={{{', '.join(f'{k}: {round(float(v),4)}' for k,v in expl['normalized'].items())}}} "
             f"contrib={{{', '.join(f'{k}: {round(float(v),4)}' for k,v in expl['contrib'].items())}}}"

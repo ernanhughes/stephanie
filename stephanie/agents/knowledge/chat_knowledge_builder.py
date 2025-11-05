@@ -14,7 +14,7 @@ from stephanie.memory.chat_store import ChatStore
 from stephanie.models.ner_retriever import EntityDetector
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class ChatKnowledgeBuilder:
     """
@@ -47,7 +47,7 @@ class ChatKnowledgeBuilder:
             self.logger.info("Domain classifier loaded.")
         except Exception as e:
             self.classifier = None
-            _logger.error(f"Failed to initialize ScorableClassifier: {e}")
+            log.error(f"Failed to initialize ScorableClassifier: {e}")
 
         try:
             self.entity_detector = EntityDetector(
@@ -56,21 +56,21 @@ class ChatKnowledgeBuilder:
             self.logger.info("NER detector loaded.")
         except Exception as e:
             self.entity_detector = None
-            _logger.error(f"Failed to initialize EntityDetector: {e}")
+            log.error(f"Failed to initialize EntityDetector: {e}")
 
         try:
             self.kg_service = self.container.get("knowledge_graph")
             self.logger.info("KnowledgeGraphService connected.")
         except Exception as e:
             self.kg_service = None
-            _logger.error(f"Failed to initialize KnowledgeGraphService: {e}")
+            log.error(f"Failed to initialize KnowledgeGraphService: {e}")
 
         try:
             self.chat_store = ChatStore(memory.session, logger=self.logger)
             self.logger.info("ChatStore connected.")
         except Exception as e:
             self.chat_store = None
-            _logger.error(f"Failed to initialize ChatStore: {e}")
+            log.error(f"Failed to initialize ChatStore: {e}")
 
     # ---------------------------
     # Public API
@@ -123,7 +123,7 @@ class ChatKnowledgeBuilder:
             if conversation_id and self.chat_store:
                 ctx_ku = self._build_contextual_knowledge(conversation_id)
                 if ctx_ku.stats.get("error"):
-                    _logger.debug(f"Context enrichment skipped: {ctx_ku.stats['error']}")
+                    log.debug(f"Context enrichment skipped: {ctx_ku.stats['error']}")
                 else:
                     chat_ku.provenance["context_from_conversation"] = ctx_ku.to_dict()
 
@@ -163,7 +163,7 @@ class ChatKnowledgeBuilder:
 
                 domains = {d["domain"]: float(d["score"]) for d in domain_scores if d.get("score", 0) > 0.01}
             except Exception as e:
-                _logger.error(f"[{source}] Domain classification failed: {e}")
+                log.error(f"[{source}] Domain classification failed: {e}")
         else:
             domains = {}
 
@@ -174,7 +174,7 @@ class ChatKnowledgeBuilder:
                 for ent in raw_entities:
                     entities_by_type.setdefault(ent["type"], []).append(ent)
             except Exception as e:
-                _logger.error(f"[{source}] NER extraction failed: {e}")
+                log.error(f"[{source}] NER extraction failed: {e}")
         else:
             entities_by_type = {}
 
@@ -208,7 +208,7 @@ class ChatKnowledgeBuilder:
 
                     kg_nodes.extend(matched_nodes)
             except Exception as e:
-                _logger.error(f"[{source}] KG linking failed: {e}")
+                log.error(f"[{source}] KG linking failed: {e}")
         else:
             kg_nodes = []
 
@@ -305,5 +305,5 @@ class ChatKnowledgeBuilder:
                 scorable_id=f"context:{conversation_id}:{hash(combined)}"
             )
         except Exception as e:
-            _logger.error(f"Context enrichment failed for conv={conversation_id}: {e}")
+            log.error(f"Context enrichment failed for conv={conversation_id}: {e}")
             return KnowledgeUnit(text="", stats={"error": str(e)}) 

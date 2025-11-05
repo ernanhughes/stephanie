@@ -17,7 +17,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.llm_response_parser import parse_scored_block
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 # -------------------------------------------------------------------------
@@ -50,16 +50,16 @@ class LoggingLM(dspy.LM):
             prompt = kwargs.get("prompt")
             messages = kwargs.get("messages")
             if prompt:
-                _logger.debug(
+                log.debug(
                     "=== DSPy PROMPT ===\n%s\n====================", prompt
                 )
             if messages:
-                _logger.debug(
+                log.debug(
                     "=== DSPy MESSAGES ===\n%s\n====================", messages
                 )
         result = super().__call__(*args, **kwargs)
         if self._debug_prompts:
-            _logger.debug(
+            log.debug(
                 "=== DSPy RESPONSE ===\n%s\n====================", result
             )
         return result
@@ -192,7 +192,7 @@ class MCTSReasoningAgent(BaseAgent):
         self._t0 = None             # start time per run
 
 
-        _logger.debug(
+        log.debug(
             "MCTSInitialized depth=%s bf=%s sims=%s ucb=%s dims=%s max_lm_calls=%s eval_at=%s stride=%s",
             self.max_depth,
             self.branching_factor,

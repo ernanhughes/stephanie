@@ -9,7 +9,7 @@ import torch
 
 from .registry import register
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 @register("entailment")
 class EntailmentPlugin:
@@ -134,7 +134,7 @@ class EntailmentPlugin:
 
         except Exception as e:
             if self.logger:
-                _logger.warning(
+                log.warning(
                     "EntailmentPlugin failed; returning neutral score", extra={"error": str(e)}
                 )
             return {"entailment.score01": 0.5, "entailment.risk01": 0.5}

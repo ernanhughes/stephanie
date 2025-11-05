@@ -48,7 +48,7 @@ from transformers import AutoModel, AutoTokenizer, pipeline
 from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.scoring.scorable import Scorable
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 # -------------------------------
@@ -102,9 +102,9 @@ class EntityDetector:
                 aggregation_strategy="simple",
                 device=0 if device == "cuda" else -1,
             )
-            _logger.debug("Initialized NER pipeline with dslim/bert-base-NER")
+            log.debug("Initialized NER pipeline with dslim/bert-base-NER")
         except Exception as e:
-            _logger.error(f"Failed to init NER pipeline: {e}")
+            log.error(f"Failed to init NER pipeline: {e}")
             self.ner_pipeline = None
 
     def detect_entities(self, text: str) -> List[Dict[str, Any]]:
@@ -132,7 +132,7 @@ class EntityDetector:
                 # fallback
                 entities = self._heuristic_entity_detection(text)
         except Exception as e:
-            _logger.warning(f"NER pipeline failed: {e}")
+            log.warning(f"NER pipeline failed: {e}")
             entities = self._heuristic_entity_detection(text)
 
         return entities
@@ -234,7 +234,7 @@ class NERRetrieverEmbedder:
         self._kv = self._attach_kv_cache()
         self._kv_ttl_sec = self.cfg.get("ner_kv_ttl_sec", 3600)  # default 1h
 
-        _logger.debug(
+        log.debug(
             f"NER Retriever initialized with {model_name} "
             f"layer {layer}, projection_enabled={projection_enabled}"
         )
@@ -339,7 +339,7 @@ class NERRetrieverEmbedder:
 
             # Validate/adjust layer index
             if self.layer >= available_layers:
-                _logger.debug(
+                log.debug(
                     f"NERLayerAdjusted requested: {self.layer}"
                     f" available: {available_layers - 1}, "
                     f" using: {available_layers - 1}"
@@ -688,7 +688,7 @@ class NERRetrieverEmbedder:
         # Load calibration data with fallbacks
         calibration = self._load_calibration_data(domain)
         if not calibration:
-            _logger.warning(
+            log.warning(
                 f"No calibration data found for domain: {domain}. Using default."
             )
             calibration = {
@@ -737,7 +737,7 @@ class NERRetrieverEmbedder:
                     )
 
                 except Exception as e:
-                    _logger.error(
+                    log.error(
                         f"Calibration failed for entity '{result.get('entity_text', 'unknown')}': {e}",
                         extra={
                             "coefficients": calibration["ner"]["coefficients"]
@@ -810,7 +810,7 @@ class NERRetrieverEmbedder:
         ]
 
         # Log summary with PACS alignment
-        _logger.debug(
+        log.debug(
             f"Entity retrieval: '{query[:50]}{'...' if len(query) > 50 else ''}' "
             f"| Domain: {domain} "
             f"| Found: {len(all_results)} "
@@ -856,17 +856,17 @@ class NERRetrieverEmbedder:
                 f"{r['entity_text']} ({r.get('calibrated_similarity', r.get('similarity', 0)):.3f})"
                 for r in filtered_results[:3]
             ]
-            _logger.debug(
+            log.debug(
                 f"Top matches for '{query[:30]}...': "
                 + ", ".join(top_entities)
             )
 
         # Send to monitoring system (PACS: "self-correcting" capability)
-        _logger.debug(f"EntityRetrievalMetrics: {metrics}")
+        log.debug(f"EntityRetrievalMetrics: {metrics}")
 
         # PACS-specific alerting for calibration issues
         if metrics.get("calibration_mean_delta", 0) > 0.25:
-            _logger.warning(
+            log.warning(
                 f"Large calibration shift detected: {metrics['calibration_mean_delta']:.3f} "
                 f"(domain: {domain}, query: {query[:20]}...)"
             )
@@ -1035,7 +1035,7 @@ class NERRetrieverEmbedder:
                 )
 
         # Default to identity function
-        _logger.debug(f"UsingDefaultCalibration for domain: {domain}")
+        log.debug(f"UsingDefaultCalibration for domain: {domain}")
         return {
             "semantic": {
                 "coefficients": [1.0, 0.0],
@@ -1124,7 +1124,7 @@ class NERRetrieverEmbedder:
         try:
             return self._domain_classifier.classify(query)
         except Exception as e:
-            _logger.warning(f"Domain classification failed: {e}")
+            log.warning(f"Domain classification failed: {e}")
             return self._keyword_based_domain_detection(query)
 
     def _keyword_based_domain_detection(self, query: str) -> str:
@@ -1458,7 +1458,7 @@ class NERRetrieverEmbedder:
             if self.layer is None:
                 self.layer = available_layers // 2  # middle layer default
             elif self.layer >= available_layers:
-                _logger.debug(
+                log.debug(
                     "NERLayerAdjusted"
                     f"requested: {self.layer}"
                     f"available: {available_layers - 1}"

@@ -30,7 +30,7 @@ from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
                                    ChatTurnORM)
 from stephanie.scoring.scorable import Scorable, ScorableType
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class ChatStore(BaseSQLAlchemyStore):
     """
@@ -272,15 +272,15 @@ class ChatStore(BaseSQLAlchemyStore):
                     .all()
                 )
                 if not turns:
-                    _logger.warning(f"No turns found for conversation {conv_id}")
+                    log.warning(f"No turns found for conversation {conv_id}")
                 return turns
             except Exception as e:
-                _logger.error(f"Failed to fetch turns for conversation {conv_id}: {e}", exc_info=True)
+                log.error(f"Failed to fetch turns for conversation {conv_id}: {e}", exc_info=True)
                 raise
 
         result = self._run(op)
         if result is None:
-            _logger.error(f"_run() returned None for conversation {conv_id}")
+            log.error(f"_run() returned None for conversation {conv_id}")
             return []
         return result
 
@@ -892,12 +892,12 @@ class ChatStore(BaseSQLAlchemyStore):
             # Unsupported filters on this model (log once)
             if goal_id is not None and not warned_missing["goal"]:
                 try:
-                    self.logger and _logger.warning("list_turns: goal_id filter ignored (not on ChatTurnORM)")
+                    self.logger and log.warning("list_turns: goal_id filter ignored (not on ChatTurnORM)")
                 finally:
                     warned_missing["goal"] = True
             if casebook_id is not None and not warned_missing["casebook"]:
                 try:
-                    self.logger and _logger.warning("list_turns: casebook_id filter ignored (not on ChatTurnORM)")
+                    self.logger and log.warning("list_turns: casebook_id filter ignored (not on ChatTurnORM)")
                 finally:
                     warned_missing["casebook"] = True
 

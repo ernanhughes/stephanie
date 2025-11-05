@@ -125,7 +125,7 @@ class CircuitBreaker:
                 
                 # Transition to OPEN state if threshold reached
                 if self.failures >= self.failure_threshold:
-                    _logger.warning("Circuit breaker transitioning to OPEN state")
+                    log.warning("Circuit breaker transitioning to OPEN state")
                     self.state = CircuitBreakerState.OPEN
                 
                 raise

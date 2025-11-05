@@ -5,7 +5,7 @@ import asyncio
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # Keep references to background tasks to avoid premature garbage collection
 _background_tasks: set[asyncio.Task] = set()
@@ -34,7 +34,7 @@ def build_ner_backend(
                     )
             return out
         except Exception as ex:
-            _logger.error("KGNERBackendError: %s", str(ex))
+            log.error("KGNERBackendError: %s", str(ex))
             return []
 
     return _kg_ner
@@ -111,10 +111,10 @@ def annotate_conversation_ner(
                 task.add_done_callback(_background_tasks.discard)
             except RuntimeError:
                 # No running loop (e.g., sync context). Don't crash; just log.
-                _logger.warning(
+                log.warning(
                     "No running event loop; skipping KG publish for turn_id=%s", t["id"]
                 )
             except Exception as ex:
-                _logger.error("KGIndexPublishError turn_id=%s error=%s", t["id"], str(ex))
+                log.error("KGIndexPublishError turn_id=%s error=%s", t["id"], str(ex))
 
     return {"seen": seen, "updated": updated}

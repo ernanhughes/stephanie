@@ -24,7 +24,7 @@ from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.services.zeromodel_service import ZeroModelService
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class PhosAgent(BaseAgent):
@@ -63,7 +63,7 @@ class PhosAgent(BaseAgent):
         results = {}
         for label, scorables in datasets.items():
             if not scorables:
-                _logger.warning(f"[PhosAgent] ⚠️ Empty band: {label}")
+                log.warning(f"[PhosAgent] ⚠️ Empty band: {label}")
                 continue
 
             out_path = f"vpm_phos_run{self.run_id}_{label}.gif"
@@ -79,7 +79,7 @@ class PhosAgent(BaseAgent):
 
             final = await vpm_worker.finalize(self.run_id, out_path)
             results[label] = final
-            _logger.info(f"[PhosAgent] ✅ Timeline closed for {label} → {out_path}")
+            log.info(f"[PhosAgent] ✅ Timeline closed for {label} → {out_path}")
 
         # --- differential analysis ---
         diffs = self._analyze_vpms(results)
@@ -151,7 +151,7 @@ class PhosAgent(BaseAgent):
                 metric_names=self.metric_names,
             )
             results["good_vs_bad"] = meta
-            _logger.debug(
+            log.debug(
                 "ΔMass=%s, Overlap=%s",
                 meta["delta_mass"],
                 meta["overlap_score"],
@@ -172,7 +172,7 @@ class PhosAgent(BaseAgent):
                 aggregate=True,
             )
             results["good_vs_mixed"] = meta
-            _logger.info(
+            log.info(
                 f"ΔMass={meta['delta_mass']:.4f}, Overlap={meta['overlap_score']:.4f}"
             )
 
@@ -220,7 +220,7 @@ class PhosAgent(BaseAgent):
 
         # 2. Create a minimal SolutionNode-like dict for emission
         node_id = self._make_numeric_id(self.run_id, label, index)
-        _logger.debug(f"Processing plan {node_id} ({label}): {plan[:60]}...")
+        log.debug(f"Processing plan {node_id} ({label}): {plan[:60]}...")
         node = {
             "id": node_id,
             "plan": plan,
@@ -236,7 +236,7 @@ class PhosAgent(BaseAgent):
         try:
             await self._timeline_sink("node", node)
         except Exception as e:
-            _logger.warning("[PhosAgent] Emit failed (%s): %s", label, e)
+            log.warning("[PhosAgent] Emit failed (%s): %s", label, e)
 
         return node
 
@@ -258,7 +258,7 @@ class PhosAgent(BaseAgent):
 
             # ✅ Guard against empty or invalid bands early
             if not scorables:
-                _logger.warning(
+                log.warning(
                     "[PhosAgent] ⚠️ No scorables found for %s, skipping band.", label
                 )
                 continue
@@ -266,7 +266,7 @@ class PhosAgent(BaseAgent):
             total = len(scorables)
 
             if total == 0:
-                _logger.warning(
+                log.warning(
                     "[PhosAgent] ⚠️ No scorables found for %s", label
                 )
                 continue
@@ -274,11 +274,11 @@ class PhosAgent(BaseAgent):
             # 1️⃣ Open a fresh timeline stream
             try:
                 self.zm.timeline_open(run_id=run_id)
-                _logger.info(
+                log.info(
                     f"Timeline opened for {label} ({total} scorables)"
                 )
             except Exception as e:
-                _logger.warning("[PhosAgent] Timeline open failed (%s): %s", label, e)
+                log.warning("[PhosAgent] Timeline open failed (%s): %s", label, e)
 
             # 2️⃣ Process each scorable with visible progress bar
             with tqdm(
@@ -297,7 +297,7 @@ class PhosAgent(BaseAgent):
                     # Structured progress event for dashboards / metrics
                     if idx % 10 == 0 or idx == total - 1:
                         progress_ratio = (idx + 1) / total
-                        _logger.info(
+                        log.info(
                             json.dumps(
                                 {
                                     "event": "PhosProgress",
@@ -335,15 +335,15 @@ class PhosAgent(BaseAgent):
                 ): 
                     results[label] = final_res
                     self.metric_names = final_res.get("metric_names", [])
-                    _logger.info(
+                    log.info(
                         "[PhosAgent] ✅ Timeline closed for %s → %s", label, out_path
                     )
                 else:
-                    _logger.warning(
+                    log.warning(
                         "[PhosAgent] ⚠️ No valid matrix for %s, skipping analysis.", label
                     )
             except Exception as e:
-                _logger.warning(
+                log.warning(
                     "[PhosAgent] Timeline close failed (%s): %s", label, e
                 )
 
@@ -376,7 +376,7 @@ class PhosAgent(BaseAgent):
             elif event == "report":
                 await self.zm.timeline_finalize(run_id)
         except Exception as e:
-            _logger.warning(
+            log.warning(
                 f"[PhosAgent] ZeroModel timeline emit failed: {e}"
             )
 
@@ -385,7 +385,7 @@ class PhosAgent(BaseAgent):
             try:
                 await self.emit_cb(event, payload)
             except Exception as e:
-                _logger.warning(f"[PhosAgent] EmitBroadcaster failed: {e}")
+                log.warning(f"[PhosAgent] EmitBroadcaster failed: {e}")
 
     async def _timeline_sink(
         self, event: str, payload: Dict[str, Any]
@@ -401,12 +401,12 @@ class PhosAgent(BaseAgent):
                 try:
                     await self._emit("node", node)
                 except Exception as e:
-                    _logger.warning(
+                    log.warning(
                         f"[PhosAgent] ZeroModel emit failed: {e}"
                     )
 
                 # publish metrics job for async worker
-                _logger.debug(
+                log.debug(
                     f"[PhosAgent] -> 'arena.metrics.request' job for node={node}"
                 )
 
@@ -432,7 +432,7 @@ class PhosAgent(BaseAgent):
                 )
 
         except Exception as e:
-            _logger.warning("[PhosAgent] Timeline sink error: %s", e)
+            log.warning("[PhosAgent] Timeline sink error: %s", e)
 
     def _make_numeric_id(self, run_id: Any, label: str, index: int) -> int:
         """
@@ -453,8 +453,8 @@ class PhosAgent(BaseAgent):
         numeric_id = int(f"{run_hash:04d}{label_code}{index:04d}")
         return numeric_id
 
-    def _emit_to_logger(self, event: str, payload: Dict[str, Any]) -> None:
-        _logger.debug(f"Phos::{event} --> {payload}")
+    def _emit_tolog(self, event: str, payload: Dict[str, Any]) -> None:
+        log.debug(f"Phos::{event} --> {payload}")
 
     async def _wait_for_bus_drain(self, timeout: float = 10.0):
         """
@@ -462,14 +462,14 @@ class PhosAgent(BaseAgent):
         Returns early if the bus drains successfully.
         """
         try:
-            _logger.info(f"[PhosAgent] Waiting for bus to drain (run_id={self.run_id})...")
+            log.info(f"[PhosAgent] Waiting for bus to drain (run_id={self.run_id})...")
             ok = await self.memory.bus.flush(timeout=timeout)
             if ok:
-                _logger.info("[PhosAgent] ✅ Bus flush complete.")
+                log.info("[PhosAgent] ✅ Bus flush complete.")
             else:
-                _logger.warning("[PhosAgent] ⚠️ Bus flush incomplete (timeout or unsupported).")
+                log.warning("[PhosAgent] ⚠️ Bus flush incomplete (timeout or unsupported).")
         except Exception as e:
-            _logger.warning(f"[PhosAgent] Bus flush failed: {e}")
+            log.warning(f"[PhosAgent] Bus flush failed: {e}")
 
 
     async def _wait_for_timeline_fill(self, run_id: str, min_rows: int = 5, timeout: float = 10.0):
@@ -479,7 +479,7 @@ class PhosAgent(BaseAgent):
             if sess and len(sess.rows) >= min_rows:
                 return True
             await asyncio.sleep(0.2)
-        _logger.warning(f"[PhosAgent] Timed out waiting for timeline fill ({min_rows} rows).")
+        log.warning(f"[PhosAgent] Timed out waiting for timeline fill ({min_rows} rows).")
         return False
 
 
@@ -493,10 +493,10 @@ class PhosAgent(BaseAgent):
             sess = self.zm._sessions.get(run_id)
             count = len(sess.rows) if sess else 0
             if count >= expected:
-                _logger.info(f"[PhosAgent] ✅ Timeline filled ({count}/{expected}) for run {run_id}.")
+                log.info(f"[PhosAgent] ✅ Timeline filled ({count}/{expected}) for run {run_id}.")
                 return True
             await asyncio.sleep(0.25)
-        _logger.warning(f"[PhosAgent] ⚠️ Timed out waiting for timeline fill ({count}/{expected})")
+        log.warning(f"[PhosAgent] ⚠️ Timed out waiting for timeline fill ({count}/{expected})")
         return False
 
     async def _wait_for_workers_ready(self, timeout: float = 5.0):
@@ -505,8 +505,8 @@ class PhosAgent(BaseAgent):
             ok1 = getattr(self.metrics_worker, "_running", False)
             ok2 = getattr(self.vpm_worker, "_running", False)
             if ok1 and ok2:
-                _logger.info("[PhosAgent] 🟢 Workers ready.")
+                log.info("[PhosAgent] 🟢 Workers ready.")
                 return True
             await asyncio.sleep(0.2)
-        _logger.warning("[PhosAgent] ⚠️ Workers not ready after timeout.")
+        log.warning("[PhosAgent] ⚠️ Workers not ready after timeout.")
         return False

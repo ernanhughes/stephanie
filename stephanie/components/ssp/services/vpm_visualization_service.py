@@ -46,7 +46,7 @@ from stephanie.zeromodel.vpm_phos import (build_compare_guarded,
                                           phos_sort_pack, robust01, save_img,
                                           to_square, vpm_vector_from_df)
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # Back-compat mapping: old -> new canonical names
 _KEY_MAP = {
@@ -146,7 +146,7 @@ class VPMVisualizationService(Service):
         dims_cfg = c.get("dimensions")
         self._dimensions = [_KEY_MAP.get(d, d) for d in dims_cfg] if dims_cfg else list(_CANON_DIMS)
 
-        _logger.info(
+        log.info(
             "VPMVisualizationService paths initialized",
             extra={
                 "viz_dir": str(self._viz_dir),

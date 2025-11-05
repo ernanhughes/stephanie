@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # Optional base import (degrade gracefully if not present)
@@ -121,7 +121,7 @@ class StructuralGuard(EpistemicGuard):
                     meta={"reasons": reasons},
                 )
         except Exception as e:  # pragma: no cover
-            _logger.debug("MemCube flag log failed: %s", e)
+            log.debug("MemCube flag log failed: %s", e)
 
         if self._is_high(risk_tier) and self.action_router is not None:
             try:
@@ -135,7 +135,7 @@ class StructuralGuard(EpistemicGuard):
                     context={"reasons": reasons, "risk_tier": self._tier_name(risk_tier)},
                 )
             except Exception as e:  # pragma: no cover
-                _logger.warning("Action router trigger failed: %s", e)
+                log.warning("Action router trigger failed: %s", e)
 
     # ------------------------------------------------------------------
     # Internals
@@ -225,7 +225,7 @@ class StructuralGuard(EpistemicGuard):
                         meta={"reasons": reasons},
                     )
         except Exception as e:  # pragma: no cover
-            _logger.debug("MemCube telemetry failed: %s", e)
+            log.debug("MemCube telemetry failed: %s", e)
 
 
 # -----------------------------------------------------------------------------

@@ -13,7 +13,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 config = """
 prompt_service:
@@ -138,7 +138,7 @@ class PromptService(Service):
             out = resp["choices"][0]["message"]["content"]
             return remove_think_blocks(out)
         except Exception as e:
-            _logger.exception("PromptService._acomplete failed", extra={"model": model.name})
+            log.exception("PromptService._acomplete failed", extra={"model": model.name})
             return ""
 
     # ---- Single model, per-call override ----
@@ -162,7 +162,7 @@ class PromptService(Service):
         async with self._semaphore:
             self._active_requests += 1
             try:
-                _logger.debug(f"run_prompt(model={model_spec.name}) active={self._active_requests}")
+                log.debug(f"run_prompt(model={model_spec.name}) active={self._active_requests}")
                 coro = self._acomplete(
                     prompt=prompt_text,
                     model=model_spec,
@@ -171,7 +171,7 @@ class PromptService(Service):
                 )
                 return await asyncio.wait_for(coro, timeout=request_timeout)
             except asyncio.TimeoutError:
-                _logger.warning(f"Prompt timed out after {request_timeout}s (model={model_spec.name})")
+                log.warning(f"Prompt timed out after {request_timeout}s (model={model_spec.name})")
                 return ""
             finally:
                 self._active_requests = max(0, self._active_requests - 1)
@@ -277,7 +277,7 @@ class PromptService(Service):
                 return {"outputs": outputs, "winner": winner, "scores": scores}
 
             except asyncio.TimeoutError:
-                _logger.warning(f"Multi-prompt timed out after {request_timeout}s (models={keys})")
+                log.warning(f"Multi-prompt timed out after {request_timeout}s (models={keys})")
                 return {"outputs": {k: "" for k in keys}, "winner": None, "scores": {}}
             finally:
                 self._active_requests = max(0, self._active_requests - 1)
@@ -296,7 +296,7 @@ class PromptService(Service):
             output = response["choices"][0]["message"]["content"]
             return remove_think_blocks(output)
         except Exception as e:
-            _logger.exception("PromptService.call_llm failed")
+            log.exception("PromptService.call_llm failed")
             return ""
 
     # ---- Service protocol ----
@@ -316,10 +316,10 @@ class PromptService(Service):
     def shutdown(self) -> None:
         if hasattr(self.prompt_runner, "executor"):
             self.prompt_runner.executor.shutdown(wait=False)
-        _logger.debug("PromptService shutdown complete")
+        log.debug("PromptService shutdown complete")
 
     def initialize(self, **kwargs) -> None:
-        _logger.debug("PromptService initialized")
+        log.debug("PromptService initialized")
 
     @property
     def name(self) -> str:

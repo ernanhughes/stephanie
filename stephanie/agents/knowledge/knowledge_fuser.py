@@ -13,7 +13,7 @@ from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.data.knowledge_unit import KnowledgeUnit
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class KnowledgeFuser:
@@ -46,7 +46,7 @@ class KnowledgeFuser:
             self.kg_service = self.container.get("knowledge_graph")
             self.kg_service.initialize()  # ensure ready
         except Exception as e:
-            _logger.error(
+            log.error(
                 f"Failed to initialize KnowledgeFuser dependencies: {e}",
                 exc_info=True,
             )
@@ -119,7 +119,7 @@ class KnowledgeFuser:
                             }
                         )
                     else:
-                        _logger.error(
+                        log.error(
                             f"Unexpected domain score format: {item}"
                         )
 
@@ -128,7 +128,7 @@ class KnowledgeFuser:
                 ][: self.top_k_domains]
 
             except Exception as e:
-                _logger.error(f"Domain classification failed: {e}")
+                log.error(f"Domain classification failed: {e}")
                 top_domains = []
 
             # Step 3: Semantic phrase overlap (not just string match)
@@ -175,7 +175,7 @@ class KnowledgeFuser:
                 },
             }
 
-            _logger.debug(
+            log.debug(
                 "KnowledgeFusionComplete"
                 f"section: {section_name}"
                 f"claim_count: {len(units)}"
@@ -186,7 +186,7 @@ class KnowledgeFuser:
             return plan
 
         except Exception as e:
-            _logger.error(
+            log.error(
                 "KnowledgeFusionFailed"
                 f"section: {section_name}"
                 f"error: {str(e)}"
@@ -337,14 +337,14 @@ class KnowledgeFuser:
                 payload=event["payload"]
             )
 
-            _logger.debug(
+            log.debug(
                 "IndexRequestPublished"
                 f"scorable_id: {scorable_id}"
                 f"entity_count: {len(entities)}"
                 f"relationship_count: {len(relationships)}"
             )
         except Exception as e:
-            _logger.error(f"Failed to publish index request: {e}")
+            log.error(f"Failed to publish index request: {e}")
 
     def _infer_relationship_type(self, e1: Dict, e2: Dict) -> str:
         ordered = e1["end"] < e2["start"]

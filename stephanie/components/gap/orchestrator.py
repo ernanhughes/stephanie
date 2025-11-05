@@ -37,7 +37,7 @@ from stephanie.services.scm_service import SCMService
 from stephanie.services.storage_service import StorageService
 from stephanie.utils.progress_mixin import ProgressMixin
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class GapAnalysisOrchestrator(ProgressMixin):
@@ -133,7 +133,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
 
             self.container.register(
                 name="risk_predictor",
-                factory=lambda: RiskPredictorService(cfg=cfg, memory=memory, logger=logger),
+                factory=lambda: RiskPredictorService(cfg=cfg, memory=memory, container=container, logger=logger),
                 dependencies=["?memcube"],  # optional
                 init_args={
                     "config": {
@@ -325,7 +325,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
             return st
 
         if StorageService is None:
-            _logger.warning("No GapStorageService available; run-scoped writes may fail.")
+            log.warning("No GapStorageService available; run-scoped writes may fail.")
             return None
 
         st = StorageService()

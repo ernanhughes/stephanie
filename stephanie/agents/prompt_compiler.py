@@ -66,7 +66,7 @@ from stephanie.services.workers.metrics_worker import MetricsWorker
 from stephanie.services.workers.vpm_worker import VPMWorker
 from stephanie.utils.emit_broadcaster import EmitBroadcaster
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class PromptCompilerAgent(BaseAgent):
@@ -204,7 +204,7 @@ class PromptCompilerAgent(BaseAgent):
                     )
             except Exception as e:
                 # Telemetry must never stop the run
-                _logger.warning("Error publishing event: %s", e)
+                log.warning("Error publishing event: %s", e)
 
         # Instantiate ATS with broadcasting emit (logger + timeline sink)
         self.ats = AgenticTreeSearch(
@@ -219,7 +219,7 @@ class PromptCompilerAgent(BaseAgent):
             metric_fn=lambda m: 0.0
             if m is None
             else float(m),  # reward mapping
-            emit_cb=EmitBroadcaster(self._emit_to_logger, _timeline_sink),
+            emit_cb=EmitBroadcaster(self._emit_tolog, _timeline_sink),
             random_seed=self.ats_cfg["random_seed"],
         )
 
@@ -322,7 +322,7 @@ class PromptCompilerAgent(BaseAgent):
     # ---------------------------------------------------------------------
     # Sink 1/2 for EmitBroadcaster: safe logger
     # ---------------------------------------------------------------------
-    def _emit_to_logger(self, event: str, payload: Dict[str, Any]) -> None:
+    def _emit_tolog(self, event: str, payload: Dict[str, Any]) -> None:
         """
         Synchronous sink used by EmitBroadcaster to mirror ATS events into logs.
         Never raises; avoid blocking.

@@ -60,7 +60,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class EmbeddingNormalizerAgent(BaseAgent):
     """
@@ -79,14 +79,14 @@ class EmbeddingNormalizerAgent(BaseAgent):
         ])
 
     async def run(self, context=None):
-        _logger.debug(f"🔄 Starting embedding normalization for tables: {self.tables}")
+        log.debug(f"🔄 Starting embedding normalization for tables: {self.tables}")
         summary = {}
 
         for table in self.tables:
             total, normalized = self._normalize_table(table)
             summary[table] = {"total": total, "normalized": normalized}
 
-        _logger.debug(f"✅ Normalization complete → {summary}")
+        log.debug(f"✅ Normalization complete → {summary}")
         context[self.output_key] = summary
         return context
 
@@ -100,12 +100,12 @@ class EmbeddingNormalizerAgent(BaseAgent):
                 cur.execute(f"SELECT COUNT(*) FROM {table}")
                 total = cur.fetchone()[0]
         except Exception as e:
-            _logger.error(f"❌ Failed to count rows in {table}: {e}")
+            log.error(f"❌ Failed to count rows in {table}: {e}")
             return 0, 0
 
         offset = 0
         normalized = 0
-        _logger.debug(f"⚙️  Normalizing {total} embeddings in '{table}'...")
+        log.debug(f"⚙️  Normalizing {total} embeddings in '{table}'...")
 
         while True:
             with self.memory.conn.cursor() as cur:
@@ -129,7 +129,7 @@ class EmbeddingNormalizerAgent(BaseAgent):
                         updates.append((arr.tolist(), rid))
                         normalized += 1
                 except Exception as e:
-                    _logger.warning(f"⚠️  Skip id={rid} due to {e}")
+                    logning(f"⚠️  Skip id={rid} due to {e}")
 
             if updates:
                 with self.memory.conn.cursor() as cur:
@@ -141,10 +141,10 @@ class EmbeddingNormalizerAgent(BaseAgent):
                 self.memory.conn.commit()
 
             offset += self.batch_size
-            _logger.debug(
+            log.debug(
                 "🧮 Table=%s → %s/%s processed, %s normalized so far...",
                 table, offset, total, normalized
             )
 
-        _logger.debug("✅ Table '%s' normalized: %s/%s", table, normalized, total)
+        log.debug("✅ Table '%s' normalized: %s/%s", table, normalized, total)
         return total, normalized

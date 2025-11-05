@@ -15,7 +15,7 @@ import torch
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.utils.lru_cache import SimpleLRUCache
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 _NER_SINGLETON = None
 _NER_OPTS = None
@@ -194,7 +194,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                     embedding_id = row[0]
             self.conn.commit()
         except Exception as e:
-            _logger.error(f"EmbeddingInsertFailed error: {str(e)}")
+            log.error(f"EmbeddingInsertFailed error: {str(e)}")
 
         # Fall back: lookup id if INSERT didn't return
         if embedding_id is None:
@@ -647,7 +647,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
             r["score"] = r["combined_score"]
             all_results.append(r)
 
-        _logger.debug(f"Combined {len(semantic)} semantic + {len(ner)} NER results → {len(all_results)} total")
+        log.debug(f"Combined {len(semantic)} semantic + {len(ner)} NER results → {len(all_results)} total")
         self.logger.log("CombinedSearchResults", {"event": "combine_sizes", "sem_raw": len(semantic), "ner_raw": len(ner)})
         return sorted(all_results, key=lambda x: x["combined_score"], reverse=True)
 

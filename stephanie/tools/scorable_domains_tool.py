@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Callable, Dict, List, Optional, Tuple
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 def classify_text_domains(
     text: str,
@@ -95,4 +95,4 @@ def classify_and_store_domains(self, text: str, scorable_id: int, scorable_type:
                 "score": score,
             }
         )
-        _logger.debug(f"DomainAssigned: domain={domain}, score={score}")
+        log.debug(f"DomainAssigned: domain={domain}, score={score}")

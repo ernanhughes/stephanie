@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 @dataclass
 class Citation:
@@ -26,7 +26,7 @@ class ArenaCitations:
     def __init__(self, memory: Any, container: Any, logger: Optional[logging.Logger] = None):
         self.memory = memory
         self.container = container
-        self.logger = logger or _logger
+        self.logger = logger or log
 
     # ---------- public ----------
 

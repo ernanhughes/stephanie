@@ -12,7 +12,7 @@ from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
 from .nats_bus import NatsKnowledgeBus
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class HybridKnowledgeBus(BusProtocol):
@@ -35,7 +35,7 @@ class HybridKnowledgeBus(BusProtocol):
     def __init__(self, cfg: Dict[str, Any], logger: Optional[logging.Logger] = None):
         # store flat config; do NOT connect here
         self.cfg = dict(cfg or {})
-        self.logger = logger or _logger
+        self.logger = logger or log
 
         self._bus: Optional[BusProtocol] = None
         self._backend: str = "none"           # "nats" | "inproc" | "none"
@@ -96,7 +96,7 @@ class HybridKnowledgeBus(BusProtocol):
             self._bus = None
             self._backend = "none"
             self._idem_store = None
-            self.logger.debug("Hybrid bus disabled by config; continuing without bus.")
+            log.debug("Hybrid bus disabled by config; continuing without bus.")
             return True  # disabled-by-config is not an error
 
         if self._bus is not None:
@@ -120,9 +120,9 @@ class HybridKnowledgeBus(BusProtocol):
                     self.logger.info("Hybrid bus connected to NATS JetStream.")
                     return True
             except asyncio.TimeoutError:
-                _logger.warning("Hybrid bus: NATS connection timed out (<= %ss).", timeout)
+                log.warning("Hybrid bus: NATS connection timed out (<= %ss).", timeout)
             except Exception as e:
-                _logger.warning("Hybrid bus: NATS connection failed: %r", e)
+                log.warning("Hybrid bus: NATS connection failed: %r", e)
 
             # If required, we won't force-raise here—first-use ops should remain non-fatal.
             # We'll just avoid swapping to fallback if required==True.
@@ -136,7 +136,7 @@ class HybridKnowledgeBus(BusProtocol):
                             self._bus = inproc
                             self._backend = "inproc"
                             self._idem_store = getattr(inproc, "idempotency_store", None)
-                            _logger.warning("Hybrid bus using in-process fallback (NATS unavailable).")
+                            log.warning("Hybrid bus using in-process fallback (NATS unavailable).")
                             return True
                     except Exception as e:
                         self.logger.error("Hybrid bus: InProc fallback connect error: %s", e)
@@ -195,7 +195,7 @@ class HybridKnowledgeBus(BusProtocol):
     async def publish(self, subject: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> None:
         # First-use connect attempt; non-fatal
         if not await self._ensure_connected_for_use():
-            self.logger.debug("Hybrid bus: publish dropped (no backend): %s", subject)
+            log.debug("Hybrid bus: publish dropped (no backend): %s", subject)
             return
 
         try:
@@ -207,7 +207,7 @@ class HybridKnowledgeBus(BusProtocol):
                 await self._bus.publish(subject, payload)                  # type: ignore[misc]
         except Exception as e:
             # If the active backend died mid-flight, try one soft reconnect + retry
-            _logger.warning("Hybrid bus: publish error on %s: %s (retrying once)", subject, e)
+            log.warning("Hybrid bus: publish error on %s: %s (retrying once)", subject, e)
             self._bus = None
             self._backend = "none"
             if await self._ensure_connected_for_use():
@@ -226,7 +226,7 @@ class HybridKnowledgeBus(BusProtocol):
 
     async def publish_raw(self, subject: str, body: bytes, headers: Optional[Dict[str, str]] = None) -> None:
         if not await self._ensure_connected_for_use():
-            self.logger.debug("Hybrid bus: publish_raw dropped (no backend): %s", subject)
+            log.debug("Hybrid bus: publish_raw dropped (no backend): %s", subject)
             return
 
         # If backend supports publish_raw, use it; else wrap bytes in a base64 envelope
@@ -239,14 +239,14 @@ class HybridKnowledgeBus(BusProtocol):
                     await getattr(self._bus, "publish_raw")(subject, body)                   # type: ignore[misc]
                 return
         except Exception as e:
-            _logger.warning("Hybrid bus: publish_raw direct path failed: %s (will fallback)", e)
+            log.warning("Hybrid bus: publish_raw direct path failed: %s (will fallback)", e)
 
         env = {"__binary__": True, "data_b64": base64.b64encode(body).decode("ascii")}
         await self.publish(subject, env, headers=headers)
 
     async def subscribe(self, subject: str, handler: Callable[[Dict[str, Any]], None], **kwargs: Any) -> None:
         if not await self._ensure_connected_for_use():
-            self.logger.debug("Hybrid bus: subscribe ignored (no backend): %s", subject)
+            log.debug("Hybrid bus: subscribe ignored (no backend): %s", subject)
             return
 
         # normalize & filter kwargs to what backend supports
@@ -266,7 +266,7 @@ class HybridKnowledgeBus(BusProtocol):
             await self._bus.subscribe(subject, handler, **filtered)  # type: ignore[misc]
         except Exception as e:
             # Same soft-reconnect approach as publish
-            _logger.warning("Hybrid bus: subscribe error on %s: %s (retrying once)", subject, e)
+            log.warning("Hybrid bus: subscribe error on %s: %s (retrying once)", subject, e)
             self._bus = None
             self._backend = "none"
             if await self._ensure_connected_for_use():
@@ -278,12 +278,12 @@ class HybridKnowledgeBus(BusProtocol):
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         if not await self._ensure_connected_for_use():
-            self.logger.debug("Hybrid bus: request short-circuited (no backend): %s", subject)
+            log.debug("Hybrid bus: request short-circuited (no backend): %s", subject)
             return None
         try:
             return await self._bus.request(subject, payload, timeout)  # type: ignore[misc]
         except Exception as e:
-            _logger.warning("Hybrid bus: request error on %s: %s (retrying once)", subject, e)
+            log.warning("Hybrid bus: request error on %s: %s (retrying once)", subject, e)
             self._bus = None
             self._backend = "none"
             if await self._ensure_connected_for_use():
@@ -369,9 +369,9 @@ class HybridKnowledgeBus(BusProtocol):
         if self._bus:
             try:
                 await self._bus.close()
-                self.logger.debug("Hybrid bus connection closed.")
+                log.debug("Hybrid bus connection closed.")
             except Exception as e:
-                _logger.error(f"Hybrid bus: error during shutdown: {e}")
+                log.error(f"Hybrid bus: error during shutdown: {e}")
         self._bus = None
         self._backend = "none"
         self._idem_store = None
@@ -385,7 +385,7 @@ class HybridKnowledgeBus(BusProtocol):
             if hasattr(self._bus, "flush"):
                 return await self._bus.flush(timeout=timeout)
         except Exception as e:
-            _logger.warning(f"Hybrid bus flush failed: {e}")
+            log.warning(f"Hybrid bus flush failed: {e}")
         return False
 
     async def drain_subject(self, subject: str) -> bool:
@@ -395,7 +395,7 @@ class HybridKnowledgeBus(BusProtocol):
             if hasattr(self._bus, "drain_subject"):
                 return await self._bus.drain_subject(subject)
         except Exception as e:
-            _logger.warning(f"Hybrid bus drain_subject failed: {e}")
+            log.warning(f"Hybrid bus drain_subject failed: {e}")
         return False
 
     @property

@@ -20,7 +20,7 @@ from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.db_scope import session_scope
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class ScorerAgent(BaseAgent):
@@ -78,7 +78,7 @@ class ScorerAgent(BaseAgent):
         # service handle
         self.scoring_service = self.container.get("scoring")
 
-        _logger.debug(
+        log.debug(
             "ScorerAgentInitialized: enabled=%s dims=%s targets=%s force_rescore=%s save_results=%s",
             self.enabled_scorers, self.dimensions, self.target_types,
             self.force_rescore, self.save_results

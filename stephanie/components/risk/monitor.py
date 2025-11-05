@@ -165,7 +165,7 @@ class HRMAdapter(PairScorer):
         elif hasattr(self.hrm, "score"):
             out = await self.hrm.score(goal, reply)  # type: ignore
         else:
-            _logger.warning("HRMAdapter: no compatible method found, returning neutral metrics")
+            logning("HRMAdapter: no compatible method found, returning neutral metrics")
             return _neutral_metrics()
 
         return dict(
@@ -328,7 +328,7 @@ class MonitorService:
             scorer_chain.insert(0, self._selfcheck_adapter)        
 
         # Total fallback
-        _logger.warning("MonitorService: all scorers failed; returning neutral metrics")
+        log.warning("MonitorService: all scorers failed; returning neutral metrics")
         return _neutral_metrics()
 
 

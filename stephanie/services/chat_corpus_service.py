@@ -12,7 +12,7 @@ from stephanie.scoring.scorable import \
 from stephanie.services.service_protocol import Service
 
 EmbedFn = Callable[[List[str]], List[List[float]]]
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def _now_ms() -> int:
@@ -41,7 +41,7 @@ class ChatCorpusService(Service):
     # --- lifecycle ---------------------------------------------------------
     def initialize(self, **kwargs) -> None:
         self._ok = True
-        _logger.debug("ChatCorpusServiceInit", {"ts": _now_ms()})
+        log.debug("ChatCorpusServiceInit", {"ts": _now_ms()})
 
     def shutdown(self) -> None:
         self._ok = False
@@ -213,7 +213,7 @@ class ChatCorpusService(Service):
             emb = None
 
         if not emb:
-            _logger.warning("Embedding index unavailable; embedding search skipped")
+            log.warning("Embedding index unavailable; embedding search skipped")
             return []
 
         try:
@@ -236,7 +236,7 @@ class ChatCorpusService(Service):
                 })
             return out
         except Exception as e:
-            _logger.warning(f"Embedding search failed: {e}")
+            log.warning(f"Embedding search failed: {e}")
             return []
 
     def _normalize_msg(self, m: Dict[str, Any], *, source: str) -> Dict[str, Any]:

@@ -35,7 +35,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 # ----------------------------

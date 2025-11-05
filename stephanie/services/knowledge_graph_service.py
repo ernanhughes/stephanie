@@ -299,7 +299,7 @@ class KnowledgeGraphService(Service):
                         pos = text.find(surface)
                         if pos >= 0:
                             start, end = pos, pos + len(surface)
-                            self.logger.debug(
+                            log.debug(
                                 "KG: repaired offsets for %s via surface search (%d-%d)",
                                 etype,
                                 start,
@@ -307,7 +307,7 @@ class KnowledgeGraphService(Service):
                             )
                     else:
                         # If we can’t recover, skip this entity (or you can run a lightweight NER here)
-                        _logger.warning(
+                        log.warning(
                             "KG: skipping entity with invalid offsets and no surface: %s",
                             ent,
                         )

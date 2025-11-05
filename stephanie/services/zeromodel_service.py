@@ -28,7 +28,7 @@ from stephanie.zeromodel.vpm_phos import robust01
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 _DEFAULT_PIPELINE = [
     {"stage": "normalize", "params": {}},
@@ -224,7 +224,7 @@ class ZeroModelService(Service):
         self._evt = EventService(self.cfg, self.memory, self.logger)
         self._evt.initialize()
         self._initialized = True
-        _logger.debug("ZeroModelService initialized")
+        log.debug("ZeroModelService initialized")
 
     def health_check(self) -> Dict[str, Any]:
         return {
@@ -243,7 +243,7 @@ class ZeroModelService(Service):
         self._bus_bindings.clear()
         self._pipeline = None
         self._initialized = False
-        _logger.debug("ZeroModelService shutdown")
+        log.debug("ZeroModelService shutdown")
 
     @property
     def name(self) -> str:
@@ -273,7 +273,7 @@ class ZeroModelService(Service):
             metrics_order=list(metrics) if metrics else [],  # store if caller passed explicit order
             out_dir=odir,
         )
-        _logger.debug(f"Timeline opened for run_id={run_id}")
+        log.debug(f"Timeline opened for run_id={run_id}")
 
     def timeline_append_row(
         self,
@@ -293,10 +293,10 @@ class ZeroModelService(Service):
 
         # ----- validate inputs -----
         if not isinstance(metrics_columns, list) or not isinstance(metrics_values, list):
-            _logger.warning("[ZeroModelService] timeline_append_row: bad types for columns/values")
+            log.warning("[ZeroModelService] timeline_append_row: bad types for columns/values")
             return
         if len(metrics_columns) != len(metrics_values):
-            _logger.warning(
+            log.warning(
                 "[ZeroModelService] timeline_append_row: length mismatch cols=%d vals=%d",
                 len(metrics_columns), len(metrics_values)
             )
@@ -341,11 +341,11 @@ class ZeroModelService(Service):
         # ----- initialize or expand metric order -----
         if not sess.metrics_order:
             sess.metrics_order = list(metrics_columns)
-            _logger.debug("[ZeroModelService] Metric order initialized → %s", sess.metrics_order)
+            log.debug("[ZeroModelService] Metric order initialized → %s", sess.metrics_order)
         if len(metrics_columns) != len(sess.metrics_order):
             expected_set = set(sess.metrics_order)
             received_set = set(metrics_columns)
-            _logger.warning(
+            log.warning(
                 "[ZeroModelService] Mismatched metrics for run_id=%s (expected=%d got=%d) "
                 "Missing=%s Extra=%s",
                 run_id, len(sess.metrics_order), len(metrics_columns),
@@ -384,7 +384,7 @@ class ZeroModelService(Service):
         # quick per-row stats (sanity)
         try:
             nz = sum(1 for x in row if x != 0.0)
-            _logger.debug(
+            log.debug(
                 "[ZeroModelService] row appended: cols=%d nonzero=%d min=%.4f max=%.4f mean=%.4f",
                 len(row), nz, float(min(row)), float(max(row)), float(sum(row)/max(1,len(row)))
             )
@@ -405,7 +405,7 @@ class ZeroModelService(Service):
         progress_cb: Optional[Callable[[str, int, int], None]] = None, 
     ) -> Dict[str, Any]:
         if progress_cb: progress_cb("finalize:start", 0, 1)
-        _logger.debug(f"[ZeroModelService] Finalizing timeline for run_id={run_id}")
+        log.debug(f"[ZeroModelService] Finalizing timeline for run_id={run_id}")
         sess = self._sessions.pop(run_id, None)
         if not sess:
             return {"status": "noop", "reason": "no_session"}
@@ -423,23 +423,23 @@ class ZeroModelService(Service):
             # passthrough: at least clean NaN/Inf to zeros
             mat = np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0)
 
-        _logger.info(
+        log.info(
             "[ZeroModelService] finalize scale=%s | shape=%s | min=%.4f max=%.4f mean=%.4f",
             scale_mode, mat.shape, float(mat.min()), float(mat.max()), float(mat.mean())
         )
 
         if mat.shape[0] < 3 or mat.shape[1] < 2:
-            _logger.warning(f"[ZeroModelService] Too few rows ({mat.shape}) for run_id={run_id}, deferring finalize.")
+            log.warning(f"[ZeroModelService] Too few rows ({mat.shape}) for run_id={run_id}, deferring finalize.")
             # Keep session alive for a few more seconds
             self._sessions[run_id] = sess
             await asyncio.sleep(4.0)
             mat = sess.as_matrix()
 
         if mat.size == 0 or mat.shape[0] < 2:
-            _logger.warning(f"[ZeroModelService] Empty or too small matrix for run_id={run_id}, skipping render.")
+            log.warning(f"[ZeroModelService] Empty or too small matrix for run_id={run_id}, skipping render.")
             return {"status": "empty", "matrix": mat}
 
-        _logger.debug(
+        log.debug(
             f"ZeroModelService: finalizing timeline for run_id={run_id} "
             f"with {mat.shape[0]} steps and {mat.shape[1]} metrics"
         )
@@ -486,7 +486,7 @@ class ZeroModelService(Service):
             label="timeline",
             timestamp=timestamp,
         )
-        _logger.debug(f"ZeroModelService: summary image saved → {summary_path}")
+        log.debug(f"ZeroModelService: summary image saved → {summary_path}")
 
 
         # ------------------------------------------------------------------
@@ -513,14 +513,14 @@ class ZeroModelService(Service):
                     metric_names=metric_names,
                 )
                 if progress_cb: progress_cb("ef:done", 1, 1)
-                _logger.debug(
+                log.debug(
                     f"[ZeroModelService] 🧠 Epistemic field auto-generated "
                     f"(ΔMass={field_meta['delta_mass']:.4f}) → {field_meta['png']}"
                 )
             else:
-                _logger.warning("[ZeroModelService] Matrix too small for epistemic field generation.")
+                log.warning("[ZeroModelService] Matrix too small for epistemic field generation.")
         except Exception as e:
-            _logger.warning("[ZeroModelService] Epistemic field generation failed: %s", e)
+            log.warning("[ZeroModelService] Epistemic field generation failed: %s", e)
 
 
         # Publish event
@@ -695,12 +695,12 @@ class ZeroModelService(Service):
             if progress_cb and ((i % 10) == 0 or (i + 1) == total):
                 progress_cb("timeline:frame", i + 1, total)
             if (i % 25) == 0 or (i + 1) == total:
-                _logger.debug("[ZeroModelService] frame %d/%d stats: min=%.4f max=%.4f mean=%.4f",
+                log.debug("[ZeroModelService] frame %d/%d stats: min=%.4f max=%.4f mean=%.4f",
                     i+1, total, float(row.min()), float(row.max()), float(row.mean()))
 
 
         gif.save_gif(out_path, fps=fps)
-        _logger.debug(f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}")
+        log.debug(f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}")
 
         return {"output_path": out_path, "frames": len(gif.frames), "shape": list(matrix.shape)}
 
@@ -716,7 +716,7 @@ class ZeroModelService(Service):
     ) -> str:
         """Render a static heatmap summary of all steps × metrics."""
         if not isinstance(matrix, np.ndarray) or matrix.size == 0:
-            _logger.warning("render_static_summary called with empty matrix")
+            log.warning("render_static_summary called with empty matrix")
             return out_path
 
         try:
@@ -741,10 +741,10 @@ class ZeroModelService(Service):
             plt.savefig(png_path, dpi=150)
             plt.close(fig)
 
-            _logger.debug(f"ZeroModelService: static VPM summary saved → {png_path}")
+            log.debug(f"ZeroModelService: static VPM summary saved → {png_path}")
             return png_path
         except Exception as e:
-            _logger.error(f"render_static_summary failed: {e}")
+            log.error(f"render_static_summary failed: {e}")
             return out_path
 
     def sort_on_first_index(self, matrix: np.ndarray, descending: bool = False) -> np.ndarray:
@@ -775,14 +775,14 @@ class ZeroModelService(Service):
                 order = order[::-1]
 
             sorted_matrix = matrix[order]
-            _logger.debug(
+            log.debug(
                 f"Matrix sorted by first index "
                 f"(min={col0.min():.4f}, max={col0.max():.4f}, rows={matrix.shape[0]})"
             )
             return sorted_matrix
 
         except Exception as e:
-            _logger.warning("[ZeroModelService] sort_on_first_index failed: %s", e)
+            log.warning("[ZeroModelService] sort_on_first_index failed: %s", e)
             return matrix
 
 
@@ -847,7 +847,7 @@ class ZeroModelService(Service):
 
         # --- early exit for empty or degenerate matrices ---
         if X_pos.size == 0 or X_neg.size == 0 or X_pos.shape[0] < 2 or X_neg.shape[0] < 2:
-            _logger.warning("[ZeroModelService] Skipping epistemic field generation — insufficient data.")
+            log.warning("[ZeroModelService] Skipping epistemic field generation — insufficient data.")
             return {
                 "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
                 "mass_pos": 0.0,
@@ -904,7 +904,7 @@ class ZeroModelService(Service):
         # Epistemic overlap (structural coherence)
         overlap = float(np.sum(np.minimum(Y_pos, Y_neg)) / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8))
 
-        _logger.debug(f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, Δ={delta_mass:.4f}, overlap={overlap:.4f}")
+        log.debug(f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, Δ={delta_mass:.4f}, overlap={overlap:.4f}")
 
         # ================================================================
         # 5️⃣ Visualization — side-by-side comparison of transformation steps
@@ -927,7 +927,7 @@ class ZeroModelService(Service):
 
         def _make_transition_gif(stages: List[np.ndarray], titles: List[str], gif_path: str):
             """Create animated GIF showing step-by-step transformation (fully in-memory)."""
-            gif_logger = GifLogger(max_frames=100)
+            giflog = GifLogger(max_frames=100)
 
             for i, (img, title) in enumerate(zip(stages, titles)):
                 # Create a matplotlib figure for the current stage
@@ -950,11 +950,11 @@ class ZeroModelService(Service):
 
                 # Ensure 3D RGB array
                 frame = np.array(buf, copy=True)
-                gif_logger.add_frame(frame, metrics={"stage": title})
+                giflog.add_frame(frame, metrics={"stage": title})
                 plt.close(fig)
 
-            gif_logger.save_gif(gif_path, fps=1)
-            _logger.debug(f"Transformation GIF saved → {gif_path}")
+            giflog.save_gif(gif_path, fps=1)
+            log.debug(f"Transformation GIF saved → {gif_path}")
 
         def _save_single(img: np.ndarray, title: str, base_path: str) -> str:
             fig, ax = plt.subplots(figsize=(6, 5))
@@ -979,7 +979,7 @@ class ZeroModelService(Service):
         else:
             reordered_metric_names = [f"metric_{i}" for i in range(diff.shape[1])]
 
-        _logger.debug(f"[ZeroModelService] Metric reordering preserved {len(reordered_metric_names)} names")
+        log.debug(f"[ZeroModelService] Metric reordering preserved {len(reordered_metric_names)} names")
 
         # ================================================================
         # 8️⃣ Subfield Extraction — Q(5) vs E(5) + Overlay (SCM-aware, HRM/Tiny fallback)
@@ -1020,7 +1020,7 @@ class ZeroModelService(Service):
                 if idx is not None: q_idxs.append(idx)
 
             if len(q_idxs) == 0:
-                _logger.warning("[ZeroModelService] No Q columns found; skipping Q/E overlays.")
+                log.warning("[ZeroModelService] No Q columns found; skipping Q/E overlays.")
                 q_path = e_path = o_path = None
             else:
                 q_field = diff[:, q_idxs]                 # shape (T, k_q)
@@ -1088,10 +1088,10 @@ class ZeroModelService(Service):
 
                 # optional correlation
                 corr = float(np.corrcoef(q_field_norm.ravel(), e_field_norm.ravel())[0,1]) if q_field_norm.size and e_field_norm.size else None
-                _logger.debug(f"[ZeroModelService] Subfields saved → Q:{bool(q_path)} E:{bool(e_path)} Overlay:{bool(o_path)} Corr={corr}")
+                log.debug(f"[ZeroModelService] Subfields saved → Q:{bool(q_path)} E:{bool(e_path)} Overlay:{bool(o_path)} Corr={corr}")
 
         except Exception as e:
-            _logger.warning("[ZeroModelService] Subfield extraction failed: %s", e)
+            log.warning("[ZeroModelService] Subfield extraction failed: %s", e)
 
 
         # ------------------------------- 
@@ -1116,7 +1116,7 @@ class ZeroModelService(Service):
         comparison_path = _make_visual_grid(images, titles, base)
         transition_gif_path = base + "_transform.gif"
         _make_transition_gif(images, titles, transition_gif_path)
-        _logger.debug(f"Epistemic field visual comparison saved → {comparison_path}")
+        log.debug(f"Epistemic field visual comparison saved → {comparison_path}")
 
 
         single_paths = {}
@@ -1143,7 +1143,7 @@ class ZeroModelService(Service):
         # -------------------------------
         # 6️⃣ Optional animated timeline
         # -------------------------------
-        gif_logger = GifLogger(max_frames=300)
+        giflog = GifLogger(max_frames=300)
         pipeline = PipelineExecutor([
             {"stage": "normalize", "params": {}},
             {"stage": "organization", "params": {"strategy": "spatial"}},
@@ -1152,10 +1152,10 @@ class ZeroModelService(Service):
         for i in range(diff.shape[0]):
             row = diff[i:i+1, :]
             out, _ = pipeline.run(row, {"enable_gif": False})
-            gif_logger.add_frame(out, metrics={"step": i, "mass": float(row.mean())})
+            giflog.add_frame(out, metrics={"step": i, "mass": float(row.mean())})
 
         gif_path = base + ".gif"
-        gif_logger.save_gif(gif_path, fps=fps)
+        giflog.save_gif(gif_path, fps=fps)
 
         # -------------------------------
         # 7️⃣ Persist metadata
@@ -1186,7 +1186,7 @@ class ZeroModelService(Service):
         with open(meta_path, "w", encoding="utf-8") as f:
             f.write(text)
 
-        _logger.debug(f"Epistemic field saved → {meta_path}")
+        log.debug(f"Epistemic field saved → {meta_path}")
         return meta
 
 
@@ -1236,7 +1236,7 @@ class ZeroModelService(Service):
         X_pos = _stack(pos_matrices)
         X_neg = _stack(neg_matrices)
         if X_pos.size == 0 or X_neg.size == 0 or X_pos.ndim != 2 or X_neg.ndim != 2:
-            _logger.warning("[ZeroModelService] PHOS-ordered: insufficient data.")
+            log.warning("[ZeroModelService] PHOS-ordered: insufficient data.")
             return {"status": "empty"}
 
         # Align shapes conservatively
@@ -1474,7 +1474,7 @@ class ZeroModelService(Service):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if diff_matrix is None:
-            _logger.warning("[PhosAnalyzer] Empty diff_matrix — skipping analysis.")
+            log.warning("[PhosAnalyzer] Empty diff_matrix — skipping analysis.")
             return {"ranked_metrics": [], "top_indices": [], "top_rows": []}
 
         # Ensure NumPy array
@@ -1488,7 +1488,7 @@ class ZeroModelService(Service):
         # 1️⃣ Compute mean absolute intensity per metric (column)
         intensities = np.mean(np.abs(diff_matrix), axis=0)
         if np.max(intensities) == 0:
-            _logger.warning("[PhosAnalyzer] Zero-intensity field — skipping plot.")
+            log.warning("[PhosAnalyzer] Zero-intensity field — skipping plot.")
             return {"ranked_metrics": [], "top_indices": [], "top_rows": []}
 
         # 2️⃣ Normalize to [0, 1]
@@ -1510,7 +1510,7 @@ class ZeroModelService(Service):
         json_path = output_dir / "metric_intensity_summary.json"
         with open(json_path, "w") as f:
             f.write(dumps_safe(ranked_metrics, indent=2))
-        _logger.debug(f"[PhosAnalyzer] Saved metric intensity summary → {json_path}")
+        log.debug(f"[PhosAnalyzer] Saved metric intensity summary → {json_path}")
 
         # 5️⃣ Plot top metrics
         top_k = 20
@@ -1589,7 +1589,7 @@ class ZeroModelService(Service):
             else:
                 top_idx_list = list(top_idx)
             json.dump({"top_indices": top_idx_list, "top_rows": top_rows}, f, indent=2)
-        _logger.debug(f"[PhosAnalyzer] Extracted top-{top_k} intensity rows → {top_path}")
+        log.debug(f"[PhosAnalyzer] Extracted top-{top_k} intensity rows → {top_path}")
 
         return {
             "ranked_metrics": ranked_metrics,

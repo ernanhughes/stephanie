@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.components.gap.models import TripleSample
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -106,7 +106,7 @@ class DataRetriever:
             out[dim] = triples
             self.logger.log("DataRetrieverMemory", {"dimension": dim, "requested": fetch_n, "returned": len(triples)})
             if len(triples) < limit:
-                _logger.warning(
+                log.warning(
                     "DataRetrieverMemoryShortfall: dim=%s requested=%d got=%d (after filtering)",
                     dim, limit, len(triples)
                 )

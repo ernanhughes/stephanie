@@ -69,7 +69,7 @@ from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # Constants from the new analysis
 _MIN_INSIGHT_SCORE = 0.70
@@ -306,7 +306,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             )
             self.logger.info("Entity extraction components initialized")
         except Exception as e:
-            _logger.warning("EntityExtractionInitFailed", {
+            log.warning("EntityExtractionInitFailed", {
                 "error": str(e),
                 "message": "Falling back to heuristic entity extraction"
             })
@@ -787,7 +787,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                 })
         except Exception as e:
             # fallback: regex heuristic for proper nouns/acronyms
-            _logger.warning("error: %s", str(e))
+            log.warning("error: %s", str(e))
             matches = re.findall(r"\b([A-Z][A-Za-z0-9\-]{2,})\b", text)
             for m in set(matches):
                 entities.append({
@@ -902,10 +902,10 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                     )
                     kv.put(tree_hash, json.dumps(job).encode("utf-8"))
                 except Exception as e:
-                    _logger.warningrificationKVStoreError", {
-                        "error": str(e),
-                        "job_id": tree_hash
-                    })
+                    log.error("TreeKVStoreFailed error:%s job_id:%s", 
+                         str(e),
+                         tree_hash
+                    )
             
             # Publish a small job envelope
             envelope = {
@@ -922,7 +922,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
                 "paper_id": tree["paper_id"]
             })
         except Exception as e:
-            _logger.warning("TreePublishFailed", {
+            log.warning("TreePublishFailed", {
                 "error": str(e),
                 "section": tree.get("section_name")
             })

@@ -49,7 +49,7 @@ from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def _sentences(text: str) -> List[str]:
@@ -1021,13 +1021,13 @@ class CalibrationTrainer:
 
             # Train with fallback if single class; require balance for full model
             if pos < 1 or neg < 1:
-                _logger.warning("CalibrationTrainer: one-class data — using fallback",
+                log.warning("CalibrationTrainer: one-class data — using fallback",
                                     extra={"domain": domain, "pos": pos, "neg": neg})
                 trained_any |= self.calibration.train_model(domain, allow_fallback=True)
                 continue
 
             if pos < MIN_POS or neg < MIN_NEG:
-                _logger.warning("CalibrationTrainer: skipping — insufficient class balance",
+                log.warning("CalibrationTrainer: skipping — insufficient class balance",
                                     extra={"domain": domain, "pos": pos, "neg": neg,
                                         "need_pos": MIN_POS, "need_neg": MIN_NEG})
                 continue
@@ -1057,6 +1057,6 @@ class CalibrationTrainer:
                 since = datetime.now() - timedelta(hours=hours)
                 return self.memory.calibration_events.get_recent_domains(since=since)
         except Exception as e:
-            _logger.warning(f"CalibrationTrainer: failed to fetch recent domains: {e}")
+            log.warning(f"CalibrationTrainer: failed to fetch recent domains: {e}")
 
         return ["general"]

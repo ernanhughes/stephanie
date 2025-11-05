@@ -14,7 +14,7 @@ from stephanie.components.gap.models import (EgBadgeConfig, EgBaselineConfig,
                                              GapConfig)
 from stephanie.components.gap.orchestrator import GapAnalysisOrchestrator
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 

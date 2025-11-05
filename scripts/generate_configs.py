@@ -7,7 +7,7 @@ configs = {
     "config.yaml": """
 defaults:
   - db: postgres
-  - logging/json_logger
+  - logging/jsonlog
   - agents/generation
   - agents/reflection
   - agents/ranking

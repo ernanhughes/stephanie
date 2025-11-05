@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover
         LOW, MEDIUM, HIGH, CRITICAL = range(4)
 
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ class ScoringManager:
                     cache_key=str(getattr(plan_trace, "id", None) or "trace")
                 )
             except Exception as e:
-                _logger.warning("Vision scoring failed: %s", e)
+                log.warning("Vision scoring failed: %s", e)
 
         # 3) Blend vision into base scores (lightweight + safe)
         fused = self.fuse_vision_scores(base_scores, vision_scores)
@@ -105,7 +105,7 @@ class ScoringManager:
                         reasons=reasons or [],
                     )
             except Exception as e:
-                _logger.warning("Structural guard assess/escalate failed: %s", e)
+                log.warning("Structural guard assess/escalate failed: %s", e)
 
         return fused
 
@@ -160,7 +160,7 @@ class ScoringManager:
             try:
                 self.memcube.log_metric("vision_fusion_delta", fused["vision_symmetry_delta"])
             except Exception as e:
-                _logger.debug("MemCube log_metric failed: %s", e)
+                log.debug("MemCube log_metric failed: %s", e)
 
         return fused
 
@@ -214,7 +214,7 @@ class ScoringManager:
         try:
             self.memcube.log_metric("structure_risk_tier", int(tier), trace_id=trace_id)
         except Exception as e:
-            _logger.debug("MemCube log_metric(structure_risk_tier) failed: %s", e)
+            log.debug("MemCube log_metric(structure_risk_tier) failed: %s", e)
 
         if reasons:
             try:
@@ -224,7 +224,7 @@ class ScoringManager:
                     meta={"reasons": reasons},
                 )
             except Exception as e:
-                _logger.debug("MemCube log_flag(STRUCTURE_RISK_*) failed: %s", e)
+                log.debug("MemCube log_flag(STRUCTURE_RISK_*) failed: %s", e)
 
     @staticmethod
     def _tier_name(tier: RiskTier) -> str:

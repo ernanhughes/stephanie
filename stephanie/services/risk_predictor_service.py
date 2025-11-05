@@ -14,7 +14,7 @@ from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.service_protocol import Service
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 @dataclass
 class RiskServiceConfig:
@@ -232,7 +232,7 @@ class RiskPredictorService(Service):
                     low = float(rec.get("low_threshold"))
                     high = float(rec.get("high_threshold"))
             except Exception as e:
-                _logger.warning(f"MemCube calibration fetch failed: {e}")
+                log.warning(f"MemCube calibration fetch failed: {e}")
 
         if low is None or high is None:
             low = self.cfg.fallback_low

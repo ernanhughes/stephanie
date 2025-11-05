@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 import logging
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/arena/learning", tags=["learning"])
 
@@ -26,7 +26,7 @@ def learning_page(request: Request):
     """
     Main learning visualization page showing knowledge transfer evidence.
     """
-    _logger.debug("GET /arena/learning requested")
+    log.debug("GET /arena/learning requested")
     templates = request.app.state.templates
     return templates.TemplateResponse("/arena/learning.html", {"request": request})
 
@@ -35,7 +35,7 @@ def learning_run_detail(request: Request, run_id: str):
     """
     Dedicated learning view for a specific pipeline run.
     """
-    _logger.debug(f"GET /arena/learning/run/{run_id} requested")
+    log.debug(f"GET /arena/learning/run/{run_id} requested")
     
     # Get run details
     run_store = _run_store(request)
@@ -102,7 +102,7 @@ def api_learning_transfer(
         return matrix
         
     except Exception as e:
-        _logger.error(f"Error building transfer matrix: {str(e)}", exc_info=True)
+        log.error(f"Error building transfer matrix: {str(e)}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @router.get("/api/run/{run_id}/timeline")
@@ -139,7 +139,7 @@ def api_run_learning_timeline(
         return {"run_id": run_id, "events": out}
         
     except Exception as e:
-        _logger.error(f"Error getting run timeline: {str(e)}", exc_info=True)
+        log.error(f"Error getting run timeline: {str(e)}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 @router.get("/api/learning_score")
@@ -164,5 +164,5 @@ def api_learning_score(
         return results
         
     except Exception as e:
-        _logger.error(f"Error calculating learning scores: {str(e)}", exc_info=True)
+        log.error(f"Error calculating learning scores: {str(e)}", exc_info=True)
         return JSONResponse({"error": str(e)}, status_code=500)

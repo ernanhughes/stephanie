@@ -7,7 +7,7 @@ from statistics import mean
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class CostBenefitAnalyzerAgent(BaseAgent):
     """
@@ -29,7 +29,7 @@ class CostBenefitAnalyzerAgent(BaseAgent):
         goal = context.get(GOAL, {})
         goal_id = goal.get("id")
         if not goal_id:
-            _logger.warning("Missing goal ID in context.")
+            logning("Missing goal ID in context.")
             return context
 
         efficiency_table = self._compute_efficiency_scores(goal_id)
