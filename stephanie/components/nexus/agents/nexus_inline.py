@@ -35,7 +35,7 @@ from stephanie.services.workers.nexus_workers import (
 )
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.tools.embed_utils import as_list_floats, has_vec, cos_safe
+from stephanie.utils.embed_utils import as_list_floats, has_vec, cos_safe
 from collections import defaultdict
 
 log = logging.getLogger(__name__)
@@ -53,61 +53,92 @@ def _cos(a, b):
     return sum(x * y for x, y in zip(a, b)) / (_l2(a) * _l2(b))
 
 
-def _consensus_walk_order(scorables, *, goal_vec, alpha=0.7, limit=None):
+def _consensus_walk_order(
+    scorables: list[dict],
+    *,
+    goal_vec,
+    alpha: float = 0.7,
+    limit: int | None = None,
+) -> list[int]:
     """
-    Greedy run ordering that 'thinks': pick an item, update consensus, pick next
-    that maximizes alpha*sim(goal) + (1-alpha)*sim(consensus).
+    Greedy run ordering that 'thinks':
+      pick an item, update consensus (centroid of picked), then pick the next
+      that maximizes: alpha*sim(goal) + (1-alpha)*sim(consensus).
+
+    Safe for numpy arrays / mixed vector shapes. Falls back to metrics_vector if no embedding.
     """
-    # collect embeddings (ensure you've run _ensure_embeddings_global beforehand)
-    vecs = []
+    # --- collect vectors safely (no ndarray truthiness) ---
+    vecs: list[list[float]] = []
     for s in scorables:
-        v = (s.get("embeddings") or {}).get("global") or []
-        vecs.append(list(map(float, v)) if v else [])
+        v = as_list_floats((s.get("embeddings") or {}).get("global"))
+        if not v:
+            mv = s.get("metrics_vector")
+            if isinstance(mv, dict):
+                v = as_list_floats(list(mv.values()))
+        vecs.append(v)
 
     n = len(scorables)
     if n == 0:
         return []
 
-    # start at argmax sim to goal
-    sims_to_goal = [(_cos(v, goal_vec), i) for i, v in enumerate(vecs)]
-    start_idx = max(sims_to_goal)[1]
-    picked = [start_idx]
+    tgt = as_list_floats(goal_vec)
+
+    # If absolutely no vectors, keep stable order up to limit
+    if not any(vecs):
+        want = limit or n
+        return list(range(min(want, n)))
+
+    # --- start at argmax sim to goal (ties stable) ---
+    sims_to_goal = [(cos_safe(v, tgt), i) for i, v in enumerate(vecs)]
+    start_idx = max(sims_to_goal, key=lambda t: (t[0], -t[1]))[1]
+
+    picked: list[int] = [start_idx]
     picked_set = {start_idx}
 
-    # running centroid of picked
-    def centroid(indices):
-        if not indices:
-            return []
-        d = len(vecs[indices[0]]) if vecs[indices[0]] else 0
-        if d == 0:
+    # running centroid (len = dim of first non-empty picked vector)
+    def centroid(indices: list[int]) -> list[float]:
+        for i in indices:
+            if vecs[i]:
+                d = len(vecs[i])
+                break
+        else:
             return []
         acc = [0.0] * d
+        cnt = 0
         for i in indices:
             v = vecs[i]
-            for k in range(d):
+            if not v:
+                continue
+            cnt += 1
+            # tolerate length mismatch: add up to min(d, len(v))
+            m = min(d, len(v))
+            for k in range(m):
                 acc[k] += v[k]
-        return [x / len(indices) for x in acc]
+        if cnt == 0:
+            return []
+        return [x / cnt for x in acc]
 
     c = centroid(picked)
     want = limit or n
+
     while len(picked) < want:
-        best = (-1e9, None)
+        best_score = -1e9
+        best_j = None
         for j in range(n):
             if j in picked_set:
                 continue
             v = vecs[j]
-            s_goal = _cos(v, goal_vec)
-            s_cons = _cos(v, c) if c else 0.0
+            s_goal = cos_safe(v, tgt)
+            s_cons = cos_safe(v, c) if c else 0.0
             score = alpha * s_goal + (1.0 - alpha) * s_cons
-            if score > best[0]:
-                best = (score, j)
-        if best[1] is None:
+            if score > best_score:
+                best_score, best_j = score, j
+        if best_j is None:
             break
-        picked.append(best[1])
-        picked_set.add(best[1])
+        picked.append(best_j)
+        picked_set.add(best_j)
         c = centroid(picked)
 
-    # return new index order
     return picked
 
 
@@ -342,6 +373,19 @@ class NexusInlineAgent(BaseAgent):
         self.zm.initialize()
 
         run_id_root = context.get(PIPELINE_RUN_ID)
+        # if both sets exist, emit two runs and return
+        if context.get("scorables_targeted") and context.get("scorables_baseline"):
+            tgt_ctx = await self._emit_single_run(run_id=f"{run_id_root}-targeted",
+                                                scorables=context["scorables_targeted"],
+                                                context=context)
+            bl_ctx  = await self._emit_single_run(run_id=f"{run_id_root}-baseline",
+                                                scorables=context["scorables_baseline"],
+                                                context=context)
+            # publish A/B paths for GAP
+            context["ab_targeted_run_dir"] = tgt_ctx["nexus_run_dir"]
+            context["ab_baseline_run_dir"] = bl_ctx["nexus_run_dir"]
+            return context
+
         scorables: List[Dict[str, Any]] = list(context.get("scorables", []))
 
         # Ensure each scorable has embeddings.global (computed from text if missing)

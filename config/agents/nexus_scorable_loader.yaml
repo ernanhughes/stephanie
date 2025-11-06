@@ -1,0 +1,29 @@
+# config/agents/nexus_scorable_loader.yaml
+nexus_scorable_loader:
+  name: nexus_scorable_loader
+  enabled: true
+  # This agent doesn’t use an LLM prompt; model/prompt keys are ignored safely.
+  save_prompt: false
+  save_context: false
+  skip_if_completed: false
+
+  # Core fetch knobs
+  limit: 400            # total rows to pull from chat DB
+  batch_size: 200
+  include_full_text: true
+  include_ner: false
+
+  # Optional: ScorableType (omit to use default CONVERSATION_TURN)
+  # target_type: CONVERSATION_TURN
+
+  # A/B goal-similarity split
+  ab_select:
+    enabled: true
+    seed: 0
+    n_targeted: 200
+    n_baseline: 200
+    targeted_min_sim: 0.60     # tighten for more on-goal items
+    baseline_max_sim: 0.20     # lower => more unrelated
+    ensure_diversity: true     # farthest-point sampling for baseline
+    relax_steps: 6             # auto-relax thresholds if too strict
+    goal_source: goal_text     # or "user_text_title"

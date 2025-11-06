@@ -6,7 +6,7 @@ defaults:
   - services: all
   - scorer: all  
 
-  - agents/scorable_loader
+  - agents/nexus_scorable_loader
   - agents/chat_analyze
   - agents/universal_scorer
   - agents/nexus
@@ -40,8 +40,8 @@ pipeline:
   tag: chat_training
   description: "Uses chat history to train models. Different dynamics than traditional training."
   stages:
-     - name: scorable_loader
-       description: "🔓 Loads a large amount of conversation turns"
+     - name: nexus_scorable_loader
+       description: "🔓 Loads a large amount of conversation turns for AB testing nexus"
        cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
        enabled: true
        iterations: 1    

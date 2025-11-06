@@ -220,7 +220,7 @@ class TripleSample:
     target_value: Optional[float] = None  # Ground truth score if available
     fingerprint: Optional[str] = None  # Content hash for deduplication
 
-This is your jumper too big for me is it OK yeah always thank you
+
 @dataclass  
 class ModelScores:
     """
