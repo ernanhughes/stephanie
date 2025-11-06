@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
+from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
@@ -69,7 +71,24 @@ class ScoringProcessor(ProgressMixin):
         manifest: Manifest,
     ) -> Dict[str, Any]:
         scoring_service = self.container.get("scoring")
-
+        """
+        In 'models' mode: do normal HRM vs Tiny scoring (unchanged).
+        In 'runs'  mode: load per-item/per-run metrics from two Nexus VPM run folders.
+        """
+        if self.config.comparison_mode == "runs":
+            manifest.add_stage("scoring", total=1, run_id=run_id, status="running")
+            out = await self._score_from_runs(run_id, manifest)
+            manifest.stage_end("scoring", status="ok",
+                               hrm_label=out.get("hrm_label"),
+                               tiny_label=out.get("tiny_label"),
+                               columns=list(out.get("columns", [])))
+            try:
+                self.container.get("storage").patch_manifest(
+                    run_id, {"stages": {"scoring": manifest.get_stage("scoring")}}
+                )
+            except Exception:
+                pass
+            return out
         # start stage on the manifest
         total_rows = sum(len(v) for v in triples_data.values())
 
@@ -875,6 +894,243 @@ class ScoringProcessor(ProgressMixin):
         except Exception:
             pass
 
+    def _read_json(self, p: Path) -> Any:
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+    def _flatten_metrics_record(self, rec: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Accepts flexible schema, picks numeric metrics from common places:
+        - rec['metrics'] or rec['phi'] or top-level numeric keys
+        - keys may be nested; we flatten with 'dot' names
+        """
+        out: Dict[str, float] = {}
+        def walk(prefix, obj):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    walk(f"{prefix}.{k}" if prefix else str(k), v)
+            elif isinstance(obj, (int, float)) and np.isfinite(obj):
+                out[prefix] = float(obj)
+        # priority: phi -> metrics -> top
+        if isinstance(rec, dict):
+            if isinstance(rec.get("phi"), dict): walk("", rec["phi"])
+            if isinstance(rec.get("metrics"), dict): walk("", rec["metrics"])
+            walk("", {k:v for k,v in rec.items() if isinstance(v,(int,float))})
+        return out
+
+    def _collect_run_metrics(self, run_dir: Path) -> pd.DataFrame:
+        """
+        Build a DataFrame with one row per item (scorable or sample) containing metrics at the
+        final state. We try, in order:
+          1) run_dir / frames.json  (expect list with per-item last frame or per-step frames)
+          2) any */frames.json under subdirs named like IDs
+          3) manifest.json (if it has aggregated metrics by item)
+        Columns: ['item_id', <metric columns...>]
+        """
+        rows: List[Dict[str, Any]] = []
+        # helper to push a candidate record
+        def add_row(item_id: str, rec: Dict[str, Any]):
+            metrics = self._flatten_metrics_record(rec)
+            if not metrics:
+                return
+            row = {"item_id": str(item_id)}
+            row.update(metrics)
+            rows.append(row)
+
+        # 1) root frames.json
+        froot = run_dir / "frames.json"
+        j = self._read_json(froot)
+        if isinstance(j, dict):
+            # common shapes:
+            #  a) {"items":[{"id":..., "frames":[...]}]}
+            #  b) {"frames":[{"item_id":..., "step":..., "phi": {...}}, ...]}
+            items = []
+            if isinstance(j.get("items"), list):
+                items = j["items"]
+                for it in items:
+                    iid = it.get("id") or it.get("item_id") or it.get("scorable_id") or "na"
+                    frames = it.get("frames") or []
+                    if frames:
+                        add_row(iid, frames[-1])          # last frame as final state
+                    else:
+                        add_row(iid, it)
+            elif isinstance(j.get("frames"), list):
+                # group by item and take last step
+                by = {}
+                for fr in j["frames"]:
+                    iid = fr.get("item_id") or fr.get("scorable_id") or fr.get("id") or "na"
+                    step = fr.get("step", 0)
+                    prev = by.get(iid)
+                    if (prev is None) or (step >= prev.get("step", -1)):
+                        by[iid] = fr
+                for iid, fr in by.items():
+                    add_row(iid, fr)
+
+        # 2) nested frames under numeric subdirs
+        if not rows:
+            for sub in run_dir.iterdir():
+                if sub.is_dir():
+                    fj = sub / "frames.json"
+                    j = self._read_json(fj)
+                    if isinstance(j, dict):
+                        frames = j.get("frames") or j.get("items") or []
+                        if isinstance(frames, list) and frames:
+                            add_row(sub.name, frames[-1])
+
+        # 3) manifest fallback: allow an aggregated metrics block if present
+        if not rows:
+            man = self._read_json(run_dir / "manifest.json")
+            if isinstance(man, dict):
+                # try stages→metrics or top-level “metrics”
+                candidates = []
+                if isinstance(man.get("metrics"), list):
+                    candidates = man["metrics"]
+                stages = man.get("stages") or {}
+                for st in stages.values():
+                    if isinstance(st, dict) and isinstance(st.get("metrics"), list):
+                        candidates.extend(st["metrics"])
+                for rec in candidates:
+                    iid = rec.get("item_id") or rec.get("id") or "na"
+                    add_row(iid, rec)
+
+        df = pd.DataFrame(rows).drop_duplicates(subset=["item_id"], keep="last")
+        return df
+
+    def _align_metric_columns(
+        self, left: pd.DataFrame, right: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        # choose intersection of numeric columns (optionally filter by cfg.ab_metrics if provided)
+        num_left = {c for c in left.columns if c != "item_id" and pd.api.types.is_numeric_dtype(left[c])}
+        num_right = {c for c in right.columns if c != "item_id" and pd.api.types.is_numeric_dtype(right[c])}
+        common = sorted(list(num_left & num_right))
+        # if user set ab_metrics, keep only those that exist in common
+        want = [m for m in (self.config.ab_metrics or []) if m in common]
+        cols = want if want else common
+        return left[["item_id"] + cols], right[["item_id"] + cols], cols
+
+    async def _score_from_runs(self, run_id: str, manifest: Manifest) -> Dict[str, Any]:
+        cfg = self.config
+        L = Path(cfg.left_run_dir or "")
+        R = Path(cfg.right_run_dir or "")
+        assert L.exists() and R.exists(), "left_run_dir/right_run_dir must exist"
+
+        left = self._collect_run_metrics(L)
+        right = self._collect_run_metrics(R)
+
+        # inner-join on item_id when possible; if disjoint, compare distributions
+        left_al, right_al, cols = self._align_metric_columns(left, right)
+
+        paired = left_al.merge(right_al, on="item_id", suffixes=("_L", "_R"))
+        # build matrices “like hrm/tiny” so downstream analysis is unchanged
+        hrm_matrix = paired[[f"{c}_L" for c in cols]].to_numpy(dtype=np.float32)
+        tiny_matrix = paired[[f"{c}_R" for c in cols]].to_numpy(dtype=np.float32)
+
+        # also keep a distribution-only view for items that didn’t match
+        onlyL = left_al[~left_al["item_id"].isin(paired["item_id"])][cols]
+        onlyR = right_al[~right_al["item_id"].isin(paired["item_id"])][cols]
+
+        # minimal artifact deltas (mean diff on paired)
+        mean_L = hrm_matrix.mean(axis=0) if hrm_matrix.size else np.zeros(len(cols))
+        mean_R = tiny_matrix.mean(axis=0) if tiny_matrix.size else np.zeros(len(cols))
+        deltas = {c: float(mr - ml) for c, ml, mr in zip(cols, mean_L, mean_R)}
+
+        # Package like the normal path does (hrm/tiny naming kept intact)
+        storage = self.container.get("storage")
+        storage.save_json(run_id, subdir="metrics", name="ab_runs_delta.json",
+                          obj={"left_label": cfg.left_label, "right_label": cfg.right_label,
+                               "columns": cols, "mean_left": mean_L.tolist(),
+                               "mean_right": mean_R.tolist(), "mean_delta_right_minus_left": deltas,
+                               "paired_n": int(paired.shape[0]),
+                               "left_only_n": int(onlyL.shape[0]), "right_only_n": int(onlyR.shape[0])})
+
+        # Return structure expected by orchestrator/manifest
+        return {
+            "triples_count": int(paired.shape[0]),
+            "columns": cols,
+            "hrm_label": cfg.left_label,            # map left→hrm
+            "tiny_label": cfg.right_label,          # map right→tiny
+            "hrm_matrix": hrm_matrix,               # downstream AnalysisProcessor uses these
+            "tiny_matrix": tiny_matrix,
+            "rows_for_df_path": None,
+            "hrm_gif": None, "tiny_gif": None,
+            "eg_index_hrm": None, "eg_index_tiny": None,
+        }
+
+
+# S4.5: VPM payload normalizer (maps non-SCM to 0..1; SCM already 0..1)
+SCM_KEYS = {
+    "scm.reasoning.score01",
+    "scm.knowledge.score01",
+    "scm.clarity.score01",
+    "scm.faithfulness.score01",
+    "scm.coverage.score01",
+    "scm.aggregate01",
+    "scm.uncertainty01",
+    "scm.ood_hat01",
+    "scm.consistency01",
+    "scm.length_norm01",
+    "scm.temp01",
+    "scm.agree_hat01",
+}
+
+# S4.4: VPM payload sanitizer (filters NaN/Inf and builds vector)
+def _sanitize_for_vpm(
+    payload: dict, *, prefer_keys: list[str] | None = None
+) -> dict:
+    import math
+
+    cols = payload.get("columns") or []
+    vals = payload.get("values") or []
+    if not (
+        isinstance(cols, list)
+        and isinstance(vals, list)
+        and len(cols) == len(vals)
+    ):
+        # try vector fallback
+        vec = payload.get("vector") or {}
+        cols = list(vec.keys())
+        vals = [vec[k] for k in cols]
+
+    # optional stable ordering: prefer SCM keys first, then others
+    if prefer_keys:
+        # keep order: prefer_keys (existing ones), then remaining in original order
+        seen = set()
+        ordered = [
+            k
+            for k in prefer_keys
+            if k in cols and not (k in seen or seen.add(k))
+        ]
+        for k in cols:
+            if k not in seen:
+                ordered.append(k)
+                seen.add(k)
+        cols = ordered
+        vals = (
+            [payload.get("vector", {}).get(k) for k in cols]
+            if "vector" in payload
+            else [
+                v
+                for _, v in sorted(
+                    zip(cols, vals), key=lambda x: cols.index(x[0])
+                )
+            ]
+        )
+
+    clean_cols, clean_vals = [], []
+    for c, v in zip(cols, vals):
+        try:
+            fv = float(v)
+        except Exception:
+            continue
+        if not math.isfinite(fv):
+            continue  # drop NaN/Inf (e.g., ppl=inf on empty text)
+        clean_cols.append(str(c))
+        clean_vals.append(fv)
+
+    vec = {c: v for c, v in zip(clean_cols, clean_vals)}
+    return {"columns": clean_cols, "values": clean_vals, "vector": vec}
 
 def _detect_model_prefix(vec: dict, fallback: str) -> str:
     """
@@ -948,82 +1204,6 @@ def _first_or_str(x):
         return str(x[0])
     return str(x)
 
-
-# S4.4: VPM payload sanitizer (filters NaN/Inf and builds vector)
-def _sanitize_for_vpm(
-    payload: dict, *, prefer_keys: list[str] | None = None
-) -> dict:
-    import math
-
-    cols = payload.get("columns") or []
-    vals = payload.get("values") or []
-    if not (
-        isinstance(cols, list)
-        and isinstance(vals, list)
-        and len(cols) == len(vals)
-    ):
-        # try vector fallback
-        vec = payload.get("vector") or {}
-        cols = list(vec.keys())
-        vals = [vec[k] for k in cols]
-
-    # optional stable ordering: prefer SCM keys first, then others
-    if prefer_keys:
-        # keep order: prefer_keys (existing ones), then remaining in original order
-        seen = set()
-        ordered = [
-            k
-            for k in prefer_keys
-            if k in cols and not (k in seen or seen.add(k))
-        ]
-        for k in cols:
-            if k not in seen:
-                ordered.append(k)
-                seen.add(k)
-        cols = ordered
-        vals = (
-            [payload.get("vector", {}).get(k) for k in cols]
-            if "vector" in payload
-            else [
-                v
-                for _, v in sorted(
-                    zip(cols, vals), key=lambda x: cols.index(x[0])
-                )
-            ]
-        )
-
-    clean_cols, clean_vals = [], []
-    for c, v in zip(cols, vals):
-        try:
-            fv = float(v)
-        except Exception:
-            continue
-        if not math.isfinite(fv):
-            continue  # drop NaN/Inf (e.g., ppl=inf on empty text)
-        clean_cols.append(str(c))
-        clean_vals.append(fv)
-
-    vec = {c: v for c, v in zip(clean_cols, clean_vals)}
-    return {"columns": clean_cols, "values": clean_vals, "vector": vec}
-
-
-# S4.5: VPM payload normalizer (maps non-SCM to 0..1; SCM already 0..1)
-SCM_KEYS = {
-    "scm.reasoning.score01",
-    "scm.knowledge.score01",
-    "scm.clarity.score01",
-    "scm.faithfulness.score01",
-    "scm.coverage.score01",
-    "scm.aggregate01",
-    "scm.uncertainty01",
-    "scm.ood_hat01",
-    "scm.consistency01",
-    "scm.length_norm01",
-    "scm.temp01",
-    "scm.agree_hat01",
-}
-
-
 def _normalize_for_vpm(payload: dict, *, per_frame: bool = True) -> dict:
     cols = payload["columns"]
     vals = payload["values"]
@@ -1049,4 +1229,5 @@ def _normalize_for_vpm(payload: dict, *, per_frame: bool = True) -> dict:
         "values": out,
         "vector": {c: x for c, x in zip(cols, out)},
     }
+
 

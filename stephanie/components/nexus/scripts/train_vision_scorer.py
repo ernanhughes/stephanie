@@ -16,75 +16,75 @@ if __name__ == "__main__":
 
 ### Hydra config: configs/vision_scorer.yaml
 
-yaml
-defaults:
-  - graph_layout@_global_: graph_layout  # reuse your existing graph_layout config
+# yaml
+# defaults:
+#   - graph_layout@_global_: graph_layout  # reuse your existing graph_layout config
 
-model:
-  backbone: mobilenet_v3_small
-  pretrained: true
-  freeze_backbone: true
-  head_hidden_dim: 64
-  layouts: ["forceatlas2", "spectral"]  # must match graph_layout.yaml
+# model:
+#   backbone: mobilenet_v3_small
+#   pretrained: true
+#   freeze_backbone: true
+#   head_hidden_dim: 64
+#   layouts: ["forceatlas2", "spectral"]  # must match graph_layout.yaml
 
-input:
-  img_size: 256
-  channels: ["node_density", "edge_density", "degree_heatmap"]
+# input:
+#   img_size: 256
+#   channels: ["node_density", "edge_density", "degree_heatmap"]
 
-training:
-  probe_types: ["sbm", "ring_of_cliques", "barbell"]
-  n_samples_per_probe: 500
-  batch_size: 32
-  lr: 1e-3
-  epochs: 10
-  device: cpu
-  save_path: ${paths.models_dir}/graph_vision_scorer.pt
+# training:
+#   probe_types: ["sbm", "ring_of_cliques", "barbell"]
+#   n_samples_per_probe: 500
+#   batch_size: 32
+#   lr: 1e-3
+#   epochs: 10
+#   device: cpu
+#   save_path: ${paths.models_dir}/graph_vision_scorer.pt
 
-inference:
-  cache_dir: ${paths.cache_dir}/vision_scorer
-  device: cpu
-  timeout_s: 2.0
+# inference:
+#   cache_dir: ${paths.cache_dir}/vision_scorer
+#   device: cpu
+#   timeout_s: 2.0
 
 
----
+# ---
 
-### Why this integrates cleanly:
-- 🔌 **Uses your hardened graph_layout.py** → cached VPM renders, layout hashes, FA2 fallback  
-- ⚡ **Tiny & cache-aware** → <0.5M params; 20ms on CPU; cache key by graph structure  
-- 📊 **Fuses with existing scores** → drop vision_symmetry into SICQL/HRM like any other channel  
-- 🚨 **Risk-aware** → logs GNN-vs-vision disagreement to MemCube for Daimon review  
-- 🧪 **Probe-trained** → leverages your existing generate_probe (SBM/ring/barbell)  
+# ### Why this integrates cleanly:
+# - 🔌 **Uses your hardened graph_layout.py** → cached VPM renders, layout hashes, FA2 fallback  
+# - ⚡ **Tiny & cache-aware** → <0.5M params; 20ms on CPU; cache key by graph structure  
+# - 📊 **Fuses with existing scores** → drop vision_symmetry into SICQL/HRM like any other channel  
+# - 🚨 **Risk-aware** → logs GNN-vs-vision disagreement to MemCube for Daimon review  
+# - 🧪 **Probe-trained** → leverages your existing generate_probe (SBM/ring/barbell)  
 
-### Next-step options:
-1. **Gap panel for probe metrics** → I’ll generate a Jupyter snippet that loads probe_metrics.json and plots FA2 vs spectral separability  
-2. **Jitter filmstrip renderer** → Show visual-thought steps + VPM channels side-by-side in telemetry  
-3. **Auto-mode-switch router** → Train a tiny MLP on MemCube logs to replace p_interleaved heuristic  
+# ### Next-step options:
+# 1. **Gap panel for probe metrics** → I’ll generate a Jupyter snippet that loads probe_metrics.json and plots FA2 vs spectral separability  
+# 2. **Jitter filmstrip renderer** → Show visual-thought steps + VPM channels side-by-side in telemetry  
+# 3. **Auto-mode-switch router** → Train a tiny MLP on MemCube logs to replace p_interleaved heuristic  
 
-**Your call:** Which unlocks the next win fastest? (I vote Gap panel — 50 lines of Plotly to validate vision scorer on probes.)
+# **Your call:** Which unlocks the next win fastest? (I vote Gap panel — 50 lines of Plotly to validate vision scorer on probes.)
 
-* * *
+# * * *
 
-**ChatGPT:**
+# **ChatGPT:**
 
-Awesome—let’s ship a **lean, dependency-light GraphVisionScorer** that runs anywhere (pure PyTorch + NetworkX + NumPy) and doesn’t rely on torchvision. I’ve kept it tiny (<0.5M params), cache-friendly, and wired to your multi-layout VPMs.
+# Awesome—let’s ship a **lean, dependency-light GraphVisionScorer** that runs anywhere (pure PyTorch + NetworkX + NumPy) and doesn’t rely on torchvision. I’ve kept it tiny (<0.5M params), cache-friendly, and wired to your multi-layout VPMs.
 
-Below is a **complete drop-in** you can paste in. It includes:
+# Below is a **complete drop-in** you can paste in. It includes:
 
-* A **TinyCNN** backbone (no torchvision).
+# * A **TinyCNN** backbone (no torchvision).
     
-* Inference wrapper (`VisionScorer`) that consumes your `render_multi_layout_vpm`.
+# * Inference wrapper (`VisionScorer`) that consumes your `render_multi_layout_vpm`.
     
-* An **optional trainer** that generates synthetic graphs (SBM / ring-of-cliques / barbell) and auto-labels them (symmetry, spectral gap bucket, bridge proxy).
+# * An **optional trainer** that generates synthetic graphs (SBM / ring-of-cliques / barbell) and auto-labels them (symmetry, spectral gap bucket, bridge proxy).
     
-* Clean shapes and **correct normalization** for CHW tensors (no transform pitfalls).
+# * Clean shapes and **correct normalization** for CHW tensors (no transform pitfalls).
     
 
-* * *
+# * * *
 
-`stephanie/services/graph_vision_scorer.py`
-===========================================
+# `stephanie/services/graph_vision_scorer.py`
+# ===========================================
 
-```python
+# ```python
 from __future__ import annotations
 
 import json

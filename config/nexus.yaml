@@ -6,10 +6,11 @@ defaults:
   - services: all
   - scorer: all  
 
-  - agents/nexus
   - agents/scorable_loader
   - agents/chat_analyze
   - agents/universal_scorer
+  - agents/nexus
+  - agents/gap
 
 embeddings:
   backend: hnet
@@ -58,5 +59,11 @@ pipeline:
      - name: nexus
        description: "Generate a memory graph"
        cls: stephanie.components.nexus.agents.nexus_inline.NexusInlineAgent
+       enabled: true
+       iterations: 1
+
+     - name: gap
+       description: "Understanding the Gap between two models using chat conversation_turns"
+       cls: stephanie.components.gap.gap.GapAgent
        enabled: true
        iterations: 1

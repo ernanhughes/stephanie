@@ -8,6 +8,7 @@ import random
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
 
 import imageio.v2 as imageio
 import numpy as np
@@ -21,7 +22,7 @@ from stephanie.components.nexus.graph.builder import (
 from stephanie.components.nexus.graph.exporters import (
     export_graph_json,
     export_pyvis_html,
-    export_pyvis_html_rich
+    export_pyvis_html_rich,
 )
 from stephanie.components.nexus.graph.layout import compute_positions
 from stephanie.components.nexus.manifest import ManifestItem, NexusRunManifest
@@ -35,8 +36,265 @@ from stephanie.services.workers.nexus_workers import (
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.tools.embed_utils import as_list_floats, has_vec, cos_safe
+from collections import defaultdict
 
 log = logging.getLogger(__name__)
+
+
+def _l2(v):
+    import math
+
+    return math.sqrt(sum(x * x for x in v)) or 1.0
+
+
+def _cos(a, b):
+    if not a or not b:
+        return 0.0
+    return sum(x * y for x, y in zip(a, b)) / (_l2(a) * _l2(b))
+
+
+def _consensus_walk_order(scorables, *, goal_vec, alpha=0.7, limit=None):
+    """
+    Greedy run ordering that 'thinks': pick an item, update consensus, pick next
+    that maximizes alpha*sim(goal) + (1-alpha)*sim(consensus).
+    """
+    # collect embeddings (ensure you've run _ensure_embeddings_global beforehand)
+    vecs = []
+    for s in scorables:
+        v = (s.get("embeddings") or {}).get("global") or []
+        vecs.append(list(map(float, v)) if v else [])
+
+    n = len(scorables)
+    if n == 0:
+        return []
+
+    # start at argmax sim to goal
+    sims_to_goal = [(_cos(v, goal_vec), i) for i, v in enumerate(vecs)]
+    start_idx = max(sims_to_goal)[1]
+    picked = [start_idx]
+    picked_set = {start_idx}
+
+    # running centroid of picked
+    def centroid(indices):
+        if not indices:
+            return []
+        d = len(vecs[indices[0]]) if vecs[indices[0]] else 0
+        if d == 0:
+            return []
+        acc = [0.0] * d
+        for i in indices:
+            v = vecs[i]
+            for k in range(d):
+                acc[k] += v[k]
+        return [x / len(indices) for x in acc]
+
+    c = centroid(picked)
+    want = limit or n
+    while len(picked) < want:
+        best = (-1e9, None)
+        for j in range(n):
+            if j in picked_set:
+                continue
+            v = vecs[j]
+            s_goal = _cos(v, goal_vec)
+            s_cons = _cos(v, c) if c else 0.0
+            score = alpha * s_goal + (1.0 - alpha) * s_cons
+            if score > best[0]:
+                best = (score, j)
+        if best[1] is None:
+            break
+        picked.append(best[1])
+        picked_set.add(best[1])
+        c = centroid(picked)
+
+    # return new index order
+    return picked
+
+
+def _goal_alignment_stats(manifest, target_vec):
+    # cosine(sim(item, goal)) already computed in frames builder; recompute here robustly
+    def _l2(v):
+        return math.sqrt(sum(x * x for x in v)) or 1.0
+
+    def _cos(a, b):
+        if not a or not b:
+            return 0.0
+        a = list(a)
+        b = list(b)
+        return sum(x * y for x, y in zip(a, b)) / (_l2(a) * _l2(b))
+
+    sims = []
+    for mi in manifest.items:
+        v = (mi.embeddings or {}).get("global")
+        if v and isinstance(v, (list, tuple)):
+            sims.append(_cos(v, target_vec))
+        elif mi.metrics_vector:
+            sims.append(_cos(list(mi.metrics_vector.values()), target_vec))
+        else:
+            sims.append(0.0)
+
+    sims = [float(x) for x in sims if x is not None]
+    if not sims:
+        return {"mean": 0.0, "median": 0.0, "p90": 0.0}
+    s = sorted(sims)
+    n = len(s)
+
+    def pct(p):
+        i = min(n - 1, max(0, int(round(p * (n - 1)))))
+        return s[i]
+
+    return {
+        "mean": sum(sims) / n,
+        "median": s[n // 2] if n else 0.0,
+        "p90": pct(0.90),
+        "count": n,
+    }
+
+
+def _build_adjacency(edges):
+    adj = defaultdict(set)
+    ew = {}
+    for e in edges:
+        src = str(getattr(e, "src", getattr(e, "source", "")))
+        dst = str(getattr(e, "dst", getattr(e, "target", "")))
+        if not src or not dst or src == dst:
+            continue
+        w = float(getattr(e, "weight", 0.0) or 0.0)
+        adj[src].add(dst)
+        adj[dst].add(src)
+        ew[(src, dst)] = w
+        ew[(dst, src)] = w
+    return adj, ew
+
+
+def _connected_components(adj):
+    seen = set()
+    comps = []
+    for u in list(adj.keys()):
+        if u in seen:
+            continue
+        stack = [u]
+        seen.add(u)
+        comp = []
+        while stack:
+            v = stack.pop()
+            comp.append(v)
+            for w in adj[v]:
+                if w not in seen:
+                    seen.add(w)
+                    stack.append(w)
+        comps.append(comp)
+    return comps
+
+
+def _approx_clustering_coefficient(adj):
+    # simple undirected clustering coefficient
+    N = 0
+    S = 0.0
+    for u, nbrs in adj.items():
+        k = len(nbrs)
+        if k < 2:
+            continue
+        # count neighbor-neighbor edges
+        nn = 0
+        nbrs_set = nbrs
+        for a in nbrs_set:
+            # only count a<b to avoid double
+            for b in nbrs_set:
+                if a >= b:
+                    continue
+                if a in adj[b]:
+                    nn += 1
+        possible = k * (k - 1) / 2
+        S += nn / possible
+        N += 1
+    return (S / N) if N else 0.0
+
+
+def _mutual_knn_fraction(edges):
+    # fraction of KNN edges that are reciprocal
+    knn = set()
+    for e in edges:
+        et = str(getattr(e, "type", ""))
+        if "knn" in et.lower():
+            s = str(getattr(e, "src", getattr(e, "source", "")))
+            t = str(getattr(e, "dst", getattr(e, "target", "")))
+            if s and t and s != t:
+                knn.add((s, t))
+    if not knn:
+        return 0.0
+    mutual = sum(1 for (a, b) in knn if (b, a) in knn)
+    return mutual / len(knn)
+
+
+def _spatial_tightness(positions, edges):
+    # mean edge length using preset positions
+    lens = []
+    for e in edges:
+        s = str(getattr(e, "src", getattr(e, "source", "")))
+        t = str(getattr(e, "dst", getattr(e, "target", "")))
+        if s not in positions or t not in positions:
+            continue
+        x1, y1 = positions[s]
+        x2, y2 = positions[t]
+        if x1 is None or y1 is None or x2 is None or y2 is None:
+            continue
+        dx = x1 - x2
+        dy = y1 - y2
+        lens.append(math.sqrt(dx * dx + dy * dy))
+    if not lens:
+        return {"mean_edge_len": 0.0, "p10": 0.0, "p90": 0.0}
+    lens.sort()
+    n = len(lens)
+
+    def pct(p):
+        i = min(n - 1, max(0, int(round(p * (n - 1)))))
+        return lens[i]
+
+    return {"mean_edge_len": sum(lens) / n, "p10": pct(0.10), "p90": pct(0.90)}
+
+
+def _compute_run_metrics(manifest, nodes, edges, positions, target_vec):
+    # 1) goal alignment of items
+    align = _goal_alignment_stats(manifest, target_vec)
+
+    # 2) graph structure
+    adj, ew = _build_adjacency(edges)
+    comps = _connected_components(adj)
+    largest_cc = max((len(c) for c in comps), default=0)
+    n_nodes = len(nodes)
+    n_edges = len(
+        {
+            (
+                str(getattr(e, "src", getattr(e, "source", ""))),
+                str(getattr(e, "dst", getattr(e, "target", ""))),
+            )
+            for e in edges
+        }
+    )
+    avg_deg = (2.0 * n_edges / n_nodes) if n_nodes else 0.0
+    mean_w = 0.0
+    ws = [float(getattr(e, "weight", 0.0) or 0.0) for e in edges]
+    if ws:
+        mean_w = sum(ws) / len(ws)
+
+    cluster_c = _approx_clustering_coefficient(adj)
+    mutual_knn = _mutual_knn_fraction(edges)
+    tight = _spatial_tightness(positions, edges)
+
+    return {
+        "nodes": n_nodes,
+        "edges": n_edges,
+        "avg_degree": avg_deg,
+        "mean_edge_weight": mean_w,
+        "connected_components": len(comps),
+        "largest_component": largest_cc,
+        "clustering_coeff": cluster_c,
+        "mutual_knn_frac": mutual_knn,
+        "spatial": tight,
+        "goal_alignment": align,
+    }
+
 
 class NexusInlineAgent(BaseAgent):
     """
@@ -57,7 +315,10 @@ class NexusInlineAgent(BaseAgent):
         self.zm: ZeroModelService = self.container.get("zeromodel")
         self.scoring: ScoringService = self.container.get("scoring")
         self.scorers = cfg.get("scorers", ["sicql", "hrm", "tiny"])
-        self.dimensions = cfg.get("dimensions", ["alignment", "clarity", "relevance", "coverage", "faithfulness"])
+        self.dimensions = cfg.get(
+            "dimensions",
+            ["alignment", "clarity", "relevance", "coverage", "faithfulness"],
+        )
 
         self.vpmw = NexusVPMWorkerInline(self.zm, logger=logger)
         self.mxw = NexusMetricsWorkerInline(
@@ -69,7 +330,9 @@ class NexusInlineAgent(BaseAgent):
 
         self.vpm_out = self.cfg.get("vpm_out", "./runs/nexus_vpm/")
         self.rollout_steps = int(self.cfg.get("rollout_steps", 0))
-        self.rollout_strategy = self.cfg.get("rollout_strategy", "none")
+        self.rollout_strategy = self.cfg.get(
+            "rollout_strategy", "consensus-walk"
+        )
         self.target_type = self.cfg.get(
             "target_type", ScorableType.CONVERSATION_TURN
         )
@@ -127,6 +390,64 @@ class NexusInlineAgent(BaseAgent):
                     "ab_targeted_run_dir": tgt_ctx["nexus_run_dir"],
                 }
             )
+
+            # Compare A/B and write a single report at the parent dir
+            try:
+                base_dir = Path(base_ctx["nexus_run_dir"])
+                tgt_dir = Path(tgt_ctx["nexus_run_dir"])
+                parent = base_dir.parent  # common root e.g., runs/nexus_vpm
+
+                def _load(p):
+                    with open(
+                        p / "run_metrics.json", "r", encoding="utf-8"
+                    ) as f:
+                        return json.load(f)
+
+                mb = _load(base_dir)
+                mt = _load(tgt_dir)
+
+                def diff(a, b, key, subkey=None):
+                    va = a[key][subkey] if subkey else a[key]
+                    vb = b[key][subkey] if subkey else b[key]
+                    # report improvement where "higher is better" except mean_edge_len (lower is better)
+                    if key == "spatial" and subkey == "mean_edge_len":
+                        # lower is tighter, so improvement = (va - vb)/va
+                        return (va - vb) / max(1e-9, va)
+                    return (vb - va) / max(1e-9, abs(va) + 1e-9)
+
+                report = {
+                    "baseline_id": str(base_dir.name),
+                    "targeted_id": str(tgt_dir.name),
+                    "improvements": {
+                        "goal_alignment.mean": diff(
+                            mb, mt, "goal_alignment", "mean"
+                        ),
+                        "goal_alignment.p90": diff(
+                            mb, mt, "goal_alignment", "p90"
+                        ),
+                        "mutual_knn_frac": diff(mb, mt, "mutual_knn_frac"),
+                        "clustering_coeff": diff(mb, mt, "clustering_coeff"),
+                        "spatial.mean_edge_len": diff(
+                            mb, mt, "spatial", "mean_edge_len"
+                        ),  # lower is better
+                        "largest_component": diff(mb, mt, "largest_component"),
+                        "avg_degree": diff(mb, mt, "avg_degree"),
+                        "mean_edge_weight": diff(mb, mt, "mean_edge_weight"),
+                    },
+                    "baseline": mb,
+                    "targeted": mt,
+                }
+                with (parent / f"{run_id_root}_ab_compare.json").open(
+                    "w", encoding="utf-8"
+                ) as f:
+                    json.dump(report, f, indent=2)
+                log.info(
+                    "A/B compare written to %s",
+                    (parent / "ab_compare.json").as_posix(),
+                )
+            except Exception as e:
+                log.warning("A/B compare build failed: %s", e)
+
             return context
 
         # Fallback: single-run mode
@@ -137,6 +458,7 @@ class NexusInlineAgent(BaseAgent):
             target_vec=target_vec,
         )
         context.update(single_ctx)
+
         return context
 
     # ---------- CORE EMIT FOR ONE RUN ----------
@@ -164,6 +486,18 @@ class NexusInlineAgent(BaseAgent):
                 "count_scorables": len(scorables),
             },
         )
+
+        # optionally reorder to "think" across time
+        strategy = (self.rollout_strategy or "none").lower()
+        if strategy == "consensus-walk":
+            # goal_vec from caller (we already pass target_vec to _write_frames_and_gif)
+            goal_vec = target_vec or []
+            order = _consensus_walk_order(
+                scorables,
+                goal_vec=goal_vec,
+                alpha=float(self.cfg.get("ab_compare", {}).get("alpha", 0.7)),
+            )
+            scorables = [scorables[i] for i in order]
 
         # Per-item metrics + VPM tiles
         for idx, s in enumerate(scorables):
@@ -267,16 +601,32 @@ class NexusInlineAgent(BaseAgent):
         export_graph_json(
             Path(out_dir) / "graph.json", nodes, edges, positions
         )
-
+        run_metrics = _compute_run_metrics(
+            manifest=manifest,
+            nodes=nodes,
+            edges=edges,
+            positions=positions,
+            target_vec=target_vec or [],
+        )
+        with (out_dir / "run_metrics.json").open("w", encoding="utf-8") as f:
+            json.dump(run_metrics, f, indent=2)
         try:
-            export_pyvis_html_rich(
+            export_pyvis_html(
                 output_path=(out_dir / "graph.html").as_posix(),
                 nodes=nodes,
                 edges=edges,
-                positions=positions,
                 title=f"Nexus Graph — {run_id}",
             )
-            print(f"Exported rich PyVis HTML to {(out_dir / 'graph.html').as_posix()}")
+            # export_pyvis_html_rich(
+            #     output_path=(out_dir / "graph.html").as_posix(),
+            #     nodes=nodes,
+            #     edges=edges,
+            #     positions=positions,
+            #     title=f"Nexus Graph — {run_id}",
+            # )
+            print(
+                f"Exported rich PyVis HTML to {(out_dir / 'graph.html').as_posix()}"
+            )
         except Exception as e:
             log.warning("PyVis export failed: %s", e)
 
@@ -373,8 +723,8 @@ class NexusInlineAgent(BaseAgent):
         return base_ids, tgt_ids
 
 
-def _annotate_with_sim(tile: Image.Image, sim: float|None) -> Image.Image:
-    if sim is None: 
+def _annotate_with_sim(tile: Image.Image, sim: float | None) -> Image.Image:
+    if sim is None:
         return tile
     # clamp to [0,1]
     s = max(0.0, min(1.0, float(sim)))

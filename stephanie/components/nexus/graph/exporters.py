@@ -12,49 +12,61 @@ from stephanie.components.nexus.types import NexusEdge, NexusNode
 from stephanie.utils.json_sanitize import dumps_safe
 
 
-def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title=""):
+def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title: str = ""):
     """
-    Deterministic PyVis export with:
-      - fixed positions (physics off)
-      - node size = degree
-      - edge color by type: MST vs KNN
+    Deterministic export using vis-network with:
+      - fixed positions (physics off) using provided `positions`
+      - node size ~= degree
+      - edge color by type (MST vs KNN)
       - dark theme + legend + edge toggles
+      - JS-side scaling of normalized coords + fit on load/resize
     """
-    # degree for sizing
+    # degree for node sizing
     deg = {str(nid): 0 for nid in nodes.keys()}
+
     def _nid(x):
         return str(getattr(x, "source", getattr(x, "src", "")))
+
     def _tid(x):
         return str(getattr(x, "target", getattr(x, "dst", "")))
+
     for e in edges:
         s, t = _nid(e), _tid(e)
-        if s in deg: deg[s] += 1
-        if t in deg: deg[t] += 1
+        if s in deg:
+            deg[s] += 1
+        if t in deg:
+            deg[t] += 1
 
-    # Build serializable structures
+    # nodes → JSON-serializable objects (x/y may be small/normalized)
     j_nodes = []
     for nid, n in nodes.items():
         x, y = positions.get(nid, (None, None))
-        j_nodes.append({
-            "id": str(nid),
-            "label": getattr(n, "title", None) or getattr(n, "text", "")[:80] or str(nid),
-            "shape": "dot",
-            "color": "#90caf9",  # light blue on dark
-            "value": max(3, min(25, deg.get(str(nid), 1) + 3)),
-            # Freeze layout by setting x/y and turning physics off per node
-            "x": float(x) if x is not None else None,
-            "y": float(y) if y is not None else None,
-            "physics": False,
-            "font": {"color": "#eee"},
-        })
+        j_nodes.append(
+            {
+                "id": str(nid),
+                "label": getattr(n, "title", None)
+                or getattr(n, "text", "")[:80]
+                or str(nid),
+                "shape": "dot",
+                "color": "#90caf9",
+                "value": max(3, min(25, deg.get(str(nid), 1) + 3)),
+                "x": float(x) if x is not None else None,
+                "y": float(y) if y is not None else None,
+                "physics": False,
+                "font": {"color": "#eee"},
+            }
+        )
 
     def _edge_type(e) -> str:
         et = getattr(e, "type", None)
-        if et: return str(et)
-        # Fallback: parse from title if present ("knn_blend (...)" / "backbone_mst (...)")
+        if et:
+            return str(et)
         t = getattr(e, "title", "") or getattr(e, "label", "")
-        if "mst" in t.lower(): return "backbone_mst"
-        if "knn" in t.lower(): return "knn_blend"
+        tl = t.lower()
+        if "mst" in tl:
+            return "backbone_mst"
+        if "knn" in tl:
+            return "knn_blend"
         return "edge"
 
     def _edge_weight(e) -> float:
@@ -66,16 +78,18 @@ def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title="
     j_edges = []
     for e in edges:
         et = _edge_type(e)
-        color = "#f07178" if et == "backbone_mst" else "#56b6c2"  # red-ish MST, teal KNN
+        color = "#f07178" if et == "backbone_mst" else "#56b6c2"  # mst red-ish, knn teal
         w = _edge_weight(e)
-        j_edges.append({
-            "from": _nid(e),
-            "to": _tid(e),
-            "arrows": "to",
-            "color": color,
-            "width": 3 if w >= 0.9 else 2 if w >= 0.8 else 1,
-            "title": f"{et} ({w:.3f})" if w else et,
-        })
+        j_edges.append(
+            {
+                "from": _nid(e),
+                "to": _tid(e),
+                "arrows": "to",
+                "color": color,
+                "width": 3 if w >= 0.9 else 2 if w >= 0.8 else 1,
+                "title": f"{et} ({w:.3f})" if w else et,
+            }
+        )
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -115,41 +129,50 @@ def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title="
 </div>
 
 <script>
-  const SCALE = 600; // tweak 400–900 as you like
-  const nodes = new vis.DataSet({json.dumps(j_nodes)});
-  const edgesRaw = {json.dumps(j_edges)};
+  // Scale normalized coordinates (e.g., -1..1) up to pixels
+  const SCALE = 600; // tweak 400–900 depending on density
 
-  // Split edges by type for toggling
+  const rawNodes = {json.dumps(j_nodes)};
+  // apply scaling & freeze positions
+  rawNodes.forEach(n => {{
+    if (typeof n.x === 'number') n.x *= SCALE;
+    if (typeof n.y === 'number') n.y *= SCALE;
+    n.fixed = {{ x: true, y: true }};
+    n.physics = false;
+  }});
+  const nodes = new vis.DataSet(rawNodes);
+
+  const edgesRaw = {json.dumps(j_edges)};
   const edgesKNN = edgesRaw.filter(e => (e.title||"").toLowerCase().includes("knn"));
   const edgesMST = edgesRaw.filter(e => (e.title||"").toLowerCase().includes("mst"));
-  let edges = new vis.DataSet(edgesRaw);
+  const edges = new vis.DataSet(edgesRaw);
 
   const container = document.getElementById('mynetwork');
-  const data = {{ nodes: nodes, edges: edges }};
+  const data = {{ nodes, edges }};
   const options = {{
-    // physics OFF → we trust supplied positions for apples-to-apples comparisons
     physics: false,
-    interaction: {{ hover:true, multiselect:false, zoomView:true, dragView:true }},
+    interaction: {{ hover: false, zoomView: true, dragView: true }},
     nodes: {{ shape:'dot', scaling: {{ min:3, max:25 }} }},
-    edges: {{ smooth: {{ type:'dynamic' }} }}
+    edges: {{ smooth: false }}, // perf-friendly on Windows
+    layout: {{ improvedLayout: false }} // skip extra layout passes
   }};
 
   const network = new vis.Network(container, data, options);
 
-  // Toggles
+  // Frame content on first draw + when resizing
+  network.once('afterDrawing', () => network.fit({{ animation: false }}));
+  window.addEventListener('resize', () => network.fit({{ animation: false }}));
+
+  // Edge toggles
   const toggleKnn = document.getElementById('toggleKnn');
   const toggleMst = document.getElementById('toggleMst');
-
   function refreshEdges() {{
-    const wantK = toggleKnn.checked;
-    const wantM = toggleMst.checked;
     const next = [];
-    if (wantK) next.push(...edgesKNN);
-    if (wantM) next.push(...edgesMST);
+    if (toggleKnn.checked) next.push(...edgesKNN);
+    if (toggleMst.checked) next.push(...edgesMST);
     edges.clear();
     edges.add(next);
   }}
-
   toggleKnn.addEventListener('change', refreshEdges);
   toggleMst.addEventListener('change', refreshEdges);
 </script>
@@ -164,6 +187,10 @@ def export_pyvis_html(
     output_path: str,
     title: str,
 ) -> str:
+    from pathlib import Path
+    import json
+    from pyvis.network import Network
+
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -172,23 +199,28 @@ def export_pyvis_html(
         width="100%",
         directed=True,
         notebook=False,
-        bgcolor="#111",
-        font_color="#eee",
+        bgcolor="#0e0e0e",          # black background
+        font_color="#e5e7eb",       # light gray labels
     )
-    net.toggle_physics(True)
 
-    # IMPORTANT: pass valid JSON (keys quoted, numbers are numbers)
+    # Thinner edges + smaller arrows; allow per-edge rgba colors
     options = {
         "physics": {
             "solver": "forceAtlas2Based",
             "stabilization": {"iterations": 250}
         },
+        "interaction": {"hover": True, "zoomView": True, "dragView": True},
         "nodes": {
             "shape": "dot",
-            "scaling": {"min": 3, "max": 25}
+            "scaling": {"min": 3, "max": 20},
+            "font": {"color": "#e5e7eb"}
         },
         "edges": {
-            "smooth": {"type": "dynamic"}
+            "arrows": {"to": {"enabled": True, "scaleFactor": 0.45}},  # smaller arrowheads
+            "smooth": {"type": "dynamic"},
+            "color": {"inherit": False},   # we’ll send per-edge rgba
+            "selectionWidth": 1,
+            "hoverWidth": 1
         }
     }
     net.set_options(json.dumps(options))
@@ -199,7 +231,7 @@ def export_pyvis_html(
         label_src = getattr(n, "title", None) or getattr(n, "text", "") or nid_s
         label = str(label_src)[:80]
         degree = int(getattr(n, "degree", 1) or 1)
-        size = max(6, min(22, int((degree ** 0.5) * 8)))
+        size = max(6, min(18, int((degree ** 0.5) * 7)))
         net.add_node(
             nid_s,
             label=label,
@@ -207,30 +239,56 @@ def export_pyvis_html(
             value=size,
         )
 
+    # Edge styling helpers
+    def _edge_rgba_and_width(etype: str, w: float):
+        et = (etype or "").lower()
+        # softer red for temporal/MST, desaturated gray-blue for KNN, neutral gray for other
+        if "temporal" in et or "mst" in et:
+            col = "rgba(240,113,120,0.85)"   # soft red (was bright red)
+        elif "knn" in et:
+            col = "rgba(138,162,178,0.60)"   # gray-blue (less neon)
+        else:
+            col = "rgba(107,114,128,0.50)"   # neutral gray
+        # much thinner lines overall
+        width = max(0.6, min(1.4, 0.8 + (w or 0.0) * 0.8))
+        return col, width
+
     # Edges
     for e in edges:
         etype = getattr(e, "type", "edge")
         w = float(getattr(e, "weight", 0.0) or 0.0)
         src, dst = str(getattr(e, "src", "")), str(getattr(e, "dst", ""))
-        color = "#5ec269" if etype == "temporal_next" else "#56b6c2"
-        width = 2 if etype == "temporal_next" else max(1, int(round(w * 3)))
-        net.add_edge(src, dst, title=f"{etype} ({w:.3f})", color=color, width=width)
+        color, width = _edge_rgba_and_width(etype, w)
+        net.add_edge(
+            src,
+            dst,
+            title=f"{etype} ({w:.3f})",
+            color=color,
+            width=width,
+            arrows="to",
+        )
 
-    # Write file (no auto-open)
     net.write_html(str(out), notebook=False)
     return str(out)
 
 
+def export_graph_json(
+    path,
+    nodes: Dict[str, NexusNode],
+    edges: List[NexusEdge],
+    positions: dict | None = None,
+):
+    """
+    Export a Cytoscape-friendly graph.json with optional positions.
+    """
+    elements = {"nodes": [], "edges": []}
 
-def export_graph_json(path, nodes: Dict[str, NexusNode], edges: List[NexusEdge], positions: dict | None = None):
-    elements = {
-        "nodes": [],
-        "edges": [],
-    }
     for nid, n in nodes.items():
         d = {
             "id": nid,
-            "label": getattr(n, "title", None) or getattr(n, "text", "")[:80] or nid,
+            "label": getattr(n, "title", None)
+            or getattr(n, "text", "")[:80]
+            or nid,
             "type": getattr(n, "target_type", "unknown"),
             "deg": int(getattr(n, "degree", 0) or 0),
         }
@@ -240,13 +298,17 @@ def export_graph_json(path, nodes: Dict[str, NexusNode], edges: List[NexusEdge],
         elements["nodes"].append({"data": d})
 
     for e in edges:
-        elements["edges"].append({
-            "data": {
-                "id": f"{e.src}->{e.dst}",
-                "source": e.src, "target": e.dst,
-                "type": e.type, "weight": float(getattr(e, "weight", 0.0) or 0.0),
+        elements["edges"].append(
+            {
+                "data": {
+                    "id": f"{e.src}->{e.dst}",
+                    "source": e.src,
+                    "target": e.dst,
+                    "type": e.type,
+                    "weight": float(getattr(e, "weight", 0.0) or 0.0),
+                }
             }
-        })
+        )
 
     pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
     pathlib.Path(path).write_text(dumps_safe(elements), encoding="utf-8")

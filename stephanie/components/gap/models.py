@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 
 @dataclass
@@ -181,6 +181,20 @@ class GapConfig:
 
     domain_seed_config_path: str = "config/domain/seeds.yaml"
 
+    comparison_mode: Literal["models", "runs"] = "models"   # NEW
+
+    # When comparison_mode == "runs", these are used:
+    left_label: str = "baseline"         # becomes “hrm_label” internally
+    right_label: str = "targeted"        # becomes “tiny_label” internally
+    left_run_dir: Optional[Path] = None  # e.g. runs/nexus_vpm/8156-baseline
+    right_run_dir: Optional[Path] = None # e.g. runs/nexus_vpm/8157-targeted
+
+    # Which metrics to pull/compare from runs (keep flexible; auto-discover if empty)
+    ab_metrics: List[str] = field(default_factory=lambda: [
+        # put your most stable VPM/vision/text metrics here; will auto-include what’s found
+        "utility", "clarity", "coherence",
+        "vision_separability", "vision_bridge_risk", "vision_symmetry",
+    ])
 
 @dataclass
 class TripleSample:
@@ -206,7 +220,7 @@ class TripleSample:
     target_value: Optional[float] = None  # Ground truth score if available
     fingerprint: Optional[str] = None  # Content hash for deduplication
 
-
+This is your jumper too big for me is it OK yeah always thank you
 @dataclass  
 class ModelScores:
     """

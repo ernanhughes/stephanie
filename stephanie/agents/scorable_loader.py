@@ -23,8 +23,8 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
         self.doc_ids_scoring = cfg.get("doc_ids_scoring", False)
         self.doc_ids = cfg.get("doc_ids", [])
         self.scoring: ScoringService = self.container.get("scoring")
-        self.limit = int(cfg.get("limit", 100))
-        self.batch_size = int(cfg.get("batch_size", 100))
+        self.limit = int(cfg.get("limit", 200))
+        self.batch_size = int(cfg.get("batch_size", 200))
 
     async def run(self, context: dict) -> dict:
         scorables = []

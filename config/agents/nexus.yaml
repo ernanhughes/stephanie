@@ -152,7 +152,7 @@ nexus:
       - alignment
       - coverage
     rollout_steps: 0                  # 0 = score only (no extra visual ops)
-    rollout_strategy: "none"
+    rollout_strategy: "consensus-walk"
     save_channels: false
 
   zero_model:
@@ -282,7 +282,7 @@ nexus:
 
   vpm_out: "./runs/nexus_vpm"
   rollout_steps: 0
-  rollout_strategy: "none"
+  rollout_strategy: "consensus-walk"
   target_type: "conversation_turn"
 
   graph_build:
