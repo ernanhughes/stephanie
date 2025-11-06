@@ -12,8 +12,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.components.ssp.core.protocols import (EpisodeContext,
-                                                     VerificationResult)
+from stephanie.components.ssp.core.protocols import (VerificationResult)
 
 
 class Solver(ABC):

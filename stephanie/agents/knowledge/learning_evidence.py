@@ -1,8 +1,6 @@
 # stephanie/agents/meta/learning_evidence_agent.py
 from __future__ import annotations
 
-import glob
-import json
 import os
 from typing import Any, Dict, List
 

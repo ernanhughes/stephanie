@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import List, Optional, Union
+from typing import List, Union
 
 # Assuming PlanTrace and ExecutionStep dataclasses exist
 # Adjust the import path as needed based on your project structure.

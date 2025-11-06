@@ -137,7 +137,7 @@ class PromptService(Service):
             )
             out = resp["choices"][0]["message"]["content"]
             return remove_think_blocks(out)
-        except Exception as e:
+        except Exception:
             log.exception("PromptService._acomplete failed", extra={"model": model.name})
             return ""
 
@@ -295,7 +295,7 @@ class PromptService(Service):
             )
             output = response["choices"][0]["message"]["content"]
             return remove_think_blocks(output)
-        except Exception as e:
+        except Exception:
             log.exception("PromptService.call_llm failed")
             return ""
 

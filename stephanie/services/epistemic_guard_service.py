@@ -1,13 +1,11 @@
 # stephanie/services/epistemic_guard_service.py
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-import torch
 
 from stephanie.components.risk.attr_sink_orm import ORMAttrSink
 from stephanie.components.risk.badge import make_badge
@@ -17,7 +15,6 @@ from stephanie.components.risk.provenance import ProvenanceLogger
 from stephanie.components.risk.signals import HallucinationContext
 from stephanie.components.risk.signals import collect as collect_hall
 from stephanie.services.service_protocol import Service
-from stephanie.services.storage_service import StorageService
 
 # ------------------- Contracts -------------------
 # These are your real hallucination components — must be provided by container

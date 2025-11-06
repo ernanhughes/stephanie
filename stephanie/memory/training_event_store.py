@@ -6,13 +6,10 @@ from typing import Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.training_event import TrainingEventORM
-from stephanie.types.training_event import (TrainingEventCreate,
-                                            TrainingEventOut,
-                                            TrainingEventUpdate)
+from stephanie.types.training_event import (TrainingEventCreate)
 
 
 def _sha1(s: str) -> str:
-    import hashlib
 
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 

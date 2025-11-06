@@ -13,7 +13,6 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
 
 from stephanie.components.ssp.core.protocols import (EpisodeContext,
                                                      VerificationResult)

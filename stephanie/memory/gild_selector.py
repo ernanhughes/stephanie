@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import torch
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 from torch.nn import functional as F
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore

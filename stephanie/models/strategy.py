@@ -7,8 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from sqlalchemy import JSON as SA_JSON
-from sqlalchemy import (Column, DateTime, Float, Integer, String,
-                        UniqueConstraint)
+from sqlalchemy import (Column, DateTime, Float, Integer, String)
 
 from stephanie.models.base import Base
 
@@ -58,9 +57,6 @@ class StrategyProfileORM(Base):
     Stores current weights/threshold + version. If you want history, add a second table later.
     """
     __tablename__ = "strategy_profiles"
-    __table_args__ = (
-        UniqueConstraint("agent_name", "scope", name="uq_strategy_agent_scope"),
-    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 

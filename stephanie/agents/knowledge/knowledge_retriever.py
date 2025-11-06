@@ -154,7 +154,6 @@ def _stable_id(s: str) -> str:
     s = (s or "").strip()
     if not s:
         return "kr:empty"
-    import hashlib
     return "kr:" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:12]
 
 def _heuristic_claims(text: str, k: int = 8) -> List[str]:

@@ -5,7 +5,6 @@ from datetime import datetime
 
 from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
                         String)
-from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base

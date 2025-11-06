@@ -1,8 +1,6 @@
 # stephanie/agents/expository/stitcher.py
 from __future__ import annotations
 
-import textwrap
-from typing import List
 
 from sqlalchemy import select
 

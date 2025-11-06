@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (Column, DateTime, Float, Integer, String, Text,
-                        UniqueConstraint)
+from sqlalchemy import (Column, DateTime, Float, Integer, String, Text)
 
 from stephanie.models.base import Base
 
@@ -24,10 +23,6 @@ class ScorableEntityORM(Base):
     similarity = Column(Float, nullable=True)
     source_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint("scorable_id", "scorable_type", "entity_text", name="uq_scorable_entity"),
-    )
 
     def to_dict(self) -> dict:
         return {

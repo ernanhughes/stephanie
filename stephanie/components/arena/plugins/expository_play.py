@@ -1,8 +1,7 @@
 # stephanie/arena/plays/expository_play.py
 from __future__ import annotations
 
-from stephanie.components.arena.plugins.interfaces import (JobCtx, Play,
-                                                           PlayResult)
+from stephanie.components.arena.plugins.interfaces import (JobCtx, PlayResult)
 from stephanie.components.arena.plugins.registry import register_play
 from stephanie.memory.expository_store import (BlogDraftStore,
                                                ExpositoryBufferStore)

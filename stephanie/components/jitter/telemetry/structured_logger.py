@@ -19,7 +19,6 @@ Key Features:
 """
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
@@ -28,7 +27,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from pydantic import BaseModel, Field, validator

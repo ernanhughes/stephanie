@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import functools
 import random
-import re
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict

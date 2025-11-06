@@ -1,8 +1,7 @@
 # stephanie/models/vpm.py
 from __future__ import annotations
 
-from sqlalchemy import (JSON, Column, DateTime, Index, Integer, String, Text,
-                        UniqueConstraint)
+from sqlalchemy import (JSON, Column, DateTime, Integer, String, Text)
 from sqlalchemy.sql import func
 
 from stephanie.models.base import Base
@@ -14,11 +13,6 @@ class VPMORM(Base):
     Stores metric order, values, and optional rendered artifacts from ZeroModel.
     """
     __tablename__ = "vpms"
-    __table_args__ = (
-        UniqueConstraint("run_id", "step", name="uq_vpm_run_step"),
-        Index("ix_vpm_run_id", "run_id"),
-        Index("ix_vpm_created_at", "created_at"),
-    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_id = Column(String, nullable=False)              # timeline/group id

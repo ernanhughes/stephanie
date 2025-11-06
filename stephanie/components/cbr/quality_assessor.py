@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 
 def _finite(x: float, default: float = 0.0) -> float:

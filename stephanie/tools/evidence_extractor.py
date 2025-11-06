@@ -1,9 +1,7 @@
 # stephanie/tools/evidence_extractor.py
 from __future__ import annotations
 
-import math
-import time
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 

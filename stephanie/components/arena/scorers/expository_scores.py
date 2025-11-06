@@ -1,7 +1,7 @@
 # stephanie/arena/scorers/expository_scores.py
 from __future__ import annotations
 
-from stephanie.components.arena.plugins.interfaces import JobCtx, Scorer
+from stephanie.components.arena.plugins.interfaces import JobCtx
 from stephanie.components.arena.plugins.registry import register_scorer
 
 

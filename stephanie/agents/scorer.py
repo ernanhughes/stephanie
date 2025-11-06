@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseScorableORM

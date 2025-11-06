@@ -5,7 +5,6 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.memory.base_store import BaseSQLAlchemyStore

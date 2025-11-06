@@ -6,7 +6,6 @@ import math
 import os
 import traceback
 from datetime import datetime
-from statistics import mean
 from typing import Any, Dict, List, Tuple
 
 import numpy as np

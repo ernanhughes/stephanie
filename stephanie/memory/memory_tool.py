@@ -57,7 +57,6 @@ from stephanie.memory.rule_application_store import RuleApplicationStore
 from stephanie.memory.rule_effect_store import RuleEffectStore
 from stephanie.memory.scorable_domain_store import ScorableDomainStore
 from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
-from stephanie.memory.scorable_entity_store import ScorableEntityStore
 from stephanie.memory.scorable_rank_store import ScorableRankStore
 from stephanie.memory.score_store import ScoreStore
 from stephanie.memory.scoring_store import ScoringStore

@@ -17,18 +17,17 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
 from pydantic import BaseModel, Field, validator
 
-from .energy import EnergyPool, EnergyPools
+from .energy import EnergyPools
 
 log = logging.getLogger("stephanie.jitter.metabolism.pathways")
 

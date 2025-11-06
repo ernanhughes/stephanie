@@ -7,7 +7,6 @@ from difflib import SequenceMatcher
 from typing import Optional
 
 from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import dialect
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.goal import GoalORM

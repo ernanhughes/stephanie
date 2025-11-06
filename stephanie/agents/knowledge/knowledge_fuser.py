@@ -11,7 +11,6 @@ from stephanie.agents.knowledge.chat_knowledge_builder import \
     ChatKnowledgeBuilder
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.data.knowledge_unit import KnowledgeUnit
-from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 
 log = logging.getLogger(__name__)
 

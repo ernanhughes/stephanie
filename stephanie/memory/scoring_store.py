@@ -82,7 +82,7 @@ class ScoringStore(BaseSQLAlchemyStore):
 
     def get_scorer_correlation(self, scorer: str, embedding: str):
         def op(s):
-            query = text(f""" ... """)
+            query = text(""" ... """)
             results = s.execute(query).fetchall()
             df = pd.DataFrame([dict(row._mapping) for row in results])
             return df.corr()
@@ -90,7 +90,7 @@ class ScoringStore(BaseSQLAlchemyStore):
 
     def get_score_gaps(self, scorer: str, embedding: str):
         def op(s):
-            query = text(f""" ... """)
+            query = text(""" ... """)
             return pd.DataFrame([dict(row._mapping) for row in self._scope().execute(query).fetchall()])
         return self._run(op)
 

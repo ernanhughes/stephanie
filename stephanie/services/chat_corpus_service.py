@@ -1,10 +1,9 @@
 # stephanie/services/chat_corpus_service.py
 from __future__ import annotations
 
-import itertools
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 # 🔑 Embedding search target enum (adjust import if your path differs)
 from stephanie.scoring.scorable import \

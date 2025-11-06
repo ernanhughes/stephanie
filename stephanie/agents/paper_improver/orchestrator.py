@@ -11,7 +11,7 @@ import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from stephanie.agents.knowledge.improver import Improver
 from stephanie.agents.paper_improver.goals import GoalScorer

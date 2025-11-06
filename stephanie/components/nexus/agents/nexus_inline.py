@@ -15,7 +15,6 @@ import time
 from stephanie.components.nexus.graph.exporters import export_graph_json, export_pyvis_html
 # add to imports at the top
 from stephanie.components.nexus.graph.builder import build_nodes_from_manifest, build_edges_enhanced
-from stephanie.components.nexus.graph.cytoscape import to_cytoscape_elements
 from stephanie.utils.json_sanitize import dumps_safe  # small helper; see below
 from stephanie.components.nexus.graph.timeline import build_frames_from_manifest
 import logging

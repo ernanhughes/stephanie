@@ -23,7 +23,6 @@ from zeromodel.tools.spatial_optimizer import SpatialOptimizer
 from stephanie.services.event_service import EventService
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.zeromodel.vpm_phos import robust01
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")

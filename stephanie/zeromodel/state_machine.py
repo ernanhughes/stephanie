@@ -1,5 +1,4 @@
 # stephanie/zeromodel/state_machine.py
-from __future__ import annotations
 
 """
 VPM State Machine
@@ -24,6 +23,7 @@ External Dependencies
 
 This module is intentionally dependency-light and pure-Python friendly.
 """
+from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field

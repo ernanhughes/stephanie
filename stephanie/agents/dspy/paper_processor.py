@@ -504,7 +504,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                     "error": None,
                     "meta": {"attempts": attempt, "duration_ms": round((time.time()-start)*1000,1)}
                 }
-            except Exception as e:
+            except Exception:
                 time.sleep(backoff_sec)
 
         return {

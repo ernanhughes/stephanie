@@ -26,9 +26,8 @@ This module is dependency-light. For polygon masks and crisp outlines it uses PI
 from __future__ import annotations
 
 import enum
-import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 

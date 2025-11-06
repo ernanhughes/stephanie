@@ -23,7 +23,6 @@ except Exception:  # pragma: no cover
 
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_protocol import Service
-from stephanie.utils.json_sanitize import dumps_safe  # ← reuse your utils
 from stephanie.utils.json_sanitize import sanitize
 # Optional ZeroModel/PHOS imports (kept as in your existing file)
 from stephanie.zeromodel.vpm_controller import Decision, Policy, Thresholds

@@ -5,7 +5,6 @@ import os
 
 import torch
 
-from stephanie.data.plan_trace import PlanTrace
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.model.epistemic_trace_encoder import \

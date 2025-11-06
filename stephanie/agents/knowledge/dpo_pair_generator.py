@@ -7,11 +7,9 @@ import logging
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.knowledge.casebook_store import CaseBookStore
-from stephanie.utils.json_sanitize import safe_json
 
 log = logging.getLogger(__name__)
 

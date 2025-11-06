@@ -23,9 +23,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 
-from stephanie.components.ssp.core.protocols import EpisodeContext, SSPMetrics
+from stephanie.components.ssp.core.protocols import SSPMetrics
 from stephanie.components.ssp.core.roles.proposer import Proposer
 from stephanie.components.ssp.core.roles.solver import Solver
 from stephanie.components.ssp.core.roles.verifier import Verifier

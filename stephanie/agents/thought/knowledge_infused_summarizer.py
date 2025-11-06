@@ -985,7 +985,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         Produce a simple PNG of baseline performance drift after the learning split.
         """
         try:
-            import matplotlib
+            pass
         except Exception:
             self.logger.log(
                 "TransferCurveSkip", {"reason": "matplotlib not available"}

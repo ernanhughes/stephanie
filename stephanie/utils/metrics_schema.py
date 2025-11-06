@@ -1,9 +1,8 @@
 # stephanie/utils/metrics_schema.py
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple
 
 
 @dataclass(frozen=True)

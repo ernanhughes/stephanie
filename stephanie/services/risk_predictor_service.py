@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.components.risk.features.entity_domain_features import (
-    compute_entity_metrics, risk_from_features)
+    risk_from_features)
 from stephanie.memory.memcube_store import MemcubeStore
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.service_protocol import Service

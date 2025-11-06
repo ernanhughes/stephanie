@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict
 

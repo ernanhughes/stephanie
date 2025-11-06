@@ -12,7 +12,6 @@ import numpy as np
 import torch
 from sqlalchemy import text
 
-from stephanie.models.context_state import ContextStateORM
 
 
 class ContextManager:

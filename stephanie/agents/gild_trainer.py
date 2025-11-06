@@ -82,7 +82,7 @@ class GILDTrainerAgent(BaseAgent):
                 trace_id=trace_id,
                 goal_id=goal_id,
                 goal_text=goal_text[:1000],
-                plan_signature=f"GILD_SICQL_Pi_Head_Update_v1",
+                plan_signature="GILD_SICQL_Pi_Head_Update_v1",
                 input_data={
                     "gild_config": {
                         k: v

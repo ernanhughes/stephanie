@@ -4,7 +4,6 @@ from __future__ import annotations
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
 from stephanie.models.casebook import CaseORM
 from stephanie.models.document import DocumentORM
 from stephanie.models.hypothesis import HypothesisORM

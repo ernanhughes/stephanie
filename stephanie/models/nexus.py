@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from sqlalchemy import (
-    Column, String, Integer, Float, DateTime, JSON, Text, ForeignKey, UniqueConstraint,
-    Index
+    Column, String, Integer, Float, DateTime, JSON, Text, ForeignKey, Index
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship

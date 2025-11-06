@@ -34,11 +34,11 @@ class ScoringReportAgent(BaseAgent):
 
         # GILD feedback
         feedback_df = self.store.get_gild_training_feedback()
-        feedback_df.to_csv(f"reports/gild_feedback.csv", index=False)
+        feedback_df.to_csv("reports/gild_feedback.csv", index=False)
 
         # GILD effectiveness
         gain_df = self.store.get_gild_effectiveness()
-        gain_df.to_csv(f"reports/gild_gain.csv", index=False)
+        gain_df.to_csv("reports/gild_gain.csv", index=False)
 
         # Optional visualization
         self.store.plot_scorer_comparison(dimension)

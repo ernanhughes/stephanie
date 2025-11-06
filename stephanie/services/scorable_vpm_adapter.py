@@ -1,9 +1,9 @@
 from __future__ import annotations
 import hashlib
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 from stephanie.scoring.scorable import Scorable
 

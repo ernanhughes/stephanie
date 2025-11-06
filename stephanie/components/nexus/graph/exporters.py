@@ -6,7 +6,6 @@ import json
 from pyvis.network import Network
 
 from stephanie.components.nexus.types import NexusNode, NexusEdge
-from stephanie.utils.json_sanitize import dumps_safe  # used by export_graph_json
 
 def export_pyvis_html(
     nodes: Dict[str, NexusNode],

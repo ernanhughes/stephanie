@@ -4,10 +4,9 @@ from __future__ import annotations
 import abc
 import logging
 from collections.abc import Mapping
-from typing import Any, Callable, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Protocol
 
 import torch
-from omegaconf import OmegaConf
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
@@ -204,7 +203,6 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
 
         # Helper: enforce single-key mapping entries.
         def _extract_single_mapping(item) -> tuple[str, dict]:
-            from collections.abc import Mapping
             if not isinstance(item, Mapping) or len(item) != 1:
                 log.error(
                     "ScoringPluginConfigError: each plugins[] entry must be a single-key mapping, got: %r", item

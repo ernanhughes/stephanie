@@ -10,7 +10,6 @@ from sqlalchemy import Integer, cast, func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.bus_event import BusEventORM
-from stephanie.models.casebook import CaseORM
 from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
 

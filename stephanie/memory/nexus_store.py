@@ -1,11 +1,10 @@
 # stephanie/stores/nexus_store.py
 from __future__ import annotations
 
-import math
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import func, text, select, desc
+from sqlalchemy import text, desc
 from sqlalchemy.orm import Session
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore

@@ -1,7 +1,6 @@
 # stephanie/memory/scorable_entity_store.py
 from __future__ import annotations
 
-from html import entities
 from typing import List
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert

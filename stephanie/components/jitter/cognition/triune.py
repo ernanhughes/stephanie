@@ -27,8 +27,7 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple
@@ -39,7 +38,7 @@ from pydantic import BaseModel, Field, validator
 
 from ...coupling.structural_coupling import StructuralCoupling
 from ...production.closed_production import ProductionNetwork
-from .sense_making import MeaningType, SenseMakingEngine
+from .sense_making import SenseMakingEngine
 
 log = logging.getLogger("stephanie.jitter.cognition.triune")
 

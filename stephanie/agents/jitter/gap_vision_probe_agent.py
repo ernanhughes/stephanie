@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.gap_probe_service import (make_barbell,
                                                   make_ring_of_cliques,
-                                                  make_sbm, probe_safe_name,
-                                                  run_default_suite, run_probe)
+                                                  make_sbm, run_default_suite, run_probe)
 from stephanie.utils.progress_mixin import ProgressMixin
 
 

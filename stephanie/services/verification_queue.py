@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
-import time
 from typing import Any, Dict, Optional, Union
 
 MAX_INLINE = 128_000  # stay well below default NATS max payload

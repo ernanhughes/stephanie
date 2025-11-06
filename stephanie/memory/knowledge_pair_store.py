@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from stephanie.models.knowledge_pair import KnowledgePairORM
 

@@ -11,7 +11,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import litellm
 from litellm import ModelResponse
 
-from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
 
@@ -162,7 +161,7 @@ class LegionService(Service):
                     try:
                         winner, scores = judge(outputs)
                         log.info(f"Judge selected winner: {winner}")
-                    except Exception as e:
+                    except Exception:
                         log.exception("Judge function failed")
                         winner, scores = None, {}
 

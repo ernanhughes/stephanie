@@ -8,10 +8,9 @@ import os
 import re
 import time
 import traceback
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
 
 # ----- External deps from your codebase -----
 from stephanie.agents.base_agent import BaseAgent
