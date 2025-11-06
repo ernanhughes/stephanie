@@ -122,7 +122,7 @@ class LATSProgram(dspy.Module):
         result = self.value_estimator(state=state, trace=trace, goal=state)
         try:
             score = float(result.score)
-        except:
+        except Exception:
             score = 0.5
         return score, result.rationale
 

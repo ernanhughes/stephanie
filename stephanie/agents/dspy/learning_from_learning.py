@@ -305,7 +305,7 @@ class LearningFromLearningDSPyAgent(dspy.Module):
             # For demonstration, we'll use a simplified version
             try:
                 return float(pred.metrics.get("overall", 0.0)) >= 0.85
-            except:
+            except Exception:
                 return False
         
         # Create compiler

@@ -1079,7 +1079,7 @@ class KnowledgeGraphService(Service):
                     rel = json.loads(line.strip())
                     if rel["source"] == node_id:
                         rels.append(rel)
-                except:
+                except Exception:
                     continue
         return sorted(rels, key=lambda x: -x["confidence"])
 

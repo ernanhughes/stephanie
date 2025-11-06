@@ -242,7 +242,7 @@ def to_serializable(obj: Any) -> Any:
         try:
             # Try to convert to string as last resort
             return str(obj)
-        except:
+        except Exception:
             return "non-serializable-object"
 
 

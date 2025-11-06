@@ -360,7 +360,7 @@ class PolicyAnalyzer:
                 kmeans = KMeans(n_clusters=3)
                 clusters = kmeans.fit_predict(action_probs.reshape(-1, 1))
                 cluster_changes = np.sum(clusters[1:] != clusters[:-1]) / len(clusters)
-        except:
+        except Exception:
             cluster_changes = 0
             
         return {

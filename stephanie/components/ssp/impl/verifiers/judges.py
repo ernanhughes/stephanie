@@ -23,7 +23,7 @@ def solver_three_line_judge(verify_fn):
             # combine self-reported score (scaled) and external ver score
             try:
                 self_score = min(max(int(p["score"]), 0), 100) / 100.0
-            except: 
+            except Exception: 
                 self_score = 0.0
             scores[k] = 0.4 * self_score + 0.6 * ver
         winner = max(scores.items(), key=lambda kv: kv[1])[0] if scores else None
