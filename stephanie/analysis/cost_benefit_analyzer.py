@@ -29,7 +29,7 @@ class CostBenefitAnalyzerAgent(BaseAgent):
         goal = context.get(GOAL, {})
         goal_id = goal.get("id")
         if not goal_id:
-            logning("Missing goal ID in context.")
+            log.warning("Missing goal ID in context.")
             return context
 
         efficiency_table = self._compute_efficiency_scores(goal_id)

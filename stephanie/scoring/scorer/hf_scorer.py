@@ -614,7 +614,7 @@ class HuggingFaceScorer(BaseScorer):
                     self.model.to("cpu")
                     log.debug("Moved model to CPU")
                 except Exception as e:
-                    logning("Error moving model to CPU: %s", str(e))
+                    log.warning("Error moving model to CPU: %s", str(e))
                 finally:
                     self.model = None
                     log.debug("Cleared model reference")

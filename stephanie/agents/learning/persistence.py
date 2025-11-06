@@ -707,7 +707,7 @@ class Persistence:
                     },
                 )
             except Exception:
-                logning("_persist_arena failed: %s", e)
+                log.warning("_persist_arena failed: %s", e)
 
     @staticmethod
     def _extract_claim_sentences(text: str) -> List[str]:

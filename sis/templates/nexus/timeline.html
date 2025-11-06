@@ -21,11 +21,17 @@
         </div>
         <button id="btnLoadPair" class="btn btn-sm btn-primary">Load pair</button>
 
-        <div class="ms-auto d-flex align-items-center gap-2">
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
           <span class="badge bg-secondary">Top nodes:<span id="badgeTopN" class="ms-1">0</span></span>
           <span class="badge bg-secondary">Top edges:<span id="badgeTopE" class="ms-1">0</span></span>
           <span class="badge bg-secondary">Bottom nodes:<span id="badgeBotN" class="ms-1">0</span></span>
           <span class="badge bg-secondary">Bottom edges:<span id="badgeBotE" class="ms-1">0</span></span>
+
+          <label class="form-check ms-2 small d-flex align-items-center">
+            <input class="form-check-input me-1" type="checkbox" id="chkCenter" checked>
+            Auto-center
+          </label>
+
           <button id="btnPlay" class="btn btn-sm btn-outline-primary">▶ Play</button>
           <input id="rngStep" type="range" min="0" max="0" value="0" step="1" style="width: 320px;">
           <span class="small text-muted"><span id="lblStep">0</span>/<span id="lblTotal">0</span></span>
@@ -34,26 +40,32 @@
     </div>
   </div>
 
-  <!-- TOP: Baseline -->
-  <div class="card shadow-sm mb-3">
-    <div class="card-header py-2 d-flex justify-content-between align-items-center">
-      <strong>Baseline</strong>
-      <div class="small text-muted">edges:
-        <label class="ms-2"><input type="checkbox" id="chkKnn" checked> knn_* / MST</label>
-        <label class="ms-2"><input type="checkbox" id="chkTemporal" checked> temporal_next</label>
-        <label class="ms-2"><input type="checkbox" id="chkDiff" checked> highlight new</label>
+  <div class="row g-3 align-items-stretch">
+    <!-- LEFT: Baseline -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <strong>Baseline</strong>
+          <div class="small text-muted">edges:
+            <label class="ms-2"><input type="checkbox" id="chkKnn" checked> knn_* / MST</label>
+            <label class="ms-2"><input type="checkbox" id="chkTemporal" checked> temporal_next</label>
+            <label class="ms-2"><input type="checkbox" id="chkDiff" checked> highlight new</label>
+          </div>
+        </div>
+        <div class="card-body" style="height:70vh">
+          <div id="cyTop" style="width:100%; height:100%; border:1px solid #e5e7eb; border-radius:8px;"></div>
+        </div>
       </div>
     </div>
-    <div class="card-body" style="height:34vh">
-      <div id="cyTop" style="width:100%; height:100%; border:1px solid #e5e7eb; border-radius:8px; position:relative;"></div>
-    </div>
-  </div>
 
-  <!-- BOTTOM: Targeted -->
-  <div class="card shadow-sm">
-    <div class="card-header py-2"><strong>Targeted</strong></div>
-    <div class="card-body" style="height:34vh">
-      <div id="cyBottom" style="width:100%; height:100%; border:1px solid #e5e7eb; border-radius:8px; position:relative;"></div>
+    <!-- RIGHT: Targeted -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2"><strong>Targeted</strong></div>
+        <div class="card-body" style="height:70vh">
+          <div id="cyBottom" style="width:100%; height:100%; border:1px solid #e5e7eb; border-radius:8px;"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -75,12 +87,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const $chkKnn  = document.getElementById('chkKnn');
   const $chkTmp  = document.getElementById('chkTemporal');
   const $chkDiff = document.getElementById('chkDiff');
+  const $chkCenter = document.getElementById('chkCenter');
   const $bTopN   = document.getElementById('badgeTopN');
   const $bTopE   = document.getElementById('badgeTopE');
   const $bBotN   = document.getElementById('badgeBotN');
   const $bBotE   = document.getElementById('badgeBotE');
 
-  // Fill from query params if jinja left them blank
+  // query params → inputs
   (function hydrateFromQuery(){
     const p = new URLSearchParams(location.search);
     if (!$inBase.value)  $inBase.value  = p.get('baseline') || '';
@@ -108,16 +121,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- frame sanitation ----------
   function isEmptyFrame(f) {
-    return !f || !Array.isArray(f.nodes) && !Array.isArray(f.edges)
+    return !f || (!Array.isArray(f.nodes) && !Array.isArray(f.edges))
            || ((f.nodes?.length||0) === 0 && (f.edges?.length||0) === 0);
   }
 
   function sanitizeFrames(frames) {
     if (!Array.isArray(frames)) return [];
-    // drop all-empty frames anywhere
     let out = frames.filter(f => !isEmptyFrame(f));
     if (!out.length) return [];
-    // dedupe consecutive frames with same node/edge counts
     const uniq = [];
     let lastKey = '';
     for (const f of out) {
@@ -144,9 +155,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function makeCy(id){
     return cytoscape({
       container: document.getElementById(id),
-      layout: { name: 'preset', fit: false, padding: 0 },
-      pixelRatio: 1, // avoid huge canvases on HiDPI
-      textureOnViewport: true,
+      layout: { name: 'preset', fit: false, padding: 0 }, // we rescale positions ourselves
+      pixelRatio: window.devicePixelRatio || 1,            // crisp like Run view
+      textureOnViewport: false,                            // no smeary bitmap cache
       wheelSensitivity: 0.2,
       style: [
         { selector: 'node',
@@ -154,17 +165,17 @@ document.addEventListener('DOMContentLoaded', () => {
             'background-color': '#5b8def',
             'width':'mapData(deg, 0, 16, 10, 32)',
             'height':'mapData(deg, 0, 16, 10, 32)',
-            'label': (ele) => ele.cy().zoom() >= 1.15 ? ele.data('label') : '',
+            'label': 'data(label)',
             'font-size': 9, 'text-wrap':'wrap', 'text-max-width': 140, 'color':'#111'
           }
         },
         { selector: 'edge', style: { 'line-color':'#aab','width':1,'opacity':0.8 } },
         { selector: 'edge[type="temporal_next"]',
-          style: { 'line-color':'#e83e8c','width':2,'opacity':0.95,'target-arrow-shape':'triangle','target-arrow-color':'#e83e8c','curve-style':'bezier' }
-        },
+          style: { 'line-color':'#e83e8c','width':2,'opacity':0.95,
+                   'target-arrow-shape':'triangle','target-arrow-color':'#e83e8c','curve-style':'bezier' } },
         { selector: '.newNode', style: { 'background-color':'#22c55e','border-color':'#065f46','border-width':2 } },
         { selector: '.newEdge', style: { 'line-color':'#22c55e','width':2,'opacity':1 } },
-        { selector: '.faded',  style: { 'opacity':0.35 } }
+        { selector: '.faded',   style: { 'opacity':0.35 } }
       ]
     });
   }
@@ -196,9 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function applyFrame(cy, frames, i){
-    if (!frames.length) {
-      cy.startBatch(); cy.elements().remove(); cy.endBatch(); return;
-    }
+    if (!frames.length) { cy.startBatch(); cy.elements().remove(); cy.endBatch(); return; }
     const idx = Math.max(0, Math.min(i, frames.length-1));
     const prevIdx = Math.max(0, Math.min(idx-1, frames.length-1));
     const f = frames[idx], p = frames[prevIdx];
@@ -219,6 +228,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (diff){ cy.elements().addClass('faded'); cy.elements('.newNode, .newEdge').removeClass('faded'); }
     else { cy.elements().removeClass('faded newNode newEdge'); }
     cy.endBatch();
+
+    // Center content if requested (pan only; keep zoom)
+    if ($chkCenter.checked) cy.center();
   }
 
   function updateBadges(){
@@ -239,13 +251,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadFrames(runId){
-    // Try frames.json first
     let frames = await safeGet(`/nexus/run/${encodeURIComponent(runId)}/frames.json`);
     if (Array.isArray(frames)) {
       frames = sanitizeFrames(frames);
       if (frames.length) return frames;
     }
-    // Fallback to graph.json variants
     let graph = await safeGet(`/nexus/run/${encodeURIComponent(runId)}/graph.json`);
     if (!graph) graph = await safeGet(`/nexus/run/${encodeURIComponent(runId)}/nexus_graph.json`);
     if (!graph) return [];
@@ -261,11 +271,9 @@ document.addEventListener('DOMContentLoaded', () => {
     framesTop = base ? await loadFrames(base) : [];
     framesBottom = tgt ? await loadFrames(tgt) : framesTop;
 
-    // If either side still empty, ensure at least one blank frame to keep UI stable
     if (!framesTop.length)    framesTop = [{nodes:[], edges:[]}];
     if (!framesBottom.length) framesBottom = [{nodes:[], edges:[]}];
 
-    // Normalize lengths by padding last frame (so play loop aligns)
     const L = Math.max(framesTop.length, framesBottom.length);
     const lastTop = framesTop[framesTop.length-1];
     const lastBot = framesBottom[framesBottom.length-1];
@@ -276,6 +284,9 @@ document.addEventListener('DOMContentLoaded', () => {
     $lblT.textContent = String(L);
     cur = 0;
     applyBoth(cur);
+
+    // Re-center once the browser finishes laying out columns
+    requestAnimationFrame(() => applyBoth(cur));
   }
 
   function togglePlay(){
@@ -287,9 +298,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $btnLoad.addEventListener('click', loadPair);
   $btnPlay.addEventListener('click', togglePlay);
   $rng.addEventListener('input', ()=>applyBoth(Number($rng.value)));
-  [$chkKnn,$chkTmp,$chkDiff].forEach(el=>el.addEventListener('change', ()=>applyBoth(cur)));
+  [$chkKnn,$chkTmp,$chkDiff,$chkCenter].forEach(el=>el.addEventListener('change', ()=>applyBoth(cur)));
 
-  // Zoom label perf tweak: recompute labels only when zoom changes noticeably
+  // Zoom label perf tweak
   function bindZoomLabelPerf(cy){
     let lastZ = cy.zoom();
     cy.on('zoom', () => {
@@ -301,8 +312,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }));
     });
   }
+
   cyTop = makeCy('cyTop'); cyBottom = makeCy('cyBottom');
   bindZoomLabelPerf(cyTop); bindZoomLabelPerf(cyBottom);
+
+  // Keep things centered & sharp on resize (each container observed)
+  const ro = new ResizeObserver(() => applyBoth(cur));
+  ro.observe(document.getElementById('cyTop'));
+  ro.observe(document.getElementById('cyBottom'));
 
   loadPair();
 });

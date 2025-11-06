@@ -519,7 +519,7 @@ class ZeroModelService(Service):
         run_dir = os.path.join(out_path, f"run_{run_prefix}_{timestamp}")
         os.makedirs(run_dir, exist_ok=True)
 
-        base_name = f"OK{run_prefix}_{timestamp}"
+        base_name = f"{run_prefix}_{timestamp}"
         gif_path = os.path.join(run_dir, base_name + ".gif")
 
         # Render animated timeline GIF

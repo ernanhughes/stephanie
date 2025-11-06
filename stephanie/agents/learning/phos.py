@@ -333,7 +333,7 @@ class PhosAgent(BaseAgent):
         try:
             await self._timeline_sink("node", node)
         except Exception as e:
-            logning("[PhosAgent] Emit failed (%s): %s", label, e)
+            log.warning("[PhosAgent] Emit failed (%s): %s", label, e)
 
         return node
 
@@ -355,7 +355,7 @@ class PhosAgent(BaseAgent):
 
             # ✅ Guard against empty or invalid bands early
             if not scorables:
-                logning(
+                log.warning(
                     "[PhosAgent] ⚠️ No scorables found for %s, skipping band.", label
                 )
                 continue
@@ -436,7 +436,7 @@ class PhosAgent(BaseAgent):
                         "[PhosAgent] ✅ Timeline closed for %s → %s", label, out_path
                     )
                 else:
-                    logning(
+                    log.warning(
                         "[PhosAgent] ⚠️ No valid matrix for %s, skipping analysis.", label
                     )
             except Exception as e:

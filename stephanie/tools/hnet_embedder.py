@@ -7,12 +7,35 @@ from typing import List, Optional, Sequence
 import numpy as np
 import torch
 import torch.nn as nn
-
+from contextlib import contextmanager
 from stephanie.tools.embedding_tool import MXBAIEmbedder
+
+
+@contextmanager
+def _cudnn_flags(enabled: bool):
+    """Scoped cuDNN enable/disable that won’t leak."""
+    try:
+        from torch.backends import cudnn
+        prev = (cudnn.enabled, cudnn.benchmark, cudnn.deterministic)
+        cudnn.enabled = enabled
+        # we keep benchmark/deterministic unchanged
+        yield
+        cudnn.enabled, cudnn.benchmark, cudnn.deterministic = prev
+    except Exception:
+        # Fallback: do nothing if flags API isn’t available
+        yield
+
 
 # ---------------------------
 # Tokenizer (byte-level)
 # ---------------------------
+
+def _truncate_utf8_bytes(s: str, max_bytes: int) -> str:
+    """Ensure s encodes to at most max_bytes in UTF-8 by truncating at a byte boundary."""
+    b = s.encode("utf-8")
+    if len(b) <= max_bytes:
+        return s
+    return b[:max_bytes].decode("utf-8", errors="ignore")
 
 class ByteLevelTokenizer:
     """UTF-8 byte tokenizer with safe decode (replacement char for bad splits)."""
@@ -21,14 +44,13 @@ class ByteLevelTokenizer:
         return list(text.encode("utf-8"))
 
     def decode(self, tokens: Sequence[int]) -> str:
-        # Safe even when we cut through a multi-byte codepoint
-        return bytes(tokens).decode("utf-8", errors="replace")
+        # Use 'ignore' so decoding never inserts multi-byte replacement chars.
+        return bytes(tokens).decode("utf-8", errors="ignore")
 
 
 # ---------------------------
 # Boundary predictor (Tiny)
 # ---------------------------
-
 class ChunkBoundaryPredictor(nn.Module):
     """
     Lightweight boundary scorer over byte tokens.
@@ -41,6 +63,7 @@ class ChunkBoundaryPredictor(nn.Module):
         self.embedding = nn.Embedding(vocab_size, hidden_dim).to(self.device)
         self.lstm = nn.LSTM(hidden_dim, hidden_dim, bidirectional=True, batch_first=False).to(self.device)
         self.boundary_scorer = nn.Linear(hidden_dim * 2, 1).to(self.device)
+        self.eval()  # we only ever infer here
 
     @torch.no_grad()
     def forward(self, tokens: Sequence[int]) -> torch.Tensor:
@@ -50,24 +73,48 @@ class ChunkBoundaryPredictor(nn.Module):
         Returns:
             scores: shape [N], probabilities in [0,1]
         """
+        # --- Guard 0/1 length early
         if not isinstance(tokens, torch.Tensor):
-            tok = torch.tensor(tokens, dtype=torch.long, device=self.device)
+            tok = torch.as_tensor(tokens, dtype=torch.long, device=self.device)
         else:
-            tok = tokens.detach().clone().long().to(self.device)
+            tok = tokens.detach().to(self.device).long()
+
+        N = tok.numel()
+        if N == 0:
+            return torch.empty(0, device=self.device)
 
         x = self.embedding(tok).float()  # [N, H]
 
-        # For N==1, emulate biLSTM output width without calling LSTM
-        if x.size(0) == 1:
+        if N == 1:
+            # emulate biLSTM width without invoking cuDNN kernels
             x2 = torch.cat([x, torch.zeros_like(x)], dim=-1)  # [1, 2H]
         else:
-            # [seq, 1, H]; disable cuDNN to avoid RNN oddities on tiny or dynamic seqs
+            # Prepare for LSTM: [seq, 1, H], contiguous
             x = x.unsqueeze(1).contiguous()
-            x, _ = self.lstm(x)  # [seq, 1, 2H]
-            x2 = x.squeeze(1)  # [seq, 2H]
 
-        scores = self.boundary_scorer(x2)  # [N, 1]
-        return scores.sigmoid().flatten()   # [N]
+            # Help cuDNN choose a fast kernel in the common case
+            try:
+                if torch.backends.cudnn.enabled:
+                    self.lstm.flatten_parameters()
+            except Exception:
+                pass
+
+            # Try cuDNN first; if it barfs with NOT_SUPPORTED, retry with cuDNN off.
+            try:
+                y, _ = self.lstm(x)         # [seq, 1, 2H]
+            except RuntimeError as e:
+                if "CUDNN_STATUS_NOT_SUPPORTED" in str(e):
+                    with _cudnn_flags(False):
+                        y, _ = self.lstm(x)  # same device, cuDNN disabled
+                else:
+                    raise
+            y = y.contiguous()
+            x2 = y.squeeze(1)               # [seq, 2H]
+
+        # Linear head expects [seq, 2H]
+        x2 = x2.contiguous()
+        scores = self.boundary_scorer(x2)    # [N, 1]
+        return scores.sigmoid().flatten()    # [N]
 
 
 # ---------------------------
@@ -82,7 +129,7 @@ class ChunkerConfig:
     device: Optional[str] = None    # "cuda" | "cpu" | None -> auto
 
 
-class StephanieHNetChunker:
+class HNetChunker:
     """
     Combines learned boundaries with hard windows:
       - propose boundaries using Tiny boundary predictor
@@ -209,7 +256,7 @@ class PoolingStrategy:
 # High-level embedder
 # ---------------------------
 
-class StephanieHNetEmbedder:
+class HNetEmbedder:
     """
     Hierarchical embedder:
       1) Chunk long text safely (≤ max_bytes)
@@ -232,7 +279,7 @@ class StephanieHNetEmbedder:
             min_bytes=min_bytes,
             device=device,
         )
-        self.chunker = StephanieHNetChunker(cfg)
+        self.chunker = HNetChunker(cfg)
         self.embedder = embedder
         self.dim = int(getattr(self.embedder, "dim", 1024))
         self.pooler = PoolingStrategy()
@@ -244,6 +291,12 @@ class StephanieHNetEmbedder:
             return [0.0] * self.dim
 
         chunks = self.chunker.chunk(text)
+
+        # Hard safety: enforce max_bytes on the encoded form (no expansion allowed)
+        max_b = self.chunker.cfg.max_bytes
+        chunks = [_truncate_utf8_bytes(c, max_b) for c in chunks]
+
+
         # Debug guard (you can keep as log or assert during testing)
         for i, c in enumerate(chunks):
             b = len(c.encode("utf-8"))
@@ -266,7 +319,7 @@ class StephanieHNetEmbedder:
 # Singleton glue
 # ---------------------------
 
-_hnet_instance: Optional[StephanieHNetEmbedder] = None
+_hnet_instance: Optional[HNetEmbedder] = None
 
 def get_embedding(text: str, cfg: dict) -> List[float]:
     """
@@ -287,7 +340,7 @@ def get_embedding(text: str, cfg: dict) -> List[float]:
 
     if _hnet_instance is None:
         base_embedder = MXBAIEmbedder(cfg)  # respects your endpoint/model config
-        _hnet_instance = StephanieHNetEmbedder(
+        _hnet_instance = HNetEmbedder(
             base_embedder,
             max_bytes=max_bytes,
             min_bytes=min_bytes,

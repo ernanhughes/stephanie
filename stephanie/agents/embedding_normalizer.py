@@ -129,7 +129,7 @@ class EmbeddingNormalizerAgent(BaseAgent):
                         updates.append((arr.tolist(), rid))
                         normalized += 1
                 except Exception as e:
-                    logning(f"⚠️  Skip id={rid} due to {e}")
+                    log.warning(f"⚠️  Skip id={rid} due to {e}")
 
             if updates:
                 with self.memory.conn.cursor() as cur:

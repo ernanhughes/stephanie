@@ -165,7 +165,7 @@ class HRMAdapter(PairScorer):
         elif hasattr(self.hrm, "score"):
             out = await self.hrm.score(goal, reply)  # type: ignore
         else:
-            logning("HRMAdapter: no compatible method found, returning neutral metrics")
+            log.warning("HRMAdapter: no compatible method found, returning neutral metrics")
             return _neutral_metrics()
 
         return dict(

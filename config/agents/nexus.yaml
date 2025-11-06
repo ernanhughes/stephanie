@@ -289,3 +289,11 @@ nexus:
     embed_key: "global"
     knn_k: 12
     sim_threshold: 0.35
+
+  ab_compare:
+    enabled: true
+    top_k: 10
+    seed: 0
+    target_source: "goal"     # "goal" | "text"
+    target_text: ""           # used if target_source == "text"
+    prefer_item_embedding: true   # use embeddings.global if available

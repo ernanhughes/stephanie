@@ -164,7 +164,7 @@ class SearchingProposer:
                 break
             except Exception as e:
                 attempt += 1
-                logning("Proposer prompt failed (attempt %d/%d): %s", attempt, self.retries, e)
+                log.warning("Proposer prompt failed (attempt %d/%d): %s", attempt, self.retries, e)
                 if attempt > self.retries:
                     parsed = {"rationale": "prompt failure", "difficulty": 0, "verifiability": 0, "ok": False}
                     return "", parsed

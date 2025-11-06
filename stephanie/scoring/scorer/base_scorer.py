@@ -251,7 +251,7 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
                 else:
                     setattr(svc, "host", self)
             except Exception as e:
-                logning("PluginHostAttachWarning: %s (svc=%s)", e, service_name)
+                log.warning("PluginHostAttachWarning: %s (svc=%s)", e, service_name)
 
             # Stash plugin options on the service
             try:
