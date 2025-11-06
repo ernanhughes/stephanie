@@ -1445,8 +1445,8 @@ class ZeroModelService(Service):
         - scorable.meta['image_path'] (load L, tile to 3ch)
         - synthesize Text-VPM from scorable.text (3 channels)
         """
-        from PIL import Image
         import numpy as np
+        from PIL import Image
         Path(out_dir).mkdir(parents=True, exist_ok=True)
         meta = {"source": getattr(scorable, "target_type", "custom"), "scorable_id": getattr(scorable, "id", "")}
 

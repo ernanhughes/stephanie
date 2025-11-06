@@ -259,7 +259,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import (Any, Callable, DefaultDict, Dict, List, Optional)
+from typing import Any, Callable, DefaultDict, Dict, List, Optional
 
 import numpy as np
 

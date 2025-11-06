@@ -9,7 +9,6 @@ from collections import Counter
 from typing import Any, Dict, List, Optional
 
 
-
 def _nz(x, lo: float = 0.0, hi: float = 1.0) -> float:
     """
     Safe numeric clamp:

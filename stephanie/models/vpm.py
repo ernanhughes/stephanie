@@ -1,7 +1,7 @@
 # stephanie/models/vpm.py
 from __future__ import annotations
 
-from sqlalchemy import (JSON, Column, DateTime, Integer, String, Text)
+from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
 from sqlalchemy.sql import func
 
 from stephanie.models.base import Base

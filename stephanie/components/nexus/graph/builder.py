@@ -1,13 +1,15 @@
 # stephanie/components/nexus/graph/builder.py
 from __future__ import annotations
-from typing import DefaultDict, List, Tuple, Set, Dict, Any, Iterable, Optional, Union
-import numpy as np
-from stephanie.components.nexus.types import NexusEdge, NexusNode
-from collections import defaultdict
+
 import math
+from collections import defaultdict
+from typing import (Any, DefaultDict, Dict, Iterable, List, Optional, Set,
+                    Tuple, Union)
 
+import numpy as np
+
+from stephanie.components.nexus.types import NexusEdge, NexusNode
 from stephanie.utils.json_sanitize import dumps_safe
-
 
 # stephanie/components/nexus/graph/builder.py  (patch)
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 from typing import Dict, List, Optional
+
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.scorable_feature import ScorableFeatureORM
+
 
 class ScorableFeatureStore(BaseSQLAlchemyStore):
     orm_model = ScorableFeatureORM

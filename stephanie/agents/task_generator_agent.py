@@ -9,6 +9,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.mrq_memory_entry import MRQMemoryEntryORM
 from stephanie.utils.json_sanitize import dumps_safe
 
+
 class TaskGeneratorAgent(BaseAgent):
     """
     Generates synthetic problems for self-play loops.

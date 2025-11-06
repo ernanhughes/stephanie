@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from sqlalchemy import (JSON, Column, Float, Integer, String)
+from sqlalchemy import JSON, Column, Float, Integer, String
 
 from stephanie.models.base import Base
 

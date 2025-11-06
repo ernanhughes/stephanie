@@ -1,22 +1,28 @@
 from __future__ import annotations
+
 import asyncio
 import json
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-from PIL import Image
 import imageio.v2 as iio
+import numpy as np
 import torch
+from PIL import Image
 
+from scripts.train_vpm_thought_model import VPMThoughtModel
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
+                                                             VisualThoughtType)
+from stephanie.components.nexus.vpm.state_machine import (Thought,
+                                                          ThoughtExecutor,
+                                                          VPMGoal, VPMState,
+                                                          compute_phi)
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.graph_vision_scorer import VisionScorer
-from scripts.train_vpm_thought_model import VPMThoughtModel
-from stephanie.components.nexus.vpm.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
-from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
-from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.zeromodel_service import ZeroModelService
+
 
 class NexusAgent(BaseAgent):
     """

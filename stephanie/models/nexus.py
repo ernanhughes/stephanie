@@ -4,14 +4,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict
 
-from sqlalchemy import (
-    Column, String, Integer, Float, DateTime, JSON, Text, ForeignKey, Index
-)
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Index,
+                        Integer, String, Text)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
-
 
 # --- Scorable ---------------------------------------------------------------
 

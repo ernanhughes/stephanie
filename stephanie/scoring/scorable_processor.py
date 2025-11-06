@@ -1,18 +1,18 @@
 # stephanie/scoring/scorable_processor.py
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict, field
-from typing import Dict, List, Any, Optional, Union
-from pathlib import Path
-from hashlib import sha256
 import asyncio
+import logging
 import time
+from dataclasses import asdict, dataclass, field
+from hashlib import sha256
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
 from stephanie.utils.json_sanitize import dumps_safe
 
-import logging
 log = logging.getLogger(__name__)
 
 # -------------------- Data types --------------------

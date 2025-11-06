@@ -8,6 +8,7 @@ from sqlalchemy import Column, DateTime, Float, Integer, String
 from stephanie.models.base import Base
 from stephanie.utils.date_utils import iso_date  # optional, for consistency
 
+
 class ScorableDomainORM(Base):
     __tablename__ = "scorable_domains"
 

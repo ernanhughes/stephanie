@@ -57,7 +57,7 @@ class AgentScorerAgent(BaseAgent):
         )
         self.ranker = ScorableRanker(cfg, memory, self.container, logger)
 
-        logug(
+        log.debug(
             f"AgentScorerInitialized: "
             f"enabled_scorers={self.enabled_scorers}, "
             f"include_mars={self.include_mars}, "

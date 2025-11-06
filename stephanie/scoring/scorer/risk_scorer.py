@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
-
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult

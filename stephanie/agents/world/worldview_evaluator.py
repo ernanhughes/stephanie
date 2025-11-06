@@ -1,7 +1,6 @@
 # stephanie/agents/world/worldview_evaluator.py
 from __future__ import annotations
 
-
 from sqlalchemy.orm import Session
 
 from stephanie.models.belief import BeliefORM

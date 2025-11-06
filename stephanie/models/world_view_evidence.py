@@ -1,9 +1,7 @@
 # stephanie/models/world_view_evidence.py
 from __future__ import annotations
 
-
-from sqlalchemy import (Column, Float, ForeignKey, Integer,
-                        String, Text)
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text
 
 from stephanie.models.base import Base
 

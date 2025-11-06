@@ -1,17 +1,17 @@
 # stephanie/services/workers/vpm_worker.py
 
 from __future__ import annotations
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+
+import asyncio
 import json
 import logging
 import traceback
-import asyncio
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from PIL import Image
-
 
 from stephanie.services.zeromodel_service import ZeroModelService
 

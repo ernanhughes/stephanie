@@ -11,7 +11,6 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-
 # ----- External deps from your codebase -----
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.summary.paper_summarizer import SimplePaperBlogAgent

@@ -1,9 +1,7 @@
 # stephanie/models/world_view_knowledge_source.py
 from __future__ import annotations
 
-
-from sqlalchemy import (JSON, Column, ForeignKey, Integer,
-                        String)
+from sqlalchemy import JSON, Column, ForeignKey, Integer, String
 
 from stephanie.models.base import Base
 

@@ -11,10 +11,13 @@ import torch
 from omegaconf import OmegaConf
 from PIL import Image
 
+from scripts.train_vpm_thought_model import (  # Reuse model definition
+    DEFAULT_CONFIG, VPMThoughtModel)
 from stephanie.services.graph_layout import render_multi_layout_vpm
 from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
-from stephanie.vpm.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
-from scripts.train_vpm_thought_model import VPMThoughtModel, DEFAULT_CONFIG  # Reuse model definition
+from stephanie.vpm.state_machine import (Thought, ThoughtExecutor, VPMGoal,
+                                         VPMState, compute_phi)
+
 
 # --------------------------- Helpers ---------------------------
 def load_model(checkpoint_path: str, device: str = "cpu") -> Tuple[VPMThoughtModel, DictConfig]:

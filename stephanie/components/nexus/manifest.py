@@ -1,9 +1,10 @@
 # stephanie/components/nexus/manifest.py
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
 
 @dataclass
 class ManifestItem:

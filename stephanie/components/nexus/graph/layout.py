@@ -1,9 +1,12 @@
 # stephanie/components/nexus/graph/layout.py
 from __future__ import annotations
+
 from typing import Dict, List, Tuple
+
 import networkx as nx
 
 from stephanie.components.nexus.types import NexusEdge, NexusNode
+
 
 def compute_positions(nodes: Dict[str, NexusNode], edges: List[NexusEdge]) -> Dict[str, Tuple[float,float]]:
     G = nx.Graph()

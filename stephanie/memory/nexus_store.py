@@ -4,17 +4,13 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import text, desc
+from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.nexus import (
-    NexusScorableORM,
-    NexusEmbeddingORM,
-    NexusMetricsORM,
-    NexusEdgeORM,
-    NexusPulseORM,
-)
+from stephanie.models.nexus import (NexusEdgeORM, NexusEmbeddingORM,
+                                    NexusMetricsORM, NexusPulseORM,
+                                    NexusScorableORM)
 
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:

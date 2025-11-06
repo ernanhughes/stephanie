@@ -185,4 +185,6 @@ class NexusInlineAgent(BaseAgent):
         # echo paths for the pipeline
         context["nexus_manifest_path"] = str((out_dir / "manifest.json").as_posix())
         context["nexus_run_dir"] = str(out_dir.as_posix())
+
+        print(f"NexusInlineAgent completed run {run_id}, output in \n{str(out_dir.as_posix())}")
         return context

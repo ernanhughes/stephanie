@@ -1,5 +1,7 @@
 from __future__ import annotations
-from typing import Dict, List, Any
+
+from typing import Any, Dict, List
+
 
 def to_cytoscape_elements(nodes: Dict[str, Any], edges: List[Any]) -> dict:
     """

@@ -4,6 +4,7 @@ from omegaconf import DictConfig
 
 from stephanie.services.graph_vision_scorer import VisionScorer
 
+
 @hydra.main(version_base=None, config_path="../configs", config_name="vision_scorer")
 def train(cfg: DictConfig):
     model_path = VisionScorer.train_on_probes(config=cfg)
@@ -99,8 +100,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from omegaconf import DictConfig, OmegaConf
 
-from stephanie.services.graph_layout import render_multi_layout_vpm  # your hardened renderer
-
+from stephanie.services.graph_layout import \
+    render_multi_layout_vpm  # your hardened renderer
 
 # --------------------------- Config defaults ---------------------------
 

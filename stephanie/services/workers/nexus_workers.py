@@ -1,11 +1,12 @@
 # stephanie/services/workers/nexus_workers.py
 from __future__ import annotations
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from PIL import Image

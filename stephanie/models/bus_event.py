@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 import sqlalchemy as sa
-from sqlalchemy import (JSON, Column, Float, Integer, String)
+from sqlalchemy import JSON, Column, Float, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 
 from stephanie.models.base import Base

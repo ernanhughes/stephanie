@@ -11,7 +11,7 @@ from sqlalchemy.orm import relationship
 from stephanie.models.base import Base
 from stephanie.utils.date_utils import iso_date, utcnow
 # ✅ Use the central sanitizer
-from stephanie.utils.json_sanitize import sanitize   # <— NEW
+from stephanie.utils.json_sanitize import sanitize  # <— NEW
 
 
 class CaseBookORM(Base):

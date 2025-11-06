@@ -13,7 +13,6 @@ import torch
 from sqlalchemy import text
 
 
-
 class ContextManager:
     def __init__(
         self,

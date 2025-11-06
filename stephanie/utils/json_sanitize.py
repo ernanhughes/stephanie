@@ -14,7 +14,6 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np  # type: ignore
 
-
 # -----------------------------------------------------------------------------
 # Core, single-source-of-truth utilities
 # -----------------------------------------------------------------------------

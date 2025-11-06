@@ -23,7 +23,6 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-
 from stephanie.components.ssp.core.protocols import SSPMetrics
 from stephanie.components.ssp.core.roles.proposer import Proposer
 from stephanie.components.ssp.core.roles.solver import Solver

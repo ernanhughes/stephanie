@@ -1,7 +1,6 @@
 # stephanie/agents/expository/ranker.py
 from __future__ import annotations
 
-
 from sqlalchemy import select
 
 from stephanie.agents.base_agent import BaseAgent

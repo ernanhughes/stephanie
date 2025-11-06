@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import click
-from pathlib import Path
+
 from stephanie.components.nexus.graph.builder import build_graph_from_manifest
-
 from stephanie.components.nexus.protocol.protocol import NexusProtocol
-
 
 
 @click.group()
