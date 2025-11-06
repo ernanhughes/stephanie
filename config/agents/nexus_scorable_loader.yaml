@@ -8,8 +8,8 @@ nexus_scorable_loader:
   skip_if_completed: false
 
   # Core fetch knobs
-  limit: 400            # total rows to pull from chat DB
-  batch_size: 200
+  limit: 40            # total rows to pull from chat DB
+  batch_size: 40
   include_full_text: true
   include_ner: false
 

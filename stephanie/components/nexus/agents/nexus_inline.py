@@ -8,7 +8,6 @@ import random
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from pathlib import Path
 
 import imageio.v2 as imageio
 import numpy as np
@@ -37,21 +36,9 @@ from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.embed_utils import as_list_floats, has_vec, cos_safe
 from collections import defaultdict
+from stephanie.utils.progress_mixin import ProgressMixin
 
 log = logging.getLogger(__name__)
-
-
-def _l2(v):
-    import math
-
-    return math.sqrt(sum(x * x for x in v)) or 1.0
-
-
-def _cos(a, b):
-    if not a or not b:
-        return 0.0
-    return sum(x * y for x, y in zip(a, b)) / (_l2(a) * _l2(b))
-
 
 def _consensus_walk_order(
     scorables: list[dict],
@@ -327,7 +314,7 @@ def _compute_run_metrics(manifest, nodes, edges, positions, target_vec):
     }
 
 
-class NexusInlineAgent(BaseAgent):
+class NexusInlineAgent(BaseAgent, ProgressMixin):
     """
     Builds a Nexus run (manifest → graph → frames) and, when enabled,
     produces A/B comparison runs:
@@ -661,13 +648,13 @@ class NexusInlineAgent(BaseAgent):
                 edges=edges,
                 title=f"Nexus Graph — {run_id}",
             )
-            # export_pyvis_html_rich(
-            #     output_path=(out_dir / "graph.html").as_posix(),
-            #     nodes=nodes,
-            #     edges=edges,
-            #     positions=positions,
-            #     title=f"Nexus Graph — {run_id}",
-            # )
+            export_pyvis_html_rich(
+                output_path=(out_dir / "graph_rich.html").as_posix(),
+                nodes=nodes,
+                edges=edges,
+                positions=positions,
+                title=f"Nexus Graph — {run_id}",
+            )
             print(
                 f"Exported rich PyVis HTML to {(out_dir / 'graph.html').as_posix()}"
             )
